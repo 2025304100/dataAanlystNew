@@ -1,0 +1,429 @@
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import desc, func, select
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.models.journal_entry import JournalEntry
+from app.models.portfolio import Portfolio, Position
+from app.models.daily_bar import DailyBar
+from app.models.scan import ScanResult, ScanRun
+from app.models.score import Score
+from app.models.symbol import Symbol
+from app.models.trade_setup import TradeSetup
+from app.models.watchlist import Watchlist, WatchlistItem
+from app.schemas.dashboard import (
+    WorkbenchActiveRule,
+    DashboardOverview,
+    WorkbenchBar,
+    DashboardWorkbench,
+    WorkbenchCandidate,
+    WorkbenchJournal,
+    WorkbenchLatestScan,
+    WorkbenchMarketScope,
+    WorkbenchScore,
+    WorkbenchSymbolDetail,
+    WorkbenchTrade,
+    WorkbenchWatchlist,
+)
+from app.services.allocation import compute_allocation, get_active_rule
+from app.services.regions import markets_for_region, region_from_market
+from app.services.signal_stats import build_similar_signal_stats
+from app.services.sim_accounts import build_sim_account_summary, recent_sim_trades
+from app.services.trade_plans import build_trade_setup_view, upsert_trade_setup
+
+
+router = APIRouter()
+
+
+@router.get("/dashboard/overview", response_model=DashboardOverview)
+def get_dashboard_overview(
+    portfolio_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    symbols_count = db.execute(select(func.count(Symbol.id))).scalar_one()
+    watchlists_count = db.execute(select(func.count(Watchlist.id))).scalar_one()
+    allocation = compute_allocation(db, portfolio_id)
+
+    latest_run = db.execute(
+        select(ScanRun).where(ScanRun.portfolio_id == portfolio_id, ScanRun.status == "done").order_by(ScanRun.id.desc())
+    ).scalars().first()
+    top_candidates = []
+    if latest_run is not None:
+        rows = db.execute(
+            select(ScanResult, Symbol)
+            .join(Symbol, Symbol.id == ScanResult.symbol_id)
+            .where(ScanResult.scan_run_id == latest_run.id, ScanResult.result_type == "executable")
+            .order_by(ScanResult.rank_no.asc())
+            .limit(5)
+        ).all()
+        top_candidates = [
+            {
+                "symbol_id": result.symbol_id,
+                "symbol": symbol.symbol,
+                "name": symbol.name,
+                "quality_score": result.quality_score,
+                "timing_score": result.timing_score,
+                "stage": result.stage,
+                "action": result.action,
+                "recommended_position_pct": result.recommended_position_pct,
+            }
+            for result, symbol in rows
+        ]
+
+    risk_flags = []
+    if allocation["cash_pct"] < 0.1:
+        risk_flags.append("Cash reserve is below 10%")
+    if allocation["total_position_pct"] > 0.9:
+        risk_flags.append("Total exposure is above 90%")
+
+    return DashboardOverview(
+        symbols_count=symbols_count,
+        watchlists_count=watchlists_count,
+        total_position_pct=allocation["total_position_pct"],
+        cash_pct=allocation["cash_pct"],
+        top_candidates=top_candidates,
+        risk_flags=risk_flags,
+    )
+
+
+@router.get("/dashboard/workbench", response_model=DashboardWorkbench)
+def get_dashboard_workbench(
+    portfolio_id: int = Query(...),
+    candidate_limit: int = Query(default=8, ge=1, le=20),
+    score_limit: int = Query(default=10, ge=1, le=30),
+    market_group: str = Query(default="all"),
+    db: Session = Depends(get_db),
+):
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    overview = get_dashboard_overview(portfolio_id=portfolio_id, db=db)
+    active_rule = get_active_rule(db, portfolio_id)
+    market_codes = markets_for_region(market_group)
+
+    latest_run = db.execute(
+        select(ScanRun).where(ScanRun.portfolio_id == portfolio_id, ScanRun.status == "done").order_by(ScanRun.id.desc())
+    ).scalars().first()
+
+    latest_scan = WorkbenchLatestScan()
+    candidates: list[WorkbenchCandidate] = []
+    if latest_run is not None:
+        candidate_stmt = (
+            select(ScanResult, Symbol)
+            .join(Symbol, Symbol.id == ScanResult.symbol_id)
+            .where(ScanResult.scan_run_id == latest_run.id, ScanResult.result_type == "executable")
+            .order_by(ScanResult.rank_no.asc())
+            .limit(candidate_limit)
+        )
+        if market_codes:
+            candidate_stmt = candidate_stmt.where(Symbol.market.in_(market_codes))
+        candidate_rows = db.execute(candidate_stmt).all()
+        candidates = [
+            WorkbenchCandidate(
+                symbol_id=symbol.id,
+                symbol=symbol.symbol,
+                name=symbol.name,
+                market=symbol.market,
+                region=region_from_market(symbol.market),
+                asset_type=symbol.asset_type,
+                quality_score=result.quality_score,
+                timing_score=result.timing_score,
+                priority_score=result.priority_score,
+                stage=result.stage,
+                action=result.action,
+                recommended_position_pct=result.recommended_position_pct,
+                rank_no=result.rank_no,
+            )
+            for result, symbol in candidate_rows
+        ]
+        total_results_stmt = select(func.count(ScanResult.id)).where(ScanResult.scan_run_id == latest_run.id)
+        executable_count_stmt = select(func.count(ScanResult.id)).where(
+            ScanResult.scan_run_id == latest_run.id,
+            ScanResult.result_type == "executable",
+        )
+        if market_codes:
+            total_results_stmt = (
+                select(func.count(ScanResult.id))
+                .join(Symbol, Symbol.id == ScanResult.symbol_id)
+                .where(ScanResult.scan_run_id == latest_run.id, Symbol.market.in_(market_codes))
+            )
+            executable_count_stmt = (
+                select(func.count(ScanResult.id))
+                .join(Symbol, Symbol.id == ScanResult.symbol_id)
+                .where(
+                    ScanResult.scan_run_id == latest_run.id,
+                    ScanResult.result_type == "executable",
+                    Symbol.market.in_(market_codes),
+                )
+            )
+        total_results = db.execute(total_results_stmt).scalar_one()
+        executable_count = db.execute(executable_count_stmt).scalar_one()
+        latest_scan = WorkbenchLatestScan(
+            scan_run_id=latest_run.id,
+            run_name=latest_run.run_name,
+            created_at=latest_run.created_at,
+            executable_count=executable_count,
+            total_results=total_results,
+            auto_scan=latest_run.run_name == "post-sync-auto-scan",
+        )
+
+    score_stmt = (
+        select(Score, Symbol)
+        .join(Symbol, Symbol.id == Score.symbol_id)
+        .where(
+            Score.id.in_(
+                select(func.max(Score.id)).group_by(Score.symbol_id)
+            )
+        )
+        .order_by(Score.priority_score.desc())
+        .limit(score_limit)
+    )
+    if market_codes:
+        score_stmt = score_stmt.where(Symbol.market.in_(market_codes))
+    score_rows = db.execute(score_stmt).all()
+    latest_scores = [
+        WorkbenchScore(
+            symbol_id=symbol.id,
+            symbol=symbol.symbol,
+            name=symbol.name,
+            market=symbol.market,
+            region=region_from_market(symbol.market),
+            asset_type=symbol.asset_type,
+            trade_date=score.trade_date,
+            quality_score=score.quality_score,
+            timing_score=score.timing_score,
+            stage=score.stage,
+            action=score.action,
+            priority_score=score.priority_score,
+        )
+        for score, symbol in score_rows
+    ]
+
+    watchlist_rows = db.execute(
+        select(
+            Watchlist.id,
+            Watchlist.name,
+            Watchlist.list_type,
+            func.count(WatchlistItem.id).label("item_count"),
+        )
+        .outerjoin(WatchlistItem, WatchlistItem.watchlist_id == Watchlist.id)
+        .group_by(Watchlist.id, Watchlist.name, Watchlist.list_type)
+        .order_by(Watchlist.id.asc())
+    ).all()
+    watchlists = [
+        WorkbenchWatchlist(
+            id=row.id,
+            name=row.name,
+            list_type=row.list_type,
+            item_count=row.item_count,
+        )
+        for row in watchlist_rows
+    ]
+
+    journal_rows = db.execute(
+        select(JournalEntry)
+        .where(JournalEntry.portfolio_id == portfolio_id)
+        .order_by(desc(JournalEntry.created_at), desc(JournalEntry.id))
+        .limit(6)
+    ).scalars().all()
+    journals = [
+        WorkbenchJournal(
+            id=journal.id,
+            title=journal.title,
+            entry_type=journal.entry_type,
+            symbol_id=journal.symbol_id,
+            created_at=journal.created_at,
+        )
+        for journal in journal_rows
+    ]
+
+    portfolio_payload = None
+    if portfolio is not None:
+        portfolio_payload = {
+            "id": portfolio.id,
+            "name": portfolio.name,
+            "account_type": portfolio.account_type,
+            "total_capital": portfolio.total_capital,
+            "investable_ratio": portfolio.investable_ratio,
+            "cash_reserve_ratio": portfolio.cash_reserve_ratio,
+            "currency": portfolio.currency,
+        }
+
+    symbol_markets = db.execute(select(Symbol.market).where(Symbol.is_active == 1)).scalars().all()
+    region_counts = {"cn": 0, "us": 0, "other": 0}
+    for market in symbol_markets:
+        region = region_from_market(market)
+        region_counts[region] = region_counts.get(region, 0) + 1
+    total_symbols = len(symbol_markets)
+    filtered_symbols = total_symbols if market_group == "all" else region_counts.get(market_group, 0)
+    account_summary = build_sim_account_summary(db, portfolio)
+    recent_trades = [WorkbenchTrade(**item) for item in recent_sim_trades(db, portfolio_id, limit=8)]
+
+    return DashboardWorkbench(
+        portfolio=portfolio_payload,
+        active_rule=None
+        if active_rule is None
+        else WorkbenchActiveRule(
+            id=active_rule.id,
+            rule_name=active_rule.rule_name,
+            max_single_position_pct=active_rule.max_single_position_pct,
+            max_stock_position_pct=active_rule.max_stock_position_pct,
+            max_etf_position_pct=active_rule.max_etf_position_pct,
+            max_open_positions=active_rule.max_open_positions,
+        ),
+        market_scope=WorkbenchMarketScope(
+            selected_group=market_group,
+            available_groups=["all", "cn", "us"],
+            total_symbols=total_symbols,
+            filtered_symbols=filtered_symbols,
+            region_counts=region_counts,
+        ),
+        overview=overview,
+        account_summary=account_summary,
+        latest_scan=latest_scan,
+        candidates=candidates,
+        latest_scores=latest_scores,
+        recent_trades=recent_trades,
+        watchlists=watchlists,
+        journals=journals,
+    )
+
+
+@router.get("/dashboard/symbol-detail", response_model=WorkbenchSymbolDetail)
+def get_symbol_detail_panel(
+    symbol_id: int = Query(...),
+    portfolio_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    symbol = db.get(Symbol, symbol_id)
+    if symbol is None:
+        raise HTTPException(status_code=404, detail="Symbol not found")
+
+    latest_score = db.execute(
+        select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id))
+    ).scalars().first()
+    latest_setup = db.execute(
+        select(TradeSetup)
+        .where(TradeSetup.symbol_id == symbol_id, TradeSetup.portfolio_id == portfolio_id)
+        .order_by(desc(TradeSetup.created_at), desc(TradeSetup.id))
+    ).scalars().first()
+    score_rows = db.execute(
+        select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id)).limit(20)
+    ).scalars().all()
+    bar_rows = db.execute(
+        select(DailyBar).where(DailyBar.symbol_id == symbol_id).order_by(desc(DailyBar.trade_date)).limit(60)
+    ).scalars().all()
+    journal_rows = db.execute(
+        select(JournalEntry)
+        .where(JournalEntry.symbol_id == symbol_id, JournalEntry.portfolio_id == portfolio_id)
+        .order_by(desc(JournalEntry.created_at), desc(JournalEntry.id))
+        .limit(8)
+    ).scalars().all()
+    position = db.execute(
+        select(Position).where(Position.portfolio_id == portfolio_id, Position.symbol_id == symbol_id)
+    ).scalars().first()
+    recent_trades = [WorkbenchTrade(**item) for item in recent_sim_trades(db, portfolio_id, limit=6, symbol_id=symbol_id)]
+    latest_position_price = bar_rows[0].close if bar_rows else None
+
+    if latest_score is not None and (latest_setup is None or latest_setup.score_id != latest_score.id):
+        latest_setup = upsert_trade_setup(
+            db=db,
+            portfolio_id=portfolio_id,
+            symbol=symbol,
+            score=latest_score,
+        )
+        db.commit()
+        db.refresh(latest_setup)
+
+    return WorkbenchSymbolDetail(
+        symbol={
+            "id": symbol.id,
+            "symbol": symbol.symbol,
+            "name": symbol.name,
+            "market": symbol.market,
+            "region": region_from_market(symbol.market),
+            "asset_type": symbol.asset_type,
+            "theme": symbol.theme,
+            "industry": symbol.industry,
+        },
+        latest_score=None
+        if latest_score is None
+        else {
+            "id": latest_score.id,
+            "trade_date": latest_score.trade_date.isoformat(),
+            "quality_score": latest_score.quality_score,
+            "quality_grade": latest_score.quality_grade,
+            "timing_score": latest_score.timing_score,
+            "stage": latest_score.stage,
+            "action": latest_score.action,
+            "priority_score": latest_score.priority_score,
+        },
+        latest_trade_setup=None
+        if latest_setup is None
+        else {
+            **build_trade_setup_view(
+                db=db,
+                portfolio_id=portfolio_id,
+                symbol=symbol,
+                score=latest_score,
+                setup=latest_setup,
+                bars=list(reversed(bar_rows)),
+            ),
+        },
+        signal_stats=build_similar_signal_stats(db, symbol, latest_score, portfolio_id=portfolio_id),
+        position=None
+        if position is None
+        else {
+            "quantity": position.quantity,
+            "avg_cost": position.avg_cost,
+            "latest_price": latest_position_price or position.latest_price,
+            "market_value": round(position.quantity * (latest_position_price or position.latest_price), 2),
+            "position_pct": round((position.quantity * (latest_position_price or position.latest_price)) / portfolio.total_capital, 4)
+            if portfolio.total_capital
+            else position.position_pct,
+            "asset_type": position.asset_type,
+        },
+        score_history=[
+            {
+                "id": row.id,
+                "trade_date": row.trade_date.isoformat(),
+                "quality_score": row.quality_score,
+                "timing_score": row.timing_score,
+                "stage": row.stage,
+                "action": row.action,
+                "priority_score": row.priority_score,
+            }
+            for row in reversed(score_rows)
+        ],
+        bars=[
+            WorkbenchBar(
+                trade_date=row.trade_date,
+                open=row.open,
+                high=row.high,
+                low=row.low,
+                close=row.close,
+                volume=row.volume,
+            )
+            for row in reversed(bar_rows)
+        ],
+        journals=[
+            WorkbenchJournal(
+                id=row.id,
+                title=row.title,
+                entry_type=row.entry_type,
+                symbol_id=row.symbol_id,
+                created_at=row.created_at,
+            )
+            for row in journal_rows
+        ],
+        recent_trades=recent_trades,
+    )
