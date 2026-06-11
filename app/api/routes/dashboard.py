@@ -35,6 +35,26 @@ from app.services.trade_plans import build_trade_setup_view, upsert_trade_setup
 router = APIRouter()
 
 
+def _latest_score_map(db: Session, symbol_ids: list[int]) -> dict[int, Score]:
+    if not symbol_ids:
+        return {}
+    rows = (
+        db.execute(
+            select(Score).where(
+                Score.symbol_id.in_(symbol_ids),
+                Score.id.in_(
+                    select(func.max(Score.id))
+                    .where(Score.symbol_id.in_(symbol_ids))
+                    .group_by(Score.symbol_id)
+                ),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {row.symbol_id: row for row in rows}
+
+
 @router.get("/dashboard/overview", response_model=DashboardOverview)
 def get_dashboard_overview(
     portfolio_id: int = Query(...),
@@ -123,6 +143,7 @@ def get_dashboard_workbench(
         if market_codes:
             candidate_stmt = candidate_stmt.where(Symbol.market.in_(market_codes))
         candidate_rows = db.execute(candidate_stmt).all()
+        candidate_score_map = _latest_score_map(db, [symbol.id for _, symbol in candidate_rows])
         candidates = [
             WorkbenchCandidate(
                 symbol_id=symbol.id,
@@ -134,6 +155,12 @@ def get_dashboard_workbench(
                 quality_score=result.quality_score,
                 timing_score=result.timing_score,
                 priority_score=result.priority_score,
+                trend_score=candidate_score_map.get(symbol.id).trend_score if candidate_score_map.get(symbol.id) else None,
+                momentum_score=candidate_score_map.get(symbol.id).momentum_score if candidate_score_map.get(symbol.id) else None,
+                volatility_score=candidate_score_map.get(symbol.id).volatility_score if candidate_score_map.get(symbol.id) else None,
+                liquidity_score=candidate_score_map.get(symbol.id).liquidity_score if candidate_score_map.get(symbol.id) else None,
+                breadth_score=candidate_score_map.get(symbol.id).breadth_score if candidate_score_map.get(symbol.id) else None,
+                event_score=candidate_score_map.get(symbol.id).event_score if candidate_score_map.get(symbol.id) else None,
                 stage=result.stage,
                 action=result.action,
                 recommended_position_pct=result.recommended_position_pct,
@@ -200,6 +227,12 @@ def get_dashboard_workbench(
             stage=score.stage,
             action=score.action,
             priority_score=score.priority_score,
+            trend_score=score.trend_score,
+            momentum_score=score.momentum_score,
+            volatility_score=score.volatility_score,
+            liquidity_score=score.liquidity_score,
+            breadth_score=score.breadth_score,
+            event_score=score.event_score,
         )
         for score, symbol in score_rows
     ]
@@ -298,6 +331,7 @@ def get_dashboard_workbench(
 def get_symbol_detail_panel(
     symbol_id: int = Query(...),
     portfolio_id: int = Query(...),
+    sample_limit: int | None = Query(default=None, ge=5, le=240),
     db: Session = Depends(get_db),
 ):
     portfolio = db.get(Portfolio, portfolio_id)
@@ -379,7 +413,7 @@ def get_symbol_detail_panel(
                 bars=list(reversed(bar_rows)),
             ),
         },
-        signal_stats=build_similar_signal_stats(db, symbol, latest_score, portfolio_id=portfolio_id),
+        signal_stats=build_similar_signal_stats(db, symbol, latest_score, portfolio_id=portfolio_id, sample_limit=sample_limit),
         position=None
         if position is None
         else {

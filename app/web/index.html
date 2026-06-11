@@ -4,51 +4,62 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Quant Workbench</title>
-    <link rel="stylesheet" href="/static/workbench.css?v=20260610-news-latest" />
+    <link rel="stylesheet" href="/static/workbench.css?v=20260610-topbar-polish" />
   </head>
-  <body>
+  <body data-active-view="overview">
     <div class="shell">
       <header class="topbar">
-        <div>
+        <div class="brand-block">
           <p class="eyebrow" data-i18n="eyebrow">Personal Quant Workbench</p>
           <h1 data-i18n="overviewTitle">Overview</h1>
         </div>
         <div class="toolbar">
-          <label class="portfolio-picker">
-            <span data-i18n="portfolio">Portfolio</span>
-            <select id="portfolioSelect"></select>
-          </label>
-          <label class="portfolio-picker">
-            <span data-i18n="language">Language</span>
-            <select id="localeSelect">
-              <option value="zh-CN">简体中文</option>
-              <option value="en-US">English</option>
-            </select>
-          </label>
-          <label class="portfolio-picker">
-            <span data-i18n="market">Market</span>
-            <select id="marketSelect">
-              <option value="all">All</option>
-              <option value="cn">China Mainland</option>
-              <option value="us">United States</option>
-            </select>
-          </label>
-          <label class="portfolio-picker symbol-add">
-            <span data-i18n="symbolCode">Code</span>
-            <input id="symbolCodeInput" type="text" placeholder="600519 / QQQ" />
-          </label>
-          <button id="addSymbolButton" type="button" class="ghost-button" data-i18n="addSymbol">Add</button>
-          <button id="syncButton" type="button" class="ghost-button" data-i18n="sync">Sync</button>
-          <button id="scanButton" type="button" class="ghost-button" data-i18n="scan">Scan</button>
-          <button id="newsButton" type="button" class="ghost-button" data-i18n="newsUpdate">News</button>
-          <button id="ruleConfigButton" type="button" class="ghost-button" data-i18n="ruleConfig">Rules</button>
-          <button id="refreshButton" type="button" data-i18n="refresh">Refresh</button>
+          <div class="toolbar-fields">
+            <label class="portfolio-picker">
+              <span data-i18n="portfolio">Portfolio</span>
+              <select id="portfolioSelect"></select>
+            </label>
+            <label class="portfolio-picker">
+              <span data-i18n="language">Language</span>
+              <select id="localeSelect">
+                <option value="zh-CN">简体中文</option>
+                <option value="en-US">English</option>
+              </select>
+            </label>
+            <label class="portfolio-picker">
+              <span data-i18n="market">Market</span>
+              <select id="marketSelect">
+                <option value="all">All</option>
+                <option value="cn">China Mainland</option>
+                <option value="us">United States</option>
+              </select>
+            </label>
+            <label class="portfolio-picker symbol-add">
+              <span data-i18n="symbolCode">Code</span>
+              <input id="symbolCodeInput" type="text" placeholder="600519 / QQQ" />
+            </label>
+          </div>
+          <div class="toolbar-actions">
+            <button id="addSymbolButton" type="button" class="ghost-button" data-i18n="addSymbol">Add</button>
+            <button id="syncButton" type="button" class="ghost-button" data-i18n="sync">Sync</button>
+            <button id="scanButton" type="button" class="ghost-button" data-i18n="scan">Scan</button>
+            <button id="newsButton" type="button" class="ghost-button" data-i18n="newsUpdate">News</button>
+            <button id="ruleConfigButton" type="button" class="ghost-button" data-i18n="ruleConfig">Rules</button>
+            <button id="refreshButton" type="button" data-i18n="refresh">Refresh</button>
+          </div>
         </div>
       </header>
       <p id="actionStatus" class="action-status"></p>
 
+      <nav class="view-tabs" aria-label="Workbench views">
+        <button type="button" class="view-tab active" data-view-tab="overview" data-i18n="viewOverview">Overview</button>
+        <button type="button" class="view-tab" data-view-tab="detail" data-i18n="viewDetail">Detail</button>
+        <button type="button" class="view-tab" data-view-tab="research" data-i18n="viewResearch">Research</button>
+        <button type="button" class="view-tab" data-view-tab="rules" data-i18n="viewRules">Rules</button>
+      </nav>
+
       <main class="layout">
-        <section class="band today-band">
+        <section class="band today-band" data-workbench-view="overview">
           <div class="panel wide">
             <div class="panel-head">
               <div>
@@ -61,11 +72,11 @@
           </div>
         </section>
 
-        <section class="band metrics-band">
+        <section class="band metrics-band" data-workbench-view="overview">
           <div class="metric-grid" id="metricGrid"></div>
         </section>
 
-        <section class="band account-band">
+        <section class="band account-band" data-workbench-view="overview">
           <div class="panel">
             <div class="panel-head">
               <div>
@@ -78,7 +89,7 @@
           </div>
         </section>
 
-        <section class="band rule-config-band" id="ruleConfigSection">
+        <section class="band rule-config-band" id="ruleConfigSection" data-workbench-view="rules">
           <div class="panel wide">
             <div class="panel-head">
               <div>
@@ -128,7 +139,7 @@
         </section>
 
         <section class="band content-grid">
-          <div class="panel wide">
+          <div class="panel wide" data-workbench-view="research">
             <div class="panel-head">
               <div>
                 <p class="panel-kicker" data-i18n="latestAutoScan">Latest Auto Scan</p>
@@ -154,7 +165,7 @@
             </div>
           </div>
 
-          <div class="panel">
+          <div class="panel" data-workbench-view="research">
             <div class="panel-head">
               <div>
                 <p class="panel-kicker" data-i18n="scoreboard">Scoreboard</p>
@@ -164,7 +175,7 @@
             <div class="list" id="scoreList"></div>
           </div>
 
-          <div class="panel">
+          <div class="panel" data-workbench-view="research">
             <div class="panel-head">
               <div>
                 <p class="panel-kicker" data-i18n="coverage">Coverage</p>
@@ -174,7 +185,7 @@
             <div class="list" id="watchlistList"></div>
           </div>
 
-          <div class="panel">
+          <div class="panel" data-workbench-view="research">
             <div class="panel-head">
               <div>
                 <p class="panel-kicker" data-i18n="recentNotes">Recent Notes</p>
@@ -184,7 +195,7 @@
             <div class="list" id="journalList"></div>
           </div>
 
-          <div class="panel wide detail-panel">
+          <div class="panel wide detail-panel" data-workbench-view="detail">
             <div class="panel-head">
               <div>
                 <p class="panel-kicker" data-i18n="symbolDetail">Symbol Detail</p>
@@ -293,6 +304,6 @@
       </section>
     </div>
 
-    <script src="/static/workbench.js?v=20260610-news-latest"></script>
+    <script src="/static/workbench.js?v=20260610-topbar-polish"></script>
   </body>
 </html>

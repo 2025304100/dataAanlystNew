@@ -22,6 +22,12 @@ class WorkbenchCandidate(BaseModel):
     quality_score: float | None = None
     timing_score: float | None = None
     priority_score: float | None = None
+    trend_score: float | None = None
+    momentum_score: float | None = None
+    volatility_score: float | None = None
+    liquidity_score: float | None = None
+    breadth_score: float | None = None
+    event_score: float | None = None
     stage: str | None = None
     action: str | None = None
     recommended_position_pct: float | None = None
@@ -41,6 +47,12 @@ class WorkbenchScore(BaseModel):
     stage: str
     action: str
     priority_score: float
+    trend_score: float | None = None
+    momentum_score: float | None = None
+    volatility_score: float | None = None
+    liquidity_score: float | None = None
+    breadth_score: float | None = None
+    event_score: float | None = None
 
 
 class WorkbenchWatchlist(BaseModel):

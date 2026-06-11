@@ -48,6 +48,7 @@ def build_similar_signal_stats(
     rule_override: SignalRuleUpsert | None = None,
     *,
     max_samples: int = 60,
+    sample_limit: int | None = None,
 ) -> dict | None:
     if latest_score is None:
         return None
@@ -56,6 +57,8 @@ def build_similar_signal_stats(
     quality_tolerance = rule.quality_tolerance if rule is not None else 12
     timing_tolerance = rule.timing_tolerance if rule is not None else 12
     max_samples = rule.max_samples if rule is not None else max_samples
+    if sample_limit is not None:
+        max_samples = max(5, min(240, sample_limit))
     min_sample_count = rule.min_sample_count if rule is not None else 3
 
     stmt = select(Score, Symbol).join(Symbol, Symbol.id == Score.symbol_id).where(Score.id != latest_score.id)

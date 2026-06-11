@@ -18,6 +18,7 @@ from app.services.allocation import get_active_rule, get_default_portfolio
 from app.services.analysis import calculate_symbol_score
 from app.services.regions import region_from_market
 from app.services.scans import run_scan
+from app.services.symbol_names import refresh_symbol_name
 from app.services.trade_plans import upsert_trade_setup
 
 
@@ -385,6 +386,7 @@ def sync_market_data(
 
     for symbol in symbols:
         try:
+            refresh_symbol_name(symbol)
             result = sync_symbol_daily_bars(
                 db=db,
                 symbol=symbol,

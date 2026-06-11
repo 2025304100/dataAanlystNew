@@ -6,6 +6,10 @@ const I18N = {
   "zh-CN": {
     eyebrow: "个人量化工作台",
     overviewTitle: "总览",
+    viewOverview: "总览",
+    viewDetail: "标的详情",
+    viewResearch: "研究池",
+    viewRules: "规则设置",
     portfolio: "组合",
     language: "语言",
     market: "市场",
@@ -21,6 +25,17 @@ const I18N = {
     symbol: "标的",
     quality: "股质",
     timing: "时点",
+    opportunityScore: "机会分",
+    opportunityFormula: "优先分 = 时点40% + 股质30% + 流动性20% + 题材10%",
+    scoreBreakdown: "指标拆解",
+    noScoreBreakdown: "暂无拆解指标，显示综合分",
+    trendScore: "趋势",
+    momentumScore: "动量",
+    volatilityScore: "波动",
+    liquidityScore: "流动性",
+    breadthScore: "题材",
+    eventScore: "事件",
+    scoreContext: "信号状态",
     stage: "阶段",
     action: "动作",
     position: "仓位",
@@ -139,6 +154,13 @@ const I18N = {
     messagePositive: "利好",
     messageNegative: "利空",
     messageRisk: "风险",
+    macroNews: "宏观环境",
+    scoreFormula: "公式",
+    scoreFormulaText: "关键词分 × 来源权重 × 时间衰减，近7天事件求和",
+    scoreContributors: "分数来源",
+    confidence: "可信度",
+    source: "来源",
+    noScoreEvents: "暂无命中事件，按中性处理",
     noNewsYet: "尚未查询消息面",
     newsUpdating: "消息查询中...",
     newsFailed: "消息查询失败",
@@ -181,6 +203,10 @@ const I18N = {
   "en-US": {
     eyebrow: "Personal Quant Workbench",
     overviewTitle: "Overview",
+    viewOverview: "Overview",
+    viewDetail: "Detail",
+    viewResearch: "Research",
+    viewRules: "Rules",
     portfolio: "Portfolio",
     language: "Language",
     market: "Market",
@@ -196,6 +222,17 @@ const I18N = {
     symbol: "Symbol",
     quality: "Quality",
     timing: "Timing",
+    opportunityScore: "Opportunity score",
+    opportunityFormula: "Priority = Timing 40% + Quality 30% + Liquidity 20% + Theme 10%",
+    scoreBreakdown: "Breakdown",
+    noScoreBreakdown: "No breakdown available; showing composite score",
+    trendScore: "Trend",
+    momentumScore: "Momentum",
+    volatilityScore: "Volatility",
+    liquidityScore: "Liquidity",
+    breadthScore: "Theme",
+    eventScore: "Event",
+    scoreContext: "Signal context",
     stage: "Stage",
     action: "Action",
     position: "Position",
@@ -314,6 +351,13 @@ const I18N = {
     messagePositive: "Positive",
     messageNegative: "Negative",
     messageRisk: "Risk",
+    macroNews: "Macro",
+    scoreFormula: "Formula",
+    scoreFormulaText: "Keyword score × source weight × time decay, summed over recent 7d events",
+    scoreContributors: "Contributors",
+    confidence: "Confidence",
+    source: "Source",
+    noScoreEvents: "No matched events; treated as neutral",
     noNewsYet: "No news query yet",
     newsUpdating: "Checking news...",
     newsFailed: "News update failed",
@@ -435,6 +479,13 @@ Object.assign(EXTRA_I18N["zh-CN"], {
   best20d: "最佳20日",
   worst20d: "最差20日",
   sampleInsufficient: "历史样本不足，先观察，不建议过度相信单次信号",
+  sampleLimit: "样本上限",
+  sampleLimitTip: "控制收益预演最多纳入多少条相似历史样本。样本越多更平滑，但相似度可能下降。",
+  finalOpportunityScore: "最终机会分",
+  baseOpportunityScore: "技术机会分",
+  newsMultiplier: "消息面系数",
+  newsAdjustment: "消息加权",
+  finalOpportunityFormula: "最终分 = 技术机会分 × 消息面系数；系数限制在0.88到1.12，避免单条消息过度影响。",
 });
 
 Object.assign(EXTRA_I18N["en-US"], {
@@ -449,6 +500,13 @@ Object.assign(EXTRA_I18N["en-US"], {
   best20d: "Best 20d",
   worst20d: "Worst 20d",
   sampleInsufficient: "Not enough history yet. Watch first and avoid over-trusting one signal.",
+  sampleLimit: "Sample limit",
+  sampleLimitTip: "Controls how many similar historical samples are included in the return preview. More samples are smoother but may be less similar.",
+  finalOpportunityScore: "Final opportunity score",
+  baseOpportunityScore: "Technical score",
+  newsMultiplier: "News multiplier",
+  newsAdjustment: "News adjustment",
+  finalOpportunityFormula: "Final = technical score × news multiplier; multiplier is capped from 0.88 to 1.12 to avoid overreacting to one item.",
 });
 
 Object.assign(EXTRA_I18N["zh-CN"], {
@@ -560,12 +618,12 @@ Object.assign(EXTRA_I18N["en-US"], {
 });
 
 const STAGE_LABELS = {
-  "zh-CN": { accel: "加速", cooldown: "冷却", overheat: "过热", start: "启动" },
+  "zh-CN": { accel: "趋势加速", cooldown: "降温观察", overheat: "高位过热", start: "启动确认" },
   "en-US": { accel: "Accel", cooldown: "Cooldown", overheat: "Overheat", start: "Start" },
 };
 
 const ACTION_LABELS = {
-  "zh-CN": { buy_dip: "低吸", exit: "退出", hold: "持有", open: "开仓", reduce: "减仓" },
+  "zh-CN": { buy_dip: "回落低吸", exit: "退出观望", hold: "持有观察", open: "试探建仓", reduce: "减仓保护" },
   "en-US": { buy_dip: "Buy Dip", exit: "Exit", hold: "Hold", open: "Open", reduce: "Reduce" },
 };
 
@@ -597,6 +655,7 @@ const state = {
   portfolioId: null,
   locale: "zh-CN",
   marketGroup: "all",
+  activeView: "overview",
   activeSymbolId: null,
   workbench: null,
   detail: null,
@@ -615,6 +674,8 @@ const state = {
   signalRulePresets: [],
   signalRule: null,
   signalRulePreviewTimer: null,
+  signalSampleLimit: null,
+  signalSampleTimer: null,
   futurePlanScenario: "general",
   futurePlanCustom: { horizonDays: 20, pullbackPct: 3, positionPct: 5 },
   newsSnapshot: null,
@@ -627,6 +688,19 @@ function t(key) {
 
 function template(key, params = {}) {
   return t(key).replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ""));
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function percent(value) {
@@ -689,6 +763,40 @@ function stageLabel(value) {
 
 function actionLabel(value) {
   return ACTION_LABELS[state.locale]?.[value] ?? value ?? "-";
+}
+
+function sentimentLabel(value) {
+  const labels = {
+    "zh-CN": { positive: "偏利好", negative: "偏利空", neutral: "中性" },
+    "en-US": { positive: "Positive", negative: "Negative", neutral: "Neutral" },
+  };
+  return labels[state.locale]?.[value] ?? value ?? "-";
+}
+
+function riskLabel(value) {
+  const labels = {
+    "zh-CN": { high: "高风险", medium: "中风险", low: "低风险" },
+    "en-US": { high: "High risk", medium: "Medium risk", low: "Low risk" },
+  };
+  return labels[state.locale]?.[value] ?? value ?? "-";
+}
+
+function newsSourceLabel(value) {
+  const labels = {
+    "zh-CN": {
+      cninfo: "巨潮公告",
+      notice: "公告",
+      "eastmoney-news": "东方财富",
+      "macro-news": "宏观新闻",
+    },
+    "en-US": {
+      cninfo: "CNInfo",
+      notice: "Notice",
+      "eastmoney-news": "Eastmoney",
+      "macro-news": "Macro",
+    },
+  };
+  return labels[state.locale]?.[value] ?? value ?? "-";
 }
 
 function assetTypeLabel(value) {
@@ -995,6 +1103,16 @@ function setStatus(level, message) {
   renderStatus();
 }
 
+function switchView(view) {
+  state.activeView = view;
+  document.body.dataset.activeView = view;
+  document.querySelectorAll("[data-view-tab]").forEach((button) => {
+    const active = button.dataset.viewTab === view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+}
+
 function applyI18n() {
   document.querySelectorAll("[data-i18n]").forEach((node) => {
     node.textContent = t(node.dataset.i18n);
@@ -1003,6 +1121,7 @@ function applyI18n() {
     node.dataset.tip = t(node.dataset.tipI18n);
   });
   renderToolbarOptions();
+  switchView(state.activeView);
   renderStatus();
   document.documentElement.lang = state.locale;
   document.title = t("eyebrow");
@@ -1294,7 +1413,7 @@ function renderTodayList(items, emptyText) {
       (item) => `
         <button type="button" class="today-item" data-symbol-id="${item.symbol_id}">
           <span>
-            <strong>${item.symbol}${DOT}${item.name}</strong>
+            ${renderSymbolTitle(item)}
             <span class="item-subline">${joinParts([
               regionShortLabel(item.region),
               assetTypeLabel(item.asset_type),
@@ -1302,16 +1421,146 @@ function renderTodayList(items, emptyText) {
               actionLabel(item.action),
             ])}</span>
           </span>
-          <span class="today-score">${score(item.priority_score ?? item.timing_score ?? item.quality_score)}</span>
+          <span class="today-score-wrap">
+            <span class="today-score">${score(opportunityScoreValue(item))}</span>
+            ${renderOpportunityScoreTooltip(item)}
+          </span>
         </button>
       `
     )
     .join("");
 }
 
+function renderSymbolTitle(item) {
+  return `
+    <span class="symbol-title">
+      <strong class="symbol-code">${escapeHtml(item.symbol)}</strong>
+      <strong class="symbol-name">${escapeHtml(item.name)}</strong>
+    </span>
+  `;
+}
+
+function opportunityScoreValue(item) {
+  return item.final_opportunity_score ?? item.priority_score ?? item.timing_score ?? item.quality_score;
+}
+
+function baseOpportunityScoreValue(item) {
+  return item.base_opportunity_score ?? item.priority_score ?? item.timing_score ?? item.quality_score;
+}
+
+function newsSummaryForSymbol(symbolId) {
+  return (state.newsSnapshot?.symbols ?? []).find((item) => Number(item.symbol_id) === Number(symbolId)) ?? null;
+}
+
+function withFinalOpportunityScore(item) {
+  const baseScore = Number(baseOpportunityScoreValue(item) ?? 0);
+  const news = newsSummaryForSymbol(item.symbol_id);
+  const messageScore = Number(news?.message_score ?? 0);
+  const confidence = Number(news?.confidence ?? 0.35);
+  const newsAdjustmentPct = clamp((messageScore * confidence) / 100, -0.12, 0.12);
+  const newsMultiplierValue = 1 + newsAdjustmentPct;
+  return {
+    ...item,
+    base_opportunity_score: baseScore,
+    final_opportunity_score: Number(clamp(baseScore * newsMultiplierValue, 0, 100).toFixed(2)),
+    news_message_score: messageScore,
+    news_confidence: confidence,
+    news_multiplier: Number(newsMultiplierValue.toFixed(4)),
+    news_adjustment_pct: Number(newsAdjustmentPct.toFixed(4)),
+  };
+}
+
+function renderScoreMetric(label, value, options = {}) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "";
+  const suffix = options.weight ? ` ${options.weight}` : "";
+  return `<span><em>${label}${suffix}</em><strong>${score(value)}</strong></span>`;
+}
+
+function renderOpportunityScoreTooltip(item) {
+  const rows = [
+    renderScoreMetric(t("timing"), item.timing_score, { weight: "40%" }),
+    renderScoreMetric(t("quality"), item.quality_score, { weight: "30%" }),
+    renderScoreMetric(t("liquidityScore"), item.liquidity_score, { weight: "20%" }),
+    renderScoreMetric(t("breadthScore"), item.breadth_score, { weight: "10%" }),
+    renderScoreMetric(t("trendScore"), item.trend_score),
+    renderScoreMetric(t("momentumScore"), item.momentum_score),
+    renderScoreMetric(t("volatilityScore"), item.volatility_score),
+    renderScoreMetric(t("eventScore"), item.event_score),
+  ].filter(Boolean);
+
+  return `
+    <span class="score-tooltip opportunity-tooltip" role="tooltip">
+      <strong>${t("finalOpportunityScore")}: ${score(opportunityScoreValue(item))}</strong>
+      <span>${t("scoreFormula")}: ${t("finalOpportunityFormula")}</span>
+      <span>${joinParts([
+        `${t("baseOpportunityScore")} ${score(baseOpportunityScoreValue(item))}`,
+        `${t("messageScore")} ${score(item.news_message_score ?? 0, 1)}`,
+        `${t("newsMultiplier")} ${score(item.news_multiplier ?? 1, 3)}`,
+        `${t("newsAdjustment")} ${percent(item.news_adjustment_pct ?? 0)}`,
+      ])}</span>
+      <span>${t("opportunityFormula")}</span>
+      <span>${t("scoreContext")}: ${joinParts([stageLabel(item.stage), actionLabel(item.action)])}</span>
+      <span>${t("scoreBreakdown")}</span>
+      <span class="score-metric-grid">
+        ${rows.length ? rows.join("") : `<span class="score-tooltip-empty">${t("noScoreBreakdown")}</span>`}
+      </span>
+    </span>
+  `;
+}
+
+function renderNewsScoreTooltip(item, options = {}) {
+  const events = (item.events ?? []).slice(0, 4);
+  const stats = options.macro
+    ? joinParts([riskLabel(item.risk_level), sentimentLabel(item.sentiment)])
+    : joinParts([
+        `${t("messagePositive")} ${item.positive_count ?? 0}`,
+        `${t("messageNegative")} ${item.negative_count ?? 0}`,
+        `${t("messageRisk")} ${item.risk_count ?? 0}`,
+        `${t("confidence")} ${score(item.confidence ?? 0, 2)}`,
+      ]);
+  const eventRows = events.length
+    ? events
+        .map(
+          (event) => `
+            <div class="score-tooltip-event">
+              <strong class="${pnlClass(event.effective_score)}">${score(event.effective_score, 1)}</strong>
+              <span>${escapeHtml(newsSourceLabel(event.source))}${DOT}${escapeHtml(sentimentLabel(event.sentiment))}</span>
+              <em>${escapeHtml(event.title)}</em>
+            </div>
+          `
+        )
+        .join("")
+    : `<div class="score-tooltip-empty">${t("noScoreEvents")}</div>`;
+
+  return `
+    <span class="score-tooltip" role="tooltip">
+      <strong>${t("messageScore")}: ${score(item.message_score, 1)}</strong>
+      <span>${t("scoreFormula")}: ${t("scoreFormulaText")}</span>
+      <span>${stats}</span>
+      <span>${t("scoreContributors")}</span>
+      ${eventRows}
+    </span>
+  `;
+}
+
 function renderTodayNewsList(news) {
-  if (!news?.symbols?.length) return `<div class="empty">${t("noNewsYet")}</div>`;
-  return news.symbols
+  if (!news?.symbols?.length && !news?.macro) return `<div class="empty">${t("noNewsYet")}</div>`;
+  const macro = news.macro
+    ? `
+      <div class="today-item">
+        <span>
+          <strong>${t("macroNews")}</strong>
+          <span class="item-subline">${news.macro.summary ?? "-"}</span>
+        </span>
+        <span class="today-score-wrap">
+          <span class="today-score ${pnlClass(news.macro.message_score)}">${score(news.macro.message_score, 1)}</span>
+          ${renderNewsScoreTooltip(news.macro, { macro: true })}
+        </span>
+        <span class="item-subline">${riskLabel(news.macro.risk_level)}${DOT}${sentimentLabel(news.macro.sentiment)}</span>
+      </div>
+    `
+    : "";
+  const symbols = (news.symbols ?? [])
     .slice()
     .sort((left, right) => Math.abs(right.message_score) - Math.abs(left.message_score))
     .slice(0, 5)
@@ -1319,10 +1568,13 @@ function renderTodayNewsList(news) {
       (item) => `
         <button type="button" class="today-item" data-symbol-id="${item.symbol_id}">
           <span>
-            <strong>${item.symbol}${DOT}${item.name}</strong>
+            ${renderSymbolTitle(item)}
             <span class="item-subline">${item.latest_title ?? "-"}</span>
           </span>
-          <span class="today-score ${pnlClass(item.message_score)}">${score(item.message_score, 1)}</span>
+          <span class="today-score-wrap">
+            <span class="today-score ${pnlClass(item.message_score)}">${score(item.message_score, 1)}</span>
+            ${renderNewsScoreTooltip(item)}
+          </span>
           <span class="item-subline">${joinParts([
             `${t("messagePositive")} ${item.positive_count}`,
             `${t("messageNegative")} ${item.negative_count}`,
@@ -1332,6 +1584,7 @@ function renderTodayNewsList(news) {
       `
     )
     .join("");
+  return `${macro}${symbols}`;
 }
 
 function renderTodayOpportunities(data) {
@@ -1339,11 +1592,16 @@ function renderTodayOpportunities(data) {
   const meta = document.getElementById("todayOpportunityMeta");
   if (!grid || !meta) return;
 
-  const candidateIds = new Set(data.candidates.map((item) => item.symbol_id));
-  const executable = data.candidates.slice(0, 5);
-  const watchQueue = data.latest_scores
+  const scoredCandidates = data.candidates.map(withFinalOpportunityScore);
+  const scoredLatest = data.latest_scores.map(withFinalOpportunityScore);
+  const candidateIds = new Set(scoredCandidates.map((item) => item.symbol_id));
+  const executable = scoredCandidates
+    .slice()
+    .sort((left, right) => opportunityScoreValue(right) - opportunityScoreValue(left))
+    .slice(0, 5);
+  const watchQueue = scoredLatest
     .filter((item) => !candidateIds.has(item.symbol_id))
-    .sort((left, right) => (right.priority_score ?? 0) - (left.priority_score ?? 0))
+    .sort((left, right) => opportunityScoreValue(right) - opportunityScoreValue(left))
     .slice(0, 5);
   meta.textContent = joinParts([
     `${t("candidates")}: ${data.candidates.length}`,
@@ -1708,6 +1966,7 @@ function renderScoreList(data) {
 }
 
 function focusDetailPanel() {
+  switchView("detail");
   document.getElementById("detailTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -2502,6 +2761,7 @@ function renderSignalStatsCard(stats) {
   if (!stats) return "";
   const sampleCount = stats.sample_count ?? 0;
   const minSamples = stats.min_sample_count ?? stats.scope?.min_sample_count ?? 3;
+  const sampleLimit = state.signalSampleLimit ?? stats.scope?.max_samples ?? 60;
   const enoughSamples = sampleCount >= minSamples;
   const avgReturnClass = pnlClass(stats.avg_return_20d);
   const drawdownClass = pnlClass(stats.avg_max_drawdown_20d);
@@ -2512,6 +2772,11 @@ function renderSignalStatsCard(stats) {
         <strong>${t("similarSignalStats")}</strong>
         <span class="badge ${enoughSamples ? "" : "warn"}">${t("similarSamples")} ${sampleCount}/${minSamples}</span>
       </div>
+      <label class="inline-control compact-control">
+        <span>${t("sampleLimit")}</span>
+        <input id="signalSampleLimitInput" type="number" min="5" max="240" step="5" value="${sampleLimit}" />
+        <span class="tip-icon" data-tip="${t("sampleLimitTip")}">?</span>
+      </label>
       <div class="item-subline">${joinParts([
         `${t("matchedSignals")}: ${stats.matched_count ?? 0}`,
         `${t("win5d")}: ${statPct(stats.win_rate_5d)}`,
@@ -2553,6 +2818,28 @@ function bindFuturePlanControls() {
       renderDetail(state.detail);
       renderChart(state.detail);
     });
+  });
+}
+
+function bindSignalStatsControls() {
+  const input = document.getElementById("signalSampleLimitInput");
+  if (!input) return;
+  const applySampleLimit = async () => {
+    const value = clamp(Number(input.value || 60), 5, 240);
+    state.signalSampleLimit = value;
+    input.value = value;
+    if (state.activeSymbolId) {
+      await loadSymbolDetail(state.activeSymbolId);
+    }
+  };
+  input.addEventListener("change", applySampleLimit);
+  input.addEventListener("input", () => {
+    if (state.signalSampleTimer) {
+      clearTimeout(state.signalSampleTimer);
+    }
+    state.signalSampleTimer = setTimeout(() => {
+      applySampleLimit().catch((error) => setStatus("error", error.message));
+    }, 550);
   });
 }
 
@@ -2638,6 +2925,7 @@ function renderDetail(detail) {
     `);
   }
   summary.innerHTML = summaryRows.length ? summaryRows.join("") : `<div class="empty">${t("noScores")}</div>`;
+  bindSignalStatsControls();
 
   if (detail.latest_trade_setup) {
     const item = detail.latest_trade_setup;
@@ -2798,7 +3086,14 @@ function renderDetail(detail) {
 async function loadSymbolDetail(symbolId, options = {}) {
   state.activeSymbolId = symbolId;
   resetChartInteraction();
-  const detail = await requestJson(`/api/v1/dashboard/symbol-detail?portfolio_id=${state.portfolioId}&symbol_id=${symbolId}`);
+  const params = new URLSearchParams({
+    portfolio_id: String(state.portfolioId),
+    symbol_id: String(symbolId),
+  });
+  if (state.signalSampleLimit) {
+    params.set("sample_limit", String(state.signalSampleLimit));
+  }
+  const detail = await requestJson(`/api/v1/dashboard/symbol-detail?${params.toString()}`);
   renderDetail(detail);
   scheduleSignalRulePreview();
   if (options.focus) {
@@ -3168,7 +3463,14 @@ document.getElementById("refreshButton").addEventListener("click", async () => {
 });
 
 document.getElementById("ruleConfigButton").addEventListener("click", () => {
+  switchView("rules");
   document.getElementById("ruleConfigSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+document.querySelectorAll("[data-view-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    switchView(button.dataset.viewTab);
+  });
 });
 
 document.getElementById("signalRuleForm").addEventListener("input", () => {

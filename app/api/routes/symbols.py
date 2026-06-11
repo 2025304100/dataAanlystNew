@@ -7,6 +7,7 @@ from app.models.score import Score
 from app.models.symbol import Symbol
 from app.schemas.symbol import SymbolCreate, SymbolRead
 from app.services.regions import region_from_market
+from app.services.symbol_names import refresh_symbol_name
 
 
 router = APIRouter()
@@ -43,6 +44,7 @@ def create_symbol(payload: SymbolCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="Symbol already exists")
     symbol = Symbol(**payload.model_dump())
+    refresh_symbol_name(symbol)
     db.add(symbol)
     db.commit()
     db.refresh(symbol)
