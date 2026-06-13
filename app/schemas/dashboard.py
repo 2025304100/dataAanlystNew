@@ -119,6 +119,19 @@ class WorkbenchAccountSummary(BaseModel):
     last_trade_at: datetime | None = None
 
 
+class WorkbenchPosition(BaseModel):
+    symbol_id: int
+    symbol: str
+    name: str
+    quantity: float
+    avg_cost: float
+    latest_price: float
+    market_value: float
+    position_pct: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
+
+
 class WorkbenchTrade(BaseModel):
     id: int
     symbol_id: int
@@ -155,5 +168,6 @@ class DashboardWorkbench(BaseModel):
     candidates: list[WorkbenchCandidate]
     latest_scores: list[WorkbenchScore]
     recent_trades: list[WorkbenchTrade] = []
+    positions: list[WorkbenchPosition] = []
     watchlists: list[WorkbenchWatchlist]
     journals: list[WorkbenchJournal]

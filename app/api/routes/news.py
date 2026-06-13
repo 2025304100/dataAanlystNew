@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.async_utils import run_sync
 from app.db.session import get_db
 from app.schemas.news import NewsUpdateRequest, NewsUpdateResponse
 from app.services.news import get_latest_news, update_news
@@ -10,8 +11,8 @@ router = APIRouter()
 
 
 @router.post("/news/update", response_model=NewsUpdateResponse)
-def update_market_news(payload: NewsUpdateRequest, db: Session = Depends(get_db)):
-    return update_news(db, payload)
+async def update_market_news(payload: NewsUpdateRequest, db: Session = Depends(get_db)):
+    return await run_sync(update_news, db, payload)
 
 
 @router.get("/news/latest", response_model=NewsUpdateResponse)

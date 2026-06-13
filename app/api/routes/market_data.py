@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.async_utils import run_sync
 from app.db.session import get_db
 from app.models.daily_bar import DailyBar
 from app.models.symbol import Symbol
@@ -13,9 +14,10 @@ router = APIRouter()
 
 
 @router.post("/market-data/update")
-def trigger_market_data_update(payload: MarketDataUpdateRequest, db: Session = Depends(get_db)) -> dict:
+async def trigger_market_data_update(payload: MarketDataUpdateRequest, db: Session = Depends(get_db)) -> dict:
     try:
-        result = sync_market_data(
+        result = await run_sync(
+            sync_market_data,
             db=db,
             scope=payload.scope,
             watchlist_id=payload.watchlist_id,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import Date, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -22,8 +22,8 @@ class Symbol(Base):
     is_st: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[int] = mapped_column(Integer, default=1)
     listed_at: Mapped[date | None] = mapped_column(Date, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     daily_bars = relationship("DailyBar", back_populates="symbol_ref", cascade="all, delete-orphan")
     scores = relationship("Score", back_populates="symbol_ref", cascade="all, delete-orphan")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -28,7 +28,7 @@ class Score(Base):
     breadth_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     event_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     calc_batch_id: Mapped[str] = mapped_column(String(64), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     symbol_ref = relationship("Symbol", back_populates="scores")
 

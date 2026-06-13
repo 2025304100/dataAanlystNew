@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
+import logging
 import os
 import time
 
@@ -9,6 +10,8 @@ import akshare as ak
 import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.daily_bar import DailyBar
 from app.models.scan import ScanResult
@@ -210,6 +213,7 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                             )
                         )
                     except Exception:
+                        logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                         try:
                             return _normalize_cn_stock_sina_history(
                                 ak.stock_zh_a_daily(
@@ -222,6 +226,7 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                                 end_date=end_date,
                             )
                         except Exception:
+                            logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                             return _normalize_cn_stock_tx_history(
                                 ak.stock_zh_a_hist_tx(
                                     symbol=_cn_prefixed_symbol(symbol),
@@ -244,6 +249,7 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                             )
                         )
                     except Exception:
+                        logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                         return _normalize_cn_etf_sina_history(
                             ak.fund_etf_hist_sina(symbol=_cn_prefixed_symbol(symbol)),
                             start_date=start_date,
@@ -255,10 +261,12 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                     return _normalize_us_history(frame=frame, start_date=start_date, end_date=end_date)
         except Exception as exc:
             last_error = exc
+            logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
             if attempt < 2:
                 time.sleep(1 + attempt)
             continue
     if last_error is not None:
+        logger.warning("All AKShare sources failed for %s", symbol.symbol, exc_info=True)
         raise last_error
     raise RuntimeError("AKShare fetch failed without an explicit exception")
 

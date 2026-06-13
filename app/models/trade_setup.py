@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -29,7 +29,7 @@ class TradeSetup(Base):
     is_sector_overweight: Mapped[int] = mapped_column(Integer, default=0)
     is_asset_overweight: Mapped[int] = mapped_column(Integer, default=0)
     setup_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class TradeSignal(Base):
@@ -44,5 +44,5 @@ class TradeSignal(Base):
     message: Mapped[str] = mapped_column(Text)
     trigger_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 

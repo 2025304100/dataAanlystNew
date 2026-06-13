@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -25,13 +25,13 @@ def run_scan(
 ) -> ScanRun:
     scan_run = ScanRun(
         preset_id=preset_id,
-        run_name=run_name or f"scan-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+        run_name=run_name or f"scan-{datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y%m%d%H%M%S')}",
         scope_snapshot=json.dumps(scope_snapshot, ensure_ascii=True),
         filters_snapshot=json.dumps(filters_snapshot or {}, ensure_ascii=True),
         portfolio_id=portfolio_id,
         portfolio_rule_id=portfolio_rule_id,
         status="running",
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     db.add(scan_run)
     db.flush()
@@ -139,6 +139,6 @@ def run_scan(
             )
 
     scan_run.status = "done"
-    scan_run.finished_at = datetime.utcnow()
+    scan_run.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.flush()
     return scan_run

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,8 +19,8 @@ class ScanPreset(Base):
     filters_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class ScanRun(Base):
@@ -36,7 +36,7 @@ class ScanRun(Base):
     status: Mapped[str] = mapped_column(String(16), index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     results = relationship("ScanResult", back_populates="scan_run_ref", cascade="all, delete-orphan")
 
@@ -58,7 +58,7 @@ class ScanResult(Base):
     is_sector_overweight: Mapped[int] = mapped_column(Integer, default=0)
     is_asset_overweight: Mapped[int] = mapped_column(Integer, default=0)
     reason_tags: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     scan_run_ref = relationship("ScanRun", back_populates="results")
 

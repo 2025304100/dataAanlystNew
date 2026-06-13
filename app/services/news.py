@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import akshare as ak
 import pandas as pd
 from sqlalchemy import desc, or_, select
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.news_event import NewsEvent, NewsSnapshot
 from app.models.scan import ScanResult, ScanRun
@@ -117,7 +120,7 @@ def _parse_datetime(value: Any) -> datetime | None:
 def _decay_weight(published_at: datetime | None, *, half_life_days: float) -> float:
     if published_at is None:
         return 0.65
-    age_days = max(0.0, (datetime.utcnow() - published_at).total_seconds() / 86400)
+    age_days = max(0.0, (datetime.now(timezone.utc).replace(tzinfo=None) - published_at).total_seconds() / 86400)
     return round(math.exp(-age_days / max(half_life_days, 0.1)), 4)
 
 
@@ -195,10 +198,10 @@ def _fetch_symbol_events(symbol: Symbol, days: int) -> list[dict]:
                 if event is not None:
                     events.append(event)
         except Exception:
-            pass
+            logger.warning("Failed to fetch events for %s", symbol.symbol if hasattr(symbol, 'symbol') else "unknown", exc_info=True)
 
-        start_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y%m%d")
-        end_date = datetime.utcnow().strftime("%Y%m%d")
+        start_date = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y%m%d")
+        end_date = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
         try:
             frame = ak.stock_zh_a_disclosure_report_cninfo(
                 symbol=symbol.symbol,
@@ -211,7 +214,7 @@ def _fetch_symbol_events(symbol: Symbol, days: int) -> list[dict]:
                 if event is not None:
                     events.append(event)
         except Exception:
-            pass
+            logger.warning("Failed to fetch events for %s", symbol.symbol if hasattr(symbol, 'symbol') else "unknown", exc_info=True)
     return _filter_recent(events, days)
 
 
@@ -225,12 +228,12 @@ def _fetch_macro_events(days: int) -> list[dict]:
                 if event is not None:
                     events.append(event)
         except Exception:
-            pass
+            logger.warning("Failed to fetch macro events", exc_info=True)
     return _filter_recent(events, days)
 
 
 def _filter_recent(events: list[dict], days: int) -> list[dict]:
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     return [event for event in events if event["published_at"] is None or event["published_at"] >= cutoff]
 
 
@@ -331,7 +334,7 @@ def _summarize_macro(events: list[NewsEvent]) -> NewsMacroSummary:
 
 
 def _events_for_symbol(db: Session, symbol_id: int, days: int) -> list[NewsEvent]:
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     return (
         db.execute(
             select(NewsEvent)
@@ -367,7 +370,7 @@ def _summary_from_snapshot(db: Session, snapshot: NewsSnapshot, symbol: Symbol, 
 
 
 def _latest_macro_summary(db: Session, days: int) -> NewsMacroSummary | None:
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     events = (
         db.execute(
             select(NewsEvent)
@@ -392,7 +395,7 @@ def get_latest_news(
     days: int = 7,
     limit: int = 20,
 ) -> dict:
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     ordered_ids: list[int] = []
     if symbol_ids:
         ordered_ids = list(dict.fromkeys(symbol_ids))[:limit]

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, func, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -20,6 +20,7 @@ from app.schemas.dashboard import (
     WorkbenchJournal,
     WorkbenchLatestScan,
     WorkbenchMarketScope,
+    WorkbenchPosition,
     WorkbenchScore,
     WorkbenchSymbolDetail,
     WorkbenchTrade,
@@ -287,15 +288,55 @@ def get_dashboard_workbench(
             "currency": portfolio.currency,
         }
 
-    symbol_markets = db.execute(select(Symbol.market).where(Symbol.is_active == 1)).scalars().all()
+    region_expr = case(
+        (Symbol.market.in_(("sh", "sz", "bj", "cn", "SH", "SZ", "BJ", "CN")), "cn"),
+        (Symbol.market.in_(("us", "nasdaq", "nyse", "amex", "US", "NASDAQ", "NYSE", "AMEX")), "us"),
+        else_="other",
+    )
+    region_rows = db.execute(
+        select(region_expr.label("region"), func.count(Symbol.id).label("cnt"))
+        .where(Symbol.is_active == 1)
+        .group_by(region_expr)
+    ).all()
     region_counts = {"cn": 0, "us": 0, "other": 0}
-    for market in symbol_markets:
-        region = region_from_market(market)
-        region_counts[region] = region_counts.get(region, 0) + 1
-    total_symbols = len(symbol_markets)
+    for region, cnt in region_rows:
+        region_counts[region] = cnt
+    total_symbols = sum(region_counts.values())
     filtered_symbols = total_symbols if market_group == "all" else region_counts.get(market_group, 0)
     account_summary = build_sim_account_summary(db, portfolio)
     recent_trades = [WorkbenchTrade(**item) for item in recent_sim_trades(db, portfolio_id, limit=8)]
+
+    # Build all positions
+    position_rows = db.execute(
+        select(Position, Symbol)
+        .join(Symbol, Symbol.id == Position.symbol_id)
+        .where(Position.portfolio_id == portfolio_id)
+        .order_by(Position.market_value.desc())
+    ).all()
+    positions = []
+    for pos, sym in position_rows:
+        latest_bar = db.execute(
+            select(DailyBar).where(DailyBar.symbol_id == sym.id).order_by(desc(DailyBar.trade_date)).limit(1)
+        ).scalars().first()
+        lp = float(latest_bar.close) if latest_bar else (pos.latest_price or pos.avg_cost)
+        mv = round(pos.quantity * lp, 2)
+        pnl = round((lp - pos.avg_cost) * pos.quantity, 2)
+        pnl_pct = round((lp - pos.avg_cost) / pos.avg_cost, 4) if pos.avg_cost else 0.0
+        pct = round(mv / portfolio.total_capital, 4) if portfolio.total_capital else 0.0
+        positions.append(
+            WorkbenchPosition(
+                symbol_id=sym.id,
+                symbol=sym.symbol,
+                name=sym.name,
+                quantity=pos.quantity,
+                avg_cost=pos.avg_cost,
+                latest_price=lp,
+                market_value=mv,
+                position_pct=pct,
+                unrealized_pnl=pnl,
+                unrealized_pnl_pct=pnl_pct,
+            )
+        )
 
     return DashboardWorkbench(
         portfolio=portfolio_payload,
@@ -322,6 +363,7 @@ def get_dashboard_workbench(
         candidates=candidates,
         latest_scores=latest_scores,
         recent_trades=recent_trades,
+        positions=positions,
         watchlists=watchlists,
         journals=journals,
     )

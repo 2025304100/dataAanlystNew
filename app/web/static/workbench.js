@@ -143,6 +143,15 @@ const I18N = {
     sellSide: "卖出",
     orderSummary: "模拟{side}成交 {symbol} {quantity} 股，成交价 {price}。",
     orderFailed: "模拟交易失败",
+    allIn: "全仓",
+    weight: "仓位",
+    currentPrice: "最新价",
+    totalCost: "总成本",
+    totalProceeds: "预计收入",
+    remainingCash: "剩余现金",
+    noPosition: "暂无持仓",
+    confirmBuy: "确认买入 {symbol} {quantity}股 @ {price}？预计花费 {cost}",
+    confirmSell: "确认卖出 {symbol} {quantity}股 @ {price}？预计收入 {proceeds}",
     holdingQty: "持仓数量",
     avgCost: "持仓均价",
     todayOpportunities: "今日机会",
@@ -340,6 +349,15 @@ const I18N = {
     sellSide: "Sell",
     orderSummary: "Simulated {side} filled for {symbol} {quantity} shares at {price}.",
     orderFailed: "Simulated order failed",
+    allIn: "All",
+    weight: "Weight",
+    currentPrice: "Latest",
+    totalCost: "Total Cost",
+    totalProceeds: "Est. Proceeds",
+    remainingCash: "Remaining Cash",
+    noPosition: "No positions",
+    confirmBuy: "Confirm buy {symbol} {quantity} shares @ {price}? Est. cost {cost}",
+    confirmSell: "Confirm sell {symbol} {quantity} shares @ {price}? Est. proceeds {proceeds}",
     holdingQty: "Holding qty",
     avgCost: "Avg cost",
     todayOpportunities: "Today Opportunities",
@@ -443,6 +461,22 @@ Object.assign(EXTRA_I18N["zh-CN"], {
 });
 
 Object.assign(EXTRA_I18N["zh-CN"], {
+  tabWorkbench: "工作台",
+  tabDetail: "个股详情",
+  tabTrading: "模拟交易",
+  tabResearch: "研究笔记",
+  subOverview: "总览",
+  subJournals: "交易日记",
+  subRules: "信号规则",
+  searchCandidates: "搜索标的...",
+  orderTitle: "下单",
+  holdings: "当前持仓",
+  tradeHistory: "成交记录",
+  expertMode: "专家模式",
+  invalidOrderInput: "请先提供有效数量和价格",
+});
+
+Object.assign(EXTRA_I18N["zh-CN"], {
   chartDaily: "日线",
   chartWeekly: "周线",
 });
@@ -465,6 +499,19 @@ Object.assign(EXTRA_I18N["en-US"], {
   plannedOrder: "Preview size",
   noScenarioEstimate: "No return preview yet.",
   daysUnit: "d",
+  tabWorkbench: "Workbench",
+  tabDetail: "Detail",
+  tabTrading: "Trading",
+  tabResearch: "Research",
+  subOverview: "Overview",
+  subJournals: "Journals",
+  subRules: "Signal Rules",
+  searchCandidates: "Search...",
+  orderTitle: "Place Order",
+  holdings: "Holdings",
+  tradeHistory: "Trade History",
+  expertMode: "Expert Mode",
+  invalidOrderInput: "Please provide a valid quantity and price",
 });
 
 Object.assign(EXTRA_I18N["zh-CN"], {
@@ -655,7 +702,8 @@ const state = {
   portfolioId: null,
   locale: "zh-CN",
   marketGroup: "all",
-  activeView: "overview",
+  activeTab: "workbench",
+  activeSubTab: "research-overview",
   activeSymbolId: null,
   workbench: null,
   detail: null,
@@ -977,6 +1025,7 @@ function syncOrderForm(detail) {
   qtyInput.value = suggestedQty > 0 ? String(suggestedQty) : "";
   priceInput.value = suggestedPrice > 0 ? score(suggestedPrice) : "";
   renderOrderScenarioPreview(detail);
+  renderTradingOrderPreview();
 }
 
 function renderOrderScenarioPreview(detail) {
@@ -1017,15 +1066,15 @@ function renderOrderScenarioPreview(detail) {
       <div class="scenario-preview-head">
         <strong>${t("scenarioPreview")}</strong>
         <span class="scenario-preview-meta">${joinParts([
-          `${t("plannedOrder")}: ${quantity || 0}`,
-          `${t("referencePrice")}: ${score(entryPrice)}`,
-          `${t("positionAmount")}: ${money(plannedAmount, 0)}`,
-        ])}</span>
+    `${t("plannedOrder")}: ${quantity || 0}`,
+    `${t("referencePrice")}: ${score(entryPrice)}`,
+    `${t("positionAmount")}: ${money(plannedAmount, 0)}`,
+  ])}</span>
       </div>
       <div class="scenario-preview-meta">${joinParts([
-        `${t("estimateConfidence")}: ${score(scenarios.confidence_pct, 1)}%`,
-        `${t("estimateHorizon")}: ${scenarios.horizon_days}${t("daysUnit")}`,
-      ])}</div>
+    `${t("estimateConfidence")}: ${score(scenarios.confidence_pct, 1)}%`,
+    `${t("estimateHorizon")}: ${scenarios.horizon_days}${t("daysUnit")}`,
+  ])}</div>
       <div class="scenario-grid">
         ${buildScenarioBox("expectedCase", scenarios.expected)}
         ${buildScenarioBox("optimisticCase", scenarios.optimistic)}
@@ -1103,13 +1152,27 @@ function setStatus(level, message) {
   renderStatus();
 }
 
-function switchView(view) {
-  state.activeView = view;
-  document.body.dataset.activeView = view;
+function switchTab(tab) {
+  state.activeTab = tab;
+  document.body.dataset.activeTab = tab;
   document.querySelectorAll("[data-view-tab]").forEach((button) => {
-    const active = button.dataset.viewTab === view;
+    const active = button.dataset.viewTab === tab;
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-tab-content]").forEach((container) => {
+    container.hidden = container.dataset.tabContent !== tab;
+  });
+}
+
+function switchSubTab(subTab) {
+  state.activeSubTab = subTab;
+  document.querySelectorAll("[data-sub-tab]").forEach((button) => {
+    const active = button.dataset.subTab === subTab;
+    button.classList.toggle("active", active);
+  });
+  document.querySelectorAll("[data-sub-content]").forEach((container) => {
+    container.hidden = container.dataset.subContent !== subTab;
   });
 }
 
@@ -1121,7 +1184,7 @@ function applyI18n() {
     node.dataset.tip = t(node.dataset.tipI18n);
   });
   renderToolbarOptions();
-  switchView(state.activeView);
+  switchTab(state.activeTab);
   renderStatus();
   document.documentElement.lang = state.locale;
   document.title = t("eyebrow");
@@ -1240,7 +1303,7 @@ function markSignalRuleExpert() {
     ...collectSignalRuleForm(),
     id: state.signalRule.id,
     portfolio_id: state.portfolioId,
-    rule_name: "专家模式",
+    rule_name: t("expertMode"),
     mode: "expert",
     is_active: true,
   };
@@ -1385,9 +1448,8 @@ function renderMetrics(data) {
   grid.innerHTML = metrics
     .map(
       (item) => `
-      <article class="metric-card ${item.modalType ? "metric-action" : ""}" ${
-        item.modalType ? `role="button" tabindex="0" data-metric-type="${item.modalType}" aria-label="${item.label} ${t("openList")}"` : ""
-      }>
+      <article class="metric-card ${item.modalType ? "metric-action" : ""}" ${item.modalType ? `role="button" tabindex="0" data-metric-type="${item.modalType}" aria-label="${item.label} ${t("openList")}"` : ""
+        }>
         <div class="metric-label">${item.label}</div>
         <div class="metric-value">${item.value}</div>
         <div class="metric-note">${item.note}</div>
@@ -1415,11 +1477,11 @@ function renderTodayList(items, emptyText) {
           <span>
             ${renderSymbolTitle(item)}
             <span class="item-subline">${joinParts([
-              regionShortLabel(item.region),
-              assetTypeLabel(item.asset_type),
-              stageLabel(item.stage),
-              actionLabel(item.action),
-            ])}</span>
+        regionShortLabel(item.region),
+        assetTypeLabel(item.asset_type),
+        stageLabel(item.stage),
+        actionLabel(item.action),
+      ])}</span>
           </span>
           <span class="today-score-wrap">
             <span class="today-score">${score(opportunityScoreValue(item))}</span>
@@ -1493,11 +1555,11 @@ function renderOpportunityScoreTooltip(item) {
       <strong>${t("finalOpportunityScore")}: ${score(opportunityScoreValue(item))}</strong>
       <span>${t("scoreFormula")}: ${t("finalOpportunityFormula")}</span>
       <span>${joinParts([
-        `${t("baseOpportunityScore")} ${score(baseOpportunityScoreValue(item))}`,
-        `${t("messageScore")} ${score(item.news_message_score ?? 0, 1)}`,
-        `${t("newsMultiplier")} ${score(item.news_multiplier ?? 1, 3)}`,
-        `${t("newsAdjustment")} ${percent(item.news_adjustment_pct ?? 0)}`,
-      ])}</span>
+    `${t("baseOpportunityScore")} ${score(baseOpportunityScoreValue(item))}`,
+    `${t("messageScore")} ${score(item.news_message_score ?? 0, 1)}`,
+    `${t("newsMultiplier")} ${score(item.news_multiplier ?? 1, 3)}`,
+    `${t("newsAdjustment")} ${percent(item.news_adjustment_pct ?? 0)}`,
+  ])}</span>
       <span>${t("opportunityFormula")}</span>
       <span>${t("scoreContext")}: ${joinParts([stageLabel(item.stage), actionLabel(item.action)])}</span>
       <span>${t("scoreBreakdown")}</span>
@@ -1513,23 +1575,23 @@ function renderNewsScoreTooltip(item, options = {}) {
   const stats = options.macro
     ? joinParts([riskLabel(item.risk_level), sentimentLabel(item.sentiment)])
     : joinParts([
-        `${t("messagePositive")} ${item.positive_count ?? 0}`,
-        `${t("messageNegative")} ${item.negative_count ?? 0}`,
-        `${t("messageRisk")} ${item.risk_count ?? 0}`,
-        `${t("confidence")} ${score(item.confidence ?? 0, 2)}`,
-      ]);
+      `${t("messagePositive")} ${item.positive_count ?? 0}`,
+      `${t("messageNegative")} ${item.negative_count ?? 0}`,
+      `${t("messageRisk")} ${item.risk_count ?? 0}`,
+      `${t("confidence")} ${score(item.confidence ?? 0, 2)}`,
+    ]);
   const eventRows = events.length
     ? events
-        .map(
-          (event) => `
+      .map(
+        (event) => `
             <div class="score-tooltip-event">
               <strong class="${pnlClass(event.effective_score)}">${score(event.effective_score, 1)}</strong>
               <span>${escapeHtml(newsSourceLabel(event.source))}${DOT}${escapeHtml(sentimentLabel(event.sentiment))}</span>
               <em>${escapeHtml(event.title)}</em>
             </div>
           `
-        )
-        .join("")
+      )
+      .join("")
     : `<div class="score-tooltip-empty">${t("noScoreEvents")}</div>`;
 
   return `
@@ -1576,10 +1638,10 @@ function renderTodayNewsList(news) {
             ${renderNewsScoreTooltip(item)}
           </span>
           <span class="item-subline">${joinParts([
-            `${t("messagePositive")} ${item.positive_count}`,
-            `${t("messageNegative")} ${item.negative_count}`,
-            `${t("messageRisk")} ${item.risk_count}`,
-          ])}</span>
+        `${t("messagePositive")} ${item.positive_count}`,
+        `${t("messageNegative")} ${item.negative_count}`,
+        `${t("messageRisk")} ${item.risk_count}`,
+      ])}</span>
         </button>
       `
     )
@@ -1677,20 +1739,19 @@ function renderMetricModalActions(type, selected) {
     type === "watchlists"
       ? `
         <div class="modal-mini-list">
-          ${
-            watchlistItems.length
-              ? watchlistItems
-                  .map((watchItem) => {
-                    const symbol = watchItem.symbol;
-                    return `
+          ${watchlistItems.length
+        ? watchlistItems
+          .map((watchItem) => {
+            const symbol = watchItem.symbol;
+            return `
                       <button type="button" class="symbol-chip" data-modal-watch-symbol-id="${watchItem.symbol_id}">
                         ${symbol ? `${symbol.symbol}${DOT}${symbol.name}` : `#${watchItem.symbol_id}`}
                       </button>
                     `;
-                  })
-                  .join("")
-              : `<span class="item-subline">${t("modalEmpty")}</span>`
-          }
+          })
+          .join("")
+        : `<span class="item-subline">${t("modalEmpty")}</span>`
+      }
         </div>
       `
       : "";
@@ -1893,6 +1954,12 @@ function renderAccountSummary(data) {
     `
     )
     .join("");
+
+  // Also populate trading tab
+  const tradingGrid = document.getElementById("tradingAccountGrid");
+  const tradingMeta = document.getElementById("tradingAccountMeta");
+  if (tradingGrid) tradingGrid.innerHTML = grid.innerHTML;
+  if (tradingMeta) tradingMeta.textContent = meta.textContent;
 }
 
 function renderCandidates(data) {
@@ -1902,12 +1969,25 @@ function renderCandidates(data) {
     ? `${data.latest_scan.run_name}${DOT}${formatDate(data.latest_scan.created_at)}`
     : t("noScanYet");
 
-  if (!data.candidates.length) {
-    body.innerHTML = `<tr><td colspan="7" class="empty">${t("noCandidates")}</td></tr>`;
+  // Search filter
+  const searchInput = document.getElementById("candidateSearch");
+  const searchTerm = searchInput?.value?.toLowerCase() ?? "";
+
+  const filtered = searchTerm
+    ? data.candidates.filter((item) =>
+      item.symbol?.toLowerCase().includes(searchTerm) ||
+      item.name?.toLowerCase().includes(searchTerm) ||
+      stageLabel(item.stage).toLowerCase().includes(searchTerm) ||
+      actionLabel(item.action).toLowerCase().includes(searchTerm)
+    )
+    : data.candidates;
+
+  if (!filtered.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty">${data.candidates.length ? (searchTerm ? "-" : t("noCandidates")) : t("noCandidates")}</td></tr>`;
     return;
   }
 
-  body.innerHTML = data.candidates
+  body.innerHTML = filtered
     .map(
       (item) => `
       <tr class="clickable ${state.activeSymbolId === item.symbol_id ? "active" : ""}" data-symbol-id="${item.symbol_id}">
@@ -1948,12 +2028,12 @@ function renderScoreList(data) {
         </div>
         <div class="item-subline">
           ${joinParts([
-            regionShortLabel(item.region),
-            assetTypeLabel(item.asset_type),
-            `${t("quality")} ${score(item.quality_score)}`,
-            `${t("timing")} ${score(item.timing_score)}`,
-            actionLabel(item.action),
-          ])}
+        regionShortLabel(item.region),
+        assetTypeLabel(item.asset_type),
+        `${t("quality")} ${score(item.quality_score)}`,
+        `${t("timing")} ${score(item.timing_score)}`,
+        actionLabel(item.action),
+      ])}
         </div>
       </article>
     `
@@ -1966,7 +2046,7 @@ function renderScoreList(data) {
 }
 
 function focusDetailPanel() {
-  switchView("detail");
+  switchTab("detail");
   document.getElementById("detailTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -2001,6 +2081,8 @@ function renderWatchlists(data) {
   const list = document.getElementById("watchlistList");
   if (!data.watchlists.length) {
     setEmpty(list, t("noWatchlists"));
+    const rwl = document.getElementById("researchWatchlistList");
+    if (rwl) setEmpty(rwl, t("noWatchlists"));
     return;
   }
 
@@ -2016,28 +2098,26 @@ function renderWatchlists(data) {
           <span class="badge">${item.item_count} ${t("items")}</span>
         </div>
         <div class="item-subline">${watchlistTypeLabel(item.list_type)}</div>
-        ${
-          expanded
+        ${expanded
             ? `
           <div class="watchlist-symbols">
-            ${
-              items.length
-                ? items
-                    .map((watchItem) => {
-                      const symbol = watchItem.symbol;
-                      return `
+            ${items.length
+              ? items
+                .map((watchItem) => {
+                  const symbol = watchItem.symbol;
+                  return `
                         <button type="button" class="symbol-chip" data-watch-symbol-id="${watchItem.symbol_id}">
                           ${symbol ? `${symbol.symbol}${DOT}${symbol.name}` : `#${watchItem.symbol_id}`}
                         </button>
                       `;
-                    })
-                    .join("")
-                : `<span class="item-subline">${t("noScores")}</span>`
+                })
+                .join("")
+              : `<span class="item-subline">${t("noScores")}</span>`
             }
           </div>
         `
             : ""
-        }
+          }
       </article>
     `;
       }
@@ -2057,12 +2137,32 @@ function renderWatchlists(data) {
       loadSymbolDetail(Number(button.dataset.watchSymbolId), { focus: true });
     });
   });
+
+  // Mirror to research tab
+  const researchList = document.getElementById("researchWatchlistList");
+  if (researchList) {
+    researchList.innerHTML = list.innerHTML;
+    researchList.querySelectorAll("[data-watchlist-id]").forEach((card) => {
+      card.addEventListener("click", async (event) => {
+        if (event.target.closest("[data-watch-symbol-id]")) return;
+        await loadWatchlistItems(Number(card.dataset.watchlistId));
+      });
+    });
+    researchList.querySelectorAll("[data-watch-symbol-id]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        loadSymbolDetail(Number(button.dataset.watchSymbolId), { focus: true });
+      });
+    });
+  }
 }
 
 function renderJournals(data) {
   const list = document.getElementById("journalList");
   if (!data.journals.length) {
     setEmpty(list, t("noJournals"));
+    const rjl = document.getElementById("researchJournalList");
+    if (rjl) setEmpty(rjl, t("noJournals"));
     return;
   }
 
@@ -2079,6 +2179,10 @@ function renderJournals(data) {
     `
     )
     .join("");
+
+  // Mirror to research tab overview
+  const researchJList = document.getElementById("researchJournalList");
+  if (researchJList) researchJList.innerHTML = list.innerHTML;
 }
 
 function buildLinePath(points, mapX, mapY) {
@@ -2666,14 +2770,14 @@ function renderRecentTradeCards(container, trades) {
           <span class="${sideBadgeClass(item.side)}">${sideLabel(item.side)}</span>
         </div>
         <div class="item-subline">${joinParts([
-          `${t("orderQty")}: ${item.quantity}`,
-          `${t("orderPrice")}: ${score(item.price)}`,
-          `${t("positionAmount")}: ${money(item.amount)}`,
-        ])}</div>
+        `${t("orderQty")}: ${item.quantity}`,
+        `${t("orderPrice")}: ${score(item.price)}`,
+        `${t("positionAmount")}: ${money(item.amount)}`,
+      ])}</div>
         <div class="item-subline ${pnlClass(item.realized_pnl)}">${joinParts([
-          `${t("accountRealizedPnl")}: ${money(item.realized_pnl)}`,
-          formatDate(item.created_at),
-        ])}</div>
+        `${t("accountRealizedPnl")}: ${money(item.realized_pnl)}`,
+        formatDate(item.created_at),
+      ])}</div>
       </article>
     `
     )
@@ -2721,16 +2825,16 @@ function renderDetailDock() {
             <button type="button" class="detail-chip-close" data-close-detail="${symbolId}">x</button>
           </div>
           <div class="detail-chip-meta">${joinParts([
-            regionShortLabel(item.symbol.region),
-            assetTypeLabel(item.symbol.asset_type),
-            stageLabel(item.latest_score?.stage),
-            actionLabel(item.latest_score?.action),
-          ])}</div>
+        regionShortLabel(item.symbol.region),
+        assetTypeLabel(item.symbol.asset_type),
+        stageLabel(item.latest_score?.stage),
+        actionLabel(item.latest_score?.action),
+      ])}</div>
           <div class="detail-chip-note">${joinParts([
-            `${t("quality")} ${score(item.latest_score?.quality_score)}`,
-            `${t("timing")} ${score(item.latest_score?.timing_score)}`,
-            `${t("close")} ${score(lastBar?.close)}`,
-          ])}</div>
+        `${t("quality")} ${score(item.latest_score?.quality_score)}`,
+        `${t("timing")} ${score(item.latest_score?.timing_score)}`,
+        `${t("close")} ${score(lastBar?.close)}`,
+      ])}</div>
         </article>
       `;
     })
@@ -2778,19 +2882,19 @@ function renderSignalStatsCard(stats) {
         <span class="tip-icon" data-tip="${t("sampleLimitTip")}">?</span>
       </label>
       <div class="item-subline">${joinParts([
-        `${t("matchedSignals")}: ${stats.matched_count ?? 0}`,
-        `${t("win5d")}: ${statPct(stats.win_rate_5d)}`,
-        `${t("win20d")}: ${statPct(stats.win_rate_20d)}`,
-      ])}</div>
+    `${t("matchedSignals")}: ${stats.matched_count ?? 0}`,
+    `${t("win5d")}: ${statPct(stats.win_rate_5d)}`,
+    `${t("win20d")}: ${statPct(stats.win_rate_20d)}`,
+  ])}</div>
       <div class="item-subline">${joinParts([
-        `${t("avgReturn20d")}: ${statPct(stats.avg_return_20d)}`,
-        `${t("maxGain20d")}: ${statPct(stats.avg_max_gain_20d)}`,
-        `${t("maxDrawdown20d")}: ${statPct(stats.avg_max_drawdown_20d)}`,
-      ])}</div>
+    `${t("avgReturn20d")}: ${statPct(stats.avg_return_20d)}`,
+    `${t("maxGain20d")}: ${statPct(stats.avg_max_gain_20d)}`,
+    `${t("maxDrawdown20d")}: ${statPct(stats.avg_max_drawdown_20d)}`,
+  ])}</div>
       <div class="item-subline">${joinParts([
-        `${t("best20d")}: ${statPct(stats.best_return_20d)}`,
-        `${t("worst20d")}: ${statPct(stats.worst_return_20d)}`,
-      ])}</div>
+    `${t("best20d")}: ${statPct(stats.best_return_20d)}`,
+    `${t("worst20d")}: ${statPct(stats.worst_return_20d)}`,
+  ])}</div>
       ${enoughSamples ? "" : `<div class="item-subline ${drawdownClass || avgReturnClass}">${t("sampleInsufficient")}</div>`}
     </article>
   `;
@@ -2852,8 +2956,6 @@ function renderDetail(detail) {
   const journals = document.getElementById("detailJournals");
   const trades = document.getElementById("detailTrades");
   const setupButton = document.getElementById("setupButton");
-  const simBuyButton = document.getElementById("simBuyButton");
-  const simSellButton = document.getElementById("simSellButton");
 
   state.detail = detail;
   if (detail?.symbol?.id) {
@@ -2872,18 +2974,13 @@ function renderDetail(detail) {
     setEmpty(setup, t("latestTradeSetupEmpty"));
     history.innerHTML = `<tr><td colspan="5" class="empty">${t("noDetail")}</td></tr>`;
     renderChart(null);
-    setEmpty(trades, t("noTrades"));
-    setEmpty(journals, t("noJournals"));
+    if (trades) setEmpty(trades, t("noTrades"));
+    if (journals) setEmpty(journals, t("noJournals"));
     setupButton.disabled = true;
-    simBuyButton.disabled = true;
-    simSellButton.disabled = true;
-    syncOrderForm(null);
     return;
   }
 
   setupButton.disabled = !detail.latest_score;
-  simBuyButton.disabled = false;
-  simSellButton.disabled = !(detail.position?.quantity > 0);
   title.textContent = `${detail.symbol.symbol}${DOT}${detail.symbol.name}`;
   meta.textContent = joinParts([
     `${t("marketLabel")}: ${String(detail.symbol.market || "-").toUpperCase()}`,
@@ -2897,11 +2994,11 @@ function renderDetail(detail) {
       <article class="list-item">
         <div class="item-topline"><strong>${t("latestScoreDate")}</strong><span>${detail.latest_score.trade_date}</span></div>
         <div class="item-subline">${joinParts([
-          `${t("quality")} ${score(detail.latest_score.quality_score)} (${detail.latest_score.quality_grade})`,
-          `${t("timing")} ${score(detail.latest_score.timing_score)}`,
-          stageLabel(detail.latest_score.stage),
-          actionLabel(detail.latest_score.action),
-        ])}</div>
+      `${t("quality")} ${score(detail.latest_score.quality_score)} (${detail.latest_score.quality_grade})`,
+      `${t("timing")} ${score(detail.latest_score.timing_score)}`,
+      stageLabel(detail.latest_score.stage),
+      actionLabel(detail.latest_score.action),
+    ])}</div>
       </article>
     `);
   }
@@ -2913,14 +3010,14 @@ function renderDetail(detail) {
       <article class="list-item">
         <div class="item-topline"><strong>${t("currentPosition")}</strong><span>${percent(detail.position.position_pct)}</span></div>
         <div class="item-subline">${joinParts([
-          `${t("holdingQty")}: ${detail.position.quantity}`,
-          `${t("avgCost")}: ${score(detail.position.avg_cost)}`,
-          `${t("close")}: ${score(detail.position.latest_price)}`,
-        ])}</div>
+      `${t("holdingQty")}: ${detail.position.quantity}`,
+      `${t("avgCost")}: ${score(detail.position.avg_cost)}`,
+      `${t("close")}: ${score(detail.position.latest_price)}`,
+    ])}</div>
         <div class="item-subline">${joinParts([
-          `${t("accountMarketValue")}: ${money(detail.position.market_value)}`,
-          `${t("assetLabel")}: ${assetTypeLabel(detail.position.asset_type)}`,
-        ])}</div>
+      `${t("accountMarketValue")}: ${money(detail.position.market_value)}`,
+      `${t("assetLabel")}: ${assetTypeLabel(detail.position.asset_type)}`,
+    ])}</div>
       </article>
     `);
   }
@@ -2942,100 +3039,99 @@ function renderDetail(detail) {
           <span>${item.entry_min ?? "-"} - ${item.entry_max ?? "-"}</span>
         </div>
         <div class="item-subline">${joinParts([
-          `${t("stopLoss")}: ${item.stop_loss ?? "-"}`,
-          `${t("target")}: ${item.target_price ?? "-"}`,
-          `${t("riskReward")}: ${item.risk_reward_ratio ?? "-"}`,
-        ])}</div>
+      `${t("stopLoss")}: ${item.stop_loss ?? "-"}`,
+      `${t("target")}: ${item.target_price ?? "-"}`,
+      `${t("riskReward")}: ${item.risk_reward_ratio ?? "-"}`,
+    ])}</div>
         <div class="item-subline">${joinParts([
-          `${t("recommendedPosition")}: ${percent(item.recommended_position_pct)}`,
-          `${t("positionAmount")}: ${money(item.recommended_position_amount)}`,
-          `${t("allowAdd")}: ${item.allow_add_position ? t("yes") : t("no")}`,
-        ])}</div>
+      `${t("recommendedPosition")}: ${percent(item.recommended_position_pct)}`,
+      `${t("positionAmount")}: ${money(item.recommended_position_amount)}`,
+      `${t("allowAdd")}: ${item.allow_add_position ? t("yes") : t("no")}`,
+    ])}</div>
         <div class="item-subline">${joinParts([
-          `${t("stageCap")}: ${percent(item.stage_cap_pct)} / ${money(item.stage_cap_amount)}`,
-          `${t("stageRoom")}: ${percent(item.remaining_stage_pct)} / ${money(item.remaining_stage_amount)}`,
-        ])}</div>
+      `${t("stageCap")}: ${percent(item.stage_cap_pct)} / ${money(item.stage_cap_amount)}`,
+      `${t("stageRoom")}: ${percent(item.remaining_stage_pct)} / ${money(item.remaining_stage_amount)}`,
+    ])}</div>
         <div class="item-subline">${joinParts([
-          `${t("currentPosition")}: ${percent(item.current_position_pct)} / ${money(item.current_position_amount)}`,
-          `${t("riskBudget")}: ${money(item.risk_budget_amount)}`,
-          `${t("riskShare")}: ${score(item.risk_per_share)}`,
-          `${t("shareCap")}: ${item.risk_capped_shares ?? "-"}`,
-        ])}</div>
+      `${t("currentPosition")}: ${percent(item.current_position_pct)} / ${money(item.current_position_amount)}`,
+      `${t("riskBudget")}: ${money(item.risk_budget_amount)}`,
+      `${t("riskShare")}: ${score(item.risk_per_share)}`,
+      `${t("shareCap")}: ${item.risk_capped_shares ?? "-"}`,
+    ])}</div>
         <div class="item-subline">${joinParts([
-          stageLabel(item.stage),
-          actionLabel(item.action),
-          guardrails.length ? `${t("guardrails")}: ${guardrails.join(", ")}` : t("stable"),
-        ])}</div>
+      stageLabel(item.stage),
+      actionLabel(item.action),
+      guardrails.length ? `${t("guardrails")}: ${guardrails.join(", ")}` : t("stable"),
+    ])}</div>
         <div class="item-subline">${t("openTrigger")}: ${formatOpenTrigger(item)}</div>
         <div class="item-subline">${t("addTrigger")}: ${formatAddTrigger(item)}</div>
         <div class="item-subline">${t("stopTrigger")}: ${formatStopTrigger(item)}</div>
         <div class="item-subline">${t("trimTrigger")}: ${formatTrimTrigger(item)}</div>
         <div class="item-subline">${t("reason")}: ${item.setup_reason ?? "-"}</div>
         ${tranches.length
-          ? `
+        ? `
           <div class="item-subline"><strong>${t("tranchePlan")}</strong></div>
           ${tranches
-            .map(
-              (tranche) => `
+          .map(
+            (tranche) => `
               <div class="item-subline">
                 ${joinParts([
-                  tranche.label,
-                  `${t("tranchePct")}: ${percent(tranche.position_pct)}`,
-                  `${t("positionAmount")}: ${money(tranche.amount)}`,
-                  `${t("trigger")}: ${tranche.trigger}`,
-                ])}
+              tranche.label,
+              `${t("tranchePct")}: ${percent(tranche.position_pct)}`,
+              `${t("positionAmount")}: ${money(tranche.amount)}`,
+              `${t("trigger")}: ${tranche.trigger}`,
+            ])}
               </div>
             `
-            )
-            .join("")}
+          )
+          .join("")}
         `
-          : ""}
+        : ""}
         ${futureBuyPlan.length
-          ? `
+        ? `
           <div class="future-plan-head">
             <strong>${t("futureBuyPlan")}</strong>
             <div class="future-scenario-tabs">
               ${["general", "short", "mid", "long", "custom"]
-                .map(
-                  (scenario) => `
+          .map(
+            (scenario) => `
                     <button type="button" class="ghost-button detail-action ${state.futurePlanScenario === scenario ? "active" : ""}" data-future-scenario="${scenario}">
                       ${t(`futureScenario${scenario.charAt(0).toUpperCase()}${scenario.slice(1)}`)}
                     </button>
                   `
-                )
-                .join("")}
+          )
+          .join("")}
             </div>
           </div>
-          ${
-            state.futurePlanScenario === "custom"
-              ? `
+          ${state.futurePlanScenario === "custom"
+          ? `
                 <div class="future-custom-grid">
                   <label><span>${t("customHorizon")}</span><input id="futureCustomHorizon" type="number" min="1" max="120" step="1" value="${state.futurePlanCustom.horizonDays}" /></label>
                   <label><span>${t("customPullback")}</span><input id="futureCustomPullback" type="number" min="0" max="30" step="0.5" value="${state.futurePlanCustom.pullbackPct}" /></label>
                   <label><span>${t("customPosition")}</span><input id="futureCustomPosition" type="number" min="0" max="100" step="0.5" value="${state.futurePlanCustom.positionPct}" /></label>
                 </div>
               `
-              : ""
-          }
+          : ""
+        }
           ${futureBuyPlan
-            .map(
-              (plan) => `
+          .map(
+            (plan) => `
               <div class="item-subline">
                 ${joinParts([
-                  futureBuyLabel(plan.label),
-                  `${t("futureHorizon")}: ${plan.horizon_days}${t("daysUnit")}`,
-                  `${t("futureZone")}: ${plan.zone_min ?? "-"} - ${plan.zone_max ?? "-"}`,
-                  `${t("futurePriority")}: ${futurePriorityLabel(plan.priority)}`,
-                  `${t("tranchePct")}: ${percent(plan.position_pct)}`,
-                  `${t("positionAmount")}: ${money(plan.amount)}`,
-                ])}
+              futureBuyLabel(plan.label),
+              `${t("futureHorizon")}: ${plan.horizon_days}${t("daysUnit")}`,
+              `${t("futureZone")}: ${plan.zone_min ?? "-"} - ${plan.zone_max ?? "-"}`,
+              `${t("futurePriority")}: ${futurePriorityLabel(plan.priority)}`,
+              `${t("tranchePct")}: ${percent(plan.position_pct)}`,
+              `${t("positionAmount")}: ${money(plan.amount)}`,
+            ])}
               </div>
               <div class="item-subline">${t("trigger")}: ${futureTriggerLabel(plan)}</div>
             `
-            )
-            .join("")}
+          )
+          .join("")}
         `
-          : ""}
+        : ""}
       </article>
     `;
     bindFuturePlanControls();
@@ -3045,8 +3141,8 @@ function renderDetail(detail) {
 
   history.innerHTML = detail.score_history.length
     ? detail.score_history
-        .map(
-          (item) => `
+      .map(
+        (item) => `
             <tr>
               <td>${item.trade_date}</td>
               <td>${score(item.quality_score)}</td>
@@ -3055,32 +3151,32 @@ function renderDetail(detail) {
               <td>${actionLabel(item.action)}</td>
             </tr>
           `
-        )
-        .join("")
+      )
+      .join("")
     : `<tr><td colspan="5" class="empty">${t("noScores")}</td></tr>`;
 
   renderChart(detail);
-  renderRecentTradeCards(trades, detail.recent_trades);
+  if (trades) renderRecentTradeCards(trades, detail.recent_trades);
 
-  if (!detail.journals.length) {
-    setEmpty(journals, t("noJournals"));
-  } else {
-    journals.innerHTML = detail.journals
-      .map(
-        (item) => `
-        <article class="list-item">
-          <div class="item-topline">
-            <strong>${item.title}</strong>
-            <span class="badge">${item.entry_type}</span>
-          </div>
-          <div class="item-subline">${formatDate(item.created_at)}</div>
-        </article>
-      `
-      )
-      .join("");
+  if (journals) {
+    if (!detail.journals.length) {
+      setEmpty(journals, t("noJournals"));
+    } else {
+      journals.innerHTML = detail.journals
+        .map(
+          (item) => `
+          <article class="list-item">
+            <div class="item-topline">
+              <strong>${item.title}</strong>
+              <span class="badge">${item.entry_type}</span>
+            </div>
+            <div class="item-subline">${formatDate(item.created_at)}</div>
+          </article>
+        `
+        )
+        .join("");
+    }
   }
-
-  syncOrderForm(detail);
 }
 
 async function loadSymbolDetail(symbolId, options = {}) {
@@ -3239,6 +3335,144 @@ async function loadLatestNewsSnapshot(data) {
   }
 }
 
+function renderAllPositions(detail) {
+  const body = document.getElementById("allPositionBody");
+  const meta = document.getElementById("tradingPositionMeta");
+  if (!body) return;
+
+  const positions = state.workbench?.positions ?? [];
+  if (!positions.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty">${t("noPosition")}</td></tr>`;
+    if (meta) meta.textContent = "-";
+    return;
+  }
+
+  const currentSymbolId = detail?.symbol?.id ?? state.activeSymbolId;
+  const totalValue = positions.reduce((sum, p) => sum + p.market_value, 0);
+  if (meta) meta.textContent = `${positions.length} ${t("currentPosition")}`;
+
+  body.innerHTML = positions
+    .map(
+      (p) => `
+      <tr class="clickable ${p.symbol_id === currentSymbolId ? "current-symbol" : ""}" data-symbol-id="${p.symbol_id}">
+        <td><strong>${p.symbol}</strong><br /><span class="item-subline">${p.name}</span></td>
+        <td>${p.quantity}</td>
+        <td>${score(p.avg_cost)}</td>
+        <td>${score(p.latest_price)}</td>
+        <td>${money(p.market_value)}</td>
+        <td>${percent(p.position_pct)}</td>
+        <td class="${pnlClass(p.unrealized_pnl)}">
+          ${money(p.unrealized_pnl)}<br />
+          <span class="pnl-pct ${pnlClass(p.unrealized_pnl)}">${percent(p.unrealized_pnl_pct)}</span>
+        </td>
+      </tr>
+    `
+    )
+    .join("");
+
+  body.querySelectorAll("tr[data-symbol-id]").forEach((row) => {
+    row.addEventListener("click", () => loadSymbolDetail(Number(row.dataset.symbolId), { focus: true }));
+  });
+}
+
+function renderTradingOrderPreview() {
+  const preview = document.getElementById("tradingOrderPreview");
+  if (!preview) return;
+
+  const detail = state.detail;
+  if (!detail) {
+    preview.innerHTML = "";
+    return;
+  }
+
+  const qtyInput = document.getElementById("simQuantityInput");
+  const priceInput = document.getElementById("simPriceInput");
+  const quantity = Number(qtyInput?.value) || 0;
+  const price = Number(priceInput?.value) || 0;
+
+  if (!(quantity > 0) || !(price > 0)) {
+    preview.innerHTML = "";
+    return;
+  }
+
+  const totalCost = quantity * price;
+  const cash = state.workbench?.account_summary?.available_cash ?? 0;
+  const remaining = cash - totalCost;
+
+  preview.innerHTML = `
+    <div class="preview-row">
+      <span class="label">${t("totalCost")}</span>
+      <span class="value">${money(totalCost)}</span>
+    </div>
+    <div class="preview-row">
+      <span class="label">${t("remainingCash")}</span>
+      <span class="value ${remaining < 0 ? "pnl-negative" : ""}">${money(remaining)}</span>
+    </div>
+  `;
+}
+
+function renderTradingSymbolInfo(detail) {
+  const container = document.getElementById("tradingSymbolInfo");
+  if (!container) return;
+  if (!detail?.symbol) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const pos = detail.position;
+  const parts = [];
+  if (pos && pos.quantity > 0) {
+    parts.push(`<div class="info-item"><span>${t("holdingQty")}</span><strong>${pos.quantity}</strong></div>`);
+    parts.push(`<div class="info-item"><span>${t("avgCost")}</span><strong>${score(pos.avg_cost)}</strong></div>`);
+    parts.push(`<div class="info-item"><span>${t("weight")}</span><strong>${percent(pos.position_pct)}</strong></div>`);
+  }
+  const lastBar = detail.bars?.[detail.bars.length - 1];
+  if (lastBar) {
+    parts.push(`<div class="info-item"><span>${t("close")}</span><strong>${score(lastBar.close)}</strong></div>`);
+  }
+  container.innerHTML = parts.join("");
+}
+
+function renderTradingTab(detail) {
+  const d = detail ?? state.detail;
+
+  // Sync order form
+  syncOrderForm(d);
+
+  // Update symbol title and price
+  const tradingTitle = document.getElementById("tradingDetailTitle");
+  const priceEl = document.getElementById("tradingCurrentPrice");
+  if (tradingTitle && d?.symbol) {
+    tradingTitle.textContent = `${d.symbol.symbol} ${DOT} ${d.symbol.name}`;
+  }
+  if (priceEl && d) {
+    const lastBar = d.bars?.[d.bars.length - 1];
+    const lp = lastBar?.close ?? d.position?.latest_price;
+    if (lp) {
+      priceEl.textContent = score(lp);
+      priceEl.className = "trading-current-price";
+    } else {
+      priceEl.textContent = "-";
+    }
+  }
+
+  // Render symbol info box
+  renderTradingSymbolInfo(d);
+
+  // Render order preview
+  renderTradingOrderPreview();
+
+  // Render all positions
+  renderAllPositions(d);
+
+  // Render recent trades
+  const tradesContainer = document.getElementById("tradingTrades");
+  if (tradesContainer) {
+    const trades = d?.recent_trades ?? state.detail?.recent_trades ?? [];
+    renderRecentTradeCards(tradesContainer, trades);
+  }
+}
+
 async function loadWorkbench() {
   if (!state.portfolioId) return;
   const data = await requestJson(`/api/v1/dashboard/workbench?portfolio_id=${state.portfolioId}&market_group=${state.marketGroup}`);
@@ -3251,6 +3485,7 @@ async function loadWorkbench() {
   renderScoreList(data);
   renderWatchlists(data);
   renderJournals(data);
+  renderTradingTab(state.detail);
 
   const visibleSymbolIds = new Set([
     ...data.candidates.map((item) => item.symbol_id),
@@ -3402,8 +3637,20 @@ async function submitSimOrder(side) {
     price = computeSuggestedPrice(state.detail);
   }
   if (!(quantity > 0) || !(price > 0)) {
-    throw new Error(state.locale === "zh-CN" ? "请先提供有效数量和价格" : "Please provide a valid quantity and price");
+    throw new Error(t("invalidOrderInput"));
   }
+
+  const totalAmount = quantity * price;
+  const confirmKey = side === "buy" ? "confirmBuy" : "confirmSell";
+  const confirmMsg = template(confirmKey, {
+    symbol: symbolCode,
+    quantity,
+    price: score(price),
+    cost: money(totalAmount),
+    proceeds: money(totalAmount),
+  });
+
+  if (!window.confirm(confirmMsg)) return;
 
   const result = await requestJson(`/api/v1/portfolios/${state.portfolioId}/sim-orders`, {
     method: "POST",
@@ -3446,6 +3693,7 @@ document.getElementById("localeSelect").addEventListener("change", async (event)
     renderScoreList(state.workbench);
     renderWatchlists(state.workbench);
     renderJournals(state.workbench);
+    renderTradingTab(state.detail);
   }
   renderDetail(state.detail);
   renderSignalRuleConfig();
@@ -3462,16 +3710,30 @@ document.getElementById("refreshButton").addEventListener("click", async () => {
   setStatus("", "");
 });
 
-document.getElementById("ruleConfigButton").addEventListener("click", () => {
-  switchView("rules");
-  document.getElementById("ruleConfigSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
-});
+// ruleConfigButton removed - rules now in Research tab
 
 document.querySelectorAll("[data-view-tab]").forEach((button) => {
   button.addEventListener("click", () => {
-    switchView(button.dataset.viewTab);
+    switchTab(button.dataset.viewTab);
+    // If switching to trading tab, refresh trading data
+    if (button.dataset.viewTab === "trading") {
+      renderTradingTab(state.detail);
+    }
   });
 });
+
+document.querySelectorAll("[data-sub-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    switchSubTab(button.dataset.subTab);
+  });
+});
+
+const candidateSearchInput = document.getElementById("candidateSearch");
+if (candidateSearchInput) {
+  candidateSearchInput.addEventListener("input", () => {
+    if (state.workbench) renderCandidates(state.workbench);
+  });
+}
 
 document.getElementById("signalRuleForm").addEventListener("input", () => {
   markSignalRuleExpert();
@@ -3555,10 +3817,39 @@ document.getElementById("simSellButton").addEventListener("click", async (event)
 
 document.getElementById("simQuantityInput").addEventListener("input", () => {
   renderOrderScenarioPreview(state.detail);
+  renderTradingOrderPreview();
 });
 
 document.getElementById("simPriceInput").addEventListener("input", () => {
   renderOrderScenarioPreview(state.detail);
+  renderTradingOrderPreview();
+});
+
+// Quick quantity buttons
+document.querySelectorAll(".quick-qty-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const pct = Number(btn.dataset.pct);
+    const detail = state.detail;
+    if (!detail) return;
+
+    const price = Number(document.getElementById("simPriceInput").value) || computeSuggestedPrice(detail);
+    if (!(price > 0)) return;
+
+    const lotSize = lotSizeForDetail(detail);
+    const cash = state.workbench?.account_summary?.available_cash ?? 0;
+    const budget = cash * (pct / 100);
+    const qty = Math.floor(budget / price / lotSize) * lotSize;
+
+    if (qty > 0) {
+      document.getElementById("simQuantityInput").value = String(qty);
+      renderOrderScenarioPreview(detail);
+      renderTradingOrderPreview();
+    }
+
+    // Update active state
+    document.querySelectorAll(".quick-qty-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+  });
 });
 
 document.getElementById("chartDailyButton").addEventListener("click", () => {
