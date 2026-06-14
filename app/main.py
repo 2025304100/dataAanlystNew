@@ -37,6 +37,7 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/", include_in_schema=False)
 @app.get("/workbench", include_in_schema=False)
 def workbench() -> FileResponse:
     return FileResponse(web_root / "index.html")

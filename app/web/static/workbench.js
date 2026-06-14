@@ -1,5 +1,5 @@
 const DOT = " | ";
-const DEFAULT_CHART_WINDOW = 40;
+const DEFAULT_CHART_WINDOW = 60;
 const CHART_WINDOW_STEPS = [20, 40, 80, 120];
 
 const I18N = {
@@ -174,6 +174,11 @@ const I18N = {
     newsUpdating: "消息查询中...",
     newsFailed: "消息查询失败",
     newsSummary: "已查询 {count} 个标的消息面",
+    justNow: "刚刚",
+    minutesAgo: "分钟前",
+    hoursAgo: "小时前",
+    daysAgo: "天前",
+    publishedAt: "发布于",
     futureBuyPlan: "未来买入计划",
     futureScenarioGeneral: "通用",
     futureScenarioShort: "短线",
@@ -376,10 +381,15 @@ const I18N = {
     confidence: "Confidence",
     source: "Source",
     noScoreEvents: "No matched events; treated as neutral",
-    noNewsYet: "No news query yet",
-    newsUpdating: "Checking news...",
+    noNewsYet: "No news yet",
+    newsUpdating: "Updating news...",
     newsFailed: "News update failed",
-    newsSummary: "Checked news for {count} symbols",
+    newsSummary: "Queried news for {count} symbols",
+    justNow: "just now",
+    minutesAgo: "m ago",
+    hoursAgo: "h ago",
+    daysAgo: "d ago",
+    publishedAt: "Published",
     futureBuyPlan: "Future Buy Plan",
     futureScenarioGeneral: "General",
     futureScenarioShort: "Short",
@@ -464,7 +474,9 @@ Object.assign(EXTRA_I18N["zh-CN"], {
   tabWorkbench: "工作台",
   tabDetail: "个股详情",
   tabTrading: "模拟交易",
-  tabResearch: "研究笔记",
+  tabRules: "规则配置",
+  tabPortfolio: "目前观察池",
+  tabSettings: "设置",
   subOverview: "总览",
   subJournals: "交易日记",
   subRules: "信号规则",
@@ -502,7 +514,9 @@ Object.assign(EXTRA_I18N["en-US"], {
   tabWorkbench: "Workbench",
   tabDetail: "Detail",
   tabTrading: "Trading",
-  tabResearch: "Research",
+  tabRules: "Rules",
+  tabPortfolio: "Portfolio",
+  tabSettings: "Settings",
   subOverview: "Overview",
   subJournals: "Journals",
   subRules: "Signal Rules",
@@ -702,8 +716,8 @@ const state = {
   portfolioId: null,
   locale: "zh-CN",
   marketGroup: "all",
-  activeTab: "workbench",
-  activeSubTab: "research-overview",
+  activeTab: "portfolio",
+  activeSubTab: "watchlist-overview",
   activeSymbolId: null,
   workbench: null,
   detail: null,
@@ -789,6 +803,21 @@ function formatDate(value) {
   return new Date(value).toLocaleString(state.locale);
 }
 
+function formatRelativeTime(value) {
+  if (!value) return "";
+  const now = Date.now();
+  const then = new Date(value).getTime();
+  const diff = Math.max(0, now - then);
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (minutes < 1) return t("justNow");
+  if (minutes < 60) return `${minutes}${t("minutesAgo")}`;
+  if (hours < 24) return `${hours}${t("hoursAgo")}`;
+  if (days < 30) return `${days}${t("daysAgo")}`;
+  return formatDate(value);
+}
+
 function badgeClass(value) {
   if (value === "overheat" || value === "exit" || value === "reduce") return "badge danger";
   if (value === "cooldown" || value === "hold") return "badge warn";
@@ -813,12 +842,24 @@ function actionLabel(value) {
   return ACTION_LABELS[state.locale]?.[value] ?? value ?? "-";
 }
 
+function sentimentClass(value) {
+  if (value === "positive") return "sentiment-positive";
+  if (value === "negative") return "sentiment-negative";
+  return "sentiment-neutral";
+}
+
 function sentimentLabel(value) {
   const labels = {
     "zh-CN": { positive: "偏利好", negative: "偏利空", neutral: "中性" },
     "en-US": { positive: "Positive", negative: "Negative", neutral: "Neutral" },
   };
   return labels[state.locale]?.[value] ?? value ?? "-";
+}
+
+function riskClass(value) {
+  if (value === "high") return "risk-high";
+  if (value === "medium") return "risk-medium";
+  return "risk-low";
 }
 
 function riskLabel(value) {
@@ -1014,6 +1055,7 @@ function computeDefaultSellQuantity(detail) {
 function syncOrderForm(detail) {
   const qtyInput = document.getElementById("simQuantityInput");
   const priceInput = document.getElementById("simPriceInput");
+  if (!qtyInput || !priceInput) return;
   if (!detail) {
     qtyInput.value = "";
     priceInput.value = "";
@@ -1030,6 +1072,7 @@ function syncOrderForm(detail) {
 
 function renderOrderScenarioPreview(detail) {
   const container = document.getElementById("orderScenarioPreview");
+  if (!container) return;
   const scenarios = detail?.latest_trade_setup?.return_scenarios;
   if (!detail || !scenarios) {
     setEmpty(container, t("noScenarioEstimate"));
@@ -1120,6 +1163,7 @@ function formatTrimTrigger(item) {
 }
 
 function setEmpty(container, message) {
+  if (!container) return;
   container.innerHTML = `<div class="empty">${message}</div>`;
 }
 
@@ -1141,15 +1185,27 @@ function renderToolbarOptions() {
   marketSelect.value = state.marketGroup;
 }
 
+function showToast(level, message, duration = 3000) {
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
+  const toast = document.createElement("div");
+  const cls = level === "error" ? "toast-error" : level === "success" ? "toast-success" : "toast-info";
+  toast.className = `toast ${cls}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add("toast-out");
+    toast.addEventListener("animationend", () => toast.remove());
+  }, duration);
+}
+
 function renderStatus() {
-  const node = document.getElementById("actionStatus");
-  node.className = `action-status ${state.status.level || ""}`.trim();
-  node.textContent = state.status.message;
+  // No-op: status messages now use toasts
 }
 
 function setStatus(level, message) {
-  state.status = { level, message };
-  renderStatus();
+  if (!message) return;
+  showToast(level, message);
 }
 
 function switchTab(tab) {
@@ -1163,15 +1219,37 @@ function switchTab(tab) {
   document.querySelectorAll("[data-tab-content]").forEach((container) => {
     container.hidden = container.dataset.tabContent !== tab;
   });
+  // Activate the first sub-tab in the active tab container
+  const activeContainer = document.querySelector(`[data-tab-content="${tab}"]`);
+  if (activeContainer) {
+    const firstSubTab = activeContainer.querySelector("[data-sub-tab]");
+    if (firstSubTab) {
+      switchSubTab(firstSubTab.dataset.subTab, activeContainer);
+    } else {
+      // Hide all sub-content when no sub-tabs present
+      activeContainer.querySelectorAll("[data-sub-content]").forEach((c) => {
+        c.hidden = false;
+      });
+    }
+  }
 }
 
-function switchSubTab(subTab) {
+function switchTabToSub(tab, subTab) {
+  switchTab(tab);
+  const container = document.querySelector(`[data-tab-content="${tab}"]`);
+  if (container) {
+    switchSubTab(subTab, container);
+  }
+}
+
+function switchSubTab(subTab, scope) {
   state.activeSubTab = subTab;
-  document.querySelectorAll("[data-sub-tab]").forEach((button) => {
+  const root = scope || document;
+  root.querySelectorAll("[data-sub-tab]").forEach((button) => {
     const active = button.dataset.subTab === subTab;
     button.classList.toggle("active", active);
   });
-  document.querySelectorAll("[data-sub-content]").forEach((container) => {
+  root.querySelectorAll("[data-sub-content]").forEach((container) => {
     container.hidden = container.dataset.subContent !== subTab;
   });
 }
@@ -1185,16 +1263,34 @@ function applyI18n() {
   });
   renderToolbarOptions();
   switchTab(state.activeTab);
-  renderStatus();
   document.documentElement.lang = state.locale;
   document.title = t("eyebrow");
 }
 
+let activeRequests = 0;
+
+function updateRequestIndicator() {
+  const indicator = document.getElementById("requestIndicator");
+  if (!indicator) return;
+  if (activeRequests > 0) {
+    indicator.style.display = "flex";
+  } else {
+    indicator.style.display = "none";
+  }
+}
+
 async function requestJson(url, options = {}) {
-  const response = await fetch(url, options);
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.detail || payload.message || response.statusText);
-  return payload;
+  activeRequests++;
+  updateRequestIndicator();
+  try {
+    const response = await fetch(url, options);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || payload.message || response.statusText);
+    return payload;
+  } finally {
+    activeRequests--;
+    updateRequestIndicator();
+  }
 }
 
 function signalRulePresetPayload(preset) {
@@ -1425,6 +1521,7 @@ function scheduleSignalRulePreview(delay = 350) {
 
 function renderMetrics(data) {
   const grid = document.getElementById("metricGrid");
+  if (!grid) return;
   const marketScope = data.market_scope ?? {};
   const activeRule = data.active_rule;
   const metrics = [
@@ -1573,7 +1670,7 @@ function renderOpportunityScoreTooltip(item) {
 function renderNewsScoreTooltip(item, options = {}) {
   const events = (item.events ?? []).slice(0, 4);
   const stats = options.macro
-    ? joinParts([riskLabel(item.risk_level), sentimentLabel(item.sentiment)])
+    ? joinParts([`<span class="${riskClass(item.risk_level)}">${riskLabel(item.risk_level)}</span>`, `<span class="${sentimentClass(item.sentiment)}">${sentimentLabel(item.sentiment)}</span>`])
     : joinParts([
       `${t("messagePositive")} ${item.positive_count ?? 0}`,
       `${t("messageNegative")} ${item.negative_count ?? 0}`,
@@ -1586,8 +1683,9 @@ function renderNewsScoreTooltip(item, options = {}) {
         (event) => `
             <div class="score-tooltip-event">
               <strong class="${pnlClass(event.effective_score)}">${score(event.effective_score, 1)}</strong>
-              <span>${escapeHtml(newsSourceLabel(event.source))}${DOT}${escapeHtml(sentimentLabel(event.sentiment))}</span>
+              <span>${escapeHtml(newsSourceLabel(event.source))}${DOT}<span class="${sentimentClass(event.sentiment)}">${escapeHtml(sentimentLabel(event.sentiment))}</span></span>
               <em>${escapeHtml(event.title)}</em>
+              <span class="item-subline">${formatRelativeTime(event.published_at)}</span>
             </div>
           `
       )
@@ -1912,6 +2010,7 @@ async function handleMetricModalAction(action) {
 function renderAccountSummary(data) {
   const grid = document.getElementById("accountSummaryGrid");
   const meta = document.getElementById("accountMeta");
+  if (!grid || !meta) return;
   const summary = data.account_summary;
   if (!summary) {
     meta.textContent = "-";
@@ -1964,6 +2063,7 @@ function renderAccountSummary(data) {
 
 function renderCandidates(data) {
   const body = document.getElementById("candidateBody");
+  if (!body) return;
   const meta = document.getElementById("scanMeta");
   meta.textContent = data.latest_scan.scan_run_id
     ? `${data.latest_scan.run_name}${DOT}${formatDate(data.latest_scan.created_at)}`
@@ -2013,6 +2113,7 @@ function renderCandidates(data) {
 
 function renderScoreList(data) {
   const list = document.getElementById("scoreList");
+  if (!list) return;
   if (!data.latest_scores.length) {
     setEmpty(list, t("noScores"));
     return;
@@ -2046,7 +2147,7 @@ function renderScoreList(data) {
 }
 
 function focusDetailPanel() {
-  switchTab("detail");
+  switchTabToSub("portfolio", "portfolio-detail");
   document.getElementById("detailTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -2079,10 +2180,9 @@ async function loadWatchlistItems(watchlistId) {
 
 function renderWatchlists(data) {
   const list = document.getElementById("watchlistList");
+  if (!list) return;
   if (!data.watchlists.length) {
     setEmpty(list, t("noWatchlists"));
-    const rwl = document.getElementById("researchWatchlistList");
-    if (rwl) setEmpty(rwl, t("noWatchlists"));
     return;
   }
 
@@ -2137,32 +2237,13 @@ function renderWatchlists(data) {
       loadSymbolDetail(Number(button.dataset.watchSymbolId), { focus: true });
     });
   });
-
-  // Mirror to research tab
-  const researchList = document.getElementById("researchWatchlistList");
-  if (researchList) {
-    researchList.innerHTML = list.innerHTML;
-    researchList.querySelectorAll("[data-watchlist-id]").forEach((card) => {
-      card.addEventListener("click", async (event) => {
-        if (event.target.closest("[data-watch-symbol-id]")) return;
-        await loadWatchlistItems(Number(card.dataset.watchlistId));
-      });
-    });
-    researchList.querySelectorAll("[data-watch-symbol-id]").forEach((button) => {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        loadSymbolDetail(Number(button.dataset.watchSymbolId), { focus: true });
-      });
-    });
-  }
 }
 
 function renderJournals(data) {
   const list = document.getElementById("journalList");
+  if (!list) return;
   if (!data.journals.length) {
     setEmpty(list, t("noJournals"));
-    const rjl = document.getElementById("researchJournalList");
-    if (rjl) setEmpty(rjl, t("noJournals"));
     return;
   }
 
@@ -2179,10 +2260,6 @@ function renderJournals(data) {
     `
     )
     .join("");
-
-  // Mirror to research tab overview
-  const researchJList = document.getElementById("researchJournalList");
-  if (researchJList) researchJList.innerHTML = list.innerHTML;
 }
 
 function buildLinePath(points, mapX, mapY) {
@@ -2322,13 +2399,13 @@ function updateChartControls(totalBars, visibleBars, isCustomRange) {
   const currentIndex = windows.findIndex((value) => value === visibleBars);
   const hasChart = Boolean(totalBars);
 
-  zoomInButton.disabled = !hasChart || currentIndex <= 0;
-  zoomOutButton.disabled = !hasChart || currentIndex === -1 || currentIndex >= windows.length - 1;
-  resetButton.disabled = !hasChart || (!isCustomRange && visibleBars === getResetChartWindow(totalBars));
+  if (zoomInButton) zoomInButton.disabled = !hasChart || currentIndex <= 0;
+  if (zoomOutButton) zoomOutButton.disabled = !hasChart || currentIndex === -1 || currentIndex >= windows.length - 1;
+  if (resetButton) resetButton.disabled = !hasChart || (!isCustomRange && visibleBars === getResetChartWindow(totalBars));
   const timeframeLabel = t(state.chartTimeframe === "weekly" ? "chartWeekly" : "chartDaily");
-  windowPill.textContent = hasChart ? `${timeframeLabel} ${visibleBars}/${totalBars} ${t("barsUnit")}` : "-";
-  chartHint.textContent = hasChart ? t("chartDragHint") : "";
-  expandButton.textContent = t(state.chartExpanded ? "collapseChart" : "expandChart");
+  if (windowPill) windowPill.textContent = hasChart ? `${timeframeLabel} ${visibleBars}/${totalBars} ${t("barsUnit")}` : "-";
+  if (chartHint) chartHint.textContent = hasChart ? t("chartDragHint") : "";
+  if (expandButton) expandButton.textContent = t(state.chartExpanded ? "collapseChart" : "expandChart");
   updateChartTimeframeButtons();
 }
 
@@ -2586,6 +2663,7 @@ function buildFuturePlanOverlay(setup, latestClose, dimensions, priceY) {
 function renderChart(detail) {
   const container = document.getElementById("detailChart");
   const meta = document.getElementById("chartMeta");
+  if (!container) return;
   clearChartCleanup();
   updateChartExpandedState();
   const bars = getChartBars(detail);
@@ -2593,7 +2671,7 @@ function renderChart(detail) {
 
   if (!bars.length) {
     state.chartView = null;
-    meta.textContent = "-";
+    if (meta) meta.textContent = "-";
     setEmpty(container, t("noChart"));
     updateChartControls(0, 0, false);
     return;
@@ -2602,14 +2680,15 @@ function renderChart(detail) {
   const slice = getVisibleChartSlice(bars);
   const windowBars = slice.bars;
   updateChartControls(bars.length, windowBars.length, slice.isCustomRange);
-  const width = state.chartExpanded ? 1360 : 1040;
-  const height = state.chartExpanded ? 620 : 420;
+  const containerWidth = container.clientWidth || (state.chartExpanded ? 1360 : 1040);
+  const width = state.chartExpanded ? Math.max(1360, containerWidth) : containerWidth;
+  const height = state.chartExpanded ? 620 : 520;
   const left = 56;
   const right = 28;
   const top = 20;
-  const priceHeight = state.chartExpanded ? 360 : 240;
-  const volumeTop = state.chartExpanded ? 420 : 286;
-  const volumeHeight = state.chartExpanded ? 110 : 82;
+  const priceHeight = state.chartExpanded ? 360 : 310;
+  const volumeTop = state.chartExpanded ? 420 : 355;
+  const volumeHeight = state.chartExpanded ? 110 : 115;
   const futurePlans = getActiveFutureBuyPlan(setup);
   const futureWidth = futurePlans.length ? (state.chartExpanded ? 210 : 168) : 0;
   const futureGap = futurePlans.length ? 16 : 0;
@@ -2666,7 +2745,7 @@ function renderChart(detail) {
     priceY
   );
 
-  meta.textContent = `${t("lastBar")}: ${latest.trade_date}${DOT}${t("close")} ${score(latest.close)}`;
+  if (meta) meta.textContent = `${t("lastBar")}: ${latest.trade_date}${DOT}${t("close")} ${score(latest.close)}`;
 
   const gridLines = Array.from({ length: 4 }, (_, index) => {
     const ratio = index / 3;
@@ -2805,6 +2884,7 @@ function removeDetailFromDock(symbolId) {
 
 function renderDetailDock() {
   const rail = document.getElementById("detailQuickRail");
+  if (!rail) return;
   if (!state.detailOrder.length) {
     setEmpty(rail, t("noDetail"));
     return;
@@ -2968,21 +3048,21 @@ function renderDetail(detail) {
   }
 
   if (!detail) {
-    title.textContent = t("selectSymbol");
-    meta.textContent = "-";
+    if (title) title.textContent = t("selectSymbol");
+    if (meta) meta.textContent = "-";
     setEmpty(summary, t("noDetail"));
     setEmpty(setup, t("latestTradeSetupEmpty"));
-    history.innerHTML = `<tr><td colspan="5" class="empty">${t("noDetail")}</td></tr>`;
+    if (history) history.innerHTML = `<tr><td colspan="5" class="empty">${t("noDetail")}</td></tr>`;
     renderChart(null);
     if (trades) setEmpty(trades, t("noTrades"));
     if (journals) setEmpty(journals, t("noJournals"));
-    setupButton.disabled = true;
+    if (setupButton) setupButton.disabled = true;
     return;
   }
 
-  setupButton.disabled = !detail.latest_score;
-  title.textContent = `${detail.symbol.symbol}${DOT}${detail.symbol.name}`;
-  meta.textContent = joinParts([
+  if (setupButton) setupButton.disabled = !detail.latest_score;
+  if (title) title.textContent = `${detail.symbol.symbol}${DOT}${detail.symbol.name}`;
+  if (meta) meta.textContent = joinParts([
     `${t("marketLabel")}: ${String(detail.symbol.market || "-").toUpperCase()}`,
     `${t("regionLabel")}: ${regionLongLabel(detail.symbol.region)}`,
     `${t("assetLabel")}: ${assetTypeLabel(detail.symbol.asset_type)}`,
@@ -3021,7 +3101,7 @@ function renderDetail(detail) {
       </article>
     `);
   }
-  summary.innerHTML = summaryRows.length ? summaryRows.join("") : `<div class="empty">${t("noScores")}</div>`;
+  if (summary) summary.innerHTML = summaryRows.length ? summaryRows.join("") : `<div class="empty">${t("noScores")}</div>`;
   bindSignalStatsControls();
 
   if (detail.latest_trade_setup) {
@@ -3032,7 +3112,7 @@ function renderDetail(detail) {
     const tranches = item.tranche_plan ?? [];
     const futureBuyPlan = getActiveFutureBuyPlan(item);
 
-    setup.innerHTML = `
+    if (setup) setup.innerHTML = `
       <article class="list-item">
         <div class="item-topline">
           <strong>${t("buyZone")}</strong>
@@ -3139,7 +3219,7 @@ function renderDetail(detail) {
     setEmpty(setup, t("latestTradeSetupEmpty"));
   }
 
-  history.innerHTML = detail.score_history.length
+  if (history) history.innerHTML = detail.score_history.length
     ? detail.score_history
       .map(
         (item) => `
@@ -3483,7 +3563,6 @@ async function loadWorkbench() {
   renderAccountSummary(data);
   renderCandidates(data);
   renderScoreList(data);
-  renderWatchlists(data);
   renderJournals(data);
   renderTradingTab(state.detail);
 
@@ -3691,7 +3770,6 @@ document.getElementById("localeSelect").addEventListener("change", async (event)
     renderAccountSummary(state.workbench);
     renderCandidates(state.workbench);
     renderScoreList(state.workbench);
-    renderWatchlists(state.workbench);
     renderJournals(state.workbench);
     renderTradingTab(state.detail);
   }
@@ -3715,16 +3793,31 @@ document.getElementById("refreshButton").addEventListener("click", async () => {
 document.querySelectorAll("[data-view-tab]").forEach((button) => {
   button.addEventListener("click", () => {
     switchTab(button.dataset.viewTab);
-    // If switching to trading tab, refresh trading data
-    if (button.dataset.viewTab === "trading") {
-      renderTradingTab(state.detail);
-    }
   });
 });
 
 document.querySelectorAll("[data-sub-tab]").forEach((button) => {
   button.addEventListener("click", () => {
-    switchSubTab(button.dataset.subTab);
+    const scope = button.closest("[data-tab-content]");
+    switchSubTab(button.dataset.subTab, scope);
+    // If switching to trading sub-tab, refresh trading data
+    if (button.dataset.subTab === "portfolio-trading") {
+      renderTradingTab(state.detail);
+    }
+  });
+});
+
+document.querySelectorAll("[data-settings-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const settingsContainer = document.querySelector('[data-tab-content="settings"]');
+    if (!settingsContainer) return;
+    const tabId = button.dataset.settingsTab;
+    settingsContainer.querySelectorAll(".settings-nav-item").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.settingsTab === tabId);
+    });
+    settingsContainer.querySelectorAll("[data-settings-content]").forEach((container) => {
+      container.hidden = container.dataset.settingsContent !== tabId;
+    });
   });
 });
 
