@@ -58,7 +58,9 @@ class ScanResult(Base):
     is_sector_overweight: Mapped[int] = mapped_column(Integer, default=0)
     is_asset_overweight: Mapped[int] = mapped_column(Integer, default=0)
     reason_tags: Mapped[str | None] = mapped_column(Text, nullable=True)
+    warning_days: Mapped[int] = mapped_column(Integer, default=3)
+    valid_days: Mapped[int] = mapped_column(Integer, default=5)
+    is_frozen: Mapped[int] = mapped_column(Integer, default=0, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     scan_run_ref = relationship("ScanRun", back_populates="results")
-

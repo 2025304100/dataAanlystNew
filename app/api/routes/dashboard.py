@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import datetime, timezone
+
 from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,30 @@ from app.services.trade_plans import build_trade_setup_view, upsert_trade_setup
 
 
 router = APIRouter()
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _is_scan_result_valid(result: ScanResult) -> bool:
+    if result.is_frozen:
+        return True
+    return (_now() - result.created_at).days < result.valid_days
+
+
+def _delete_expired_scan_results(db: Session, rows: list[tuple[ScanResult, Symbol]]) -> list[tuple[ScanResult, Symbol]]:
+    valid_rows: list[tuple[ScanResult, Symbol]] = []
+    deleted = False
+    for result, symbol in rows:
+        if _is_scan_result_valid(result):
+            valid_rows.append((result, symbol))
+            continue
+        db.delete(result)
+        deleted = True
+    if deleted:
+        db.commit()
+    return valid_rows
 
 
 def _latest_score_map(db: Session, symbol_ids: list[int]) -> dict[int, Score]:
@@ -114,8 +140,8 @@ def get_dashboard_overview(
 @router.get("/dashboard/workbench", response_model=DashboardWorkbench)
 def get_dashboard_workbench(
     portfolio_id: int = Query(...),
-    candidate_limit: int = Query(default=8, ge=1, le=20),
-    score_limit: int = Query(default=10, ge=1, le=30),
+    candidate_limit: int = Query(default=8, ge=1, le=80),
+    score_limit: int = Query(default=10, ge=1, le=120),
     market_group: str = Query(default="all"),
     db: Session = Depends(get_db),
 ):
@@ -138,15 +164,24 @@ def get_dashboard_workbench(
             select(ScanResult, Symbol)
             .join(Symbol, Symbol.id == ScanResult.symbol_id)
             .where(ScanResult.scan_run_id == latest_run.id, ScanResult.result_type == "executable")
-            .order_by(ScanResult.rank_no.asc())
-            .limit(candidate_limit)
         )
         if market_codes:
             candidate_stmt = candidate_stmt.where(Symbol.market.in_(market_codes))
-        candidate_rows = db.execute(candidate_stmt).all()
+        candidate_rows = _delete_expired_scan_results(db, db.execute(candidate_stmt).all())
+        candidate_rows.sort(
+            key=lambda item: (
+                int(item[0].is_frozen),
+                float(item[0].priority_score or 0),
+                item[0].created_at,
+            ),
+            reverse=True,
+        )
+        candidate_rows = candidate_rows[:candidate_limit]
         candidate_score_map = _latest_score_map(db, [symbol.id for _, symbol in candidate_rows])
         candidates = [
             WorkbenchCandidate(
+                id=result.id,
+                scan_result_id=result.id,
                 symbol_id=symbol.id,
                 symbol=symbol.symbol,
                 name=symbol.name,
@@ -166,6 +201,10 @@ def get_dashboard_workbench(
                 action=result.action,
                 recommended_position_pct=result.recommended_position_pct,
                 rank_no=result.rank_no,
+                created_at=result.created_at,
+                warning_days=result.warning_days,
+                valid_days=result.valid_days,
+                is_frozen=bool(result.is_frozen),
             )
             for result, symbol in candidate_rows
         ]
@@ -234,6 +273,10 @@ def get_dashboard_workbench(
             liquidity_score=score.liquidity_score,
             breadth_score=score.breadth_score,
             event_score=score.event_score,
+            created_at=score.created_at,
+            warning_days=3,
+            valid_days=5,
+            is_frozen=False,
         )
         for score, symbol in score_rows
     ]

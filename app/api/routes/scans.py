@@ -50,7 +50,7 @@ def get_scan_results(
     stmt = select(ScanResult).where(ScanResult.scan_run_id == scan_run_id)
     if result_type:
         stmt = stmt.where(ScanResult.result_type == result_type)
-    stmt = stmt.order_by(ScanResult.result_type.asc(), ScanResult.rank_no.asc())
+    stmt = stmt.order_by(ScanResult.is_frozen.desc(), ScanResult.priority_score.desc(), ScanResult.created_at.desc())
     return db.execute(stmt).scalars().all()
 
 
@@ -69,8 +69,7 @@ def get_latest_executable_candidates(
     results = db.execute(
         select(ScanResult)
         .where(ScanResult.scan_run_id == latest_run.id, ScanResult.result_type == "executable")
-        .order_by(ScanResult.rank_no.asc())
+        .order_by(ScanResult.is_frozen.desc(), ScanResult.priority_score.desc(), ScanResult.created_at.desc())
         .limit(limit)
     ).scalars().all()
     return results
-

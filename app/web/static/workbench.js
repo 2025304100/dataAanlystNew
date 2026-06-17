@@ -678,6 +678,110 @@ Object.assign(EXTRA_I18N["en-US"], {
   previewDiagnosis: "Diagnosis",
 });
 
+Object.assign(EXTRA_I18N["zh-CN"], {
+  tabDiscovery: "机会挖掘",
+  discoveryKicker: "全市场机会扫描",
+  discoveryTitle: "机会挖掘",
+  discoveryScope: "扫描范围",
+  discoveryScopeCnStock: "A股股票",
+  discoveryScopeCnEtf: "A股ETF",
+  discoveryScopeUsStock: "美股股票",
+  discoveryScopeUsEtf: "美股ETF",
+  minOpportunityScore: "最低机会分",
+  discoveryBatchSize: "批量大小",
+  discoveryDelay: "限流间隔",
+  includeNewsScore: "合并消息面",
+  warningDays: "预警天数",
+  validDays: "有效天数",
+  startDiscovery: "开始挖掘",
+  pauseDiscovery: "暂停",
+  resumeDiscovery: "继续",
+  cancelDiscovery: "中止",
+  refreshResults: "刷新结果",
+  discoveryIdle: "准备就绪",
+  stepPrepare: "整理范围",
+  stepSync: "同步行情",
+  stepScan: "筛选机会",
+  stepNews: "消息面",
+  stepDone: "结果",
+  discoveryResultKicker: "按最终机会分排序",
+  discoveryResults: "挖掘结果",
+  freshness: "时效",
+  operations: "操作",
+  frozen: "已冻结",
+  freeze: "冻结",
+  unfreeze: "解冻",
+  updateCurrent: "更新本条",
+  freshnessToday: "今天数据",
+  freshnessDays: "{days}天前数据",
+  freshnessWarn: "接近过期",
+  discoveryStarted: "机会挖掘已开始",
+  discoveryPaused: "任务已暂停，1天内可继续",
+  discoveryResumed: "任务已继续",
+  discoveryCancelled: "任务已中止",
+  discoveryCompleted: "机会挖掘完成",
+  discoveryCommandFailed: "任务操作失败",
+  discoveryRefreshDone: "结果已刷新",
+  discoveryRowUpdated: "本条已更新",
+  discoveryRowFrozen: "已冻结，不会被自动更新或过期删除",
+  discoveryEmpty: "暂无挖掘结果，先选择范围开始挖掘。",
+  totalProgress: "总数 {total} / 已完成 {processed}",
+  scanCounters: "成功 {ok} / 空数据 {empty} / 失败 {failed} / 已评分 {scored}",
+  taskExpiredRestart: "暂停超过1天，需重新开始",
+});
+
+Object.assign(EXTRA_I18N["en-US"], {
+  tabDiscovery: "Opportunity Mining",
+  discoveryKicker: "Full-scope scanner",
+  discoveryTitle: "Opportunity Mining",
+  discoveryScope: "Scope",
+  discoveryScopeCnStock: "China A-shares",
+  discoveryScopeCnEtf: "China ETFs",
+  discoveryScopeUsStock: "US stocks",
+  discoveryScopeUsEtf: "US ETFs",
+  minOpportunityScore: "Min score",
+  discoveryBatchSize: "Batch size",
+  discoveryDelay: "Throttle",
+  includeNewsScore: "Include news score",
+  warningDays: "Warn days",
+  validDays: "Valid days",
+  startDiscovery: "Start Mining",
+  pauseDiscovery: "Pause",
+  resumeDiscovery: "Resume",
+  cancelDiscovery: "Cancel",
+  refreshResults: "Refresh Results",
+  discoveryIdle: "Ready",
+  stepPrepare: "Prepare",
+  stepSync: "Sync bars",
+  stepScan: "Scan",
+  stepNews: "News",
+  stepDone: "Results",
+  discoveryResultKicker: "Sorted by final score",
+  discoveryResults: "Mining Results",
+  freshness: "Freshness",
+  operations: "Ops",
+  frozen: "Frozen",
+  freeze: "Freeze",
+  unfreeze: "Unfreeze",
+  updateCurrent: "Update",
+  freshnessToday: "Today",
+  freshnessDays: "{days}d old",
+  freshnessWarn: "Near expiry",
+  discoveryStarted: "Opportunity mining started",
+  discoveryPaused: "Paused. Resume within 1 day.",
+  discoveryResumed: "Resumed",
+  discoveryCancelled: "Cancelled",
+  discoveryCompleted: "Opportunity mining complete",
+  discoveryCommandFailed: "Task command failed",
+  discoveryRefreshDone: "Results refreshed",
+  discoveryRowUpdated: "Row updated",
+  discoveryRowFrozen: "Frozen. It will not auto-update or expire.",
+  discoveryEmpty: "No mining results yet. Pick a scope and start mining.",
+  totalProgress: "Total {total} / done {processed}",
+  scanCounters: "OK {ok} / empty {empty} / failed {failed} / scored {scored}",
+  taskExpiredRestart: "Paused for over 1 day. Start a new task.",
+});
+
 const STAGE_LABELS = {
   "zh-CN": { accel: "趋势加速", cooldown: "降温观察", overheat: "高位过热", start: "启动确认" },
   "en-US": { accel: "Accel", cooldown: "Cooldown", overheat: "Overheat", start: "Start" },
@@ -741,6 +845,8 @@ const state = {
   futurePlanScenario: "general",
   futurePlanCustom: { horizonDays: 20, pullbackPct: 3, positionPct: 5 },
   newsSnapshot: null,
+  discoveryTask: null,
+  discoveryPollTimer: null,
   status: { level: "", message: "" },
 };
 
@@ -816,6 +922,22 @@ function formatRelativeTime(value) {
   if (hours < 24) return `${hours}${t("hoursAgo")}`;
   if (days < 30) return `${days}${t("daysAgo")}`;
   return formatDate(value);
+}
+
+function ageDays(value) {
+  if (!value) return 0;
+  const diff = Date.now() - new Date(value).getTime();
+  return Math.max(0, Math.floor(diff / 86400000));
+}
+
+function discoveryFreshness(item) {
+  const days = ageDays(item.created_at);
+  if (item.is_frozen) {
+    return { className: "frozen", label: `${t("frozen")}${DOT}${days ? template("freshnessDays", { days }) : t("freshnessToday")}` };
+  }
+  const warningDays = Number(item.warning_days ?? 3);
+  const label = days ? template("freshnessDays", { days }) : t("freshnessToday");
+  return { className: days >= warningDays ? "warning" : "", label: days >= warningDays ? `${label}${DOT}${t("freshnessWarn")}` : label };
 }
 
 function badgeClass(value) {
@@ -1170,19 +1292,35 @@ function setEmpty(container, message) {
 function renderToolbarOptions() {
   const localeSelect = document.getElementById("localeSelect");
   const marketSelect = document.getElementById("marketSelect");
+  const discoveryScopeSelect = document.getElementById("discoveryScopeSelect");
 
-  localeSelect.innerHTML = `
+  if (localeSelect) {
+    localeSelect.innerHTML = `
     <option value="zh-CN">简体中文</option>
     <option value="en-US">English</option>
   `;
-  localeSelect.value = state.locale;
+    localeSelect.value = state.locale;
+  }
 
-  marketSelect.innerHTML = `
+  if (marketSelect) {
+    marketSelect.innerHTML = `
     <option value="all">${t("all")}</option>
     <option value="cn">${t("chinaMainland")}</option>
     <option value="us">${t("unitedStates")}</option>
   `;
-  marketSelect.value = state.marketGroup;
+    marketSelect.value = state.marketGroup;
+  }
+
+  if (discoveryScopeSelect) {
+    const current = discoveryScopeSelect.value || "cn-stock";
+    discoveryScopeSelect.innerHTML = `
+      <option value="cn-stock">${t("discoveryScopeCnStock")}</option>
+      <option value="cn-etf">${t("discoveryScopeCnEtf")}</option>
+      <option value="us-stock">${t("discoveryScopeUsStock")}</option>
+      <option value="us-etf">${t("discoveryScopeUsEtf")}</option>
+    `;
+    discoveryScopeSelect.value = current;
+  }
 }
 
 function showToast(level, message, duration = 3000) {
@@ -2109,6 +2247,139 @@ function renderCandidates(data) {
   body.querySelectorAll("tr[data-symbol-id]").forEach((row) => {
     row.addEventListener("click", () => loadSymbolDetail(Number(row.dataset.symbolId), { focus: true }));
   });
+}
+
+function sortedDiscoveryRows(data) {
+  return (data?.candidates ?? [])
+    .map(withFinalOpportunityScore)
+    .sort((a, b) => {
+      const frozenDiff = Number(Boolean(b.is_frozen)) - Number(Boolean(a.is_frozen));
+      if (frozenDiff) return frozenDiff;
+      const scoreDiff = Number(opportunityScoreValue(b) ?? 0) - Number(opportunityScoreValue(a) ?? 0);
+      if (scoreDiff) return scoreDiff;
+      return new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
+    });
+}
+
+function renderDiscoveryMetrics(data) {
+  const grid = document.getElementById("discoveryMetricGrid");
+  if (!grid) return;
+  const task = state.discoveryTask;
+  const scope = document.getElementById("discoveryScopeSelect")?.value ?? "cn-stock";
+  const rows = sortedDiscoveryRows(data);
+  const metrics = [
+    { label: t("discoveryScope"), value: t(`discoveryScope${scope.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}`) || scope, note: t("market") },
+    { label: t("candidates"), value: rows.length, note: t("discoveryResultKicker") },
+    { label: t("totalProgress"), value: task ? `${task.processed}/${task.total}` : "-", note: task?.message ?? t("discoveryIdle") },
+    { label: t("messageScore"), value: state.newsSnapshot?.symbols_total ?? 0, note: t("includeNewsScore") },
+  ];
+  grid.innerHTML = metrics
+    .map(
+      (item) => `
+      <article class="metric-card">
+        <div class="metric-label">${item.label}</div>
+        <div class="metric-value">${item.value}</div>
+        <div class="metric-note">${item.note}</div>
+      </article>
+    `
+    )
+    .join("");
+}
+
+function renderDiscoveryResults(data) {
+  const body = document.getElementById("discoveryResultBody");
+  const meta = document.getElementById("discoveryResultMeta");
+  if (!body) return;
+  const rows = sortedDiscoveryRows(data);
+  if (meta) {
+    meta.textContent = data?.latest_scan?.scan_run_id
+      ? `${data.latest_scan.run_name}${DOT}${formatDate(data.latest_scan.created_at)}${DOT}${rows.length}`
+      : t("noScanYet");
+  }
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="11" class="empty">${t("discoveryEmpty")}</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows
+    .map((item, index) => {
+      const freshness = discoveryFreshness(item);
+      const rowClass = [
+        state.activeSymbolId === item.symbol_id ? "active" : "",
+        freshness.className === "warning" ? "discovery-row-warning" : "",
+        item.is_frozen ? "discovery-row-frozen" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return `
+        <tr class="${rowClass}" data-symbol-id="${item.symbol_id}" data-scan-result-id="${item.scan_result_id ?? item.id ?? ""}">
+          <td>${index + 1}</td>
+          <td>
+            ${renderSymbolTitle(item)}
+            <div class="item-subline">${joinParts([regionShortLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
+          </td>
+          <td>
+            <span class="today-score-wrap">
+              <span class="today-score">${score(opportunityScoreValue(item))}</span>
+              ${renderOpportunityScoreTooltip(item)}
+            </span>
+          </td>
+          <td>${score(item.news_message_score ?? 0, 1)}</td>
+          <td>${score(item.quality_score)}</td>
+          <td>${score(item.timing_score)}</td>
+          <td><span class="${badgeClass(item.stage)}">${stageLabel(item.stage)}</span></td>
+          <td><span class="${badgeClass(item.action)}">${actionLabel(item.action)}</span></td>
+          <td>${percent(item.recommended_position_pct)}</td>
+          <td><span class="freshness-chip ${freshness.className}">${freshness.label}</span></td>
+          <td>
+            <span class="row-actions">
+              <button type="button" data-discovery-action="toggle-freeze">${item.is_frozen ? t("unfreeze") : t("freeze")}</button>
+              <button type="button" data-discovery-action="refresh-row">${t("updateCurrent")}</button>
+            </span>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+  body.querySelectorAll("tr[data-symbol-id]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button")) return;
+      loadSymbolDetail(Number(row.dataset.symbolId), { focus: true });
+    });
+  });
+  body.querySelectorAll("[data-discovery-action]").forEach((button) => {
+    button.addEventListener("click", (event) => handleDiscoveryRowAction(event.currentTarget));
+  });
+}
+
+function discoveryTaskActive(task = state.discoveryTask) {
+  return Boolean(task && ["queued", "running"].includes(task.status));
+}
+
+function renderDiscoveryTask(task = state.discoveryTask) {
+  const title = document.getElementById("discoveryProgressTitle");
+  const pct = document.getElementById("discoveryProgressPct");
+  const fill = document.getElementById("discoveryProgressFill");
+  const meta = document.getElementById("discoveryMeta");
+  const percentValue = clamp(Number(task?.percent ?? 0), 0, 100);
+  if (title) title.textContent = task?.message || t("discoveryIdle");
+  if (pct) pct.textContent = task ? `${percentValue.toFixed(0)}%${DOT}${template("totalProgress", { total: task.total ?? 0, processed: task.processed ?? 0 })}` : "0%";
+  if (fill) fill.style.width = `${percentValue}%`;
+  if (meta) {
+    meta.textContent = task
+      ? `${task.status}${DOT}${template("scanCounters", { ok: task.ok_count ?? 0, empty: task.empty_count ?? 0, failed: task.failed_count ?? 0, scored: task.scored_count ?? 0 })}`
+      : t("discoveryIdle");
+  }
+  document.querySelectorAll("[data-discovery-step]").forEach((node) => {
+    const step = node.dataset.discoveryStep;
+    const order = ["prepare", "sync", "scan", "news", "done"];
+    const current = task?.stage === "failed" || task?.stage === "cancelled" || task?.stage === "paused" ? task.stage : task?.stage;
+    node.classList.toggle("active", current === step);
+    node.classList.toggle("done", order.indexOf(step) >= 0 && order.indexOf(step) < order.indexOf(current));
+  });
+  document.getElementById("discoveryRunButton").disabled = discoveryTaskActive(task);
+  document.getElementById("discoveryPauseButton").disabled = !discoveryTaskActive(task);
+  document.getElementById("discoveryResumeButton").disabled = !(task?.status === "paused" && task?.can_resume);
+  document.getElementById("discoveryCancelButton").disabled = !(task && ["queued", "running", "paused"].includes(task.status));
 }
 
 function renderScoreList(data) {
@@ -3560,9 +3831,12 @@ async function loadWorkbench() {
   await loadLatestNewsSnapshot(data);
   renderTodayOpportunities(data);
   renderMetrics(data);
+  renderDiscoveryMetrics(data);
   renderAccountSummary(data);
   renderCandidates(data);
   renderScoreList(data);
+  renderDiscoveryResults(data);
+  renderDiscoveryTask(state.discoveryTask);
   renderJournals(data);
   renderTradingTab(state.detail);
 
@@ -3666,6 +3940,123 @@ async function runScan() {
   await scanSymbols(symbols);
   await loadWorkbench();
   setStatus("success", template("scanSummary", { count: state.workbench?.latest_scan?.executable_count ?? 0 }));
+}
+
+function buildDiscoveryPayload() {
+  return {
+    scope: document.getElementById("discoveryScopeSelect")?.value || "cn-stock",
+    min_score: Number(document.getElementById("discoveryMinScoreInput")?.value || 55),
+    include_news: Boolean(document.getElementById("discoveryNewsInput")?.checked ?? true),
+    portfolio_id: state.portfolioId,
+    portfolio_rule_id: state.workbench?.active_rule?.id ?? null,
+    batch_size: Number(document.getElementById("discoveryBatchSizeInput")?.value || 20),
+    delay_seconds: Number(document.getElementById("discoveryDelayInput")?.value || 0.25),
+    warning_days: Number(document.getElementById("discoveryWarningDaysInput")?.value || 3),
+    valid_days: Number(document.getElementById("discoveryValidDaysInput")?.value || 5),
+    news_limit: 30,
+    refresh_universe: true,
+    global_mode: "library",
+  };
+}
+
+function updateDiscoveryButtons(task) {
+  renderDiscoveryTask(task);
+}
+
+async function fetchDiscoveryTasks() {
+  const tasks = await requestJson("/api/v1/discovery/tasks?limit=10");
+  const active = tasks.find((item) => ["queued", "running", "paused"].includes(item.status)) ?? tasks[0] ?? null;
+  state.discoveryTask = active;
+  updateDiscoveryButtons(active);
+  return tasks;
+}
+
+async function runDiscoveryMining() {
+  const payload = buildDiscoveryPayload();
+  const task = await requestJson("/api/v1/discovery/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  state.discoveryTask = task;
+  updateDiscoveryButtons(task);
+  setStatus("success", t("discoveryStarted"));
+  await loadWorkbench();
+  startDiscoveryPolling();
+}
+
+async function sendDiscoveryTaskCommand(command) {
+  const task = state.discoveryTask;
+  if (!task?.id) return;
+  const result = await requestJson(`/api/v1/discovery/tasks/${task.id}/${command}`, { method: "POST" });
+  state.discoveryTask = result;
+  updateDiscoveryButtons(result);
+  return result;
+}
+
+async function handleDiscoveryRowAction(button) {
+  const row = button.closest("tr[data-scan-result-id]");
+  const scanResultId = Number(row?.dataset.scanResultId);
+  if (!scanResultId) return;
+  const action = button.dataset.discoveryAction;
+  if (action === "toggle-freeze") {
+    const item = (state.workbench?.candidates ?? []).find((candidate) => Number(candidate.scan_result_id ?? candidate.id) === scanResultId);
+    const nextFrozen = !(item?.is_frozen);
+    await requestJson(`/api/v1/discovery/results/${scanResultId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        is_frozen: nextFrozen,
+        warning_days: Number(document.getElementById("discoveryWarningDaysInput")?.value || 3),
+        valid_days: Number(document.getElementById("discoveryValidDaysInput")?.value || 5),
+      }),
+    });
+    setStatus("success", nextFrozen ? t("discoveryRowFrozen") : t("discoveryRefreshDone"));
+  }
+  if (action === "refresh-row") {
+    await requestJson(`/api/v1/discovery/results/${scanResultId}/refresh`, { method: "POST" });
+    setStatus("success", t("discoveryRowUpdated"));
+  }
+  await loadWorkbench();
+}
+
+async function refreshDiscoveryTasks() {
+  await fetchDiscoveryTasks();
+  await loadWorkbench();
+}
+
+function startDiscoveryPolling() {
+  if (state.discoveryPollTimer) return;
+  state.discoveryPollTimer = window.setInterval(async () => {
+    try {
+      const tasks = await requestJson("/api/v1/discovery/tasks?limit=10");
+      const current = tasks.find((item) => ["queued", "running", "paused"].includes(item.status)) ?? tasks[0] ?? null;
+      state.discoveryTask = current;
+      renderDiscoveryTask(current);
+      if (!current || ["done", "failed", "cancelled", "expired"].includes(current.status)) {
+        stopDiscoveryPolling();
+        if (current?.status === "done") {
+          setStatus("success", t("discoveryCompleted"));
+          await loadWorkbench();
+        } else if (current?.status === "expired") {
+          setStatus("error", t("taskExpiredRestart"));
+        }
+      }
+      if (state.workbench) {
+        renderDiscoveryResults(state.workbench);
+        renderDiscoveryMetrics(state.workbench);
+      }
+    } catch (error) {
+      console.warn("Discovery polling failed", error);
+    }
+  }, 2000);
+}
+
+function stopDiscoveryPolling() {
+  if (state.discoveryPollTimer) {
+    window.clearInterval(state.discoveryPollTimer);
+    state.discoveryPollTimer = null;
+  }
 }
 
 async function runNewsUpdate() {
@@ -3786,6 +4177,56 @@ document.getElementById("marketSelect").addEventListener("change", async (event)
 document.getElementById("refreshButton").addEventListener("click", async () => {
   await loadWorkbench();
   setStatus("", "");
+});
+
+document.getElementById("discoveryRunButton")?.addEventListener("click", async (event) => {
+  try {
+    await setButtonBusy(event.currentTarget, "startDiscovery", runDiscoveryMining);
+  } catch (error) {
+    setStatus("error", `${t("discoveryCommandFailed")}: ${error.message}`);
+  }
+});
+
+document.getElementById("discoveryPauseButton")?.addEventListener("click", async () => {
+  try {
+    await sendDiscoveryTaskCommand("pause");
+    setStatus("success", t("discoveryPaused"));
+  } catch (error) {
+    setStatus("error", `${t("discoveryCommandFailed")}: ${error.message}`);
+  }
+});
+
+document.getElementById("discoveryResumeButton")?.addEventListener("click", async () => {
+  try {
+    const task = await sendDiscoveryTaskCommand("resume");
+    if (task?.status === "expired") {
+      setStatus("error", t("taskExpiredRestart"));
+      return;
+    }
+    startDiscoveryPolling();
+    setStatus("success", t("discoveryResumed"));
+  } catch (error) {
+    setStatus("error", `${t("discoveryCommandFailed")}: ${error.message}`);
+  }
+});
+
+document.getElementById("discoveryCancelButton")?.addEventListener("click", async () => {
+  try {
+    await sendDiscoveryTaskCommand("cancel");
+    stopDiscoveryPolling();
+    setStatus("success", t("discoveryCancelled"));
+  } catch (error) {
+    setStatus("error", `${t("discoveryCommandFailed")}: ${error.message}`);
+  }
+});
+
+document.getElementById("discoveryRefreshButton")?.addEventListener("click", async () => {
+  try {
+    await refreshDiscoveryTasks();
+    setStatus("success", t("discoveryRefreshDone"));
+  } catch (error) {
+    setStatus("error", `${t("discoveryCommandFailed")}: ${error.message}`);
+  }
 });
 
 // ruleConfigButton removed - rules now in Research tab
@@ -4004,7 +4445,11 @@ async function bootstrap() {
   applyI18n();
   await loadPortfolios();
   await loadSignalRuleConfig();
+  await fetchDiscoveryTasks();
   await loadWorkbench();
+  if (discoveryTaskActive(state.discoveryTask)) {
+    startDiscoveryPolling();
+  }
 }
 
 bootstrap().catch((error) => {

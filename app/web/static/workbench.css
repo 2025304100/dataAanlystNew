@@ -479,6 +479,11 @@ body[data-active-view="detail"] .detail-panel {
   transform: translateY(0);
 }
 
+tr .today-score-wrap .score-tooltip {
+  right: auto;
+  left: 0;
+}
+
 .score-tooltip>strong {
   font-size: 13px;
 }
@@ -580,6 +585,185 @@ body[data-active-view="detail"] .detail-panel {
   background: rgba(255, 255, 255, 0.86);
   color: var(--ink);
   padding: 0 10px;
+}
+
+.discovery-control-bar {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.3fr) repeat(3, minmax(110px, 0.65fr)) minmax(180px, 0.9fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.discovery-check {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.discovery-check input {
+  width: 16px;
+  height: 16px;
+}
+
+.discovery-actions {
+  display: inline-flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.discovery-actions button,
+#discoveryRunButton {
+  min-height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  padding: 0 14px;
+}
+
+.danger-button {
+  color: var(--danger);
+}
+
+#discoveryRunButton {
+  background: var(--accent);
+  color: white;
+  border-color: transparent;
+}
+
+.discovery-progress {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.discovery-progress-head,
+.discovery-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.discovery-progress-head span,
+.discovery-steps span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.progress-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(31, 41, 51, 0.1);
+}
+
+.progress-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0f766e, #22c55e);
+  transition: width 0.22s ease;
+}
+
+.discovery-steps span {
+  position: relative;
+  flex: 1;
+  text-align: center;
+}
+
+.discovery-steps span.active,
+.discovery-steps span.done {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.discovery-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+#discoveryResultBody tr {
+  cursor: pointer;
+}
+
+#discoveryResultBody tr:hover {
+  background: rgba(15, 118, 110, 0.08);
+}
+
+#discoveryResultBody .discovery-group-row {
+  cursor: default;
+}
+
+#discoveryResultBody .discovery-group-row,
+#discoveryResultBody .discovery-group-row:hover {
+  background: rgba(31, 41, 51, 0.06);
+}
+
+.discovery-group-row td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.discovery-group-row strong {
+  color: var(--ink);
+  margin-right: 10px;
+}
+
+.discovery-group-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.discovery-row-warning {
+  background: rgba(245, 158, 11, 0.09);
+}
+
+.discovery-row-frozen {
+  background: rgba(14, 116, 144, 0.1);
+}
+
+.freshness-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 0 8px;
+  background: rgba(31, 41, 51, 0.08);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.freshness-chip.warning {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
+.freshness-chip.frozen {
+  background: rgba(14, 116, 144, 0.16);
+  color: #0e7490;
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.row-actions button {
+  min-height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--ink);
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .rule-config-grid {
@@ -1443,6 +1627,14 @@ body.chart-expanded {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .discovery-control-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .discovery-actions {
+    justify-content: flex-start;
+  }
+
   .account-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1512,6 +1704,25 @@ body.chart-expanded {
   .toolbar-actions .ghost-button,
   .toolbar-actions #refreshButton {
     width: 100%;
+  }
+
+  .discovery-control-bar,
+  .discovery-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .discovery-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .discovery-steps {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .discovery-steps span {
+    text-align: left;
   }
 
   .chart-toolbar {

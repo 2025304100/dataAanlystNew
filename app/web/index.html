@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Quant Workbench</title>
-  <link rel="stylesheet" href="/static/workbench.css?v=20260613-v14" />
+  <link rel="stylesheet" href="/static/workbench.css?v=20260613-v18" />
 </head>
 
 <body data-active-tab="workbench">
@@ -16,6 +16,8 @@
     <nav class="view-tabs" aria-label="Main views">
       <button type="button" class="view-tab active" data-view-tab="portfolio"
         data-i18n="tabPortfolio">Portfolio</button>
+      <button type="button" class="view-tab" data-view-tab="discovery"
+        data-i18n="tabDiscovery">Opportunity Mining</button>
       <button type="button" class="view-tab" data-view-tab="settings" data-i18n="tabSettings">Settings</button>
     </nav>
 
@@ -336,6 +338,113 @@
         </div>
       </div>
 
+      <!-- ===================== TOP TAB: DISCOVERY ===================== -->
+      <div class="tab-container" data-tab-content="discovery" hidden>
+        <section class="band discovery-band">
+          <div class="panel wide">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker" data-i18n="discoveryKicker">Market Scanner</p>
+                <h2 data-i18n="discoveryTitle">Opportunity Mining</h2>
+              </div>
+              <p class="panel-meta" id="discoveryMeta">-</p>
+            </div>
+
+            <div class="discovery-control-bar">
+              <label class="portfolio-picker">
+                <span data-i18n="discoveryScope">Scope</span>
+                <select id="discoveryScopeSelect"></select>
+              </label>
+              <label class="portfolio-picker">
+                <span data-i18n="minOpportunityScore">Min Score</span>
+                <input id="discoveryMinScoreInput" type="number" min="0" max="100" step="1" value="55" />
+              </label>
+              <label class="portfolio-picker">
+                <span data-i18n="discoveryBatchSize">Batch size</span>
+                <input id="discoveryBatchSizeInput" type="number" min="1" max="100" step="1" value="20" />
+              </label>
+              <label class="portfolio-picker">
+                <span data-i18n="discoveryDelay">Delay</span>
+                <input id="discoveryDelayInput" type="number" min="0" max="5" step="0.1" value="0.25" />
+              </label>
+              <label class="portfolio-picker">
+                <span data-i18n="warningDays">Warn days</span>
+                <input id="discoveryWarningDaysInput" type="number" min="1" max="60" step="1" value="3" />
+              </label>
+              <label class="portfolio-picker">
+                <span data-i18n="validDays">Valid days</span>
+                <input id="discoveryValidDaysInput" type="number" min="1" max="365" step="1" value="5" />
+              </label>
+              <label class="discovery-check">
+                <input id="discoveryNewsInput" type="checkbox" checked />
+                <span data-i18n="includeNewsScore">Include news score</span>
+              </label>
+              <div class="discovery-actions">
+                <button id="discoveryRunButton" type="button" data-i18n="startDiscovery">Start Mining</button>
+                <button id="discoveryPauseButton" type="button" class="ghost-button" data-i18n="pauseDiscovery" disabled>Pause</button>
+                <button id="discoveryResumeButton" type="button" class="ghost-button" data-i18n="resumeDiscovery" disabled>Resume</button>
+                <button id="discoveryCancelButton" type="button" class="ghost-button danger-button" data-i18n="cancelDiscovery" disabled>Cancel</button>
+                <button id="discoveryRefreshButton" type="button" class="ghost-button"
+                  data-i18n="refreshResults">Refresh Results</button>
+              </div>
+            </div>
+
+            <div class="discovery-progress" id="discoveryProgress">
+              <div class="discovery-progress-head">
+                <strong id="discoveryProgressTitle" data-i18n="discoveryIdle">Ready</strong>
+                <span id="discoveryProgressPct">0%</span>
+              </div>
+              <div class="progress-track" aria-hidden="true">
+                <div class="progress-fill" id="discoveryProgressFill"></div>
+              </div>
+              <div class="discovery-steps">
+                <span data-discovery-step="prepare" data-i18n="stepPrepare">Prepare scope</span>
+                <span data-discovery-step="sync" data-i18n="stepSync">Sync bars</span>
+                <span data-discovery-step="scan" data-i18n="stepScan">Run scan</span>
+                <span data-discovery-step="news" data-i18n="stepNews">News score</span>
+                <span data-discovery-step="done" data-i18n="stepDone">Results</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="band metrics-band">
+          <div class="metric-grid discovery-metrics" id="discoveryMetricGrid"></div>
+        </section>
+
+        <section class="band">
+          <div class="panel wide">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker" data-i18n="discoveryResultKicker">Ranked Opportunities</p>
+                <h2 data-i18n="discoveryResults">Mining Results</h2>
+              </div>
+              <p class="panel-meta" id="discoveryResultMeta">-</p>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th data-i18n="rank">Rank</th>
+                    <th data-i18n="symbol">Symbol</th>
+                    <th data-i18n="finalOpportunityScore">Final Score</th>
+                    <th data-i18n="messageScore">News</th>
+                    <th data-i18n="quality">Quality</th>
+                    <th data-i18n="timing">Timing</th>
+                    <th data-i18n="stage">Stage</th>
+                    <th data-i18n="action">Action</th>
+                    <th data-i18n="position">Position</th>
+                    <th data-i18n="freshness">Freshness</th>
+                    <th data-i18n="operations">Ops</th>
+                  </tr>
+                </thead>
+                <tbody id="discoveryResultBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+
       <!-- ===================== TOP TAB: SETTINGS ===================== -->
       <div class="tab-container" data-tab-content="settings" hidden>
         <div class="settings-layout">
@@ -430,7 +539,7 @@
     </section>
   </div>
 
-  <script src="/static/workbench.js?v=20260613-v14"></script>
+  <script src="/static/workbench.js?v=20260613-v18"></script>
 </body>
 
 </html>

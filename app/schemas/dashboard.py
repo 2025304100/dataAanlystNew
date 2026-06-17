@@ -13,6 +13,8 @@ class DashboardOverview(BaseModel):
 
 
 class WorkbenchCandidate(BaseModel):
+    id: int | None = None
+    scan_result_id: int | None = None
     symbol_id: int
     symbol: str
     name: str
@@ -32,6 +34,10 @@ class WorkbenchCandidate(BaseModel):
     action: str | None = None
     recommended_position_pct: float | None = None
     rank_no: int | None = None
+    created_at: datetime | None = None
+    warning_days: int | None = None
+    valid_days: int | None = None
+    is_frozen: bool = False
 
 
 class WorkbenchScore(BaseModel):
@@ -53,6 +59,10 @@ class WorkbenchScore(BaseModel):
     liquidity_score: float | None = None
     breadth_score: float | None = None
     event_score: float | None = None
+    created_at: datetime | None = None
+    warning_days: int | None = None
+    valid_days: int | None = None
+    is_frozen: bool = False
 
 
 class WorkbenchWatchlist(BaseModel):
