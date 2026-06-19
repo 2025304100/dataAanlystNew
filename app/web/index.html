@@ -4,8 +4,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quant Workbench</title>
-  <link rel="stylesheet" href="/static/workbench.css?v=20260613-v18" />
+  <title>个人量化工作台</title>
+  <style>
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: #f5f1e8;
+      color: #1f2933;
+    }
+  </style>
+  <link rel="stylesheet" href="/static/workbench.css?v=20260620-v25" />
 </head>
 
 <body data-active-tab="workbench">
@@ -65,8 +74,6 @@
         <nav class="sub-tabs" aria-label="Portfolio sub-views">
           <button type="button" class="sub-tab active" data-sub-tab="portfolio-workbench"
             data-i18n="tabWorkbench">Workbench</button>
-          <button type="button" class="sub-tab" data-sub-tab="portfolio-detail"
-            data-i18n="tabDetail">Detail</button>
           <button type="button" class="sub-tab" data-sub-tab="portfolio-trading"
             data-i18n="tabTrading">Trading</button>
         </nav>
@@ -152,88 +159,6 @@
               </section>
             </div>
           </div>
-        </div>
-
-        <!-- DETAIL -->
-        <div class="sub-tab-container" data-sub-content="portfolio-detail" hidden>
-          <section class="band">
-            <div class="panel wide detail-panel">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-kicker" data-i18n="symbolDetail">Symbol Detail</p>
-                  <h2 id="detailTitle" data-i18n="selectSymbol">Select a symbol</h2>
-                </div>
-                <p class="panel-meta" id="detailMeta">-</p>
-              </div>
-              <div class="detail-dock">
-                <div class="detail-dock-head">
-                  <h3 data-i18n="recentViewed">Recent Viewed</h3>
-                </div>
-                <div class="detail-quick-rail" id="detailQuickRail"></div>
-              </div>
-              <div class="detail-grid">
-                <div class="detail-card">
-                  <h3 data-i18n="latestAssessment">Latest Assessment</h3>
-                  <div class="list" id="detailSummary"></div>
-                </div>
-                <div class="detail-card">
-                  <div class="detail-card-head">
-                    <h3 data-i18n="tradeSetup">Trade Setup</h3>
-                    <div class="detail-actions">
-                      <button id="setupButton" type="button" class="ghost-button detail-action"
-                        data-i18n="refreshPlan">Refresh Plan</button>
-                    </div>
-                  </div>
-                  <div id="orderScenarioPreview" class="scenario-preview"></div>
-                  <div class="list" id="detailSetup"></div>
-                </div>
-                <div class="detail-card wide" id="chartCard">
-                  <div class="detail-card-head">
-                    <h3 data-i18n="recentBars">Recent Bars</h3>
-                    <div class="chart-toolbar">
-                      <p class="panel-meta" id="chartMeta">-</p>
-                      <div class="detail-actions chart-actions">
-                        <div class="chart-timeframe-group" id="chartTimeframeGroup">
-                          <button id="chartDailyButton" type="button" class="ghost-button detail-action active"
-                            data-i18n="chartDaily">Daily</button>
-                          <button id="chartWeeklyButton" type="button" class="ghost-button detail-action"
-                            data-i18n="chartWeekly">Weekly</button>
-                        </div>
-                        <span class="chart-window-pill" id="chartWindowPill">-</span>
-                        <button id="chartZoomInButton" type="button" class="ghost-button detail-action"
-                          data-i18n="zoomIn">Zoom In</button>
-                        <button id="chartZoomOutButton" type="button" class="ghost-button detail-action"
-                          data-i18n="zoomOut">Zoom Out</button>
-                        <button id="chartResetButton" type="button" class="ghost-button detail-action"
-                          data-i18n="resetZoom">Reset</button>
-                        <button id="chartExpandButton" type="button" class="ghost-button detail-action"
-                          data-i18n="expandChart">Expand</button>
-                      </div>
-                    </div>
-                  </div>
-                  <p class="panel-meta chart-hint" id="chartHint"></p>
-                  <div id="detailChart" class="chart-surface"></div>
-                </div>
-                <div class="detail-card wide">
-                  <h3 data-i18n="scoreHistory">Score History</h3>
-                  <div class="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th data-i18n="date">Date</th>
-                          <th data-i18n="quality">Quality</th>
-                          <th data-i18n="timing">Timing</th>
-                          <th data-i18n="stage">Stage</th>
-                          <th data-i18n="action">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody id="detailHistory"></tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
         </div>
 
         <!-- TRADING -->
@@ -338,6 +263,96 @@
         </div>
       </div>
 
+      <!-- ===================== DETAIL MODAL ===================== -->
+      <div id="detailModalBackdrop" class="detail-modal-backdrop" hidden>
+        <section id="detailModal" class="detail-modal" role="dialog" aria-modal="true" aria-label="Symbol detail">
+          <div class="panel wide detail-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker" data-i18n="symbolDetail">Symbol Detail</p>
+                <h2 id="detailTitle" data-i18n="selectSymbol">Select a symbol</h2>
+              </div>
+              <div class="panel-head-actions">
+                <p class="panel-meta" id="detailMeta">-</p>
+                <button id="detailModalClose" type="button" class="ghost-button detail-action"
+                  data-i18n="closeDialog">Close</button>
+              </div>
+            </div>
+            <div class="detail-dock">
+              <div class="detail-dock-head">
+                <h3 data-i18n="recentViewed">Recent Viewed</h3>
+              </div>
+              <div class="detail-quick-rail" id="detailQuickRail"></div>
+            </div>
+            <div class="detail-grid">
+              <div class="detail-card">
+                <h3 data-i18n="latestAssessment">Latest Assessment</h3>
+                <div class="list" id="detailSummary"></div>
+              </div>
+              <div class="detail-card">
+                <h3 data-i18n="scoreRadar">Score Radar</h3>
+                <canvas id="detailRadar" class="radar-canvas" width="360" height="260"></canvas>
+              </div>
+              <div class="detail-card">
+                <div class="detail-card-head">
+                  <h3 data-i18n="tradeSetup">Trade Setup</h3>
+                  <div class="detail-actions">
+                    <button id="setupButton" type="button" class="ghost-button detail-action"
+                      data-i18n="refreshPlan">Refresh Plan</button>
+                  </div>
+                </div>
+                <div id="orderScenarioPreview" class="scenario-preview"></div>
+                <div class="list" id="detailSetup"></div>
+              </div>
+              <div class="detail-card wide" id="chartCard">
+                <div class="detail-card-head">
+                  <h3 data-i18n="recentBars">Recent Bars</h3>
+                  <div class="chart-toolbar">
+                    <p class="panel-meta" id="chartMeta">-</p>
+                    <div class="detail-actions chart-actions">
+                      <div class="chart-timeframe-group" id="chartTimeframeGroup">
+                        <button id="chartDailyButton" type="button" class="ghost-button detail-action active"
+                          data-i18n="chartDaily">Daily</button>
+                        <button id="chartWeeklyButton" type="button" class="ghost-button detail-action"
+                          data-i18n="chartWeekly">Weekly</button>
+                      </div>
+                      <span class="chart-window-pill" id="chartWindowPill">-</span>
+                      <button id="chartZoomInButton" type="button" class="ghost-button detail-action"
+                        data-i18n="zoomIn">Zoom In</button>
+                      <button id="chartZoomOutButton" type="button" class="ghost-button detail-action"
+                        data-i18n="zoomOut">Zoom Out</button>
+                      <button id="chartResetButton" type="button" class="ghost-button detail-action"
+                        data-i18n="resetZoom">Reset</button>
+                      <button id="chartExpandButton" type="button" class="ghost-button detail-action"
+                        data-i18n="expandChart">Expand</button>
+                    </div>
+                  </div>
+                </div>
+                <p class="panel-meta chart-hint" id="chartHint"></p>
+                <div id="detailChart" class="chart-surface"></div>
+              </div>
+              <div class="detail-card wide">
+                <h3 data-i18n="scoreHistory">Score History</h3>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th data-i18n="date">Date</th>
+                        <th data-i18n="quality">Quality</th>
+                        <th data-i18n="timing">Timing</th>
+                        <th data-i18n="stage">Stage</th>
+                        <th data-i18n="action">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="detailHistory"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
       <!-- ===================== TOP TAB: DISCOVERY ===================== -->
       <div class="tab-container" data-tab-content="discovery" hidden>
         <section class="band discovery-band">
@@ -358,6 +373,13 @@
               <label class="portfolio-picker">
                 <span data-i18n="minOpportunityScore">Min Score</span>
                 <input id="discoveryMinScoreInput" type="number" min="0" max="100" step="1" value="55" />
+              </label>
+              <label class="portfolio-picker">
+                <span data-i18n="discoveryDataMode">Data Mode</span>
+                <select id="discoveryDataModeSelect">
+                  <option value="cached" data-i18n="discoveryModeCached">Cached bars</option>
+                  <option value="sync" data-i18n="discoveryModeSync">Sync first</option>
+                </select>
               </label>
               <label class="portfolio-picker">
                 <span data-i18n="discoveryBatchSize">Batch size</span>
@@ -539,7 +561,7 @@
     </section>
   </div>
 
-  <script src="/static/workbench.js?v=20260613-v18"></script>
+  <script src="/static/workbench.js?v=20260620-v25"></script>
 </body>
 
 </html>

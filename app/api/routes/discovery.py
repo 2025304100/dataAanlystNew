@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.discovery import DiscoveryResultUpdate, DiscoveryTaskCreate, DiscoveryTaskRead
+from app.schemas.discovery import DiscoveryResultUpdate, DiscoveryScopeStatsRead, DiscoveryTaskCreate, DiscoveryTaskRead
 from app.services.discovery_tasks import (
     cancel_discovery_task,
     create_discovery_task,
+    get_discovery_scope_stats,
     get_discovery_task,
     list_discovery_tasks,
     pause_discovery_task,
@@ -25,6 +26,14 @@ def create_task(payload: DiscoveryTaskCreate):
 @router.get("/discovery/tasks", response_model=list[DiscoveryTaskRead])
 def list_tasks(limit: int = Query(default=20, ge=1, le=100)):
     return list_discovery_tasks(limit=limit)
+
+
+@router.get("/discovery/scopes/{scope}/stats", response_model=DiscoveryScopeStatsRead)
+def get_scope_stats(scope: str, db: Session = Depends(get_db)):
+    try:
+        return get_discovery_scope_stats(scope, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/discovery/tasks/{task_id}", response_model=DiscoveryTaskRead)

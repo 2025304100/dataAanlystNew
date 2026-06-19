@@ -19,6 +19,8 @@ class DiscoveryTaskCreate(BaseModel):
     news_limit: int = Field(default=30, ge=0, le=100)
     global_mode: str = "library"
     refresh_universe: bool = True
+    use_cached_bars_first: bool = True
+    use_cached_symbols_only: bool = True
     warning_days: int = Field(default=3, ge=1, le=60)
     valid_days: int = Field(default=5, ge=1, le=365)
 
@@ -53,6 +55,13 @@ class DiscoveryTaskRead(BaseModel):
     cancelled_at: datetime | None = None
     finished_at: datetime | None = None
     can_resume: bool = False
+
+
+class DiscoveryScopeStatsRead(BaseModel):
+    scope: str
+    total_symbols: int
+    cached_symbols: int
+    active_symbols: int
 
 
 class DiscoveryResultUpdate(BaseModel):

@@ -688,6 +688,13 @@ Object.assign(EXTRA_I18N["zh-CN"], {
   discoveryScopeUsStock: "美股股票",
   discoveryScopeUsEtf: "美股ETF",
   minOpportunityScore: "最低机会分",
+  discoveryDataMode: "扫描方式",
+  discoveryModeCached: "快速：只扫已有行情池",
+  discoveryModeSync: "全量：同步缺失行情后扫描",
+  discoveryUniverseTotal: "范围总池",
+  discoveryCachedPool: "快速可扫",
+  discoveryCurrentRun: "本次处理",
+  discoveryCachedNote: "不是A股总数；切全量模式可扫总池",
   discoveryBatchSize: "批量大小",
   discoveryDelay: "限流间隔",
   includeNewsScore: "合并消息面",
@@ -716,6 +723,9 @@ Object.assign(EXTRA_I18N["zh-CN"], {
   freshnessDays: "{days}天前数据",
   freshnessWarn: "接近过期",
   discoveryStarted: "机会挖掘已开始",
+  requestTimeout: "请求超时，请稍后刷新重试",
+  discoveryStartedCached: "快速扫描已开始：本次只扫描已有行情池",
+  discoveryStartedSync: "全量扫描已开始：会先同步缺失行情",
   discoveryPaused: "任务已暂停，1天内可继续",
   discoveryResumed: "任务已继续",
   discoveryCancelled: "任务已中止",
@@ -725,7 +735,14 @@ Object.assign(EXTRA_I18N["zh-CN"], {
   discoveryRowUpdated: "本条已更新",
   discoveryRowFrozen: "已冻结，不会被自动更新或过期删除",
   discoveryEmpty: "暂无挖掘结果，先选择范围开始挖掘。",
-  totalProgress: "总数 {total} / 已完成 {processed}",
+  discoveryAddWatchlist: "加入观察池",
+  discoveryInWatchlist: "已在观察池",
+  discoveryAddedWatchlist: "已加入观察池",
+  noWatchlistAvailable: "暂无可用观察池，请先创建观察池",
+  tabDetail: "标的详情",
+  scoreRadar: "评分雷达图",
+  closeDialog: "关闭",
+  totalProgress: "本次 {total} / 已完成 {processed}",
   scanCounters: "成功 {ok} / 空数据 {empty} / 失败 {failed} / 已评分 {scored}",
   taskExpiredRestart: "暂停超过1天，需重新开始",
 });
@@ -740,6 +757,13 @@ Object.assign(EXTRA_I18N["en-US"], {
   discoveryScopeUsStock: "US stocks",
   discoveryScopeUsEtf: "US ETFs",
   minOpportunityScore: "Min score",
+  discoveryDataMode: "Data mode",
+  discoveryModeCached: "Fast: cached pool only",
+  discoveryModeSync: "Full: sync missing bars",
+  discoveryUniverseTotal: "Universe",
+  discoveryCachedPool: "Fast scannable",
+  discoveryCurrentRun: "Current run",
+  discoveryCachedNote: "Not the full universe; use full mode to scan all",
   discoveryBatchSize: "Batch size",
   discoveryDelay: "Throttle",
   includeNewsScore: "Include news score",
@@ -768,6 +792,9 @@ Object.assign(EXTRA_I18N["en-US"], {
   freshnessDays: "{days}d old",
   freshnessWarn: "Near expiry",
   discoveryStarted: "Opportunity mining started",
+  requestTimeout: "Request timed out. Please refresh and retry.",
+  discoveryStartedCached: "Fast scan started: cached pool only",
+  discoveryStartedSync: "Full scan started: syncing missing bars first",
   discoveryPaused: "Paused. Resume within 1 day.",
   discoveryResumed: "Resumed",
   discoveryCancelled: "Cancelled",
@@ -777,7 +804,14 @@ Object.assign(EXTRA_I18N["en-US"], {
   discoveryRowUpdated: "Row updated",
   discoveryRowFrozen: "Frozen. It will not auto-update or expire.",
   discoveryEmpty: "No mining results yet. Pick a scope and start mining.",
-  totalProgress: "Total {total} / done {processed}",
+  discoveryAddWatchlist: "Add to Watchlist",
+  discoveryInWatchlist: "In Watchlist",
+  discoveryAddedWatchlist: "Added to watchlist",
+  noWatchlistAvailable: "No watchlist available. Create one first.",
+  tabDetail: "Symbol Detail",
+  scoreRadar: "Score Radar",
+  closeDialog: "Close",
+  totalProgress: "Run {total} / done {processed}",
   scanCounters: "OK {ok} / empty {empty} / failed {failed} / scored {scored}",
   taskExpiredRestart: "Paused for over 1 day. Start a new task.",
 });
@@ -829,6 +863,7 @@ const state = {
   detailOrder: [],
   activeWatchlistId: null,
   watchlistItems: {},
+  primaryWatchlistSymbolIds: new Set(),
   symbolDirectory: {},
   chartTimeframe: "daily",
   chartWindowSize: DEFAULT_CHART_WINDOW,
@@ -847,6 +882,7 @@ const state = {
   newsSnapshot: null,
   discoveryTask: null,
   discoveryPollTimer: null,
+  discoveryScopeStats: null,
   status: { level: "", message: "" },
 };
 
@@ -1293,6 +1329,7 @@ function renderToolbarOptions() {
   const localeSelect = document.getElementById("localeSelect");
   const marketSelect = document.getElementById("marketSelect");
   const discoveryScopeSelect = document.getElementById("discoveryScopeSelect");
+  const discoveryDataModeSelect = document.getElementById("discoveryDataModeSelect");
 
   if (localeSelect) {
     localeSelect.innerHTML = `
@@ -1320,6 +1357,15 @@ function renderToolbarOptions() {
       <option value="us-etf">${t("discoveryScopeUsEtf")}</option>
     `;
     discoveryScopeSelect.value = current;
+  }
+
+  if (discoveryDataModeSelect) {
+    const current = discoveryDataModeSelect.value || "cached";
+    discoveryDataModeSelect.innerHTML = `
+      <option value="cached">${t("discoveryModeCached")}</option>
+      <option value="sync">${t("discoveryModeSync")}</option>
+    `;
+    discoveryDataModeSelect.value = current;
   }
 }
 
@@ -1420,13 +1466,24 @@ function updateRequestIndicator() {
 async function requestJson(url, options = {}) {
   activeRequests++;
   updateRequestIndicator();
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? 20000;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  const requestOptions = { ...options, signal: options.signal ?? controller.signal };
+  delete requestOptions.timeoutMs;
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, requestOptions);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.detail || payload.message || response.statusText);
     return payload;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(t("requestTimeout"));
+    }
+    throw error;
   } finally {
-    activeRequests--;
+    window.clearTimeout(timeoutId);
+    activeRequests = Math.max(0, activeRequests - 1);
     updateRequestIndicator();
   }
 }
@@ -2266,11 +2323,14 @@ function renderDiscoveryMetrics(data) {
   if (!grid) return;
   const task = state.discoveryTask;
   const scope = document.getElementById("discoveryScopeSelect")?.value ?? "cn-stock";
+  const stats = state.discoveryScopeStats?.scope === scope ? state.discoveryScopeStats : null;
   const rows = sortedDiscoveryRows(data);
   const metrics = [
     { label: t("discoveryScope"), value: t(`discoveryScope${scope.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}`) || scope, note: t("market") },
+    { label: t("discoveryUniverseTotal"), value: stats?.total_symbols ?? "-", note: t("discoveryScope") },
+    { label: t("discoveryCachedPool"), value: stats?.cached_symbols ?? "-", note: t("discoveryCachedNote") },
     { label: t("candidates"), value: rows.length, note: t("discoveryResultKicker") },
-    { label: t("totalProgress"), value: task ? `${task.processed}/${task.total}` : "-", note: task?.message ?? t("discoveryIdle") },
+    { label: t("discoveryCurrentRun"), value: task ? `${task.processed}/${task.total}` : "-", note: task?.message ?? t("discoveryIdle") },
     { label: t("messageScore"), value: state.newsSnapshot?.symbols_total ?? 0, note: t("includeNewsScore") },
   ];
   grid.innerHTML = metrics
@@ -2303,6 +2363,7 @@ function renderDiscoveryResults(data) {
   body.innerHTML = rows
     .map((item, index) => {
       const freshness = discoveryFreshness(item);
+      const inWatchlist = isInPrimaryWatchlist(item.symbol_id);
       const rowClass = [
         state.activeSymbolId === item.symbol_id ? "active" : "",
         freshness.className === "warning" ? "discovery-row-warning" : "",
@@ -2332,6 +2393,7 @@ function renderDiscoveryResults(data) {
           <td><span class="freshness-chip ${freshness.className}">${freshness.label}</span></td>
           <td>
             <span class="row-actions">
+              <button type="button" data-discovery-action="add-watchlist" ${inWatchlist ? "disabled" : ""}>${inWatchlist ? t("discoveryInWatchlist") : t("discoveryAddWatchlist")}</button>
               <button type="button" data-discovery-action="toggle-freeze">${item.is_frozen ? t("unfreeze") : t("freeze")}</button>
               <button type="button" data-discovery-action="refresh-row">${t("updateCurrent")}</button>
             </span>
@@ -2417,9 +2479,33 @@ function renderScoreList(data) {
   });
 }
 
+function openDetailModal() {
+  const backdrop = document.getElementById("detailModalBackdrop");
+  if (!backdrop) return;
+  backdrop.hidden = false;
+  document.body.classList.add("detail-modal-open");
+  window.requestAnimationFrame(() => {
+    renderScoreRadar(state.detail);
+    renderChart(state.detail);
+  });
+}
+
+function closeDetailModal() {
+  const backdrop = document.getElementById("detailModalBackdrop");
+  if (!backdrop) return;
+  backdrop.hidden = true;
+  document.body.classList.remove("detail-modal-open");
+  if (state.chartExpanded) {
+    state.chartExpanded = false;
+    document.body.classList.remove("chart-expanded");
+    document.getElementById("chartCard")?.classList.remove("chart-card-expanded");
+    document.getElementById("detailChart")?.classList.remove("expanded");
+  }
+}
+
 function focusDetailPanel() {
-  switchTabToSub("portfolio", "portfolio-detail");
-  document.getElementById("detailTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  openDetailModal();
+  document.getElementById("detailModal")?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function ensureSymbolDirectory() {
@@ -2441,6 +2527,25 @@ async function fetchWatchlistItems(watchlistId) {
     }));
   }
   return state.watchlistItems[watchlistId];
+}
+
+function primaryWatchlist() {
+  const lists = state.workbench?.watchlists ?? [];
+  return lists.find((item) => item.list_type === "watch") ?? lists[0] ?? null;
+}
+
+async function refreshPrimaryWatchlistMembership() {
+  const watchlist = primaryWatchlist();
+  if (!watchlist) {
+    state.primaryWatchlistSymbolIds = new Set();
+    return;
+  }
+  const items = await fetchWatchlistItems(watchlist.id);
+  state.primaryWatchlistSymbolIds = new Set(items.map((item) => Number(item.symbol_id)));
+}
+
+function isInPrimaryWatchlist(symbolId) {
+  return state.primaryWatchlistSymbolIds.has(Number(symbolId));
 }
 
 async function loadWatchlistItems(watchlistId) {
@@ -3284,7 +3389,7 @@ function bindSignalStatsControls() {
     state.signalSampleLimit = value;
     input.value = value;
     if (state.activeSymbolId) {
-      await loadSymbolDetail(state.activeSymbolId);
+      await loadSymbolDetail(state.activeSymbolId, { force: true });
     }
   };
   input.addEventListener("change", applySampleLimit);
@@ -3296,6 +3401,92 @@ function bindSignalStatsControls() {
       applySampleLimit().catch((error) => setStatus("error", error.message));
     }, 550);
   });
+}
+
+function renderScoreRadar(detail) {
+  const canvas = document.getElementById("detailRadar");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(300, Math.floor(rect.width || canvas.width));
+  const height = Math.max(240, Math.floor(rect.height || canvas.height));
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#fffaf0";
+  ctx.fillRect(0, 0, width, height);
+
+  const latest = detail?.latest_score;
+  const metrics = [
+    { label: t("trendScore"), value: latest?.trend_score },
+    { label: t("momentumScore"), value: latest?.momentum_score },
+    { label: t("volatilityScore"), value: latest?.volatility_score },
+    { label: t("liquidityScore"), value: latest?.liquidity_score },
+    { label: t("breadthScore"), value: latest?.breadth_score },
+    { label: t("eventScore"), value: latest?.event_score },
+  ].map((item) => ({ ...item, value: clamp(Number(item.value ?? 0), 0, 100) }));
+
+  const cx = width / 2;
+  const cy = height / 2 + 4;
+  const radius = Math.min(width, height) * 0.32;
+  const angleStep = (Math.PI * 2) / metrics.length;
+  const start = -Math.PI / 2;
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(31, 41, 51, 0.12)";
+  ctx.fillStyle = "rgba(31, 41, 51, 0.52)";
+  ctx.font = "12px Segoe UI, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  [0.25, 0.5, 0.75, 1].forEach((level) => {
+    ctx.beginPath();
+    metrics.forEach((_, index) => {
+      const angle = start + index * angleStep;
+      const x = cx + Math.cos(angle) * radius * level;
+      const y = cy + Math.sin(angle) * radius * level;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+  });
+
+  metrics.forEach((item, index) => {
+    const angle = start + index * angleStep;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+
+    const labelX = cx + Math.cos(angle) * (radius + 34);
+    const labelY = cy + Math.sin(angle) * (radius + 22);
+    ctx.fillText(item.label, labelX, labelY - 7);
+    ctx.fillStyle = "#0f766e";
+    ctx.font = "700 12px Segoe UI, sans-serif";
+    ctx.fillText(score(item.value), labelX, labelY + 8);
+    ctx.fillStyle = "rgba(31, 41, 51, 0.52)";
+    ctx.font = "12px Segoe UI, sans-serif";
+  });
+
+  ctx.beginPath();
+  metrics.forEach((item, index) => {
+    const angle = start + index * angleStep;
+    const x = cx + Math.cos(angle) * radius * (item.value / 100);
+    const y = cy + Math.sin(angle) * radius * (item.value / 100);
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.closePath();
+  ctx.fillStyle = "rgba(15, 118, 110, 0.18)";
+  ctx.strokeStyle = "#0f766e";
+  ctx.lineWidth = 2;
+  ctx.fill();
+  ctx.stroke();
 }
 
 function renderDetail(detail) {
@@ -3323,6 +3514,7 @@ function renderDetail(detail) {
     if (meta) meta.textContent = "-";
     setEmpty(summary, t("noDetail"));
     setEmpty(setup, t("latestTradeSetupEmpty"));
+    renderScoreRadar(null);
     if (history) history.innerHTML = `<tr><td colspan="5" class="empty">${t("noDetail")}</td></tr>`;
     renderChart(null);
     if (trades) setEmpty(trades, t("noTrades"));
@@ -3338,6 +3530,7 @@ function renderDetail(detail) {
     `${t("regionLabel")}: ${regionLongLabel(detail.symbol.region)}`,
     `${t("assetLabel")}: ${assetTypeLabel(detail.symbol.asset_type)}`,
   ]);
+  renderScoreRadar(detail);
 
   const summaryRows = [];
   if (detail.latest_score) {
@@ -3533,6 +3726,15 @@ function renderDetail(detail) {
 async function loadSymbolDetail(symbolId, options = {}) {
   state.activeSymbolId = symbolId;
   resetChartInteraction();
+  const cached = state.detailCache[symbolId];
+  if (cached && !options.force) {
+    renderDetail(cached);
+    if (options.focus) {
+      focusDetailPanel();
+    }
+    scheduleSignalRulePreview();
+    return cached;
+  }
   const params = new URLSearchParams({
     portfolio_id: String(state.portfolioId),
     symbol_id: String(symbolId),
@@ -3543,9 +3745,10 @@ async function loadSymbolDetail(symbolId, options = {}) {
   const detail = await requestJson(`/api/v1/dashboard/symbol-detail?${params.toString()}`);
   renderDetail(detail);
   scheduleSignalRulePreview();
-  if (options.focus) {
+  if (options.focus && !cached) {
     focusDetailPanel();
   }
+  return detail;
 }
 
 async function generateTradeSetup() {
@@ -3559,7 +3762,7 @@ async function generateTradeSetup() {
       score_id: state.detail.latest_score.id,
     }),
   });
-  await loadSymbolDetail(state.activeSymbolId);
+  await loadSymbolDetail(state.activeSymbolId, { force: true });
   setStatus("success", template("planSummary"));
 }
 
@@ -3826,8 +4029,10 @@ function renderTradingTab(detail) {
 
 async function loadWorkbench() {
   if (!state.portfolioId) return;
+  await loadDiscoveryScopeStats();
   const data = await requestJson(`/api/v1/dashboard/workbench?portfolio_id=${state.portfolioId}&market_group=${state.marketGroup}`);
   state.workbench = data;
+  await refreshPrimaryWatchlistMembership();
   await loadLatestNewsSnapshot(data);
   renderTodayOpportunities(data);
   renderMetrics(data);
@@ -3844,15 +4049,10 @@ async function loadWorkbench() {
     ...data.candidates.map((item) => item.symbol_id),
     ...data.latest_scores.map((item) => item.symbol_id),
   ]);
-  if (state.activeSymbolId && visibleSymbolIds.has(state.activeSymbolId)) {
-    await loadSymbolDetail(state.activeSymbolId);
-  } else if (data.latest_scores.length) {
-    await loadSymbolDetail(data.latest_scores[0].symbol_id);
-  } else if (data.candidates.length) {
-    await loadSymbolDetail(data.candidates[0].symbol_id);
+  if (state.activeSymbolId && visibleSymbolIds.has(state.activeSymbolId) && (state.detail || state.detailCache[state.activeSymbolId])) {
+    await loadSymbolDetail(state.activeSymbolId, { force: true });
   } else {
-    state.activeSymbolId = null;
-    renderDetail(null);
+    renderDetail(state.detail ?? null);
   }
 }
 
@@ -3943,6 +4143,7 @@ async function runScan() {
 }
 
 function buildDiscoveryPayload() {
+  const dataMode = document.getElementById("discoveryDataModeSelect")?.value || "cached";
   return {
     scope: document.getElementById("discoveryScopeSelect")?.value || "cn-stock",
     min_score: Number(document.getElementById("discoveryMinScoreInput")?.value || 55),
@@ -3954,7 +4155,9 @@ function buildDiscoveryPayload() {
     warning_days: Number(document.getElementById("discoveryWarningDaysInput")?.value || 3),
     valid_days: Number(document.getElementById("discoveryValidDaysInput")?.value || 5),
     news_limit: 30,
-    refresh_universe: true,
+    refresh_universe: dataMode === "sync",
+    use_cached_bars_first: true,
+    use_cached_symbols_only: dataMode === "cached",
     global_mode: "library",
   };
 }
@@ -3965,7 +4168,7 @@ function updateDiscoveryButtons(task) {
 
 async function fetchDiscoveryTasks() {
   const tasks = await requestJson("/api/v1/discovery/tasks?limit=10");
-  const active = tasks.find((item) => ["queued", "running", "paused"].includes(item.status)) ?? tasks[0] ?? null;
+  const active = tasks.find((item) => ["queued", "running"].includes(item.status)) ?? tasks.find((item) => item.status === "paused" && item.can_resume) ?? tasks[0] ?? null;
   state.discoveryTask = active;
   updateDiscoveryButtons(active);
   return tasks;
@@ -3980,7 +4183,7 @@ async function runDiscoveryMining() {
   });
   state.discoveryTask = task;
   updateDiscoveryButtons(task);
-  setStatus("success", t("discoveryStarted"));
+  setStatus("success", payload.use_cached_symbols_only ? t("discoveryStartedCached") : t("discoveryStartedSync"));
   await loadWorkbench();
   startDiscoveryPolling();
 }
@@ -3999,6 +4202,21 @@ async function handleDiscoveryRowAction(button) {
   const scanResultId = Number(row?.dataset.scanResultId);
   if (!scanResultId) return;
   const action = button.dataset.discoveryAction;
+  const symbolId = Number(row?.dataset.symbolId);
+  if (action === "add-watchlist") {
+    const watchlist = primaryWatchlist();
+    if (!watchlist) {
+      setStatus("error", t("noWatchlistAvailable"));
+      return;
+    }
+    button.disabled = true;
+    await addSymbolToWatchlist(watchlist.id, symbolId);
+    await refreshPrimaryWatchlistMembership();
+    renderDiscoveryResults(state.workbench);
+    renderWatchlists(state.workbench);
+    setStatus("success", t("discoveryAddedWatchlist"));
+    return;
+  }
   if (action === "toggle-freeze") {
     const item = (state.workbench?.candidates ?? []).find((candidate) => Number(candidate.scan_result_id ?? candidate.id) === scanResultId);
     const nextFrozen = !(item?.is_frozen);
@@ -4030,10 +4248,10 @@ function startDiscoveryPolling() {
   state.discoveryPollTimer = window.setInterval(async () => {
     try {
       const tasks = await requestJson("/api/v1/discovery/tasks?limit=10");
-      const current = tasks.find((item) => ["queued", "running", "paused"].includes(item.status)) ?? tasks[0] ?? null;
+      const current = tasks.find((item) => ["queued", "running"].includes(item.status)) ?? tasks[0] ?? null;
       state.discoveryTask = current;
       renderDiscoveryTask(current);
-      if (!current || ["done", "failed", "cancelled", "expired"].includes(current.status)) {
+      if (!current || ["done", "failed", "cancelled", "expired", "paused"].includes(current.status)) {
         stopDiscoveryPolling();
         if (current?.status === "done") {
           setStatus("success", t("discoveryCompleted"));
@@ -4042,10 +4260,7 @@ function startDiscoveryPolling() {
           setStatus("error", t("taskExpiredRestart"));
         }
       }
-      if (state.workbench) {
-        renderDiscoveryResults(state.workbench);
-        renderDiscoveryMetrics(state.workbench);
-      }
+      if (state.workbench) renderDiscoveryMetrics(state.workbench);
     } catch (error) {
       console.warn("Discovery polling failed", error);
     }
@@ -4056,6 +4271,15 @@ function stopDiscoveryPolling() {
   if (state.discoveryPollTimer) {
     window.clearInterval(state.discoveryPollTimer);
     state.discoveryPollTimer = null;
+  }
+}
+
+async function loadDiscoveryScopeStats() {
+  const scope = document.getElementById("discoveryScopeSelect")?.value || "cn-stock";
+  try {
+    state.discoveryScopeStats = await requestJson(`/api/v1/discovery/scopes/${encodeURIComponent(scope)}/stats`);
+  } catch (error) {
+    console.warn("Discovery scope stats failed", error);
   }
 }
 
@@ -4172,6 +4396,15 @@ document.getElementById("localeSelect").addEventListener("change", async (event)
 document.getElementById("marketSelect").addEventListener("change", async (event) => {
   state.marketGroup = event.target.value;
   await loadWorkbench();
+});
+
+document.getElementById("discoveryScopeSelect")?.addEventListener("change", async () => {
+  await loadDiscoveryScopeStats();
+  if (state.workbench) renderDiscoveryMetrics(state.workbench);
+});
+
+document.getElementById("discoveryDataModeSelect")?.addEventListener("change", () => {
+  if (state.workbench) renderDiscoveryMetrics(state.workbench);
 });
 
 document.getElementById("refreshButton").addEventListener("click", async () => {
@@ -4420,6 +4653,16 @@ document.getElementById("metricModalBackdrop").addEventListener("click", (event)
   }
 });
 
+document.getElementById("detailModalClose")?.addEventListener("click", () => {
+  closeDetailModal();
+});
+
+document.getElementById("detailModalBackdrop")?.addEventListener("click", (event) => {
+  if (event.target === event.currentTarget) {
+    closeDetailModal();
+  }
+});
+
 document.getElementById("detailChart").addEventListener(
   "wheel",
   (event) => {
@@ -4438,6 +4681,18 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape" && state.chartExpanded) {
     toggleChartExpanded();
+    return;
+  }
+  const modalDetailOpen = !document.getElementById("detailModalBackdrop")?.hidden;
+  if (event.key === "Escape" && modalDetailOpen) {
+    closeDetailModal();
+  }
+});
+
+window.addEventListener("resize", () => {
+  const modalDetailOpen = !document.getElementById("detailModalBackdrop")?.hidden;
+  if (modalDetailOpen) {
+    renderScoreRadar(state.detail);
   }
 });
 

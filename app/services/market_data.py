@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+from app.services.akshare_utils import quiet_akshare_output
 from app.models.daily_bar import DailyBar
 from app.models.scan import ScanResult
 from app.models.symbol import Symbol
@@ -201,64 +202,65 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
     for attempt in range(3):
         try:
             with _proxy_bypass():
-                if region == "cn" and symbol.asset_type == "stock":
-                    try:
-                        return _normalize_cn_em_history(
-                            ak.stock_zh_a_hist(
-                                symbol=symbol.symbol,
-                                period="daily",
-                                start_date=start,
-                                end_date=end,
-                                adjust=adjust,
-                            )
-                        )
-                    except Exception:
-                        logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
+                with quiet_akshare_output():
+                    if region == "cn" and symbol.asset_type == "stock":
                         try:
-                            return _normalize_cn_stock_sina_history(
-                                ak.stock_zh_a_daily(
-                                    symbol=_cn_prefixed_symbol(symbol),
+                            return _normalize_cn_em_history(
+                                ak.stock_zh_a_hist(
+                                    symbol=symbol.symbol,
+                                    period="daily",
                                     start_date=start,
                                     end_date=end,
                                     adjust=adjust,
-                                ),
-                                start_date=start_date,
-                                end_date=end_date,
+                                )
                             )
                         except Exception:
                             logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
-                            return _normalize_cn_stock_tx_history(
-                                ak.stock_zh_a_hist_tx(
-                                    symbol=_cn_prefixed_symbol(symbol),
+                            try:
+                                return _normalize_cn_stock_sina_history(
+                                    ak.stock_zh_a_daily(
+                                        symbol=_cn_prefixed_symbol(symbol),
+                                        start_date=start,
+                                        end_date=end,
+                                        adjust=adjust,
+                                    ),
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                )
+                            except Exception:
+                                logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
+                                return _normalize_cn_stock_tx_history(
+                                    ak.stock_zh_a_hist_tx(
+                                        symbol=_cn_prefixed_symbol(symbol),
+                                        start_date=start,
+                                        end_date=end,
+                                        adjust=adjust,
+                                    ),
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                )
+                    if region == "cn" and symbol.asset_type == "etf":
+                        try:
+                            return _normalize_cn_em_history(
+                                ak.fund_etf_hist_em(
+                                    symbol=symbol.symbol,
+                                    period="daily",
                                     start_date=start,
                                     end_date=end,
                                     adjust=adjust,
-                                ),
+                                )
+                            )
+                        except Exception:
+                            logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
+                            return _normalize_cn_etf_sina_history(
+                                ak.fund_etf_hist_sina(symbol=_cn_prefixed_symbol(symbol)),
                                 start_date=start_date,
                                 end_date=end_date,
                             )
-                if region == "cn" and symbol.asset_type == "etf":
-                    try:
-                        return _normalize_cn_em_history(
-                            ak.fund_etf_hist_em(
-                                symbol=symbol.symbol,
-                                period="daily",
-                                start_date=start,
-                                end_date=end,
-                                adjust=adjust,
-                            )
-                        )
-                    except Exception:
-                        logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
-                        return _normalize_cn_etf_sina_history(
-                            ak.fund_etf_hist_sina(symbol=_cn_prefixed_symbol(symbol)),
-                            start_date=start_date,
-                            end_date=end_date,
-                        )
-                if region == "us":
-                    us_adjust = adjust if adjust in {"", "qfq"} else ""
-                    frame = ak.stock_us_daily(symbol=symbol.symbol, adjust=us_adjust)
-                    return _normalize_us_history(frame=frame, start_date=start_date, end_date=end_date)
+                    if region == "us":
+                        us_adjust = adjust if adjust in {"", "qfq"} else ""
+                        frame = ak.stock_us_daily(symbol=symbol.symbol, adjust=us_adjust)
+                        return _normalize_us_history(frame=frame, start_date=start_date, end_date=end_date)
         except Exception as exc:
             last_error = exc
             logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)

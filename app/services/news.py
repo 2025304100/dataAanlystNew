@@ -18,6 +18,7 @@ from app.models.scan import ScanResult, ScanRun
 from app.models.symbol import Symbol
 from app.models.watchlist import WatchlistItem
 from app.schemas.news import NewsEventRead, NewsMacroSummary, NewsSymbolSummary, NewsUpdateRequest
+from app.services.akshare_utils import quiet_akshare_output
 
 
 POSITIVE_KEYWORDS = {
@@ -192,29 +193,31 @@ def _fetch_symbol_events(symbol: Symbol, days: int) -> list[dict]:
     events: list[dict] = []
     if symbol.market.lower() in {"sh", "sz", "bj"}:
         try:
-            frame = ak.stock_news_em(symbol=symbol.symbol)
+            with quiet_akshare_output():
+                frame = ak.stock_news_em(symbol=symbol.symbol)
             for row in frame.head(30).to_dict("records"):
                 event = _normalize_event(symbol, row, "eastmoney-news")
                 if event is not None:
                     events.append(event)
         except Exception:
-            logger.warning("Failed to fetch events for %s", symbol.symbol if hasattr(symbol, 'symbol') else "unknown", exc_info=True)
+            logger.debug("Failed to fetch Eastmoney events for %s", symbol.symbol, exc_info=True)
 
         start_date = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)).strftime("%Y%m%d")
         end_date = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
         try:
-            frame = ak.stock_zh_a_disclosure_report_cninfo(
-                symbol=symbol.symbol,
-                market="沪深京",
-                start_date=start_date,
-                end_date=end_date,
-            )
+            with quiet_akshare_output():
+                frame = ak.stock_zh_a_disclosure_report_cninfo(
+                    symbol=symbol.symbol,
+                    market="沪深京",
+                    start_date=start_date,
+                    end_date=end_date,
+                )
             for row in frame.head(30).to_dict("records"):
                 event = _normalize_event(symbol, row, "cninfo")
                 if event is not None:
                     events.append(event)
         except Exception:
-            logger.warning("Failed to fetch events for %s", symbol.symbol if hasattr(symbol, 'symbol') else "unknown", exc_info=True)
+            logger.debug("Failed to fetch cninfo events for %s", symbol.symbol, exc_info=True)
     return _filter_recent(events, days)
 
 
@@ -222,13 +225,14 @@ def _fetch_macro_events(days: int) -> list[dict]:
     events: list[dict] = []
     for fetcher in (ak.news_cctv, ak.news_economic_baidu, ak.news_report_time_baidu):
         try:
-            frame = fetcher()
+            with quiet_akshare_output():
+                frame = fetcher()
             for row in frame.head(40).to_dict("records"):
                 event = _normalize_event(None, row, "macro-news")
                 if event is not None:
                     events.append(event)
         except Exception:
-            logger.warning("Failed to fetch macro events", exc_info=True)
+            logger.debug("Failed to fetch macro events", exc_info=True)
     return _filter_recent(events, days)
 
 

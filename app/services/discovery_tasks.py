@@ -4,11 +4,12 @@ from datetime import datetime, timedelta, timezone
 import json
 import threading
 import time
+import traceback
 import uuid
 from typing import Any
 
 import akshare as ak
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -17,6 +18,7 @@ from app.models.discovery import DiscoveryTaskRecord
 from app.models.scan import ScanResult
 from app.models.symbol import Symbol
 from app.schemas.discovery import DiscoveryTaskCreate
+from app.services.akshare_utils import quiet_akshare_output
 from app.schemas.news import NewsUpdateRequest
 from app.services.allocation import get_active_rule, get_default_portfolio
 from app.services.analysis import calculate_symbol_score
@@ -48,6 +50,7 @@ DISCOVERY_SCOPE_CONFIG = {
 }
 
 RESUME_DEADLINE = timedelta(days=1)
+STALE_RUNNING_DEADLINE = timedelta(minutes=30)
 
 
 def _now() -> datetime:
@@ -118,6 +121,7 @@ def _append_error(task: DiscoveryTaskRecord, error: dict) -> None:
 def list_discovery_tasks(limit: int = 20) -> list[dict]:
     db = SessionLocal()
     try:
+        _expire_stale_tasks(db)
         rows = (
             db.execute(select(DiscoveryTaskRecord).order_by(desc(DiscoveryTaskRecord.created_at)).limit(limit))
             .scalars()
@@ -131,10 +135,35 @@ def list_discovery_tasks(limit: int = 20) -> list[dict]:
 def get_discovery_task(task_id: str) -> dict | None:
     db = SessionLocal()
     try:
+        _expire_stale_tasks(db)
         task = db.get(DiscoveryTaskRecord, task_id)
         return _task_to_dict(task) if task is not None else None
     finally:
         db.close()
+
+
+def _expire_stale_tasks(db: Session) -> None:
+    cutoff = _now() - STALE_RUNNING_DEADLINE
+    rows = (
+        db.execute(
+            select(DiscoveryTaskRecord).where(
+                DiscoveryTaskRecord.status.in_(("queued", "running")),
+                DiscoveryTaskRecord.updated_at < cutoff,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return
+    for task in rows:
+        task.status = "failed"
+        task.stage = "failed"
+        task.percent = 100
+        task.message = "任务长时间无进度，已自动中断，请重新开始"
+        task.finished_at = _now()
+        _append_error(task, {"scope": "task", "error": "stale task auto-expired"})
+    db.commit()
 
 
 def create_discovery_task(payload: DiscoveryTaskCreate) -> dict:
@@ -299,7 +328,8 @@ def _upsert_symbol(
 
 
 def _refresh_cn_stock_universe(db: Session) -> dict:
-    frame = ak.stock_info_a_code_name()
+    with quiet_akshare_output():
+        frame = ak.stock_info_a_code_name()
     created = 0
     seen = 0
     for row in frame.to_dict("records"):
@@ -336,12 +366,14 @@ def _refresh_cn_etf_universe(db: Session) -> dict:
     created = 0
     seen = 0
     try:
-        frame = ak.fund_etf_spot_em()
+        with quiet_akshare_output():
+            frame = ak.fund_etf_spot_em()
         records = frame.to_dict("records")
         code_keys = ["代码", "基金代码", "symbol", "code"]
         name_keys = ["名称", "基金简称", "name"]
     except Exception:
-        frame = ak.fund_etf_category_sina()
+        with quiet_akshare_output():
+            frame = ak.fund_etf_category_sina()
         records = frame.to_dict("records")
         code_keys = ["代码", "symbol", "code"]
         name_keys = ["名称", "name"]
@@ -392,10 +424,42 @@ def _resolve_discovery_symbols(db: Session, payload: DiscoveryTaskCreate) -> lis
     markets = markets_for_region(region)
     if markets:
         stmt = stmt.where(Symbol.market.in_(markets))
+    if payload.use_cached_symbols_only:
+        stmt = stmt.join(DailyBar, DailyBar.symbol_id == Symbol.id).distinct()
     stmt = stmt.order_by(Symbol.id.asc())
     if payload.symbol_limit is not None:
         stmt = stmt.limit(payload.symbol_limit)
     return db.execute(stmt).scalars().all()
+
+
+def get_discovery_scope_stats(scope: str, db: Session) -> dict:
+    if scope not in DISCOVERY_SCOPE_CONFIG:
+        raise ValueError(f"Unsupported discovery scope: {scope}")
+    config = DISCOVERY_SCOPE_CONFIG[scope]
+    stmt = select(func.count(Symbol.id)).where(Symbol.is_active == 1)
+    cached_stmt = (
+        select(func.count(func.distinct(Symbol.id)))
+        .select_from(Symbol)
+        .join(DailyBar, DailyBar.symbol_id == Symbol.id)
+        .where(Symbol.is_active == 1)
+    )
+    asset_type = config.get("asset_type")
+    region = config.get("region")
+    if asset_type:
+        stmt = stmt.where(Symbol.asset_type == asset_type)
+        cached_stmt = cached_stmt.where(Symbol.asset_type == asset_type)
+    markets = markets_for_region(region)
+    if markets:
+        stmt = stmt.where(Symbol.market.in_(markets))
+        cached_stmt = cached_stmt.where(Symbol.market.in_(markets))
+    total_symbols = db.execute(stmt).scalar_one()
+    cached_symbols = db.execute(cached_stmt).scalar_one()
+    return {
+        "scope": scope,
+        "total_symbols": int(total_symbols or 0),
+        "cached_symbols": int(cached_symbols or 0),
+        "active_symbols": int(cached_symbols or 0),
+    }
 
 
 def _resolve_portfolio_refs(db: Session, portfolio_id: int | None, portfolio_rule_id: int | None) -> tuple[int | None, int | None]:
@@ -424,6 +488,29 @@ def _sync_one_symbol(
     payload: DiscoveryTaskCreate,
     portfolio_id: int | None,
 ) -> tuple[dict, bool]:
+    cached_bar = _latest_bar(db, symbol)
+    if payload.use_cached_bars_first and cached_bar is not None:
+        score = calculate_symbol_score(db=db, symbol=symbol, trade_date=cached_bar.trade_date)
+        if portfolio_id is not None:
+            upsert_trade_setup(db=db, portfolio_id=portfolio_id, symbol=symbol, score=score)
+        return (
+            {
+                "symbol_id": symbol.id,
+                "symbol": symbol.symbol,
+                "asset_type": symbol.asset_type,
+                "status": "ok",
+                "source": "cached_bars",
+                "rows": 0,
+                "latest_score": {
+                    "trade_date": cached_bar.trade_date.isoformat(),
+                    "quality_score": score.quality_score,
+                    "timing_score": score.timing_score,
+                    "stage": score.stage,
+                    "action": score.action,
+                },
+            },
+            True,
+        )
     refresh_symbol_name(symbol)
     result = sync_symbol_daily_bars(
         db=db,
@@ -638,7 +725,7 @@ def _run_discovery_task(task_id: str) -> None:
             task.percent = 100
             task.message = f"机会挖掘失败：{exc}"
             task.finished_at = _now()
-            _append_error(task, {"scope": "task", "error": str(exc)})
+            _append_error(task, {"scope": "task", "error": str(exc), "traceback": traceback.format_exc(limit=8)})
             db.commit()
     finally:
         db.close()
