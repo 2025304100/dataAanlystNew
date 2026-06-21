@@ -70,7 +70,7 @@ interface AppContextValue extends AppState {
   showToast: (type: "success" | "error" | "info", msg: string) => void;
   loadPortfolios: () => Promise<void>;
   loadWorkbench: () => Promise<void>;
-  loadSymbolDetail: (symbolId: number, options?: { force?: boolean; focus?: boolean }) => Promise<SymbolDetail | undefined>;
+  loadSymbolDetail: (symbolId: number, options?: { force?: boolean; focus?: boolean; barLimit?: number }) => Promise<SymbolDetail | undefined>;
   loadSignalRuleConfig: () => Promise<void>;
   updateSignalRule: (partial: Partial<SignalRule>) => void;
   saveSignalRule: () => Promise<void>;
@@ -275,7 +275,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.marketGroup, state.activeSymbolId, state.detail, state.detailCache, update]);
 
-  const loadSymbolDetail = useCallback(async (symbolId: number, options?: { force?: boolean; focus?: boolean }): Promise<SymbolDetail | undefined> => {
+  const loadSymbolDetail = useCallback(async (symbolId: number, options?: { force?: boolean; focus?: boolean; barLimit?: number }): Promise<SymbolDetail | undefined> => {
     update({ activeSymbolId: symbolId, chartRange: null, chartWindowSize: DEFAULT_CHART_WINDOW });
     const cached = state.detailCache[symbolId];
     if (cached && !options?.force) {
@@ -285,7 +285,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     const pid = portfolioIdRef.current;
     if (!pid) return;
-    const detail = await api.getSymbolDetail(pid, symbolId, state.signalSampleLimit ?? undefined);
+    const detail = await api.getSymbolDetail(pid, symbolId, state.signalSampleLimit ?? undefined, options?.barLimit);
     // Remember detail
     const newCache = { ...state.detailCache, [symbolId]: detail };
     const newOrder = [symbolId, ...state.detailOrder.filter((item) => item !== symbolId)].slice(0, 4);

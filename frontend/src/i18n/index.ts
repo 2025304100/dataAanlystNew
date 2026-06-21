@@ -203,6 +203,9 @@ const I18N: Record<string, Record<string, string>> = {
     trancheLabelStarter: "建仓",
     trancheLabelTrend: "加仓",
     trancheLabelMomentum: "追涨",
+    trancheLabelProbe: "试探",
+    trancheLabelConfirm: "确认",
+    trancheLabelExpand: "扩展",
     // Tranche trigger translations
     trancheTriggerPullback: "回落进入 {zone} 区间内买入",
     trancheTriggerBreakout: "突破后回踩站稳再买，大幅跳空则跳过",
@@ -250,6 +253,12 @@ const I18N: Record<string, Record<string, string>> = {
     tabTrading: "模拟交易",
     tabRules: "规则配置",
     tabPortfolio: "目前观察池",
+    tabInvestmentCenter: "投资中心",
+    // 投资中心搜索栏
+    searchSymbolPlaceholder: "输入股票/ETF代码，如 000001、510300、AAPL",
+    quickAccess: "快捷入口",
+    searching: "搜索中...",
+    noSearchResult: "未找到匹配标的",
     tabSettings: "设置",
     subOverview: "总览",
     subJournals: "交易日记",
@@ -602,6 +611,9 @@ const I18N: Record<string, Record<string, string>> = {
     trancheLabelStarter: "Starter",
     trancheLabelTrend: "Trend",
     trancheLabelMomentum: "Momentum",
+    trancheLabelProbe: "Probe",
+    trancheLabelConfirm: "Confirm",
+    trancheLabelExpand: "Expand",
     // Tranche trigger translations
     trancheTriggerPullback: "Buy on pullback into {zone}",
     trancheTriggerBreakout: "Buy after breakout retest hold; skip if gaps above zone",
@@ -649,6 +661,12 @@ const I18N: Record<string, Record<string, string>> = {
     tabTrading: "Trading",
     tabRules: "Rules",
     tabPortfolio: "Portfolio",
+    tabInvestmentCenter: "Investment Center",
+    // Investment center search bar
+    searchSymbolPlaceholder: "Enter stock/ETF code, e.g. 000001, 510300, AAPL",
+    quickAccess: "Quick Access",
+    searching: "Searching...",
+    noSearchResult: "No matching symbols found",
     tabSettings: "Settings",
     subOverview: "Overview",
     subJournals: "Journals",
@@ -919,6 +937,9 @@ const TRANCHE_LABEL_MAP: Record<string, string> = {
   Starter: "trancheLabelStarter",
   Trend: "trancheLabelTrend",
   Momentum: "trancheLabelMomentum",
+  Probe: "trancheLabelProbe",
+  Confirm: "trancheLabelConfirm",
+  Expand: "trancheLabelExpand",
 };
 export function trancheLabel(value: string): string {
   const key = TRANCHE_LABEL_MAP[value];

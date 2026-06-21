@@ -417,6 +417,7 @@ def get_symbol_detail_panel(
     symbol_id: int = Query(...),
     portfolio_id: int = Query(...),
     sample_limit: int | None = Query(default=None, ge=5, le=240),
+    bar_limit: int = Query(default=60, ge=20, le=500),
     db: Session = Depends(get_db),
 ):
     portfolio = db.get(Portfolio, portfolio_id)
@@ -439,7 +440,7 @@ def get_symbol_detail_panel(
         select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id)).limit(20)
     ).scalars().all()
     bar_rows = db.execute(
-        select(DailyBar).where(DailyBar.symbol_id == symbol_id).order_by(desc(DailyBar.trade_date)).limit(60)
+        select(DailyBar).where(DailyBar.symbol_id == symbol_id).order_by(desc(DailyBar.trade_date)).limit(bar_limit)
     ).scalars().all()
     journal_rows = db.execute(
         select(JournalEntry)

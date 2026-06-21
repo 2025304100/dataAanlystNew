@@ -7,6 +7,7 @@ import { t, template } from "./i18n";
 import { regionLongLabel } from "./i18n";
 import PortfolioWorkbench from "./components/PortfolioWorkbench";
 import Trading from "./components/Trading";
+import InvestmentCenter from "./components/InvestmentCenter";  // 新增：投资中心组件
 import Discovery from "./components/Discovery";
 import Settings from "./components/Settings";
 import DetailModal from "./components/DetailModal";
@@ -23,12 +24,12 @@ export default function App() {
   const [metricModalType, setMetricModalType] = useState<string | null>(null);
   const symbolCodeRef = useRef<InputRef>(null);
 
-  // Open detail modal when activeSymbolId changes and focus is requested
+  // Open detail modal when activeSymbolId changes (only in portfolio tab, not in investment center where detail is inline)
   useEffect(() => {
-    if (ctx.activeSymbolId && ctx.detail) {
+    if (ctx.activeSymbolId && ctx.detail && ctx.activeTab === "portfolio") {
       setDetailModalOpen(true);
     }
-  }, [ctx.activeSymbolId, ctx.detail]);
+  }, [ctx.activeSymbolId, ctx.detail, ctx.activeTab]);
 
   const handleAddSymbol = useCallback(async () => {
     if (!symbolCode.trim()) return;
@@ -104,6 +105,15 @@ export default function App() {
       {activeRequests > 0 && <div className="request-indicator" />}
 
       <nav className="view-tabs" aria-label="Main views">
+        {/* ✨ 新增：投资中心导航（放在第一位） */}
+        <button
+          className={`view-tab${ctx.activeTab === "investment" ? " active" : ""}`}
+          onClick={() => ctx.setActiveTab("investment")}
+        >
+          {t("tabInvestmentCenter")}
+        </button>
+
+        {/* 原有导航保持不变 */}
         <button
           className={`view-tab${ctx.activeTab === "portfolio" ? " active" : ""}`}
           onClick={() => ctx.setActiveTab("portfolio")}
@@ -125,6 +135,12 @@ export default function App() {
       </nav>
 
       <main className="layout">
+        {/* ✨ 新增：投资中心整合视图 */}
+        {ctx.activeTab === "investment" && (
+          <InvestmentCenter openMetricModal={openMetricModal} />
+        )}
+
+        {/* 原有逻辑完全保留 */}
         {ctx.activeTab === "portfolio" && (
           <div className="tab-container" data-tab-content="portfolio">
             <header className="topbar">

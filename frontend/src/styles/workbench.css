@@ -2389,3 +2389,447 @@ td .symbol-name {
   overflow-y: auto !important;
   overflow-x: hidden !important;
 }
+
+/* ============================================================
+   INVESTMENT CENTER - 投资中心整合视图样式
+   ============================================================ */
+
+/* ── 投资中心容器 ── */
+.investment-center {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: calc(100vh - 120px);
+  position: relative;
+}
+
+.ic__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 桌面端：顶部搜索 + 全宽内容 ── */
+.ic__desktop-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* 全宽模式：改为纵向排列 */
+.ic__layout--fullwidth {
+  flex-direction: column;
+}
+
+/* 顶部搜索栏 - 独占一行 */
+.ic__top-search {
+  position: relative;
+  padding: 12px 20px 8px;
+  background: rgba(255, 252, 245, 0.95);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.ic__top-input {
+  max-width: 560px;
+}
+
+.ic__top-input .ant-input {
+  border-radius: 10px;
+  font-size: 14px;
+  height: 40px;
+  padding-left: 36px;
+}
+
+.ic__top-search .ic__search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 20px;
+  width: min(560px, calc(100% - 40px));
+  z-index: 200;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 28px rgba(31, 41, 51, 0.15);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* 快捷入口条（搜索下方标签） */
+.ic__quick-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 20px 4px;
+  background: rgba(255, 252, 245, 0.7);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+/* 搜索栏（移动端/内嵌模式） */
+.ic__search-bar {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.ic__search-bar .ant-input {
+  border-radius: 8px;
+  font-size: 13px;
+  padding-left: 34px;
+}
+
+.ic__search-bar .ant-input-prefix {
+  left: 10px !important;
+}
+
+/* 搜索下拉结果 */
+.ic__search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  margin-top: 4px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(31, 41, 51, 0.12);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.ic__search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  font-size: 13px;
+}
+
+.ic__search-result-item:hover {
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.ic__search-result-item .symbol-code {
+  font-weight: 700;
+  font-family: "SF Mono", "Fira Code", monospace;
+  color: var(--ink);
+  min-width: 70px;
+}
+
+.ic__search-result-item .symbol-name {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 搜索提示 */
+.ic__search-hint {
+  text-align: center;
+  padding: 16px 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ── 快捷入口（桌面端列表）── */
+.ic__section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin: 10px 8px 4px;
+}
+
+.ic__quick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 4px;
+}
+
+.ic__quick-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 13px;
+}
+
+.ic__quick-item:hover {
+  background: rgba(15, 118, 110, 0.06);
+  border-color: rgba(15, 118, 110, 0.12);
+}
+
+.ic__quick-item.active {
+  background: rgba(15, 118, 110, 0.10);
+  border-color: rgba(15, 118, 110, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.1);
+}
+
+.ic__quick-item .symbol-code {
+  font-weight: 700;
+  font-family: "SF Mono", "Fira Code", monospace;
+  min-width: 68px;
+}
+
+.ic__quick-item .symbol-name {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 移动端快捷入口（标签式）── */
+.ic__quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+
+.ic__chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ic__chip:hover {
+  border-color: rgba(15, 118, 110, 0.3);
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.ic__chip.active {
+  border-color: var(--accent);
+  background: rgba(15, 118, 110, 0.10);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── 主内容区：交易计划 + K线图 ── */
+.ic__main-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 标的信息头部 */
+.ic__symbol-header {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+
+.ic__symbol-header .symbol-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ic__symbol-header .badge {
+  font-size: 11px;
+}
+
+/* ── 内容分区（交易计划 / 图表）── */
+.ic__section {
+  margin: 0;
+}
+
+.ic__section .panel {
+  margin: 0;
+}
+
+.ic__trade-plan-section .detail-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ic__trade-plan-section h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* 图表区域 */
+.ic__chart-section .detail-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ic__chart-section h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ic__chart-wrap {
+  position: relative;
+}
+
+.ic__chart-wrap .chart-legend {
+  display: flex;
+  gap: 16px;
+  padding: 6px 4px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  background: rgba(255, 252, 245, 0.6);
+}
+
+/* ── 浮动展开按钮 ── */
+.ic__floating-btn {
+  position: fixed;
+  left: 12px;
+  bottom: 24px;
+  z-index: 100;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(15, 118, 110, 0.3);
+  transition: all 0.2s ease;
+  animation: floatPulse 2s ease-in-out infinite;
+}
+
+.ic__floating-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(15, 118, 110, 0.4);
+}
+
+@keyframes floatPulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+/* ── 移动端布局 ── */
+.ic__mobile-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  gap: 12px;
+  padding: 12px;
+}
+
+/* 移动端搜索栏 */
+.ic__mobile-layout .ic__search-bar {
+  flex-shrink: 0;
+}
+
+.ic__mobile-layout .ic__search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  margin-top: 4px;
+}
+
+/* 移动端 section 间距 */
+.ic__mobile-layout .ic__section {
+  margin-bottom: 4px;
+}
+
+.ic__mobile-layout .ic__section .panel {
+  padding: 12px;
+}
+
+/* ── 响应式断点 ── */
+
+/* 平板横屏 (1024-1279px) */
+@media (max-width: 1279px) and (min-width: 1024px) {
+  .ic__main-content {
+    padding: 12px 16px;
+  }
+
+  .ic__top-input {
+    max-width: 400px;
+  }
+}
+
+/* 移动端/平板竖屏 (≤1023px) */
+@media (max-width: 1023px) {
+  .investment-center {
+    min-height: auto;
+  }
+
+  /* 隐藏桌面端布局 */
+  .ic__layout--fullwidth {
+    display: none !important;
+  }
+
+  /* 显示移动端布局 */
+  .ic__mobile-layout {
+    display: flex !important;
+  }
+
+  .ic__floating-btn {
+    display: none;
+  }
+}
+
+/* 小手机 (≤640px) */
+@media (max-width: 640px) {
+  .ic__mobile-layout {
+    padding: 8px;
+    gap: 10px;
+  }
+
+  .ic__mobile-layout .ic__search-bar .ant-input {
+    padding: 8px 12px 8px 34px;
+    font-size: 13px;
+  }
+
+  .ic__mobile-layout .ic__section .panel {
+    padding: 10px;
+  }
+
+  .ic__trade-plan-section h3,
+  .ic__chart-section h3 {
+    font-size: 14px;
+  }
+}

@@ -46,10 +46,16 @@ export const api = {
   getPortfolios: () => requestJson<any[]>(`${API}/portfolios`),
   getWorkbench: (portfolioId: number, marketGroup: string) =>
     requestJson<any>(`${API}/dashboard/workbench?portfolio_id=${portfolioId}&market_group=${marketGroup}`),
-  getSymbolDetail: (portfolioId: number, symbolId: number, sampleLimit?: number) => {
+  getSymbolDetail: (portfolioId: number, symbolId: number, sampleLimit?: number, barLimit?: number) => {
     const params = new URLSearchParams({ portfolio_id: String(portfolioId), symbol_id: String(symbolId) });
     if (sampleLimit) params.set("sample_limit", String(sampleLimit));
+    if (barLimit) params.set("bar_limit", String(barLimit));
     return requestJson<any>(`${API}/dashboard/symbol-detail?${params.toString()}`);
+  },
+
+  // Lazy load more bars for a symbol
+  getBars: (symbolId: number, limit: number = 250) => {
+    return requestJson<any[]>(`${API}/market-data/bars/${symbolId}?limit=${limit}`);
   },
 
   // Symbols
