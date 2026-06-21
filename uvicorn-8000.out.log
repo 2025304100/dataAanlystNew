@@ -58,9 +58,10 @@ INFO:     127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 
 INFO:     127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 OK
+ININFO:     127.0.0.1:53617 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60629 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58609 - "GET /api/v1/portfolios HTTP/1.1" 200 OK
+127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:60973 - "GET /api/v1/discovery/tasks?limit=10 HTTP/1.1" 200 OK

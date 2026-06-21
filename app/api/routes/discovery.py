@@ -13,6 +13,7 @@ from app.services.discovery_tasks import (
     resume_discovery_task,
 )
 from app.services.discovery_results import update_discovery_result, update_discovery_symbol
+from app.services.discovery_cleanup import cleanup_expired_discovery_results
 
 
 router = APIRouter()
@@ -81,4 +82,12 @@ def refresh_result(scan_result_id: int, db: Session = Depends(get_db)):
     result = update_discovery_symbol(db, scan_result_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Discovery result not found")
+    return result
+
+
+@router.post("/discovery/results/cleanup")
+def cleanup_results(db: Session = Depends(get_db)):
+    """Manually clean up expired non-frozen discovery results.
+    Frozen results are never deleted by this endpoint."""
+    result = cleanup_expired_discovery_results(db)
     return result

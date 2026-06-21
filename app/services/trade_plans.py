@@ -353,8 +353,11 @@ def upsert_trade_setup(
     entry_anchor = max(min(last_close + range20 * stage_multiplier, high20), low20)
     entry_min = _round_price(max(low20, min(entry_anchor, ma10, last_close) * 0.99))
     entry_max = _round_price(min(high20 * 1.01, max(entry_anchor, ma10, last_close) * 1.01))
-    stop_anchor = min(low20, ma20 * 0.97, last_close * 0.95)
-    stop_loss = _round_price(min((entry_min or last_close) * 0.97, stop_anchor))
+    # Stop loss: use technical support levels, ensure reasonable distance from entry
+    # Prefer: 20-day low > MA20*0.96 > last_close*0.92 (gives ~8% room for A-share volatility)
+    # Then clamp: not tighter than entry_min * 0.94 (~6% below buy zone floor)
+    stop_anchor = min(low20, ma20 * 0.96, last_close * 0.92)
+    stop_loss = _round_price(max(stop_anchor, (entry_min or last_close) * 0.94))
 
     stage_rr = {
         "start": 2.2,

@@ -485,6 +485,12 @@ def get_symbol_detail_panel(
             "stage": latest_score.stage,
             "action": latest_score.action,
             "priority_score": latest_score.priority_score,
+            "trend_score": latest_score.trend_score,
+            "momentum_score": latest_score.momentum_score,
+            "volatility_score": latest_score.volatility_score,
+            "liquidity_score": latest_score.liquidity_score,
+            "breadth_score": latest_score.breadth_score,
+            "event_score": latest_score.event_score,
         },
         latest_trade_setup=None
         if latest_setup is None
