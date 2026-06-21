@@ -4,10 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="eae150bd-df2a-4f7e-81a1-1cd4fda7fe59" name="更改" comment="">
-      <change beforePath="$PROJECT_DIR$/app/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/uvicorn-8000.out.log" beforeDir="false" afterPath="$PROJECT_DIR$/uvicorn-8000.out.log" afterDir="false" />
-    </list>
+    <list default="true" id="eae150bd-df2a-4f7e-81a1-1cd4fda7fe59" name="更改" comment="feat(App): 新增投资中心功能模块&#10;&#10;- 新增 InvestmentCenter 组件实现投资中心视图&#10;- 在主应用中添加投资中心导航标签页和路由逻辑&#10;- 修改详情弹窗打开条件以兼容投资中心内联显示&#10;- 扩展 loadSymbolDetail 方法支持 barLimit 参数&#10;- 添加 getBars API 接口用于懒加载更多K线数据&#10;- 更新后端 dashboard API 支持 bar_limit 查询参数&#10;- 添加投资中心相关国际化文案配置&#10;- 实现投资中心响应式布局和搜索功能样式&#10;- 新增试探、确认、扩展等分批标签翻译" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -16,7 +13,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="main_qw" />
+        <entry key="$PROJECT_DIR$" value="main_qw_react" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -49,7 +46,7 @@
     "RunOnceActivity.git.unshallow": "true",
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "main__qw",
+    "git-widget-placeholder": "main__qw__react",
     "junie.onboarding.icon.badge.shown": "true",
     "kotlin-language-version-configured": "true",
     "last_opened_file_path": "D:/ai_project/dataAanlystNew",
@@ -83,9 +80,22 @@
       <workItem from="1781933077096" duration="80000" />
       <workItem from="1781933290306" duration="2935000" />
     </task>
+    <task id="LOCAL-00001" summary="feat(App): 新增投资中心功能模块&#10;&#10;- 新增 InvestmentCenter 组件实现投资中心视图&#10;- 在主应用中添加投资中心导航标签页和路由逻辑&#10;- 修改详情弹窗打开条件以兼容投资中心内联显示&#10;- 扩展 loadSymbolDetail 方法支持 barLimit 参数&#10;- 添加 getBars API 接口用于懒加载更多K线数据&#10;- 更新后端 dashboard API 支持 bar_limit 查询参数&#10;- 添加投资中心相关国际化文案配置&#10;- 实现投资中心响应式布局和搜索功能样式&#10;- 新增试探、确认、扩展等分批标签翻译">
+      <option name="closed" value="true" />
+      <created>1782051117987</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1782051117987</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="feat(App): 新增投资中心功能模块&#10;&#10;- 新增 InvestmentCenter 组件实现投资中心视图&#10;- 在主应用中添加投资中心导航标签页和路由逻辑&#10;- 修改详情弹窗打开条件以兼容投资中心内联显示&#10;- 扩展 loadSymbolDetail 方法支持 barLimit 参数&#10;- 添加 getBars API 接口用于懒加载更多K线数据&#10;- 更新后端 dashboard API 支持 bar_limit 查询参数&#10;- 添加投资中心相关国际化文案配置&#10;- 实现投资中心响应式布局和搜索功能样式&#10;- 新增试探、确认、扩展等分批标签翻译" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat(App): 新增投资中心功能模块&#10;&#10;- 新增 InvestmentCenter 组件实现投资中心视图&#10;- 在主应用中添加投资中心导航标签页和路由逻辑&#10;- 修改详情弹窗打开条件以兼容投资中心内联显示&#10;- 扩展 loadSymbolDetail 方法支持 barLimit 参数&#10;- 添加 getBars API 接口用于懒加载更多K线数据&#10;- 更新后端 dashboard API 支持 bar_limit 查询参数&#10;- 添加投资中心相关国际化文案配置&#10;- 实现投资中心响应式布局和搜索功能样式&#10;- 新增试探、确认、扩展等分批标签翻译" />
   </component>
 </project>
