@@ -3029,3 +3029,228 @@ td .symbol-name {
     min-height: 120px;
   }
 }
+
+/* ════════════════════════════════════════════════════
+   可折叠区块
+   ════════════════════════════════════════════════════ */
+.ic__collapsible {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.ic__collapse-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ic__collapse-toggle:hover {
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.ic__collapse-chevron {
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+  display: inline-block;
+  width: 12px;
+}
+
+.ic__collapsible.collapsed .ic__collapse-chevron {
+  transform: rotate(0deg);
+}
+
+.ic__collapsible:not(.collapsed) .ic__collapse-chevron {
+  transform: rotate(90deg);
+}
+
+/* ════════════════════════════════════════════════════
+   搜索增强：收藏星标 + 搜索历史
+   ════════════════════════════════════════════════════ */
+.ic__fav-star {
+  font-size: 16px;
+  color: #d1d5db;
+  cursor: pointer;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+  user-select: none;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.ic__fav-star:hover {
+  color: #f59e0b;
+  transform: scale(1.2);
+}
+
+.ic__fav-star.active {
+  color: #f59e0b;
+}
+
+.ic__fav-star--lg {
+  font-size: 20px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.ic__search-history {
+  border-top: 1px solid var(--line);
+}
+
+.ic__history-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 12px 4px;
+  border-bottom: 1px solid rgba(31, 41, 51, 0.06);
+}
+
+/* ════════════════════════════════════════════════════
+   价格预警系统
+   ════════════════════════════════════════════════════ */
+.ic__price-alerts {
+  margin-bottom: 14px;
+}
+
+.ic__price-alerts h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ic__alert-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ic__alert-item {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  animation: alertSlideIn 0.3s ease;
+}
+
+@keyframes alertSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ic__alert--danger {
+  border-color: rgba(180, 35, 24, 0.3);
+  background: rgba(254, 242, 242, 0.7);
+}
+
+.ic__alert--warning {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(255, 251, 235, 0.8);
+}
+
+.ic__alert--info {
+  border-color: rgba(59, 130, 246, 0.25);
+  background: rgba(240, 249, 255, 0.8);
+}
+
+.ic__alert-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.ic__alert--danger .ic__alert-icon {
+  background: #b42318;
+  color: white;
+}
+
+.ic__alert--warning .ic__alert-icon {
+  background: #f59e0b;
+  color: white;
+}
+
+.ic__alert--info .ic__alert-icon {
+  background: #3b82f6;
+  color: white;
+}
+
+.ic__alert-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ic__alert-body strong {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.ic__alert-body span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* ════════════════════════════════════════════════════
+   图表入场价提示
+   ════════════════════════════════════════════════════ */
+.ic__entry-price-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 4px 10px 4px 12px;
+  border-radius: 6px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  font-size: 12px;
+  color: #7c3aed;
+}
+
+.ic__entry-price-hint strong {
+  font-weight: 700;
+}
+
+.ic__hint-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.ic__hint-close:hover {
+  background: rgba(139, 92, 246, 0.15);
+  color: #7c3aed;
+}

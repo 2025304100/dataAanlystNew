@@ -186,6 +186,33 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   const [showMACD, setShowMACD] = useState(true);
   const [showRSI, setShowRSI] = useState(true);
 
+  // 可折叠区块状态（默认收起：收益预演、分批执行、触发条件）
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+    scenarioPreview: true,
+    tranchePlan: true,
+    triggers: true,
+  });
+  const toggleSection = useCallback((key: string) => {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  // 搜索历史（最近5个）+ 收藏
+  const [searchHistory, setSearchHistory] = useState<any[]>(() => {
+    try { return JSON.parse(localStorage.getItem("ic_search_history") || "[]"); } catch { return []; }
+  });
+  const [favorites, setFavorites] = useState<Set<number>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("ic_favorites") || "[]")); } catch { return new Set(); }
+  });
+
+  // 图表点击设置的入场价
+  const [chartEntryPrice, setChartEntryPrice] = useState<number | null>(null);
+
+  // 价格预警列表
+  const [priceAlerts, setPriceAlerts] = useState<Array<{
+    id: string; type: string; level: "warning" | "danger" | "info";
+    message: string; detail: string; timestamp: number;
+  }>>([]);
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 1024);
     check();
@@ -253,11 +280,32 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     return Array.from(map.values());
   }, [workbench]);
 
-  const handleSelectSymbol = useCallback((symbolId: number) => {
+  const handleSelectSymbol = useCallback((symbolId: number, symbolInfo?: any) => {
     ctx.loadSymbolDetail(symbolId, { focus: true, barLimit: 180 });
     setSearchQuery("");
     setSearchResults([]);
+    // 记录搜索历史（最近5个）
+    if (symbolInfo) {
+      setSearchHistory((prev) => {
+        const filtered = prev.filter((h) => h.symbol_id !== symbolId);
+        const updated = [{ symbol_id: symbolId, symbol: symbolInfo.symbol, name: symbolInfo.name }, ...filtered].slice(0, 5);
+        try { localStorage.setItem("ic_search_history", JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+    }
+    // 清除图表设置的入场价
+    setChartEntryPrice(null);
   }, [ctx]);
+
+  // 切换收藏
+  const toggleFavorite = useCallback((symbolId: number) => {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(symbolId)) next.delete(symbolId); else next.add(symbolId);
+      try { localStorage.setItem("ic_favorites", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
 
   // 自动加载第一个快捷标的
   useEffect(() => {
@@ -272,10 +320,11 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
 
   const setup = detail?.latest_trade_setup ?? null;
 
-  // Entry price & quantity
+  // Entry price & quantity（图表点击设置的入场价优先）
   const baseScenarios = setup?.return_scenarios;
   const _refPrice = baseScenarios?.reference_price ?? computeSuggestedPrice(detail);
-  const entryPrice = Number(ctx.simPrice) > 0 ? Number(ctx.simPrice) : Number(_refPrice);
+  const effectiveEntryPrice = chartEntryPrice ?? (Number(ctx.simPrice) > 0 ? Number(ctx.simPrice) : Number(_refPrice));
+  const entryPrice = effectiveEntryPrice;
   const quantity = Number(ctx.simQuantity) > 0
     ? Number(ctx.simQuantity)
     : Number(baseScenarios?.planned_order?.quantity ?? 0);
@@ -375,6 +424,89 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
 
     return { bars, dates, closes, candlestick, volume, ma10, ma20, macd, rsi, boll, atr, macdSignals, rsiSignals };
   }, [detail?.bars, extraBarsCache, ctx.activeSymbolId, ctx.chartTimeframe, ctx.chartWindowSize]);
+
+  // ── 价格预警检测 ──
+  useEffect(() => {
+    if (!chartData || !setup || !detail?.bars?.length) return;
+    const lastClose = detail.bars[detail.bars.length - 1].close;
+    const lastDate = detail.bars[detail.bars.length - 1].trade_date;
+    const alerts: typeof priceAlerts = [];
+    const stopLoss = (scenarios as any)?._adjStop ?? setup.stop_loss;
+    const targetPrice = (scenarios as any)?._adjTarget ?? setup.target_price;
+
+    // 1. 跌破止损
+    if (stopLoss != null && lastClose <= stopLoss) {
+      alerts.push({
+        id: `stop_${lastDate}`, type: "stop_loss", level: "danger",
+        message: template("alertStopLoss", { price: score(lastClose), stop: score(stopLoss) }),
+        detail: `当前价 ${score(lastClose)} 已跌破止损位 ${score(stopLoss)}`,
+        timestamp: Date.now(),
+      });
+    }
+    // 2. 接近止损（距离<3%）
+    else if (stopLoss != null && lastClose > 0 && ((lastClose - stopLoss) / lastClose) < 0.03) {
+      alerts.push({
+        id: `stop_near_${lastDate}`, type: "stop_near", level: "warning",
+        message: template("alertNearStopLoss", { price: score(lastClose), stop: score(stopLoss) }),
+        detail: `距止损位仅 ${percent((lastClose - stopLoss) / lastClose)}`,
+        timestamp: Date.now(),
+      });
+    }
+
+    // 3. 突破目标价
+    if (targetPrice != null && lastClose >= targetPrice) {
+      alerts.push({
+        id: `target_${lastDate}`, type: "target_hit", level: "info",
+        message: template("alertTargetHit", { price: score(lastClose), target: score(targetPrice) }),
+        detail: `当前价 ${score(lastClose)} 已突破目标位 ${score(targetPrice)}`,
+        timestamp: Date.now(),
+      });
+    }
+    // 4. 接近目标（距离<5%）
+    else if (targetPrice != null && lastClose > 0 && ((targetPrice - lastClose) / targetPrice) < 0.05) {
+      alerts.push({
+        id: `target_near_${lastDate}`, type: "target_near", level: "info",
+        message: template("alertNearTarget", { price: score(lastClose), target: score(targetPrice) }),
+        detail: `距目标位仅 ${percent((targetPrice - lastClose) / targetPrice)}`,
+        timestamp: Date.now(),
+      });
+    }
+
+    // 5. RSI 超买超卖
+    const lastRSI = chartData.rsi ? chartData.rsi[chartData.rsi.length - 1] : null;
+    if (lastRSI != null && lastRSI > 75) {
+      alerts.push({
+        id: `rsi_ob_${lastDate}`, type: "rsi_overbought", level: "warning",
+        message: template("alertRSIOverbought", { rsi: lastRSI.toFixed(1) }),
+        detail: `RSI(${lastRSI.toFixed(1)}) 超过75，注意回调风险`,
+        timestamp: Date.now(),
+      });
+    } else if (lastRSI != null && lastRSI < 25) {
+      alerts.push({
+        id: `rsi_os_${lastDate}`, type: "rsi_oversold", level: "info",
+        message: template("alertRSIOversold", { rsi: lastRSI.toFixed(1) }),
+        detail: `RSI(${lastRSI.toFixed(1)}) 低于25，可能存在反弹机会`,
+        timestamp: Date.now(),
+      });
+    }
+
+    // 6. MACD 金叉/死叉（最近一根K线）
+    if (chartData.macdSignals.length > 0) {
+      const latestSignal = chartData.macdSignals[chartData.macdSignals.length - 1];
+      const signalAge = chartData.dates.length - 1 - latestSignal.index;
+      if (signalAge <= 2) { // 最近2根K线内的信号
+        alerts.push({
+          id: `macd_${latestSignal.type}_${lastDate}`, type: latestSignal.type === "golden" ? "macd_golden" : "macd_death",
+          level: latestSignal.type === "golden" ? "info" : "warning",
+          message: latestSignal.type === "golden" ? t("alertMACDGolden") : t("alertMACDDeath"),
+          detail: `${latestSignal.index === chartData.dates.length - 1 ? "最新" : "近期"}MACD${latestSignal.type === "golden" ? "金叉" : "死叉"}信号`,
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    setPriceAlerts(alerts);
+  }, [chartData, scenarios, setup, detail?.bars]); // eslint-disable-line
 
   // Active future buy plan
   const activeFutureBuyPlan = useMemo(() => {
@@ -510,7 +642,12 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     return {
       animation: false,
       tooltip: {
-        trigger: "axis" as const, axisPointer: { type: "cross" },
+        trigger: "axis" as const,
+        axisPointer: {
+          type: "cross",
+          crossStyle: { color: "rgba(100,100,100,0.25)", width: 1 },
+          label: { backgroundColor: "#333", fontSize: 10 },
+        },
         formatter: (params: any) => {
           if (!params || !Array.isArray(params) || !params.length) return "";
           const p = params[0];
@@ -724,23 +861,30 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
 
         {scenarios ? (
           <div id="orderScenarioPreview" className="scenario-preview">
-            <div className="scenario-preview-card">
-              <div className="scenario-preview-head">
+            <div className={`ic__collapsible${collapsedSections.scenarioPreview ? " collapsed" : ""}`}>
+              <button className="ic__collapse-toggle" onClick={() => toggleSection("scenarioPreview")}>
+                <span className="ic__collapse-chevron">{collapsedSections.scenarioPreview ? "▸" : "▾"}</span>
                 <strong>{t("scenarioPreview")}</strong>
-                <span className="scenario-preview-meta">
-                  {joinParts([
-                    `${t("plannedOrder")}: ${quantity}`,
-                    `${t("referencePrice")}: ${score(entryPrice)}`,
-                    `${t("estimateConfidence")}: ${percent(scenarios.confidence_pct)}`,
-                    `${t("estimateHorizon")}: ${scenarios.horizon_days}${t("daysUnit")}`,
-                  ])}
-                </span>
+              </button>
+              {!collapsedSections.scenarioPreview && (
+              <div className="scenario-preview-card">
+                <div className="scenario-preview-head">
+                  <span className="scenario-preview-meta">
+                    {joinParts([
+                      `${t("plannedOrder")}: ${quantity}`,
+                      `${t("referencePrice")}: ${score(entryPrice)}${chartEntryPrice ? ` (${t("chartEntry")})` : ""}`,
+                      `${t("estimateConfidence")}: ${percent(scenarios.confidence_pct)}`,
+                      `${t("estimateHorizon")}: ${scenarios.horizon_days}${t("daysUnit")}`,
+                    ])}
+                  </span>
+                </div>
+                <div className="scenario-grid">
+                  {renderScenarioBox(t("expectedCase"), scenarios.expected.exit_price)}
+                  {renderScenarioBox(t("optimisticCase"), scenarios.optimistic.exit_price)}
+                  {renderScenarioBox(t("pessimisticCase"), scenarios.pessimistic.exit_price)}
+                </div>
               </div>
-              <div className="scenario-grid">
-                {renderScenarioBox(t("expectedCase"), scenarios.expected.exit_price)}
-                {renderScenarioBox(t("optimisticCase"), scenarios.optimistic.exit_price)}
-                {renderScenarioBox(t("pessimisticCase"), scenarios.pessimistic.exit_price)}
-              </div>
+              )}
             </div>
           </div>
         ) : null}
@@ -792,44 +936,62 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 ])}
               </div>
 
-              <div className="item-subline">
-                <strong style={{ fontSize: 11 }}>{t("openTrigger")}:</strong>{" "}
-                <span style={{ fontSize: 11 }}>{formatOpenTrigger(setup)}</span>
-                {" | "}
-                <strong style={{ fontSize: 11 }}>{t("addTrigger")}:</strong>{" "}
-                <span style={{ fontSize: 11 }}>{formatAddTrigger(setup)}</span>
-              </div>
-              <div className="item-subline">
-                <strong style={{ fontSize: 11 }}>{t("stopTrigger")}:</strong>{" "}
-                <span style={{ fontSize: 11 }}>{formatStopTrigger(setup)}</span>
-                {" | "}
-                <strong style={{ fontSize: 11 }}>{t("trimTrigger")}:</strong>{" "}
-                <span style={{ fontSize: 11 }}>{formatTrimTrigger(setup)}</span>
+              {/* 触发条件（可折叠） */}
+              <div className={`ic__collapsible${collapsedSections.triggers ? " collapsed" : ""}`} style={{ marginTop: 8 }}>
+                <button className="ic__collapse-toggle" onClick={() => toggleSection("triggers")}>
+                  <span className="ic__collapse-chevron">{collapsedSections.triggers ? "▸" : "▾"}</span>
+                  <strong>{t("triggerConditions")}</strong>
+                </button>
+                {!collapsedSections.triggers && (
+                <div style={{ padding: "4px 0" }}>
+                  <div className="item-subline">
+                    <strong style={{ fontSize: 11 }}>{t("openTrigger")}:</strong>{" "}
+                    <span style={{ fontSize: 11 }}>{formatOpenTrigger(setup)}</span>
+                    {" | "}
+                    <strong style={{ fontSize: 11 }}>{t("addTrigger")}:</strong>{" "}
+                    <span style={{ fontSize: 11 }}>{formatAddTrigger(setup)}</span>
+                  </div>
+                  <div className="item-subline">
+                    <strong style={{ fontSize: 11 }}>{t("stopTrigger")}:</strong>{" "}
+                    <span style={{ fontSize: 11 }}>{formatStopTrigger(setup)}</span>
+                    {" | "}
+                    <strong style={{ fontSize: 11 }}>{t("trimTrigger")}:</strong>{" "}
+                    <span style={{ fontSize: 11 }}>{formatTrimTrigger(setup)}</span>
+                  </div>
+                </div>
+                )}
               </div>
 
-              {/* Tranche plan with timeline view */}
+              {/* Tranche plan with timeline view（可折叠） */}
               {setup.tranche_plan && setup.tranche_plan.length > 0 && (
-                <div className="detail-card" style={{ marginTop: 10 }}>
-                  <p className="panel-kicker">{t("tranchePlan")}</p>
-                  {/* Timeline view */}
-                  <div className="ic__tranche-timeline">
-                    {setup.tranche_plan.map((tranche, i) => (
-                      <div key={i} className={`ic__tranche-node ic__tranche--${tranche.label}`}>
-                        <div className="ic__tranche-dot" />
-                        {(i < setup.tranche_plan!.length - 1) && <div className="ic__tranche-line" />}
-                        <div className="ic__tranche-content">
-                          <strong style={{ color: "#0f766e" }}>{trancheLabel(tranche.label)}</strong>
-                          <span className="ic__tranche-meta">
-                            {joinParts([
-                              `${t("tranchePct")}: ${percent(tranche.position_pct)}`,
-                              `${t("positionAmount")}: ${money(tranche.amount)}`,
-                              `${t("trigger")}: ${trancheTrigger(tranche.trigger ?? "")}`,
-                            ])}
-                          </span>
+                <div className={`ic__collapsible${collapsedSections.tranchePlan ? " collapsed" : ""}`} style={{ marginTop: 10 }}>
+                  <button className="ic__collapse-toggle" onClick={() => toggleSection("tranchePlan")}>
+                    <span className="ic__collapse-chevron">{collapsedSections.tranchePlan ? "▸" : "▾"}</span>
+                    <strong>{t("tranchePlan")}</strong> ({setup.tranche_plan.length})
+                  </button>
+                  {!collapsedSections.tranchePlan && (
+                  <div className="detail-card" style={{ marginTop: 6 }}>
+                    {/* Timeline view */}
+                    <div className="ic__tranche-timeline">
+                      {setup.tranche_plan.map((tranche, i) => (
+                        <div key={i} className={`ic__tranche-node ic__tranche--${tranche.label}`}>
+                          <div className="ic__tranche-dot" />
+                          {(i < setup.tranche_plan!.length - 1) && <div className="ic__tranche-line" />}
+                          <div className="ic__tranche-content">
+                            <strong style={{ color: "#0f766e" }}>{trancheLabel(tranche.label)}</strong>
+                            <span className="ic__tranche-meta">
+                              {joinParts([
+                                `${t("tranchePct")}: ${percent(tranche.position_pct)}`,
+                                `${t("positionAmount")}: ${money(tranche.amount)}`,
+                                `${t("trigger")}: ${trancheTrigger(tranche.trigger ?? "")}`,
+                              ])}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
+                  )}
                 </div>
               )}
 
@@ -924,6 +1086,16 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 <ReactECharts
                   option={chartOption}
                   style={{ height: ctx.chartExpanded ? 520 : 400, width: "100%" }}
+                  onEvents={{
+                    click: (params: any) => {
+                      if (params.dataIndex != null && chartData?.closes[params.dataIndex] != null) {
+                        const clickedClose = chartData.closes[params.dataIndex];
+                        setChartEntryPrice(clickedClose);
+                        // 同步到全局模拟价格
+                        ctx.setSimPrice(String(clickedClose));
+                      }
+                    },
+                  }}
                 />
                 {chartData && activeFutureBuyPlan.length > 0 && (
                   <FuturePlanOverlay
@@ -990,12 +1162,31 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             placeholder={t("searchSymbolPlaceholder")}
             allowClear value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onPressEnter={() => { if (searchResults.length > 0) handleSelectSymbol(searchResults[0].id); }}
+            onPressEnter={() => { if (searchResults.length > 0) handleSelectSymbol(searchResults[0].id, searchResults[0]); }}
           />
+          {/* 搜索结果 */}
           {searchResults.length > 0 && (
             <div className="ic__search-dropdown">
               {searchResults.map((item) => (
-                <button key={item.id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.id)}>
+                <button key={item.id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.id, item)}>
+                  <span className={`ic__fav-star${favorites.has(item.id) ? " active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}>
+                    {favorites.has(item.id) ? "★" : "☆"}
+                  </span>
+                  <span className="symbol-code">{item.symbol}</span>
+                  <span className="symbol-name">{item.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {/* 搜索历史（无搜索时显示） */}
+          {!searchQuery && searchHistory.length > 0 && (
+            <div className="ic__search-dropdown ic__search-history">
+              <div className="ic__history-header">{t("searchHistory")}</div>
+              {searchHistory.map((item) => (
+                <button key={item.symbol_id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.symbol_id, item)}>
+                  <span className={`ic__fav-star${favorites.has(item.symbol_id) ? " active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(item.symbol_id); }}>
+                    {favorites.has(item.symbol_id) ? "★" : "☆"}
+                  </span>
                   <span className="symbol-code">{item.symbol}</span>
                   <span className="symbol-name">{item.name}</span>
                 </button>
@@ -1028,13 +1219,32 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           placeholder={t("searchSymbolPlaceholder")}
           allowClear size="large" value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          onPressEnter={() => { if (searchResults.length > 0) handleSelectSymbol(searchResults[0].id); }}
+          onPressEnter={() => { if (searchResults.length > 0) handleSelectSymbol(searchResults[0].id, searchResults[0]); }}
           className="ic__top-input"
         />
+        {/* 搜索结果 */}
         {searchResults.length > 0 && (
           <div className="ic__search-dropdown">
             {searchResults.map((item) => (
-              <button key={item.id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.id)}>
+              <button key={item.id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.id, item)}>
+                <span className={`ic__fav-star${favorites.has(item.id) ? " active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}>
+                  {favorites.has(item.id) ? "★" : "☆"}
+                </span>
+                <span className="symbol-code">{item.symbol}</span>
+                <span className="symbol-name">{item.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {/* 搜索历史（无搜索时显示） */}
+        {!searchQuery && searchHistory.length > 0 && (
+          <div className="ic__search-dropdown ic__search-history">
+            <div className="ic__history-header">{t("searchHistory")}</div>
+            {searchHistory.map((item) => (
+              <button key={item.symbol_id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.symbol_id, item)}>
+                <span className={`ic__fav-star${favorites.has(item.symbol_id) ? " active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(item.symbol_id); }}>
+                  {favorites.has(item.symbol_id) ? "★" : "☆"}
+                </span>
                 <span className="symbol-code">{item.symbol}</span>
                 <span className="symbol-name">{item.name}</span>
               </button>
@@ -1060,6 +1270,10 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             <div className="symbol-title">
               <span className="symbol-code">{detail.symbol.symbol}</span>
               <span className="symbol-name">{detail.symbol.name}</span>
+              <span className={`ic__fav-star ic__fav-star--lg${favorites.has(detail.symbol.id) ? " active" : ""}`}
+                onClick={() => toggleFavorite(detail.symbol.id)}>
+                {favorites.has(detail.symbol.id) ? "★" : "☆"}
+              </span>
               <span className="symbol-meta">
                 {`${t("marketLabel")}: ${detail.symbol.market}${DOT}${t("regionLabel")}: ${regionLongLabel(detail.symbol.region)}${DOT}${t("assetLabel")}: ${assetTypeLabel(detail.symbol.asset_type)}`}
               </span>
@@ -1070,7 +1284,31 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 </>
               )}
             </div>
+            {/* 图表入场价提示 */}
+            {chartEntryPrice && (
+              <div className="ic__entry-price-hint">
+                <span>{t("chartEntry")}: <strong>{score(chartEntryPrice)}</strong></span>
+                <button onClick={() => { setChartEntryPrice(null); ctx.setSimPrice(""); }} className="ic__hint-close">x</button>
+              </div>
+            )}
           </div>
+        )}
+        {/* 价格预警栏 */}
+        {priceAlerts.length > 0 && (
+          <section className="ic__price-alerts">
+            <h4>{t("priceAlerts")}</h4>
+            <div className="ic__alert-list">
+              {priceAlerts.map((alert) => (
+                <div key={alert.id} className={`ic__alert-item ic__alert--${alert.level}`}>
+                  <span className="ic__alert-icon">{alert.level === "danger" ? "!" : alert.level === "warning" ? "!" : "i"}</span>
+                  <div className="ic__alert-body">
+                    <strong>{alert.message}</strong>
+                    <span>{alert.detail}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
         {renderRiskDashboard()}
         {renderTradePlan()}

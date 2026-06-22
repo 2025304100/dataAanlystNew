@@ -419,6 +419,21 @@ const I18N: Record<string, Record<string, string>> = {
     totalProgress: "本次 {total} / 已完成 {processed}",
     scanCounters: "成功 {ok} / 空数据 {empty} / 失败 {failed} / 已评分 {scored}",
     taskExpiredRestart: "暂停超过1天，需重新开始",
+    // 搜索增强
+    searchHistory: "搜索历史",
+    // 可折叠区块
+    triggerConditions: "触发条件",
+    chartEntry: "图表入场价",
+    // 价格预警
+    priceAlerts: "价格预警",
+    alertStopLoss: "跌破止损! 当前{price} 已低于止损位 {stop}",
+    alertNearStopLoss: "接近止损预警! 当前{price} 距止损位 {stop}",
+    alertTargetHit: "突破目标价! 当前{price} 已达目标位 {target}",
+    alertNearTarget: "接近目标价! 当前{price} 距目标位 {target}",
+    alertRSIOverbought: "RSI超买警告 ({rsi})",
+    alertRSIOversold: "RSI超卖机会 ({rsi})",
+    alertMACDGolden: "MACD金叉信号 - 买入参考",
+    alertMACDDeath: "MACD死叉信号 - 注意风险",
   },
   "en-US": {
     eyebrow: "Personal Quant Workbench",
@@ -838,6 +853,21 @@ const I18N: Record<string, Record<string, string>> = {
     totalProgress: "Run {total} / done {processed}",
     scanCounters: "OK {ok} / empty {empty} / failed {failed} / scored {scored}",
     taskExpiredRestart: "Paused for over 1 day. Start a new task.",
+    // Search enhancement
+    searchHistory: "Search History",
+    // Collapsible sections
+    triggerConditions: "Trigger Conditions",
+    chartEntry: "Chart Entry Price",
+    // Price alerts
+    priceAlerts: "Price Alerts",
+    alertStopLoss: "Stop Loss Breach! Current {price} below Stop {stop}",
+    alertNearStopLoss: "Near Stop Loss! Current {price} near Stop {stop}",
+    alertTargetHit: "Target Hit! Current {price} reached Target {target}",
+    alertNearTarget: "Near Target! Current {price} approaching Target {target}",
+    alertRSIOverbought: "RSI Overbought ({rsi})",
+    alertRSIOversold: "RSI Oversold ({rsi})",
+    alertMACDGolden: "MACD Golden Cross - Buy Signal",
+    alertMACDDeath: "MACD Death Cross - Risk Alert",
   },
 };
 
