@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ReactECharts from "echarts-for-react";
-import { Button, Input } from "antd";
+import { Button, Input, Progress } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { useApp } from "../context/AppContext";
 import {
@@ -33,127 +33,36 @@ import {
 import type { FutureBuyPlan, TradeSetup } from "../types";
 import { api } from "../api/client";
 
+// ─── 共享工具库导入 ───
+import {
+  computeMA,
+  formatVolume,
+  computeMACD,
+  detectMACDCross,
+  computeRSI,
+  detectRSIExtreme,
+  computeBOLL,
+  computeATR,
+  type MACDResult,
+  type CrossSignal,
+  type RSIExtremePoint,
+  type BOLLResult,
+} from "../utils/indicators";
+import {
+  planWithRatio,
+  invalidFuturePlan,
+  buildLongFuturePlan,
+  buildCustomFuturePlan,
+  getActiveFutureBuyPlan,
+} from "../utils/trade-plan";
+
 interface InvestmentCenterProps {
   openMetricModal: (type: string) => void;
 }
 
 /* ════════════════════════════════════════════════════════════
-   以下工具函数与 DetailModal.tsx 完全一致（原封不动复制）
+   Future Buy Plan SVG Overlay（与 DetailModal 一致）
    ════════════════════════════════════════════════════════════ */
-
-function computeMA(values: number[], period: number): (number | null)[] {
-  const result: (number | null)[] = [];
-  for (let i = 0; i < values.length; i++) {
-    if (i < period - 1) { result.push(null); continue; }
-    let sum = 0;
-    for (let j = 0; j < period; j++) sum += values[i - j];
-    result.push(sum / period);
-  }
-  return result;
-}
-
-function formatVolume(val: number): string {
-  if (val >= 1e8) return `${(val / 1e8).toFixed(2)}${t("yiUnit")}`;
-  if (val >= 1e4) return `${(val / 1e4).toFixed(2)}${t("wanUnit")}`;
-  return String(val);
-}
-
-// --- Future buy plan scenario helpers（与 DetailModal 一致）---
-
-function planWithRatio(plan: FutureBuyPlan, ratio: number): FutureBuyPlan {
-  return {
-    ...plan,
-    position_pct: Number((Number(plan.position_pct || 0) * ratio).toFixed(4)),
-    amount: Number((Number(plan.amount || 0) * ratio).toFixed(2)),
-  };
-}
-
-function invalidFuturePlan(setup: TradeSetup | null): FutureBuyPlan | undefined {
-  return (setup?.future_buy_plan ?? []).find(
-    (plan) => plan.priority === "avoid" || plan.label === "invalid_below_stop"
-  );
-}
-
-function buildLongFuturePlan(setup: TradeSetup | null): FutureBuyPlan[] {
-  if (!setup) return [];
-  const ma20 = setup.moving_averages?.ma20;
-  const anchor = Number(ma20 || setup.entry_min || setup.entry_max || 0);
-  if (!(anchor > 0)) return setup.future_buy_plan ?? [];
-  const positionPct = Math.max(Number(setup.recommended_position_pct || 0) * 0.5, 0);
-  const amount = Number(setup.recommended_position_amount || 0) * 0.5;
-  const plans: FutureBuyPlan[] = [
-    {
-      label: "long_accumulate_zone",
-      horizon_days: 30,
-      zone_min: Number((anchor * 0.97).toFixed(2)),
-      zone_max: Number((anchor * 1.02).toFixed(2)),
-      priority: "low",
-      position_pct: Number(positionPct.toFixed(4)),
-      amount: Number(amount.toFixed(2)),
-      trigger: "",
-    },
-  ];
-  const invalid = invalidFuturePlan(setup);
-  if (invalid) plans.push(invalid);
-  return plans;
-}
-
-function buildCustomFuturePlan(
-  setup: TradeSetup | null,
-  custom: { horizonDays: number; pullbackPct: number; positionPct: number },
-  totalCapital: number,
-  investableRatio: number
-): FutureBuyPlan[] {
-  if (!setup) return [];
-  const base = Number(setup.entry_max || setup.entry_min || setup.moving_averages?.ma20 || 0);
-  if (!(base > 0)) return setup.future_buy_plan ?? [];
-  const pullback = Math.max(0, Number(custom.pullbackPct || 0)) / 100;
-  const zoneMax = base * (1 - pullback);
-  const zoneMin = zoneMax * 0.985;
-  const positionPct = Math.max(0, Number(custom.positionPct || 0)) / 100;
-  const amount = Number(totalCapital || 0) * Number(investableRatio || 1) * positionPct;
-  const plans: FutureBuyPlan[] = [
-    {
-      label: "custom_buy_zone",
-      horizon_days: Math.max(1, Number(custom.horizonDays || 20)),
-      zone_min: Number(zoneMin.toFixed(2)),
-      zone_max: Number(zoneMax.toFixed(2)),
-      priority: "normal",
-      position_pct: Number(positionPct.toFixed(4)),
-      amount: Number(amount.toFixed(2)),
-      trigger: "",
-    },
-  ];
-  const invalid = invalidFuturePlan(setup);
-  if (invalid) plans.push(invalid);
-  return plans;
-}
-
-function getActiveFutureBuyPlan(
-  setup: TradeSetup | null,
-  scenario: string,
-  custom: { horizonDays: number; pullbackPct: number; positionPct: number },
-  totalCapital: number,
-  investableRatio: number
-): FutureBuyPlan[] {
-  const basePlan = setup?.future_buy_plan ?? [];
-  if (scenario === "short") {
-    return basePlan
-      .filter((plan) => plan.priority === "high" || plan.horizon_days <= 5 || plan.priority === "avoid")
-      .map((plan) => (plan.priority === "avoid" ? plan : planWithRatio(plan, 0.7)));
-  }
-  if (scenario === "long") return buildLongFuturePlan(setup);
-  if (scenario === "custom") return buildCustomFuturePlan(setup, custom, totalCapital, investableRatio);
-  if (scenario === "mid") {
-    const midPlans = basePlan
-      .filter((plan) => plan.priority === "avoid" || plan.priority !== "high" || plan.horizon_days >= 5)
-      .map((plan) => (plan.priority === "avoid" ? plan : planWithRatio(plan, 0.9)));
-    return midPlans.length ? midPlans : basePlan;
-  }
-  return basePlan;
-}
-
-/* ── Future Buy Plan SVG Overlay（与 DetailModal 完全一致）── */
 function FuturePlanOverlay({
   plans,
   lastClose,
@@ -268,10 +177,14 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   const [searching, setSearching] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // K线本地缓存：当后端返回的bar数量不够时，懒加载更多并缓存在这里（按symbolId索引）
+  // K线本地缓存：懒加载更多数据
   const [extraBarsCache, setExtraBarsCache] = useState<Record<number, any[]>>({});
   const loadingBarsRef = useRef<Set<number>>(new Set());
-  const windowInitializedRef = useRef(false); // 只初始化一次窗口大小
+  const windowInitializedRef = useRef(false);
+
+  // 指标面板开关
+  const [showMACD, setShowMACD] = useState(true);
+  const [showRSI, setShowRSI] = useState(true);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 1024);
@@ -280,7 +193,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // 投资中心默认显示180根K线（只执行一次，后续用户可自由调整）
+  // 投资中心默认显示180根K线（只执行一次）
   useEffect(() => {
     if (ctx.detail && ctx.activeTab === "investment" && !windowInitializedRef.current) {
       windowInitializedRef.current = true;
@@ -288,25 +201,20 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     }
   }, [ctx.detail, ctx.activeTab, ctx.setChartWindowSize]); // eslint-disable-line
 
-  // ── 懒加载K线数据：当窗口大小超过已有bar数量时自动加载更多 ──
+  // ── 懒加载K线数据 ──
   useEffect(() => {
     const symbolId = ctx.activeSymbolId;
     if (!symbolId || !detail?.bars?.length) return;
-
-    const neededBars = ctx.chartWindowSize; // 需要显示的K线数
-    const existingBars = detail.bars.length; // 后端已返回的数量
-    const extraBars = extraBarsCache[symbolId] ?? []; // 已缓存追加的
-    const totalAvailable = existingBars + extraBars.length;
-
-    if (neededBars <= totalAvailable) return; // 够了，不需要加载
-    if (loadingBarsRef.current.has(symbolId)) return; // 正在加载中
-
+    const neededBars = ctx.chartWindowSize;
+    const existingBars = detail.bars.length;
+    const extraBars = extraBarsCache[symbolId] ?? [];
+    if (neededBars <= existingBars + extraBars.length) return;
+    if (loadingBarsRef.current.has(symbolId)) return;
     loadingBarsRef.current.add(symbolId);
 
     api.getBars(symbolId, Math.max(neededBars + 60, 250))
       .then((fetched: any[]) => {
         if (!fetched || !fetched.length) return;
-        // 过滤掉已有的bar（按trade_date去重），只保留新增的
         const existingDates = new Set(detail.bars.map((b: any) => b.trade_date));
         const newBars = fetched.filter((b: any) => !existingDates.has(b.trade_date));
         if (newBars.length > 0) {
@@ -315,9 +223,9 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       })
       .catch(() => {})
       .finally(() => { loadingBarsRef.current.delete(symbolId); });
-  }, [ctx.activeSymbolId, ctx.chartWindowSize, detail?.bars?.length]); // eslint-disable-line
+  }, [ctx.activeSymbolId, ctx.chartWindowSize, detail?.bars?.length, extraBarsCache]); // eslint-disable-line
 
-  // 搜索逻辑：防抖调用 API
+  // 搜索逻辑
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (!searchQuery.trim()) { setSearchResults([]); return; }
@@ -326,11 +234,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       try {
         const results = await api.getSymbols(searchQuery.trim());
         setSearchResults(results.slice(0, 20));
-      } catch {
-        setSearchResults([]);
-      } finally {
-        setSearching(false);
-      }
+      } catch { setSearchResults([]); }
+      finally { setSearching(false); }
     }, 300);
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchQuery]);
@@ -362,12 +267,12 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   }, [quickSymbols.length]); // eslint-disable-line
 
   /* ════════════════════════════════════════════════════
-     以下数据计算与渲染逻辑与 DetailModal.tsx 完全一致
+     数据计算层
      ════════════════════════════════════════════════════ */
 
   const setup = detail?.latest_trade_setup ?? null;
 
-  // Entry price & quantity（与 DetailModal 一致）
+  // Entry price & quantity
   const baseScenarios = setup?.return_scenarios;
   const _refPrice = baseScenarios?.reference_price ?? computeSuggestedPrice(detail);
   const entryPrice = Number(ctx.simPrice) > 0 ? Number(ctx.simPrice) : Number(_refPrice);
@@ -375,7 +280,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     ? Number(ctx.simQuantity)
     : Number(baseScenarios?.planned_order?.quantity ?? 0);
 
-  // Order scenario preview - adjusted by active future plan scenario（与 DetailModal 一致）
+  // Order scenario preview（与 DetailModal 一致）
   const scenarios = useMemo(() => {
     if (!baseScenarios) return null;
     const refPrice = baseScenarios.reference_price ?? entryPrice;
@@ -425,7 +330,100 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     };
   }, [baseScenarios, setup?.stop_loss, entryPrice, ctx.futurePlanScenario]);
 
-  // renderScenarioBox（与 DetailModal 一致）
+  // ── Chart data memo（含全部技术指标） ──
+  interface ChartDataExt {
+    bars: any[]; dates: string[]; closes: number[];
+    candlestick: any[]; volume: any[];
+    ma10: (number | null)[]; ma20: (number | null)[];
+    macd: MACDResult | null;
+    rsi: (number | null)[];
+    boll: BOLLResult | null;
+    atr: (number | null)[];
+    macdSignals: CrossSignal[];
+    rsiSignals: RSIExtremePoint[];
+  }
+
+  const chartData = useMemo<ChartDataExt | null>(() => {
+    if (!detail?.bars?.length) return null;
+    const extra = extraBarsCache[ctx.activeSymbolId ?? 0] ?? [];
+    const mergedBars = [...detail.bars, ...extra];
+    const allBars =
+      ctx.chartTimeframe === "weekly" ? aggregateWeeklyBars(mergedBars) : mergedBars;
+    const windowSize = ctx.chartWindowSize;
+    const bars = allBars.slice(Math.max(0, allBars.length - windowSize));
+    const dates = bars.map((b) => b.trade_date);
+    const closes = bars.map((b) => b.close);
+    const candlestick = bars.map((b) => [b.open, b.close, b.low, b.high]);
+    const volume = bars.map((b) => ({
+      value: b.volume,
+      itemStyle: { color: b.close >= b.open ? "rgba(15, 118, 110, 0.5)" : "rgba(180, 35, 24, 0.5)" },
+    }));
+
+    // 基础均线
+    const ma10 = computeMA(closes, 10);
+    const ma20 = computeMA(closes, 20);
+
+    // 技术指标
+    const macd = computeMACD(closes);
+    const rsi = computeRSI(closes);
+    const boll = computeBOLL(closes);
+    const atr = computeATR(bars.map((b) => ({ high: b.high, low: b.low, close: b.close })));
+
+    // 信号检测
+    const macdSignals = detectMACDCross(macd.dif, macd.dea);
+    const rsiSignals = detectRSIExtreme(rsi);
+
+    return { bars, dates, closes, candlestick, volume, ma10, ma20, macd, rsi, boll, atr, macdSignals, rsiSignals };
+  }, [detail?.bars, extraBarsCache, ctx.activeSymbolId, ctx.chartTimeframe, ctx.chartWindowSize]);
+
+  // Active future buy plan
+  const activeFutureBuyPlan = useMemo(() => {
+    const s = detail?.latest_trade_setup ?? null;
+    if (!s) return [];
+    const totalCapital = ctx.workbench?.portfolio?.total_capital ?? 0;
+    const investableRatio = ctx.workbench?.portfolio?.investable_ratio ?? 1;
+    return getActiveFutureBuyPlan(s, ctx.futurePlanScenario, ctx.futurePlanCustom, totalCapital, investableRatio);
+  }, [detail?.latest_trade_setup, ctx.futurePlanScenario, ctx.futurePlanCustom, ctx.workbench?.portfolio]);
+
+  // ── 风险指标计算 ──
+  const riskMetrics = useMemo(() => {
+    if (!setup || !(entryPrice > 0)) return null;
+    const stop = (scenarios as any)?._adjStop ?? setup.stop_loss;
+    const target = (scenarios as any)?._adjTarget ?? setup.target_price;
+    const currentPrice = detail?.bars?.[detail.bars.length - 1]?.close ?? entryPrice;
+
+    // 盈亏比 = (目标价 - 入场价) / (入场价 - 止损价)
+    const reward = target != null ? target - entryPrice : 0;
+    const riskAmount = stop != null ? entryPrice - stop : 0;
+    const rrRatio = riskAmount > 0 ? reward / riskAmount : 0;
+
+    // 止损距离 (%)
+    const stopDistancePct = stop != null && entryPrice > 0 ? ((entryPrice - stop) / entryPrice) * 100 : 0;
+
+    // 当前距止损距离
+    const currentStopDist = stop != null && currentPrice > 0 ? ((currentPrice - stop) / currentPrice) * 100 : 0;
+
+    // ATR止损参考 (2倍ATR作为合理止损)
+    const lastATR = chartData?.atr ? chartData.atr.filter((v): v is number => v != null).pop() ?? null : null;
+    const atrStopRef = lastATR != null ? lastATR * 2 : null;
+
+    // 仓位集中度估算
+    const positionPct = setup.recommended_position_pct ?? 0;
+    const concentrationLevel =
+      positionPct >= 20 ? "high" : positionPct >= 10 ? "medium" : "low";
+
+    // 单笔最大亏损金额
+    const maxLossPerShare = stop != null ? entryPrice - stop : 0;
+    const maxLossAmount = maxLossPerShare * quantity;
+
+    return {
+      rrRatio, stopDistancePct, currentStopDist, atrStopRef,
+      concentrationLevel, maxLossAmount, maxLossPerShare,
+      reward, riskAmount, currentPrice, stop, target,
+    };
+  }, [setup, scenarios, entryPrice, quantity, chartData?.atr, detail?.bars]);
+
+  // ── renderScenarioBox ──
   const renderScenarioBox = (label: string, exitPrice: number) => {
     if (!(exitPrice > 0) || !(entryPrice > 0)) return null;
     const returnPct = (exitPrice - entryPrice) / entryPrice;
@@ -447,7 +445,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     return v !== null && v !== undefined ? score(v) : "-";
   };
 
-  // Trigger formatting functions（与 DetailModal 一致，locale-aware）
+  // Trigger formatting functions
   const formatOpenTrigger = useCallback((item: any) => {
     if (item.entry_min === null || item.entry_max === null) return "-";
     return ctx.locale === "zh-CN"
@@ -476,41 +474,11 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       : `Trim near ${item.target_price}`;
   }, [ctx.locale]);
 
-  // Chart data memo（与 DetailModal 一致，使用 aggregateWeeklyBars，支持本地缓存合并）
-  const chartData = useMemo(() => {
-    if (!detail?.bars?.length) return null;
-    // 合并后端返回的bar和本地懒加载缓存的extra bar
-    const extra = extraBarsCache[ctx.activeSymbolId ?? 0] ?? [];
-    const mergedBars = [...detail.bars, ...extra];
-    const allBars =
-      ctx.chartTimeframe === "weekly" ? aggregateWeeklyBars(mergedBars) : mergedBars;
-    const windowSize = ctx.chartWindowSize;
-    const bars = allBars.slice(Math.max(0, allBars.length - windowSize));
-    const dates = bars.map((b) => b.trade_date);
-    const closes = bars.map((b) => b.close);
-    const candlestick = bars.map((b) => [b.open, b.close, b.low, b.high]);
-    const volume = bars.map((b) => ({
-      value: b.volume,
-      itemStyle: { color: b.close >= b.open ? "rgba(15, 118, 110, 0.5)" : "rgba(180, 35, 24, 0.5)" },
-    }));
-    const ma10 = computeMA(closes, 10);
-    const ma20 = computeMA(closes, 20);
-    return { bars, dates, closes, candlestick, volume, ma10, ma20 };
-  }, [detail?.bars, extraBarsCache, ctx.activeSymbolId, ctx.chartTimeframe, ctx.chartWindowSize]);
-
-  // Active future buy plan（与 DetailModal 一致）
-  const activeFutureBuyPlan = useMemo(() => {
-    const s = detail?.latest_trade_setup ?? null;
-    if (!s) return [];
-    const totalCapital = ctx.workbench?.portfolio?.total_capital ?? 0;
-    const investableRatio = ctx.workbench?.portfolio?.investable_ratio ?? 1;
-    return getActiveFutureBuyPlan(s, ctx.futurePlanScenario, ctx.futurePlanCustom, totalCapital, investableRatio);
-  }, [detail?.latest_trade_setup, ctx.futurePlanScenario, ctx.futurePlanCustom, ctx.workbench?.portfolio]);
-
-  // Candlestick chart option memo（与 DetailModal 一致）
+  // ── Candlestick chart option ──
   const chartOption = useMemo(() => {
     if (!chartData) return null;
     const signals = detail?.latest_trade_setup?.chart_signals ?? [];
+
     const markLineData = signals.map((sig) => {
       const colorMap: Record<string, string> = {
         stop: "#b42318", target: "#0f766e", "buy-zone": "#7c3aed",
@@ -523,21 +491,18 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       };
     });
 
-    // 计算Y轴价格范围：必须包含K线、均线、目标价、止损价、未来计划区间
+    // Y轴范围计算
     const allPrices = chartData.candlestick.flatMap((c) => [c[1], c[2], c[3], c[4]]);
     const maValues = [...chartData.ma10, ...chartData.ma20].filter((v): v is number => v !== null);
-    // 加入目标价和止损价（关键！否则这些水平线会被挤出可视区域）
     const keyPrices: number[] = [];
     if (setup?.target_price != null) keyPrices.push(setup.target_price);
     if (setup?.stop_loss != null) keyPrices.push(setup.stop_loss);
-    // 加入未来买入计划区间
     const futureZones = activeFutureBuyPlan.flatMap((p) =>
       p.zone_min !== null && p.zone_max !== null ? [p.zone_min, p.zone_max] : []
     );
-    // 加入信号线价格
     const signalPrices = signals.map((s) => s.price).filter((v): v is number => v != null);
 
-    const allRelevant = [...allPrices, ...maValues, ...keyPrices, ...futureZones, ...signalPrices]
+    const allRelevant = [...allPrices, ...maValues, ...keyPrices, ...signalPrices]
       .filter((v): v is number => v != null && !isNaN(v) && isFinite(v));
     const priceMin = allRelevant.length ? Math.min(...allRelevant) * 0.985 : 0;
     const priceMax = allRelevant.length ? Math.max(...allRelevant) * 1.015 : 100;
@@ -561,12 +526,24 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           if (vol > 0) html += `<div>${t("volume")}: ${formatVolume(vol)}</div>`;
           if (ma10Val != null) html += `<div style="color:#f59e0b">MA10: ${score(ma10Val)}</div>`;
           if (ma20Val != null) html += `<div style="color:#3b82f6">MA20: ${score(ma20Val)}</div>`;
+          // MACD tooltip
+          const dif = chartData.macd?.dif[p.dataIndex];
+          const dea = chartData.macd?.dea[p.dataIndex];
+          const hist = chartData.macd?.macdHist[p.dataIndex];
+          if (dif != null) html += `<div style="color:#c084fc">DIF: ${score(dif)}</div>`;
+          if (dea != null) html += `<div style="color:#f472b6">DEA: ${score(dea)}</div>`;
+          if (hist != null) html += `<div style="color:${hist >= 0 ? '#0f766e' : '#b42318'}">MACD: ${hist >= 0 ? '' : ''}${score(hist)}</div>`;
+          // RSI tooltip
+          const rsiVal = chartData.rsi?.[p.dataIndex];
+          if (rsiVal != null) {
+            const rsiColor = rsiVal > 70 ? "#b42318" : rsiVal < 30 ? "#0f766e" : "#6b7280";
+            html += `<div style="color:${rsiColor}">RSI(${rsiVal.toFixed(1)})</div>`;
+          }
           return html;
         },
       },
       legend: { data: ["K", "MA10", "MA20", t("volume")], top: 0, textStyle: { fontSize: 11 } },
       grid: { left: 50, right: 180, top: 30, bottom: 24 },
-      // 投资中心不使用 dataZoom slider（用按钮控制窗口大小），避免与手动缩放冲突
       xAxis: { type: "category", data: chartData.dates, axisLabel: { fontSize: 10 } },
       yAxis: [
         { type: "value", min: priceMin, max: priceMax, axisLabel: { fontSize: 10 } },
@@ -583,6 +560,70 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     };
   }, [chartData, detail?.latest_trade_setup, activeFutureBuyPlan, setup]);
 
+  // ── MACD 副图 option ──
+  const macdOption = useMemo(() => {
+    if (!chartData?.macd || !showMACD) return null;
+    const { dif, dea, macdHist } = chartData.macd;
+    return {
+      animation: false,
+      grid: { left: 48, right: 12, top: 8, bottom: 24 },
+      xAxis: { type: "category", data: chartData.dates, axisLabel: { show: false } },
+      yAxis: { type: "value", splitLine: { lineStyle: { type: "dashed", opacity: 0.3 } }, axisLabel: { fontSize: 9 } },
+      tooltip: { trigger: "axis" as const, confine: true },
+      legend: { data: ["DIF", "DEA", "MACD"], top: 0, textStyle: { fontSize: 10 }, itemWidth: 14, itemHeight: 8 },
+      series: [
+        { name: "DIF", type: "line", data: dif, lineStyle: { width: 1.2, color: "#c084fc" }, symbol: "none", showSymbol: false },
+        { name: "DEA", type: "line", data: dea, lineStyle: { width: 1.2, color: "#f472b6" }, symbol: "none", showSymbol: false },
+        { name: "MACD", type: "bar", data: macdHist.map((v) =>
+          v == null ? null : { value: v, itemStyle: { color: v >= 0 ? "rgba(15,118,110,0.7)" : "rgba(180,35,24,0.7)" } }
+        ), barMaxWidth: 6 },
+      ],
+    };
+  }, [chartData?.macd, showMACD, chartData?.dates]);
+
+  // ── RSI 副图 option ──
+  const rsiOption = useMemo(() => {
+    if (!chartData?.rsi || !showRSI) return null;
+    return {
+      animation: false,
+      grid: { left: 48, right: 12, top: 8, bottom: 24 },
+      xAxis: { type: "category", data: chartData.dates, axisLabel: { show: false } },
+      yAxis: {
+        type: "value", min: 0, max: 100,
+        splitLine: { lineStyle: { type: "dashed", opacity: 0.3 } },
+        axisLabel: { fontSize: 9 },
+        // 超买超卖参考线
+        markLine: {
+          silent: true,
+          symbol: "none",
+          lineStyle: { type: "solid", width: 1, opacity: 0.4 },
+          data: [
+            { yAxis: 70, lineStyle: { color: "#b42318" }, label: { formatter: "OB(70)", fontSize: 9 } },
+            { yAxis: 30, lineStyle: { color: "#0f766e" }, label: { formatter: "OS(30)", fontSize: 9 } },
+            { yAxis: 50, lineStyle: { color: "#6b7280", type: "dashed" } },
+          ],
+        },
+      },
+      tooltip: { trigger: "axis" as const, confine: true },
+      series: [{
+        name: "RSI", type: "line", data: chartData.rsi,
+        lineStyle: { width: 1.2, color: "#8b5cf6" }, symbol: "none", showSymbol: false,
+        areaStyle: { color: "rgba(139,92,246,0.08)" },
+        markPoint: {
+          data: chartData.rsiSignals.map((s) => ({
+            coord: [s.index, s.value],
+            value: s.type === "overbought" ? "超买" : "超卖",
+            symbol: s.type === "overbought" ? "triangle" : "triangle",
+            symbolSize: 8,
+            symbolRotate: s.type === "overbought" ? 180 : 0,
+            itemStyle: { color: s.type === "overbought" ? "#b42318" : "#0f766e" },
+            label: { fontSize: 9, color: s.type === "overbought" ? "#b42318" : "#0f766e" },
+          })),
+        } as any,
+      }],
+    };
+  }, [chartData?.rsi, showRSI, chartData?.dates, chartData?.rsiSignals]);
+
   const lastBar = detail?.bars?.[detail.bars.length - 1];
 
   // 空状态
@@ -595,7 +636,83 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   }
 
   /* ════════════════════════════════════════════════════
-     渲染交易计划区块（与 DetailModal JSX 一致）
+     渲染：风险仪表盘
+     ════════════════════════════════════════════════════ */
+  const renderRiskDashboard = () => {
+    if (!riskMetrics) return null;
+    const rm = riskMetrics;
+    const concColor = rm.concentrationLevel === "high" ? "#b42318" : rm.concentrationLevel === "medium" ? "#f59e0b" : "#0f766e";
+    const concLabel = rm.concentrationLevel === "high" ? t("riskHigh") : rm.concentrationLevel === "medium" ? t("riskMedium") : t("riskLow");
+    const rrColor = rm.rrRatio >= 2 ? "#0f766e" : rm.rrRatio >= 1 ? "#f59e0b" : "#b42318";
+    const stopColor = rm.currentStopDist <= 5 ? "#b42318" : rm.currentStopDist <= 10 ? "#f59e0b" : "#0f766e";
+
+    return (
+      <section className="ic__section ic__risk-section">
+        <div className="panel">
+          <h3>{t("riskDashboard")}</h3>
+          <div className="ic__risk-grid">
+            {/* 盈亏比 */}
+            <div className="ic__risk-card">
+              <span className="ic__risk-label">{t("riskRewardRatio")}</span>
+              <span className="ic__risk-value" style={{ color: rrColor }}>
+                {rm.rrRatio >= 0 ? rm.rrRatio.toFixed(2) : "-"}
+                <small>:1</small>
+              </span>
+              <div className="ic__risk-detail">
+                <span>{t("reward")}: +{percent(rm.reward / entryPrice)}</span>
+                <span>{t("risk")}: -{percent(rm.riskAmount / entryPrice)}</span>
+              </div>
+            </div>
+
+            {/* 止损距离 */}
+            <div className="ic__risk-card">
+              <span className="ic__risk-label">{t("stopLossDistance")}</span>
+              <span className="ic__risk-value" style={{ color: stopColor }}>
+                {rm.currentStopDist.toFixed(1)}%
+              </span>
+              <div className="ic__risk-detail">
+                <span>当前: {score(rm.currentPrice)}</span>
+                <span>止损: {score(rm.stop)}</span>
+                {rm.atrStopRef != null && <span>2×ATR: {score(rm.atrStopRef)}</span>}
+              </div>
+            </div>
+
+            {/* 仓位集中度 */}
+            <div className="ic__risk-card">
+              <span className="ic__risk-label">{t("positionConcentration")}</span>
+              <span className="ic__risk-value" style={{ color: concColor }}>
+                {percent(setup?.recommended_position_pct ?? 0)}
+              </span>
+              <div className="ic__risk-bar">
+                <Progress
+                  percent={Math.min(100, (setup?.recommended_position_pct ?? 0) * 5)}
+                  size="small"
+                  strokeColor={concColor}
+                  showInfo={false}
+                />
+                <span className="ic__risk-level">{concLabel}</span>
+              </div>
+            </div>
+
+            {/* 单笔最大亏损 */}
+            <div className="ic__risk-card">
+              <span className="ic__risk-label">{t("maxLossPerTrade")}</span>
+              <span className="ic__risk-value" style={{ color: rm.maxLossAmount > 0 ? "#b42318" : "#6b7280" }}>
+                {rm.maxLossAmount > 0 ? `-¥${rm.maxLossAmount.toFixed(0)}` : "-"}
+              </span>
+              <div className="ic__risk-detail">
+                <span>每股亏损: {score(rm.maxLossPerShare)}</span>
+                <span>数量: {quantity}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  /* ════════════════════════════════════════════════════
+     渲染：交易计划区块
      ════════════════════════════════════════════════════ */
   const renderTradePlan = () => (
     <section className="ic__section ic__trade-plan-section">
@@ -690,21 +807,29 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 <span style={{ fontSize: 11 }}>{formatTrimTrigger(setup)}</span>
               </div>
 
-              {/* Tranche plan */}
+              {/* Tranche plan with timeline view */}
               {setup.tranche_plan && setup.tranche_plan.length > 0 && (
                 <div className="detail-card" style={{ marginTop: 10 }}>
                   <p className="panel-kicker">{t("tranchePlan")}</p>
-                  {setup.tranche_plan.map((tranche, i) => (
-                    <div key={i} className="item-subline">
-                      <strong style={{ color: "#0f766e" }}>{trancheLabel(tranche.label)}</strong>
-                      {" | "}
-                      {joinParts([
-                        `${t("tranchePct")}: ${percent(tranche.position_pct)}`,
-                        `${t("positionAmount")}: ${money(tranche.amount)}`,
-                        `${t("trigger")}: ${trancheTrigger(tranche.trigger ?? "")}`,
-                      ])}
-                    </div>
-                  ))}
+                  {/* Timeline view */}
+                  <div className="ic__tranche-timeline">
+                    {setup.tranche_plan.map((tranche, i) => (
+                      <div key={i} className={`ic__tranche-node ic__tranche--${tranche.label}`}>
+                        <div className="ic__tranche-dot" />
+                        {(i < setup.tranche_plan!.length - 1) && <div className="ic__tranche-line" />}
+                        <div className="ic__tranche-content">
+                          <strong style={{ color: "#0f766e" }}>{trancheLabel(tranche.label)}</strong>
+                          <span className="ic__tranche-meta">
+                            {joinParts([
+                              `${t("tranchePct")}: ${percent(tranche.position_pct)}`,
+                              `${t("positionAmount")}: ${money(tranche.amount)}`,
+                              `${t("trigger")}: ${trancheTrigger(tranche.trigger ?? "")}`,
+                            ])}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -726,27 +851,12 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
 
                   {ctx.futurePlanScenario === "custom" && (
                     <div className="future-custom-grid">
-                      <label>
-                        <span>{t("customHorizon")}</span>
-                        <input type="number" value={ctx.futurePlanCustom.horizonDays}
-                          onChange={(e) =>
-                            ctx.setFuturePlanCustom({ ...ctx.futurePlanCustom, horizonDays: Number(e.target.value) })
-                          } />
-                      </label>
-                      <label>
-                        <span>{t("customPullback")}</span>
-                        <input type="number" value={ctx.futurePlanCustom.pullbackPct}
-                          onChange={(e) =>
-                            ctx.setFuturePlanCustom({ ...ctx.futurePlanCustom, pullbackPct: Number(e.target.value) })
-                          } />
-                      </label>
-                      <label>
-                        <span>{t("customPosition")}</span>
-                        <input type="number" value={ctx.futurePlanCustom.positionPct}
-                          onChange={(e) =>
-                            ctx.setFuturePlanCustom({ ...ctx.futurePlanCustom, positionPct: Number(e.target.value) })
-                          } />
-                      </label>
+                      <label><span>{t("customHorizon")}</span><input type="number" value={ctx.futurePlanCustom.horizonDays}
+                        onChange={(e) => ctx.setFuturePlanCustom({ ...ctx.futurePlanCustom, horizonDays: Number(e.target.value) })} /></label>
+                      <label><span>{t("customPullback")}</span><input type="number" value={ctx.futurePlanCustom.pullbackPct}
+                        onChange={(e) => ctx.setFuturePlanCustom({ ...ctx.futurePlanCustom, pullbackPct: Number(e.target.value) })} /></label>
+                      <label><span>{t("customPosition")}</span><input type="number" value={ctx.futurePlanCustom.positionPct}
+                        onChange={(e) => ctx.setFuturePlanCustom({ ...ctx.futurePlanCustom, positionPct: Number(e.target.value) })} /></label>
                     </div>
                   )}
 
@@ -754,9 +864,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                     <div key={i} className="item-subline">
                       {joinParts([
                         futureBuyLabel(plan.label),
-                        `${t("futureZone")}: ${
-                          plan.zone_min !== null ? score(plan.zone_min) : "-"
-                        } - ${plan.zone_max !== null ? score(plan.zone_max) : "-"}`,
+                        `${t("futureZone")}: ${plan.zone_min !== null ? score(plan.zone_min) : "-"} - ${plan.zone_max !== null ? score(plan.zone_max) : "-"}`,
                         `${t("futureHorizon")}: ${plan.horizon_days}${t("daysUnit")}`,
                         `${t("futurePriority")}: ${futurePriorityLabel(plan.priority)}`,
                         `${t("recommendedPosition")}: ${percent(plan.position_pct)}`,
@@ -777,7 +885,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   );
 
   /* ════════════════════════════════════════════════════
-     渲染K线图区块（与 DetailModal JSX 一致）
+     渲染：K线图区块（含MACD+RSI副图）
      ════════════════════════════════════════════════════ */
   const renderChartSection = () => (
     <section className="ic__section ic__chart-section">
@@ -786,9 +894,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           <h3>{t("recentBars")}</h3>
           <div className="chart-toolbar">
             <p className="panel-meta" id="chartMeta">
-              {lastBar
-                ? `${lastBar.trade_date}${DOT}${t("close")}: ${score(lastBar.close)}`
-                : "-"}
+              {lastBar ? `${lastBar.trade_date}${DOT}${t("close")}: ${score(lastBar.close)}` : "-"}
             </p>
             <div className="detail-actions chart-actions">
               <div className="chart-timeframe-group">
@@ -798,69 +904,73 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                   onClick={() => ctx.setChartTimeframe("weekly")}>{t("chartWeekly")}</Button>
               </div>
               <span className="chart-window-pill">{ctx.chartWindowSize}{t("barsUnit")}</span>
-              <Button size="small" onClick={() =>
-                ctx.setChartWindowSize(Math.max(20, ctx.chartWindowSize - 20))
-              }>{t("zoomIn")}</Button>
-              <Button size="small" onClick={() =>
-                ctx.setChartWindowSize(Math.min(250, ctx.chartWindowSize + 20))
-              }>{t("zoomOut")}</Button>
-              <Button size="small" onClick={() => {
-                ctx.setChartWindowSize(60);
-                ctx.setChartRange(null);
-              }}>{t("resetZoom")}</Button>
+              <Button size="small" onClick={() => ctx.setChartWindowSize(Math.max(20, ctx.chartWindowSize - 20))}>{t("zoomIn")}</Button>
+              <Button size="small" onClick={() => ctx.setChartWindowSize(Math.min(250, ctx.chartWindowSize + 20))}>{t("zoomOut")}</Button>
+              <Button size="small" onClick={() => { ctx.setChartWindowSize(60); ctx.setChartRange(null); }}>{t("resetZoom")}</Button>
             </div>
+          </div>
+          {/* 指标面板开关 */}
+          <div className="ic__indicator-toggles">
+            <button className={`ic__toggle-btn${showMACD ? " active" : ""}`} onClick={() => setShowMACD(!showMACD)}>MACD</button>
+            <button className={`ic__toggle-btn${showRSI ? " active" : ""}`} onClick={() => setShowRSI(!showRSI)}>RSI</button>
           </div>
         </div>
 
         <div id="detailChart" className={`chart-surface${ctx.chartExpanded ? " expanded" : ""}`}>
           {chartOption ? (
-            <>
+            <div className="ic__charts-stack">
+              {/* 主K线图 */}
               <div style={{ position: "relative" }}>
                 <ReactECharts
                   option={chartOption}
-                  style={{
-                    height: ctx.chartExpanded ? "780px" : "560px",
-                    width: "100%",
-                  }}
+                  style={{ height: ctx.chartExpanded ? 520 : 400, width: "100%" }}
                 />
                 {chartData && activeFutureBuyPlan.length > 0 && (
                   <FuturePlanOverlay
                     plans={activeFutureBuyPlan}
                     lastClose={chartData.closes[chartData.closes.length - 1]}
                     priceMin={(() => {
-                      const allPrices = chartData.candlestick.flatMap((c) => [c[1], c[2], c[3], c[4]]);
-                      const maValues = [...chartData.ma10, ...chartData.ma20].filter((v): v is number => v !== null);
-                      const futureZones = activeFutureBuyPlan.flatMap((p) =>
-                        p.zone_min !== null && p.zone_max !== null ? [p.zone_min, p.zone_max] : []
-                      );
-                      const all = [...allPrices, ...maValues, ...futureZones].filter((v): v is number => v != null && !isNaN(v));
-                      return Math.min(...all) * 0.985;
+                      const ap = chartData.candlestick.flatMap((c) => [c[1], c[2], c[3], c[4]]);
+                      const mv = [...chartData.ma10, ...chartData.ma20].filter((v): v is number => v != null);
+                      const all = [...ap, ...mv].filter((v): v is number => v != null && !isNaN(v));
+                      return all.length > 0 ? Math.min(...all) * 0.985 : 0;
                     })()}
                     priceMax={(() => {
-                      const allPrices = chartData.candlestick.flatMap((c) => [c[1], c[2], c[3], c[4]]);
-                      const maValues = [...chartData.ma10, ...chartData.ma20].filter((v): v is number => v !== null);
-                      const futureZones = activeFutureBuyPlan.flatMap((p) =>
-                        p.zone_min !== null && p.zone_max !== null ? [p.zone_min, p.zone_max] : []
-                      );
-                      const all = [...allPrices, ...maValues, ...futureZones].filter((v): v is number => v != null && !isNaN(v));
-                      return Math.max(...all) * 1.015;
+                      const ap = chartData.candlestick.flatMap((c) => [c[1], c[2], c[3], c[4]]);
+                      const mv = [...chartData.ma10, ...chartData.ma20].filter((v): v is number => v != null);
+                      const all = [...ap, ...mv].filter((v): v is number => v != null && !isNaN(v));
+                      return all.length > 0 ? Math.max(...all) * 1.015 : 100;
                     })()}
-                    height={ctx.chartExpanded ? 780 : 560}
+                    height={ctx.chartExpanded ? 520 : 400}
                   />
                 )}
               </div>
-              {chartData && (
-                <div className="chart-legend">
-                  {lastBar && (
-                    <span>O:{score(lastBar.open)} H:{score(lastBar.high)} L:{score(lastBar.low)} C:{score(lastBar.close)}</span>
-                  )}
-                  <span>{t("ma10")}: {lastMAValue(chartData.ma10)}</span>
-                  <span>{t("ma20")}: {lastMAValue(chartData.ma20)}</span>
+              {/* MACD 副图 */}
+              {macdOption && (
+                <div className="ic__sub-chart">
+                  <ReactECharts option={macdOption} style={{ height: 140, width: "100%" }} />
                 </div>
               )}
-            </>
+              {/* RSI 副图 */}
+              {rsiOption && (
+                <div className="ic__sub-chart">
+                  <ReactECharts option={rsiOption} style={{ height: 140, width: "100%" }} />
+                </div>
+              )}
+            </div>
           ) : (
             <div className="empty">{t("noChart")}</div>
+          )}
+          {chartData && (
+            <div className="chart-legend">
+              {lastBar && (
+                <span>O:{score(lastBar.open)} H:{score(lastBar.high)} L:{score(lastBar.low)} C:{score(lastBar.close)}</span>
+              )}
+              <span>{t("ma10")}: {lastMAValue(chartData.ma10)}</span>
+              <span>{t("ma20")}: {lastMAValue(chartData.ma20)}</span>
+              {chartData.macd && <span>DIF: {lastMAValue(chartData.macd.dif)} DEA: {lastMAValue(chartData.macd.dea)}</span>}
+              {chartData.rsi && <span>RSI: {lastMAValue(chartData.rsi)}</span>}
+            </div>
           )}
         </div>
       </div>
@@ -880,15 +990,12 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             placeholder={t("searchSymbolPlaceholder")}
             allowClear value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onPressEnter={() => {
-              if (searchResults.length > 0) handleSelectSymbol(searchResults[0].id);
-            }}
+            onPressEnter={() => { if (searchResults.length > 0) handleSelectSymbol(searchResults[0].id); }}
           />
           {searchResults.length > 0 && (
             <div className="ic__search-dropdown">
               {searchResults.map((item) => (
-                <button key={item.id} className="ic__search-result-item"
-                  onClick={() => handleSelectSymbol(item.id)}>
+                <button key={item.id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.id)}>
                   <span className="symbol-code">{item.symbol}</span>
                   <span className="symbol-name">{item.name}</span>
                 </button>
@@ -906,6 +1013,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             ))}
           </div>
         )}
+        {renderRiskDashboard()}
         {renderTradePlan()}
         {renderChartSection()}
       </div>
@@ -920,16 +1028,13 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           placeholder={t("searchSymbolPlaceholder")}
           allowClear size="large" value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          onPressEnter={() => {
-            if (searchResults.length > 0) handleSelectSymbol(searchResults[0].id);
-          }}
+          onPressEnter={() => { if (searchResults.length > 0) handleSelectSymbol(searchResults[0].id); }}
           className="ic__top-input"
         />
         {searchResults.length > 0 && (
           <div className="ic__search-dropdown">
             {searchResults.map((item) => (
-              <button key={item.id} className="ic__search-result-item"
-                onClick={() => handleSelectSymbol(item.id)}>
+              <button key={item.id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.id)}>
                 <span className="symbol-code">{item.symbol}</span>
                 <span className="symbol-name">{item.name}</span>
               </button>
@@ -967,6 +1072,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             </div>
           </div>
         )}
+        {renderRiskDashboard()}
         {renderTradePlan()}
         {renderChartSection()}
       </main>

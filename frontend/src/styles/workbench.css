@@ -2833,3 +2833,199 @@ td .symbol-name {
     font-size: 14px;
   }
 }
+
+/* ══════════════════════════════════════════════════════════
+   风险仪表盘样式
+   ══════════════════════════════════════════════════════════ */
+
+.ic__risk-section {
+  margin-bottom: 0;
+}
+.ic__risk-section h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ic__risk-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.ic__risk-card {
+  background: rgba(31, 41, 51, 0.03);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ic__risk-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ic__risk-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.ic__risk-value small {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+.ic__risk-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ic__risk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.ic__risk-bar .ant-progress {
+  flex: 1;
+}
+.ic__risk-level {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════════════════════════
+   指标面板开关
+   ══════════════════════════════════════════════════════════ */
+
+.ic__indicator-toggles {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.ic__toggle-btn {
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ic__toggle-btn:hover {
+  background: rgba(15, 118, 110, 0.06);
+  border-color: #0f766e;
+  color: #0f766e;
+}
+.ic__toggle-btn.active {
+  background: rgba(15, 118, 110, 0.10);
+  border-color: #0f766e;
+  color: #0f766e;
+  font-weight: 600;
+}
+
+/* ══════════════════════════════════════════════════════════
+   副图容器 (MACD / RSI)
+   ══════════════════════════════════════════════════════════ */
+
+.ic__charts-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ic__sub-chart {
+  background: rgba(255, 252, 245, 0.5);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px;
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════════════
+   分批执行时间轴
+   ══════════════════════════════════════════════════════════ */
+
+.ic__tranche-timeline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 8px 0;
+  overflow-x: auto;
+}
+
+.ic__tranche-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 100px;
+  padding: 0 8px;
+}
+
+.ic__tranche-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #0f766e;
+  border: 2px solid white;
+  box-shadow: 0 0 0 2px #0f766e;
+  flex-shrink: 0;
+  z-index: 1;
+}
+.ic__tranche--confirm .ic__tranche-dot { background: #3b82f6; box-shadow: 0 0 0 2px #3b82f6; }
+.ic__tranche--expand .ic__tranche-dot { background: #f59e0b; box-shadow: 0 0 0 2px #f59e0b; }
+.ic__tranche--probe .ic__tranche-dot { background: #8b5cf6; box-shadow: 0 0 0 2px #8b5cf6; }
+
+.ic__tranche-line {
+  position: absolute;
+  top: 5px;
+  left: calc(50% + 8px);
+  width: calc(100% - 16px);
+  height: 2px;
+  background: linear-gradient(90deg, #0f766e, #d1d5db);
+  z-index: 0;
+}
+
+.ic__tranche-content {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.ic__tranche-meta {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* 响应式：风险卡片在小屏幕上变两列 */
+@media (max-width: 1023px) {
+  .ic__risk-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ic__tranche-timeline {
+    flex-wrap: wrap;
+  }
+
+  .ic__sub-chart {
+    min-height: 120px;
+  }
+}
