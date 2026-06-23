@@ -130,4 +130,42 @@ export const api = {
     requestJson(`${API}/discovery/results/${resultId}/refresh`, { method: "POST" }),
   cleanupDiscoveryResults: () =>
     requestJson<{ deleted: number; skipped_frozen: number }>(`${API}/discovery/results/cleanup`, { method: "POST" }),
+
+  // Market Events (行情消息)
+  getMarketEvents: (params: {
+    impact_scope?: string;
+    importance_level_min?: number;
+    importance_level_max?: number;
+    affected_market?: string;
+    sentiment?: string;
+    date_from?: string;
+    date_to?: string;
+    is_manual?: number;
+    limit?: number;
+    offset?: number;
+    sort_by?: string;
+  } = {}) => {
+    const q = new URLSearchParams();
+    if (params.impact_scope) q.set("impact_scope", params.impact_scope);
+    if (params.importance_level_min != null) q.set("importance_level_min", String(params.importance_level_min));
+    if (params.importance_level_max != null) q.set("importance_level_max", String(params.importance_level_max));
+    if (params.affected_market) q.set("affected_market", params.affected_market);
+    if (params.sentiment) q.set("sentiment", params.sentiment);
+    if (params.date_from) q.set("date_from", params.date_from);
+    if (params.date_to) q.set("date_to", params.date_to);
+    if (params.is_manual != null) q.set("is_manual", String(params.is_manual));
+    q.set("limit", String(params.limit ?? 50));
+    q.set("offset", String(params.offset ?? 0));
+    if (params.sort_by) q.set("sort_by", params.sort_by);
+    return requestJson<any>(`${API}/market-events?${q.toString()}`);
+  },
+  collectMarketEvents: (payload: { days?: number; sources?: string[] } = {}) =>
+    requestJson<any>(`${API}/market-events/collect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      timeoutMs: 60000,
+    }),
+  getMarketEventScopes: () =>
+    requestJson<string[]>(`${API}/market-events/scopes`),
 };

@@ -6,7 +6,7 @@ from sqlalchemy import engine_from_config, pool
 from app.db.base import Base
 # Import all models so they are registered with Base.metadata
 from app.models import (
-    daily_bar, factor, journal_entry, news_event,
+    daily_bar, factor, journal_entry, market_event, news_event,
     portfolio, scan, score, signal_rule, sim_account,
     symbol, trade_setup, watchlist,
 )

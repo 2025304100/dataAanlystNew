@@ -473,3 +473,44 @@ export interface MarketDataUpdateResponse {
     failed_count: number;
   };
 }
+
+// ════════════════════════════════════════
+//  行情消息 (Market News / Market Events)
+// ════════════════════════════════════════
+
+export interface MarketEvent {
+  id: number;
+  title: string;
+  summary: string | null;
+  impact_scope: string;       // macro_policy | sector_dynamics | international | breaking | fund_flow | sentiment | other
+  importance_level: number;   // 1-5
+  affected_market: string;     // A股 | 港股 | 美股
+  affected_sectors: string | null;
+  affected_symbols: string | null;
+  sentiment: string;          // positive | negative | neutral
+  source: string;             // cctv | baidu | baidu-report | manual | ...
+  source_url: string | null;
+  is_manual: number;          // 0=自动采集, 1=手动录入
+  published_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MarketEventListResponse {
+  events: MarketEvent[];
+  total: number;
+  by_scope: Record<string, number>;
+  by_level: Record<string, number>;
+}
+
+export interface MarketEventCollectRequest {
+  days?: number;
+  sources?: string[];
+}
+
+export interface MarketEventCollectResponse {
+  collected: number;
+  skipped_duplicate: number;
+  errors: string[];
+}

@@ -10,6 +10,7 @@ import Trading from "./components/Trading";
 import InvestmentCenter from "./components/InvestmentCenter";  // 新增：投资中心组件
 import Discovery from "./components/Discovery";
 import MacroData from "./components/MacroData";
+import MarketNews from "./components/MarketNews";  // 行情消息
 import Settings from "./components/Settings";
 import DetailModal from "./components/DetailModal";
 import MetricModal from "./components/MetricModal";
@@ -134,6 +135,12 @@ export default function App() {
           {t("tabMacro")}
         </button>
         <button
+          className={`view-tab${ctx.activeTab === "news" ? " active" : ""}`}
+          onClick={() => ctx.setActiveTab("news")}
+        >
+          {t("tabMarketNews")}
+        </button>
+        <button
           className={`view-tab${ctx.activeTab === "settings" ? " active" : ""}`}
           onClick={() => ctx.setActiveTab("settings")}
         >
@@ -237,6 +244,8 @@ export default function App() {
         {ctx.activeTab === "discovery" && <Discovery />}
 
         {ctx.activeTab === "macro" && <MacroData />}
+
+        {ctx.activeTab === "news" && <MarketNews />}
 
         {ctx.activeTab === "settings" && <Settings />}
       </main>
