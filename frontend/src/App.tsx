@@ -9,6 +9,7 @@ import PortfolioWorkbench from "./components/PortfolioWorkbench";
 import Trading from "./components/Trading";
 import InvestmentCenter from "./components/InvestmentCenter";  // 新增：投资中心组件
 import Discovery from "./components/Discovery";
+import MacroData from "./components/MacroData";
 import Settings from "./components/Settings";
 import DetailModal from "./components/DetailModal";
 import MetricModal from "./components/MetricModal";
@@ -127,6 +128,12 @@ export default function App() {
           {t("tabDiscovery")}
         </button>
         <button
+          className={`view-tab${ctx.activeTab === "macro" ? " active" : ""}`}
+          onClick={() => ctx.setActiveTab("macro")}
+        >
+          {t("tabMacro")}
+        </button>
+        <button
           className={`view-tab${ctx.activeTab === "settings" ? " active" : ""}`}
           onClick={() => ctx.setActiveTab("settings")}
         >
@@ -228,6 +235,8 @@ export default function App() {
         )}
 
         {ctx.activeTab === "discovery" && <Discovery />}
+
+        {ctx.activeTab === "macro" && <MacroData />}
 
         {ctx.activeTab === "settings" && <Settings />}
       </main>

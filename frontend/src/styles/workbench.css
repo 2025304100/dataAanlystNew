@@ -3254,3 +3254,103 @@ td .symbol-name {
   background: rgba(139, 92, 246, 0.15);
   color: #7c3aed;
 }
+
+
+.macro-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.macro-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  background: #ffffff;
+  border: 1px solid rgba(31, 41, 55, 0.09);
+  border-radius: 8px;
+}
+
+.macro-hero h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+  color: #111827;
+}
+
+.macro-hero p {
+  margin: 6px 0 0;
+  color: #64748b;
+}
+
+.macro-alert {
+  border-radius: 8px;
+}
+
+.macro-empty,
+.macro-card,
+.macro-score-row .ant-card {
+  border-radius: 8px;
+  border-color: rgba(31, 41, 55, 0.09);
+}
+
+.macro-score-row .ant-card-body {
+  min-height: 116px;
+}
+
+.macro-main-row {
+  align-items: stretch;
+}
+
+.macro-main-row .macro-card {
+  height: 100%;
+}
+
+.macro-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.macro-brief .ant-typography {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #0f766e;
+  background: #f8fafc;
+  border-radius: 6px;
+  color: #334155;
+}
+
+@media (max-width: 768px) {
+  .macro-hero {
+    flex-direction: column;
+  }
+
+  .macro-hero .ant-space {
+    width: 100%;
+  }
+}
+
+
+.macro-clickable-row {
+  cursor: pointer;
+}
+
+.macro-clickable-row:hover td {
+  background: #f0fdfa !important;
+}
+
+.macro-link-button {
+  padding: 0;
+  height: auto;
+  font-weight: 600;
+  color: #0f766e;
+}
+
+.macro-history-card {
+  margin-bottom: 12px;
+  border-radius: 8px;
+}

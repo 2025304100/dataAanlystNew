@@ -410,6 +410,48 @@ export interface NewsSnapshot {
   symbols: NewsSymbolSummary[];
 }
 
+export interface MacroIndicator {
+  id?: number | null;
+  region: string;
+  category: string;
+  indicator_key: string;
+  name: string;
+  period: string;
+  value: number | null;
+  previous_value: number | null;
+  delta: number | null;
+  unit: string | null;
+  frequency: string;
+  source: string;
+  score: number;
+  status: string;
+  updated_at?: string | null;
+}
+
+export interface MacroSnapshotSummary {
+  id?: number | null;
+  region: string;
+  market_score: number;
+  stance: string;
+  summary: string;
+  growth_score: number;
+  inflation_score: number;
+  liquidity_score: number;
+  credit_score: number;
+  risk_score: number;
+  indicators_total: number;
+  failed_total: number;
+  created_at?: string | null;
+}
+
+export interface MacroOverview {
+  region: string;
+  snapshot: MacroSnapshotSummary | null;
+  indicators: MacroIndicator[];
+  brief: string[];
+  failed: Array<Record<string, unknown>>;
+}
+
 export interface WatchlistItem {
   id: number;
   watchlist_id: number;

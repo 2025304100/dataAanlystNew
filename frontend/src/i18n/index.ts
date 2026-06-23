@@ -254,6 +254,8 @@ const I18N: Record<string, Record<string, string>> = {
     tabRules: "规则配置",
     tabPortfolio: "目前观察池",
     tabInvestmentCenter: "投资中心",
+    tabMacro: "宏观数据",
+    tabSettings: "设置",
     // 投资中心搜索栏
     searchSymbolPlaceholder: "输入股票/ETF代码，如 000001、510300、AAPL",
     quickAccess: "快捷入口",
@@ -270,7 +272,6 @@ const I18N: Record<string, Record<string, string>> = {
     riskHigh: "高集中",
     riskMedium: "中等",
     riskLow: "分散",
-    tabSettings: "设置",
     subOverview: "总览",
     subJournals: "交易日记",
     subRules: "信号规则",
@@ -688,6 +689,7 @@ const I18N: Record<string, Record<string, string>> = {
     tabRules: "Rules",
     tabPortfolio: "Portfolio",
     tabInvestmentCenter: "Investment Center",
+    tabMacro: "Macro Data",
     // Investment center search bar
     searchSymbolPlaceholder: "Enter stock/ETF code, e.g. 000001, 510300, AAPL",
     quickAccess: "Quick Access",

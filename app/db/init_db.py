@@ -5,7 +5,7 @@ from app.db.session import engine
 from app.core.config import settings
 from sqlalchemy import inspect, text
 
-from app.models import daily_bar, discovery, factor, journal_entry, news_event, portfolio, scan, score, signal_rule, sim_account, symbol, trade_setup, watchlist
+from app.models import daily_bar, discovery, factor, journal_entry, macro_data, news_event, portfolio, scan, score, signal_rule, sim_account, symbol, trade_setup, watchlist
 
 
 def _ensure_sqlite_scan_result_columns() -> None:

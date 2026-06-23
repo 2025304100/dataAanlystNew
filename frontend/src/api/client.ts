@@ -109,6 +109,14 @@ export const api = {
     return requestJson<any>(`${API}/news/latest?${params.toString()}`);
   },
 
+  // Macro
+  getMacroOverview: (region = "all") =>
+    requestJson<any>(`${API}/macro/overview?region=${encodeURIComponent(region)}`),
+  updateMacroData: (payload: any) =>
+    requestJson<any>(`${API}/macro/update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 60000 }),
+  getMacroIndicatorHistory: (region: string, indicatorKey: string, limit = 60) =>
+    requestJson<any[]>(`${API}/macro/indicators/${encodeURIComponent(indicatorKey)}/history?region=${encodeURIComponent(region)}&limit=${limit}`),
+
   // Discovery
   getDiscoveryTasks: (limit = 10) => requestJson<any[]>(`${API}/discovery/tasks?limit=${limit}`),
   createDiscoveryTask: (payload: any) =>
