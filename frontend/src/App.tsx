@@ -7,7 +7,8 @@ import { t, template } from "./i18n";
 import { regionLongLabel } from "./i18n";
 import PortfolioWorkbench from "./components/PortfolioWorkbench";
 import Trading from "./components/Trading";
-import InvestmentCenter from "./components/InvestmentCenter";  // 新增：投资中心组件
+import InvestmentCenter from "./components/InvestmentCenter";
+import TodayDecision from "./components/TodayDecision";
 import Discovery from "./components/Discovery";
 import MacroData from "./components/MacroData";
 import MarketNews from "./components/MarketNews";  // 行情消息
@@ -107,6 +108,13 @@ export default function App() {
       {activeRequests > 0 && <div className="request-indicator" />}
 
       <nav className="view-tabs" aria-label="Main views">
+        <button
+          className={`view-tab${ctx.activeTab === "decision" ? " active" : ""}`}
+          onClick={() => ctx.setActiveTab("decision")}
+        >
+          {ctx.locale === "en-US" ? "Today Decision" : "\u4eca\u65e5\u51b3\u7b56"}
+        </button>
+
         {/* ✨ 新增：投资中心导航（放在第一位） */}
         <button
           className={`view-tab${ctx.activeTab === "investment" ? " active" : ""}`}
@@ -149,6 +157,8 @@ export default function App() {
       </nav>
 
       <main className="layout">
+        {ctx.activeTab === "decision" && <TodayDecision />}
+
         {/* ✨ 新增：投资中心整合视图 */}
         {ctx.activeTab === "investment" && (
           <InvestmentCenter openMetricModal={openMetricModal} />

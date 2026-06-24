@@ -2,15 +2,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models.market_event import IMPACT_SCOPE_CHOICES
-
 
 class MarketEventCreate(BaseModel):
     title: str
     summary: str | None = None
     impact_scope: str = Field(default="other")
     importance_level: int = Field(default=1, ge=1, le=5)
-    affected_market: str = Field(default="A股")
+    affected_market: str = Field(default="A\u80a1/\u671f\u8d27")
     affected_sectors: str | None = None
     affected_symbols: str | None = None
     sentiment: str = Field(default="neutral")
@@ -51,8 +49,8 @@ class MarketEventRead(BaseModel):
 
 
 class MarketEventCollectRequest(BaseModel):
-    days: int = Field(default=7, ge=1, le=30)
-    sources: list[str] = Field(default_factory=lambda: ["cctv", "baidu", "eastmoney"])
+    days: int = Field(default=30, ge=1, le=30)
+    sources: list[str] = Field(default_factory=lambda: ["eastmoney-global", "caixin"])
 
 
 class MarketEventListResponse(BaseModel):

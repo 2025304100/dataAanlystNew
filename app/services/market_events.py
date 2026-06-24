@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 import akshare as ak
 import pandas as pd
@@ -23,90 +23,43 @@ from app.services.akshare_utils import quiet_akshare_output
 
 logger = logging.getLogger(__name__)
 
-# ── Keyword maps for auto-classification ──────────────────────────────
-
 SCOPE_KEYWORDS: dict[str, list[str]] = {
-    "macro_policy": [
-        "央行", "降息", "降准", "利率", "LPR", "MLF", "逆回购", "存款准备金",
-        "财政部", "财政", "国债", "地方债", "专项债", "减税", "税收",
-        "证监会", "银保监会", "金融监管", "注册制", "退市制度",
-        "国务院", "国常会", "政治局", "中央经济", "两会",
-        "货币政策", "财政政策", "宏观调控", "稳增长", "保就业",
-    ],
-    "sector_dynamics": [
-        "行业", "产业", "板块", "赛道", "半导体", "芯片", "新能源", "光伏",
-        "锂电", "电池", "汽车", "医药", "医疗", "消费", "白酒", "地产",
-        "房地产", "互联网", "人工智能", "AI", "数字经济", "数据",
-        "技术突破", "国产替代", "供应链", "产能",
-    ],
-    "international": [
-        "美联储", "美债", "美元", "美股", "美国", "特朗普", "拜登",
-        "贸易战", "关税", "制裁", "地缘", "冲突", "战争", "中东",
-        "欧盟", "欧洲", "日本", "日经", "亚太", "新兴市场",
-        "IMF", "世界银行", "G7", "G20", "北约",
-    ],
-    "breaking": [
-        "突发", "紧急", "地震", "洪水", "台风", "疫情", "病毒",
-        "黑天鹅", "暴雷", "崩盘", "熔断", "暴跌", "暴涨",
-        "战争", "恐袭", "坠机", "事故", "灾难",
-    ],
-    "fund_flow": [
-        "北向资金", "南向资金", "外资", "主力资金", "资金流向",
-        "成交额", "成交量", "流动性", "社融", "M2", "信贷",
-        "融资融券", "两融", "ETF", "基金", "申购", "赎回",
-    ],
-    "sentiment": [
-        "恐慌", "贪婪", "恐慌指数", "VIX", "情绪", "信心",
-        "舆情", "舆论", "热搜", "关注度", "预期", "不确定性",
-        "牛市", "熊市", "股灾",
-    ],
+    "macro_policy": ["??", "??", "??", "??", "LPR", "MLF", "??", "??", "??", "??", "???", "???", "??", "CPI", "PPI", "PMI"],
+    "commodity_futures": ["??", "??", "??", "??", "?", "?", "?", "?", "??", "??", "??", "??", "??", "??", "??", "??", "???", "??", "OPEC", "COMEX", "LME"],
+    "sector_dynamics": ["??", "??", "??", "???", "??", "???", "??", "??", "??", "??", "??", "AI", "????", "??", "??"],
+    "international": ["???", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "IMF", "G7", "G20"],
+    "breaking": ["??", "??", "??", "??", "??", "??", "???", "??", "??", "??", "??", "??", "??"],
+    "fund_flow": ["????", "????", "??", "????", "???", "???", "???", "???", "??", "M2", "??", "????", "ETF", "??"],
+    "sentiment": ["??", "??", "VIX", "??", "??", "??", "??", "???", "??", "??"],
 }
 
 LEVEL_KEYWORDS: dict[int, list[str]] = {
-    5: [
-        "突发", "紧急", "重大", "重磅", "降息", "降准", "贸易战", "战争",
-        "制裁", "崩盘", "熔断", "黑天鹅", "暴雷", "股灾", "金融危机",
-        "政治局", "国务院", "中央", "央行紧急",
-    ],
-    4: [
-        "政策", "监管", "调控", "行业政策", "产业政策", "美联储",
-        "关税", "通胀", "CPI", "PPI", "GDP", "PMI",
-        "非农", "加息", "缩表", "退市", "注册制",
-    ],
-    3: [
-        "部委", "部门", "规划", "意见", "方案", "通知",
-        "数据", "指标", "报告", "指数", "市场", "走势",
-        "北向", "主力", "资金", "板块", "轮动",
-    ],
-    2: [
-        "行业", "产业", "企业", "公司", "公告", "财报",
-        "季度", "年度", "发布会", "会议", "论坛",
-    ],
+    5: ["??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "???", "??", "????"],
+    4: ["??", "??", "??", "???", "??", "??", "CPI", "PPI", "GDP", "PMI", "??", "??", "??", "OPEC"],
+    3: ["??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??"],
+    2: ["??", "??", "??", "??", "??", "??", "??"],
 }
 
 SENTIMENT_KEYWORDS: dict[str, list[str]] = {
     "positive": [
-        "利好", "上涨", "大涨", "反弹", "突破", "新高", "牛市",
-        "增长", "提升", "改善", "积极", "乐观", "宽松", "刺激",
-        "降息", "降准", "放水", "复苏", "回暖", "企稳",
+        "利好","上涨","反弹","回升","走强","突破","创新高","大涨","攀升",
+        "提振","推动","支撑","看好","乐观","增持","买入","资金流入",
+        "超预期","向好","复苏","繁荣","景气","盈利","增长","利好政策",
+        "降息","宽松","刺激","救助","扶持","补贴","减税","改革","开放",
     ],
     "negative": [
-        "利空", "下跌", "暴跌", "大跌", "崩盘", "新低", "熊市",
-        "下滑", "下降", "恶化", "消极", "悲观", "紧缩", "收紧",
-        "加息", "上调", "危机", "衰退", "滞胀", "恐慌",
+        "利空","下跌","暴跌","回落","走弱","破位","创新低","大跌","暴跌",
+        "压制","打击","拖累","看空","悲观","减持","卖出","资金流出",
+        "低于预期","恶化","衰退","萧条","亏损","下滑","收紧","加息",
+        "制裁","封锁","违约","暴雷","退市","停牌","调查","处罚","风险",
     ],
 }
+
+SOURCE_CREDIBILITY = {"cctv": 5, "baidu-report": 4, "baidu": 3, "eastmoney-global": 4, "caixin": 4, "futures-shmet": 3, "manual": 4}
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _first_value(row: dict[str, Any], keys: list[str]) -> Any:
-    for key in keys:
-        if key in row and row[key] is not None and not pd.isna(row[key]):
-            return row[key]
-    return None
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -118,33 +71,107 @@ def _parse_datetime(value: Any) -> datetime | None:
     return parsed.to_pydatetime().replace(tzinfo=None)
 
 
+def _text_values(row: dict[str, Any]) -> list[str]:
+    values: list[str] = []
+    for value in row.values():
+        if value is None or pd.isna(value):
+            continue
+        text = str(value).strip()
+        if text and text.lower() != "nan":
+            values.append(text)
+    return values
+
+
+def _looks_like_url(text: str) -> bool:
+    lowered = text.lower()
+    return lowered.startswith("http://") or lowered.startswith("https://")
+
+
+def _pick_title(row: dict[str, Any]) -> str | None:
+    preferred_keys = ["title", "????", "??", "??", "??", "articleTitle", "infoTitle"]
+    for key in preferred_keys:
+        value = row.get(key)
+        if value is not None and not pd.isna(value):
+            text = str(value).strip()
+            if len(text) >= 6 and not _looks_like_url(text):
+                return text
+    for text in _text_values(row):
+        if 8 <= len(text) <= 180 and not _looks_like_url(text) and not _parse_datetime(text):
+            return text
+    return None
+
+
+def _pick_summary(row: dict[str, Any], title: str) -> str | None:
+    preferred_keys = ["summary", "??", "??", "description", "digest"]
+    for key in preferred_keys:
+        value = row.get(key)
+        if value is None or pd.isna(value):
+            continue
+        text = str(value).strip()
+        if text and text != title and not _looks_like_url(text):
+            return text[:500]
+    return None
+
+
+def _pick_url(row: dict[str, Any]) -> str | None:
+    for key in ["url", "??", "????", "source_url", "articleUrl"]:
+        value = row.get(key)
+        if value is not None and not pd.isna(value):
+            text = str(value).strip()
+            if _looks_like_url(text):
+                return text
+    for text in _text_values(row):
+        if _looks_like_url(text):
+            return text
+    return None
+
+
+def _pick_published_at(row: dict[str, Any]) -> datetime | None:
+    for key in ["date", "??", "??", "????", "publish_time", "showTime", "time"]:
+        if key in row:
+            parsed = _parse_datetime(row.get(key))
+            if parsed is not None:
+                return parsed
+    for value in row.values():
+        parsed = _parse_datetime(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
 def _classify_impact_scope(title: str, summary: str | None) -> str:
     text = f"{title} {summary or ''}"
     for scope, keywords in SCOPE_KEYWORDS.items():
-        for kw in keywords:
-            if kw in text:
-                return scope
+        if any(keyword in text for keyword in keywords):
+            return scope
     return "other"
 
 
 def _classify_importance_level(title: str, summary: str | None) -> int:
     text = f"{title} {summary or ''}"
-    for level in range(5, 0, -1):
-        for kw in LEVEL_KEYWORDS.get(level, []):
-            if kw in text:
-                return level
+    for level in range(5, 1, -1):
+        if any(keyword in text for keyword in LEVEL_KEYWORDS.get(level, [])):
+            return level
     return 2
 
 
 def _classify_sentiment(title: str, summary: str | None) -> str:
     text = f"{title} {summary or ''}"
-    pos = sum(1 for kw in SENTIMENT_KEYWORDS["positive"] if kw in text)
-    neg = sum(1 for kw in SENTIMENT_KEYWORDS["negative"] if kw in text)
+    pos = sum(1 for keyword in SENTIMENT_KEYWORDS["positive"] if keyword in text)
+    neg = sum(1 for keyword in SENTIMENT_KEYWORDS["negative"] if keyword in text)
     if pos > neg:
         return "positive"
-    elif neg > pos:
+    if neg > pos:
         return "negative"
     return "neutral"
+
+
+def _affected_market(scope: str) -> str:
+    if scope == "commodity_futures":
+        return "??/??"
+    if scope == "international":
+        return "??/A?"
+    return "A?"
 
 
 def _title_hash(title: str) -> str:
@@ -172,9 +199,6 @@ def _event_to_read(event: MarketEvent) -> MarketEventRead:
     )
 
 
-# ── CRUD ──────────────────────────────────────────────────────────────
-
-
 def _parse_date_str(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -200,7 +224,6 @@ def list_market_events(
     sort_by: str = "published_at",
 ) -> MarketEventListResponse:
     stmt = select(MarketEvent)
-
     if impact_scope:
         stmt = stmt.where(MarketEvent.impact_scope == impact_scope)
     if importance_level_min is not None:
@@ -222,41 +245,22 @@ def list_market_events(
     if is_manual is not None:
         stmt = stmt.where(MarketEvent.is_manual == is_manual)
 
-    # Count total
-    count_stmt = stmt.with_only_columns(func.count(MarketEvent.id))
-    total = db.execute(count_stmt).scalar() or 0
+    total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
+    if sort_by == "importance_level":
+        stmt = stmt.order_by(desc(MarketEvent.importance_level), desc(MarketEvent.published_at), desc(MarketEvent.created_at))
+    else:
+        stmt = stmt.order_by(desc(MarketEvent.published_at), desc(MarketEvent.created_at))
+    events = db.execute(stmt.offset(offset).limit(limit)).scalars().all()
 
-    # Sort
-    sort_col = getattr(MarketEvent, sort_by, MarketEvent.published_at)
-    stmt = stmt.order_by(desc(sort_col)).limit(limit).offset(offset)
+    all_events = db.execute(select(MarketEvent)).scalars().all()
+    by_scope: dict[str, int] = {}
+    by_level: dict[str, int] = {}
+    for event in all_events:
+        by_scope[event.impact_scope] = by_scope.get(event.impact_scope, 0) + 1
+        level_key = str(event.importance_level)
+        by_level[level_key] = by_level.get(level_key, 0) + 1
 
-    events = db.execute(stmt).scalars().all()
-
-    # Aggregations
-    scope_rows = (
-        db.execute(
-            select(MarketEvent.impact_scope, func.count(MarketEvent.id))
-            .group_by(MarketEvent.impact_scope)
-        )
-        .all()
-    )
-    by_scope = {row[0]: row[1] for row in scope_rows}
-
-    level_rows = (
-        db.execute(
-            select(MarketEvent.importance_level, func.count(MarketEvent.id))
-            .group_by(MarketEvent.importance_level)
-        )
-        .all()
-    )
-    by_level = {str(row[0]): row[1] for row in level_rows}
-
-    return MarketEventListResponse(
-        events=[_event_to_read(e) for e in events],
-        total=total,
-        by_scope=by_scope,
-        by_level=by_level,
-    )
+    return MarketEventListResponse(events=[_event_to_read(e) for e in events], total=total, by_scope=by_scope, by_level=by_level)
 
 
 def get_market_event(db: Session, event_id: int) -> MarketEvent | None:
@@ -264,20 +268,9 @@ def get_market_event(db: Session, event_id: int) -> MarketEvent | None:
 
 
 def create_market_event(db: Session, payload: MarketEventCreate) -> MarketEvent:
-    event = MarketEvent(
-        title=payload.title,
-        summary=payload.summary,
-        impact_scope=payload.impact_scope,
-        importance_level=payload.importance_level,
-        affected_market=payload.affected_market,
-        affected_sectors=payload.affected_sectors,
-        affected_symbols=payload.affected_symbols,
-        sentiment=payload.sentiment,
-        source="manual",
-        source_url=payload.source_url,
-        is_manual=1,
-        published_at=payload.published_at or _now(),
-    )
+    event = MarketEvent(**payload.model_dump(exclude_unset=True), source="manual", is_manual=1)
+    if event.published_at is None:
+        event.published_at = _now()
     db.add(event)
     db.commit()
     db.refresh(event)
@@ -288,8 +281,7 @@ def update_market_event(db: Session, event_id: int, payload: MarketEventUpdate) 
     event = db.get(MarketEvent, event_id)
     if event is None:
         return None
-    update_data = payload.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
+    for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(event, key, value)
     db.commit()
     db.refresh(event)
@@ -305,141 +297,118 @@ def delete_market_event(db: Session, event_id: int) -> bool:
     return True
 
 
-# ── Auto-collection ───────────────────────────────────────────────────
+def _fetch_from_ak(fetcher: Callable[[], Any], source: str, limit: int = 40) -> list[dict]:
+    events: list[dict] = []
+    try:
+        with quiet_akshare_output():
+            frame = fetcher()
+        if frame is None or getattr(frame, "empty", True):
+            return events
+        for row in frame.head(limit).to_dict("records"):
+            title = _pick_title(row)
+            if not title:
+                continue
+            events.append({
+                "title": title,
+                "summary": _pick_summary(row, title),
+                "source": source,
+                "source_url": _pick_url(row),
+                "published_at": _pick_published_at(row),
+            })
+    except Exception as exc:
+        logger.debug("Failed to fetch %s: %s", source, exc, exc_info=True)
+    return events
 
 
 def _fetch_cctv_news() -> list[dict]:
-    events: list[dict] = []
-    try:
-        with quiet_akshare_output():
-            frame = ak.news_cctv()
-        for row in frame.head(30).to_dict("records"):
-            title = _first_value(row, ["新闻标题", "标题", "title", "内容", "摘要"])
-            if not title:
-                continue
-            published_at = _parse_datetime(_first_value(row, ["发布时间", "时间", "date", "日期"]))
-            events.append({
-                "title": str(title),
-                "source": "cctv",
-                "published_at": published_at,
-            })
-    except Exception:
-        logger.debug("Failed to fetch CCTV news", exc_info=True)
-    return events
+    return _fetch_from_ak(ak.news_cctv, "cctv", 40)
 
 
 def _fetch_baidu_economic_news() -> list[dict]:
-    events: list[dict] = []
-    try:
-        with quiet_akshare_output():
-            frame = ak.news_economic_baidu()
-        for row in frame.head(30).to_dict("records"):
-            title = _first_value(row, ["新闻标题", "标题", "title", "内容", "摘要"])
-            if not title:
-                continue
-            published_at = _parse_datetime(_first_value(row, ["发布时间", "时间", "date", "日期"]))
-            url = _first_value(row, ["新闻链接", "链接", "url"])
-            events.append({
-                "title": str(title),
-                "source": "baidu",
-                "source_url": str(url) if url else None,
-                "published_at": published_at,
-            })
-    except Exception:
-        logger.debug("Failed to fetch Baidu economic news", exc_info=True)
-    return events
+    return _fetch_from_ak(ak.news_economic_baidu, "baidu", 40)
 
 
 def _fetch_baidu_report_news() -> list[dict]:
-    events: list[dict] = []
-    try:
-        with quiet_akshare_output():
-            frame = ak.news_report_time_baidu()
-        for row in frame.head(30).to_dict("records"):
-            title = _first_value(row, ["新闻标题", "标题", "title", "内容", "摘要"])
-            if not title:
-                continue
-            published_at = _parse_datetime(_first_value(row, ["发布时间", "时间", "date", "日期"]))
-            url = _first_value(row, ["新闻链接", "链接", "url"])
-            events.append({
-                "title": str(title),
-                "source": "baidu-report",
-                "source_url": str(url) if url else None,
-                "published_at": published_at,
-            })
-    except Exception:
-        logger.debug("Failed to fetch Baidu report news", exc_info=True)
-    return events
+    return _fetch_from_ak(ak.news_report_time_baidu, "baidu-report", 40)
+
+
+def _fetch_global_news() -> list[dict]:
+    return _fetch_from_ak(ak.stock_info_global_em, "eastmoney-global", 50)
+
+
+def _fetch_caixin_news() -> list[dict]:
+    return _fetch_from_ak(ak.stock_news_main_cx, "caixin", 40)
+
+
+def _fetch_futures_news() -> list[dict]:
+    return _fetch_from_ak(ak.futures_news_shmet, "futures-shmet", 30)
 
 
 def collect_market_events(db: Session, payload: MarketEventCollectRequest) -> MarketEventCollectResponse:
-    source_map = {
+    source_map: dict[str, Callable[[], list[dict]]] = {
+        "eastmoney-global": _fetch_global_news,
+        "caixin": _fetch_caixin_news,
         "cctv": _fetch_cctv_news,
         "baidu": _fetch_baidu_economic_news,
         "baidu-report": _fetch_baidu_report_news,
+        "futures-shmet": _fetch_futures_news,
     }
 
     all_raw: list[dict] = []
-    for src in payload.sources:
-        fetcher = source_map.get(src)
+    errors: list[str] = []
+    for source in payload.sources:
+        fetcher = source_map.get(source)
         if fetcher is None:
+            errors.append(f"Unknown source: {source}")
             continue
         try:
             all_raw.extend(fetcher())
-        except Exception:
-            logger.debug("Failed to fetch from source %s", src, exc_info=True)
+        except Exception as exc:
+            errors.append(f"{source}: {exc}")
+            logger.debug("Failed to fetch source %s", source, exc_info=True)
 
     cutoff = _now() - timedelta(days=payload.days)
-    seen_hashes: set[str] = set()
-
-    # Preload existing title hashes for dedup
     existing = db.execute(select(MarketEvent.title)).scalars().all()
-    seen_hashes = {_title_hash(t) for t in existing}
-
+    seen_hashes = {_title_hash(title) for title in existing}
     collected = 0
     skipped = 0
-    errors: list[str] = []
 
     for raw in all_raw:
-        title = raw["title"]
-        h = _title_hash(title)
-        if h in seen_hashes:
+        title = str(raw.get("title") or "").strip()
+        if not title:
             skipped += 1
             continue
-        seen_hashes.add(h)
+        title_hash = _title_hash(title)
+        if title_hash in seen_hashes:
+            skipped += 1
+            continue
+        seen_hashes.add(title_hash)
 
-        published_at = raw.get("published_at")
+        published_at = raw.get("published_at") or _now()
         if published_at and published_at < cutoff:
             skipped += 1
             continue
 
-        try:
-            impact_scope = _classify_impact_scope(title, None)
-            importance_level = _classify_importance_level(title, None)
-            sentiment = _classify_sentiment(title, None)
+        summary = raw.get("summary")
+        impact_scope = _classify_impact_scope(title, summary)
+        importance_level = _classify_importance_level(title, summary)
+        sentiment = _classify_sentiment(title, summary)
+        expires_days = 14 if importance_level >= 4 else 7 if importance_level >= 3 else 3
 
-            event = MarketEvent(
-                title=title,
-                impact_scope=impact_scope,
-                importance_level=importance_level,
-                affected_market="A股",
-                sentiment=sentiment,
-                source=raw["source"],
-                source_url=raw.get("source_url"),
-                is_manual=0,
-                published_at=published_at or _now(),
-            )
-            db.add(event)
-            collected += 1
-        except Exception as exc:
-            errors.append(f"Failed to save '{title[:50]}': {exc}")
-            logger.warning("Failed to save market event: %s", exc)
+        db.add(MarketEvent(
+            title=title,
+            summary=summary,
+            impact_scope=impact_scope,
+            importance_level=importance_level,
+            affected_market=_affected_market(impact_scope),
+            sentiment=sentiment,
+            source=raw.get("source") or "unknown",
+            source_url=raw.get("source_url"),
+            is_manual=0,
+            published_at=published_at,
+            expires_at=published_at + timedelta(days=expires_days) if published_at else None,
+        ))
+        collected += 1
 
     db.commit()
-    logger.info("Market event collection: %d collected, %d skipped", collected, skipped)
-
-    return MarketEventCollectResponse(
-        collected=collected,
-        skipped_duplicate=skipped,
-        errors=errors,
-    )
+    return MarketEventCollectResponse(collected=collected, skipped_duplicate=skipped, errors=errors)

@@ -122,7 +122,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     portfolioId: null,
     locale: "zh-CN",
     marketGroup: "all",
-    activeTab: "portfolio",
+    activeTab: "decision",
     activeSubTab: "portfolio-workbench",
     activeSymbolId: null,
     workbench: null,
