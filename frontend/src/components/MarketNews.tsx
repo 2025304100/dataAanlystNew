@@ -24,7 +24,7 @@ const L: Record<string, Record<string, string>> = {
     macro_policy: "宏观政策", commodity_futures: "期货商品",
     sector_dynamics: "行业动态", international: "国际形势",
     breaking: "突发事件", fund_flow: "资金流向",
-    sentiment_mood: "市场情绪", other: "其他",
+    sentiment: "市场情绪", other: "其他",
     lvl5: "紧急", lvl4: "重要", lvl3: "关注", lvl2: "一般", lvl1: "参考",
     impactDir: "影响方向", impactDeg: "影响程度", impactDur: "预计持续",
     degSevere: "重大冲击", degSignificant: "显著影响", degModerate: "值得关注", degMild: "轻微波动",
@@ -53,7 +53,7 @@ const L: Record<string, Record<string, string>> = {
     macro_policy: "Macro Policy", commodity_futures: "Futures & Commodities",
     sector_dynamics: "Sector Dynamics", international: "International",
     breaking: "Breaking", fund_flow: "Fund Flow",
-    sentiment_mood: "Sentiment", other: "Other",
+    sentiment: "Sentiment", other: "Other",
     lvl5: "Urgent", lvl4: "Important", lvl3: "Watch", lvl2: "Normal", lvl1: "Reference",
     impactDir: "Direction", impactDeg: "Degree", impactDur: "Duration",
     degSevere: "Major Shock", degSignificant: "Significant", degModerate: "Notable", degMild: "Mild",
@@ -78,8 +78,8 @@ const SCOPE_CONFIG: Record<string, { label: string; enLabel: string; color: stri
   international:    { label: "国际形势", enLabel: "International",  color: "#2563eb", icon: "🌍" },
   breaking:         { label: "突发事件", enLabel: "Breaking",       color: "#7c3aed", icon: "⚠️" },
   fund_flow:        { label: "资金流向", enLabel: "Fund Flow",      color: "#0891b2", icon: "💰" },
-  sentiment_mood:   { label: "市场情绪", enLabel: "Sentiment",      color: "#6b7280", icon: "🧠" },
-  other:            { label: "其他",     enLabel: "Other",          color: "#9ca3af", icon: "•" },
+  sentiment:   { label: "市场情绪", enLabel: "Sentiment",      color: "#6b7280", icon: "🧠" },
+  other:            { label: "其他",     enLabel: "Other",          color: "#64748b", icon: "•" },
 };
 const SCOPE_KEYS = Object.keys(SCOPE_CONFIG);
 
@@ -232,7 +232,7 @@ function assessImpact(event: MarketEvent, locale: string) {
   let duration: string;
   if (sc === "breaking") duration = zh ? "1-3天" : "1-3 days";
   else if (sc === "macro_policy") duration = zh ? "1-4周" : "1-4 weeks";
-  else if (sc === "fund_flow" || sc === "sentiment_mood") duration = zh ? "1-3天" : "1-3 days";
+  else if (sc === "fund_flow" || sc === "sentiment") duration = zh ? "1-3天" : "1-3 days";
   else duration = zh ? "1-2周" : "1-2 weeks";
 
   let suggestion: string;
@@ -629,7 +629,7 @@ export default function MarketNews() {
                   <div className="mn-card-header">
                     <Space size={6} wrap>
                       <Tag color={lvlCfg.color}>{levelLabel(event.importance_level)}</Tag>
-                      <Tag color={scopeCfg.color?.replace("#", "")}>{scopeLabel(event.impact_scope)}</Tag>
+                      <Tag style={{ backgroundColor: scopeCfg.color, borderColor: scopeCfg.color, color: "#fff", fontWeight: 600 }}>{scopeLabel(event.impact_scope)}</Tag>
                       <Tag color={event.sentiment === "positive" ? "green" : event.sentiment === "negative" ? "red" : "default"}>
                         {event.sentiment === "positive" ? lb.positive : event.sentiment === "negative" ? lb.negative : lb.neutral}
                       </Tag>

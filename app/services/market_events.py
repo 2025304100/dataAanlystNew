@@ -24,39 +24,28 @@ from app.services.akshare_utils import quiet_akshare_output
 logger = logging.getLogger(__name__)
 
 SCOPE_KEYWORDS: dict[str, list[str]] = {
-    "macro_policy": ["??", "??", "??", "??", "LPR", "MLF", "??", "??", "??", "??", "???", "???", "??", "CPI", "PPI", "PMI"],
-    "commodity_futures": ["??", "??", "??", "??", "?", "?", "?", "?", "??", "??", "??", "??", "??", "??", "??", "??", "???", "??", "OPEC", "COMEX", "LME"],
-    "sector_dynamics": ["??", "??", "??", "???", "??", "???", "??", "??", "??", "??", "??", "AI", "????", "??", "??"],
-    "international": ["???", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "IMF", "G7", "G20"],
-    "breaking": ["??", "??", "??", "??", "??", "??", "???", "??", "??", "??", "??", "??", "??"],
-    "fund_flow": ["????", "????", "??", "????", "???", "???", "???", "???", "??", "M2", "??", "????", "ETF", "??"],
-    "sentiment": ["??", "??", "VIX", "??", "??", "??", "??", "???", "??", "??"],
+    "macro_policy": ["政策", "央行", "降准", "降息", "加息", "利率", "LPR", "MLF", "财政", "货币", "CPI", "PPI", "PMI", "GDP", "社融", "M2", "国债", "美债", "通胀", "就业", "非农", "美联储", "国务院", "发改委", "证监会", "政治局"],
+    "commodity_futures": ["原油", "黄金", "白银", "铜", "铝", "锌", "铁矿", "焦煤", "焦炭", "螺纹", "煤炭", "天然气", "农产品", "大豆", "玉米", "棉花", "期货", "大宗商品", "OPEC", "COMEX", "LME", "SHFE", "DCE", "CZCE"],
+    "sector_dynamics": ["行业", "板块", "新能源", "半导体", "芯片", "人工智能", "AI", "算力", "机器人", "医药", "地产", "消费", "军工", "银行", "券商", "保险", "汽车", "光伏", "锂电"],
+    "international": ["美国", "欧洲", "日本", "韩国", "印度", "俄乌", "中东", "美元", "美股", "港股", "纳斯达克", "道琼斯", "标普", "美联储", "IMF", "G7", "G20", "关税", "贸易"],
+    "breaking": ["突发", "地震", "战争", "冲突", "制裁", "事故", "停产", "爆炸", "调查", "处罚", "违约", "退市", "停牌", "监管", "黑天鹅"],
+    "fund_flow": ["北向资金", "南向资金", "主力资金", "融资融券", "融资余额", "ETF", "流入", "流出", "增持", "减持", "回购", "募资", "社融", "M2", "成交额", "放量", "缩量"],
+    "sentiment": ["情绪", "恐慌", "风险偏好", "VIX", "避险", "乐观", "悲观", "信心", "预期", "热度", "活跃"],
 }
 
 LEVEL_KEYWORDS: dict[int, list[str]] = {
-    5: ["??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "???", "??", "????"],
-    4: ["??", "??", "??", "???", "??", "??", "CPI", "PPI", "GDP", "PMI", "??", "??", "??", "OPEC"],
-    3: ["??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??"],
-    2: ["??", "??", "??", "??", "??", "??", "??"],
+    5: ["突发", "战争", "冲突", "制裁", "系统性风险", "金融危机", "崩盘", "暴跌", "熔断", "违约", "停牌", "退市", "重大事故", "紧急", "黑天鹅"],
+    4: ["央行", "美联储", "降准", "降息", "加息", "CPI", "PPI", "GDP", "PMI", "LPR", "MLF", "社融", "M2", "国债", "美债", "OPEC", "监管", "政策", "政治局"],
+    3: ["行业", "板块", "资金", "融资", "北向", "南向", "财报", "业绩", "并购", "回购", "订单", "出口", "库存", "涨价", "降价"],
+    2: ["发布", "公告", "数据", "报告", "会议", "观点", "提示"],
 }
 
 SENTIMENT_KEYWORDS: dict[str, list[str]] = {
-    "positive": [
-        "利好","上涨","反弹","回升","走强","突破","创新高","大涨","攀升",
-        "提振","推动","支撑","看好","乐观","增持","买入","资金流入",
-        "超预期","向好","复苏","繁荣","景气","盈利","增长","利好政策",
-        "降息","宽松","刺激","救助","扶持","补贴","减税","改革","开放",
-    ],
-    "negative": [
-        "利空","下跌","暴跌","回落","走弱","破位","创新低","大跌","暴跌",
-        "压制","打击","拖累","看空","悲观","减持","卖出","资金流出",
-        "低于预期","恶化","衰退","萧条","亏损","下滑","收紧","加息",
-        "制裁","封锁","违约","暴雷","退市","停牌","调查","处罚","风险",
-    ],
+    "positive": ["利好", "上涨", "反弹", "回升", "走强", "突破", "创新高", "大涨", "提振", "推动", "支撑", "看好", "乐观", "增持", "买入", "资金流入", "超预期", "向好", "复苏", "盈利", "增长", "宽松", "刺激", "扶持", "补贴", "减税", "改革", "开放"],
+    "negative": ["利空", "下跌", "暴跌", "回落", "走弱", "破位", "创新低", "大跌", "压制", "打击", "拖累", "看空", "悲观", "减持", "卖出", "资金流出", "低于预期", "恶化", "衰退", "亏损", "下滑", "收紧", "加息", "制裁", "封锁", "违约", "暴雷", "退市", "停牌", "调查", "处罚", "风险"],
 }
 
 SOURCE_CREDIBILITY = {"cctv": 5, "baidu-report": 4, "baidu": 3, "eastmoney-global": 4, "caixin": 4, "futures-shmet": 3, "manual": 4}
-
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -88,7 +77,7 @@ def _looks_like_url(text: str) -> bool:
 
 
 def _pick_title(row: dict[str, Any]) -> str | None:
-    preferred_keys = ["title", "????", "??", "??", "??", "articleTitle", "infoTitle"]
+    preferred_keys = ["title", "标题", "新闻标题", "文章标题", "资讯标题", "articleTitle", "infoTitle"]
     for key in preferred_keys:
         value = row.get(key)
         if value is not None and not pd.isna(value):
@@ -102,7 +91,7 @@ def _pick_title(row: dict[str, Any]) -> str | None:
 
 
 def _pick_summary(row: dict[str, Any], title: str) -> str | None:
-    preferred_keys = ["summary", "??", "??", "description", "digest"]
+    preferred_keys = ["summary", "摘要", "内容", "正文", "description", "digest"]
     for key in preferred_keys:
         value = row.get(key)
         if value is None or pd.isna(value):
@@ -114,7 +103,7 @@ def _pick_summary(row: dict[str, Any], title: str) -> str | None:
 
 
 def _pick_url(row: dict[str, Any]) -> str | None:
-    for key in ["url", "??", "????", "source_url", "articleUrl"]:
+    for key in ["url", "链接", "网址", "新闻链接", "source_url", "articleUrl"]:
         value = row.get(key)
         if value is not None and not pd.isna(value):
             text = str(value).strip()
@@ -127,7 +116,7 @@ def _pick_url(row: dict[str, Any]) -> str | None:
 
 
 def _pick_published_at(row: dict[str, Any]) -> datetime | None:
-    for key in ["date", "??", "??", "????", "publish_time", "showTime", "time"]:
+    for key in ["date", "日期", "时间", "发布时间", "publish_time", "showTime", "time"]:
         if key in row:
             parsed = _parse_datetime(row.get(key))
             if parsed is not None:
@@ -168,10 +157,10 @@ def _classify_sentiment(title: str, summary: str | None) -> str:
 
 def _affected_market(scope: str) -> str:
     if scope == "commodity_futures":
-        return "??/??"
+        return "期货/商品"
     if scope == "international":
-        return "??/A?"
-    return "A?"
+        return "美股/A股"
+    return "A股/期货"
 
 
 def _title_hash(title: str) -> str:

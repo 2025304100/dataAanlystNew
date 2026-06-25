@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Col, Empty, Progress, Row, Space, Tag, Typography } from "antd";
-import { AlertOutlined, ArrowRightOutlined, BarChartOutlined, CheckCircleOutlined, FireOutlined, FundOutlined, ReloadOutlined, SafetyOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Col, Empty, Progress, Row, Tag, Typography } from "antd";
+import { AlertOutlined, ArrowRightOutlined, BarChartOutlined, CheckCircleOutlined, FireOutlined, ReloadOutlined, SafetyOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
+import { actionLabel, stageLabel } from "../i18n";
 import { useApp } from "../context/AppContext";
 import type { MacroOverview, MarketEvent, WorkbenchCandidate } from "../types";
 
@@ -61,6 +62,8 @@ const LABELS = {
 } as const;
 
 type DecisionLabels = (typeof LABELS)[keyof typeof LABELS];
+
+const TODO_ACTIONS = new Set(["open", "buy_dip", "hold"]);
 
 function scoreValue(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(value)) return "-";
@@ -135,8 +138,10 @@ export default function TodayDecision() {
   const investedPct = workbench?.account_summary?.invested_pct ?? workbench?.overview?.total_position_pct ?? 0;
   const positionStatus = investedPct >= 75 ? labels.high : labels.safe;
   const actions = useMemo(() => {
-    const rows = (workbench?.candidates ?? []).filter((item) => ["buy", "add", "watch"].includes(String(item.action))).slice(0, 5);
-    return rows;
+    return [...(workbench?.candidates ?? [])]
+      .filter((item) => TODO_ACTIONS.has(String(item.action)))
+      .sort((a, b) => Number(b.final_opportunity_score ?? b.priority_score ?? 0) - Number(a.final_opportunity_score ?? a.priority_score ?? 0))
+      .slice(0, 5);
   }, [workbench]);
 
   const conclusion = macroScore === null
@@ -173,7 +178,7 @@ export default function TodayDecision() {
       <Row gutter={[12, 12]}>
         <Col xs={24} lg={14}>
           <Card title={labels.topOpportunities} extra={<Button type="link" onClick={() => ctx.setActiveTab("discovery")}>{labels.goDiscovery}</Button>}>
-            {candidates.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-list">{candidates.map((item, index) => <button key={item.symbol_id} className="decision-row" onClick={() => openSymbol(item)}><span className="decision-rank">{index + 1}</span><strong>{item.symbol}</strong><span>{item.name}</span><Tag>{item.stage}</Tag><b>{scoreValue(Number(item.final_opportunity_score ?? item.priority_score ?? 0))}</b><ArrowRightOutlined /></button>)}</div>}
+            {candidates.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-list">{candidates.map((item, index) => <button key={item.symbol_id} className="decision-row" onClick={() => openSymbol(item)}><span className="decision-rank">{index + 1}</span><strong>{item.symbol}</strong><span>{item.name}</span><Tag>{stageLabel(item.stage)}</Tag><b>{scoreValue(Number(item.final_opportunity_score ?? item.priority_score ?? 0))}</b><ArrowRightOutlined /></button>)}</div>}
           </Card>
         </Col>
         <Col xs={24} lg={10}>
@@ -184,7 +189,7 @@ export default function TodayDecision() {
       </Row>
 
       <Card title={labels.actions} extra={<Button type="link" onClick={() => ctx.setActiveTab("investment")}>{labels.goInvestment}</Button>}>
-        {actions.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-actions">{actions.map((item) => <button key={item.symbol_id} onClick={() => openSymbol(item)}><CheckCircleOutlined /><span>{item.symbol} {item.name}</span><Tag>{item.action}</Tag><Text type="secondary">{item.reason_tags?.slice(0, 2).join(" / ")}</Text></button>)}</div>}
+        {actions.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-actions">{actions.map((item) => <button key={item.symbol_id} onClick={() => openSymbol(item)}><CheckCircleOutlined /><span>{item.symbol} {item.name}</span><Tag>{actionLabel(item.action)}</Tag><Text type="secondary">{item.reason_tags?.slice(0, 2).join(" / ")}</Text></button>)}</div>}
       </Card>
     </div>
   );

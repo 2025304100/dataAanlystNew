@@ -202,7 +202,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [update]);
 
   const fetchVisibleSymbols = useCallback(async (): Promise<Symbol[]> => {
-    const response = await api.getSymbols();
+    const response = await api.getAllSymbols();
     update({ symbolDirectory: Object.fromEntries(response.map((item) => [item.id, item])) });
     return state.marketGroup === "all" ? response : response.filter((item) => item.region === state.marketGroup);
   }, [state.marketGroup, update]);
@@ -213,7 +213,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       api.getWatchlistItems(watchlistId),
       (async () => {
         if (Object.keys(state.symbolDirectory).length) return state.symbolDirectory;
-        const symbols = await api.getSymbols();
+        const symbols = await api.getAllSymbols();
         const dir = Object.fromEntries(symbols.map((item) => [item.id, item]));
         update({ symbolDirectory: dir });
         return dir;

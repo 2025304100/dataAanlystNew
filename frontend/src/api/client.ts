@@ -59,10 +59,25 @@ export const api = {
   },
 
   // Symbols
-  getSymbols: (keyword?: string) => {
-    const params = new URLSearchParams({ page_size: "200" });
+  getSymbols: (keyword?: string, options: { page?: number; pageSize?: number; assetType?: string; market?: string } = {}) => {
+    const params = new URLSearchParams({
+      page: String(options.page ?? 1),
+      page_size: String(options.pageSize ?? 200),
+    });
     if (keyword) params.set("keyword", keyword);
+    if (options.assetType) params.set("asset_type", options.assetType);
+    if (options.market) params.set("market", options.market);
     return requestJson<any[]>(`${API}/symbols?${params.toString()}`);
+  },
+  getAllSymbols: async (keyword?: string, options: { assetType?: string; market?: string } = {}) => {
+    const pageSize = 200;
+    const rows: any[] = [];
+    for (let page = 1; page <= 100; page += 1) {
+      const batch = await api.getSymbols(keyword, { ...options, page, pageSize });
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
+    }
+    return rows;
   },
   createSymbol: (payload: any) =>
     requestJson<any>(`${API}/symbols`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
