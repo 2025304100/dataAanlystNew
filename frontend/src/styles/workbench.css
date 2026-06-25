@@ -4495,3 +4495,120 @@ td .symbol-name {
 .mn-trend-cell.has-data:hover .mn-trend-dot {
   box-shadow: 0 0 6px rgba(15,118,110,0.25);
 }
+
+.decision-health-card {
+  border-radius: 8px;
+}
+
+.decision-health-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) repeat(6, minmax(100px, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.decision-health-grid > span,
+.decision-health-score {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid rgba(31, 41, 55, 0.08);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+}
+
+.decision-health-grid b,
+.decision-explain-grid span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.decision-health-score strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.decision-health-issues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.decision-row-split {
+  justify-content: space-between;
+  cursor: default;
+}
+
+.decision-row-split > button:first-child {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 24px minmax(68px, 0.4fr) minmax(96px, 1fr) auto 56px 18px;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-align: left;
+}
+
+.decision-row-split > button:first-child strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decision-row-split > button:first-child > span:nth-child(3) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #334155;
+}
+
+.decision-explain-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.decision-explain-grid > div {
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid rgba(31, 41, 55, 0.08);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.decision-explain-grid strong {
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .decision-health-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .decision-health-grid,
+  .decision-explain-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-row-split > button:first-child {
+    grid-template-columns: 24px minmax(62px, 0.6fr) minmax(90px, 1fr);
+  }
+}

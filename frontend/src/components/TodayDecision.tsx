@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Col, Empty, Progress, Row, Tag, Typography } from "antd";
-import { AlertOutlined, ArrowRightOutlined, BarChartOutlined, CheckCircleOutlined, FireOutlined, ReloadOutlined, SafetyOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Col, Empty, Modal, Progress, Row, Space, Tag, Typography } from "antd";
+import {
+  AlertOutlined,
+  ArrowRightOutlined,
+  BarChartOutlined,
+  CheckCircleOutlined,
+  DatabaseOutlined,
+  FireOutlined,
+  InfoCircleOutlined,
+  ReloadOutlined,
+  SafetyOutlined,
+} from "@ant-design/icons";
 import { api } from "../api/client";
 import { actionLabel, stageLabel } from "../i18n";
 import { useApp } from "../context/AppContext";
-import type { MacroOverview, MarketEvent, WorkbenchCandidate } from "../types";
+import { baseOpportunityScoreValue, formatRelativeTime, opportunityScoreValue, score, withFinalOpportunityScore } from "../utils/format";
+import type { DataHealth, MacroOverview, MarketEvent, WorkbenchCandidate } from "../types";
 
 const { Text } = Typography;
 
@@ -22,8 +33,8 @@ const LABELS = {
     topNews: "\u91cd\u5927\u6d88\u606f Top 5",
     noData: "\u6682\u65e0\u6570\u636e\uff0c\u53ef\u4ee5\u5148\u6267\u884c\u673a\u4f1a\u6316\u6398\u3001\u5b8f\u89c2\u66f4\u65b0\u548c\u6d88\u606f\u91c7\u96c6\u3002",
     viewDetail: "\u67e5\u770b",
+    explain: "\u89e3\u91ca",
     goDiscovery: "\u53bb\u673a\u4f1a\u6316\u6398",
-    goMacro: "\u770b\u5b8f\u89c2",
     goNews: "\u770b\u6d88\u606f",
     goInvestment: "\u770b\u8ba1\u5212",
     active: "\u504f\u79ef\u6781",
@@ -33,6 +44,37 @@ const LABELS = {
     safe: "\u5b89\u5168",
     high: "\u504f\u9ad8",
     empty: "\u6682\u65e0",
+    healthTitle: "\u6570\u636e\u53ef\u4fe1\u5ea6",
+    healthOk: "\u6570\u636e\u6b63\u5e38",
+    healthWarn: "\u9700\u5173\u6ce8",
+    healthError: "\u9700\u5148\u4fee\u590d",
+    symbols: "\u6807\u7684\u5e93",
+    barCoverage: "K\u7ebf\u8986\u76d6",
+    staleBars: "\u8fc7\u671fK\u7ebf",
+    macroFreshness: "\u5b8f\u89c2\u65f6\u6548",
+    news7d: "7\u5929\u6d88\u606f",
+    discoveryFreshness: "\u673a\u4f1a\u65f6\u6548",
+    frozen: "\u51bb\u7ed3",
+    expired: "\u8fc7\u671f",
+    noIssue: "\u6682\u672a\u53d1\u73b0\u660e\u663e\u6570\u636e\u95ee\u9898\u3002",
+    explainTitle: "\u673a\u4f1a\u5206\u89e3",
+    finalScore: "\u6700\u7ec8\u673a\u4f1a\u5206",
+    baseScore: "\u6280\u672f\u57fa\u7840\u5206",
+    newsMultiplier: "\u6d88\u606f\u52a0\u6743\u7cfb\u6570",
+    messageScore: "\u6d88\u606f\u9762\u5206",
+    confidence: "\u6d88\u606f\u4fe1\u5fc3\u5ea6",
+    quality: "\u80a1\u8d28",
+    timing: "\u62e9\u65f6",
+    trend: "\u8d8b\u52bf",
+    momentum: "\u52a8\u91cf",
+    volatility: "\u6ce2\u52a8",
+    liquidity: "\u6d41\u52a8\u6027",
+    breadth: "\u5e02\u573a\u5bbd\u5ea6",
+    event: "\u4e8b\u4ef6",
+    plan: "\u5efa\u8bae\u52a8\u4f5c",
+    reasons: "\u89e6\u53d1\u539f\u56e0",
+    freshness: "\u7ed3\u679c\u65f6\u6548",
+    close: "\u5173\u95ed",
   },
   "en-US": {
     title: "Today Decision",
@@ -47,8 +89,8 @@ const LABELS = {
     topNews: "Major News Top 5",
     noData: "No data yet. Run discovery, macro update and news collection first.",
     viewDetail: "View",
+    explain: "Explain",
     goDiscovery: "Open Mining",
-    goMacro: "Open Macro",
     goNews: "Open News",
     goInvestment: "Open Plan",
     active: "Active",
@@ -58,6 +100,37 @@ const LABELS = {
     safe: "Safe",
     high: "High",
     empty: "Empty",
+    healthTitle: "Data Trust",
+    healthOk: "Healthy",
+    healthWarn: "Needs Attention",
+    healthError: "Fix First",
+    symbols: "Symbols",
+    barCoverage: "Bar Coverage",
+    staleBars: "Stale Bars",
+    macroFreshness: "Macro Freshness",
+    news7d: "7D News",
+    discoveryFreshness: "Discovery Freshness",
+    frozen: "Frozen",
+    expired: "Expired",
+    noIssue: "No obvious data issue found.",
+    explainTitle: "Opportunity Breakdown",
+    finalScore: "Final Score",
+    baseScore: "Technical Base",
+    newsMultiplier: "News Multiplier",
+    messageScore: "News Score",
+    confidence: "News Confidence",
+    quality: "Quality",
+    timing: "Timing",
+    trend: "Trend",
+    momentum: "Momentum",
+    volatility: "Volatility",
+    liquidity: "Liquidity",
+    breadth: "Breadth",
+    event: "Event",
+    plan: "Suggested Action",
+    reasons: "Reason Tags",
+    freshness: "Freshness",
+    close: "Close",
   },
 } as const;
 
@@ -75,19 +148,19 @@ function pct(value: number | null | undefined) {
   return value.toFixed(1) + "%";
 }
 
-function marketLabel(score: number | null | undefined, labels: DecisionLabels) {
-  if (score === null || score === undefined) return labels.empty;
-  if (score >= 68) return labels.active;
-  if (score <= 42) return labels.defensive;
-  if (score <= 52) return labels.cautious;
+function marketLabel(value: number | null | undefined, labels: DecisionLabels) {
+  if (value === null || value === undefined) return labels.empty;
+  if (value >= 68) return labels.active;
+  if (value <= 42) return labels.defensive;
+  if (value <= 52) return labels.cautious;
   return labels.neutral;
 }
 
-function scoreColor(score: number | null | undefined) {
-  if (score === null || score === undefined) return "#64748b";
-  if (score >= 68) return "#0f766e";
-  if (score <= 42) return "#b42318";
-  if (score <= 52) return "#d97706";
+function scoreColor(value: number | null | undefined) {
+  if (value === null || value === undefined) return "#64748b";
+  if (value >= 68) return "#0f766e";
+  if (value <= 42) return "#b42318";
+  if (value <= 52) return "#d97706";
   return "#2563eb";
 }
 
@@ -99,12 +172,45 @@ function eventTone(event: MarketEvent) {
   return "blue";
 }
 
+function healthLabel(health: DataHealth | null, labels: DecisionLabels) {
+  if (!health) return labels.empty;
+  if (health.status === "ok") return labels.healthOk;
+  if (health.status === "error") return labels.healthError;
+  return labels.healthWarn;
+}
+
+function healthColor(health: DataHealth | null) {
+  if (!health) return "#64748b";
+  if (health.status === "ok") return "#0f766e";
+  if (health.status === "error") return "#b42318";
+  return "#d97706";
+}
+
+function ageText(days: number | null | undefined, locale: string) {
+  if (days === null || days === undefined) return "-";
+  if (days === 0) return locale === "en-US" ? "today" : "\u4eca\u5929";
+  return locale === "en-US" ? `${days}d ago` : `${days}\u5929\u524d`;
+}
+
+function confidenceText(value: number | null | undefined, locale: string) {
+  const n = Number(value ?? 0);
+  if (n >= 0.7) return locale === "en-US" ? "high" : "\u9ad8";
+  if (n >= 0.4) return locale === "en-US" ? "medium" : "\u4e2d";
+  return locale === "en-US" ? "low" : "\u4f4e";
+}
+
+function reasonText(item: WorkbenchCandidate, labels: DecisionLabels) {
+  return item.reason_tags?.length ? item.reason_tags.join(" / ") : labels.empty;
+}
+
 export default function TodayDecision() {
   const ctx = useApp();
   const labels = LABELS[ctx.locale as "zh-CN" | "en-US"] ?? LABELS["zh-CN"];
   const workbench = ctx.workbench;
   const [macro, setMacro] = useState<MacroOverview | null>(null);
   const [events, setEvents] = useState<MarketEvent[]>([]);
+  const [health, setHealth] = useState<DataHealth | null>(null);
+  const [selectedExplain, setSelectedExplain] = useState<WorkbenchCandidate | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,12 +218,14 @@ export default function TodayDecision() {
     setLoading(true);
     setError(null);
     try {
-      const [macroData, newsData] = await Promise.all([
+      const [macroData, newsData, healthData] = await Promise.all([
         api.getMacroOverview("all"),
         api.getMarketEvents({ importance_level_min: 3, limit: 8, sort_by: "importance_level" }),
+        api.getDataHealth(),
       ]);
       setMacro(macroData);
       setEvents(newsData.events ?? []);
+      setHealth(healthData);
       await ctx.loadWorkbench();
     } catch (err: any) {
       setError(err.message || "Failed to load decision desk");
@@ -130,19 +238,20 @@ export default function TodayDecision() {
 
   const macroScore = macro?.snapshot?.market_score ?? null;
   const candidates = useMemo(() => {
-    const rows = [...(workbench?.candidates ?? [])];
-    return rows.sort((a, b) => Number(b.final_opportunity_score ?? b.priority_score ?? 0) - Number(a.final_opportunity_score ?? a.priority_score ?? 0)).slice(0, 5);
-  }, [workbench]);
+    const rows = [...(workbench?.candidates ?? [])].map((item) => withFinalOpportunityScore(item, ctx.newsSnapshot) as WorkbenchCandidate);
+    return rows.sort((a, b) => Number(opportunityScoreValue(b)) - Number(opportunityScoreValue(a))).slice(0, 5);
+  }, [workbench, ctx.newsSnapshot]);
 
   const riskEvents = useMemo(() => events.filter((item) => item.importance_level >= 4 || item.sentiment === "negative").slice(0, 5), [events]);
   const investedPct = workbench?.account_summary?.invested_pct ?? workbench?.overview?.total_position_pct ?? 0;
   const positionStatus = investedPct >= 75 ? labels.high : labels.safe;
   const actions = useMemo(() => {
     return [...(workbench?.candidates ?? [])]
+      .map((item) => withFinalOpportunityScore(item, ctx.newsSnapshot) as WorkbenchCandidate)
       .filter((item) => TODO_ACTIONS.has(String(item.action)))
-      .sort((a, b) => Number(b.final_opportunity_score ?? b.priority_score ?? 0) - Number(a.final_opportunity_score ?? a.priority_score ?? 0))
+      .sort((a, b) => Number(opportunityScoreValue(b)) - Number(opportunityScoreValue(a)))
       .slice(0, 5);
-  }, [workbench]);
+  }, [workbench, ctx.newsSnapshot]);
 
   const conclusion = macroScore === null
     ? labels.noData
@@ -154,6 +263,25 @@ export default function TodayDecision() {
     await ctx.loadSymbolDetail(item.symbol_id, { focus: true });
     ctx.setActiveTab("investment");
   };
+
+  const explainRows = selectedExplain ? [
+    [labels.finalScore, score(opportunityScoreValue(selectedExplain), 1)],
+    [labels.baseScore, score(baseOpportunityScoreValue(selectedExplain), 1)],
+    [labels.newsMultiplier, `${score(selectedExplain.news_multiplier ?? 1, 3)}x`],
+    [labels.messageScore, score(selectedExplain.news_message_score, 1)],
+    [labels.confidence, `${confidenceText(selectedExplain.news_confidence, ctx.locale)} (${score(Number(selectedExplain.news_confidence ?? 0) * 100, 0)}%)`],
+    [labels.quality, score(selectedExplain.quality_score, 1)],
+    [labels.timing, score(selectedExplain.timing_score, 1)],
+    [labels.trend, score(selectedExplain.trend_score, 1)],
+    [labels.momentum, score(selectedExplain.momentum_score, 1)],
+    [labels.volatility, score(selectedExplain.volatility_score, 1)],
+    [labels.liquidity, score(selectedExplain.liquidity_score, 1)],
+    [labels.breadth, score(selectedExplain.breadth_score, 1)],
+    [labels.event, score(selectedExplain.event_score, 1)],
+    [labels.plan, `${stageLabel(selectedExplain.stage)} / ${actionLabel(selectedExplain.action)}`],
+    [labels.reasons, reasonText(selectedExplain, labels)],
+    [labels.freshness, selectedExplain.created_at ? formatRelativeTime(selectedExplain.created_at) : "-"],
+  ] : [];
 
   return (
     <div className="decision-page">
@@ -175,10 +303,30 @@ export default function TodayDecision() {
         <Col xs={24} sm={12} lg={6}><Card className="decision-metric"><SafetyOutlined /><span>{labels.position}</span><strong>{positionStatus}</strong><Text type="secondary">{pct(investedPct)}</Text></Card></Col>
       </Row>
 
+      <Card className="decision-health-card" title={<Space><DatabaseOutlined />{labels.healthTitle}</Space>} extra={<Tag color={health?.status === "ok" ? "green" : health?.status === "error" ? "red" : "orange"}>{healthLabel(health, labels)}</Tag>}>
+        <div className="decision-health-grid">
+          <div className="decision-health-score">
+            <strong style={{ color: healthColor(health) }}>{health?.score ?? "-"}</strong>
+            <Progress percent={health?.score ?? 0} strokeColor={healthColor(health)} showInfo={false} />
+          </div>
+          <span><b>{labels.symbols}</b>{health?.symbols.total ?? "-"}</span>
+          <span><b>{labels.barCoverage}</b>{pct(health?.bars.coverage_pct)}</span>
+          <span><b>{labels.staleBars}</b>{health?.bars.stale_symbols ?? "-"}</span>
+          <span><b>{labels.macroFreshness}</b>{ageText(health?.macro.latest_age_days, ctx.locale)}</span>
+          <span><b>{labels.news7d}</b>{health?.market_events.events_7d ?? "-"}</span>
+          <span><b>{labels.discoveryFreshness}</b>{labels.expired}: {health?.discovery.expired_results ?? 0} / {labels.frozen}: {health?.discovery.frozen_results ?? 0}</span>
+        </div>
+        <div className="decision-health-issues">
+          {(health?.issues?.length ? health.issues : [{ level: "ok", message: labels.noIssue }]).map((issue, index) => (
+            <Tag key={index} color={issue.level === "error" ? "red" : issue.level === "warn" ? "orange" : "green"}>{issue.message}</Tag>
+          ))}
+        </div>
+      </Card>
+
       <Row gutter={[12, 12]}>
         <Col xs={24} lg={14}>
           <Card title={labels.topOpportunities} extra={<Button type="link" onClick={() => ctx.setActiveTab("discovery")}>{labels.goDiscovery}</Button>}>
-            {candidates.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-list">{candidates.map((item, index) => <button key={item.symbol_id} className="decision-row" onClick={() => openSymbol(item)}><span className="decision-rank">{index + 1}</span><strong>{item.symbol}</strong><span>{item.name}</span><Tag>{stageLabel(item.stage)}</Tag><b>{scoreValue(Number(item.final_opportunity_score ?? item.priority_score ?? 0))}</b><ArrowRightOutlined /></button>)}</div>}
+            {candidates.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-list">{candidates.map((item, index) => <div key={item.symbol_id} className="decision-row decision-row-split"><button type="button" onClick={() => openSymbol(item)}><span className="decision-rank">{index + 1}</span><strong>{item.symbol}</strong><span>{item.name}</span><Tag>{stageLabel(item.stage)}</Tag><b>{scoreValue(Number(opportunityScoreValue(item)))}</b><ArrowRightOutlined /></button><Button size="small" icon={<InfoCircleOutlined />} onClick={() => setSelectedExplain(item)}>{labels.explain}</Button></div>)}</div>}
           </Card>
         </Col>
         <Col xs={24} lg={10}>
@@ -191,6 +339,23 @@ export default function TodayDecision() {
       <Card title={labels.actions} extra={<Button type="link" onClick={() => ctx.setActiveTab("investment")}>{labels.goInvestment}</Button>}>
         {actions.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-actions">{actions.map((item) => <button key={item.symbol_id} onClick={() => openSymbol(item)}><CheckCircleOutlined /><span>{item.symbol} {item.name}</span><Tag>{actionLabel(item.action)}</Tag><Text type="secondary">{item.reason_tags?.slice(0, 2).join(" / ")}</Text></button>)}</div>}
       </Card>
+
+      <Modal
+        open={!!selectedExplain}
+        title={selectedExplain ? `${labels.explainTitle}: ${selectedExplain.symbol} ${selectedExplain.name}` : labels.explainTitle}
+        onCancel={() => setSelectedExplain(null)}
+        footer={<Button onClick={() => setSelectedExplain(null)}>{labels.close}</Button>}
+        width={720}
+      >
+        <div className="decision-explain-grid">
+          {explainRows.map(([label, value]) => (
+            <div key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }

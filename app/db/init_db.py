@@ -31,3 +31,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     if settings.database_url.startswith("sqlite"):
         _ensure_sqlite_scan_result_columns()
+        # 启用 WAL 模式提升并发写入性能
+        with engine.begin() as conn:
+            conn.execute(text("PRAGMA journal_mode=WAL;"))
+            conn.execute(text("PRAGMA busy_timeout=30000;"))  # 30秒等待锁释放

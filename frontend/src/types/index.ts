@@ -514,3 +514,61 @@ export interface MarketEventCollectResponse {
   skipped_duplicate: number;
   errors: string[];
 }
+
+export interface DataHealthIssue {
+  level: "ok" | "warn" | "error" | string;
+  message: string;
+}
+
+export interface DataHealth {
+  status: "ok" | "warn" | "error" | string;
+  score: number;
+  updated_at: string;
+  issues: DataHealthIssue[];
+  symbols: {
+    total: number;
+    by_region: Record<string, number>;
+    by_asset_type: Record<string, number>;
+  };
+  bars: {
+    total: number;
+    covered_symbols: number;
+    coverage_pct: number;
+    latest_trade_date: string | null;
+    latest_age_days: number | null;
+    stale_symbols: number;
+    stale_pct: number;
+  };
+  scores: {
+    scored_symbols: number;
+    latest_trade_date: string | null;
+    latest_age_days: number | null;
+  };
+  macro: {
+    indicators_total: number;
+    latest_updated_at: string | null;
+    latest_age_days: number | null;
+    market_score: number | null;
+    failed_total: number;
+  };
+  market_events: {
+    latest_at: string | null;
+    latest_age_days: number | null;
+    events_7d: number;
+    important_events_7d: number;
+  };
+  discovery: {
+    latest_task: null | {
+      id: string;
+      status: string;
+      stage: string;
+      percent: number;
+      total: number;
+      processed: number;
+      updated_at: string;
+    };
+    warning_results: number;
+    expired_results: number;
+    frozen_results: number;
+  };
+}

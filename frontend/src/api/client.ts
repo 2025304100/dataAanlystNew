@@ -41,7 +41,12 @@ export async function requestJson<T = any>(url: string, options: RequestInit & {
 
 const API = "/api/v1";
 
+export const SYSTEM_HEALTH_URL = API + "/system/data-health";
+
 export const api = {
+  // System
+  getDataHealth: () => requestJson<any>(SYSTEM_HEALTH_URL),
+
   // Portfolios
   getPortfolios: () => requestJson<any[]>(`${API}/portfolios`),
   getWorkbench: (portfolioId: number, marketGroup: string) =>
@@ -146,7 +151,7 @@ export const api = {
   cleanupDiscoveryResults: () =>
     requestJson<{ deleted: number; skipped_frozen: number }>(`${API}/discovery/results/cleanup`, { method: "POST" }),
 
-  // Market Events (行情消息)
+  // Market Events
   getMarketEvents: (params: {
     impact_scope?: string;
     importance_level_min?: number;

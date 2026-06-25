@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import dashboard, discovery, journals, macro, market_data, market_events, news, portfolios, scans, scores, signal_rules, sim_accounts, symbols, trade_setups, watchlists
+from app.api.routes import dashboard, discovery, journals, macro, market_data, market_events, news, portfolios, scans, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists
 from app.core.config import settings
 
 
@@ -20,3 +20,4 @@ api_router.include_router(scans.router, tags=["scans"])
 api_router.include_router(trade_setups.router, tags=["trade-setups"])
 api_router.include_router(journals.router, tags=["journals"])
 api_router.include_router(dashboard.router, tags=["dashboard"])
+api_router.include_router(system.router, tags=["system"])

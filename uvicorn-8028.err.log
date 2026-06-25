@@ -1,0 +1,8 @@
+INFO:     Started server process [5828]
+INFO:     Waiting for application startup.
+2026-06-25 21:34:42,335 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-25 21:34:42,336 [INFO] app.main: Startup cleanup: no expired results to remove
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8028 (Press CTRL+C to quit)
+2026-06-25 22:04:42,351 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-25 22:34:42,377 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
