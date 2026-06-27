@@ -21,6 +21,48 @@ interface PortfolioWorkbenchProps {
   openMetricModal: (type: string) => void;
 }
 
+function positionsEqual(a: Position[], b: Position[]): boolean {
+  if (a.length !== b.length) return false;
+  const map = new Map(b.map((p) => [p.symbol_id, p]));
+  return a.every((pos) => {
+    const other = map.get(pos.symbol_id);
+    if (!other) return false;
+    return (
+      pos.quantity === other.quantity &&
+      pos.avg_cost === other.avg_cost &&
+      pos.latest_price === other.latest_price &&
+      pos.market_value === other.market_value &&
+      pos.position_pct === other.position_pct &&
+      pos.unrealized_pnl === other.unrealized_pnl &&
+      pos.unrealized_pnl_pct === other.unrealized_pnl_pct
+    );
+  });
+}
+
+function ruleValuesEqual(
+  rule: any,
+  totalCapital: number | null,
+  current: {
+    ruleTotalCapital: number | null;
+    ruleMaxSingle: number | null;
+    ruleMaxStock: number | null;
+    ruleMaxEtf: number | null;
+    ruleMaxSector: number | null;
+    ruleMaxLoss: number | null;
+    ruleMaxOpenPositions: number | null;
+  }
+): boolean {
+  return (
+    (rule.max_single_position_pct != null ? rule.max_single_position_pct * 100 : null) === current.ruleMaxSingle &&
+    (rule.max_stock_position_pct != null ? rule.max_stock_position_pct * 100 : null) === current.ruleMaxStock &&
+    (rule.max_etf_position_pct != null ? rule.max_etf_position_pct * 100 : null) === current.ruleMaxEtf &&
+    (rule.max_sector_position_pct != null ? rule.max_sector_position_pct * 100 : null) === current.ruleMaxSector &&
+    (rule.max_loss_per_trade_pct != null ? rule.max_loss_per_trade_pct * 100 : null) === current.ruleMaxLoss &&
+    (rule.max_open_positions ?? null) === current.ruleMaxOpenPositions &&
+    totalCapital === current.ruleTotalCapital
+  );
+}
+
 export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkbenchProps) {
   const ctx = useApp();
   const workbench = ctx.workbench;
@@ -70,6 +112,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
   const [posQuantity, setPosQuantity] = useState<number | null>(null);
   const [posAvgCost, setPosAvgCost] = useState<number | null>(null);
   const [savingPosition, setSavingPosition] = useState(false);
+  const [deletingPositionSymbolId, setDeletingPositionSymbolId] = useState<number | null>(null);
 
   const [ruleTotalCapital, setRuleTotalCapital] = useState<number | null>(null);
   const [ruleMaxSingle, setRuleMaxSingle] = useState<number | null>(null);
@@ -111,25 +154,38 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
   }, [loadPositions, loadAllocation]);
 
   useEffect(() => {
-    if (workbench?.positions) {
+    if (workbench?.positions && !positionsEqual(workbench.positions, positions)) {
       setPositions(workbench.positions);
     }
-  }, [workbench]);
+  }, [workbench, positions]);
 
   useEffect(() => {
     const rule = workbench?.active_rule;
-    if (rule) {
-      setRuleMaxSingle(rule.max_single_position_pct != null ? rule.max_single_position_pct * 100 : null);
-      setRuleMaxStock(rule.max_stock_position_pct != null ? rule.max_stock_position_pct * 100 : null);
-      setRuleMaxEtf(rule.max_etf_position_pct != null ? rule.max_etf_position_pct * 100 : null);
-      setRuleMaxSector(rule.max_sector_position_pct != null ? rule.max_sector_position_pct * 100 : null);
-      setRuleMaxLoss(rule.max_loss_per_trade_pct != null ? rule.max_loss_per_trade_pct * 100 : null);
-      setRuleMaxOpenPositions(rule.max_open_positions ?? null);
+    const totalCapital = workbench?.portfolio?.total_capital ?? null;
+    if (!rule) return;
+    if (
+      ruleValuesEqual(rule, totalCapital, {
+        ruleTotalCapital,
+        ruleMaxSingle,
+        ruleMaxStock,
+        ruleMaxEtf,
+        ruleMaxSector,
+        ruleMaxLoss,
+        ruleMaxOpenPositions,
+      })
+    ) {
+      return;
     }
-    if (workbench?.portfolio?.total_capital != null) {
-      setRuleTotalCapital(workbench.portfolio.total_capital);
+    setRuleMaxSingle(rule.max_single_position_pct != null ? rule.max_single_position_pct * 100 : null);
+    setRuleMaxStock(rule.max_stock_position_pct != null ? rule.max_stock_position_pct * 100 : null);
+    setRuleMaxEtf(rule.max_etf_position_pct != null ? rule.max_etf_position_pct * 100 : null);
+    setRuleMaxSector(rule.max_sector_position_pct != null ? rule.max_sector_position_pct * 100 : null);
+    setRuleMaxLoss(rule.max_loss_per_trade_pct != null ? rule.max_loss_per_trade_pct * 100 : null);
+    setRuleMaxOpenPositions(rule.max_open_positions ?? null);
+    if (totalCapital !== null) {
+      setRuleTotalCapital(totalCapital);
     }
-  }, [workbench]);
+  }, [workbench, ruleTotalCapital, ruleMaxSingle, ruleMaxStock, ruleMaxEtf, ruleMaxSector, ruleMaxLoss, ruleMaxOpenPositions]);
 
   if (!workbench) {
     return (
@@ -202,6 +258,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
 
   const handleDeletePosition = async (symbolId: number) => {
     try {
+      setDeletingPositionSymbolId(symbolId);
       await api.deletePosition(portfolioId, symbolId);
       await loadPositions();
       await loadAllocation();
@@ -209,6 +266,8 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
       ctx.showToast("success", t("positionDeleted"));
     } catch (error: any) {
       ctx.showToast("error", error?.message || t("positionSaveFailed"));
+    } finally {
+      setDeletingPositionSymbolId(null);
     }
   };
 
@@ -592,6 +651,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                                   className="delete-btn"
                                   size="small"
                                   danger
+                                  loading={deletingPositionSymbolId === item.symbol_id}
                                   onClick={() => handleDeletePosition(item.symbol_id)}
                                 >
                                   {t("deletePosition")}

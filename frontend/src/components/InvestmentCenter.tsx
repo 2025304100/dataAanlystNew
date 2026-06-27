@@ -207,6 +207,9 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   // 图表点击设置的入场价
   const [chartEntryPrice, setChartEntryPrice] = useState<number | null>(null);
 
+  // 刷新交易计划 loading
+  const [refreshingPlan, setRefreshingPlan] = useState(false);
+
   // 价格预警列表
   const [priceAlerts, setPriceAlerts] = useState<Array<{
     id: string; type: string; level: "warning" | "danger" | "info";
@@ -306,6 +309,18 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       return next;
     });
   }, []);
+
+  // 刷新交易计划
+  const handleRefreshPlan = useCallback(async () => {
+    setRefreshingPlan(true);
+    try {
+      await ctx.generateTradeSetup();
+    } catch {
+      // 错误提示由 AppContext.generateTradeSetup 统一处理
+    } finally {
+      setRefreshingPlan(false);
+    }
+  }, [ctx]);
 
   // 自动加载第一个快捷标的
   useEffect(() => {
@@ -856,7 +871,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       <div className="panel">
         <div className="detail-card-head">
           <h3>{t("tradeSetup")}</h3>
-          <Button size="small" onClick={() => ctx.generateTradeSetup()}>{t("refreshPlan")}</Button>
+          <Button size="small" loading={refreshingPlan} onClick={handleRefreshPlan}>{t("refreshPlan")}</Button>
         </div>
 
         {scenarios ? (

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import { message } from "antd";
-import { api } from "../api/client";
+import { api, onRequestChange } from "../api/client";
 import { setLocale, t, template } from "../i18n";
 import {
   Portfolio,
@@ -50,6 +50,7 @@ interface AppState {
   simQuantity: string;
   simPrice: string;
   candidateSearch: string;
+  globalLoading: boolean;
 }
 
 interface AppContextValue extends AppState {
@@ -148,6 +149,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     simQuantity: "",
     simPrice: "",
     candidateSearch: "",
+    globalLoading: false,
   });
 
   const [signalRulePreview, setSignalRulePreview] = useState<SignalRulePreviewResult | null>(null);
@@ -259,24 +261,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const loadWorkbench = useCallback(async () => {
     const pid = portfolioIdRef.current;
     if (!pid) return;
-    await loadDiscoveryScopeStatsInternal();
-    const data = await api.getWorkbench(pid, state.marketGroup);
-    setCurrency(data.portfolio?.currency || "CNY");
-    update({ workbench: data });
-    await refreshPrimaryWatchlistMembership();
-    await loadLatestNewsSnapshot(data);
+    try {
+      await loadDiscoveryScopeStatsInternal();
+      const data = await api.getWorkbench(pid, state.marketGroup);
+      setCurrency(data.portfolio?.currency || "CNY");
+      update({ workbench: data });
+      await refreshPrimaryWatchlistMembership();
+      await loadLatestNewsSnapshot(data);
 
-    const visibleSymbolIds = new Set([
-      ...data.candidates.map((item: { symbol_id: number }) => item.symbol_id),
-      ...data.latest_scores.map((item: { symbol_id: number }) => item.symbol_id),
-    ]);
-    if (state.activeSymbolId && visibleSymbolIds.has(state.activeSymbolId) && (state.detail || state.detailCache[state.activeSymbolId])) {
-      await loadSymbolDetail(state.activeSymbolId, { force: true });
+      const visibleSymbolIds = new Set([
+        ...data.candidates.map((item: { symbol_id: number }) => item.symbol_id),
+        ...data.latest_scores.map((item: { symbol_id: number }) => item.symbol_id),
+      ]);
+      if (state.activeSymbolId && visibleSymbolIds.has(state.activeSymbolId) && state.detailCache[state.activeSymbolId]) {
+        await loadSymbolDetail(state.activeSymbolId, { force: true });
+      }
+    } catch (error: any) {
+      showToast("error", error?.message || t("loadFailed"));
     }
-  }, [state.marketGroup, state.activeSymbolId, state.detail, state.detailCache, update]);
+  }, [state.marketGroup, state.activeSymbolId, state.detailCache, update, showToast]);
 
   const loadSymbolDetail = useCallback(async (symbolId: number, options?: { force?: boolean; focus?: boolean; barLimit?: number }): Promise<SymbolDetail | undefined> => {
-    update({ activeSymbolId: symbolId, chartRange: null, chartWindowSize: DEFAULT_CHART_WINDOW });
+    const initialUpdates: Partial<AppState> = { chartRange: null, chartWindowSize: DEFAULT_CHART_WINDOW };
+    if (state.activeSymbolId !== symbolId) initialUpdates.activeSymbolId = symbolId;
+    update(initialUpdates);
     const cached = state.detailCache[symbolId];
     if (cached && !options?.force) {
       update({ detail: cached });
@@ -285,35 +293,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     const pid = portfolioIdRef.current;
     if (!pid) return;
-    const detail = await api.getSymbolDetail(pid, symbolId, state.signalSampleLimit ?? undefined, options?.barLimit);
-    // Remember detail
-    const newCache = { ...state.detailCache, [symbolId]: detail };
-    const newOrder = [symbolId, ...state.detailOrder.filter((item) => item !== symbolId)].slice(0, 4);
-    update({ detail: detail, detailCache: newCache, detailOrder: newOrder });
-    syncOrderForm(detail);
-    scheduleSignalRulePreviewInternal();
-    return detail;
-  }, [state.detailCache, state.detailOrder, state.signalSampleLimit, update, syncOrderForm]);
+    try {
+      const detail = await api.getSymbolDetail(pid, symbolId, state.signalSampleLimit ?? undefined, options?.barLimit);
+      // Remember detail
+      const newCache = { ...state.detailCache, [symbolId]: detail };
+      const newOrder = [symbolId, ...state.detailOrder.filter((item) => item !== symbolId)].slice(0, 4);
+      update({ detail: detail, detailCache: newCache, detailOrder: newOrder });
+      syncOrderForm(detail);
+      scheduleSignalRulePreviewInternal();
+      return detail;
+    } catch (error: any) {
+      showToast("error", error?.message || t("loadFailed"));
+    }
+  }, [state.detailCache, state.detailOrder, state.signalSampleLimit, update, syncOrderForm, showToast]);
 
   const loadPortfolios = useCallback(async () => {
-    const portfolios = await api.getPortfolios();
-    if (!portfolios.length) {
-      update({ portfolios, portfolioId: null });
-      return;
+    try {
+      const portfolios = await api.getPortfolios();
+      if (!portfolios.length) {
+        update({ portfolios, portfolioId: null });
+        return;
+      }
+      const defaultPortfolio = portfolios.find((item) => Number(item.is_default) === 1) ?? portfolios[0];
+      update({ portfolios, portfolioId: defaultPortfolio.id });
+    } catch (error: any) {
+      showToast("error", error?.message || t("loadFailed"));
     }
-    const defaultPortfolio = portfolios.find((item) => Number(item.is_default) === 1) ?? portfolios[0];
-    update({ portfolios, portfolioId: defaultPortfolio.id });
-  }, [update]);
+  }, [update, showToast]);
 
   const loadSignalRuleConfig = useCallback(async () => {
     const pid = portfolioIdRef.current;
     if (!pid) return;
-    const [presets, rule] = await Promise.all([
-      api.getSignalRulePresets(),
-      api.getSignalRule(pid),
-    ]);
-    update({ signalRulePresets: presets, signalRule: rule });
-  }, [update]);
+    try {
+      const [presets, rule] = await Promise.all([
+        api.getSignalRulePresets(),
+        api.getSignalRule(pid),
+      ]);
+      update({ signalRulePresets: presets, signalRule: rule });
+    } catch (error: any) {
+      showToast("error", error?.message || t("ruleSaveFailed"));
+    }
+  }, [update, showToast]);
 
   const loadSignalRulePreview = useCallback(async () => {
     const pid = portfolioIdRef.current;
@@ -336,9 +356,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       same_action: state.signalRule.same_action,
       symbol_id: state.activeSymbolId,
     };
-    const result = await api.previewSignalRule(pid, payload);
-    setSignalRulePreview(result);
-  }, [state.signalRule, state.activeSymbolId]);
+    try {
+      const result = await api.previewSignalRule(pid, payload);
+      setSignalRulePreview(result);
+    } catch (error: any) {
+      showToast("error", error?.message || t("ruleSaveFailed"));
+    }
+  }, [state.signalRule, state.activeSymbolId, showToast]);
 
   const updateSignalRule = useCallback((partial: Partial<SignalRule>) => {
     if (!state.signalRule) return;
@@ -396,12 +420,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [loadDiscoveryScopeStatsInternal]);
 
   const fetchDiscoveryTasks = useCallback(async () => {
-    const tasks = await api.getDiscoveryTasks();
-    const active = tasks.find((item) => ["queued", "running"].includes(item.status))
-      ?? tasks.find((item) => item.status === "paused" && item.can_resume)
-      ?? tasks[0] ?? null;
-    update({ discoveryTask: active });
-  }, [update]);
+    try {
+      const tasks = await api.getDiscoveryTasks();
+      const active = tasks.find((item) => ["queued", "running"].includes(item.status))
+        ?? tasks.find((item) => item.status === "paused" && item.can_resume)
+        ?? tasks[0] ?? null;
+      update({ discoveryTask: active });
+    } catch (error: any) {
+      showToast("error", error?.message || t("discoveryCommandFailed"));
+    }
+  }, [update, showToast]);
 
   const startDiscoveryPolling = useCallback(() => {
     if (discoveryPollRef.current) return;
@@ -457,23 +485,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       use_cached_symbols_only: !isSync,
       global_mode: "library",
     };
-    const task = await api.createDiscoveryTask(payload);
-    update({ discoveryTask: task });
-    await loadWorkbench();
-    startDiscoveryPolling();
+    try {
+      const task = await api.createDiscoveryTask(payload);
+      update({ discoveryTask: task });
+      await loadWorkbench();
+      startDiscoveryPolling();
+      showToast("success", isSync ? t("discoveryStartedSync") : t("discoveryStartedCached"));
+    } catch (error: any) {
+      showToast("error", error?.message || t("discoveryCommandFailed"));
+    }
   }, [state.portfolioId, state.workbench, update, showToast, loadWorkbench, startDiscoveryPolling, t]);
 
   const sendDiscoveryTaskCommand = useCallback(async (command: string) => {
     const task = state.discoveryTask;
     if (!task?.id) return;
-    const result = await api.sendDiscoveryCommand(task.id, command);
-    update({ discoveryTask: result });
-  }, [state.discoveryTask, update]);
+    try {
+      const result = await api.sendDiscoveryCommand(task.id, command);
+      update({ discoveryTask: result });
+      if (command === "pause") showToast("success", t("discoveryPaused"));
+      else if (command === "resume") showToast("success", t("discoveryResumed"));
+      else if (command === "cancel") showToast("success", t("discoveryCancelled"));
+    } catch (error: any) {
+      showToast("error", error?.message || t("discoveryCommandFailed"));
+    }
+  }, [state.discoveryTask, update, showToast]);
 
   const refreshDiscoveryTasks = useCallback(async () => {
-    await fetchDiscoveryTasks();
-    await loadWorkbench();
-  }, [fetchDiscoveryTasks, loadWorkbench]);
+    try {
+      await fetchDiscoveryTasks();
+      await loadWorkbench();
+      showToast("success", t("discoveryRefreshDone"));
+    } catch (error: any) {
+      showToast("error", error?.message || t("discoveryCommandFailed"));
+    }
+  }, [fetchDiscoveryTasks, loadWorkbench, showToast]);
 
   const cleanupExpiredDiscoveryResults = useCallback(async () => {
     const result = await api.cleanupDiscoveryResults();
@@ -486,59 +531,71 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [loadWorkbench, showToast]);
 
   const runNewsUpdate = useCallback(async () => {
-    const candidateIds = state.workbench?.candidates?.map((item) => item.symbol_id) ?? [];
-    let symbolIds = candidateIds;
-    if (!symbolIds.length) {
-      const symbols = await fetchVisibleSymbols();
-      symbolIds = symbols.map((item) => item.id);
+    try {
+      const candidateIds = state.workbench?.candidates?.map((item) => item.symbol_id) ?? [];
+      let symbolIds = candidateIds;
+      if (!symbolIds.length) {
+        const symbols = await fetchVisibleSymbols();
+        symbolIds = symbols.map((item) => item.id);
+      }
+      if (!symbolIds.length) return;
+      const response = await api.updateNews({
+        portfolio_id: state.portfolioId,
+        scope: "symbols",
+        symbol_ids: symbolIds,
+        days: 7,
+        include_macro: true,
+        include_sector: true,
+        include_symbol: true,
+      });
+      update({ newsSnapshot: response });
+      showToast("success", template("newsSummary", { count: response.symbols_total }));
+    } catch (error: any) {
+      showToast("error", error?.message || t("newsFailed"));
     }
-    if (!symbolIds.length) return;
-    const response = await api.updateNews({
-      portfolio_id: state.portfolioId,
-      scope: "symbols",
-      symbol_ids: symbolIds,
-      days: 7,
-      include_macro: true,
-      include_sector: true,
-      include_symbol: true,
-    });
-    update({ newsSnapshot: response });
-    showToast("success", template("newsSummary", { count: response.symbols_total }));
   }, [state.portfolioId, state.workbench, fetchVisibleSymbols, update, showToast]);
 
   const runSync = useCallback(async () => {
-    const symbols = await fetchVisibleSymbols();
-    const symbolIds = symbols.map((s) => s.id);
-    if (!symbolIds.length) return;
-    const response = await api.syncMarketData({
-      scope: "symbols",
-      symbol_ids: symbolIds,
-      asset_types: [...new Set(symbols.map((item) => item.asset_type))],
-      adjust: "qfq",
-      auto_scan: true,
-      portfolio_id: state.portfolioId,
-      portfolio_rule_id: state.workbench?.active_rule?.id ?? null,
-    });
-    showToast("success", template("syncSummary", { ok: response.data.ok_count, total: response.data.symbols_total, failed: response.data.failed_count }));
-    await loadWorkbench();
+    try {
+      const symbols = await fetchVisibleSymbols();
+      const symbolIds = symbols.map((s) => s.id);
+      if (!symbolIds.length) return;
+      const response = await api.syncMarketData({
+        scope: "symbols",
+        symbol_ids: symbolIds,
+        asset_types: [...new Set(symbols.map((item) => item.asset_type))],
+        adjust: "qfq",
+        auto_scan: true,
+        portfolio_id: state.portfolioId,
+        portfolio_rule_id: state.workbench?.active_rule?.id ?? null,
+      });
+      showToast("success", template("syncSummary", { ok: response.data.ok_count, total: response.data.symbols_total, failed: response.data.failed_count }));
+      await loadWorkbench();
+    } catch (error: any) {
+      showToast("error", error?.message || t("syncFailed"));
+    }
   }, [state.portfolioId, state.workbench, fetchVisibleSymbols, showToast, loadWorkbench]);
 
   const runScan = useCallback(async () => {
-    const symbols = await fetchVisibleSymbols();
-    const symbolIds = symbols.map((s) => s.id);
-    if (!symbolIds.length) return;
-    await api.createScanRun({
-      portfolio_id: state.portfolioId,
-      portfolio_rule_id: state.workbench?.active_rule?.id ?? null,
-      run_name: "manual-workbench-scan",
-      scope_snapshot: {
-        symbol_ids: symbolIds,
-        asset_types: [...new Set(symbols.map((item) => item.asset_type))],
-        markets: [...new Set(symbols.map((item) => item.market))],
-      },
-    });
-    await loadWorkbench();
-    showToast("success", template("scanSummary", { count: state.workbench?.latest_scan?.executable_count ?? 0 }));
+    try {
+      const symbols = await fetchVisibleSymbols();
+      const symbolIds = symbols.map((s) => s.id);
+      if (!symbolIds.length) return;
+      await api.createScanRun({
+        portfolio_id: state.portfolioId,
+        portfolio_rule_id: state.workbench?.active_rule?.id ?? null,
+        run_name: "manual-workbench-scan",
+        scope_snapshot: {
+          symbol_ids: symbolIds,
+          asset_types: [...new Set(symbols.map((item) => item.asset_type))],
+          markets: [...new Set(symbols.map((item) => item.market))],
+        },
+      });
+      await loadWorkbench();
+      showToast("success", template("scanSummary", { count: state.workbench?.latest_scan?.executable_count ?? 0 }));
+    } catch (error: any) {
+      showToast("error", error?.message || t("scanFailed"));
+    }
   }, [state.portfolioId, state.workbench, fetchVisibleSymbols, loadWorkbench, showToast]);
 
   const addSymbolToWatchlist = useCallback(async (watchlistId: number, symbolId: number) => {
@@ -577,13 +634,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const generateTradeSetup = useCallback(async () => {
     if (!state.activeSymbolId || !state.detail?.latest_score) return;
-    await api.generateTradeSetup({
-      portfolio_id: state.portfolioId,
-      symbol_id: state.activeSymbolId,
-      score_id: state.detail.latest_score.id,
-    });
-    await loadSymbolDetail(state.activeSymbolId, { force: true });
-    showToast("success", template("planSummary"));
+    try {
+      await api.generateTradeSetup({
+        portfolio_id: state.portfolioId,
+        symbol_id: state.activeSymbolId,
+        score_id: state.detail.latest_score.id,
+      });
+      await loadSymbolDetail(state.activeSymbolId, { force: true });
+      showToast("success", template("planSummary"));
+    } catch (error: any) {
+      showToast("error", error?.message || t("planFailed"));
+      throw error;
+    }
   }, [state.portfolioId, state.activeSymbolId, state.detail, loadSymbolDetail, showToast]);
 
   const submitSimOrder = useCallback(async (side: "buy" | "sell") => {
@@ -641,6 +703,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       update({ detailCache: newCache, detailOrder: newOrder });
     }
   }, [state.detailCache, state.detailOrder, state.activeSymbolId, update]);
+
+  // Track active requests for a global loading indicator
+  useEffect(() => {
+    return onRequestChange((count) => {
+      update({ globalLoading: count > 0 });
+    });
+  }, [update]);
 
   // Bootstrap
   useEffect(() => {

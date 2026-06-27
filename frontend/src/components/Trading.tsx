@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import { InputNumber, Button } from "antd";
 import { useApp } from "../context/AppContext";
 import { t, sideLabel } from "../i18n";
@@ -24,6 +24,8 @@ export default function Trading() {
   const account = workbench?.account_summary ?? null;
   const positions = workbench?.positions ?? [];
   const recentTrades = workbench?.recent_trades ?? [];
+  const [buying, setBuying] = useState(false);
+  const [selling, setSelling] = useState(false);
 
   const accountMeta = account
     ? `${t("activeTrades")}: ${account.trade_count_7d}${SEP}${t("lastTrade")}: ${
@@ -63,16 +65,26 @@ export default function Trading() {
     [detail, ctx.simPrice, workbench, ctx]
   );
 
-  const handleBuy = useCallback(() => {
-    ctx.submitSimOrder("buy").catch((error: any) => {
-      ctx.showToast("error", `${t("orderFailed")}: ${error.message}`);
-    });
+  const handleBuy = useCallback(async () => {
+    setBuying(true);
+    try {
+      await ctx.submitSimOrder("buy");
+    } catch (error: any) {
+      ctx.showToast("error", `${t("orderFailed")}: ${error?.message || error}`);
+    } finally {
+      setBuying(false);
+    }
   }, [ctx]);
 
-  const handleSell = useCallback(() => {
-    ctx.submitSimOrder("sell").catch((error: any) => {
-      ctx.showToast("error", `${t("orderFailed")}: ${error.message}`);
-    });
+  const handleSell = useCallback(async () => {
+    setSelling(true);
+    try {
+      await ctx.submitSimOrder("sell");
+    } catch (error: any) {
+      ctx.showToast("error", `${t("orderFailed")}: ${error?.message || error}`);
+    } finally {
+      setSelling(false);
+    }
   }, [ctx]);
 
   const handlePositionClick = useCallback(
@@ -250,6 +262,7 @@ export default function Trading() {
                   id="simBuyButton"
                   type="primary"
                   className="ghost-button detail-action buy-action"
+                  loading={buying}
                   onClick={handleBuy}
                 >
                   {t("simBuy")}
@@ -257,6 +270,7 @@ export default function Trading() {
                 <Button
                   id="simSellButton"
                   className="ghost-button detail-action sell-action"
+                  loading={selling}
                   onClick={handleSell}
                 >
                   {t("simSell")}

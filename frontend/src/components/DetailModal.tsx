@@ -369,6 +369,8 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
   const [reviewSaving, setReviewSaving] = useState(false);
   const [reviewList, setReviewList] = useState<JournalEntry[]>([]);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [deletingReviewId, setDeletingReviewId] = useState<number | null>(null);
+  const [refreshingPlan, setRefreshingPlan] = useState(false);
   const [signalValidationStats, setSignalValidationStats] = useState<any>(null);
 
   // ESC key handler
@@ -539,16 +541,30 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
 
   const handleDeleteReview = useCallback(
     async (journalId: number) => {
+      setDeletingReviewId(journalId);
       try {
         await api.deleteJournal(journalId);
         ctx.showToast("success", t("reviewDeleted"));
         await loadReviewList();
       } catch (error: any) {
         ctx.showToast("error", error?.message || t("reviewSaveFailed"));
+      } finally {
+        setDeletingReviewId(null);
       }
     },
     [ctx, loadReviewList]
   );
+
+  const handleRefreshPlan = useCallback(async () => {
+    setRefreshingPlan(true);
+    try {
+      await ctx.generateTradeSetup();
+    } catch (error: any) {
+      // generateTradeSetup 内部已显示 error Toast，避免重复
+    } finally {
+      setRefreshingPlan(false);
+    }
+  }, [ctx]);
 
   // Format trigger helpers
   const formatOpenTrigger = useCallback(
@@ -1141,7 +1157,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         body: { padding: "12px 24px 24px", maxHeight: "calc(90vh - 56px)", overflowY: "auto", overflowX: "hidden" },
         header: { borderBottom: "1px solid var(--line)", padding: "12px 24px" },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <div className="panel wide detail-panel">
           {/* Detail Dock: Recent viewed symbols */}
@@ -1438,7 +1454,8 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                 <div className="detail-actions">
                   <Button
                     size="small"
-                    onClick={() => ctx.generateTradeSetup()}
+                    loading={refreshingPlan}
+                    onClick={handleRefreshPlan}
                   >
                     {t("refreshPlan")}
                   </Button>
@@ -2074,7 +2091,12 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                           <Button size="small" onClick={() => handleStartEditReview(journal)}>
                             {t("editReview")}
                           </Button>
-                          <Button size="small" danger onClick={() => handleDeleteReview(journal.id)}>
+                          <Button
+                            size="small"
+                            danger
+                            loading={deletingReviewId === journal.id}
+                            onClick={() => handleDeleteReview(journal.id)}
+                          >
                             {t("deleteReview")}
                           </Button>
                         </Space>

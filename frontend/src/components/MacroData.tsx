@@ -406,7 +406,7 @@ export default function MacroData() {
                   </div>
                 )}
               </div>}
-              overlayClassName="macro-tip-overlay"
+              classNames={{ root: "macro-tip-overlay" }}
               placement="topLeft"
               arrow={{ pointAtCenter: true }}
             >
@@ -620,7 +620,7 @@ export default function MacroData() {
         onCancel={() => setSelectedIndicator(null)}
         footer={null}
         width={920}
-        destroyOnClose
+        destroyOnHidden
       >
         {history.length === 0 && !historyLoading ? (
           <Empty description={labels.noHistory} />

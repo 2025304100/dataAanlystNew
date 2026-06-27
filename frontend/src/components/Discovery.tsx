@@ -92,6 +92,15 @@ export default function Discovery() {
   const [validDays, setValidDays] = useState(5);
   const [includeNews, setIncludeNews] = useState(true);
 
+  // 本地 loading 状态（避免与全局 loading 冲突）
+  const [starting, setStarting] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const [rowActionLoading, setRowActionLoading] = useState<Record<number, { watchlist?: boolean; freeze?: boolean; update?: boolean }>>({});
+
   const isTaskActive = !!task && ["queued", "running"].includes(task.status);
   const canPause = isTaskActive;
   const canResume = task?.status === "paused" && !!task?.can_resume;
@@ -181,85 +190,131 @@ export default function Discovery() {
 
   const currentPool = candidatePools[poolTab] ?? candidatePools.all;
 
-  const handleStart = useCallback(() => {
-    ctx.runDiscoveryMining({
-      scope,
-      minScore,
-      dataMode,
-      batchSize,
-      delaySeconds: delay,
-      warningDays,
-      validDays,
-      includeNews,
-    }).catch((error: any) => {
-      ctx.showToast("error", error.message);
-    });
+  const handleStart = useCallback(async () => {
+    setStarting(true);
+    try {
+      await ctx.runDiscoveryMining({
+        scope,
+        minScore,
+        dataMode,
+        batchSize,
+        delaySeconds: delay,
+        warningDays,
+        validDays,
+        includeNews,
+      });
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
+    } finally {
+      setStarting(false);
+    }
   }, [ctx, scope, minScore, dataMode, batchSize, delay, warningDays, validDays, includeNews]);
 
-  const handlePause = useCallback(() => {
-    ctx.sendDiscoveryTaskCommand("pause").catch((error: any) => {
-      ctx.showToast("error", error.message);
-    });
+  const handlePause = useCallback(async () => {
+    setPausing(true);
+    try {
+      await ctx.sendDiscoveryTaskCommand("pause");
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
+    } finally {
+      setPausing(false);
+    }
   }, [ctx]);
 
-  const handleResume = useCallback(() => {
-    ctx.sendDiscoveryTaskCommand("resume").catch((error: any) => {
-      ctx.showToast("error", error.message);
-    });
+  const handleResume = useCallback(async () => {
+    setResuming(true);
+    try {
+      await ctx.sendDiscoveryTaskCommand("resume");
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
+    } finally {
+      setResuming(false);
+    }
   }, [ctx]);
 
-  const handleCancel = useCallback(() => {
-    ctx.sendDiscoveryTaskCommand("cancel").catch((error: any) => {
-      ctx.showToast("error", error.message);
-    });
+  const handleCancel = useCallback(async () => {
+    setCancelling(true);
+    try {
+      await ctx.sendDiscoveryTaskCommand("cancel");
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
+    } finally {
+      setCancelling(false);
+    }
   }, [ctx]);
 
-  const handleRefresh = useCallback(() => {
-    ctx.refreshDiscoveryTasks().catch((error: any) => {
-      ctx.showToast("error", error.message);
-    });
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await ctx.refreshDiscoveryTasks();
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
+    } finally {
+      setRefreshing(false);
+    }
   }, [ctx]);
 
-  const handleCleanup = useCallback(() => {
-    ctx.cleanupExpiredDiscoveryResults().catch((error: any) => {
-      ctx.showToast("error", error.message);
-    });
+  const handleCleanup = useCallback(async () => {
+    setCleaning(true);
+    try {
+      await ctx.cleanupExpiredDiscoveryResults();
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
+    } finally {
+      setCleaning(false);
+    }
   }, [ctx]);
+
+  const setRowLoading = (symbolId: number, key: "watchlist" | "freeze" | "update", value: boolean) => {
+    setRowActionLoading((prev) => ({
+      ...prev,
+      [symbolId]: { ...prev[symbolId], [key]: value },
+    }));
+  };
 
   const handleAddToWatchlist = useCallback(
     async (symbolId: number) => {
+      setRowLoading(symbolId, "watchlist", true);
       try {
         await ctx.addSymbolToPrimaryWatchlist(symbolId);
         await ctx.loadWorkbench();
         ctx.showToast("success", t("discoveryAddedWatchlist"));
       } catch (error: any) {
-        ctx.showToast("error", error.message);
+        ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
+      } finally {
+        setRowLoading(symbolId, "watchlist", false);
       }
     },
     [ctx]
   );
 
   const handleToggleFreeze = useCallback(
-    async (resultId: number, isFrozen: boolean) => {
+    async (resultId: number, isFrozen: boolean, symbolId: number) => {
+      setRowLoading(symbolId, "freeze", true);
       try {
         await api.updateDiscoveryResult(resultId, { is_frozen: !isFrozen });
         await ctx.loadWorkbench();
         ctx.showToast("success", t("discoveryRowFrozen"));
       } catch (error: any) {
-        ctx.showToast("error", error.message);
+        ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
+      } finally {
+        setRowLoading(symbolId, "freeze", false);
       }
     },
     [ctx]
   );
 
   const handleUpdateRow = useCallback(
-    async (resultId: number) => {
+    async (resultId: number, symbolId: number) => {
+      setRowLoading(symbolId, "update", true);
       try {
         await api.refreshDiscoveryResult(resultId);
         await ctx.loadWorkbench();
         ctx.showToast("success", t("discoveryRowUpdated"));
       } catch (error: any) {
-        ctx.showToast("error", error.message);
+        ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
+      } finally {
+        setRowLoading(symbolId, "update", false);
       }
     },
     [ctx]
@@ -390,20 +445,20 @@ export default function Discovery() {
             </label>
 
             <div className="discovery-actions">
-              <Button id="discoveryRunButton" type="primary" onClick={handleStart} disabled={!canStart}>
+              <Button id="discoveryRunButton" type="primary" loading={starting} onClick={handleStart} disabled={!canStart}>
                 {t("startDiscovery")}
               </Button>
-              <Button onClick={handlePause} disabled={!canPause}>
+              <Button loading={pausing} onClick={handlePause} disabled={!canPause}>
                 {t("pauseDiscovery")}
               </Button>
-              <Button onClick={handleResume} disabled={!canResume}>
+              <Button loading={resuming} onClick={handleResume} disabled={!canResume}>
                 {t("resumeDiscovery")}
               </Button>
-              <Button danger onClick={handleCancel} disabled={!canCancel}>
+              <Button danger loading={cancelling} onClick={handleCancel} disabled={!canCancel}>
                 {t("cancelDiscovery")}
               </Button>
-              <Button onClick={handleRefresh}>{t("refreshResults")}</Button>
-              <Button onClick={handleCleanup}>{t("cleanupExpired")}</Button>
+              <Button loading={refreshing} onClick={handleRefresh}>{t("refreshResults")}</Button>
+              <Button loading={cleaning} onClick={handleCleanup}>{t("cleanupExpired")}</Button>
             </div>
           </div>
 
@@ -569,6 +624,7 @@ export default function Discovery() {
                     <Space size="small">
                       <Button
                         size="small"
+                        loading={rowActionLoading[item.symbol_id]?.watchlist}
                         disabled={_inWatchlist}
                         onClick={(e: any) => { e.stopPropagation(); handleAddToWatchlist(item.symbol_id); }}
                       >
@@ -576,13 +632,15 @@ export default function Discovery() {
                       </Button>
                       <Button
                         size="small"
-                        onClick={(e: any) => { e.stopPropagation(); if(_resultId) handleToggleFreeze(_resultId, !!item.is_frozen); }}
+                        loading={rowActionLoading[item.symbol_id]?.freeze}
+                        onClick={(e: any) => { e.stopPropagation(); if(_resultId) handleToggleFreeze(_resultId, !!item.is_frozen, item.symbol_id); }}
                       >
                         {item.is_frozen ? t("unfreeze") : t("freeze")}
                       </Button>
                       <Button
                         size="small"
-                        onClick={(e: any) => { e.stopPropagation(); if(_resultId) handleUpdateRow(_resultId); }}
+                        loading={rowActionLoading[item.symbol_id]?.update}
+                        onClick={(e: any) => { e.stopPropagation(); if(_resultId) handleUpdateRow(_resultId, item.symbol_id); }}
                       >
                         {t("updateCurrent")}
                       </Button>

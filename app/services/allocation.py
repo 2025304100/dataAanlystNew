@@ -108,6 +108,8 @@ def compute_position_budget(
             "allocation": allocation,
             "current_position_pct": current_pct,
             "current_position_amount": current_amount,
+            "is_sector_overweight": False,
+            "is_asset_overweight": False,
         }
 
     stage_limits = json.loads(rule.stage_limits_json or "{}")

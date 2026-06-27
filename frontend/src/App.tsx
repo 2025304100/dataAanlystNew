@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { Button, Input, Select } from "antd";
+import { Button, Input, Select, Spin } from "antd";
 import type { InputRef } from "antd";
 import { useApp } from "./context/AppContext";
-import { useActiveRequests } from "./hooks/useActiveRequests";
 import { t, template } from "./i18n";
 import { regionLongLabel } from "./i18n";
 import PortfolioWorkbench from "./components/PortfolioWorkbench";
@@ -20,7 +19,6 @@ const DOT = " | ";
 
 export default function App() {
   const ctx = useApp();
-  const activeRequests = useActiveRequests();
   const [symbolCode, setSymbolCode] = useState("");
   const [busyButton, setBusyButton] = useState<string | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -105,7 +103,28 @@ export default function App() {
 
   return (
     <div className="shell" data-active-tab={ctx.activeTab}>
-      {activeRequests > 0 && <div className="request-indicator" />}
+      {ctx.globalLoading && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+            background: "linear-gradient(90deg, #0f766e 0%, #0d9488 100%)",
+            color: "#fff",
+            padding: "5px 12px",
+            textAlign: "center",
+            fontSize: 12,
+            fontWeight: 500,
+            pointerEvents: "none",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+          }}
+        >
+          <Spin size="small" style={{ marginRight: 8 }} className="global-loading-spin" />
+          {t("loading")}
+        </div>
+      )}
 
       <nav className="view-tabs" aria-label="Main views">
         <button

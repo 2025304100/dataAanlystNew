@@ -8,6 +8,7 @@ import {
   DatabaseOutlined,
   FireOutlined,
   InfoCircleOutlined,
+  LoadingOutlined,
   ReloadOutlined,
   SafetyOutlined,
 } from "@ant-design/icons";
@@ -65,6 +66,7 @@ const LABELS = {
     frozen: "\u51bb\u7ed3",
     expired: "\u8fc7\u671f",
     noIssue: "\u6682\u672a\u53d1\u73b0\u660e\u663e\u6570\u636e\u95ee\u9898\u3002",
+    loadDetailFailed: "\u52a0\u8f7d\u6807\u7684\u8be6\u60c5\u5931\u8d25",
     explainTitle: "\u673a\u4f1a\u5206\u89e3",
     finalScore: "\u6700\u7ec8\u673a\u4f1a\u5206",
     baseScore: "\u6280\u672f\u57fa\u7840\u5206",
@@ -129,6 +131,7 @@ const LABELS = {
     frozen: "Frozen",
     expired: "Expired",
     noIssue: "No obvious data issue found.",
+    loadDetailFailed: "Failed to load symbol detail",
     explainTitle: "Opportunity Breakdown",
     finalScore: "Final Score",
     baseScore: "Technical Base",
@@ -228,6 +231,7 @@ export default function TodayDecision() {
   const [health, setHealth] = useState<DataHealth | null>(null);
   const [selectedExplain, setSelectedExplain] = useState<WorkbenchCandidate | null>(null);
   const [repairingSymbolId, setRepairingSymbolId] = useState<number | null>(null);
+  const [openingSymbolId, setOpeningSymbolId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -296,8 +300,15 @@ export default function TodayDecision() {
       : "\u4eca\u5929\u5e02\u573a\u73af\u5883" + marketLabel(macroScore, labels) + "\uff1a\u5148\u770b Top \u673a\u4f1a\uff0c\u540c\u65f6\u76ef\u4f4f\u91cd\u5927\u6d88\u606f\u548c\u4ed3\u4f4d\u7eaa\u5f8b\u3002");
 
   const openSymbol = async (item: WorkbenchCandidate) => {
-    await ctx.loadSymbolDetail(item.symbol_id, { focus: true });
-    ctx.setActiveTab("investment");
+    setOpeningSymbolId(item.symbol_id);
+    try {
+      await ctx.loadSymbolDetail(item.symbol_id, { focus: true });
+      ctx.setActiveTab("investment");
+    } catch (err: any) {
+      ctx.showToast("error", err.message || labels.loadDetailFailed);
+    } finally {
+      setOpeningSymbolId(null);
+    }
   };
 
   const explainRows = selectedExplain ? [
@@ -386,7 +397,7 @@ export default function TodayDecision() {
       <Row gutter={[12, 12]}>
         <Col xs={24} lg={14}>
           <Card title={labels.topOpportunities} extra={<Button type="link" onClick={() => ctx.setActiveTab("discovery")}>{labels.goDiscovery}</Button>}>
-            {candidates.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-list">{candidates.map((item, index) => <div key={item.symbol_id} className="decision-row decision-row-split"><button type="button" onClick={() => openSymbol(item)}><span className="decision-rank">{index + 1}</span><strong>{item.symbol}</strong><span>{item.name}</span><Tag>{stageLabel(item.stage)}</Tag><b>{scoreValue(Number(opportunityScoreValue(item)))}</b><ArrowRightOutlined /></button><Button size="small" icon={<InfoCircleOutlined />} onClick={() => setSelectedExplain(item)}>{labels.explain}</Button></div>)}</div>}
+            {candidates.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-list">{candidates.map((item, index) => <div key={item.symbol_id} className="decision-row decision-row-split"><button type="button" disabled={openingSymbolId === item.symbol_id} onClick={() => openSymbol(item)}><span className="decision-rank">{index + 1}</span><strong>{item.symbol}</strong><span>{item.name}</span><Tag>{stageLabel(item.stage)}</Tag><b>{scoreValue(Number(opportunityScoreValue(item)))}</b>{openingSymbolId === item.symbol_id ? <LoadingOutlined spin /> : <ArrowRightOutlined />}</button><Button size="small" icon={<InfoCircleOutlined />} onClick={() => setSelectedExplain(item)}>{labels.explain}</Button></div>)}</div>}
           </Card>
         </Col>
         <Col xs={24} lg={10}>
@@ -397,7 +408,7 @@ export default function TodayDecision() {
       </Row>
 
       <Card title={labels.actions} extra={<Button type="link" onClick={() => ctx.setActiveTab("investment")}>{labels.goInvestment}</Button>}>
-        {actions.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-actions">{actions.map((item) => <button key={item.symbol_id} onClick={() => openSymbol(item)}><CheckCircleOutlined /><span>{item.symbol} {item.name}</span><Tag>{actionLabel(item.action)}</Tag><Text type="secondary">{item.reason_tags?.slice(0, 2).join(" / ")}</Text></button>)}</div>}
+        {actions.length === 0 ? <Empty description={labels.empty} /> : <div className="decision-actions">{actions.map((item) => <button key={item.symbol_id} disabled={openingSymbolId === item.symbol_id} onClick={() => openSymbol(item)}>{openingSymbolId === item.symbol_id ? <LoadingOutlined spin /> : <CheckCircleOutlined />}<span>{item.symbol} {item.name}</span><Tag>{actionLabel(item.action)}</Tag><Text type="secondary">{item.reason_tags?.slice(0, 2).join(" / ")}</Text></button>)}</div>}
       </Card>
 
       <Modal

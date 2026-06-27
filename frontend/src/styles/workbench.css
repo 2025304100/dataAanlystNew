@@ -4237,6 +4237,10 @@ td .symbol-name {
   }
 }
 
+.global-loading-spin .ant-spin-dot-item {
+  background-color: #fff !important;
+}
+
 /* ════════════════════════════════════════════════════
    行情消息 Market News (.mn-*)
    ════════════════════════════════════════════════════ */
