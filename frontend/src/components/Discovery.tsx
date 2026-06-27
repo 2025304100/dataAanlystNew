@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
 import { t, template, regionShortLabel, assetTypeLabel, stageLabel, actionLabel } from "../i18n";
@@ -13,6 +13,7 @@ import {
   discoveryFreshness,
   withFinalOpportunityScore,
   opportunityScoreValue,
+  ageDays,
   clamp,
 } from "../utils/format";
 
@@ -63,6 +64,28 @@ export default function Discovery() {
   const [scope, setScope] = useState("cn-stock");
   const [minScore, setMinScore] = useState(55);
   const [dataMode, setDataMode] = useState("cached");
+  const [coverageHint, setCoverageHint] = useState<string | null>(null);
+
+  // 加载数据覆盖率提示（P0-4.3）
+  useEffect(() => {
+    api.getDataHealth().then((data: any) => {
+      const bars = data?.bars;
+      if (bars) {
+        const pct = bars.coverage_pct ?? 100;
+        if (pct < 60) {
+          setCoverageHint(ctx.locale === "zh-CN"
+            ? `行情覆盖率仅 ${pct.toFixed(0)}%，扫描结果可能不完整`
+            : `Bar coverage only ${pct.toFixed(0)}%, scan results may be incomplete`);
+        } else if (pct < 85) {
+          setCoverageHint(ctx.locale === "zh-CN"
+            ? `行情覆盖率 ${pct.toFixed(0)}%，部分标的数据可能缺失`
+            : `Bar coverage ${pct.toFixed(0)}%, some symbols may lack data`);
+        } else {
+          setCoverageHint(null);
+        }
+      }
+    }).catch(() => {});
+  }, [ctx.locale]);
   const [batchSize, setBatchSize] = useState(20);
   const [delay, setDelay] = useState(0.25);
   const [warningDays, setWarningDays] = useState(3);
@@ -89,6 +112,74 @@ export default function Discovery() {
         return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
       });
   }, [workbench, ctx.newsSnapshot]);
+
+  // ════════════════════════════════════════════════
+  // 多视角候选池（P1-3）
+  // ════════════════════════════════════════════════
+  const candidatePools = useMemo(() => {
+    const all = sortedResults;
+    const isZh = ctx.locale === "zh-CN";
+
+    // 1. 高股质候选池：quality_score >= 70
+    const highQuality = all.filter((item: any) => {
+      const qScore = item.quality_score ?? item.latest_score?.quality_score ?? 0;
+      return qScore >= 70;
+    });
+
+    // 2. 高时点候选池：timing_score >= 65 + stage in ['start', 'accel']
+    const highTiming = all.filter((item: any) => {
+      const tScore = item.timing_score ?? item.latest_score?.timing_score ?? 0;
+      const stage = item.stage ?? item.latest_score?.stage ?? "";
+      return tScore >= 65 && ["start", "accel"].includes(stage);
+    });
+
+    // 3. 组合可执行候选池：priority_score >= 60 + action = 'open'
+    const actionable = all.filter((item: any) => {
+      const pScore = item.priority_score ?? item.latest_score?.priority_score ?? 0;
+      const action = item.action ?? item.latest_score?.action ?? "";
+      return pScore >= 60 && action === "open";
+    });
+
+    // 4. 过热风险候选池：stage = 'overheat' + action = 'reduce'
+    const overheatRisk = all.filter((item: any) => {
+      const stage = item.stage ?? item.latest_score?.stage ?? "";
+      const action = item.action ?? item.latest_score?.action ?? "";
+      return stage === "overheat" && action === "reduce";
+    });
+
+    // 5. 低可信度候选池：数据过期（> 7天未更新）
+    const lowCredibility = all.filter((item: any) => {
+      const createdAt = item.created_at ?? item.latest_score?.created_at ?? "";
+      if (!createdAt) return true; // 无时间信息 = 低可信度
+      try {
+        const age = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
+        return age > 7;
+      } catch { return true; }
+    });
+
+    return {
+      all,
+      highQuality,
+      highTiming,
+      actionable,
+      overheatRisk,
+      lowCredibility,
+    };
+  }, [sortedResults, ctx.locale]);
+
+  // 候选池 Tab 状态
+  const [poolTab, setPoolTab] = useState<"all" | "highQuality" | "highTiming" | "actionable" | "overheatRisk" | "lowCredibility">("actionable");
+
+  const poolLabels: Record<string, { zh: string; en: string; color: string }> = {
+    all: { zh: "全部候选", en: "All Candidates", color: "#6b7280" },
+    highQuality: { zh: "高股质候选", en: "High Quality", color: "#0f766e" },
+    highTiming: { zh: "高时点候选", en: "High Timing", color: "#2563eb" },
+    actionable: { zh: "组合可执行", en: "Actionable", color: "#d97706" },
+    overheatRisk: { zh: "过热风险", en: "Overheat Risk", color: "#b42318" },
+    lowCredibility: { zh: "低可信度", en: "Low Credibility", color: "#9ca3af" },
+  };
+
+  const currentPool = candidatePools[poolTab] ?? candidatePools.all;
 
   const handleStart = useCallback(() => {
     ctx.runDiscoveryMining({
@@ -383,6 +474,27 @@ export default function Discovery() {
             </div>
             <p className="panel-meta">{resultMeta}</p>
           </div>
+
+          {/* 候选池 Tab 切换 */}
+          {coverageHint && (
+            <div className="coverage-hint">{coverageHint}</div>
+          )}
+          <div className="pool-tabs">
+            {Object.entries(poolLabels).map(([key, cfg]) => (
+              <button
+                key={key}
+                className={`pool-tab ${poolTab === key ? "pool-tab--active" : ""}`}
+                style={{ borderColor: poolTab === key ? cfg.color : "transparent" }}
+                onClick={() => setPoolTab(key as any)}
+              >
+                <span className="pool-tab-label">{ctx.locale === "zh-CN" ? cfg.zh : cfg.en}</span>
+                <span className="pool-tab-count" style={{ backgroundColor: cfg.color }}>
+                  {(candidatePools as any)[key]?.length ?? 0}
+                </span>
+              </button>
+            ))}
+          </div>
+
           <div className="table-wrap">
             <table>
               <thead>
@@ -393,6 +505,7 @@ export default function Discovery() {
                   <th>{t("messageScore")}</th>
                   <th>{t("quality")}</th>
                   <th>{t("timing")}</th>
+                  <th>{t("priority")}</th>
                   <th>{t("stage")}</th>
                   <th>{t("action")}</th>
                   <th>{t("position")}</th>
@@ -401,10 +514,13 @@ export default function Discovery() {
                 </tr>
               </thead>
               <tbody>
-                {sortedResults.map((item: any) => {
+                {currentPool.map((item: any, index: number) => {
                 const _inWatchlist = ctx.primaryWatchlistSymbolIds.has(item.symbol_id);
                 const _resultId = item.scan_result_id ?? item.id;
                 const _freshness = discoveryFreshness(item);
+                const _ageDays = ageDays(item.created_at);
+                const _isLowCredibility = _ageDays > 7 || !item.created_at;
+                const _reasonTags: string[] = item.reason_tags ?? [];
                 return (
                 <tr
                   key={item.symbol_id}
@@ -412,31 +528,49 @@ export default function Discovery() {
                     "clickable",
                     item.is_frozen ? "discovery-row-frozen" : "",
                     _freshness.className === "warning" ? "discovery-row-warning" : "",
+                    _isLowCredibility ? "discovery-row-low-credibility" : "",
                   ].filter(Boolean).join(" ")}
                   onClick={() => handleRowClick(item.symbol_id)}
                 >
-                  <td>{item.rank_no ?? '-'}</td>
+                  <td>{index + 1}</td>
                   <td>
                     <div className="symbol-title">
                       <span className="symbol-code">{item.symbol}</span>
                       <span className="symbol-name">{item.name}</span>
                     </div>
                     <div className="item-subline">{joinParts([regionShortLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
+                    {_reasonTags.length > 0 && (
+                      <div className="item-reason-tags">
+                        {_reasonTags.slice(0, 3).map((tag: string, i: number) => (
+                          <span key={i} className="reason-tag">{tag}</span>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td>{score(opportunityScoreValue(item))}</td>
                   <td>{score(item.news_message_score)}</td>
                   <td>{score(item.quality_score)}</td>
                   <td>{score(item.timing_score)}</td>
+                  <td>{score(item.priority_score)}</td>
                   <td><Tag className={badgeClass(item.stage)}>{stageLabel(item.stage)}</Tag></td>
                   <td><Tag className={badgeClass(item.action)}>{actionLabel(item.action)}</Tag></td>
                   <td>{percent(item.recommended_position_pct)}</td>
-                  <td><span className={`freshness-chip ${_freshness.className}`}>{_freshness.label}</span></td>
+                  <td>
+                    <span className={`freshness-chip ${_freshness.className}`}>
+                      {_freshness.label}
+                    </span>
+                    {_isLowCredibility && (
+                      <span className="credibility-badge credibility-low">
+                        {ctx.locale === "zh-CN" ? "低可信" : "Low"}
+                      </span>
+                    )}
+                  </td>
                   <td>
                     <Space size="small">
                       <Button
                         size="small"
                         disabled={_inWatchlist}
-                        onClick={(e: any) => { e.stopPropagation(); handleAddToWatchlist(item.symbolId); }}
+                        onClick={(e: any) => { e.stopPropagation(); handleAddToWatchlist(item.symbol_id); }}
                       >
                         {_inWatchlist ? t("discoveryInWatchlist") : t("discoveryAddWatchlist")}
                       </Button>

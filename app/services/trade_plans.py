@@ -8,11 +8,11 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.models.daily_bar import DailyBar
-from app.models.portfolio import Portfolio, Position
+from app.models.portfolio import Portfolio
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.models.trade_setup import TradeSetup
-from app.services.allocation import compute_recommended_position_pct, get_active_rule
+from app.services.allocation import compute_position_budget, get_active_rule
 
 
 def _round_price(value: float | None) -> float | None:
@@ -371,12 +371,24 @@ def upsert_trade_setup(
     if entry_max and stop_loss and target_price and entry_max > stop_loss:
         risk_reward_ratio = round((target_price - entry_max) / (entry_max - stop_loss), 2)
 
-    recommended_pct, sector_flag, asset_flag = compute_recommended_position_pct(db, portfolio_id, symbol, score.stage)
-    recommended_amount = round(portfolio.total_capital * portfolio.investable_ratio * recommended_pct, 2)
-    allow_add_position = int(score.stage in {"start", "accel"} and score.action in {"open", "hold"} and not sector_flag and not asset_flag)
+    position_budget = compute_position_budget(
+        db=db,
+        portfolio_id=portfolio_id,
+        symbol=symbol,
+        stage=score.stage,
+        action=score.action,
+        entry_price=entry_max or last_close,
+        stop_loss=stop_loss,
+    )
+    recommended_pct = float(position_budget["recommended_pct"])
+    recommended_amount = float(position_budget["recommended_amount"])
+    sector_flag = bool(position_budget["is_sector_overweight"])
+    asset_flag = bool(position_budget["is_asset_overweight"])
+    allow_add_position = int(score.stage in {"start", "accel"} and score.action in {"open", "hold"} and position_budget["can_open"])
     setup_reason = (
         f"grade={score.quality_grade}; quality={score.quality_score}; timing={score.timing_score}; "
-        f"ma10={ma10:.2f}; ma20={ma20:.2f}; high20={high20:.2f}; low20={low20:.2f}"
+        f"decision={position_budget['decision']}; ma10={ma10:.2f}; ma20={ma20:.2f}; "
+        f"high20={high20:.2f}; low20={low20:.2f}"
     )
 
     setup = db.execute(
@@ -446,20 +458,25 @@ def build_trade_setup_view(
         stage_cap_pct = float(stage_limits.get(symbol.asset_type, {}).get(score.stage, 0.0))
         max_loss_per_trade_pct = float(rule.max_loss_per_trade_pct)
 
-    stage_cap_amount = round(portfolio.total_capital * portfolio.investable_ratio * stage_cap_pct, 2)
-    risk_budget_amount = None
-    risk_per_share = None
-    risk_capped_shares = None
-    if max_loss_per_trade_pct is not None and setup.entry_max and setup.stop_loss and setup.entry_max > setup.stop_loss:
-        risk_budget_amount = round(portfolio.total_capital * max_loss_per_trade_pct, 2)
-        risk_per_share = round(setup.entry_max - setup.stop_loss, 2)
-        risk_capped_shares = floor(risk_budget_amount / risk_per_share) if risk_per_share > 0 else None
-
-    position = db.execute(
-        select(Position).where(Position.portfolio_id == portfolio_id, Position.symbol_id == symbol.id)
-    ).scalars().first()
-    current_position_pct = round(position.position_pct, 4) if position is not None else 0.0
-    current_position_amount = round(position.market_value, 2) if position is not None else 0.0
+    position_budget = compute_position_budget(
+        db=db,
+        portfolio_id=portfolio_id,
+        symbol=symbol,
+        stage=score.stage,
+        action=score.action,
+        entry_price=setup.entry_max or setup.entry_min or last_bar.close,
+        stop_loss=setup.stop_loss,
+    )
+    stage_cap_pct = float(position_budget.get("stage_limit_pct", stage_cap_pct))
+    stage_cap_amount = round(portfolio.total_capital * stage_cap_pct, 2)
+    risk_budget_amount = position_budget.get("risk_budget_amount")
+    risk_per_share = position_budget.get("risk_per_share")
+    risk_capped_shares = position_budget.get("risk_capped_shares")
+    risk_capped_amount = position_budget.get("risk_capped_amount")
+    position_constraints = position_budget.get("constraints", [])
+    blocked_reasons = position_budget.get("blocked_reasons", [])
+    current_position_pct = round(float(position_budget.get("current_position_pct", 0.0)), 4)
+    current_position_amount = round(float(position_budget.get("current_position_amount", 0.0)), 2)
     remaining_stage_pct = round(max(0.0, stage_cap_pct - current_position_pct), 4)
     remaining_stage_amount = round(max(0.0, stage_cap_amount - current_position_amount), 2)
 
@@ -527,6 +544,8 @@ def build_trade_setup_view(
         execution_notes.append(
             f"Risk budget {risk_budget_amount:.2f}, about {risk_capped_shares} shares before hitting max loss budget"
         )
+    if blocked_reasons:
+        execution_notes.append(f"Blocked by: {', '.join(blocked_reasons)}")
 
     return_scenarios = _build_return_scenarios(
         symbol=symbol,
@@ -544,10 +563,18 @@ def build_trade_setup_view(
         "target_price": setup.target_price,
         "recommended_position_pct": setup.recommended_position_pct,
         "recommended_position_amount": setup.recommended_position_amount,
+        "suggested_buy_pct": position_budget.get("recommended_pct", setup.recommended_position_pct),
+        "suggested_buy_amount": position_budget.get("recommended_amount", setup.recommended_position_amount),
         "risk_reward_ratio": setup.risk_reward_ratio,
         "allow_add_position": setup.allow_add_position,
         "is_sector_overweight": setup.is_sector_overweight,
         "is_asset_overweight": setup.is_asset_overweight,
+        "can_open": position_budget.get("can_open", False),
+        "decision": position_budget.get("decision", "wait"),
+        "blocked_reasons": blocked_reasons,
+        "position_constraints": position_constraints,
+        "open_slots_remaining": position_budget.get("open_slots_remaining"),
+        "allocation_snapshot": position_budget.get("allocation"),
         "action": setup.action,
         "stage": setup.stage,
         "setup_reason": setup.setup_reason,
@@ -561,6 +588,7 @@ def build_trade_setup_view(
         "risk_budget_amount": risk_budget_amount,
         "risk_per_share": risk_per_share,
         "risk_capped_shares": risk_capped_shares,
+        "risk_capped_amount": risk_capped_amount,
         "max_loss_per_trade_pct": max_loss_per_trade_pct,
         "opening_trigger": opening_trigger,
         "add_trigger": add_trigger,

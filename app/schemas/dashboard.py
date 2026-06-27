@@ -78,6 +78,15 @@ class WorkbenchJournal(BaseModel):
     entry_type: str
     symbol_id: int
     created_at: datetime
+    trade_setup_id: int | None = None
+    content: str | None = None
+    outcome: str | None = None
+    review_note: str | None = None
+    follow_system: int = 0
+    score_id: int | None = None
+    stage: str | None = None
+    action: str | None = None
+    actual_action: str | None = None
 
 
 class WorkbenchLatestScan(BaseModel):
@@ -104,7 +113,10 @@ class WorkbenchActiveRule(BaseModel):
     max_single_position_pct: float
     max_stock_position_pct: float
     max_etf_position_pct: float
+    max_sector_position_pct: float | None = None
+    max_loss_per_trade_pct: float | None = None
     max_open_positions: int
+    stage_limits_json: dict | None = None
 
 
 class WorkbenchMarketScope(BaseModel):

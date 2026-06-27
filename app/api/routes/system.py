@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import csv
+import io
+import shutil
+import tempfile
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.daily_bar import DailyBar
 from app.models.discovery import DiscoveryTaskRecord
+from app.models.journal_entry import JournalEntry
 from app.models.macro_data import MacroIndicatorValue, MacroSnapshot
 from app.models.market_event import MarketEvent
 from app.models.scan import ScanResult
@@ -17,6 +24,7 @@ from app.models.symbol import Symbol
 
 
 router = APIRouter()
+BAR_ISSUE_SAMPLE_LIMIT = 8
 
 
 def _now() -> datetime:
@@ -38,6 +46,21 @@ def _status_from_score(score: int) -> str:
     if score >= 58:
         return "warn"
     return "error"
+
+
+def _format_bar_issue_row(row) -> dict:
+    age_days = _age_days(row.latest_trade_date)
+    return {
+        "symbol_id": row.id,
+        "symbol": row.symbol,
+        "name": row.name,
+        "asset_type": row.asset_type,
+        "market": row.market,
+        "theme": row.theme,
+        "latest_trade_date": row.latest_trade_date,
+        "latest_age_days": age_days,
+        "reason": "missing_bars" if row.latest_trade_date is None else "stale_bars",
+    }
 
 
 @router.get("/system/data-health")
@@ -71,18 +94,54 @@ def get_data_health(db: Session = Depends(get_db)):
     )
     latest_bar_date = db.execute(select(func.max(DailyBar.trade_date))).scalar_one()
     bars_total = db.execute(select(func.count(DailyBar.id))).scalar_one()
-    covered_symbols = db.execute(select(func.count()).select_from(latest_bar_subq)).scalar_one()
-    stale_symbols = db.execute(
+    covered_symbols = db.execute(
+        select(func.count(Symbol.id))
+        .join(latest_bar_subq, latest_bar_subq.c.symbol_id == Symbol.id)
+        .where(Symbol.is_active == 1)
+    ).scalar_one()
+    missing_bar_symbols = db.execute(
         select(func.count(Symbol.id))
         .outerjoin(latest_bar_subq, latest_bar_subq.c.symbol_id == Symbol.id)
-        .where(
-            Symbol.is_active == 1,
-            (latest_bar_subq.c.latest_trade_date.is_(None)) | (latest_bar_subq.c.latest_trade_date < stale_bar_cutoff),
-        )
+        .where(Symbol.is_active == 1, latest_bar_subq.c.latest_trade_date.is_(None))
     ).scalar_one()
+    outdated_bar_symbols = db.execute(
+        select(func.count(Symbol.id))
+        .join(latest_bar_subq, latest_bar_subq.c.symbol_id == Symbol.id)
+        .where(Symbol.is_active == 1, latest_bar_subq.c.latest_trade_date < stale_bar_cutoff)
+    ).scalar_one()
+    stale_symbols = missing_bar_symbols + outdated_bar_symbols
     coverage_pct = round((covered_symbols / total_symbols) * 100, 2) if total_symbols else 0.0
     stale_pct = round((stale_symbols / total_symbols) * 100, 2) if total_symbols else 0.0
-
+    missing_samples = db.execute(
+        select(
+            Symbol.id,
+            Symbol.symbol,
+            Symbol.name,
+            Symbol.asset_type,
+            Symbol.market,
+            Symbol.theme,
+            latest_bar_subq.c.latest_trade_date,
+        )
+        .outerjoin(latest_bar_subq, latest_bar_subq.c.symbol_id == Symbol.id)
+        .where(Symbol.is_active == 1, latest_bar_subq.c.latest_trade_date.is_(None))
+        .order_by(Symbol.asset_type.asc(), Symbol.symbol.asc())
+        .limit(BAR_ISSUE_SAMPLE_LIMIT)
+    ).all()
+    stale_samples = db.execute(
+        select(
+            Symbol.id,
+            Symbol.symbol,
+            Symbol.name,
+            Symbol.asset_type,
+            Symbol.market,
+            Symbol.theme,
+            latest_bar_subq.c.latest_trade_date,
+        )
+        .join(latest_bar_subq, latest_bar_subq.c.symbol_id == Symbol.id)
+        .where(Symbol.is_active == 1, latest_bar_subq.c.latest_trade_date < stale_bar_cutoff)
+        .order_by(latest_bar_subq.c.latest_trade_date.asc(), Symbol.symbol.asc())
+        .limit(BAR_ISSUE_SAMPLE_LIMIT)
+    ).all()
     latest_score_date = db.execute(select(func.max(Score.trade_date))).scalar_one()
     scored_symbols = db.execute(select(func.count(func.distinct(Score.symbol_id)))).scalar_one()
 
@@ -162,8 +221,14 @@ def get_data_health(db: Session = Depends(get_db)):
             "coverage_pct": coverage_pct,
             "latest_trade_date": latest_bar_date,
             "latest_age_days": _age_days(latest_bar_date),
+            "missing_symbols": missing_bar_symbols,
+            "outdated_symbols": outdated_bar_symbols,
             "stale_symbols": stale_symbols,
             "stale_pct": stale_pct,
+            "stale_cutoff": stale_bar_cutoff,
+            "repair_hint": "优先补拉 missing_samples 和 stale_samples 中的标的，再重新运行机会扫描。",
+            "missing_samples": [_format_bar_issue_row(row) for row in missing_samples],
+            "stale_samples": [_format_bar_issue_row(row) for row in stale_samples],
         },
         "scores": {
             "scored_symbols": scored_symbols,
@@ -200,3 +265,92 @@ def get_data_health(db: Session = Depends(get_db)):
             "frozen_results": frozen_results,
         },
     }
+
+
+@router.post("/system/backup")
+def backup_database():
+    """一键备份 SQLite 数据库到临时目录"""
+    db_path = settings.database_url.replace("sqlite:///", "")
+    backup_dir = Path(tempfile.gettempdir()) / "quant_backups"
+    backup_dir.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = backup_dir / f"quant_workbench_backup_{timestamp}.db"
+    shutil.copy2(db_path, backup_path)
+    return {
+        "status": "ok",
+        "backup_path": str(backup_path),
+        "timestamp": timestamp,
+        "size_mb": round(backup_path.stat().st_size / 1024 / 1024, 2),
+    }
+
+
+@router.get("/system/backups")
+def list_backups():
+    """列出所有备份"""
+    backup_dir = Path(tempfile.gettempdir()) / "quant_backups"
+    if not backup_dir.exists():
+        return {"backups": []}
+    backups = []
+    for f in sorted(backup_dir.glob("*.db"), key=lambda x: x.stat().st_mtime, reverse=True):
+        stat = f.stat()
+        backups.append(
+            {
+                "filename": f.name,
+                "path": str(f),
+                "size_mb": round(stat.st_size / 1024 / 1024, 2),
+                "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            }
+        )
+    return {"backups": backups}
+
+
+@router.post("/system/restore")
+def restore_database(backup_path: str = Query(...)):
+    """从备份恢复数据库"""
+    db_path = settings.database_url.replace("sqlite:///", "")
+    if not Path(backup_path).exists():
+        raise HTTPException(status_code=404, detail="Backup file not found")
+    shutil.copy2(backup_path, db_path)
+    return {"status": "ok", "restored_from": backup_path}
+
+
+@router.get("/system/export/{data_type}")
+def export_data(data_type: str, portfolio_id: int = Query(default=1), db: Session = Depends(get_db)):
+    """导出数据为 CSV
+    data_type: journals | positions | scan_results | trade_setups
+    """
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    if data_type == "journals":
+        rows = db.execute(select(JournalEntry).where(JournalEntry.portfolio_id == portfolio_id)).scalars().all()
+        writer.writerow(["id", "symbol_id", "title", "entry_type", "stage", "action", "actual_action", "outcome", "review_note", "created_at"])
+        for r in rows:
+            writer.writerow([r.id, r.symbol_id, r.title, r.entry_type, r.stage, r.action, r.actual_action, r.outcome, r.review_note, r.created_at])
+    elif data_type == "positions":
+        from app.models.portfolio import Position
+        rows = db.execute(select(Position).where(Position.portfolio_id == portfolio_id)).scalars().all()
+        writer.writerow(["id", "symbol_id", "quantity", "avg_cost", "latest_price", "market_value", "position_pct", "asset_type", "theme"])
+        for r in rows:
+            writer.writerow([r.id, r.symbol_id, r.quantity, r.avg_cost, r.latest_price, r.market_value, r.position_pct, r.asset_type, r.theme])
+    elif data_type == "scan_results":
+        rows = db.execute(select(ScanResult)).scalars().all()
+        writer.writerow(["id", "symbol_id", "quality_score", "timing_score", "priority_score", "stage", "action", "is_frozen", "created_at"])
+        for r in rows:
+            writer.writerow([r.id, r.symbol_id, getattr(r, "quality_score", ""), getattr(r, "timing_score", ""), getattr(r, "priority_score", ""), getattr(r, "stage", ""), getattr(r, "action", ""), r.is_frozen, r.created_at])
+    elif data_type == "trade_setups":
+        from app.models.trade_setup import TradeSetup
+        rows = db.execute(select(TradeSetup).where(TradeSetup.portfolio_id == portfolio_id)).scalars().all()
+        writer.writerow(["id", "symbol_id", "stage", "action", "entry_min", "entry_max", "stop_loss", "target_price", "recommended_position_pct", "risk_reward_ratio", "created_at"])
+        for r in rows:
+            writer.writerow([r.id, r.symbol_id, r.stage, r.action, r.entry_min, r.entry_max, r.stop_loss, r.target_price, r.recommended_position_pct, r.risk_reward_ratio, r.created_at])
+    else:
+        raise HTTPException(status_code=400, detail="Invalid data_type. Use: journals, positions, scan_results, trade_setups")
+
+    content = output.getvalue()
+    output.close()
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={data_type}_export.csv"},
+    )

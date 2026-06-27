@@ -15,7 +15,7 @@ import { api } from "../api/client";
 import { actionLabel, stageLabel } from "../i18n";
 import { useApp } from "../context/AppContext";
 import { baseOpportunityScoreValue, formatRelativeTime, opportunityScoreValue, score, withFinalOpportunityScore } from "../utils/format";
-import type { DataHealth, MacroOverview, MarketEvent, WorkbenchCandidate } from "../types";
+import type { DataHealth, DataHealthBarIssue, MacroOverview, MarketEvent, WorkbenchCandidate } from "../types";
 
 const { Text } = Typography;
 
@@ -51,6 +51,14 @@ const LABELS = {
     symbols: "\u6807\u7684\u5e93",
     barCoverage: "K\u7ebf\u8986\u76d6",
     staleBars: "\u8fc7\u671fK\u7ebf",
+    missingBars: "\u7f3a\u5931K\u7ebf",
+    outdatedBars: "\u8d85\u671fK\u7ebf",
+    repairSamples: "\u4f18\u5148\u4fee\u590d\u6807\u7684",
+    repair: "\u4fee\u590d",
+    repairOk: "\u884c\u60c5\u5df2\u4fee\u590d",
+    repairFailed: "\u4fee\u590d\u5931\u8d25",
+    latestBar: "\u6700\u65b0K\u7ebf",
+    missingReason: "\u7f3a\u5931",
     macroFreshness: "\u5b8f\u89c2\u65f6\u6548",
     news7d: "7\u5929\u6d88\u606f",
     discoveryFreshness: "\u673a\u4f1a\u65f6\u6548",
@@ -107,6 +115,14 @@ const LABELS = {
     symbols: "Symbols",
     barCoverage: "Bar Coverage",
     staleBars: "Stale Bars",
+    missingBars: "Missing Bars",
+    outdatedBars: "Outdated Bars",
+    repairSamples: "Repair First",
+    repair: "Repair",
+    repairOk: "Market data repaired",
+    repairFailed: "Repair failed",
+    latestBar: "Latest Bar",
+    missingReason: "Missing",
     macroFreshness: "Macro Freshness",
     news7d: "7D News",
     discoveryFreshness: "Discovery Freshness",
@@ -211,6 +227,7 @@ export default function TodayDecision() {
   const [events, setEvents] = useState<MarketEvent[]>([]);
   const [health, setHealth] = useState<DataHealth | null>(null);
   const [selectedExplain, setSelectedExplain] = useState<WorkbenchCandidate | null>(null);
+  const [repairingSymbolId, setRepairingSymbolId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -252,6 +269,25 @@ export default function TodayDecision() {
       .sort((a, b) => Number(opportunityScoreValue(b)) - Number(opportunityScoreValue(a)))
       .slice(0, 5);
   }, [workbench, ctx.newsSnapshot]);
+
+  const repairSamples = useMemo(() => {
+    const missing = (health?.bars.missing_samples ?? []).map((item) => ({ ...item, repairKind: labels.missingBars, tagColor: "red" }));
+    const stale = (health?.bars.stale_samples ?? []).map((item) => ({ ...item, repairKind: labels.outdatedBars, tagColor: "orange" }));
+    return [...missing, ...stale].slice(0, 6);
+  }, [health, labels.missingBars, labels.outdatedBars]);
+
+  const repairSymbol = async (item: DataHealthBarIssue) => {
+    setRepairingSymbolId(item.symbol_id);
+    try {
+      await api.repairSymbolMarketData(item.symbol_id, { auto_score: true });
+      ctx.showToast("success", `${labels.repairOk}: ${item.symbol}`);
+      await load();
+    } catch (err: any) {
+      ctx.showToast("error", `${labels.repairFailed}: ${err.message || err}`);
+    } finally {
+      setRepairingSymbolId(null);
+    }
+  };
 
   const conclusion = macroScore === null
     ? labels.noData
@@ -311,7 +347,8 @@ export default function TodayDecision() {
           </div>
           <span><b>{labels.symbols}</b>{health?.symbols.total ?? "-"}</span>
           <span><b>{labels.barCoverage}</b>{pct(health?.bars.coverage_pct)}</span>
-          <span><b>{labels.staleBars}</b>{health?.bars.stale_symbols ?? "-"}</span>
+          <span><b>{labels.missingBars}</b>{health?.bars.missing_symbols ?? "-"}</span>
+          <span><b>{labels.outdatedBars}</b>{health?.bars.outdated_symbols ?? "-"}</span>
           <span><b>{labels.macroFreshness}</b>{ageText(health?.macro.latest_age_days, ctx.locale)}</span>
           <span><b>{labels.news7d}</b>{health?.market_events.events_7d ?? "-"}</span>
           <span><b>{labels.discoveryFreshness}</b>{labels.expired}: {health?.discovery.expired_results ?? 0} / {labels.frozen}: {health?.discovery.frozen_results ?? 0}</span>
@@ -321,6 +358,29 @@ export default function TodayDecision() {
             <Tag key={index} color={issue.level === "error" ? "red" : issue.level === "warn" ? "orange" : "green"}>{issue.message}</Tag>
           ))}
         </div>
+        {repairSamples.length > 0 && (
+          <div className="decision-health-repair">
+            <div className="decision-health-repair-head">
+              <Text type="secondary">{labels.repairSamples}</Text>
+              <Text type="secondary">{health?.bars.repair_hint}</Text>
+            </div>
+            <div className="decision-health-repair-list">
+              {repairSamples.map((item) => (
+                <div key={`${item.reason}-${item.symbol_id}`} className="decision-health-repair-row">
+                  <div>
+                    <Tag color={item.tagColor}>{item.repairKind}</Tag>
+                    <strong>{item.symbol}</strong>
+                    <span>{item.name}</span>
+                    <Text type="secondary">
+                      {item.latest_trade_date ? `${labels.latestBar}: ${item.latest_trade_date} / ${ageText(item.latest_age_days, ctx.locale)}` : labels.missingReason}
+                    </Text>
+                  </div>
+                  <Button size="small" icon={<ReloadOutlined />} loading={repairingSymbolId === item.symbol_id} onClick={() => repairSymbol(item)}>{labels.repair}</Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
 
       <Row gutter={[12, 12]}>

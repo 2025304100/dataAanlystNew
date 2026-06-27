@@ -1,8 +1,0 @@
-INFO:     Started server process [28172]
-INFO:     Waiting for application startup.
-2026-06-25 21:34:17,992 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
-2026-06-25 21:34:17,993 [INFO] app.main: Startup cleanup: no expired results to remove
-INFO:     Application startup complete.
-ERROR:    [Errno 13] error while attempting to bind on address ('127.0.0.1', 8000): 以一种访问权限不允许的方式做了一个访问套接字的尝试。
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.

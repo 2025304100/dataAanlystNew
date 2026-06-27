@@ -14,6 +14,10 @@ class JournalCreate(BaseModel):
     follow_system: bool = False
     outcome: str | None = None
     review_note: str | None = None
+    score_id: int | None = None
+    stage: str | None = None
+    action: str | None = None
+    actual_action: str | None = None
 
 
 class JournalUpdate(BaseModel):
@@ -23,6 +27,10 @@ class JournalUpdate(BaseModel):
     follow_system: bool | None = None
     outcome: str | None = None
     review_note: str | None = None
+    score_id: int | None = None
+    stage: str | None = None
+    action: str | None = None
+    actual_action: str | None = None
 
 
 class JournalRead(BaseModel):
@@ -39,6 +47,10 @@ class JournalRead(BaseModel):
     follow_system: int
     outcome: str | None = None
     review_note: str | None = None
+    score_id: int | None = None
+    stage: str | None = None
+    action: str | None = None
+    actual_action: str | None = None
     created_at: datetime
     updated_at: datetime
 

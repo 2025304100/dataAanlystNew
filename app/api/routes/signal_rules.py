@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,25 @@ router = APIRouter()
 @router.get("/signal-rules/presets", response_model=list[SignalRulePreset])
 def list_signal_rule_presets():
     return preset_list()
+
+
+@router.get("/signal-rules/stats/{symbol_id}")
+def get_signal_stats(symbol_id: int, portfolio_id: int = Query(default=1), db: Session = Depends(get_db)):
+    """获取指定标的的相似信号统计，用于信号验证。"""
+    symbol = db.get(Symbol, symbol_id)
+    if symbol is None:
+        raise HTTPException(status_code=404, detail="Symbol not found")
+    latest_score = (
+        db.execute(
+            select(Score).where(Score.symbol_id == symbol.id).order_by(desc(Score.trade_date), desc(Score.id))
+        )
+        .scalars()
+        .first()
+    )
+    stats = build_similar_signal_stats(db, symbol, latest_score, portfolio_id=portfolio_id)
+    if stats is None:
+        raise HTTPException(status_code=404, detail="当前标的还没有最新评分，先同步并扫描")
+    return stats
 
 
 @router.get("/portfolios/{portfolio_id}/signal-rule", response_model=SignalRuleRead)

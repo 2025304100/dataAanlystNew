@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ReactECharts from "echarts-for-react";
-import { Modal, InputNumber, Button } from "antd";
+import { Modal, InputNumber, Button, Input, Select, Tag, Space } from "antd";
 import { useApp } from "../context/AppContext";
+import { api } from "../api/client";
 import {
   t,
   template,
@@ -158,6 +159,28 @@ function getActiveFutureBuyPlan(
   return basePlan;
 }
 
+function setupDecisionTone(setup: TradeSetup): "ok" | "wait" | "blocked" {
+  if (setup.can_open || setup.decision === "buy_allowed") return "ok";
+  if (setup.decision === "blocked") return "blocked";
+  return "wait";
+}
+
+function setupDecisionLabel(setup: TradeSetup): string {
+  const decision = setup.decision ?? (setup.can_open ? "buy_allowed" : "wait");
+  if (decision === "buy_allowed") return t("buyAllowed");
+  if (decision === "blocked") return t("blocked");
+  return t("waitSignal");
+}
+
+function constraintLabel(key: string): string {
+  const label = t(`constraint_${key}`);
+  return label === `constraint_${key}` ? key : label;
+}
+
+function blockedReasonLabel(reason: string): string {
+  const label = t(`blocked_${reason}`);
+  return label === `blocked_${reason}` ? reason : label;
+}
 // --- Future Buy Plan SVG Overlay Component ---
 // Renders a panel on the right side of the chart with colored bands, labels, and dashed curve
 function FuturePlanOverlay({
@@ -335,6 +358,19 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
   const [sampleLimitInput, setSampleLimitInput] = useState("");
   const sampleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── P3: Review management state ──
+  const [reviewFormOpen, setReviewFormOpen] = useState(false);
+  const [reviewTitle, setReviewTitle] = useState("");
+  const [reviewType, setReviewType] = useState("review");
+  const [reviewActualAction, setReviewActualAction] = useState("follow_system");
+  const [reviewOutcome, setReviewOutcome] = useState("pending");
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewEditingId, setReviewEditingId] = useState<number | null>(null);
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [reviewList, setReviewList] = useState<JournalEntry[]>([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [signalValidationStats, setSignalValidationStats] = useState<any>(null);
+
   // ESC key handler
   useEffect(() => {
     if (!open) return;
@@ -385,6 +421,134 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
   }, []);
+
+  // ── P3: Load review list & signal validation stats when symbol changes ──
+  const reviewPortfolioId = ctx.portfolioId ?? 1;
+  const reviewSymbolId = ctx.activeSymbolId;
+
+  const loadReviewList = useCallback(async () => {
+    if (!reviewSymbolId) {
+      setReviewList([]);
+      return;
+    }
+    try {
+      setReviewLoading(true);
+      const data = await api.getJournals(reviewPortfolioId, reviewSymbolId);
+      setReviewList(Array.isArray(data) ? (data as JournalEntry[]) : []);
+    } catch {
+      setReviewList([]);
+    } finally {
+      setReviewLoading(false);
+    }
+  }, [reviewPortfolioId, reviewSymbolId]);
+
+  const loadSignalValidationStats = useCallback(async () => {
+    if (!reviewSymbolId) {
+      setSignalValidationStats(null);
+      return;
+    }
+    try {
+      const data = await api.getSignalStats(reviewSymbolId, reviewPortfolioId);
+      setSignalValidationStats(data ?? null);
+    } catch {
+      setSignalValidationStats(null);
+    }
+  }, [reviewPortfolioId, reviewSymbolId]);
+
+  useEffect(() => {
+    if (!open || !reviewSymbolId) {
+      setReviewList([]);
+      setSignalValidationStats(null);
+      return;
+    }
+    loadReviewList();
+    loadSignalValidationStats();
+  }, [open, reviewSymbolId, loadReviewList, loadSignalValidationStats]);
+
+  // Reset review form when opening fresh
+  const resetReviewForm = useCallback(() => {
+    setReviewTitle("");
+    setReviewType("review");
+    setReviewActualAction("follow_system");
+    setReviewOutcome("pending");
+    setReviewNote("");
+    setReviewEditingId(null);
+  }, []);
+
+  const handleStartEditReview = useCallback((journal: JournalEntry) => {
+    setReviewEditingId(journal.id);
+    setReviewTitle(journal.title || "");
+    setReviewType(journal.entry_type || "review");
+    setReviewActualAction(journal.actual_action || "follow_system");
+    setReviewOutcome(journal.outcome || "pending");
+    setReviewNote(journal.review_note || "");
+    setReviewFormOpen(true);
+  }, []);
+
+  const handleSubmitReview = useCallback(async () => {
+    if (!reviewSymbolId) return;
+    const title = reviewTitle.trim();
+    if (!title) {
+      ctx.showToast("error", t("reviewSaveFailed"));
+      return;
+    }
+    const score = detail?.latest_score;
+    const payload: any = {
+      portfolio_id: reviewPortfolioId,
+      symbol_id: reviewSymbolId,
+      title,
+      entry_type: reviewType,
+      actual_action: reviewActualAction,
+      outcome: reviewOutcome,
+      review_note: reviewNote,
+      score_id: score?.id ?? null,
+      stage: score?.stage ?? null,
+      action: score?.action ?? null,
+    };
+    try {
+      setReviewSaving(true);
+      if (reviewEditingId != null) {
+        await api.updateJournal(reviewEditingId, payload);
+        ctx.showToast("success", t("reviewUpdated"));
+      } else {
+        await api.createJournal(payload);
+        ctx.showToast("success", t("reviewCreated"));
+      }
+      resetReviewForm();
+      setReviewFormOpen(false);
+      await loadReviewList();
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("reviewSaveFailed"));
+    } finally {
+      setReviewSaving(false);
+    }
+  }, [
+    reviewSymbolId,
+    reviewTitle,
+    reviewType,
+    reviewActualAction,
+    reviewOutcome,
+    reviewNote,
+    reviewEditingId,
+    reviewPortfolioId,
+    detail?.latest_score,
+    ctx,
+    resetReviewForm,
+    loadReviewList,
+  ]);
+
+  const handleDeleteReview = useCallback(
+    async (journalId: number) => {
+      try {
+        await api.deleteJournal(journalId);
+        ctx.showToast("success", t("reviewDeleted"));
+        await loadReviewList();
+      } catch (error: any) {
+        ctx.showToast("error", error?.message || t("reviewSaveFailed"));
+      }
+    },
+    [ctx, loadReviewList]
+  );
 
   // Format trigger helpers
   const formatOpenTrigger = useCallback(
@@ -490,6 +654,231 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
       ],
     };
   }, [detail?.latest_score]);
+
+  // ════════════════════════════════════════════════
+  // Score Breakdown: 分项评分权重+贡献+解释
+  // ════════════════════════════════════════════════
+  const scoreBreakdown = useMemo(() => {
+    if (!detail?.latest_score) return null;
+    const s = detail.latest_score;
+    const isZh = ctx.locale === "zh-CN";
+
+    // 分项配置：权重 + 解释规则
+    const factors = [
+      {
+        key: "trend",
+        label: t("trendScore"),
+        score: Number(s.trend_score ?? 0),
+        weight: 0.25,
+        explain: (v: number) =>
+          v >= 70 ? (isZh ? "趋势向上突破MA50，均线多头排列" : "Trend breakout above MA50, bullish alignment")
+          : v >= 55 ? (isZh ? "趋势偏强，价格在MA50上方" : "Moderate trend, price above MA50")
+          : v >= 40 ? (isZh ? "趋势中性，均线纠缠" : "Neutral trend, MA lines intertwined")
+          : (isZh ? "趋势偏弱，价格低于MA50" : "Weak trend, price below MA50"),
+      },
+      {
+        key: "momentum",
+        label: t("momentumScore"),
+        score: Number(s.momentum_score ?? 0),
+        weight: 0.20,
+        explain: (v: number) =>
+          v >= 70 ? (isZh ? "动量强劲，20日涨幅>8%" : "Strong momentum, 20-day gain >8%")
+          : v >= 55 ? (isZh ? "动量偏多，短期有上涨动能" : "Moderate momentum, bullish short-term")
+          : v >= 40 ? (isZh ? "动量中性，涨跌平衡" : "Neutral momentum")
+          : (isZh ? "动量偏空，短期下跌趋势" : "Weak momentum, bearish short-term"),
+      },
+      {
+        key: "volatility",
+        label: t("volatilityScore"),
+        score: Number(s.volatility_score ?? 0),
+        weight: 0.15,
+        explain: (v: number) =>
+          v >= 65 ? (isZh ? "波动健康，涨跌有序无异常震荡" : "Healthy volatility, orderly movement")
+          : v >= 50 ? (isZh ? "波动适中，风险可控" : "Moderate volatility")
+          : v >= 35 ? (isZh ? "波动偏大，需注意止损" : "Higher volatility, watch stop-loss")
+          : (isZh ? "波动剧烈，风险较高" : "High volatility, high risk"),
+      },
+      {
+        key: "liquidity",
+        label: t("liquidityScore"),
+        score: Number(s.liquidity_score ?? 0),
+        weight: 0.15,
+        explain: (v: number) =>
+          v >= 60 ? (isZh ? "流动性充足，成交活跃" : "High liquidity, active trading")
+          : v >= 45 ? (isZh ? "流动性适中，交易正常" : "Moderate liquidity")
+          : v >= 30 ? (isZh ? "流动性偏低，买卖可能滑点" : "Lower liquidity, possible slippage")
+          : (isZh ? "流动性不足，交易困难" : "Low liquidity, hard to trade"),
+      },
+      {
+        key: "breadth",
+        label: t("breadthScore"),
+        score: Number(s.breadth_score ?? 0),
+        weight: 0.15,
+        explain: (v: number) =>
+          v >= 65 ? (isZh ? "题材/板块强度高，市场关注度高" : "Strong theme/sector, high attention")
+          : v >= 55 ? (isZh ? "题材偏强，有板块效应" : "Moderate theme, sector effect")
+          : (isZh ? "无明显题材或板块效应" : "No significant theme or sector"),
+      },
+      {
+        key: "event",
+        label: t("eventScore"),
+        score: Number(s.event_score ?? 0),
+        weight: 0.10,
+        explain: (v: number) =>
+          v >= 65 ? (isZh ? "有重大利好事件催化" : "Major bullish event catalyst")
+          : v >= 55 ? (isZh ? "有一般性利好消息" : "Moderate bullish news")
+          : v >= 45 ? (isZh ? "事件中性无明显影响" : "Neutral event impact")
+          : (isZh ? "有潜在风险事件或利空" : "Potential risk or bearish event"),
+      },
+    ];
+
+    // 计算贡献值并排序
+    const withContribution = factors.map((f) => ({
+      ...f,
+      contribution: f.score * f.weight,
+      displayScore: clamp(f.score, 0, 100),
+    }));
+
+    // 找出最高分项和最低分项
+    const sorted = [...withContribution].sort((a, b) => b.displayScore - a.displayScore);
+    const topFactor = sorted[0];
+    const bottomFactor = sorted[sorted.length - 1];
+
+    // 总分验证（quality_score 应等于贡献之和）
+    const totalContribution = withContribution.reduce((sum, f) => sum + f.contribution, 0);
+
+    return {
+      factors: withContribution,
+      topFactor,
+      bottomFactor,
+      totalContribution: Math.round(totalContribution * 100) / 100,
+      qualityScore: s.quality_score,
+    };
+  }, [detail?.latest_score, ctx.locale]);
+
+  // ════════════════════════════════════════════════
+  // Timing Breakdown: 时点评分分项+阶段判断依据
+  // ════════════════════════════════════════════════
+  const timingBreakdown = useMemo(() => {
+    if (!detail?.latest_score) return null;
+    const s = detail.latest_score;
+    const isZh = ctx.locale === "zh-CN";
+
+    // 时点评分分项配置
+    const factors = [
+      {
+        key: "breakout",
+        label: isZh ? "突破信号" : "Breakout",
+        score: Number(s.breakout_score ?? 0),
+        weight: 0.30,
+        explain: (v: number) =>
+          v >= 70 ? (isZh ? "价格突破20日高点，形成新高信号" : "Price broke 20-day high")
+          : (isZh ? "未突破近期高点，无明显突破" : "No breakout signal"),
+      },
+      {
+        key: "momentum",
+        label: t("momentumScore"),
+        score: Number(s.momentum_score ?? 0),
+        weight: 0.20,
+        explain: (v: number) =>
+          v >= 70 ? (isZh ? "动量强劲，短期上涨动能充足" : "Strong momentum")
+          : v >= 55 ? (isZh ? "动量偏多，有上涨动力" : "Moderate momentum")
+          : v >= 40 ? (isZh ? "动量中性" : "Neutral momentum")
+          : (isZh ? "动量偏空" : "Weak momentum"),
+      },
+      {
+        key: "liquidity",
+        label: t("liquidityScore"),
+        score: Number(s.liquidity_score ?? 0),
+        weight: 0.15,
+        explain: (v: number) =>
+          v >= 60 ? (isZh ? "流动性充足，交易活跃" : "High liquidity")
+          : v >= 45 ? (isZh ? "流动性适中" : "Moderate liquidity")
+          : (isZh ? "流动性偏低" : "Low liquidity"),
+      },
+      {
+        key: "pullback",
+        label: isZh ? "回调结构" : "Pullback",
+        score: Number(s.pullback_score ?? 0),
+        weight: 0.15,
+        explain: (v: number) =>
+          v >= 65 ? (isZh ? "回调结构良好，价格站稳MA20附近" : "Healthy pullback near MA20")
+          : (isZh ? "回调结构不佳或跌破MA20" : "Weak pullback structure"),
+      },
+      {
+        key: "event",
+        label: t("eventScore"),
+        score: Number(s.event_score ?? 0),
+        weight: 0.10,
+        explain: (v: number) =>
+          v >= 65 ? (isZh ? "有事件催化利好" : "Bullish event catalyst")
+          : v >= 45 ? (isZh ? "事件影响中性" : "Neutral event")
+          : (isZh ? "有风险事件或利空" : "Risk event"),
+      },
+      {
+        key: "overheat",
+        label: isZh ? "过热惩罚" : "Overheat",
+        score: 100 - Number(s.overheat_penalty ?? 0), // 转换为正向分数
+        weight: 0.10,
+        rawPenalty: Number(s.overheat_penalty ?? 0),
+        explain: (penalty: number) =>
+          penalty >= 20 ? (isZh ? "短期涨幅过大(>12%)，存在过热风险" : "Overheated (>12% gain)")
+          : penalty >= 10 ? (isZh ? "涨幅较大，需关注回调风险" : "Watch for pullback")
+          : (isZh ? "无明显过热" : "No overheat"),
+      },
+    ];
+
+    // 计算贡献值
+    const withContribution = factors.map((f) => ({
+      ...f,
+      contribution: f.score * f.weight,
+      displayScore: clamp(f.score, 0, 100),
+    }));
+
+    // 阶段判断依据
+    const stageExplanation = (() => {
+      const stage = s.stage;
+      const action = s.action;
+      const overheat = Number(s.overheat_penalty ?? 0);
+      const momentum = Number(s.momentum_score ?? 0);
+      const breakout = Number(s.breakout_score ?? 0);
+
+      if (stage === "overheat") {
+        return {
+          reason: isZh ? "价格超过MA20 12%以上，短期涨幅过大" : "Price >12% above MA20",
+          risk: isZh ? "存在短期回调风险，不建议追高" : "Risk of pullback, avoid chasing",
+          suggestion: isZh ? "建议减仓或观望，等待回调企稳" : "Reduce position or wait",
+        };
+      }
+      if (stage === "accel") {
+        return {
+          reason: isZh ? "趋势加速：价格站上MA20和MA50，动量>8%" : "Acceleration: price above MA20&MA50, momentum >8%",
+          risk: isZh ? "上涨动能充足，但需防过热" : "Strong uptrend, watch for overheat",
+          suggestion: isZh ? "可持有观察，关注是否出现过热信号" : "Hold and monitor",
+        };
+      }
+      if (stage === "start") {
+        return {
+          reason: isZh ? "启动信号：价格站上MA20，动量转正" : "Start signal: price above MA20, momentum positive",
+          risk: isZh ? "趋势刚启动，需确认支撑有效" : "Early trend, confirm support",
+          suggestion: isZh ? "可考虑开仓，设置止损保护" : "Consider opening with stop-loss",
+        };
+      }
+      return {
+        reason: isZh ? "退潮阶段：趋势偏弱，动量不足" : "Cooldown: weak trend, low momentum",
+        risk: isZh ? "趋势不明朗，不适合开新仓" : "Unclear trend, avoid new positions",
+        suggestion: isZh ? "观望为主，等待明确信号" : "Wait for clear signals",
+      };
+    })();
+
+    return {
+      factors: withContribution,
+      stageExplanation,
+      timingScore: s.timing_score,
+      stage: s.stage,
+      action: s.action,
+    };
+  }, [detail?.latest_score, ctx.locale]);
 
   // Active future buy plan (scenario-filtered)
   const activeFutureBuyPlan = useMemo(() => {
@@ -904,15 +1293,143 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
               </div>
             </div>
 
-            {/* Score Radar (ECharts) */}
+            {/* Score Radar + Breakdown (ECharts) */}
             <div className="detail-card">
               <h3>{t("scoreRadar")}</h3>
-              <div id="detailRadar" className="radar-canvas">
-                {radarOption && (
-                  <ReactECharts option={radarOption} style={{ height: "260px", width: "100%" }} />
+              {detail?.latest_score?.data_credibility != null && detail.latest_score.data_credibility < 0.5 && (
+                <div className="credibility-warning">
+                  <span className="credibility-warning-icon">&#9888;</span>
+                  {ctx.locale === "zh-CN"
+                    ? `数据可信度低 (${(detail.latest_score.data_credibility * 100).toFixed(0)}%)，评分仅供参考`
+                    : `Low data credibility (${(detail.latest_score.data_credibility * 100).toFixed(0)}%), scores for reference only`}
+                </div>
+              )}
+              <div className="score-radar-breakdown-grid">
+                <div className="radar-panel">
+                  {radarOption && (
+                    <ReactECharts option={radarOption} style={{ height: "240px", width: "100%" }} />
+                  )}
+                </div>
+                {scoreBreakdown && (
+                  <div className="breakdown-panel">
+                    <div className="breakdown-header">
+                      <span className="breakdown-title">{ctx.locale === "zh-CN" ? "分项评分解析" : "Score Breakdown"}</span>
+                      <span className="breakdown-total">
+                        {ctx.locale === "zh-CN" ? "总分" : "Total"}: {score(scoreBreakdown.qualityScore ?? 0)}
+                      </span>
+                    </div>
+                    <div className="breakdown-list">
+                      {scoreBreakdown.factors.map((f) => (
+                        <div
+                          key={f.key}
+                          className={`breakdown-item ${
+                            f.key === scoreBreakdown.topFactor.key ? "breakdown-item--top" : ""
+                          } ${
+                            f.key === scoreBreakdown.bottomFactor.key ? "breakdown-item--bottom" : ""
+                          }`}
+                        >
+                          <div className="breakdown-item-head">
+                            <span className="breakdown-label">{f.label}</span>
+                            <span className="breakdown-weight">{(f.weight * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="breakdown-item-row">
+                            <span className="breakdown-score">{score(f.displayScore)}</span>
+                            <div className="breakdown-bar-wrap">
+                              <div
+                                className="breakdown-bar"
+                                style={{ width: `${f.displayScore}%`, backgroundColor: f.displayScore >= 60 ? "#0f766e" : f.displayScore >= 40 ? "#d97706" : "#b42318" }}
+                              />
+                            </div>
+                            <span className="breakdown-contribution">+{(f.contribution).toFixed(1)}</span>
+                          </div>
+                          <div className="breakdown-explain">{f.explain(f.displayScore)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="breakdown-summary">
+                      <span className="breakdown-highlight-green">
+                        {ctx.locale === "zh-CN" ? "主要加分" : "Top Strength"}: {scoreBreakdown.topFactor.label} (+{scoreBreakdown.topFactor.contribution.toFixed(1)})
+                      </span>
+                      <span className="breakdown-highlight-red">
+                        {ctx.locale === "zh-CN" ? "主要扣分" : "Main Risk"}: {scoreBreakdown.bottomFactor.label} (+{scoreBreakdown.bottomFactor.contribution.toFixed(1)})
+                      </span>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
+
+            {/* Timing Score Breakdown */}
+            {timingBreakdown && (
+              <div className="detail-card">
+                <h3>{ctx.locale === "zh-CN" ? "时点评分解析" : "Timing Score Breakdown"}</h3>
+                <div className="timing-breakdown-grid">
+                  <div className="timing-scores-panel">
+                    <div className="timing-header">
+                      <span className="timing-title">{ctx.locale === "zh-CN" ? "分项评分" : "Score Factors"}</span>
+                      <span className="timing-total">
+                        {ctx.locale === "zh-CN" ? "时点分" : "Timing"}: {score(timingBreakdown.timingScore ?? 0)}
+                      </span>
+                    </div>
+                    <div className="timing-list">
+                      {timingBreakdown.factors.map((f) => (
+                        <div key={f.key} className="timing-item">
+                          <div className="timing-item-head">
+                            <span className="timing-label">{f.label}</span>
+                            <span className="timing-weight">{(f.weight * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="timing-item-row">
+                            <span className="timing-score">{score(f.displayScore)}</span>
+                            <div className="timing-bar-wrap">
+                              <div
+                                className="timing-bar"
+                                style={{
+                                  width: `${f.displayScore}%`,
+                                  backgroundColor: f.key === "overheat" && (f as any).rawPenalty >= 20
+                                    ? "#b42318"
+                                    : f.displayScore >= 60 ? "#0f766e" : f.displayScore >= 40 ? "#d97706" : "#b42318",
+                                }}
+                              />
+                            </div>
+                            <span className="timing-contribution">+{(f.contribution).toFixed(1)}</span>
+                          </div>
+                          <div className="timing-explain">
+                            {f.key === "overheat" ? (f as any).explain((f as any).rawPenalty) : f.explain(f.displayScore)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="stage-panel">
+                    <div className="stage-header">
+                      <span className="stage-title">{ctx.locale === "zh-CN" ? "阶段判断" : "Stage Analysis"}</span>
+                      <span className={`stage-badge stage-badge--${timingBreakdown.stage}`}>
+                        {stageLabel(timingBreakdown.stage)}
+                      </span>
+                    </div>
+                    <div className="stage-content">
+                      <div className="stage-row">
+                        <span className="stage-label">{ctx.locale === "zh-CN" ? "判定依据" : "Reason"}:</span>
+                        <span className="stage-text">{timingBreakdown.stageExplanation.reason}</span>
+                      </div>
+                      <div className="stage-row">
+                        <span className="stage-label">{ctx.locale === "zh-CN" ? "风险提示" : "Risk"}:</span>
+                        <span className="stage-text stage-text--risk">{timingBreakdown.stageExplanation.risk}</span>
+                      </div>
+                      <div className="stage-row">
+                        <span className="stage-label">{ctx.locale === "zh-CN" ? "操作建议" : "Suggestion"}:</span>
+                        <span className="stage-text stage-text--suggestion">{timingBreakdown.stageExplanation.suggestion}</span>
+                      </div>
+                    </div>
+                    <div className="stage-action-bar">
+                      <span className={`stage-action stage-action--${timingBreakdown.action}`}>
+                        {ctx.locale === "zh-CN" ? "建议动作" : "Action"}: {actionLabel(timingBreakdown.action)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Trade Setup */}
             <div className="detail-card wide">
@@ -955,6 +1472,64 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
               <div className="list" id="detailSetup">
                 {setup ? (
                   <>
+                    <div className={`position-decision-panel position-decision-panel--${setupDecisionTone(setup)}`}>
+                      <div className="position-decision-head">
+                        <div>
+                          <p className="panel-kicker">{t("planDecision")}</p>
+                          <strong>{setupDecisionLabel(setup)}</strong>
+                        </div>
+                        <span className={`badge ${setupDecisionTone(setup) === "blocked" ? "danger" : setupDecisionTone(setup) === "wait" ? "warn" : ""}`}>
+                          {setup.open_slots_remaining != null
+                            ? `${t("openSlots")}: ${setup.open_slots_remaining}`
+                            : t("portfolioConstraint")}
+                        </span>
+                      </div>
+
+                      <div className="position-decision-metrics">
+                        <span>
+                          <b>{t("suggestedBuyAmount")}</b>
+                          <strong>{money(setup.suggested_buy_amount ?? setup.recommended_position_amount)}</strong>
+                        </span>
+                        <span>
+                          <b>{t("suggestedBuyPct")}</b>
+                          <strong>{percent(setup.suggested_buy_pct ?? setup.recommended_position_pct)}</strong>
+                        </span>
+                        <span>
+                          <b>{t("plannedOrder")}</b>
+                          <strong>{quantity > 0 ? quantity : "-"}</strong>
+                        </span>
+                        <span>
+                          <b>{t("investableRemaining")}</b>
+                          <strong>{setup.allocation_snapshot?.investable_remaining_amount != null ? money(setup.allocation_snapshot.investable_remaining_amount) : "-"}</strong>
+                        </span>
+                        <span>
+                          <b>{t("riskCapAmount")}</b>
+                          <strong>{setup.risk_capped_amount != null ? money(setup.risk_capped_amount) : "-"}</strong>
+                        </span>
+                      </div>
+
+                      {setup.blocked_reasons && setup.blocked_reasons.length > 0 && (
+                        <div className="position-blocked-reasons">
+                          {setup.blocked_reasons.map((reason) => (
+                            <span key={reason} className="badge danger">{blockedReasonLabel(reason)}</span>
+                          ))}
+                        </div>
+                      )}
+
+                      {setup.position_constraints && setup.position_constraints.length > 0 && (
+                        <div className="position-constraint-grid">
+                          {setup.position_constraints.map((constraint) => (
+                            <div key={constraint.key} className="position-constraint-row">
+                              <strong>{constraintLabel(constraint.key)}</strong>
+                              <span>{t("limit")}: {percent(constraint.limit_pct)}</span>
+                              <span>{t("used")}: {percent(constraint.used_pct)}</span>
+                              <span>{t("remaining")}: {percent(constraint.remaining_pct)}</span>
+                              {constraint.amount != null && <span>{t("amount")}: {money(constraint.amount)}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     {/* Compact: buy zone + stop + target on one line */}
                     <div className="item-topline">
                       <strong>{t("buyZone")}</strong>
@@ -1321,22 +1896,207 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
               </div>
             </div>
 
-            {/* Journals */}
+            {/* P3: Signal Validation */}
             <div className="detail-card wide">
-              <h3>{t("journals")}</h3>
-              <div className="list" id="detailJournals">
-                {detail.journals && detail.journals.length > 0 ? (
-                  detail.journals.map((journal: JournalEntry) => (
-                    <article key={journal.id} className="list-item">
-                      <div className="item-topline">
+              <h3>{t("signalValidation")}</h3>
+              <div className="signal-validation-grid">
+                {[
+                  { label: t("winRate3d"), win: signalValidationStats?.win_rate_3d ?? signalStats?.win_rate_3d, ret: signalValidationStats?.avg_return_3d, gain: signalValidationStats?.avg_max_gain_3d, dd: signalValidationStats?.avg_max_drawdown_3d },
+                  { label: t("winRate5d"), win: signalValidationStats?.win_rate_5d ?? signalStats?.win_rate_5d, ret: signalValidationStats?.avg_return_5d ?? signalStats?.avg_return_20d, gain: signalValidationStats?.avg_max_gain_5d ?? signalStats?.avg_max_gain_20d, dd: signalValidationStats?.avg_max_drawdown_5d ?? signalStats?.avg_max_drawdown_20d },
+                  { label: t("winRate10d"), win: signalValidationStats?.win_rate_10d ?? signalStats?.win_rate_10d, ret: signalValidationStats?.avg_return_10d, gain: signalValidationStats?.avg_max_gain_10d, dd: signalValidationStats?.avg_max_drawdown_10d },
+                  { label: t("winRate20d"), win: signalValidationStats?.win_rate_20d ?? signalStats?.win_rate_20d, ret: signalValidationStats?.avg_return_20d ?? signalStats?.avg_return_20d, gain: signalValidationStats?.avg_max_gain_20d ?? signalStats?.avg_max_gain_20d, dd: signalValidationStats?.avg_max_drawdown_20d ?? signalStats?.avg_max_drawdown_20d },
+                ].map((card, idx) => (
+                  <div key={idx} className="signal-stat-card">
+                    <div className="signal-stat-card-title">{card.label}</div>
+                    <div className="signal-stat-card-row">
+                      <span className="metric-label">{t("winRate")}</span>
+                      <span className="metric-value">{statPct(card.win)}</span>
+                    </div>
+                    <div className="signal-stat-card-row">
+                      <span className="metric-label">{t("avgReturn")}</span>
+                      <span className="metric-value">{statPct(card.ret)}</span>
+                    </div>
+                    <div className="signal-stat-card-row">
+                      <span className="metric-label">{t("maxGain")}</span>
+                      <span className="metric-value">{statPct(card.gain)}</span>
+                    </div>
+                    <div className="signal-stat-card-row">
+                      <span className="metric-label">{t("maxDrawdown")}</span>
+                      <span className="metric-value">{statPct(card.dd)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {signalValidationStats && (
+                <div className="item-subline" style={{ marginTop: 8 }}>
+                  {joinParts([
+                    `${t("sampleCount")}: ${signalValidationStats.sample_count ?? signalStats?.sample_count ?? 0}`,
+                    `${t("matchedSignals")}: ${signalValidationStats.matched_count ?? signalStats?.matched_count ?? 0}`,
+                  ])}
+                </div>
+              )}
+            </div>
+
+            {/* P3: Review Management (replaces simple journals list) */}
+            <div className="detail-card wide review-panel" id="detailJournals">
+              <div className="review-panel-head">
+                <h3>{t("reviewSection")}</h3>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    if (reviewFormOpen) {
+                      resetReviewForm();
+                    } else {
+                      resetReviewForm();
+                    }
+                    setReviewFormOpen(!reviewFormOpen);
+                  }}
+                >
+                  {reviewFormOpen ? t("closeBtn") : t("addReview")}
+                </Button>
+              </div>
+
+              {reviewFormOpen && (
+                <div className="review-form">
+                  <label className="review-form-field">
+                    <span>{t("reviewTitle")}</span>
+                    <Input
+                      value={reviewTitle}
+                      onChange={(e) => setReviewTitle(e.target.value)}
+                      placeholder={t("reviewTitle")}
+                    />
+                  </label>
+                  <label className="review-form-field">
+                    <span>{t("reviewType")}</span>
+                    <Select
+                      value={reviewType}
+                      onChange={(v) => setReviewType(v)}
+                      style={{ width: "100%" }}
+                      options={[
+                        { value: "buy", label: t("buy") },
+                        { value: "sell", label: t("sell") },
+                        { value: "review", label: t("reviewSection") },
+                        { value: "note", label: t("recentNotes") },
+                      ]}
+                    />
+                  </label>
+                  <label className="review-form-field">
+                    <span>{t("actualAction")}</span>
+                    <Select
+                      value={reviewActualAction}
+                      onChange={(v) => setReviewActualAction(v)}
+                      style={{ width: "100%" }}
+                      options={[
+                        { value: "follow_system", label: t("followSystem") },
+                        { value: "override", label: t("override") },
+                        { value: "wait", label: t("wait") },
+                        { value: "no_action", label: t("noAction") },
+                      ]}
+                    />
+                  </label>
+                  <label className="review-form-field">
+                    <span>{t("reviewResult")}</span>
+                    <Select
+                      value={reviewOutcome}
+                      onChange={(v) => setReviewOutcome(v)}
+                      style={{ width: "100%" }}
+                      options={[
+                        { value: "profit", label: t("profit") },
+                        { value: "loss", label: t("loss") },
+                        { value: "breakeven", label: t("breakeven") },
+                        { value: "pending", label: t("pending") },
+                      ]}
+                    />
+                  </label>
+                  <label className="review-form-field review-form-field-wide">
+                    <span>{t("reviewNote")}</span>
+                    <Input.TextArea
+                      value={reviewNote}
+                      onChange={(e) => setReviewNote(e.target.value)}
+                      placeholder={t("reviewNote")}
+                      autoSize={{ minRows: 2, maxRows: 5 }}
+                    />
+                  </label>
+                  <div className="review-form-actions">
+                    <Button
+                      type="primary"
+                      loading={reviewSaving}
+                      onClick={handleSubmitReview}
+                    >
+                      {reviewEditingId != null ? t("editReview") : t("addReview")}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        resetReviewForm();
+                        setReviewFormOpen(false);
+                      }}
+                    >
+                      {t("closeBtn")}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="review-list">
+                {reviewLoading ? (
+                  <div className="empty">{t("loading") || "..."}</div>
+                ) : reviewList.length > 0 ? (
+                  reviewList.map((journal: JournalEntry) => (
+                    <article key={journal.id} className="review-item">
+                      <div className="review-item-header">
                         <strong>{journal.title}</strong>
-                        <span className="badge">{journal.entry_type}</span>
+                        <Space size={4} wrap>
+                          {journal.entry_type && (
+                            <Tag className={badgeClass(journal.entry_type)}>{journal.entry_type}</Tag>
+                          )}
+                          {journal.stage && (
+                            <Tag className={badgeClass(journal.stage)}>{stageLabel(journal.stage)}</Tag>
+                          )}
+                          {journal.action && (
+                            <Tag className={badgeClass(journal.action)}>{actionLabel(journal.action)}</Tag>
+                          )}
+                          {journal.actual_action && (
+                            <Tag color="blue">{journal.actual_action}</Tag>
+                          )}
+                          {journal.outcome && (
+                            <Tag color={journal.outcome === "profit" ? "green" : journal.outcome === "loss" ? "red" : "default"}>
+                              {journal.outcome}
+                            </Tag>
+                          )}
+                        </Space>
                       </div>
-                      <div className="item-subline">{formatDate(journal.created_at)}</div>
+                      {journal.review_note && (
+                        <div className="review-item-meta">{journal.review_note}</div>
+                      )}
+                      <div className="review-item-actions">
+                        <span className="item-subline">{formatDate(journal.created_at)}</span>
+                        <Space size={4}>
+                          <Button size="small" onClick={() => handleStartEditReview(journal)}>
+                            {t("editReview")}
+                          </Button>
+                          <Button size="small" danger onClick={() => handleDeleteReview(journal.id)}>
+                            {t("deleteReview")}
+                          </Button>
+                        </Space>
+                      </div>
+                    </article>
+                  ))
+                ) : detail.journals && detail.journals.length > 0 ? (
+                  detail.journals.map((journal: JournalEntry) => (
+                    <article key={journal.id} className="review-item">
+                      <div className="review-item-header">
+                        <strong>{journal.title}</strong>
+                        {journal.entry_type && (
+                          <Tag className={badgeClass(journal.entry_type)}>{journal.entry_type}</Tag>
+                        )}
+                      </div>
+                      <div className="review-item-actions">
+                        <span className="item-subline">{formatDate(journal.created_at)}</span>
+                      </div>
                     </article>
                   ))
                 ) : (
-                  <div className="empty">{t("noJournals")}</div>
+                  <div className="empty">{t("noReviews")}</div>
                 )}
               </div>
             </div>

@@ -95,6 +95,13 @@ export const api = {
   // Market data
   syncMarketData: (payload: any) =>
     requestJson(`${API}/market-data/update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  repairSymbolMarketData: (symbolId: number, payload: any = {}) =>
+    requestJson(`${API}/market-data/symbols/${symbolId}/repair`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      timeoutMs: 60000,
+    }),
 
   // Scans
   createScanRun: (payload: any) =>
@@ -119,6 +126,18 @@ export const api = {
   // Sim accounts
   submitSimOrder: (portfolioId: number, payload: any) =>
     requestJson<any>(`${API}/portfolios/${portfolioId}/sim-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+
+  // Positions, allocation & portfolio rules (P2 holdings management)
+  getPositions: (portfolioId: number) =>
+    requestJson<any[]>(`${API}/portfolios/${portfolioId}/positions`),
+  upsertPosition: (portfolioId: number, payload: any) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}/positions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  deletePosition: (portfolioId: number, symbolId: number) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}/positions/${symbolId}`, { method: "DELETE" }),
+  upsertPortfolioRule: (portfolioId: number, payload: any) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}/rules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  getAllocation: (portfolioId: number) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}/allocation`),
 
   // News
   updateNews: (payload: any) =>
@@ -188,4 +207,31 @@ export const api = {
     }),
   getMarketEventScopes: () =>
     requestJson<string[]>(`${API}/market-events/scopes`),
+
+  // Journals
+  getJournals: (portfolioId: number, symbolId?: number) => {
+    const params = new URLSearchParams({ portfolio_id: String(portfolioId) });
+    if (symbolId) params.set("symbol_id", String(symbolId));
+    return requestJson<any[]>(`${API}/journals?${params.toString()}`);
+  },
+  createJournal: (payload: any) =>
+    requestJson<any>(`${API}/journals`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  updateJournal: (journalId: number, payload: any) =>
+    requestJson<any>(`${API}/journals/${journalId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  deleteJournal: (journalId: number) =>
+    requestJson<any>(`${API}/journals/${journalId}`, { method: "DELETE" }),
+
+  // Signal stats
+  getSignalStats: (symbolId: number, portfolioId: number = 1) =>
+    requestJson<any>(`${API}/signal-rules/stats/${symbolId}?portfolio_id=${portfolioId}`),
+
+  // Backup & Export
+  backupDatabase: () =>
+    requestJson<any>(`${API}/system/backup`, { method: "POST" }),
+  listBackups: () =>
+    requestJson<any>(`${API}/system/backups`),
+  restoreDatabase: (backupPath: string) =>
+    requestJson<any>(`${API}/system/restore?backup_path=${encodeURIComponent(backupPath)}`, { method: "POST" }),
+  exportData: (dataType: string, portfolioId: number = 1) =>
+    requestJson<any>(`${API}/system/export/${dataType}?portfolio_id=${portfolioId}`),
 };

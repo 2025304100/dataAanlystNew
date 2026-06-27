@@ -55,7 +55,7 @@ class PositionUpsert(BaseModel):
     symbol_id: int
     quantity: float
     avg_cost: float
-    latest_price: float
+    latest_price: float | None = None
 
 
 class PositionRead(BaseModel):

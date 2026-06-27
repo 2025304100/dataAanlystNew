@@ -24,13 +24,48 @@ export interface Score {
   stage: string;
   action: string;
   priority_score: number;
+  // 股质评分分项
   trend_score?: number;
   momentum_score?: number;
   volatility_score?: number;
   liquidity_score?: number;
   breadth_score?: number;
   event_score?: number;
+  // 时点评分分项（新增）
+  breakout_score?: number;
+  pullback_score?: number;
+  overheat_penalty?: number;
+  // 数据可信度（P0-4.3）
+  data_credibility?: number;
   created_at?: string;
+}
+
+export interface PositionConstraint {
+  key: string;
+  limit_pct: number;
+  used_pct: number;
+  remaining_pct: number;
+  amount?: number;
+}
+
+export interface AllocationSnapshot {
+  total_capital?: number;
+  investable_capital?: number;
+  used_amount?: number;
+  cash_amount?: number;
+  investable_remaining_amount?: number;
+  total_position_pct?: number;
+  stock_position_pct?: number;
+  etf_position_pct?: number;
+  cash_pct?: number;
+  investable_remaining_pct?: number;
+  remaining_stock_pct?: number;
+  remaining_etf_pct?: number;
+  position_count?: number;
+  sector_exposure?: Record<string, number>;
+  sector_amount?: Record<string, number>;
+  stock_amount?: number;
+  etf_amount?: number;
 }
 
 export interface TradeSetup {
@@ -47,10 +82,18 @@ export interface TradeSetup {
   target_price: number | null;
   recommended_position_pct: number;
   recommended_position_amount: number;
+  suggested_buy_pct?: number;
+  suggested_buy_amount?: number;
   risk_reward_ratio: number | null;
   allow_add_position: boolean;
   is_sector_overweight: boolean;
   is_asset_overweight: boolean;
+  can_open?: boolean;
+  decision?: string;
+  blocked_reasons?: string[];
+  position_constraints?: PositionConstraint[];
+  open_slots_remaining?: number | null;
+  allocation_snapshot?: AllocationSnapshot | null;
   setup_reason: string | null;
   created_at: string;
   moving_averages?: { ma10?: number; ma20?: number };
@@ -71,6 +114,7 @@ export interface TradeSetup {
   risk_budget_amount?: number;
   risk_per_share?: number;
   risk_capped_shares?: number | null;
+  risk_capped_amount?: number | null;
   return_scenarios?: ReturnScenarios;
 }
 
@@ -107,6 +151,14 @@ export interface SignalStats {
   best_return_20d: number | null;
   worst_return_20d: number | null;
   scope?: { max_samples: number; min_sample_count: number };
+  win_rate_3d?: number | null;
+  win_rate_10d?: number | null;
+  avg_return_3d?: number | null;
+  avg_return_10d?: number | null;
+  avg_max_gain_3d?: number | null;
+  avg_max_drawdown_3d?: number | null;
+  avg_max_gain_10d?: number | null;
+  avg_max_drawdown_10d?: number | null;
 }
 
 export interface Position {
@@ -139,6 +191,17 @@ export interface JournalEntry {
   entry_type: string;
   symbol_id: number;
   created_at: string;
+  trade_setup_id?: number;
+  content?: string;
+  subjective_view?: string;
+  follow_system?: number;
+  outcome?: string;
+  review_note?: string;
+  updated_at?: string;
+  score_id?: number;
+  stage?: string;
+  action?: string;
+  actual_action?: string;
 }
 
 export interface TradeRecord {
@@ -219,6 +282,7 @@ export interface WorkbenchActiveRule {
   max_sector_position_pct: number;
   max_stock_position_pct: number;
   max_etf_position_pct: number;
+  max_loss_per_trade_pct?: number;
   max_open_positions: number;
 }
 
@@ -520,6 +584,18 @@ export interface DataHealthIssue {
   message: string;
 }
 
+export interface DataHealthBarIssue {
+  symbol_id: number;
+  symbol: string;
+  name: string;
+  asset_type: string;
+  market: string;
+  theme: string | null;
+  latest_trade_date: string | null;
+  latest_age_days: number | null;
+  reason: "missing_bars" | "stale_bars" | string;
+}
+
 export interface DataHealth {
   status: "ok" | "warn" | "error" | string;
   score: number;
@@ -536,8 +612,14 @@ export interface DataHealth {
     coverage_pct: number;
     latest_trade_date: string | null;
     latest_age_days: number | null;
+    missing_symbols: number;
+    outdated_symbols: number;
     stale_symbols: number;
     stale_pct: number;
+    stale_cutoff: string | null;
+    repair_hint: string;
+    missing_samples: DataHealthBarIssue[];
+    stale_samples: DataHealthBarIssue[];
   };
   scores: {
     scored_symbols: number;

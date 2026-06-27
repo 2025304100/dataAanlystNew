@@ -8,20 +8,37 @@ from sqlalchemy import inspect, text
 from app.models import daily_bar, discovery, factor, journal_entry, macro_data, market_event, news_event, portfolio, scan, score, signal_rule, sim_account, symbol, trade_setup, watchlist
 
 
-def _ensure_sqlite_scan_result_columns() -> None:
+def _ensure_sqlite_columns(table_name: str, additions: dict[str, str]) -> None:
     inspector = inspect(engine)
-    if "scan_results" not in inspector.get_table_names():
+    if table_name not in inspector.get_table_names():
         return
-    columns = {column["name"] for column in inspector.get_columns("scan_results")}
-    additions = {
-        "warning_days": "INTEGER DEFAULT 3",
-        "valid_days": "INTEGER DEFAULT 5",
-        "is_frozen": "INTEGER DEFAULT 0",
-    }
+    columns = {column["name"] for column in inspector.get_columns(table_name)}
     with engine.begin() as conn:
         for name, ddl in additions.items():
             if name not in columns:
-                conn.execute(text(f"ALTER TABLE scan_results ADD COLUMN {name} {ddl}"))
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_sqlite_scan_result_columns() -> None:
+    _ensure_sqlite_columns(
+        "scan_results",
+        {
+            "warning_days": "INTEGER DEFAULT 3",
+            "valid_days": "INTEGER DEFAULT 5",
+            "is_frozen": "INTEGER DEFAULT 0",
+        },
+    )
+
+
+def _ensure_sqlite_score_columns() -> None:
+    _ensure_sqlite_columns(
+        "scores",
+        {
+            "breakout_score": "REAL",
+            "pullback_score": "REAL",
+            "overheat_penalty": "REAL",
+        },
+    )
 
 
 def init_db() -> None:

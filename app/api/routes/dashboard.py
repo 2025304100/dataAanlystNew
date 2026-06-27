@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from datetime import datetime, timezone
+import json
 
 from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session
@@ -315,6 +316,15 @@ def get_dashboard_workbench(
             entry_type=journal.entry_type,
             symbol_id=journal.symbol_id,
             created_at=journal.created_at,
+            trade_setup_id=journal.trade_setup_id,
+            content=journal.content,
+            outcome=journal.outcome,
+            review_note=journal.review_note,
+            follow_system=journal.follow_system,
+            score_id=journal.score_id,
+            stage=journal.stage,
+            action=journal.action,
+            actual_action=journal.actual_action,
         )
         for journal in journal_rows
     ]
@@ -391,7 +401,10 @@ def get_dashboard_workbench(
             max_single_position_pct=active_rule.max_single_position_pct,
             max_stock_position_pct=active_rule.max_stock_position_pct,
             max_etf_position_pct=active_rule.max_etf_position_pct,
+            max_sector_position_pct=active_rule.max_sector_position_pct,
+            max_loss_per_trade_pct=active_rule.max_loss_per_trade_pct,
             max_open_positions=active_rule.max_open_positions,
+            stage_limits_json=json.loads(active_rule.stage_limits_json) if active_rule.stage_limits_json else None,
         ),
         market_scope=WorkbenchMarketScope(
             selected_group=market_group,
@@ -492,6 +505,9 @@ def get_symbol_detail_panel(
             "liquidity_score": latest_score.liquidity_score,
             "breadth_score": latest_score.breadth_score,
             "event_score": latest_score.event_score,
+            "breakout_score": latest_score.breakout_score,
+            "pullback_score": latest_score.pullback_score,
+            "overheat_penalty": latest_score.overheat_penalty,
         },
         latest_trade_setup=None
         if latest_setup is None
@@ -548,6 +564,15 @@ def get_symbol_detail_panel(
                 entry_type=row.entry_type,
                 symbol_id=row.symbol_id,
                 created_at=row.created_at,
+                trade_setup_id=row.trade_setup_id,
+                content=row.content,
+                outcome=row.outcome,
+                review_note=row.review_note,
+                follow_system=row.follow_system,
+                score_id=row.score_id,
+                stage=row.stage,
+                action=row.action,
+                actual_action=row.actual_action,
             )
             for row in journal_rows
         ],

@@ -47,3 +47,10 @@ class MarketDataUpdateRequest(BaseModel):
     auto_scan: bool = True
     portfolio_id: int | None = None
     portfolio_rule_id: int | None = None
+
+
+class MarketDataRepairRequest(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+    adjust: str = "qfq"
+    auto_score: bool = True

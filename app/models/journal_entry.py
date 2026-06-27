@@ -22,6 +22,10 @@ class JournalEntry(Base):
     follow_system: Mapped[int] = mapped_column(Integer, default=0)
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    score_id: Mapped[int | None] = mapped_column(ForeignKey("scores.id", ondelete="SET NULL"), nullable=True, index=True)
+    stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    action: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    actual_action: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
