@@ -10,11 +10,13 @@ const { Paragraph, Text } = Typography;
 // ════════════════════════════════════════════════
 //  双语标签字典
 // ════════════════════════════════════════════════
-const L: Record<string, Record<string, string>> = {
+const L: Record<string, Record<string, any>> = {
   "zh-CN": {
     title: "行情消息", subtitle: "汇总影响大盘、期货和商品行情的重大消息，并给出影响评估。",
     refresh: "刷新", collect: "采集消息", collecting: "采集中...",
     filter: "筛选", empty: "暂无行情消息，点击采集按钮获取最新重大消息。",
+    collectSuccess: (n: number) => `采集完成，新增 ${n} 条行情消息`,
+    collectNothing: "本次采集没有新消息（可能全部重复或来源暂不可用）",
     allScopes: "全部范围", allSentiments: "全部方向",
     minLevel: "最低级别", scope: "范围", direction: "方向",
     sortTime: "按时间", sortLevel: "按重要级别",
@@ -44,6 +46,8 @@ const L: Record<string, Record<string, string>> = {
     title: "Market News", subtitle: "Major news affecting broad market, futures & commodities, with impact assessment.",
     refresh: "Refresh", collect: "Collect News", collecting: "Collecting...",
     filter: "Filter", empty: "No market news yet. Click Collect to fetch latest major events.",
+    collectSuccess: (n: number) => `Collection done, ${n} new events added`,
+    collectNothing: "No new events found (duplicates or sources temporarily unavailable)",
     allScopes: "All Scopes", allSentiments: "All Directions",
     minLevel: "Min Level", scope: "Scope", direction: "Direction",
     sortTime: "By Time", sortLevel: "By Importance",
@@ -395,10 +399,16 @@ export default function MarketNews() {
     setCollecting(true);
     setError(null);
     try {
-      await api.collectMarketEvents({ days: 30, sources: ["eastmoney-global", "caixin"] });
+      const result = await api.collectMarketEvents({ days: 30, sources: ["eastmoney-global", "caixin"] });
       await loadData();
+      if (result && typeof result.collected === "number" && result.collected > 0) {
+        ctx.showToast("success", lb.collectSuccess(result.collected));
+      } else {
+        ctx.showToast("info", lb.collectNothing);
+      }
     } catch (err: any) {
       setError(err.message || (locale === "zh-CN" ? "采集失败" : "Collection failed"));
+      ctx.showToast("error", err.message || (locale === "zh-CN" ? "采集失败" : "Collection failed"));
     } finally {
       setCollecting(false);
     }
