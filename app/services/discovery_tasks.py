@@ -502,7 +502,7 @@ def _sync_one_symbol(
                 "source": "cached_bars",
                 "rows": 0,
                 "latest_score": {
-                    "trade_date": cached_bar.trade_date.isoformat(),
+                    "trade_date": cached_bar.trade_date.isoformat() if hasattr(cached_bar.trade_date, 'isoformat') else str(cached_bar.trade_date),
                     "quality_score": score.quality_score,
                     "timing_score": score.timing_score,
                     "stage": score.stage,
@@ -526,7 +526,7 @@ def _sync_one_symbol(
             score = calculate_symbol_score(db=db, symbol=symbol, trade_date=latest_bar.trade_date)
             result["score_refreshed"] = True
             result["latest_score"] = {
-                "trade_date": latest_bar.trade_date.isoformat(),
+                "trade_date": latest_bar.trade_date.isoformat() if hasattr(latest_bar.trade_date, 'isoformat') else str(latest_bar.trade_date),
                 "quality_score": score.quality_score,
                 "timing_score": score.timing_score,
                 "stage": score.stage,

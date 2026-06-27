@@ -340,8 +340,8 @@ def sync_symbol_daily_bars(
             "inserted": 0,
             "updated": 0,
             "rows": 0,
-            "start_date": resolved_start.isoformat(),
-            "end_date": resolved_end.isoformat(),
+            "start_date": resolved_start.isoformat() if hasattr(resolved_start, 'isoformat') else str(resolved_start),
+            "end_date": resolved_end.isoformat() if hasattr(resolved_end, 'isoformat') else str(resolved_end),
         }
 
     inserted, updated = _upsert_bars(db=db, symbol=symbol, frame=frame)
@@ -354,8 +354,8 @@ def sync_symbol_daily_bars(
         "inserted": inserted,
         "updated": updated,
         "rows": len(frame),
-        "start_date": resolved_start.isoformat(),
-        "end_date": resolved_end.isoformat(),
+        "start_date": resolved_start.isoformat() if hasattr(resolved_start, 'isoformat') else str(resolved_start),
+        "end_date": resolved_end.isoformat() if hasattr(resolved_end, 'isoformat') else str(resolved_end),
     }
 
 
@@ -414,7 +414,7 @@ def sync_market_data(
                     score = calculate_symbol_score(db=db, symbol=symbol, trade_date=latest_bar.trade_date)
                     result["score_refreshed"] = True
                     result["latest_score"] = {
-                        "trade_date": latest_bar.trade_date.isoformat(),
+                        "trade_date": latest_bar.trade_date.isoformat() if hasattr(latest_bar.trade_date, 'isoformat') else str(latest_bar.trade_date),
                         "quality_score": score.quality_score,
                         "timing_score": score.timing_score,
                         "stage": score.stage,
@@ -452,8 +452,8 @@ def sync_market_data(
             scope_snapshot=scope_snapshot,
             filters_snapshot={
                 "source": "market-data.update",
-                "start_date": start_date.isoformat() if start_date else None,
-                "end_date": end_date.isoformat() if end_date else None,
+                "start_date": start_date.isoformat() if start_date and hasattr(start_date, 'isoformat') else str(start_date) if start_date else None,
+                "end_date": end_date.isoformat() if end_date and hasattr(end_date, 'isoformat') else str(end_date) if end_date else None,
             },
             portfolio_id=resolved_portfolio_id,
             portfolio_rule_id=resolved_portfolio_rule_id,

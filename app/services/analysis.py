@@ -143,7 +143,7 @@ def calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date) -> Sco
     # data_credibility 已在 if 分支中赋值
 
     priority_score = round(timing_score * 0.4 + quality_score * 0.3 + liquidity_score * 0.2 + breadth_score * 0.1, 2)
-    calc_batch_id = f"manual-{trade_date.isoformat()}"
+    calc_batch_id = f"manual-{trade_date.isoformat() if hasattr(trade_date, 'isoformat') else str(trade_date)}"
 
     existing = db.execute(
         select(Score).where(

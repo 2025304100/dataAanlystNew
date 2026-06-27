@@ -653,7 +653,7 @@ def build_trade_setup_view(
         "field_sources_json": getattr(setup, "field_sources_json", None),
         "manual_overrides": manual_overrides,
         "field_sources": field_sources,
-        "created_at": setup.created_at.isoformat(),
+        "created_at": setup.created_at.isoformat() if hasattr(setup.created_at, 'isoformat') else str(setup.created_at),
         "current_position_pct": current_position_pct,
         "current_position_amount": current_position_amount,
         "stage_cap_pct": round(stage_cap_pct, 4),

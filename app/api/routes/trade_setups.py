@@ -1,4 +1,5 @@
 import json
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
@@ -14,6 +15,28 @@ from app.services.trade_plans import get_latest_score, upsert_trade_setup
 
 
 router = APIRouter()
+
+
+def _safe_datetime(value):
+    """Safely convert a value to datetime, handling strings from MySQL."""
+    if value is None:
+        return None
+    if isinstance(value, (datetime, date)):
+        return value
+    if isinstance(value, str):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+    return None
+
+
+def _ensure_datetime_attrs(obj):
+    """Patch ORM object's datetime attributes that may be strings from MySQL."""
+    if obj is not None and isinstance(getattr(obj, "created_at", None), str):
+        obj.created_at = _safe_datetime(obj.created_at)
+    return obj
 
 
 @router.post("/trade-setups/generate", response_model=TradeSetupRead)
@@ -34,6 +57,7 @@ def generate_trade_setup(payload: TradeSetupGenerateRequest, db: Session = Depen
     )
     db.commit()
     db.refresh(setup)
+    _ensure_datetime_attrs(setup)
     return setup
 
 
@@ -50,6 +74,7 @@ def get_latest_trade_setup(
     ).scalars().first()
     if setup is None:
         raise HTTPException(status_code=404, detail="Trade setup not found")
+    _ensure_datetime_attrs(setup)
     return setup
 
 
@@ -70,4 +95,5 @@ def update_trade_setup_tranches(setup_id: int, payload: TradeSetupTrancheUpdateR
     setup.manual_tranche_plan_json = json.dumps(tranches, ensure_ascii=False) if tranches else None
     db.commit()
     db.refresh(setup)
+    _ensure_datetime_attrs(setup)
     return setup

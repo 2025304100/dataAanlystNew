@@ -101,7 +101,7 @@ def build_similar_signal_stats(
         sample = {
             "symbol_id": row_symbol.id,
             "symbol": row_symbol.symbol,
-            "trade_date": row.trade_date.isoformat(),
+            "trade_date": row.trade_date.isoformat() if hasattr(row.trade_date, 'isoformat') else str(row.trade_date),
             "entry_price": round(entry, 2),
             "return_3d": None,
             "return_5d": None,

@@ -132,7 +132,7 @@ def _compute_equity_curve(
 
         equity = cash + position_value
         equity_curve.append({
-            "date": current_date.isoformat(),
+            "date": current_date.isoformat() if hasattr(current_date, 'isoformat') else str(current_date),
             "equity": round(equity, 2),
             "cash": round(cash, 2),
             "position_value": round(position_value, 2),

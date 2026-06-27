@@ -508,7 +508,7 @@ def get_symbol_detail_panel(
         if latest_score is None
         else {
             "id": latest_score.id,
-            "trade_date": latest_score.trade_date.isoformat(),
+            "trade_date": _safe_datetime(latest_score.trade_date).isoformat() if _safe_datetime(latest_score.trade_date) else None,
             "quality_score": latest_score.quality_score,
             "quality_grade": latest_score.quality_grade,
             "timing_score": latest_score.timing_score,
@@ -553,7 +553,7 @@ def get_symbol_detail_panel(
         score_history=[
             {
                 "id": row.id,
-                "trade_date": row.trade_date.isoformat(),
+                "trade_date": _safe_datetime(row.trade_date).isoformat() if _safe_datetime(row.trade_date) else None,
                 "quality_score": row.quality_score,
                 "timing_score": row.timing_score,
                 "stage": row.stage,
