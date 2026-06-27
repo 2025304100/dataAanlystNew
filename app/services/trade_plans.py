@@ -324,6 +324,7 @@ def upsert_trade_setup(
     symbol: Symbol,
     score: Score,
     scan_run_id: int | None = None,
+    overrides: dict | None = None,
 ) -> TradeSetup:
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
@@ -353,9 +354,6 @@ def upsert_trade_setup(
     entry_anchor = max(min(last_close + range20 * stage_multiplier, high20), low20)
     entry_min = _round_price(max(low20, min(entry_anchor, ma10, last_close) * 0.99))
     entry_max = _round_price(min(high20 * 1.01, max(entry_anchor, ma10, last_close) * 1.01))
-    # Stop loss: use technical support levels, ensure reasonable distance from entry
-    # Prefer: 20-day low > MA20*0.96 > last_close*0.92 (gives ~8% room for A-share volatility)
-    # Then clamp: not tighter than entry_min * 0.94 (~6% below buy zone floor)
     stop_anchor = min(low20, ma20 * 0.96, last_close * 0.92)
     stop_loss = _round_price(max(stop_anchor, (entry_min or last_close) * 0.94))
 
@@ -367,6 +365,37 @@ def upsert_trade_setup(
     }.get(score.stage, 1.8)
     risk_unit = max((entry_min or last_close) - (stop_loss or last_close * 0.96), last_close * 0.015)
     target_price = _round_price((entry_max or last_close) + risk_unit * stage_rr)
+
+    manual_overrides: dict[str, float] = {}
+    raw_overrides = overrides or {}
+    for field in (
+        "entry_min",
+        "entry_max",
+        "stop_loss",
+        "target_price",
+        "recommended_position_pct",
+        "recommended_position_amount",
+    ):
+        if field not in raw_overrides or raw_overrides[field] is None:
+            continue
+        value = float(raw_overrides[field])
+        if field == "recommended_position_pct":
+            manual_overrides[field] = round(_clamp(value, 0.0, 1.0), 4)
+        elif field == "recommended_position_amount":
+            manual_overrides[field] = round(max(0.0, value), 2)
+        else:
+            manual_overrides[field] = _round_price(max(0.0, value)) or 0.0
+
+    entry_min = manual_overrides.get("entry_min", entry_min)
+    entry_max = manual_overrides.get("entry_max", entry_max)
+    stop_loss = manual_overrides.get("stop_loss", stop_loss)
+    target_price = manual_overrides.get("target_price", target_price)
+    if entry_min is not None and entry_max is not None and entry_min > entry_max:
+        entry_min, entry_max = entry_max, entry_min
+        if "entry_min" in manual_overrides or "entry_max" in manual_overrides:
+            manual_overrides["entry_min"] = entry_min
+            manual_overrides["entry_max"] = entry_max
+
     risk_reward_ratio = None
     if entry_max and stop_loss and target_price and entry_max > stop_loss:
         risk_reward_ratio = round((target_price - entry_max) / (entry_max - stop_loss), 2)
@@ -382,6 +411,15 @@ def upsert_trade_setup(
     )
     recommended_pct = float(position_budget["recommended_pct"])
     recommended_amount = float(position_budget["recommended_amount"])
+    if "recommended_position_pct" in manual_overrides:
+        recommended_pct = float(manual_overrides["recommended_position_pct"])
+        if "recommended_position_amount" not in manual_overrides:
+            recommended_amount = round(portfolio.total_capital * recommended_pct, 2)
+    if "recommended_position_amount" in manual_overrides:
+        recommended_amount = float(manual_overrides["recommended_position_amount"])
+        if "recommended_position_pct" not in manual_overrides:
+            recommended_pct = round(recommended_amount / portfolio.total_capital, 4) if portfolio.total_capital else 0.0
+
     sector_flag = bool(position_budget["is_sector_overweight"])
     asset_flag = bool(position_budget["is_asset_overweight"])
     allow_add_position = int(score.stage in {"start", "accel"} and score.action in {"open", "hold"} and position_budget["can_open"])
@@ -420,9 +458,18 @@ def upsert_trade_setup(
     setup.is_sector_overweight = int(sector_flag)
     setup.is_asset_overweight = int(asset_flag)
     setup.setup_reason = setup_reason
+    field_sources = {
+        "entry_min": "manual" if "entry_min" in manual_overrides else "system",
+        "entry_max": "manual" if "entry_max" in manual_overrides else "system",
+        "stop_loss": "manual" if "stop_loss" in manual_overrides else "system",
+        "target_price": "manual" if "target_price" in manual_overrides else "system",
+        "recommended_position_pct": "manual" if "recommended_position_pct" in manual_overrides else "system",
+        "recommended_position_amount": "manual" if "recommended_position_amount" in manual_overrides else "system",
+    }
+    setup.manual_overrides_json = json.dumps(manual_overrides, ensure_ascii=False) if manual_overrides else None
+    setup.field_sources_json = json.dumps(field_sources, ensure_ascii=False)
     db.flush()
     return setup
-
 
 def build_trade_setup_view(
     db: Session,
@@ -555,6 +602,30 @@ def build_trade_setup_view(
         high20=high20,
     )
 
+    def _load_json_map(value: str | None) -> dict:
+        if not value:
+            return {}
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+
+    def _load_json_list(value: str | None) -> list:
+        if not value:
+            return []
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except (TypeError, ValueError):
+            return []
+
+    manual_overrides = _load_json_map(getattr(setup, "manual_overrides_json", None))
+    field_sources = _load_json_map(getattr(setup, "field_sources_json", None))
+    manual_tranches = _load_json_list(getattr(setup, "manual_tranche_plan_json", None))
+    if manual_tranches:
+        tranches = manual_tranches
+
     return {
         "id": setup.id,
         "entry_min": setup.entry_min,
@@ -578,6 +649,10 @@ def build_trade_setup_view(
         "action": setup.action,
         "stage": setup.stage,
         "setup_reason": setup.setup_reason,
+        "manual_overrides_json": getattr(setup, "manual_overrides_json", None),
+        "field_sources_json": getattr(setup, "field_sources_json", None),
+        "manual_overrides": manual_overrides,
+        "field_sources": field_sources,
         "created_at": setup.created_at.isoformat(),
         "current_position_pct": current_position_pct,
         "current_position_amount": current_position_amount,

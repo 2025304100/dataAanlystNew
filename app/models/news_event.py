@@ -17,7 +17,7 @@ class NewsEvent(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     symbol_id: Mapped[int | None] = mapped_column(ForeignKey("symbols.id", ondelete="CASCADE"), nullable=True, index=True)
     symbol: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
-    title: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(255))
     source: Mapped[str] = mapped_column(String(64))
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
     event_type: Mapped[str] = mapped_column(String(32), default="news")

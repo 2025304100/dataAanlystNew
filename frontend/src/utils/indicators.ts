@@ -115,7 +115,208 @@ export function detectMACDCross(dif: (number | null)[], dea: (number | null)[]):
   return signals;
 }
 
+
+// ─── KDJ ───
+
+export interface KDJResult {
+  k: (number | null)[];
+  d: (number | null)[];
+  j: (number | null)[];
+}
+
+/**
+ * KDJ 指标
+ * RSV = (C - Ln) / (Hn - Ln) * 100
+ * K = 2/3 * K(prev) + 1/3 * RSV
+ * D = 2/3 * D(prev) + 1/3 * K
+ * J = 3K - 2D
+ */
+export function computeKDJ(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  n = 9,
+  m1 = 3,
+  m2 = 3
+): KDJResult {
+  const len = Math.min(highs.length, lows.length, closes.length);
+  const k: (number | null)[] = new Array(len).fill(null);
+  const d: (number | null)[] = new Array(len).fill(null);
+  const j: (number | null)[] = new Array(len).fill(null);
+
+  let prevK = 50;
+  let prevD = 50;
+
+  for (let i = 0; i < len; i++) {
+    if (i < n - 1) {
+      k[i] = null;
+      d[i] = null;
+      j[i] = null;
+      continue;
+    }
+
+    let highestHigh = -Infinity;
+    let lowestLow = Infinity;
+    for (let p = i - n + 1; p <= i; p++) {
+      const high = highs[p];
+      const low = lows[p];
+      if (!Number.isFinite(high) || !Number.isFinite(low)) continue;
+      if (high > highestHigh) highestHigh = high;
+      if (low < lowestLow) lowestLow = low;
+    }
+
+    const close = closes[i];
+    const range = highestHigh - lowestLow;
+    const rsv = range <= 0 || !Number.isFinite(close)
+      ? 50
+      : ((close - lowestLow) / range) * 100;
+
+    prevK = ((m1 - 1) * prevK + rsv) / m1;
+    prevD = ((m2 - 1) * prevD + prevK) / m2;
+    const currJ = 3 * prevK - 2 * prevD;
+
+    k[i] = prevK;
+    d[i] = prevD;
+    j[i] = currJ;
+  }
+
+  return { k, d, j };
+}
+
+export interface KDJCrossSignal {
+  index: number;
+  type: "golden" | "dead";
+  k: number;
+  d: number;
+  j?: number;
+}
+
+export function detectKDJCross(k: (number | null)[], d: (number | null)[], j?: (number | null)[]): KDJCrossSignal[] {
+  const signals: KDJCrossSignal[] = [];
+  const len = Math.min(k.length, d.length, j?.length ?? k.length);
+  for (let i = 1; i < len; i++) {
+    const k0 = k[i - 1], k1 = k[i];
+    const d0 = d[i - 1], d1 = d[i];
+    if (k0 == null || k1 == null || d0 == null || d1 == null) continue;
+    if (k0 <= d0 && k1 > d1) {
+      signals.push({ index: i, type: "golden", k: k1, d: d1, j: j?.[i] ?? undefined });
+    }
+    if (k0 >= d0 && k1 < d1) {
+      signals.push({ index: i, type: "dead", k: k1, d: d1, j: j?.[i] ?? undefined });
+    }
+  }
+  return signals;
+}
+
+// ─── 成交量确认 ───
+
+export interface VolumeSignal {
+  index: number;
+  type: "volume_breakout" | "volume_contraction" | "abnormal_volume";
+  volume: number;
+  averageVolume: number;
+  priceChangePct: number;
+}
+
+/**
+ * 成交量确认信号
+ * - 放量突破：成交量显著高于均值，且价格同步走强
+ * - 缩量回踩：成交量低于均值，且价格波动收敛
+ * - 异常放量：成交量远高于均值
+ */
+export function detectVolumeSignal(
+  volumes: (number | null)[],
+  prices: (number | null)[],
+  period = 20
+): VolumeSignal[] {
+  const signals: VolumeSignal[] = [];
+  const len = Math.min(volumes.length, prices.length);
+  const volumeAvg = computeMA(volumes, period);
+
+  for (let i = 1; i < len; i++) {
+    const volume = volumes[i];
+    const price = prices[i];
+    const prevPrice = prices[i - 1];
+    const avg = volumeAvg[i];
+    if (volume == null || price == null || prevPrice == null || avg == null || avg <= 0) continue;
+
+    const priceChangePct = prevPrice === 0 ? 0 : (price - prevPrice) / prevPrice;
+    const volumeRatio = volume / avg;
+
+    if (volumeRatio >= 2.5) {
+      signals.push({ index: i, type: "abnormal_volume", volume, averageVolume: avg, priceChangePct });
+      continue;
+    }
+
+    if (volumeRatio >= 1.5 && priceChangePct >= 0.02) {
+      signals.push({ index: i, type: "volume_breakout", volume, averageVolume: avg, priceChangePct });
+      continue;
+    }
+
+    if (volumeRatio <= 0.7 && Math.abs(priceChangePct) <= 0.01) {
+      signals.push({ index: i, type: "volume_contraction", volume, averageVolume: avg, priceChangePct });
+    }
+  }
+
+  return signals;
+}
+
+// ─── 相对强弱 ───
+
+/**
+ * 相对强弱：标的价格 / 基准价格 的归一化强弱序列
+ * 输出值 100 为中性，高于 100 表示相对更强，低于 100 表示相对更弱
+ */
+export function computeRelativeStrength(
+  prices: (number | null)[],
+  benchmarkPrices: (number | null)[],
+  period = 20
+): (number | null)[] {
+  const len = Math.min(prices.length, benchmarkPrices.length);
+  const ratioSeries: (number | null)[] = new Array(len).fill(null);
+
+  for (let i = 0; i < len; i++) {
+    const price = prices[i];
+    const benchmark = benchmarkPrices[i];
+    if (price == null || benchmark == null || benchmark === 0) continue;
+    ratioSeries[i] = price / benchmark;
+  }
+
+  const ratioMA = computeMA(ratioSeries, period);
+  const strength: (number | null)[] = new Array(len).fill(null);
+
+  for (let i = 0; i < len; i++) {
+    const ratio = ratioSeries[i];
+    const avg = ratioMA[i];
+    if (ratio == null || avg == null || avg === 0) continue;
+    strength[i] = (ratio / avg) * 100;
+  }
+
+  return strength;
+}
+
+export interface RelativeStrengthSignal {
+  index: number;
+  strength: number;
+  trend: "stronger" | "weaker" | "neutral";
+}
+
+export function detectRelativeStrengthSignal(strength: (number | null)[], threshold = 100): RelativeStrengthSignal[] {
+  const signals: RelativeStrengthSignal[] = [];
+  for (let i = 0; i < strength.length; i++) {
+    const value = strength[i];
+    if (value == null) continue;
+    signals.push({
+      index: i,
+      strength: value,
+      trend: value > threshold + 3 ? "stronger" : value < threshold - 3 ? "weaker" : "neutral",
+    });
+  }
+  return signals;
+}
+
 // ─── RSI ───
+
 
 /**
  * RSI 相对强弱指数 (默认14周期)

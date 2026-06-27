@@ -18,8 +18,24 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _safe_datetime(value):
+    """Safely convert a value to datetime, handling strings from MySQL."""
+    from datetime import datetime
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+    return None
+
+
 def _serialize_result(result: ScanResult) -> dict:
-    age_days = max(0, (_now() - result.created_at).days)
+    age_days = max(0, (_now() - _safe_datetime(result.created_at)).days)
     return {
         "id": result.id,
         "scan_run_id": result.scan_run_id,

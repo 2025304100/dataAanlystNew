@@ -14,6 +14,7 @@ import {
   NewsSnapshot,
   WatchlistItem,
   Symbol,
+  TradeSetupOverrides,
 } from "../types";
 import { computeSuggestedPrice, computeSuggestedBuyQuantity, computeDefaultSellQuantity, score as fmtScore, setCurrency, inferSymbolPayload } from "../utils/format";
 
@@ -95,7 +96,7 @@ interface AppContextValue extends AppState {
   runSync: () => Promise<void>;
   runScan: () => Promise<void>;
   addSymbolFromInput: (code: string) => Promise<void>;
-  generateTradeSetup: () => Promise<void>;
+  generateTradeSetup: (overrides?: TradeSetupOverrides) => Promise<void>;
   submitSimOrder: (side: "buy" | "sell") => Promise<void>;
   fetchWatchlistItems: (watchlistId: number) => Promise<WatchlistItem[]>;
   addSymbolToWatchlist: (watchlistId: number, symbolId: number) => Promise<void>;
@@ -632,13 +633,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     showToast("success", template("symbolAdded", { symbol: symbol.symbol }));
   }, [state.marketGroup, addSymbolToPrimaryWatchlist, loadWorkbench, loadSymbolDetail, showToast, update]);
 
-  const generateTradeSetup = useCallback(async () => {
+  const generateTradeSetup = useCallback(async (overrides?: TradeSetupOverrides) => {
     if (!state.activeSymbolId || !state.detail?.latest_score) return;
     try {
       await api.generateTradeSetup({
         portfolio_id: state.portfolioId,
         symbol_id: state.activeSymbolId,
         score_id: state.detail.latest_score.id,
+        ...(overrides ? { overrides } : {}),
       });
       await loadSymbolDetail(state.activeSymbolId, { force: true });
       showToast("success", template("planSummary"));
@@ -785,3 +787,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
+
+
+

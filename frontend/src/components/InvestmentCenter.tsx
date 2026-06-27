@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ReactECharts from "echarts-for-react";
-import { Button, Input, Progress } from "antd";
+import { Button, Input, InputNumber, Progress, Switch, Tabs } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { useApp } from "../context/AppContext";
+import BacktestConfig from "./BacktestConfig";
+import BacktestResult from "./BacktestResult";
 import {
   t,
   template,
@@ -30,7 +32,7 @@ import {
   computeSuggestedPrice,
   signalLabel,
 } from "../utils/format";
-import type { FutureBuyPlan, TradeSetup } from "../types";
+import type { BacktestRun, FutureBuyPlan, FuturePlanTuning, TradeSetup, TradeSetupOverrides, TradeSetupTranche } from "../types";
 import { api } from "../api/client";
 
 // ─── 共享工具库导入 ───
@@ -58,6 +60,102 @@ import {
 
 interface InvestmentCenterProps {
   openMetricModal: (type: string) => void;
+}
+
+type TradePlanDraft = {
+  entry_min: number | null;
+  entry_max: number | null;
+  stop_loss: number | null;
+  target_price: number | null;
+  recommended_position_pct: number | null;
+  recommended_position_amount: number | null;
+};
+
+type TrancheDraft = TradeSetupTranche;
+type FuturePlanTunings = Record<string, FuturePlanTuning>;
+
+type RiskSettings = {
+  atrMultiplier: number;
+  concentrationMediumPct: number;
+  concentrationHighPct: number;
+  maxLossPct: number;
+};
+
+type AlertSettings = {
+  enableStopLoss: boolean;
+  enableTarget: boolean;
+  enableRsi: boolean;
+  enableMacd: boolean;
+  stopNearPct: number;
+  targetNearPct: number;
+  rsiOverbought: number;
+  rsiOversold: number;
+};
+
+const DEFAULT_RISK_SETTINGS: RiskSettings = {
+  atrMultiplier: 2,
+  concentrationMediumPct: 10,
+  concentrationHighPct: 20,
+  maxLossPct: 2,
+};
+
+const DEFAULT_ALERT_SETTINGS: AlertSettings = {
+  enableStopLoss: true,
+  enableTarget: true,
+  enableRsi: true,
+  enableMacd: true,
+  stopNearPct: 3,
+  targetNearPct: 5,
+  rsiOverbought: 75,
+  rsiOversold: 25,
+};
+
+const DEFAULT_FUTURE_TUNINGS: FuturePlanTunings = {
+  general: { scalePct: 100, bandPct: 1.5 },
+  short: { horizonDays: 5, scalePct: 70, bandPct: 1.2 },
+  mid: { horizonDays: 15, scalePct: 90, bandPct: 1.5 },
+  long: { horizonDays: 30, pullbackPct: 0, bandPct: 5 },
+  custom: { horizonDays: 20, pullbackPct: 3, positionPct: 5, bandPct: 1.5 },
+};
+
+function readStoredObject<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function planDraftFromSetup(setup: TradeSetup): TradePlanDraft {
+  return {
+    entry_min: setup.entry_min,
+    entry_max: setup.entry_max,
+    stop_loss: setup.stop_loss,
+    target_price: setup.target_price,
+    recommended_position_pct: Math.round((setup.recommended_position_pct ?? 0) * 10000) / 100,
+    recommended_position_amount: setup.recommended_position_amount,
+  };
+}
+
+function trancheDraftFromSetup(setup: TradeSetup): TrancheDraft[] {
+  return (setup.tranche_plan ?? []).map((item) => ({
+    label: item.label || "Custom",
+    position_pct: Math.round(Number(item.position_pct || 0) * 10000) / 100,
+    amount: Number(item.amount || 0),
+    trigger: item.trigger || "",
+  }));
+}
+
+function normalizeTrancheDrafts(drafts: TrancheDraft[]): TradeSetupTranche[] {
+  return drafts
+    .filter((item) => Number(item.position_pct || 0) > 0 || Number(item.amount || 0) > 0 || item.trigger.trim())
+    .map((item) => ({
+      label: item.label.trim() || "Custom",
+      position_pct: Math.max(0, Number(item.position_pct || 0)) / 100,
+      amount: Math.max(0, Number(item.amount || 0)),
+      trigger: item.trigger.trim(),
+    }));
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -203,6 +301,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   const [favorites, setFavorites] = useState<Set<number>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("ic_favorites") || "[]")); } catch { return new Set(); }
   });
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // 图表点击设置的入场价
   const [chartEntryPrice, setChartEntryPrice] = useState<number | null>(null);
@@ -215,6 +314,17 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     id: string; type: string; level: "warning" | "danger" | "info";
     message: string; detail: string; timestamp: number;
   }>>([]);
+
+  const [tradePlanEditing, setTradePlanEditing] = useState(false);
+  const [tradePlanDraft, setTradePlanDraft] = useState<TradePlanDraft | null>(null);
+  const [trancheEditing, setTrancheEditing] = useState(false);
+  const [trancheDrafts, setTrancheDrafts] = useState<TrancheDraft[]>([]);
+  const [riskSettingsOpen, setRiskSettingsOpen] = useState(false);
+  const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
+  const [riskSettings, setRiskSettings] = useState<RiskSettings>(() => readStoredObject("ic_risk_settings", DEFAULT_RISK_SETTINGS));
+  const [alertSettings, setAlertSettings] = useState<AlertSettings>(() => readStoredObject("ic_alert_settings", DEFAULT_ALERT_SETTINGS));
+  const [futurePlanTunings, setFuturePlanTunings] = useState<FuturePlanTunings>(() => readStoredObject("ic_future_plan_tunings", DEFAULT_FUTURE_TUNINGS));
+  const [backtestResult, setBacktestResult] = useState<BacktestRun | null>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 1024);
@@ -310,6 +420,37 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     });
   }, []);
 
+  // 清空搜索历史
+  const clearSearchHistory = useCallback(() => {
+    setSearchHistory([]);
+    try { localStorage.removeItem("ic_search_history"); } catch {}
+  }, []);
+
+  // 从历史中删除单个项目
+  const removeFromHistory = useCallback((symbolId: number) => {
+    setSearchHistory((prev) => {
+      const updated = prev.filter((h) => h.symbol_id !== symbolId);
+      try { localStorage.setItem("ic_search_history", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
+
+  // 清空收藏
+  const clearFavorites = useCallback(() => {
+    setFavorites(new Set());
+    try { localStorage.removeItem("ic_favorites"); } catch {}
+  }, []);
+
+  // 从收藏中移除
+  const removeFromFavorites = useCallback((symbolId: number) => {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      next.delete(symbolId);
+      try { localStorage.setItem("ic_favorites", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
+
   // 刷新交易计划
   const handleRefreshPlan = useCallback(async () => {
     setRefreshingPlan(true);
@@ -334,6 +475,152 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
      ════════════════════════════════════════════════════ */
 
   const setup = detail?.latest_trade_setup ?? null;
+  const zh = ctx.locale === "zh-CN";
+  const icText = {
+    editPlan: zh ? "编辑计划" : "Edit plan",
+    exitEdit: zh ? "退出编辑" : "Exit edit",
+    savePlan: zh ? "重新计算" : "Recalculate",
+    cancelEdit: zh ? "取消" : "Cancel",
+    manual: zh ? "手动" : "Manual",
+    system: zh ? "系统" : "System",
+    overview: zh ? "计划概览" : "Overview",
+    scenario: zh ? "收益预演" : "Scenarios",
+    tranches: zh ? "分批执行" : "Tranches",
+    future: zh ? "未来计划" : "Future plan",
+    riskSettings: zh ? "风险参数" : "Risk settings",
+    alertSettings: zh ? "预警设置" : "Alert settings",
+    atrMultiplier: zh ? "ATR倍数" : "ATR multiplier",
+    mediumPosition: zh ? "中等仓位%" : "Medium position %",
+    highPosition: zh ? "高仓位%" : "High position %",
+    maxLossPct: zh ? "单笔最大亏损%" : "Max loss %",
+    stopNearPct: zh ? "止损接近%" : "Near stop %",
+    targetNearPct: zh ? "目标接近%" : "Near target %",
+    rsiOverbought: zh ? "RSI超买" : "RSI overbought",
+    rsiOversold: zh ? "RSI超卖" : "RSI oversold",
+    enableStopLoss: zh ? "止损" : "Stop",
+    enableTarget: zh ? "目标" : "Target",
+    enableRsi: zh ? "RSI" : "RSI",
+    enableMacd: zh ? "MACD" : "MACD",
+    invalidPlan: zh ? "买入区间下限不能大于上限" : "Buy zone min cannot exceed max",
+    editTranches: zh ? "编辑分批" : "Edit tranches",
+    saveTranches: zh ? "保存分批" : "Save tranches",
+    addTranche: zh ? "新增一批" : "Add tranche",
+    resetTranches: zh ? "恢复系统" : "Reset system",
+    trancheLabel: zh ? "批次" : "Label",
+    futureTuning: zh ? "场景参数" : "Scenario settings",
+    horizonDays: zh ? "观察天数" : "Horizon days",
+    pullbackPct: zh ? "回撤%" : "Pullback %",
+    positionPct: zh ? "仓位%" : "Position %",
+    bandPct: zh ? "区间宽度%" : "Band %",
+    scalePct: zh ? "缩放%" : "Scale %",
+  };
+
+  useEffect(() => {
+    if (setup && !tradePlanEditing) setTradePlanDraft(planDraftFromSetup(setup));
+  }, [setup?.id, setup?.entry_min, setup?.entry_max, setup?.stop_loss, setup?.target_price, setup?.recommended_position_pct, setup?.recommended_position_amount, tradePlanEditing]);
+
+  useEffect(() => {
+    if (setup && !trancheEditing) setTrancheDrafts(trancheDraftFromSetup(setup));
+  }, [setup?.id, setup?.manual_tranche_plan_json, setup?.tranche_plan, trancheEditing]);
+
+  useEffect(() => {
+    try { localStorage.setItem("ic_risk_settings", JSON.stringify(riskSettings)); } catch {}
+  }, [riskSettings]);
+
+  useEffect(() => {
+    try { localStorage.setItem("ic_alert_settings", JSON.stringify(alertSettings)); } catch {}
+  }, [alertSettings]);
+
+  const updateTradePlanDraft = useCallback((field: keyof TradePlanDraft, value: number | null) => {
+    setTradePlanDraft((prev) => ({ ...(prev ?? {} as TradePlanDraft), [field]: value }));
+  }, []);
+
+  const handleEditPlan = useCallback(() => {
+    if (!setup) return;
+    setTradePlanDraft(planDraftFromSetup(setup));
+    setTradePlanEditing(true);
+  }, [setup]);
+
+  const handleCancelPlanEdit = useCallback(() => {
+    if (setup) setTradePlanDraft(planDraftFromSetup(setup));
+    setTradePlanEditing(false);
+  }, [setup]);
+
+  const handleApplyPlanOverrides = useCallback(async () => {
+    if (!tradePlanDraft) return;
+    if (tradePlanDraft.entry_min != null && tradePlanDraft.entry_max != null && tradePlanDraft.entry_min > tradePlanDraft.entry_max) {
+      ctx.showToast("error", icText.invalidPlan);
+      return;
+    }
+    const overrides: TradeSetupOverrides = {
+      entry_min: tradePlanDraft.entry_min,
+      entry_max: tradePlanDraft.entry_max,
+      stop_loss: tradePlanDraft.stop_loss,
+      target_price: tradePlanDraft.target_price,
+      recommended_position_pct: tradePlanDraft.recommended_position_pct != null ? tradePlanDraft.recommended_position_pct / 100 : null,
+      recommended_position_amount: tradePlanDraft.recommended_position_amount,
+    };
+    setRefreshingPlan(true);
+    try {
+      await ctx.generateTradeSetup(overrides);
+      setTradePlanEditing(false);
+    } finally {
+      setRefreshingPlan(false);
+    }
+  }, [ctx, icText.invalidPlan, tradePlanDraft]);
+
+  const updateTrancheDraft = useCallback((index: number, field: keyof TrancheDraft, value: string | number) => {
+    setTrancheDrafts((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
+  }, []);
+
+  const handleEditTranches = useCallback(() => {
+    if (!setup) return;
+    setTrancheDrafts(trancheDraftFromSetup(setup));
+    setTrancheEditing(true);
+  }, [setup]);
+
+  const handleSaveTranches = useCallback(async () => {
+    if (!setup || !ctx.activeSymbolId) return;
+    const payload = normalizeTrancheDrafts(trancheDrafts);
+    const totalPct = payload.reduce((sum, item) => sum + item.position_pct, 0);
+    if (totalPct > (setup.recommended_position_pct ?? 0) + 0.0001) {
+      ctx.showToast("error", `${icText.tranches} > ${percent(setup.recommended_position_pct)}`);
+      return;
+    }
+    setRefreshingPlan(true);
+    try {
+      await api.saveTradeSetupTranches(setup.id, { tranche_plan: payload });
+      await ctx.loadSymbolDetail(ctx.activeSymbolId, { force: true });
+      setTrancheEditing(false);
+    } finally {
+      setRefreshingPlan(false);
+    }
+  }, [ctx, icText.tranches, setup, trancheDrafts]);
+
+  const handleResetTranches = useCallback(async () => {
+    if (!setup || !ctx.activeSymbolId) return;
+    setRefreshingPlan(true);
+    try {
+      await api.saveTradeSetupTranches(setup.id, { tranche_plan: [] });
+      await ctx.loadSymbolDetail(ctx.activeSymbolId, { force: true });
+      setTrancheEditing(false);
+    } finally {
+      setRefreshingPlan(false);
+    }
+  }, [ctx, setup]);
+
+  const updateFutureTuning = useCallback((field: keyof FuturePlanTuning, value: number | null) => {
+    const scenario = ctx.futurePlanScenario;
+    setFuturePlanTunings((prev) => ({
+      ...prev,
+      [scenario]: { ...(DEFAULT_FUTURE_TUNINGS[scenario] ?? {}), ...(prev[scenario] ?? {}), [field]: value ?? undefined },
+    }));
+  }, [ctx.futurePlanScenario]);
+
+  const fieldSourceBadge = useCallback((field: string) => {
+    if (setup?.field_sources?.[field] !== "manual") return null;
+    return <span className="ic__manual-badge">{icText.manual}</span>;
+  }, [setup?.field_sources, icText.manual]);
 
   // Entry price & quantity（图表点击设置的入场价优先）
   const baseScenarios = setup?.return_scenarios;
@@ -450,7 +737,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     const targetPrice = (scenarios as any)?._adjTarget ?? setup.target_price;
 
     // 1. 跌破止损
-    if (stopLoss != null && lastClose <= stopLoss) {
+    if (alertSettings.enableStopLoss && stopLoss != null && lastClose <= stopLoss) {
       alerts.push({
         id: `stop_${lastDate}`, type: "stop_loss", level: "danger",
         message: template("alertStopLoss", { price: score(lastClose), stop: score(stopLoss) }),
@@ -458,8 +745,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         timestamp: Date.now(),
       });
     }
-    // 2. 接近止损（距离<3%）
-    else if (stopLoss != null && lastClose > 0 && ((lastClose - stopLoss) / lastClose) < 0.03) {
+    // 2. 接近止损
+    else if (alertSettings.enableStopLoss && stopLoss != null && lastClose > 0 && ((lastClose - stopLoss) / lastClose) < alertSettings.stopNearPct / 100) {
       alerts.push({
         id: `stop_near_${lastDate}`, type: "stop_near", level: "warning",
         message: template("alertNearStopLoss", { price: score(lastClose), stop: score(stopLoss) }),
@@ -469,7 +756,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     }
 
     // 3. 突破目标价
-    if (targetPrice != null && lastClose >= targetPrice) {
+    if (alertSettings.enableTarget && targetPrice != null && lastClose >= targetPrice) {
       alerts.push({
         id: `target_${lastDate}`, type: "target_hit", level: "info",
         message: template("alertTargetHit", { price: score(lastClose), target: score(targetPrice) }),
@@ -477,8 +764,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         timestamp: Date.now(),
       });
     }
-    // 4. 接近目标（距离<5%）
-    else if (targetPrice != null && lastClose > 0 && ((targetPrice - lastClose) / targetPrice) < 0.05) {
+    // 4. 接近目标
+    else if (alertSettings.enableTarget && targetPrice != null && lastClose > 0 && ((targetPrice - lastClose) / targetPrice) < alertSettings.targetNearPct / 100) {
       alerts.push({
         id: `target_near_${lastDate}`, type: "target_near", level: "info",
         message: template("alertNearTarget", { price: score(lastClose), target: score(targetPrice) }),
@@ -489,24 +776,24 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
 
     // 5. RSI 超买超卖
     const lastRSI = chartData.rsi ? chartData.rsi[chartData.rsi.length - 1] : null;
-    if (lastRSI != null && lastRSI > 75) {
+    if (alertSettings.enableRsi && lastRSI != null && lastRSI > alertSettings.rsiOverbought) {
       alerts.push({
         id: `rsi_ob_${lastDate}`, type: "rsi_overbought", level: "warning",
         message: template("alertRSIOverbought", { rsi: lastRSI.toFixed(1) }),
-        detail: `RSI(${lastRSI.toFixed(1)}) 超过75，注意回调风险`,
+        detail: `RSI(${lastRSI.toFixed(1)}) 超过${alertSettings.rsiOverbought}，注意回调风险`,
         timestamp: Date.now(),
       });
-    } else if (lastRSI != null && lastRSI < 25) {
+    } else if (alertSettings.enableRsi && lastRSI != null && lastRSI < alertSettings.rsiOversold) {
       alerts.push({
         id: `rsi_os_${lastDate}`, type: "rsi_oversold", level: "info",
         message: template("alertRSIOversold", { rsi: lastRSI.toFixed(1) }),
-        detail: `RSI(${lastRSI.toFixed(1)}) 低于25，可能存在反弹机会`,
+        detail: `RSI(${lastRSI.toFixed(1)}) 低于${alertSettings.rsiOversold}，可能存在反弹机会`,
         timestamp: Date.now(),
       });
     }
 
     // 6. MACD 金叉/死叉（最近一根K线）
-    if (chartData.macdSignals.length > 0) {
+    if (alertSettings.enableMacd && chartData.macdSignals.length > 0) {
       const latestSignal = chartData.macdSignals[chartData.macdSignals.length - 1];
       const signalAge = chartData.dates.length - 1 - latestSignal.index;
       if (signalAge <= 2) { // 最近2根K线内的信号
@@ -521,7 +808,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     }
 
     setPriceAlerts(alerts);
-  }, [chartData, scenarios, setup, detail?.bars]); // eslint-disable-line
+  }, [chartData, scenarios, setup, detail?.bars, alertSettings]); // eslint-disable-line
 
   // Active future buy plan
   const activeFutureBuyPlan = useMemo(() => {
@@ -529,8 +816,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     if (!s) return [];
     const totalCapital = ctx.workbench?.portfolio?.total_capital ?? 0;
     const investableRatio = ctx.workbench?.portfolio?.investable_ratio ?? 1;
-    return getActiveFutureBuyPlan(s, ctx.futurePlanScenario, ctx.futurePlanCustom, totalCapital, investableRatio);
-  }, [detail?.latest_trade_setup, ctx.futurePlanScenario, ctx.futurePlanCustom, ctx.workbench?.portfolio]);
+    return getActiveFutureBuyPlan(s, ctx.futurePlanScenario, ctx.futurePlanCustom, totalCapital, investableRatio, futurePlanTunings[ctx.futurePlanScenario]);
+  }, [detail?.latest_trade_setup, ctx.futurePlanScenario, ctx.futurePlanCustom, ctx.workbench?.portfolio, futurePlanTunings]);
 
   // ── 风险指标计算 ──
   const riskMetrics = useMemo(() => {
@@ -552,12 +839,12 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
 
     // ATR止损参考 (2倍ATR作为合理止损)
     const lastATR = chartData?.atr ? chartData.atr.filter((v): v is number => v != null).pop() ?? null : null;
-    const atrStopRef = lastATR != null ? lastATR * 2 : null;
+    const atrStopRef = lastATR != null ? lastATR * riskSettings.atrMultiplier : null;
 
     // 仓位集中度估算
     const positionPct = setup.recommended_position_pct ?? 0;
     const concentrationLevel =
-      positionPct >= 20 ? "high" : positionPct >= 10 ? "medium" : "low";
+      positionPct >= riskSettings.concentrationHighPct ? "high" : positionPct >= riskSettings.concentrationMediumPct ? "medium" : "low";
 
     // 单笔最大亏损金额
     const maxLossPerShare = stop != null ? entryPrice - stop : 0;
@@ -567,8 +854,9 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       rrRatio, stopDistancePct, currentStopDist, atrStopRef,
       concentrationLevel, maxLossAmount, maxLossPerShare,
       reward, riskAmount, currentPrice, stop, target,
+      maxLossLimitAmount: (ctx.workbench?.portfolio?.total_capital ?? 0) * (riskSettings.maxLossPct / 100),
     };
-  }, [setup, scenarios, entryPrice, quantity, chartData?.atr, detail?.bars]);
+  }, [setup, scenarios, entryPrice, quantity, chartData?.atr, detail?.bars, riskSettings, ctx.workbench?.portfolio?.total_capital]);
 
   // ── renderScenarioBox ──
   const renderScenarioBox = (label: string, exitPrice: number) => {
@@ -590,6 +878,95 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   const lastMAValue = (arr: (number | null)[]) => {
     const v = arr[arr.length - 1];
     return v !== null && v !== undefined ? score(v) : "-";
+  };
+
+  // 渲染搜索历史和收藏管理弹窗
+  const renderHistoryModal = () => {
+    if (!showHistoryModal) return null;
+
+    // 获取收藏的标的详情（从quickSymbols和searchHistory中查找）
+    const favoriteSymbols = Array.from(favorites).map((id) => {
+      const fromQuick = quickSymbols.find((s) => s.symbol_id === id);
+      if (fromQuick) return fromQuick;
+      const fromHistory = searchHistory.find((s) => s.symbol_id === id);
+      return fromHistory || { symbol_id: id, symbol: `ID:${id}`, name: "未知" };
+    });
+
+    return (
+      <div className="ic__modal-overlay" onClick={() => setShowHistoryModal(false)}>
+        <div className="ic__modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="ic__modal-header">
+            <h3>{zh ? "搜索历史与收藏" : "History & Favorites"}</h3>
+            <button className="ic__modal-close" onClick={() => setShowHistoryModal(false)}>×</button>
+          </div>
+
+          <div className="ic__modal-body">
+            {/* 收藏列表 */}
+            <section className="ic__modal-section">
+              <div className="ic__section-header">
+                <h4>{zh ? "收藏" : "Favorites"} ({favorites.size})</h4>
+                {favorites.size > 0 && (
+                  <Button size="small" danger onClick={clearFavorites}>
+                    {zh ? "清空收藏" : "Clear All"}
+                  </Button>
+                )}
+              </div>
+              {favorites.size === 0 ? (
+                <div className="ic__empty-state">{zh ? "暂无收藏" : "No favorites"}</div>
+              ) : (
+                <div className="ic__symbol-list">
+                  {favoriteSymbols.map((item) => (
+                    <div key={item.symbol_id} className="ic__symbol-item">
+                      <button className="ic__symbol-btn" onClick={() => { handleSelectSymbol(item.symbol_id); setShowHistoryModal(false); }}>
+                        <span className="symbol-code">{item.symbol}</span>
+                        <span className="symbol-name">{item.name}</span>
+                      </button>
+                      <button className="ic__remove-btn" onClick={() => removeFromFavorites(item.symbol_id)}>
+                        {zh ? "移除" : "Remove"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* 搜索历史 */}
+            <section className="ic__modal-section">
+              <div className="ic__section-header">
+                <h4>{zh ? "搜索历史" : "Search History"} ({searchHistory.length})</h4>
+                {searchHistory.length > 0 && (
+                  <Button size="small" danger onClick={clearSearchHistory}>
+                    {zh ? "清空历史" : "Clear All"}
+                  </Button>
+                )}
+              </div>
+              {searchHistory.length === 0 ? (
+                <div className="ic__empty-state">{zh ? "暂无搜索历史" : "No search history"}</div>
+              ) : (
+                <div className="ic__symbol-list">
+                  {searchHistory.map((item) => (
+                    <div key={item.symbol_id} className="ic__symbol-item">
+                      <button className="ic__symbol-btn" onClick={() => { handleSelectSymbol(item.symbol_id, item); setShowHistoryModal(false); }}>
+                        <span className="symbol-code">{item.symbol}</span>
+                        <span className="symbol-name">{item.name}</span>
+                      </button>
+                      <div className="ic__symbol-actions">
+                        <button className="ic__fav-toggle" onClick={() => toggleFavorite(item.symbol_id)}>
+                          {favorites.has(item.symbol_id) ? "★" : "☆"}
+                        </button>
+                        <button className="ic__remove-btn" onClick={() => removeFromHistory(item.symbol_id)}>
+                          {zh ? "删除" : "Delete"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // Trigger formatting functions
@@ -787,6 +1164,43 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     );
   }
 
+  const renderPriceAlertSection = () => {
+    if (!detail) return null;
+    return (
+      <section className="ic__price-alerts">
+        <div className="detail-card-head">
+          <h4>{t("priceAlerts")}</h4>
+          <Button size="small" onClick={() => setAlertSettingsOpen((v) => !v)}>{icText.alertSettings}</Button>
+        </div>
+        {alertSettingsOpen && (
+          <div className="ic__settings-grid ic__settings-grid--alerts">
+            <label><span>{icText.stopNearPct}</span><InputNumber size="small" min={0} max={50} value={alertSettings.stopNearPct} onChange={(v) => setAlertSettings((prev) => ({ ...prev, stopNearPct: Number(v ?? 3) }))} /></label>
+            <label><span>{icText.targetNearPct}</span><InputNumber size="small" min={0} max={50} value={alertSettings.targetNearPct} onChange={(v) => setAlertSettings((prev) => ({ ...prev, targetNearPct: Number(v ?? 5) }))} /></label>
+            <label><span>{icText.rsiOverbought}</span><InputNumber size="small" min={50} max={100} value={alertSettings.rsiOverbought} onChange={(v) => setAlertSettings((prev) => ({ ...prev, rsiOverbought: Number(v ?? 75) }))} /></label>
+            <label><span>{icText.rsiOversold}</span><InputNumber size="small" min={0} max={50} value={alertSettings.rsiOversold} onChange={(v) => setAlertSettings((prev) => ({ ...prev, rsiOversold: Number(v ?? 25) }))} /></label>
+            <label className="ic__switch-field"><span>{icText.enableStopLoss}</span><Switch size="small" checked={alertSettings.enableStopLoss} onChange={(checked) => setAlertSettings((prev) => ({ ...prev, enableStopLoss: checked }))} /></label>
+            <label className="ic__switch-field"><span>{icText.enableTarget}</span><Switch size="small" checked={alertSettings.enableTarget} onChange={(checked) => setAlertSettings((prev) => ({ ...prev, enableTarget: checked }))} /></label>
+            <label className="ic__switch-field"><span>{icText.enableRsi}</span><Switch size="small" checked={alertSettings.enableRsi} onChange={(checked) => setAlertSettings((prev) => ({ ...prev, enableRsi: checked }))} /></label>
+            <label className="ic__switch-field"><span>{icText.enableMacd}</span><Switch size="small" checked={alertSettings.enableMacd} onChange={(checked) => setAlertSettings((prev) => ({ ...prev, enableMacd: checked }))} /></label>
+          </div>
+        )}
+        {priceAlerts.length > 0 && (
+          <div className="ic__alert-list">
+            {priceAlerts.map((alert) => (
+              <div key={alert.id} className={`ic__alert-item ic__alert--${alert.level}`}>
+                <span className="ic__alert-icon">{alert.level === "danger" ? "!" : alert.level === "warning" ? "!" : "i"}</span>
+                <div className="ic__alert-body">
+                  <strong>{alert.message}</strong>
+                  <span>{alert.detail}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  };
+
   /* ════════════════════════════════════════════════════
      渲染：风险仪表盘
      ════════════════════════════════════════════════════ */
@@ -801,7 +1215,18 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     return (
       <section className="ic__section ic__risk-section">
         <div className="panel">
-          <h3>{t("riskDashboard")}</h3>
+          <div className="detail-card-head">
+            <h3>{t("riskDashboard")}</h3>
+            <Button size="small" onClick={() => setRiskSettingsOpen((v) => !v)}>{icText.riskSettings}</Button>
+          </div>
+          {riskSettingsOpen && (
+            <div className="ic__settings-grid ic__settings-grid--compact">
+              <label><span>{icText.atrMultiplier}</span><InputNumber size="small" min={0.5} max={5} step={0.5} value={riskSettings.atrMultiplier} onChange={(v) => setRiskSettings((prev) => ({ ...prev, atrMultiplier: Number(v ?? 2) }))} /></label>
+              <label><span>{icText.mediumPosition}</span><InputNumber size="small" min={0} max={100} value={riskSettings.concentrationMediumPct} onChange={(v) => setRiskSettings((prev) => ({ ...prev, concentrationMediumPct: Number(v ?? 10) }))} /></label>
+              <label><span>{icText.highPosition}</span><InputNumber size="small" min={0} max={100} value={riskSettings.concentrationHighPct} onChange={(v) => setRiskSettings((prev) => ({ ...prev, concentrationHighPct: Number(v ?? 20) }))} /></label>
+              <label><span>{icText.maxLossPct}</span><InputNumber size="small" min={0} max={100} step={0.5} value={riskSettings.maxLossPct} onChange={(v) => setRiskSettings((prev) => ({ ...prev, maxLossPct: Number(v ?? 2) }))} /></label>
+            </div>
+          )}
           <div className="ic__risk-grid">
             {/* 盈亏比 */}
             <div className="ic__risk-card">
@@ -825,7 +1250,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
               <div className="ic__risk-detail">
                 <span>当前: {score(rm.currentPrice)}</span>
                 <span>止损: {score(rm.stop)}</span>
-                {rm.atrStopRef != null && <span>2×ATR: {score(rm.atrStopRef)}</span>}
+                {rm.atrStopRef != null && <span>{riskSettings.atrMultiplier}×ATR: {score(rm.atrStopRef)}</span>}
               </div>
             </div>
 
@@ -837,7 +1262,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
               </span>
               <div className="ic__risk-bar">
                 <Progress
-                  percent={Math.min(100, (setup?.recommended_position_pct ?? 0) * 5)}
+                  percent={Math.min(100, ((setup?.recommended_position_pct ?? 0) * 100 / Math.max(riskSettings.concentrationHighPct, 1)) * 100)}
                   size="small"
                   strokeColor={concColor}
                   showInfo={false}
@@ -849,12 +1274,13 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             {/* 单笔最大亏损 */}
             <div className="ic__risk-card">
               <span className="ic__risk-label">{t("maxLossPerTrade")}</span>
-              <span className="ic__risk-value" style={{ color: rm.maxLossAmount > 0 ? "#b42318" : "#6b7280" }}>
+              <span className="ic__risk-value" style={{ color: rm.maxLossLimitAmount > 0 && rm.maxLossAmount > rm.maxLossLimitAmount ? "#b42318" : rm.maxLossAmount > 0 ? "#f59e0b" : "#6b7280" }}>
                 {rm.maxLossAmount > 0 ? `-¥${rm.maxLossAmount.toFixed(0)}` : "-"}
               </span>
               <div className="ic__risk-detail">
                 <span>每股亏损: {score(rm.maxLossPerShare)}</span>
                 <span>数量: {quantity}</span>
+                {rm.maxLossLimitAmount > 0 && <span>上限: {money(rm.maxLossLimitAmount)}</span>}
               </div>
             </div>
           </div>
@@ -866,200 +1292,235 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   /* ════════════════════════════════════════════════════
      渲染：交易计划区块
      ════════════════════════════════════════════════════ */
-  const renderTradePlan = () => (
-    <section className="ic__section ic__trade-plan-section">
-      <div className="panel">
-        <div className="detail-card-head">
-          <h3>{t("tradeSetup")}</h3>
-          <Button size="small" loading={refreshingPlan} onClick={handleRefreshPlan}>{t("refreshPlan")}</Button>
+  const renderTradePlan = () => {
+    const draft = tradePlanDraft;
+    const currentFutureTuning = { ...(DEFAULT_FUTURE_TUNINGS[ctx.futurePlanScenario] ?? {}), ...(futurePlanTunings[ctx.futurePlanScenario] ?? {}) };
+    const renderPlanEditNumber = (label: string, field: keyof TradePlanDraft, suffix?: string) => (
+      <label className="ic__plan-edit-field">
+        <span>{label}</span>
+        <InputNumber
+          size="small"
+          min={0}
+          value={draft?.[field] ?? null}
+          addonAfter={suffix}
+          onChange={(value) => updateTradePlanDraft(field, value == null ? null : Number(value))}
+        />
+      </label>
+    );
+
+    const planOverview = setup ? (
+      <div className="ic__plan-tab-panel">
+        {tradePlanEditing && draft ? (
+          <div className="ic__plan-edit-grid">
+            {renderPlanEditNumber(t("buyZone") + " 下限", "entry_min")}
+            {renderPlanEditNumber(t("buyZone") + " 上限", "entry_max")}
+            {renderPlanEditNumber(t("stopLoss"), "stop_loss")}
+            {renderPlanEditNumber(t("target"), "target_price")}
+            {renderPlanEditNumber(t("recommendedPosition"), "recommended_position_pct", "%")}
+            {renderPlanEditNumber(t("positionAmount"), "recommended_position_amount")}
+          </div>
+        ) : (
+          <div className="ic__plan-summary-grid">
+            <div className="ic__plan-summary-card">
+              <span>{t("buyZone")}</span>
+              <strong>{setup.entry_min !== null ? score(setup.entry_min) : "-"} - {setup.entry_max !== null ? score(setup.entry_max) : "-"}</strong>
+              <em>{fieldSourceBadge("entry_min")}{fieldSourceBadge("entry_max")}</em>
+            </div>
+            <div className="ic__plan-summary-card">
+              <span>{t("stopLoss")}</span>
+              <strong>{score((scenarios as any)?._adjStop ?? setup.stop_loss)}</strong>
+              <em>{fieldSourceBadge("stop_loss")}</em>
+            </div>
+            <div className="ic__plan-summary-card">
+              <span>{t("target")}</span>
+              <strong>{score((scenarios as any)?._adjTarget ?? setup.target_price)}</strong>
+              <em>{fieldSourceBadge("target_price")}</em>
+            </div>
+            <div className="ic__plan-summary-card">
+              <span>{t("recommendedPosition")}</span>
+              <strong>{percent(setup.recommended_position_pct)}</strong>
+              <em>{money(setup.recommended_position_amount)} {fieldSourceBadge("recommended_position_pct")}{fieldSourceBadge("recommended_position_amount")}</em>
+            </div>
+          </div>
+        )}
+
+        <div className="item-subline ic__plan-meta-line">
+          {joinParts([
+            `${t("riskReward")}: ${setup.risk_reward_ratio != null ? score(setup.risk_reward_ratio) : "-"}`,
+            `${t("allowAdd")}: ${setup.allow_add_position ? t("yes") : t("no")}`,
+            `${t("stage")}: ${stageLabel(setup.stage)}`,
+            `${t("action")}: ${actionLabel(setup.action)}`,
+          ])}
         </div>
 
-        {scenarios ? (
-          <div id="orderScenarioPreview" className="scenario-preview">
-            <div className={`ic__collapsible${collapsedSections.scenarioPreview ? " collapsed" : ""}`}>
-              <button className="ic__collapse-toggle" onClick={() => toggleSection("scenarioPreview")}>
-                <span className="ic__collapse-chevron">{collapsedSections.scenarioPreview ? "▸" : "▾"}</span>
-                <strong>{t("scenarioPreview")}</strong>
-              </button>
-              {!collapsedSections.scenarioPreview && (
-              <div className="scenario-preview-card">
-                <div className="scenario-preview-head">
-                  <span className="scenario-preview-meta">
+        <div className="item-subline ic__plan-meta-line">
+          {joinParts([
+            `${t("stageCap")}: ${setup.stage_cap_pct != null ? percent(setup.stage_cap_pct) : "-"}`,
+            `${t("stageRoom")}: ${setup.remaining_stage_pct != null ? percent(setup.remaining_stage_pct) : "-"}`,
+            `${t("currentPosition")}: ${setup.current_position_pct != null ? percent(setup.current_position_pct) : "-"}`,
+            `${t("riskBudget")}: ${setup.risk_budget_amount != null ? money(setup.risk_budget_amount) : "-"}`,
+            `${t("riskShare")}: ${setup.risk_per_share != null ? score(setup.risk_per_share) : "-"}`,
+          ])}
+        </div>
+
+        <div className="ic__trigger-grid">
+          <div><strong>{t("openTrigger")}</strong><span>{formatOpenTrigger(setup)}</span></div>
+          <div><strong>{t("addTrigger")}</strong><span>{formatAddTrigger(setup)}</span></div>
+          <div><strong>{t("stopTrigger")}</strong><span>{formatStopTrigger(setup)}</span></div>
+          <div><strong>{t("trimTrigger")}</strong><span>{formatTrimTrigger(setup)}</span></div>
+        </div>
+      </div>
+    ) : <div className="empty">{t("latestTradeSetupEmpty")}</div>;
+
+    const scenarioPane = scenarios ? (
+      <div id="orderScenarioPreview" className="scenario-preview-card ic__plan-tab-panel">
+        <div className="scenario-preview-head">
+          <span className="scenario-preview-meta">
+            {joinParts([
+              `${t("plannedOrder")}: ${quantity}`,
+              `${t("referencePrice")}: ${score(entryPrice)}${chartEntryPrice ? ` (${t("chartEntry")})` : ""}`,
+              `${t("estimateConfidence")}: ${percent(scenarios.confidence_pct)}`,
+              `${t("estimateHorizon")}: ${scenarios.horizon_days}${t("daysUnit")}`,
+            ])}
+          </span>
+        </div>
+        <div className="scenario-grid">
+          {renderScenarioBox(t("expectedCase"), scenarios.expected.exit_price)}
+          {renderScenarioBox(t("optimisticCase"), scenarios.optimistic.exit_price)}
+          {renderScenarioBox(t("pessimisticCase"), scenarios.pessimistic.exit_price)}
+        </div>
+      </div>
+    ) : <div className="empty">{t("latestTradeSetupEmpty")}</div>;
+
+    const tranchePane = setup ? (
+      <div className="detail-card ic__plan-tab-panel">
+        <div className="ic__tab-toolbar">
+          <span className="panel-meta">{setup.manual_tranche_plan_json ? icText.manual : icText.system}</span>
+          <div>
+            {trancheEditing ? (
+              <>
+                <Button size="small" onClick={() => { setTrancheDrafts(trancheDraftFromSetup(setup)); setTrancheEditing(false); }}>{icText.cancelEdit}</Button>
+                <Button size="small" type="primary" loading={refreshingPlan} onClick={handleSaveTranches}>{icText.saveTranches}</Button>
+              </>
+            ) : (
+              <Button size="small" onClick={handleEditTranches}>{icText.editTranches}</Button>
+            )}
+            {setup.manual_tranche_plan_json && <Button size="small" loading={refreshingPlan} onClick={handleResetTranches}>{icText.resetTranches}</Button>}
+          </div>
+        </div>
+
+        {trancheEditing ? (
+          <div className="ic__tranche-editor">
+            {trancheDrafts.map((tranche, i) => (
+              <div key={i} className="ic__tranche-edit-row">
+                <label><span>{icText.trancheLabel}</span><Input size="small" value={tranche.label} onChange={(e) => updateTrancheDraft(i, "label", e.target.value)} /></label>
+                <label><span>{t("tranchePct")}</span><InputNumber size="small" min={0} max={100} value={tranche.position_pct} addonAfter="%" onChange={(v) => updateTrancheDraft(i, "position_pct", Number(v ?? 0))} /></label>
+                <label><span>{t("positionAmount")}</span><InputNumber size="small" min={0} value={tranche.amount} onChange={(v) => updateTrancheDraft(i, "amount", Number(v ?? 0))} /></label>
+                <label><span>{t("trigger")}</span><Input size="small" value={tranche.trigger} onChange={(e) => updateTrancheDraft(i, "trigger", e.target.value)} /></label>
+                <Button size="small" danger onClick={() => setTrancheDrafts((prev) => prev.filter((_, idx) => idx !== i))}>删除</Button>
+              </div>
+            ))}
+            <Button size="small" onClick={() => setTrancheDrafts((prev) => [...prev, { label: "Custom", position_pct: 0, amount: 0, trigger: "" }])}>{icText.addTranche}</Button>
+            <div className="item-subline">
+              {joinParts([
+                `${t("recommendedPosition")}: ${percent(setup.recommended_position_pct)}`,
+                `${t("tranchePct")}: ${percent(normalizeTrancheDrafts(trancheDrafts).reduce((sum, item) => sum + item.position_pct, 0))}`,
+              ])}
+            </div>
+          </div>
+        ) : setup.tranche_plan && setup.tranche_plan.length > 0 ? (
+          <div className="ic__tranche-timeline">
+            {setup.tranche_plan.map((tranche, i) => (
+              <div key={i} className={`ic__tranche-node ic__tranche--${tranche.label}`}>
+                <div className="ic__tranche-dot" />
+                {(i < setup.tranche_plan!.length - 1) && <div className="ic__tranche-line" />}
+                <div className="ic__tranche-content">
+                  <strong style={{ color: "#0f766e" }}>{trancheLabel(tranche.label)}</strong>
+                  <span className="ic__tranche-meta">
                     {joinParts([
-                      `${t("plannedOrder")}: ${quantity}`,
-                      `${t("referencePrice")}: ${score(entryPrice)}${chartEntryPrice ? ` (${t("chartEntry")})` : ""}`,
-                      `${t("estimateConfidence")}: ${percent(scenarios.confidence_pct)}`,
-                      `${t("estimateHorizon")}: ${scenarios.horizon_days}${t("daysUnit")}`,
+                      `${t("tranchePct")}: ${percent(tranche.position_pct)}`,
+                      `${t("positionAmount")}: ${money(tranche.amount)}`,
+                      `${t("trigger")}: ${trancheTrigger(tranche.trigger ?? "")}`,
                     ])}
                   </span>
                 </div>
-                <div className="scenario-grid">
-                  {renderScenarioBox(t("expectedCase"), scenarios.expected.exit_price)}
-                  {renderScenarioBox(t("optimisticCase"), scenarios.optimistic.exit_price)}
-                  {renderScenarioBox(t("pessimisticCase"), scenarios.pessimistic.exit_price)}
-                </div>
               </div>
-              )}
+            ))}
+          </div>
+        ) : <div className="empty">{t("latestTradeSetupEmpty")}</div>}
+      </div>
+    ) : <div className="empty">{t("latestTradeSetupEmpty")}</div>;
+
+    const futurePane = activeFutureBuyPlan.length > 0 ? (
+      <div className="detail-card ic__plan-tab-panel">
+        <div className="future-plan-head">
+          <p className="panel-kicker">{t("futureBuyPlan")}</p>
+          <div className="future-scenario-tabs">
+            {["general", "short", "mid", "long", "custom"].map((sc) => (
+              <Button key={sc} size="small"
+                type={ctx.futurePlanScenario === sc ? "primary" : "default"}
+                onClick={() => ctx.setFuturePlanScenario(sc)}>
+                {t(`futureScenario${sc.charAt(0).toUpperCase() + sc.slice(1)}`)}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="future-custom-grid ic__future-tuning-grid">
+          <label><span>{icText.horizonDays}</span><InputNumber size="small" min={1} max={365} value={currentFutureTuning.horizonDays} onChange={(v) => updateFutureTuning("horizonDays", v == null ? null : Number(v))} /></label>
+          <label><span>{icText.pullbackPct}</span><InputNumber size="small" min={0} max={50} step={0.5} value={currentFutureTuning.pullbackPct} onChange={(v) => updateFutureTuning("pullbackPct", v == null ? null : Number(v))} /></label>
+          <label><span>{icText.positionPct}</span><InputNumber size="small" min={0} max={100} step={0.5} value={currentFutureTuning.positionPct} onChange={(v) => updateFutureTuning("positionPct", v == null ? null : Number(v))} /></label>
+          <label><span>{icText.bandPct}</span><InputNumber size="small" min={0.1} max={50} step={0.1} value={currentFutureTuning.bandPct} onChange={(v) => updateFutureTuning("bandPct", v == null ? null : Number(v))} /></label>
+          <label><span>{icText.scalePct}</span><InputNumber size="small" min={0} max={300} step={5} value={currentFutureTuning.scalePct} onChange={(v) => updateFutureTuning("scalePct", v == null ? null : Number(v))} /></label>
+        </div>
+
+        {activeFutureBuyPlan.map((plan, i) => (
+          <div key={i} className="item-subline">
+            {joinParts([
+              futureBuyLabel(plan.label),
+              `${t("futureZone")}: ${plan.zone_min !== null ? score(plan.zone_min) : "-"} - ${plan.zone_max !== null ? score(plan.zone_max) : "-"}`,
+              `${t("futureHorizon")}: ${plan.horizon_days}${t("daysUnit")}`,
+              `${t("futurePriority")}: ${futurePriorityLabel(plan.priority)}`,
+              `${t("recommendedPosition")}: ${percent(plan.position_pct)}`,
+              `${t("positionAmount")}: ${money(plan.amount)}`,
+              `${t("trigger")}: ${futureTriggerLabel(plan)}`,
+            ])}
+          </div>
+        ))}
+      </div>
+    ) : <div className="empty">{t("latestTradeSetupEmpty")}</div>;
+
+    return (
+      <section className="ic__section ic__trade-plan-section">
+        <div className="panel">
+          <div className="detail-card-head">
+            <h3>{t("tradeSetup")}</h3>
+            <div className="detail-actions">
+              {setup && (tradePlanEditing ? (
+                <>
+                  <Button size="small" onClick={handleCancelPlanEdit}>{icText.cancelEdit}</Button>
+                  <Button size="small" type="primary" loading={refreshingPlan} onClick={handleApplyPlanOverrides}>{icText.savePlan}</Button>
+                </>
+              ) : (
+                <Button size="small" onClick={handleEditPlan}>{icText.editPlan}</Button>
+              ))}
+              <Button size="small" loading={refreshingPlan} onClick={handleRefreshPlan}>{t("refreshPlan")}</Button>
             </div>
           </div>
-        ) : null}
-
-        <div className="list" id="detailSetup">
-          {setup ? (
-            <>
-              <div className="item-topline">
-                <strong>{t("buyZone")}</strong>
-                <span>
-                  {setup.entry_min !== null ? score(setup.entry_min) : "-"} -{" "}
-                  {setup.entry_max !== null ? score(setup.entry_max) : "-"}
-                </span>
-                <span className="badge" style={{ marginLeft: 8, background: "rgba(15,118,110,0.10)", color: "#0f766e" }}>
-                  {t("stopLoss")}: {score((scenarios as any)?._adjStop ?? setup.stop_loss)}
-                </span>
-                <span className="badge" style={{ marginLeft: 4, background: "rgba(180,35,24,0.08)", color: "#b42318" }}>
-                  {t("target")}: {score((scenarios as any)?._adjTarget ?? setup.target_price)}
-                </span>
-              </div>
-
-              <div className="item-subline">
-                {joinParts([
-                  `${t("recommendedPosition")}: ${percent(setup.recommended_position_pct)}`,
-                  `${t("positionAmount")}: ${money(setup.recommended_position_amount)}`,
-                  `${t("riskReward")}: ${setup.risk_reward_ratio != null ? score(setup.risk_reward_ratio) : "-"}`,
-                  `${t("allowAdd")}: ${setup.allow_add_position ? t("yes") : t("no")}`,
-                ])}
-              </div>
-
-              <div className="item-subline">
-                {joinParts([
-                  `${t("stageCap")}: ${setup.stage_cap_pct != null ? percent(setup.stage_cap_pct) : "-"}`,
-                  `${t("stageRoom")}: ${setup.remaining_stage_pct != null ? percent(setup.remaining_stage_pct) : "-"}`,
-                  `${t("currentPosition")}: ${setup.current_position_pct != null ? percent(setup.current_position_pct) : "-"}`,
-                  `${t("riskBudget")}: ${setup.risk_budget_amount != null ? money(setup.risk_budget_amount) : "-"}`,
-                  `${t("riskShare")}: ${setup.risk_per_share != null ? score(setup.risk_per_share) : "-"}`,
-                ])}
-              </div>
-
-              <div className="item-subline">
-                {joinParts([
-                  `${t("stage")}: ${stageLabel(setup.stage)}`,
-                  `${t("action")}: ${actionLabel(setup.action)}`,
-                  `${t("guardrails")}: ${joinParts([
-                    setup.is_sector_overweight ? t("sectorOverweight") : null,
-                    setup.is_asset_overweight ? t("assetOverweight") : null,
-                  ]) || t("stable")}`,
-                ])}
-              </div>
-
-              {/* 触发条件（可折叠） */}
-              <div className={`ic__collapsible${collapsedSections.triggers ? " collapsed" : ""}`} style={{ marginTop: 8 }}>
-                <button className="ic__collapse-toggle" onClick={() => toggleSection("triggers")}>
-                  <span className="ic__collapse-chevron">{collapsedSections.triggers ? "▸" : "▾"}</span>
-                  <strong>{t("triggerConditions")}</strong>
-                </button>
-                {!collapsedSections.triggers && (
-                <div style={{ padding: "4px 0" }}>
-                  <div className="item-subline">
-                    <strong style={{ fontSize: 11 }}>{t("openTrigger")}:</strong>{" "}
-                    <span style={{ fontSize: 11 }}>{formatOpenTrigger(setup)}</span>
-                    {" | "}
-                    <strong style={{ fontSize: 11 }}>{t("addTrigger")}:</strong>{" "}
-                    <span style={{ fontSize: 11 }}>{formatAddTrigger(setup)}</span>
-                  </div>
-                  <div className="item-subline">
-                    <strong style={{ fontSize: 11 }}>{t("stopTrigger")}:</strong>{" "}
-                    <span style={{ fontSize: 11 }}>{formatStopTrigger(setup)}</span>
-                    {" | "}
-                    <strong style={{ fontSize: 11 }}>{t("trimTrigger")}:</strong>{" "}
-                    <span style={{ fontSize: 11 }}>{formatTrimTrigger(setup)}</span>
-                  </div>
-                </div>
-                )}
-              </div>
-
-              {/* Tranche plan with timeline view（可折叠） */}
-              {setup.tranche_plan && setup.tranche_plan.length > 0 && (
-                <div className={`ic__collapsible${collapsedSections.tranchePlan ? " collapsed" : ""}`} style={{ marginTop: 10 }}>
-                  <button className="ic__collapse-toggle" onClick={() => toggleSection("tranchePlan")}>
-                    <span className="ic__collapse-chevron">{collapsedSections.tranchePlan ? "▸" : "▾"}</span>
-                    <strong>{t("tranchePlan")}</strong> ({setup.tranche_plan.length})
-                  </button>
-                  {!collapsedSections.tranchePlan && (
-                  <div className="detail-card" style={{ marginTop: 6 }}>
-                    {/* Timeline view */}
-                    <div className="ic__tranche-timeline">
-                      {setup.tranche_plan.map((tranche, i) => (
-                        <div key={i} className={`ic__tranche-node ic__tranche--${tranche.label}`}>
-                          <div className="ic__tranche-dot" />
-                          {(i < setup.tranche_plan!.length - 1) && <div className="ic__tranche-line" />}
-                          <div className="ic__tranche-content">
-                            <strong style={{ color: "#0f766e" }}>{trancheLabel(tranche.label)}</strong>
-                            <span className="ic__tranche-meta">
-                              {joinParts([
-                                `${t("tranchePct")}: ${percent(tranche.position_pct)}`,
-                                `${t("positionAmount")}: ${money(tranche.amount)}`,
-                                `${t("trigger")}: ${trancheTrigger(tranche.trigger ?? "")}`,
-                              ])}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  )}
-                </div>
-              )}
-
-              {/* Future buy plan */}
-              {activeFutureBuyPlan.length > 0 && (
-                <div className="detail-card" style={{ marginTop: 10 }}>
-                  <div className="future-plan-head">
-                    <p className="panel-kicker">{t("futureBuyPlan")}</p>
-                    <div className="future-scenario-tabs">
-                      {["general", "short", "mid", "long", "custom"].map((sc) => (
-                        <Button key={sc} size="small"
-                          type={ctx.futurePlanScenario === sc ? "primary" : "default"}
-                          onClick={() => ctx.setFuturePlanScenario(sc)}>
-                          {t(`futureScenario${sc.charAt(0).toUpperCase() + sc.slice(1)}`)}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {ctx.futurePlanScenario === "custom" && (
-                    <div className="future-custom-grid">
-                      <label><span>{t("customHorizon")}</span><input type="number" value={ctx.futurePlanCustom.horizonDays}
-                        onChange={(e) => ctx.setFuturePlanCustom({ ...ctx.futurePlanCustom, horizonDays: Number(e.target.value) })} /></label>
-                      <label><span>{t("customPullback")}</span><input type="number" value={ctx.futurePlanCustom.pullbackPct}
-                        onChange={(e) => ctx.setFuturePlanCustom({ ...ctx.futurePlanCustom, pullbackPct: Number(e.target.value) })} /></label>
-                      <label><span>{t("customPosition")}</span><input type="number" value={ctx.futurePlanCustom.positionPct}
-                        onChange={(e) => ctx.setFuturePlanCustom({ ...ctx.futurePlanCustom, positionPct: Number(e.target.value) })} /></label>
-                    </div>
-                  )}
-
-                  {activeFutureBuyPlan.map((plan, i) => (
-                    <div key={i} className="item-subline">
-                      {joinParts([
-                        futureBuyLabel(plan.label),
-                        `${t("futureZone")}: ${plan.zone_min !== null ? score(plan.zone_min) : "-"} - ${plan.zone_max !== null ? score(plan.zone_max) : "-"}`,
-                        `${t("futureHorizon")}: ${plan.horizon_days}${t("daysUnit")}`,
-                        `${t("futurePriority")}: ${futurePriorityLabel(plan.priority)}`,
-                        `${t("recommendedPosition")}: ${percent(plan.position_pct)}`,
-                        `${t("positionAmount")}: ${money(plan.amount)}`,
-                        `${t("trigger")}: ${futureTriggerLabel(plan)}`,
-                      ])}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="empty">{t("latestTradeSetupEmpty")}</div>
-          )}
+          <Tabs
+            className="ic__trade-tabs"
+            size="small"
+            items={[
+              { key: "overview", label: icText.overview, children: planOverview },
+              { key: "scenario", label: icText.scenario, children: scenarioPane },
+              { key: "tranches", label: icText.tranches, children: tranchePane },
+              { key: "future", label: icText.future, children: futurePane },
+            ]}
+          />
         </div>
-      </div>
-    </section>
-  );
+      </section>
+    );
+  };
 
   /* ════════════════════════════════════════════════════
      渲染：K线图区块（含MACD+RSI副图）
@@ -1164,11 +1625,32 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     </section>
   );
 
-  /* ════════════════════════════════════════════════════
-     布局渲染
-     ════════════════════════════════════════════════════ */
+  const renderBacktestSection = () => {
+    if (!ctx.portfolioId) return null;
+    return (
+      <section className="ic__section ic__backtest-section">
+        <div className="panel">
+          <div className="detail-card-head">
+            <h3>{t("backtestValidation")}</h3>
+            <div className="detail-actions">
+              {backtestResult && (
+                <Button size="small" onClick={() => setBacktestResult(null)}>{t("clear")}</Button>
+              )}
+            </div>
+          </div>
+          <div className="ic__backtest-layout">
+            <BacktestConfig
+              portfolioId={ctx.portfolioId}
+              activeSymbolId={ctx.activeSymbolId}
+              onResult={setBacktestResult}
+            />
+            <BacktestResult result={backtestResult} />
+          </div>
+        </div>
+      </section>
+    );
+  };
 
-  // 移动端布局
   if (isMobile) {
     return (
       <div className="investment-center ic__mobile-layout">
@@ -1219,9 +1701,11 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             ))}
           </div>
         )}
+        {renderPriceAlertSection()}
         {renderRiskDashboard()}
         {renderTradePlan()}
         {renderChartSection()}
+        {renderBacktestSection()}
       </div>
     );
   }
@@ -1268,16 +1752,18 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         )}
       </header>
 
-      {!searchQuery && quickSymbols.length > 0 && (
-        <nav className="ic__quick-bar">
-          {quickSymbols.map((item) => (
-            <button key={item.symbol_id} className={`ic__chip${ctx.activeSymbolId === item.symbol_id ? " active" : ""}`}
-              onClick={() => handleSelectSymbol(item.symbol_id)}>
-              {item.symbol} {item.name}
+      <div className="ic__toolbar">
+        {!searchQuery && quickSymbols.length > 0 && (
+          <nav className="ic__quick-bar">
+            {quickSymbols.map((item) => (
+              <button key={item.symbol_id} className={`ic__chip${ctx.activeSymbolId === item.symbol_id ? " active" : ""}`}
+                onClick={() => handleSelectSymbol(item.symbol_id)}>
+                {item.symbol} {item.name}
             </button>
           ))}
         </nav>
       )}
+      </div>
 
       <main className="ic__main-content">
         {detail && (
@@ -1308,26 +1794,11 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             )}
           </div>
         )}
-        {/* 价格预警栏 */}
-        {priceAlerts.length > 0 && (
-          <section className="ic__price-alerts">
-            <h4>{t("priceAlerts")}</h4>
-            <div className="ic__alert-list">
-              {priceAlerts.map((alert) => (
-                <div key={alert.id} className={`ic__alert-item ic__alert--${alert.level}`}>
-                  <span className="ic__alert-icon">{alert.level === "danger" ? "!" : alert.level === "warning" ? "!" : "i"}</span>
-                  <div className="ic__alert-body">
-                    <strong>{alert.message}</strong>
-                    <span>{alert.detail}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        {renderPriceAlertSection()}
         {renderRiskDashboard()}
         {renderTradePlan()}
         {renderChartSection()}
+        {renderBacktestSection()}
       </main>
     </div>
   );

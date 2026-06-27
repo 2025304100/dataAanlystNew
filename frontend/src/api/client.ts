@@ -25,7 +25,11 @@ export async function requestJson<T = any>(url: string, options: RequestInit & {
   try {
     const response = await fetch(url, { ...requestOptions, signal: requestOptions.signal ?? controller.signal });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.detail || payload.message || response.statusText);
+    if (!response.ok) {
+      const detail = payload.detail || payload.message || response.statusText;
+      const msg = typeof detail === "string" ? detail : JSON.stringify(detail);
+      throw new Error(msg);
+    }
     return payload as T;
   } catch (error: any) {
     if (error.name === "AbortError") {
@@ -114,6 +118,8 @@ export const api = {
   // Trade setups
   generateTradeSetup: (payload: any) =>
     requestJson(`${API}/trade-setups/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  saveTradeSetupTranches: (setupId: number, payload: any) =>
+    requestJson(`${API}/trade-setups/${setupId}/tranches`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
 
   // Signal rules
   getSignalRulePresets: () => requestJson<any[]>(`${API}/signal-rules/presets`),
@@ -224,6 +230,16 @@ export const api = {
   // Signal stats
   getSignalStats: (symbolId: number, portfolioId: number = 1) =>
     requestJson<any>(`${API}/signal-rules/stats/${symbolId}?portfolio_id=${portfolioId}`),
+
+  // Backtest
+  runBacktest: (payload: any) =>
+    requestJson<any>(`${API}/backtest/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 120000 }),
+  getBacktestRuns: (portfolioId: number, limit = 20) =>
+    requestJson<any[]>(`${API}/backtest/runs?portfolio_id=${portfolioId}&limit=${limit}`),
+  getBacktestRun: (runId: number) =>
+    requestJson<any>(`${API}/backtest/runs/${runId}`),
+  deleteBacktestRun: (runId: number) =>
+    requestJson<any>(`${API}/backtest/runs/${runId}`, { method: "DELETE" }),
 
   // Backup & Export
   backupDatabase: () =>

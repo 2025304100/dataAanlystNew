@@ -3,6 +3,8 @@ import { useApp } from "../context/AppContext";
 import { t, DOT } from "../i18n";
 import { statPct, pnlClass, clamp } from "../utils/format";
 import { Input, InputNumber, Checkbox, Button, Space, Card, Form } from "antd";
+import { DatabaseOutlined, SettingOutlined } from "@ant-design/icons";
+import DbConfigSection from "./DbConfigSection";
 
 export default function Settings() {
   const ctx = useApp();
@@ -11,6 +13,7 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
+  const [activeSection, setActiveSection] = useState<"rules" | "db">("rules");
 
   useEffect(() => {
     if (rule && activeSymbolId) {
@@ -118,9 +121,17 @@ export default function Settings() {
     <div className="tab-container" data-tab-content="settings">
       <div className="settings-layout">
         <nav className="settings-sidebar" aria-label="Settings categories">
-          <button type="button" className="settings-nav-item active">{t("tabRules")}</button>
+          <button type="button" className={`settings-nav-item ${activeSection === "rules" ? "active" : ""}`}
+            onClick={() => setActiveSection("rules")}>
+            <SettingOutlined style={{ marginRight: 6 }} />{t("tabRules")}
+          </button>
+          <button type="button" className={`settings-nav-item ${activeSection === "db" ? "active" : ""}`}
+            onClick={() => setActiveSection("db")}>
+            <DatabaseOutlined style={{ marginRight: 6 }} />{t("dbTabTitle")}
+          </button>
         </nav>
         <div className="settings-content">
+          {activeSection === "rules" && (
           <div className="settings-tab-container" data-settings-content="settings-rules">
             <section className="band rule-config-band">
               <div className="panel">
@@ -254,6 +265,14 @@ export default function Settings() {
               </div>
             </section>
           </div>
+          )}
+          {activeSection === "db" && (
+            <div className="settings-tab-container" data-settings-content="settings-db">
+              <section className="band">
+                <DbConfigSection />
+              </section>
+            </div>
+          )}
         </div>
       </div>
     </div>

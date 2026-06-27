@@ -19,5 +19,15 @@ export default defineConfig({
   build: {
     outDir: '../app/web/dist',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-antd': ['antd', '@ant-design/icons'],
+          'vendor-charts': ['echarts', 'echarts-for-react'],
+        },
+      },
+    },
   },
 })

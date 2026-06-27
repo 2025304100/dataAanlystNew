@@ -6,11 +6,11 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
 
 from app.api.router import api_router
+from app.core.config import settings, load_db_config, build_mysql_url
 from app.db.init_db import init_db
-from app.db.session import SessionLocal
+from app.db.manager import DatabaseManager
 from app.services.discovery_cleanup import cleanup_expired_discovery_results
 
 logging.basicConfig(
@@ -24,8 +24,26 @@ logger = logging.getLogger(__name__)
 CLEANUP_INTERVAL_SECONDS = 30 * 60
 
 
+def _get_session_local():
+    """延迟获取 SessionLocal（此时 manager 已初始化）。"""
+    return DatabaseManager.get().session_factory
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # 从配置文件初始化数据库引擎
+    cfg = load_db_config()
+    mgr = DatabaseManager.get()
+
+    if cfg.get("use_mysql") and cfg.get("mysql", {}).get("host"):
+        url = build_mysql_url(cfg)
+        logger.info("Initializing MySQL engine: %s:%s/%s",
+                     cfg["mysql"]["host"], cfg["mysql"]["port"], cfg["mysql"]["database"])
+        mgr.initialize(url, db_type="mysql")
+    else:
+        logger.info("Initializing SQLite engine: %s", settings.database_url)
+        mgr.initialize(settings.database_url, db_type="sqlite")
+
     init_db()
 
     # Startup cleanup: remove expired non-frozen discovery results
@@ -42,10 +60,14 @@ async def lifespan(_: FastAPI):
     except (asyncio.CancelledError, Exception):
         pass
 
+    # 关闭数据库连接池
+    mgr.dispose()
+
 
 def _run_startup_cleanup() -> None:
     """Run cleanup once at startup."""
     try:
+        SessionLocal = _get_session_local()
         db = SessionLocal()
         try:
             result = cleanup_expired_discovery_results(db)
@@ -67,6 +89,7 @@ async def _periodic_cleanup() -> None:
     while True:
         await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
         try:
+            SessionLocal = _get_session_local()
             db = SessionLocal()
             try:
                 result = cleanup_expired_discovery_results(db)

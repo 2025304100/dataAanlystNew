@@ -12,6 +12,8 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.dialect import days_since
+from app.db.manager import DatabaseManager
 from app.db.session import get_db
 from app.models.daily_bar import DailyBar
 from app.models.discovery import DiscoveryTaskRecord
@@ -31,12 +33,47 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _age_days(value: date | datetime | None) -> int | None:
+def _parse_datetime(value) -> datetime | None:
+    """将可能是字符串的 datetime 值安全转为 datetime 对象。"""
     if value is None:
         return None
-    today = _now().date()
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+    return None
+
+
+def _parse_date(value) -> date | None:
+    """将可能是字符串的 date 值安全转为 date 对象。"""
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(value, fmt).date()
+            except ValueError:
+                continue
+    return None
+
+
+def _age_days(value) -> int | None:
+    if value is None:
+        return None
+    value = _parse_date(value) if not isinstance(value, (date, datetime)) else value
     if isinstance(value, datetime):
         value = value.date()
+    if not isinstance(value, date):
+        return None
+    today = _now().date()
     return max(0, (today - value).days)
 
 
@@ -92,7 +129,7 @@ def get_data_health(db: Session = Depends(get_db)):
         .group_by(DailyBar.symbol_id)
         .subquery()
     )
-    latest_bar_date = db.execute(select(func.max(DailyBar.trade_date))).scalar_one()
+    latest_bar_date = _parse_date(db.execute(select(func.max(DailyBar.trade_date))).scalar_one())
     bars_total = db.execute(select(func.count(DailyBar.id))).scalar_one()
     covered_symbols = db.execute(
         select(func.count(Symbol.id))
@@ -142,14 +179,14 @@ def get_data_health(db: Session = Depends(get_db)):
         .order_by(latest_bar_subq.c.latest_trade_date.asc(), Symbol.symbol.asc())
         .limit(BAR_ISSUE_SAMPLE_LIMIT)
     ).all()
-    latest_score_date = db.execute(select(func.max(Score.trade_date))).scalar_one()
+    latest_score_date = _parse_date(db.execute(select(func.max(Score.trade_date))).scalar_one())
     scored_symbols = db.execute(select(func.count(func.distinct(Score.symbol_id)))).scalar_one()
 
-    latest_macro_at = db.execute(select(func.max(MacroIndicatorValue.updated_at))).scalar_one()
+    latest_macro_at = _parse_datetime(db.execute(select(func.max(MacroIndicatorValue.updated_at))).scalar_one())
     latest_macro_snapshot = db.execute(select(MacroSnapshot).order_by(MacroSnapshot.id.desc())).scalars().first()
     macro_indicator_total = db.execute(select(func.count(MacroIndicatorValue.id))).scalar_one()
 
-    latest_event_at = db.execute(select(func.max(func.coalesce(MarketEvent.published_at, MarketEvent.created_at)))).scalar_one()
+    latest_event_at = _parse_datetime(db.execute(select(func.max(func.coalesce(MarketEvent.published_at, MarketEvent.created_at)))).scalar_one())
     events_7d = db.execute(
         select(func.count(MarketEvent.id)).where(func.coalesce(MarketEvent.published_at, MarketEvent.created_at) >= recent_event_cutoff)
     ).scalar_one()
@@ -165,14 +202,14 @@ def get_data_health(db: Session = Depends(get_db)):
     warning_results = db.execute(
         select(func.count(ScanResult.id)).where(
             ScanResult.is_frozen == 0,
-            func.julianday(func.current_timestamp()) - func.julianday(ScanResult.created_at) >= ScanResult.warning_days,
-            func.julianday(func.current_timestamp()) - func.julianday(ScanResult.created_at) < ScanResult.valid_days,
+            days_since(ScanResult.created_at) >= ScanResult.warning_days,
+            days_since(ScanResult.created_at) < ScanResult.valid_days,
         )
     ).scalar_one()
     expired_results = db.execute(
         select(func.count(ScanResult.id)).where(
             ScanResult.is_frozen == 0,
-            func.julianday(func.current_timestamp()) - func.julianday(ScanResult.created_at) >= ScanResult.valid_days,
+            days_since(ScanResult.created_at) >= ScanResult.valid_days,
         )
     ).scalar_one()
 
@@ -269,7 +306,10 @@ def get_data_health(db: Session = Depends(get_db)):
 
 @router.post("/system/backup")
 def backup_database():
-    """一键备份 SQLite 数据库到临时目录"""
+    """一键备份 SQLite 数据库到临时目录（仅 SQLite 模式可用）"""
+    mgr = DatabaseManager.get()
+    if mgr.is_mysql:
+        raise HTTPException(400, "MySQL 模式下暂不支持文件备份，请使用 mysqldump 工具")
     db_path = settings.database_url.replace("sqlite:///", "")
     backup_dir = Path(tempfile.gettempdir()) / "quant_backups"
     backup_dir.mkdir(exist_ok=True)
@@ -306,7 +346,10 @@ def list_backups():
 
 @router.post("/system/restore")
 def restore_database(backup_path: str = Query(...)):
-    """从备份恢复数据库"""
+    """从备份恢复数据库（仅 SQLite 模式可用）"""
+    mgr = DatabaseManager.get()
+    if mgr.is_mysql:
+        raise HTTPException(400, "MySQL 模式下暂不支持文件恢复，请使用 mysql 客户端导入")
     db_path = settings.database_url.replace("sqlite:///", "")
     if not Path(backup_path).exists():
         raise HTTPException(status_code=404, detail="Backup file not found")

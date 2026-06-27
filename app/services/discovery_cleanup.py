@@ -16,6 +16,22 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _safe_datetime(value):
+    """Safely convert a value to datetime, handling strings from MySQL."""
+    from datetime import datetime
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+    return None
+
+
 def cleanup_expired_discovery_results(db: Session) -> dict:
     """Delete non-frozen ScanResults whose age exceeds valid_days.
 
@@ -41,7 +57,7 @@ def cleanup_expired_discovery_results(db: Session) -> dict:
 
     expired_ids: list[int] = []
     for row in expired_rows:
-        age_days = max(0, (now - row.created_at).days)
+        age_days = max(0, (now - _safe_datetime(row.created_at)).days)
         if age_days >= row.valid_days:
             expired_ids.append(row.id)
 

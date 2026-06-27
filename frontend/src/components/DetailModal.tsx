@@ -34,6 +34,7 @@ import {
   sideBadgeClass,
 } from "../utils/format";
 import type { FutureBuyPlan, TradeSetup, JournalEntry, TradeRecord } from "../types";
+import { useChartDrawings } from "../hooks/useChartDrawings";
 
 interface DetailModalProps {
   open: boolean;
@@ -372,6 +373,21 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
   const [deletingReviewId, setDeletingReviewId] = useState<number | null>(null);
   const [refreshingPlan, setRefreshingPlan] = useState(false);
   const [signalValidationStats, setSignalValidationStats] = useState<any>(null);
+
+  // ── Chart drawing tools ──
+  const {
+    drawings,
+    drawingMode,
+    pendingPoint,
+    handleChartClick: drawingClickHandler,
+    startDrawing,
+    cancelDrawing,
+    removeLastDrawing,
+    clearAllDrawings,
+    drawingLineSeries,
+    pendingSeries,
+    drawingPrices,
+  } = useChartDrawings(ctx.activeSymbolId);
 
   // ESC key handler
   useEffect(() => {
@@ -944,7 +960,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     const futureZones = activeFutureBuyPlan.flatMap((p) =>
       p.zone_min !== null && p.zone_max !== null ? [p.zone_min, p.zone_max] : []
     );
-    const allRelevant = [...allPrices, ...maValues, ...signalPrices, ...futureZones].filter((v): v is number => v != null && !isNaN(v));
+    const allRelevant = [...allPrices, ...maValues, ...signalPrices, ...futureZones, ...drawingPrices].filter((v): v is number => v != null && !isNaN(v));
     const priceMin = Math.min(...allRelevant) * 0.985;
     const priceMax = Math.max(...allRelevant) * 1.015;
     const priceSpan = Math.max(priceMax - priceMin, 0.01);
@@ -1036,9 +1052,11 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
           yAxisIndex: 1,
           data: chartData.volume,
         },
+        ...(drawingLineSeries as any[]),
+        ...(pendingSeries ? [pendingSeries as any] : []),
       ],
     };
-  }, [chartData, detail?.latest_trade_setup, activeFutureBuyPlan]);
+  }, [chartData, detail?.latest_trade_setup, activeFutureBuyPlan, drawingLineSeries, pendingSeries, drawingPrices]);
 
   if (!detail) return null;
 
@@ -1783,11 +1801,42 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                     >
                       {ctx.chartExpanded ? t("collapseChart") : t("expandChart")}
                     </Button>
+                    <span className="drawing-divider" />
+                    <Button
+                      size="small"
+                      type={drawingMode === "trendline" ? "primary" : "default"}
+                      onClick={() => drawingMode === "trendline" ? cancelDrawing() : startDrawing("trendline")}
+                    >
+                      {t("drawTrendLine")}
+                    </Button>
+                    <Button
+                      size="small"
+                      type={drawingMode === "horizontal" ? "primary" : "default"}
+                      onClick={() => drawingMode === "horizontal" ? cancelDrawing() : startDrawing("horizontal")}
+                    >
+                      {t("drawHorizontal")}
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={removeLastDrawing}
+                      disabled={drawings.length === 0}
+                    >
+                      {t("drawUndo")}
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={clearAllDrawings}
+                      disabled={drawings.length === 0}
+                    >
+                      {t("drawClear")}
+                    </Button>
                   </div>
                 </div>
               </div>
               <p className="panel-meta chart-hint" id="chartHint">
-                {t("chartDragHint")}
+                {drawingMode !== "none"
+                  ? (!pendingPoint ? t("drawHintFirst") : t("drawHintSecond"))
+                  : t("chartDragHint")}
               </p>
               <div
                 ref={chartSurfaceRef}
@@ -1802,6 +1851,12 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                         style={{
                           height: ctx.chartExpanded ? "780px" : "560px",
                           width: "100%",
+                          cursor: drawingMode !== "none" ? "crosshair" : undefined,
+                        }}
+                        onEvents={{
+                          click: (params: any, chartInstance: any) => {
+                            drawingClickHandler(params, chartInstance);
+                          },
                         }}
                       />
                       {/* Future Buy Plan SVG Overlay - positioned over right side of chart */}

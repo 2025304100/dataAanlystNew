@@ -68,6 +68,30 @@ export interface AllocationSnapshot {
   etf_amount?: number;
 }
 
+export interface TradeSetupOverrides {
+  entry_min?: number | null;
+  entry_max?: number | null;
+  stop_loss?: number | null;
+  target_price?: number | null;
+  recommended_position_pct?: number | null;
+  recommended_position_amount?: number | null;
+}
+
+export interface TradeSetupTranche {
+  label: string;
+  position_pct: number;
+  amount: number;
+  trigger: string;
+}
+
+export interface FuturePlanTuning {
+  horizonDays?: number;
+  pullbackPct?: number;
+  positionPct?: number;
+  bandPct?: number;
+  scalePct?: number;
+}
+
 export interface TradeSetup {
   id: number;
   portfolio_id: number;
@@ -95,15 +119,15 @@ export interface TradeSetup {
   open_slots_remaining?: number | null;
   allocation_snapshot?: AllocationSnapshot | null;
   setup_reason: string | null;
+  manual_overrides_json?: string | null;
+  field_sources_json?: string | null;
+  manual_overrides?: Record<string, number | null>;
+  field_sources?: Record<string, "system" | "manual" | string>;
+  manual_tranche_plan_json?: string | null;
   created_at: string;
   moving_averages?: { ma10?: number; ma20?: number };
   chart_signals?: Array<{ kind: string; label: string; price: number }>;
-  tranche_plan?: Array<{
-    label: string;
-    position_pct: number;
-    amount: number;
-    trigger: string;
-  }>;
+  tranche_plan?: TradeSetupTranche[];
   future_buy_plan?: FutureBuyPlan[];
   stage_cap_pct?: number;
   stage_cap_amount?: number;
@@ -654,3 +678,93 @@ export interface DataHealth {
     frozen_results: number;
   };
 }
+
+export interface BacktestSummary {
+  total_return_pct?: number | null;
+  max_drawdown_pct?: number | null;
+  sharpe_ratio?: number | null;
+  win_rate?: number | null;
+  profit_factor?: number | null;
+  trade_count?: number | null;
+  avg_holding_days?: number | null;
+}
+
+export interface BacktestTrade {
+  id: number;
+  run_id: number;
+  symbol_id: number;
+  entry_date: string;
+  entry_price: number;
+  quantity: number;
+  exit_date?: string | null;
+  exit_price?: number | null;
+  exit_reason?: string | null;
+  pnl?: number | null;
+  pnl_pct?: number | null;
+  hold_days?: number | null;
+  entry_cost: number;
+  exit_cost?: number | null;
+}
+
+export interface BacktestRun {
+  id: number;
+  portfolio_id: number;
+  run_name: string;
+  symbols_json: string;
+  rule_config_json: string;
+  cost_config_json?: string | null;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+  total_return?: number | null;
+  total_return_pct?: number | null;
+  max_drawdown?: number | null;
+  max_drawdown_pct?: number | null;
+  sharpe_ratio?: number | null;
+  win_rate?: number | null;
+  profit_factor?: number | null;
+  trade_count?: number | null;
+  avg_holding_days?: number | null;
+  equity_curve_json?: string | null;
+  status: string;
+  error_message?: string | null;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  trades?: BacktestTrade[];
+  summary?: BacktestSummary;
+}
+
+// ── 数据库配置 ──────────────────────────────────────────
+
+export interface MySQLConfig {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+}
+
+export interface DbConfig {
+  use_mysql: boolean;
+  mysql: MySQLConfig;
+}
+
+export interface TestConnectionResult {
+  success: boolean;
+  message: string;
+  server_version?: string;
+}
+
+export interface MigrationProgress {
+  status: "idle" | "running" | "completed" | "failed";
+  current_table?: string;
+  tables_done: number;
+  tables_total: number;
+  rows_migrated: number;
+  error?: string;
+}
+
+
+
+

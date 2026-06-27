@@ -118,10 +118,26 @@ def _parse_datetime(value: Any) -> datetime | None:
     return parsed.to_pydatetime().replace(tzinfo=None)
 
 
+def _safe_datetime(value):
+    """Safely convert a value to datetime, handling strings from MySQL."""
+    from datetime import datetime
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+    return None
+
+
 def _decay_weight(published_at: datetime | None, *, half_life_days: float) -> float:
     if published_at is None:
         return 0.65
-    age_days = max(0.0, (datetime.now(timezone.utc).replace(tzinfo=None) - published_at).total_seconds() / 86400)
+    age_days = max(0.0, (datetime.now(timezone.utc).replace(tzinfo=None) - _safe_datetime(published_at)).total_seconds() / 86400)
     return round(math.exp(-age_days / max(half_life_days, 0.1)), 4)
 
 
@@ -288,7 +304,7 @@ def _summarize_symbol(db: Session, payload: NewsUpdateRequest, symbol: Symbol, e
     sentiment = "positive" if score > 2 else "negative" if score < -2 else "neutral"
     risk_level = "high" if risk_count else "medium" if negative_count >= 2 else "low"
     confidence = round(min(1.0, 0.35 + len(events) * 0.08 + (0.2 if risk_count else 0)), 2)
-    latest = max(events, key=lambda item: item.published_at or item.created_at, default=None)
+    latest = max(events, key=lambda item: _safe_datetime(item.published_at) or _safe_datetime(item.created_at), default=None)
 
     snapshot = NewsSnapshot(
         portfolio_id=payload.portfolio_id,
@@ -317,7 +333,7 @@ def _summarize_symbol(db: Session, payload: NewsUpdateRequest, symbol: Symbol, e
         negative_count=negative_count,
         risk_count=risk_count,
         latest_title=latest.title if latest is not None else None,
-        events=[_event_read(event) for event in sorted(events, key=lambda item: item.published_at or item.created_at, reverse=True)[:5]],
+        events=[_event_read(event) for event in sorted(events, key=lambda item: _safe_datetime(item.published_at) or _safe_datetime(item.created_at), reverse=True)[:5]],
     )
 
 
@@ -326,7 +342,7 @@ def _summarize_macro(events: list[NewsEvent]) -> NewsMacroSummary:
     sentiment = "positive" if score > 2 else "negative" if score < -2 else "neutral"
     risk_count = sum(1 for event in events if event.risk_level == "high")
     risk_level = "high" if risk_count else "low"
-    latest = sorted(events, key=lambda item: item.published_at or item.created_at, reverse=True)[:3]
+    latest = sorted(events, key=lambda item: _safe_datetime(item.published_at) or _safe_datetime(item.created_at), reverse=True)[:3]
     summary = "；".join(event.title for event in latest) if latest else "暂无大环境消息"
     return NewsMacroSummary(
         message_score=score,

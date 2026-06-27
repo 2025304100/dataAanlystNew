@@ -12,6 +12,24 @@ from app.models.score import Score
 from app.models.symbol import Symbol
 
 
+def _safe_date(value):
+    """Safely convert a value to date, handling strings from MySQL."""
+    from datetime import date, datetime
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(value, fmt).date()
+            except ValueError:
+                continue
+    return None
+
+
 def _clamp_score(value: float) -> float:
     return round(max(0.0, min(100.0, value)), 2)
 
@@ -119,7 +137,7 @@ def calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date) -> Sco
         # K 线数量因子: 5根=0.4, 20根=0.7, 50+=1.0
         bar_factor = min(1.0, 0.4 + (bar_count - 5) * 0.02)
         # 行情时效因子: 当天=1.0, 1天前=0.95, 3天前=0.8, 7天前=0.5
-        days_stale = (date.today() - trade_date).days
+        days_stale = (date.today() - _safe_date(trade_date)).days
         freshness_factor = max(0.3, 1.0 - days_stale * 0.1) if days_stale <= 7 else max(0.1, 0.5 - (days_stale - 7) * 0.05)
         data_credibility = round(min(1.0, bar_factor * freshness_factor), 2)
     # data_credibility 已在 if 分支中赋值
