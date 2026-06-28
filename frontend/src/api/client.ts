@@ -241,6 +241,16 @@ export const api = {
   deleteBacktestRun: (runId: number) =>
     requestJson<any>(`${API}/backtest/runs/${runId}`, { method: "DELETE" }),
 
+  // Backtest rule templates
+  getBacktestTemplates: () =>
+    requestJson<any[]>(`${API}/backtest/templates`),
+  createBacktestTemplate: (data: { name: string; description: string; rule_config: Record<string, unknown> }) =>
+    requestJson<any>(`${API}/backtest/templates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }),
+  updateBacktestTemplate: (id: number, data: Partial<{ name: string; description: string; rule_config: Record<string, unknown> }>) =>
+    requestJson<any>(`${API}/backtest/templates/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }),
+  deleteBacktestTemplate: (id: number) =>
+    requestJson<any>(`${API}/backtest/templates/${id}`, { method: "DELETE" }),
+
   // Backup & Export
   backupDatabase: () =>
     requestJson<any>(`${API}/system/backup`, { method: "POST" }),

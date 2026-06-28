@@ -689,6 +689,28 @@ export interface BacktestSummary {
   avg_holding_days?: number | null;
 }
 
+export interface BacktestPricePoint {
+  symbol_id: number;
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+export interface BacktestDiagnostics {
+  checked_days?: number;
+  buy_signal_days?: number;
+  trade_count?: number;
+  skip_reasons?: Record<string, number>;
+  sample_misses?: Array<Record<string, unknown>>;
+  fill_warning?: string;
+  execution?: { entry_price_field?: "open" | "close" | string; exit_price_field?: "open" | "close" | string };
+  buy_conditions?: Record<string, unknown>;
+  sell_conditions?: Record<string, unknown>;
+  position_config?: Record<string, unknown>;
+}
+
 export interface BacktestTrade {
   id: number;
   run_id: number;
@@ -732,7 +754,58 @@ export interface BacktestRun {
   started_at?: string | null;
   finished_at?: string | null;
   trades?: BacktestTrade[];
+  price_series?: BacktestPricePoint[];
+  diagnostics?: BacktestDiagnostics;
   summary?: BacktestSummary;
+}
+
+// ── 条件树（v2 回测规则）──────────────────────────────────
+
+export type ConditionOperator = "gt" | "gte" | "lt" | "lte" | "eq" | "neq" | "in" | "not_in";
+export type LogicOperator = "AND" | "OR";
+
+export interface ConditionLeaf {
+  field: string;
+  operator: ConditionOperator;
+  value: number | string | boolean | (string | number)[];
+  params?: Record<string, number | string>;
+}
+
+export interface ConditionGroup {
+  logic: LogicOperator;
+  conditions: (ConditionLeaf | ConditionGroup)[];
+}
+
+export function isConditionGroup(node: ConditionLeaf | ConditionGroup): node is ConditionGroup {
+  return "logic" in node;
+}
+
+export interface BacktestRuleConfigV2 {
+  version: 2;
+  buy_conditions: ConditionGroup;
+  sell_conditions: ConditionGroup;
+  position_config: Record<string, unknown>;
+  execution_config?: Record<string, unknown>;
+}
+
+export interface RuleTemplate {
+  id: number;
+  name: string;
+  description: string;
+  rule_config: BacktestRuleConfigV2 | Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConditionFieldDef {
+  key: string;
+  label: string;
+  category: "basic" | "sub_score" | "technical" | "sell";
+  valueType: "number" | "string" | "boolean" | "string_list";
+  operators: ConditionOperator[];
+  params?: { key: string; label: string; type: "number" | "text"; default: number | string; placeholder?: string }[];
+  requiresHistory: boolean;
+  side?: "buy" | "sell" | "both";
 }
 
 // ── 数据库配置 ──────────────────────────────────────────

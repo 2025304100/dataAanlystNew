@@ -6069,6 +6069,74 @@ td .symbol-name {
   background: rgba(255, 255, 255, 0.55);
 }
 
+.backtest-chart-title {
+  padding: 2px 4px 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.backtest-diagnostics {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(31, 41, 55, 0.09);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.backtest-diagnostics-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.backtest-diagnostics-head strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.backtest-diagnostics-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.backtest-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.backtest-diagnostics-grid span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(31, 41, 55, 0.08);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.backtest-diagnostics-grid b {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.backtest-diagnostics-grid strong {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.backtest-reason-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .ic__backtest-layout {
   display: grid;
   gap: 14px;

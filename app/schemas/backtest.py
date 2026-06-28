@@ -1,6 +1,7 @@
 from datetime import date, datetime
+from typing import Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class BacktestRuleConfig(BaseModel):
@@ -8,6 +9,67 @@ class BacktestRuleConfig(BaseModel):
     buy_conditions: dict = Field(default_factory=dict)
     sell_conditions: dict = Field(default_factory=dict)
     position_config: dict = Field(default_factory=dict)
+    execution_config: dict = Field(default_factory=dict)
+
+
+# ---------- v2: 条件树结构 ----------
+
+class ConditionLeaf(BaseModel):
+    """条件叶节点"""
+    field: str
+    operator: Literal["gt", "gte", "lt", "lte", "eq", "neq", "in", "not_in"]
+    value: Any
+    params: Optional[dict] = None
+
+
+class ConditionGroup(BaseModel):
+    """条件组节点（AND/OR 逻辑）"""
+    logic: Literal["AND", "OR"]
+    conditions: List[Union["ConditionGroup", ConditionLeaf]]
+
+    @field_validator("conditions")
+    @classmethod
+    def non_empty(cls, v: list) -> list:
+        if len(v) == 0:
+            raise ValueError("Condition group must have at least one condition")
+        return v
+
+
+ConditionGroup.model_rebuild()
+
+
+class BacktestRuleConfigV2(BaseModel):
+    """v2 回测规则配置（条件树格式）"""
+    version: Literal[2] = 2
+    buy_conditions: ConditionGroup
+    sell_conditions: ConditionGroup
+    position_config: dict = Field(default_factory=dict)
+    execution_config: dict = Field(default_factory=dict)
+
+
+# ---------- 规则模板 CRUD ----------
+
+class RuleTemplateCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str = ""
+    rule_config: dict
+
+
+class RuleTemplateUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=128)
+    description: Optional[str] = None
+    rule_config: Optional[dict] = None
+
+
+class RuleTemplateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str
+    rule_config: dict
+    created_at: datetime
+    updated_at: datetime
 
 
 class BacktestCostConfig(BaseModel):
@@ -24,7 +86,7 @@ class BacktestRunRequest(BaseModel):
     symbol_ids: list[int] = Field(min_length=1)
     start_date: date
     end_date: date
-    rule_config: BacktestRuleConfig
+    rule_config: Union[BacktestRuleConfigV2, BacktestRuleConfig]
     cost_config: BacktestCostConfig | None = None
     run_name: str | None = None
 
@@ -80,5 +142,7 @@ class BacktestRunRead(BaseModel):
 
 
 class BacktestRunDetail(BacktestRunRead):
-    """回测运行详情（含交易记录）"""
-    trades: list[BacktestTradeRead] = []
+    """Backtest run detail with trades, chart prices, and diagnostics."""
+    trades: list[BacktestTradeRead] = Field(default_factory=list)
+    price_series: list[dict] = Field(default_factory=list)
+    diagnostics: dict = Field(default_factory=dict)
