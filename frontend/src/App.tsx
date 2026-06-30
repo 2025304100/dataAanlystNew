@@ -232,9 +232,16 @@ export default function App() {
                   <Button onClick={handleAddSymbol} loading={busyButton === "add"}>
                     {busyButton === "add" ? t("addingSymbol") : t("addSymbol")}
                   </Button>
-                  <Button onClick={handleSync} loading={busyButton === "sync"}>
-                    {busyButton === "sync" ? t("syncing") : t("sync")}
+                  <Button onClick={handleSync} loading={busyButton === "sync" || ctx.syncPolling}>
+                    {ctx.syncPolling && ctx.syncTask
+                      ? template("syncProgress", { current: ctx.syncTask.processed ?? 0, total: ctx.syncTask.total ?? 0 })
+                      : busyButton === "sync" ? t("syncing") : t("sync")}
                   </Button>
+                  {ctx.syncPolling && ctx.syncTask && (
+                    <Button onClick={() => ctx.cancelSync()}>
+                      {t("cancel")}
+                    </Button>
+                  )}
                   <Button onClick={handleScan} loading={busyButton === "scan"}>
                     {busyButton === "scan" ? t("scanning") : t("scan")}
                   </Button>

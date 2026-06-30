@@ -48,6 +48,7 @@ interface AppState {
   newsSnapshot: NewsSnapshot | null;
   discoveryTask: DiscoveryTask | null;
   discoveryScopeStats: DiscoveryScopeStats | null;
+  syncTask: any | null;
   simQuantity: string;
   simPrice: string;
   candidateSearch: string;
@@ -94,6 +95,7 @@ interface AppContextValue extends AppState {
   loadDiscoveryScopeStats: () => Promise<void>;
   runNewsUpdate: () => Promise<void>;
   runSync: () => Promise<void>;
+  cancelSync: () => Promise<void>;
   runScan: () => Promise<void>;
   addSymbolFromInput: (code: string) => Promise<void>;
   generateTradeSetup: (overrides?: TradeSetupOverrides) => Promise<void>;
@@ -108,6 +110,7 @@ interface AppContextValue extends AppState {
   signalRulePreview: SignalRulePreviewResult | null;
   setSignalRulePreview: (result: SignalRulePreviewResult | null) => void;
   discoveryPolling: boolean;
+  syncPolling: boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -147,6 +150,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     newsSnapshot: null,
     discoveryTask: null,
     discoveryScopeStats: null,
+    syncTask: null,
     simQuantity: "",
     simPrice: "",
     candidateSearch: "",
@@ -156,6 +160,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [signalRulePreview, setSignalRulePreview] = useState<SignalRulePreviewResult | null>(null);
   const [discoveryPolling, setDiscoveryPolling] = useState(false);
   const discoveryPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [syncPolling, setSyncPolling] = useState(false);
+  const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const syncTaskIdRef = useRef<string | null>(null);
   const signalRulePreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const signalSampleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const portfolioIdRef = useRef<number | null>(null);
@@ -556,12 +563,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.portfolioId, state.workbench, fetchVisibleSymbols, update, showToast]);
 
+  const stopSyncPolling = useCallback(() => {
+    if (syncPollRef.current) {
+      clearInterval(syncPollRef.current);
+      syncPollRef.current = null;
+    }
+    syncTaskIdRef.current = null;
+    setSyncPolling(false);
+  }, []);
+
+  const startSyncPolling = useCallback((taskId: string) => {
+    if (syncPollRef.current && syncTaskIdRef.current === taskId) return;
+    stopSyncPolling();
+    syncTaskIdRef.current = taskId;
+    setSyncPolling(true);
+    syncPollRef.current = setInterval(async () => {
+      try {
+        const currentTaskId = syncTaskIdRef.current;
+        if (!currentTaskId) return;
+        const task = await api.getMarketDataSyncTask(currentTaskId);
+        update({ syncTask: task });
+        if (["done", "failed", "cancelled"].includes(task.status)) {
+          stopSyncPolling();
+          if (task.status === "done" && task.result) {
+            showToast("success", template("syncSummary", {
+              ok: task.result.ok_count ?? task.ok_count,
+              total: task.result.symbols_total ?? task.total,
+              failed: task.result.failed_count ?? task.failed_count,
+            }));
+            await loadWorkbench();
+          } else if (task.status === "failed") {
+            showToast("error", task.message || t("syncFailed"));
+          } else if (task.status === "cancelled") {
+            showToast("info", t("syncCancelled"));
+          }
+          update({ syncTask: null });
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 2000);
+  }, [update, showToast, loadWorkbench, stopSyncPolling]);
+
   const runSync = useCallback(async () => {
     try {
       const symbols = await fetchVisibleSymbols();
       const symbolIds = symbols.map((s) => s.id);
       if (!symbolIds.length) return;
-      const response = await api.syncMarketData({
+      const task = await api.createMarketDataSyncTask({
         scope: "symbols",
         symbol_ids: symbolIds,
         asset_types: [...new Set(symbols.map((item) => item.asset_type))],
@@ -570,12 +619,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         portfolio_id: state.portfolioId,
         portfolio_rule_id: state.workbench?.active_rule?.id ?? null,
       });
-      showToast("success", template("syncSummary", { ok: response.data.ok_count, total: response.data.symbols_total, failed: response.data.failed_count }));
-      await loadWorkbench();
+      update({ syncTask: task });
+      startSyncPolling(task.id);
+      showToast("info", t("syncStarted"));
     } catch (error: any) {
       showToast("error", error?.message || t("syncFailed"));
     }
-  }, [state.portfolioId, state.workbench, fetchVisibleSymbols, showToast, loadWorkbench]);
+  }, [state.portfolioId, state.workbench, fetchVisibleSymbols, showToast, startSyncPolling, update]);
+
+  const cancelSync = useCallback(async () => {
+    const taskId = syncTaskIdRef.current || state.syncTask?.id;
+    if (!taskId) return;
+    try {
+      await api.cancelMarketDataSyncTask(taskId);
+      stopSyncPolling();
+      update({ syncTask: null });
+      showToast("info", t("syncCancelled"));
+    } catch (error: any) {
+      showToast("error", error?.message || t("syncFailed"));
+    }
+  }, [state.syncTask, stopSyncPolling, showToast, update]);
 
   const runScan = useCallback(async () => {
     try {
@@ -713,6 +776,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [update]);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const tasks = await api.listMarketDataSyncTasks(1);
+        const latestTask = tasks[0];
+        if (latestTask && ["queued", "running"].includes(latestTask.status)) {
+          update({ syncTask: latestTask });
+          startSyncPolling(latestTask.id);
+        }
+      } catch {
+        // ignore resume errors
+      }
+    })();
+  }, [startSyncPolling, update]);
+
   // Bootstrap
   useEffect(() => {
     (async () => {
@@ -732,16 +810,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     return () => {
       if (discoveryPollRef.current) clearInterval(discoveryPollRef.current);
+      stopSyncPolling();
       if (signalRulePreviewTimer.current) clearTimeout(signalRulePreviewTimer.current);
       if (signalSampleTimer.current) clearTimeout(signalSampleTimer.current);
     };
-  }, []);
+  }, [stopSyncPolling]);
 
   const value: AppContextValue = {
     ...state,
     signalRulePreview,
     setSignalRulePreview,
     discoveryPolling,
+    syncPolling,
     setLocaleValue,
     setMarketGroup,
     setActiveTab,
@@ -772,6 +852,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loadDiscoveryScopeStats,
     runNewsUpdate,
     runSync,
+    cancelSync,
     runScan,
     addSymbolFromInput,
     generateTradeSetup,

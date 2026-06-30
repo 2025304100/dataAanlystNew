@@ -87,6 +87,20 @@ class HistoryInitializationSummary(BaseModel):
     score_days_completed: int = 0
 
 
+class HistoryInitializationRunRecord(BaseModel):
+    task_id: str | None = None
+    status: HistoryInitializationTaskStatus
+    preset: HistoryInitializationPreset = "1y"
+    adjust: str = "qfq"
+    start_date: date | None = None
+    end_date: date | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    duration_seconds: int | None = None
+    message: str | None = None
+    summary: HistoryInitializationSummary = Field(default_factory=HistoryInitializationSummary)
+
+
 class HistoryInitializationStatus(BaseModel):
     task_id: str | None = None
     status: HistoryInitializationTaskStatus
@@ -98,5 +112,7 @@ class HistoryInitializationStatus(BaseModel):
     message: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
+    duration_seconds: int | None = None
     stages: list[HistoryInitializationStage] = Field(default_factory=list)
     summary: HistoryInitializationSummary = Field(default_factory=HistoryInitializationSummary)
+    recent_runs: list[HistoryInitializationRunRecord] = Field(default_factory=list)

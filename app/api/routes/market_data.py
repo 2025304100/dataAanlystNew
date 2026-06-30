@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -6,6 +6,7 @@ from app.core.async_utils import run_sync
 from app.db.session import get_db
 from app.models.daily_bar import DailyBar
 from app.models.symbol import Symbol
+from app.schemas.async_task import AsyncTaskRead, MarketDataSyncCreate
 from app.schemas.market_data import (
     DailyBarImportRequest,
     DailyBarRead,
@@ -15,13 +16,16 @@ from app.schemas.market_data import (
     MarketDataUpdateRequest,
 )
 from app.services.analysis import calculate_symbol_score
+from app.services.async_tasks import cancel_async_task, get_async_task, list_async_tasks
 from app.services.market_data import (
+    cancel_history_initialization_task,
+    cleanup_history_records,
+    create_history_initialization_task,
     get_history_initialization_status,
-    run_history_initialization_task,
-    start_history_initialization_task,
     sync_market_data,
     sync_symbol_daily_bars,
 )
+from app.services.market_data_sync_task import create_market_data_sync_task
 
 
 router = APIRouter()
@@ -54,13 +58,36 @@ async def trigger_market_data_update(payload: MarketDataUpdateRequest, db: Sessi
     }
 
 
-@router.post("/market-data/initialize-history", response_model=HistoryInitializationStatus)
-def initialize_history_data(
-    payload: HistoryInitializationRequest,
-    background_tasks: BackgroundTasks,
-) -> dict:
+@router.post("/market-data/sync-tasks", response_model=AsyncTaskRead)
+def create_sync_task(payload: MarketDataSyncCreate) -> dict:
+    return create_market_data_sync_task(payload)
+
+
+@router.get("/market-data/sync-tasks", response_model=list[AsyncTaskRead])
+def list_sync_tasks(limit: int = Query(10, ge=1, le=50)) -> list[dict]:
+    return [task.model_dump() for task in list_async_tasks(task_type="market_data_sync", limit=limit)]
+
+
+@router.get("/market-data/sync-tasks/{task_id}", response_model=AsyncTaskRead)
+def get_sync_task(task_id: str) -> dict:
+    task = get_async_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Sync task not found")
+    return task.model_dump()
+
+
+@router.post("/market-data/sync-tasks/{task_id}/cancel", response_model=AsyncTaskRead)
+def cancel_sync_task(task_id: str) -> dict:
     try:
-        task = start_history_initialization_task(
+        return cancel_async_task(task_id).model_dump()
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/market-data/initialize-history", response_model=HistoryInitializationStatus)
+def initialize_history_data(payload: HistoryInitializationRequest) -> dict:
+    try:
+        return create_history_initialization_task(
             preset=payload.preset,
             adjust=payload.adjust,
             asset_types=payload.asset_types,
@@ -68,13 +95,23 @@ def initialize_history_data(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    background_tasks.add_task(run_history_initialization_task, task["task_id"])
-    return task
-
 
 @router.get("/market-data/initialize-history/status", response_model=HistoryInitializationStatus)
 def get_initialize_history_status() -> dict:
     return get_history_initialization_status()
+
+
+@router.post("/market-data/initialize-history/cancel", response_model=HistoryInitializationStatus)
+def cancel_initialize_history() -> dict:
+    try:
+        return cancel_history_initialization_task()
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/market-data/initialize-history/cleanup")
+def cleanup_initialize_history(keep: int = Query(5, ge=1, le=50)) -> dict:
+    return cleanup_history_records(keep=keep)
 
 
 @router.post("/market-data/symbols/{symbol_id}/repair")

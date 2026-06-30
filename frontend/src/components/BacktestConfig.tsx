@@ -68,10 +68,10 @@ type BacktestTemplateConfig = Partial<BacktestRuleConfigV2> & {
 };
 
 function presetLabel(preset: BacktestCoverageWarning["summary"]["recommended_preset"]): string {
-  if (preset === "1m") return "\u8fd11\u4e2a\u6708";
-  if (preset === "1q") return "1\u4e2a\u5b63\u5ea6";
-  if (preset === "3y") return "3\u5e74";
-  return "\u8fd11\u5e74";
+  if (preset === "1m") return t("btPreset1m");
+  if (preset === "1q") return t("btPreset1q");
+  if (preset === "3y") return t("btPreset3y");
+  return t("btPreset1y");
 }
 
 export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }: BacktestConfigProps) {
@@ -199,7 +199,7 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
       const detail = err?.detail as BacktestCoverageWarning | undefined;
       if (detail?.code === "BACKTEST_SCORE_COVERAGE_INSUFFICIENT") {
         setCoverageWarning(detail);
-        message.warning("\u5386\u53f2\u8bc4\u5206\u8986\u76d6\u4e0d\u8db3\uff0c\u8bf7\u5148\u53bb\u8bbe\u7f6e\u91cc\u6267\u884c\u521d\u59cb\u5316\u8865\u6570");
+        message.warning(t("btCoverageInsufficient"));
       } else {
         message.error(err?.message || t("backtestFailed"));
       }
@@ -226,7 +226,7 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
       }
     }
     setSelectedTemplateId(id);
-    message.success(`${t("backtestTemplateLoaded")}：${tpl.name}`);
+    message.success(`${t("backtestTemplateLoaded")}: ${tpl.name}`);
   }, [templates]);
 
   const saveTemplate = useCallback(async () => {
@@ -418,28 +418,27 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
           type="warning"
           showIcon
           style={{ marginBottom: 12 }}
-          message="\u5386\u53f2\u8bc4\u5206\u8986\u76d6\u4e0d\u8db3\uff0c\u5f53\u524d\u56de\u6d4b\u5df2\u62e6\u622a"
+          message={t("btCoverageWarningTitle")}
           description={(
             <div style={{ display: "grid", gap: 8 }}>
               <span>
-                {"\u5efa\u8bae\u5148\u5230\u8bbe\u7f6e\u91cc\u6267\u884c\u521d\u59cb\u5316\u8865\u6570\uff0c\u63a8\u8350\u533a\u95f4\uff1a"}
+                {t("btCoverageRecommend")}
                 {presetLabel(coverageWarning.summary.recommended_preset)}
                 {". "}
-                {"\u5f53\u524d\u6700\u4f4e\u8986\u76d6\u7387 "}
+                {t("btCoverageCurrentMin")}
                 {coverageWarning.summary.min_coverage_pct ?? 0}%
-                {"\u3002"}
+                {"。"}
               </span>
               {coverageWarning.issues.slice(0, 3).map((issue) => (
                 <span key={issue.symbol_id} className="panel-meta">
                   {(issue.symbol || issue.symbol_id)} {issue.name ? `(${issue.name})` : ""}
-                  {". "}
-                  {"\uff1a\u8bc4\u5206 "}
+                  {t("btCoverageIssueScore")}
                   {issue.score_days}
-                  {" / \u4ea4\u6613\u65e5 "}
+                  {t("btCoverageIssueBar")}
                   {issue.bar_days}
-                  {"\uff0c\u7f3a\u5c11 "}
+                  {t("btCoverageIssueMissing")}
                   {issue.missing_days}
-                  {" \u5929"}
+                  {t("btCoverageIssueDays")}
                 </span>
               ))}
             </div>

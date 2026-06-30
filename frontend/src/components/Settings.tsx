@@ -3,10 +3,11 @@ import { useApp } from "../context/AppContext";
 import { t, DOT } from "../i18n";
 import { statPct, pnlClass, clamp } from "../utils/format";
 import { Input, InputNumber, Checkbox, Button, Space, Card, Form } from "antd";
-import { DatabaseOutlined, FunctionOutlined, SettingOutlined } from "@ant-design/icons";
+import { DatabaseOutlined, FunctionOutlined, SettingOutlined, SyncOutlined } from "@ant-design/icons";
 import DbConfigSection from "./DbConfigSection";
 import CustomIndicatorSettings from "./CustomIndicatorSettings";
 import DiscoveryPlanSettings from "./DiscoveryPlanSettings";
+import HistoryInitSection from "./HistoryInitSection";
 
 export default function Settings() {
   const ctx = useApp();
@@ -15,10 +16,10 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "db">(() => {
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "db">(() => {
     if (typeof window === "undefined") return "rules";
     const stored = window.localStorage.getItem("settings_active_section");
-    return stored === "rules" || stored === "indicators" || stored === "db" ? stored : "rules";
+    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "db" ? stored : "rules";
   });
 
   useEffect(() => {
@@ -150,6 +151,15 @@ export default function Settings() {
           >
             <span className="settings-nav-icon"><FunctionOutlined /></span>
             <span className="settings-nav-copy">{t("tabIndicators")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "history" ? "active" : ""}`}
+            aria-current={activeSection === "history" ? "page" : undefined}
+            onClick={() => setActiveSection("history")}
+          >
+            <span className="settings-nav-icon"><SyncOutlined /></span>
+            <span className="settings-nav-copy">{t("histSettingsNav")}</span>
           </button>
           <button
             type="button"
@@ -307,6 +317,13 @@ export default function Settings() {
               </section>
             </div>
           )}
+          {activeSection === "history" && (
+            <div className="settings-tab-container" data-settings-content="settings-history">
+              <section className="band">
+                <HistoryInitSection />
+              </section>
+            </div>
+          )}
           {activeSection === "db" && (
             <div className="settings-tab-container" data-settings-content="settings-db">
               <section className="band">
@@ -319,4 +336,7 @@ export default function Settings() {
     </div>
   );
 }
+
+
+
 

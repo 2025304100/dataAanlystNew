@@ -24,18 +24,18 @@ export interface Score {
   stage: string;
   action: string;
   priority_score: number;
-  // 闂傚倷娴囬崑鎰偓鍏哥矙婵″爼宕ㄩ婊冩槬闂備浇宕垫慨鏉懨洪妶鍥ｅ亾濮樼厧澧寸€规洝顫夐幆鏃堝Ω閵壯屾Т闂備胶纭堕崜婵堢矙韫囨稑鐒?
+  // 机会分拆解：各维度子分数
   trend_score?: number;
   momentum_score?: number;
   volatility_score?: number;
   liquidity_score?: number;
   breadth_score?: number;
   event_score?: number;
-  // 闂傚倷绀侀幖顐﹀疮椤愶絾娅犻幖娣妼绾惧鏌ㄥ┑鍡樺閻庢碍宀搁弻娑㈠即閵娿儰绨婚梺璇查椤兘寮诲☉銏犵闁瑰鍎愬Λ锕傛⒑闂堟稒顥滅紒澶婄秺瀵偄顓兼径濠囧敹闂佺粯鏌ㄩ幗婊堝储閹邦厾绡€闁冲皝鍋撻柛娑卞幖婢瑰绱?
+  // 机会评分组成：突破、回落、过热惩罚及数据可信度
   breakout_score?: number;
   pullback_score?: number;
   overheat_penalty?: number;
-  // 闂傚倷娴囧銊╂嚄閼稿灚娅犳俊銈傚亾闁伙絽鐏氱粭鐔煎焵椤掆偓閻ｇ兘鏁愭径妯绘櫖濠电偛妫楀ù椋庣不濮樿埖鐓欓柤鍦瑜把囨偣娓氬﹦鎮兼俊鍙夊姇椤?-4.3闂?
+  // 数据可信度评分范围约 -4.3 ~ 0，来源权威性越高分数越高
   data_credibility?: number;
   created_at?: string;
 }
@@ -569,9 +569,9 @@ export interface MarketDataUpdateResponse {
   };
 }
 
-// 闂傚倷绀佺壕顓㈠磿閵堝绀夐煫鍥ㄧ☉閻ら箖鏌＄仦璇插姎闁绘挻鐩弻鐔兼嚋椤掆偓婵¤姤绻涢崨顔剧煉闁哄苯绉归幃婊兾熼崫鍕垫綂闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁?
-//  闂備浇宕甸崑鐐电矙閹达箑瀚夋い鎺戝绾惧潡鐓崶銊﹀皑婵℃彃鐗撻弻娑㈩敃閵堝懏鐎虹紓?(Market News / Market Events)
-// 闂傚倷绀佺壕顓㈠磿閵堝绀夐煫鍥ㄧ☉閻ら箖鏌＄仦璇插姎闁绘挻鐩弻鐔兼嚋椤掆偓婵¤姤绻涢崨顔剧煉闁哄苯绉归幃婊兾熼崫鍕垫綂闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁?
+// 行情消息/市场事件数据结构
+// 汇总影响大盘及期货行情的重大消息（Market News / Market Events）
+// 每条消息包含影响范围、级别、情绪、来源等维度的专业评价
 
 export interface MarketEvent {
   id: number;
@@ -579,13 +579,13 @@ export interface MarketEvent {
   summary: string | null;
   impact_scope: string;       // macro_policy | sector_dynamics | international | breaking | fund_flow | sentiment | other
   importance_level: number;   // 1-5
-  affected_market: string;     // A闂?| 濠电姷鏁搁崑鐐哄箹閳哄懎鍨傞柣銏㈩焾绾?| 缂傚倸鍊搁崐绋棵洪妶鍜佹僵闁挎洖鍊哥壕?
+  affected_market: string;     // A股 | 港股 | 美股
   affected_sectors: string | null;
   affected_symbols: string | null;
   sentiment: string;          // positive | negative | neutral
   source: string;             // cctv | baidu | baidu-report | manual | ...
   source_url: string | null;
-  is_manual: number;          // 0=闂傚倷鑳堕崢褔銆冩惔銏㈩洸婵犲﹤瀚崣蹇涙煃閸濆嫭鍣洪柣鎾冲€块弻娑㈠Ψ椤旂厧顫梺? 1=闂傚倷绀佺紞濠傤焽瑜旈、鏍川椤旇棄寮块梺鍐叉惈鐎氥劍绂嶈ぐ鎺撶厸闁搞儮鏅涙禒婊呪偓?
+  is_manual: number;          // 0=系统自动采集的消息 1=手动录入的消息
   published_at: string | null;
   expires_at: string | null;
   created_at: string;
@@ -779,7 +779,7 @@ export interface BacktestRun {
   summary?: BacktestSummary;
 }
 
-// 闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞?闂傚倷绀侀幖顐λ囬锕€鐒垫い鎺嗗亾鐎殿喖鐖奸、鏇熺鐎ｎ偆鍘搁悗骞垮劚濡鎮￠埀顒傜磽娴ｄ粙鍝洪柣? 闂傚倷鐒﹂幃鍫曞磿閹惰棄纾婚柣鎰暩閻牓鎮楅棃娑欏暈闁哥姴妫濋弻娑㈠即閵娿儰绨婚梺璇茬箳閸犳牠寮婚妸銉㈡婵妫欏瓭闂備浇銆€閸嬫捇鏌曡箛瀣偓鏇㈡偂濮椻偓閺屽秷顧侀柛鎾跺枛瀹曟椽鎮欓崫鍕姦濡炪倖甯掔€氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻?
+// 自定义指标参数定义与回测条件字段映射
 
 
 export interface CustomIndicatorParamDef {
@@ -906,7 +906,7 @@ export interface ConditionFieldDef {
   side?: "buy" | "sell" | "both";
 }
 
-// 闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞?闂傚倷娴囧銊╂嚄閼稿灚娅犳俊銈傚亾闁伙絽鐏氶幏鍛喆閸曨偄濡抽梻浣筋潐瀹曟﹢顢氳閺侇喖鐣烽崶鈺冿紳?闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞存粓绠栧娲礃閹绘帒杈呴梺绋款儐閹瑰洭寮诲澶婄濠㈣泛锕ｆ竟鏇㈡⒒娴ｇ鏆遍柛妯荤矒瀹曟垿骞樼紒妯煎帗闂佺绻愰ˇ顖涚妤ｅ啯鈷戦柛鎰絻鐢劑鏌涚€ｎ偅宕岄柡灞界Ч瀹曟寰勬繝浣割棜闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞存粓绠栧娲礃閹绘帒杈呴梺绋款儐閹瑰洭寮诲澶婄濠㈣泛锕ｆ竟鏇㈡⒒娴ｇ鏆遍柛妯荤矒瀹曟垿骞樼紒妯煎帗闂佺绻愰ˇ顖涚妤ｅ啯鈷戦柛鎰絻鐢劑鏌涚€ｎ偅宕岄柡灞界Ч瀹曟寰勬繝浣割棜闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞存粓绠栧娲礃閹绘帒杈呴梺绋款儐閹瑰洭寮诲澶婄濠㈣泛锕ｆ竟鏇㈡⒒娴ｇ鏆遍柛妯荤矒瀹曟垿骞樼紒妯煎帗闂佺绻愰ˇ顖涚妤ｅ啯鈷戦柛鎰絻鐢劑鏌涚€ｎ偅宕岄柡灞界Ч瀹曟寰勬繝浣割棜闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞存粓绠栧娲礃閹绘帒杈呴梺绋款儐閹瑰洭寮诲澶婄濠㈣泛锕ｆ竟鏇㈡⒒娴ｇ鏆遍柛妯荤矒瀹曟垿骞樼紒妯煎帗闂佺绻愰ˇ顖涚妤ｅ啯鈷戦柛鎰絻鐢劑鏌涚€ｎ偅宕岄柡灞界Ч瀹曟寰勬繝浣割棜闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞存粓绠栧娲礃閹绘帒杈呴梺绋款儐閹瑰洭寮诲澶婄濠㈣泛锕ｆ竟鏇㈡⒒娴ｇ鏆遍柛妯荤矒瀹曟垿骞樼紒妯煎帗闂佺绻愰ˇ顖涚妤ｅ啯鈷戦柛鎰絻鐢劑鏌涚€ｎ偅宕岄柡灞界Ч瀹曟寰勬繝浣割棜闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞?
+// 数据库配置：MySQL 远程连接参数
 
 export interface MySQLConfig {
   host: string;
@@ -956,6 +956,20 @@ export interface HistoryInitializationSummary {
   score_days_completed: number;
 }
 
+export interface HistoryInitializationRunRecord {
+  task_id?: string | null;
+  status: "idle" | "running" | "completed" | "failed";
+  preset: "1m" | "1q" | "1y" | "3y";
+  adjust: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration_seconds?: number | null;
+  message?: string | null;
+  summary: HistoryInitializationSummary;
+}
+
 export interface HistoryInitializationTask {
   task_id?: string | null;
   status: "idle" | "running" | "completed" | "failed";
@@ -967,8 +981,10 @@ export interface HistoryInitializationTask {
   message?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
+  duration_seconds?: number | null;
   stages: HistoryInitializationStage[];
   summary: HistoryInitializationSummary;
+  recent_runs?: HistoryInitializationRunRecord[];
 }
 
 export interface BacktestCoverageIssue {
@@ -997,3 +1013,4 @@ export interface BacktestCoverageWarning {
   };
   issues: BacktestCoverageIssue[];
 }
+

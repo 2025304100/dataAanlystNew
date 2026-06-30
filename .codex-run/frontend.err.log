@@ -1,262 +1,25 @@
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Internal server error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-  Plugin: vite:esbuild
-  File: D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101
-  
-  Expected ";" but found "n"
-  28 |      if (!response.ok) {
-  29 |        const detail = payload.detail || payload.message || response.statusText;
-  30 |        const msg = typeof detail === "string" ? detail : detail?.message || JSON.stringify(detail);`r`n      const error = new Error(msg) as Error & { detail?: any };`r`n      error.detail = detail;`r`n      throw error;
-     |                                                                                                       ^
-  31 |      }
-  32 |      return payload as T;
-  
-      at failureErrorWithLog (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:1472:15)
-      at D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:755:50
-      at responseCallbacks.<computed> (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:622:9)
-      at handleIncomingPacket (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:677:12)
-      at Socket.readFromStdout (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:600:7)
-      at Socket.emit (node:events:519:28)
-      at addChunk (node:internal/streams/readable:559:12)
-      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
-      at Readable.push (node:internal/streams/readable:390:5)
-      at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
-13:15:13 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:13 [vite] Internal server error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-  Plugin: vite:esbuild
-  File: D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101
-  
-  Expected ";" but found "n"
-  28 |      if (!response.ok) {
-  29 |        const detail = payload.detail || payload.message || response.statusText;
-  30 |        const msg = typeof detail === "string" ? detail : detail?.message || JSON.stringify(detail);`r`n      const error = new Error(msg) as Error & { detail?: any };`r`n      error.detail = detail;`r`n      throw error;
-     |                                                                                                       ^
-  31 |      }
-  32 |      return payload as T;
-  
-      at failureErrorWithLog (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:1472:15)
-      at D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:755:50
-      at responseCallbacks.<computed> (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:622:9)
-      at handleIncomingPacket (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:677:12)
-      at Socket.readFromStdout (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:600:7)
-      at Socket.emit (node:events:519:28)
-      at addChunk (node:internal/streams/readable:559:12)
-      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
-      at Readable.push (node:internal/streams/readable:390:5)
-      at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Internal server error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-  Plugin: vite:esbuild
-  File: D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101
-  
-  Expected ";" but found "n"
-  28 |      if (!response.ok) {
-  29 |        const detail = payload.detail || payload.message || response.statusText;
-  30 |        const msg = typeof detail === "string" ? detail : detail?.message || JSON.stringify(detail);`r`n      const error = new Error(msg) as Error & { detail?: any };`r`n      error.detail = detail;`r`n      throw error;
-     |                                                                                                       ^
-  31 |      }
-  32 |      return payload as T;
-  
-      at failureErrorWithLog (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:1472:15)
-      at D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:755:50
-      at responseCallbacks.<computed> (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:622:9)
-      at handleIncomingPacket (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:677:12)
-      at Socket.readFromStdout (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:600:7)
-      at Socket.emit (node:events:519:28)
-      at addChunk (node:internal/streams/readable:559:12)
-      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
-      at Readable.push (node:internal/streams/readable:390:5)
-      at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
-13:15:40 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-13:15:40 [vite] Internal server error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101: ERROR: Expected ";" but found "n"
-  Plugin: vite:esbuild
-  File: D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:30:101
-  
-  Expected ";" but found "n"
-  28 |      if (!response.ok) {
-  29 |        const detail = payload.detail || payload.message || response.statusText;
-  30 |        const msg = typeof detail === "string" ? detail : detail?.message || JSON.stringify(detail);`r`n      const error = new Error(msg) as Error & { detail?: any };`r`n      error.detail = detail;`r`n      throw error;
-     |                                                                                                       ^
-  31 |      }
-  32 |      return payload as T;
-  
-      at failureErrorWithLog (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:1472:15)
-      at D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:755:50
-      at responseCallbacks.<computed> (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:622:9)
-      at handleIncomingPacket (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:677:12)
-      at Socket.readFromStdout (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:600:7)
-      at Socket.emit (node:events:519:28)
-      at addChunk (node:internal/streams/readable:559:12)
-      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
-      at Readable.push (node:internal/streams/readable:390:5)
-      at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Internal server error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-  Plugin: vite:esbuild
-  File: D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16
-  
-  Expected identifier but found "`${"
-  121|  
-  122|    // Scans  createScanRun: (payload: any) =>
-  123|      requestJson(`${API}/scans/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
-     |                  ^
-  124|  
-  125|    // Scores
-  
-      at failureErrorWithLog (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:1472:15)
-      at D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:755:50
-      at responseCallbacks.<computed> (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:622:9)
-      at handleIncomingPacket (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:677:12)
-      at Socket.readFromStdout (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:600:7)
-      at Socket.emit (node:events:519:28)
-      at addChunk (node:internal/streams/readable:559:12)
-      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
-      at Readable.push (node:internal/streams/readable:390:5)
-      at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
-13:15:55 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-13:15:55 [vite] Internal server error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-  Plugin: vite:esbuild
-  File: D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16
-  
-  Expected identifier but found "`${"
-  121|  
-  122|    // Scans  createScanRun: (payload: any) =>
-  123|      requestJson(`${API}/scans/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
-     |                  ^
-  124|  
-  125|    // Scores
-  
-      at failureErrorWithLog (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:1472:15)
-      at D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:755:50
-      at responseCallbacks.<computed> (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:622:9)
-      at handleIncomingPacket (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:677:12)
-      at Socket.readFromStdout (D:\ai_project\dataAanlystNew\frontend\node_modules\esbuild\lib\main.js:600:7)
-      at Socket.emit (node:events:519:28)
-      at addChunk (node:internal/streams/readable:559:12)
-      at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
-      at Readable.push (node:internal/streams/readable:390:5)
-      at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
-13:17:57 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-15:53:18 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"
-15:54:07 [vite] Internal server error: D:\ai_project\dataAanlystNew\frontend\src\components\BacktestConfig.tsx: Missing semicolon. (86:58)
+21:59:39 [vite] Internal server error: D:\ai_project\dataAanlystNew\frontend\src\components\Settings.tsx: Missing semicolon. (9:63)
 
-  84 |   const [saveModalOpen, setSaveModalOpen] = useState(false);
-  85 |   const [templateName, setTemplateName] = useState("");
-> 86 |   const [templateDesc, setTemplateDesc] = useState("");`r`n  const [coverageWarning, setCoverageWarning] = useState<BacktestCoverageWarning | null>(null);
-     |                                                           ^
-  87 |
-  88 |   const disabled = useMemo(() => !portfolioId || !activeSymbolId || !range?.[0] || !range?.[1], [portfolioId, activeSymbolId, range]);
-  89 |   const selectedTemplate = useMemo(
+   7 | import DbConfigSection from "./DbConfigSection";
+   8 | import CustomIndicatorSettings from "./CustomIndicatorSettings";
+>  9 | import DiscoveryPlanSettings from "./DiscoveryPlanSettings";`r`nimport HistoryInitSection from "./HistoryInitSection";
+     |                                                                ^
+  10 |
+  11 | export default function Settings() {
+  12 |   const ctx = useApp();
   Plugin: vite:react-babel
-  File: D:/ai_project/dataAanlystNew/frontend/src/components/BacktestConfig.tsx:86:58
-  84 |    const [saveModalOpen, setSaveModalOpen] = useState(false);
-  85 |    const [templateName, setTemplateName] = useState("");
-  86 |    const [templateDesc, setTemplateDesc] = useState("");`r`n  const [coverageWarning, setCoverageWarning] = useState<BacktestCoverageWarning | null>(null);
-     |                                                            ^
-  87 |  
-  88 |    const disabled = useMemo(() => !portfolioId || !activeSymbolId || !range?.[0] || !range?.[1], [portfolioId, activeSymbolId, range]);
+  File: D:/ai_project/dataAanlystNew/frontend/src/components/Settings.tsx:9:63
+  7  |  import DbConfigSection from "./DbConfigSection";
+  8  |  import CustomIndicatorSettings from "./CustomIndicatorSettings";
+  9  |  import DiscoveryPlanSettings from "./DiscoveryPlanSettings";`r`nimport HistoryInitSection from "./HistoryInitSection";
+     |                                                                 ^
+  10 |  
+  11 |  export default function Settings() {
       at constructor (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:365:19)
       at TypeScriptParserMixin.raise (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6616:19)
       at TypeScriptParserMixin.semicolon (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6912:10)
       at TypeScriptParserMixin.parseExpressionStatement (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:13302:10)
       at TypeScriptParserMixin.parseStatementContent (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12916:19)
-      at TypeScriptParserMixin.parseStatementContent (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9525:18)
-      at TypeScriptParserMixin.parseStatementLike (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12784:17)
-      at TypeScriptParserMixin.parseStatementListItem (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12764:17)
-      at TypeScriptParserMixin.parseBlockOrModuleBlockBody (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:13333:61)
-      at TypeScriptParserMixin.parseBlockBody (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:13326:10)
-      at TypeScriptParserMixin.parseBlock (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:13314:10)
-      at TypeScriptParserMixin.parseFunctionBody (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12117:24)
-      at TypeScriptParserMixin.parseFunctionBodyAndFinish (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12103:10)
-      at TypeScriptParserMixin.parseFunctionBodyAndFinish (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9189:18)
-      at D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:13462:12
-      at TypeScriptParserMixin.withSmartMixTopicForbiddingContext (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12420:14)
-      at TypeScriptParserMixin.parseFunction (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:13461:10)
-      at TypeScriptParserMixin.parseExportDefaultExpression (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:13924:19)
-      at TypeScriptParserMixin.parseExportDefaultExpression (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9419:18)
-      at TypeScriptParserMixin.parseExport (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:13845:25)
-      at TypeScriptParserMixin.parseExport (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9402:20)
-      at TypeScriptParserMixin.parseStatementContent (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12895:27)
       at TypeScriptParserMixin.parseStatementContent (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9525:18)
       at TypeScriptParserMixin.parseStatementLike (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12784:17)
       at TypeScriptParserMixin.parseModuleItem (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12761:17)
@@ -284,5 +47,3 @@ D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected 
       at step (D:\ai_project\dataAanlystNew\frontend\node_modules\gensync\index.js:287:14)
       at D:\ai_project\dataAanlystNew\frontend\node_modules\gensync\index.js:273:13
       at async.call.result.err.err (D:\ai_project\dataAanlystNew\frontend\node_modules\gensync\index.js:223:11)
-15:56:09 [vite] Pre-transform error: Transform failed with 1 error:
-D:/ai_project/dataAanlystNew/frontend/src/api/client.ts:123:16: ERROR: Expected identifier but found "`${"

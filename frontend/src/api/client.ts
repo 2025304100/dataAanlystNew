@@ -109,6 +109,16 @@ export const api = {
       timeoutMs: 60000,
     }),
 
+  // Async sync tasks (heartbeat polling)
+  createMarketDataSyncTask: (payload: any) =>
+    requestJson<any>(`${API}/market-data/sync-tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  listMarketDataSyncTasks: (limit: number = 10) =>
+    requestJson<any[]>(`${API}/market-data/sync-tasks?limit=${limit}`),
+  getMarketDataSyncTask: (taskId: string) =>
+    requestJson<any>(`${API}/market-data/sync-tasks/${taskId}`),
+  cancelMarketDataSyncTask: (taskId: string) =>
+    requestJson<any>(`${API}/market-data/sync-tasks/${taskId}/cancel`, { method: "POST" }),
+
   startHistoryInitialization: (payload: { preset: string; adjust?: string; asset_types?: string[] }) =>
     requestJson<any>(`${API}/market-data/initialize-history`, {
       method: "POST",
@@ -118,18 +128,26 @@ export const api = {
     }),
   getHistoryInitializationStatus: () =>
     requestJson<any>(`${API}/market-data/initialize-history/status`),
+  cancelHistoryInitialization: () =>
+    requestJson<any>(`${API}/market-data/initialize-history/cancel`, {
+      method: "POST",
+    }),
+  cleanupHistoryRecords: (keep: number) =>
+    requestJson<any>(`${API}/market-data/initialize-history/cleanup?keep=${keep}`, {
+      method: "POST",
+    }),
 
   // Scans
   createScanRun: (payload: any) =>
-    requestJson(`${API}/scans/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+    requestJson(`${API}/scans/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 60000 }),
 
   // Scores
   calculateScores: (payload: any) =>
-    requestJson(`${API}/scores/calculate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+    requestJson(`${API}/scores/calculate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 120000 }),
 
   // Trade setups
   generateTradeSetup: (payload: any) =>
-    requestJson(`${API}/trade-setups/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+    requestJson(`${API}/trade-setups/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 60000 }),
   saveTradeSetupTranches: (setupId: number, payload: any) =>
     requestJson(`${API}/trade-setups/${setupId}/tranches`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
 
@@ -303,11 +321,11 @@ export const api = {
     requestJson<any>(`${API}/settings/discovery-plans/${id}`, { method: "DELETE" }),
   // Backup & Export
   backupDatabase: () =>
-    requestJson<any>(`${API}/system/backup`, { method: "POST" }),
+    requestJson<any>(`${API}/system/backup`, { method: "POST", timeoutMs: 60000 }),
   listBackups: () =>
     requestJson<any>(`${API}/system/backups`),
   restoreDatabase: (backupPath: string) =>
-    requestJson<any>(`${API}/system/restore?backup_path=${encodeURIComponent(backupPath)}`, { method: "POST" }),
+    requestJson<any>(`${API}/system/restore?backup_path=${encodeURIComponent(backupPath)}`, { method: "POST", timeoutMs: 120000 }),
   exportData: (dataType: string, portfolioId: number = 1) =>
     requestJson<any>(`${API}/system/export/${dataType}?portfolio_id=${portfolioId}`),
 };

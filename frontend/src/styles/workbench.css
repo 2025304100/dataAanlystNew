@@ -1293,9 +1293,9 @@ body.detail-modal-open {
   background: #fffaf0;
 }
 
-/* ════════════════════════════════════════════════
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
    Score Radar + Breakdown Grid Layout
-   ════════════════════════════════════════════════ */
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .credibility-warning {
   display: flex;
@@ -1474,9 +1474,9 @@ body.detail-modal-open {
   }
 }
 
-/* ════════════════════════════════════════════════
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
    Timing Score Breakdown Layout
-   ════════════════════════════════════════════════ */
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 .timing-breakdown-grid {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(200px, 1fr);
@@ -1497,7 +1497,7 @@ body.detail-modal-open {
 .timing-header,
 .timing-title,
 .timing-total {
-  /* 复用 breakdown-header 结构 */
+  /* 澶嶇敤 breakdown-header 缁撴瀯 */
 }
 
 .timing-header {
@@ -1707,9 +1707,9 @@ body.detail-modal-open {
   }
 }
 
-/* ════════════════════════════════════════════════
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
    Discovery Pool Tabs (P1-3)
-   ════════════════════════════════════════════════ */
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 .pool-tabs {
   display: flex;
   gap: 8px;
@@ -1762,7 +1762,7 @@ body.detail-modal-open {
   color: #fff;
 }
 
-/* ── 候选行：reason_tags + 可信度 ── */
+/* 鈹€鈹€ 鍊欓€夎锛歳eason_tags + 鍙俊搴?鈹€鈹€ */
 
 .coverage-hint {
   padding: 8px 14px;
@@ -2003,7 +2003,7 @@ body.detail-modal-open {
   white-space: nowrap;
 }
 
-/* ── Drawing tools ────────────────────────── */
+/* 鈹€鈹€ Drawing tools 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 .drawing-divider {
   display: inline-block;
   width: 1px;
@@ -2929,10 +2929,10 @@ td .symbol-name {
 }
 
 /* ============================================================
-   INVESTMENT CENTER - 投资中心整合视图样式
+   INVESTMENT CENTER - 鎶曡祫涓績鏁村悎瑙嗗浘鏍峰紡
    ============================================================ */
 
-/* ── 投资中心容器 ── */
+/* 鈹€鈹€ 鎶曡祫涓績瀹瑰櫒 鈹€鈹€ */
 .investment-center {
   display: flex;
   flex-direction: column;
@@ -2947,7 +2947,7 @@ td .symbol-name {
   justify-content: center;
 }
 
-/* ── 桌面端：顶部搜索 + 全宽内容 ── */
+/* 鈹€鈹€ 妗岄潰绔細椤堕儴鎼滅储 + 鍏ㄥ鍐呭 鈹€鈹€ */
 .ic__desktop-layout {
   display: flex;
   flex: 1;
@@ -2955,12 +2955,12 @@ td .symbol-name {
   gap: 0;
 }
 
-/* 全宽模式：改为纵向排列 */
+/* 鍏ㄥ妯″紡锛氭敼涓虹旱鍚戞帓鍒?*/
 .ic__layout--fullwidth {
   flex-direction: column;
 }
 
-/* 顶部搜索栏 - 独占一行 */
+/* 椤堕儴鎼滅储鏍?- 鐙崰涓€琛?*/
 .ic__top-search {
   position: relative;
   padding: 12px 20px 8px;
@@ -2994,7 +2994,7 @@ td .symbol-name {
   overflow-y: auto;
 }
 
-/* 快捷入口条（搜索下方标签） */
+/* 蹇嵎鍏ュ彛鏉★紙鎼滅储涓嬫柟鏍囩锛?*/
 .ic__quick-bar {
   display: flex;
   flex-wrap: wrap;
@@ -3005,7 +3005,7 @@ td .symbol-name {
   flex-shrink: 0;
 }
 
-/* 搜索栏（移动端/内嵌模式） */
+/* 鎼滅储鏍忥紙绉诲姩绔?鍐呭祵妯″紡锛?*/
 .ic__search-bar {
   position: relative;
   margin-bottom: 8px;
@@ -3021,7 +3021,7 @@ td .symbol-name {
   left: 10px !important;
 }
 
-/* 搜索下拉结果 */
+/* 鎼滅储涓嬫媺缁撴灉 */
 .ic__search-dropdown {
   position: absolute;
   top: 100%;
@@ -3070,7 +3070,7 @@ td .symbol-name {
   text-overflow: ellipsis;
 }
 
-/* 搜索提示 */
+/* 鎼滅储鎻愮ず */
 .ic__search-hint {
   text-align: center;
   padding: 16px 12px;
@@ -3078,7 +3078,7 @@ td .symbol-name {
   font-size: 12px;
 }
 
-/* ── 快捷入口（桌面端列表）── */
+/* 鈹€鈹€ 蹇嵎鍏ュ彛锛堟闈㈢鍒楄〃锛夆攢鈹€ */
 .ic__section-label {
   font-size: 11px;
   font-weight: 600;
@@ -3135,7 +3135,7 @@ td .symbol-name {
   text-overflow: ellipsis;
 }
 
-/* ── 移动端快捷入口（标签式）── */
+/* 鈹€鈹€ 绉诲姩绔揩鎹峰叆鍙ｏ紙鏍囩寮忥級鈹€鈹€ */
 .ic__quick-chips {
   display: flex;
   flex-wrap: wrap;
@@ -3167,7 +3167,7 @@ td .symbol-name {
   font-weight: 600;
 }
 
-/* ── 主内容区：交易计划 + K线图 ── */
+/* 鈹€鈹€ 涓诲唴瀹瑰尯锛氫氦鏄撹鍒?+ K绾垮浘 鈹€鈹€ */
 .ic__main-content {
   flex: 1;
   min-width: 0;
@@ -3179,7 +3179,7 @@ td .symbol-name {
   gap: 16px;
 }
 
-/* 标的信息头部 */
+/* 鏍囩殑淇℃伅澶撮儴 */
 .ic__symbol-header {
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
@@ -3197,7 +3197,7 @@ td .symbol-name {
   font-size: 11px;
 }
 
-/* ── 内容分区（交易计划 / 图表）── */
+/* 鈹€鈹€ 鍐呭鍒嗗尯锛堜氦鏄撹鍒?/ 鍥捐〃锛夆攢鈹€ */
 .ic__section {
   margin: 0;
 }
@@ -3222,7 +3222,7 @@ td .symbol-name {
   color: var(--ink);
 }
 
-/* 图表区域 */
+/* 鍥捐〃鍖哄煙 */
 .ic__chart-section .detail-card-head {
   display: flex;
   justify-content: space-between;
@@ -3253,7 +3253,7 @@ td .symbol-name {
   background: rgba(255, 252, 245, 0.6);
 }
 
-/* ── 浮动展开按钮 ── */
+/* 鈹€鈹€ 娴姩灞曞紑鎸夐挳 鈹€鈹€ */
 .ic__floating-btn {
   position: fixed;
   left: 12px;
@@ -3282,7 +3282,7 @@ td .symbol-name {
   50% { transform: translateY(-3px); }
 }
 
-/* ── 移动端布局 ── */
+/* 鈹€鈹€ 绉诲姩绔竷灞€ 鈹€鈹€ */
 .ic__mobile-layout {
   display: flex;
   flex-direction: column;
@@ -3293,7 +3293,7 @@ td .symbol-name {
   padding: 12px;
 }
 
-/* 移动端搜索栏 */
+/* 绉诲姩绔悳绱㈡爮 */
 .ic__mobile-layout .ic__search-bar {
   flex-shrink: 0;
 }
@@ -3307,7 +3307,7 @@ td .symbol-name {
   margin-top: 4px;
 }
 
-/* 移动端 section 间距 */
+/* 绉诲姩绔?section 闂磋窛 */
 .ic__mobile-layout .ic__section {
   margin-bottom: 4px;
 }
@@ -3316,9 +3316,9 @@ td .symbol-name {
   padding: 12px;
 }
 
-/* ── 响应式断点 ── */
+/* 鈹€鈹€ 鍝嶅簲寮忔柇鐐?鈹€鈹€ */
 
-/* 平板横屏 (1024-1279px) */
+/* 骞虫澘妯睆 (1024-1279px) */
 @media (max-width: 1279px) and (min-width: 1024px) {
   .ic__main-content {
     padding: 12px 16px;
@@ -3329,18 +3329,18 @@ td .symbol-name {
   }
 }
 
-/* 移动端/平板竖屏 (≤1023px) */
+/* 绉诲姩绔?骞虫澘绔栧睆 (鈮?023px) */
 @media (max-width: 1023px) {
   .investment-center {
     min-height: auto;
   }
 
-  /* 隐藏桌面端布局 */
+  /* 闅愯棌妗岄潰绔竷灞€ */
   .ic__layout--fullwidth {
     display: none !important;
   }
 
-  /* 显示移动端布局 */
+  /* 鏄剧ず绉诲姩绔竷灞€ */
   .ic__mobile-layout {
     display: flex !important;
   }
@@ -3350,7 +3350,7 @@ td .symbol-name {
   }
 }
 
-/* 小手机 (≤640px) */
+/* 灏忔墜鏈?(鈮?40px) */
 @media (max-width: 640px) {
   .ic__mobile-layout {
     padding: 8px;
@@ -3372,9 +3372,9 @@ td .symbol-name {
   }
 }
 
-/* ══════════════════════════════════════════════════════════
-   风险仪表盘样式
-   ══════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   椋庨櫓浠〃鐩樻牱寮?
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .ic__risk-section {
   margin-bottom: 0;
@@ -3444,9 +3444,9 @@ td .symbol-name {
   white-space: nowrap;
 }
 
-/* ══════════════════════════════════════════════════════════
-   指标面板开关
-   ══════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   鎸囨爣闈㈡澘寮€鍏?
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .ic__indicator-toggles {
   display: flex;
@@ -3477,9 +3477,9 @@ td .symbol-name {
   font-weight: 600;
 }
 
-/* ══════════════════════════════════════════════════════════
-   副图容器 (MACD / RSI)
-   ══════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   鍓浘瀹瑰櫒 (MACD / RSI)
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .ic__charts-stack {
   display: flex;
@@ -3495,9 +3495,9 @@ td .symbol-name {
   overflow: hidden;
 }
 
-/* ══════════════════════════════════════════════════════════
-   分批执行时间轴
-   ══════════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   鍒嗘壒鎵ц鏃堕棿杞?
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .ic__tranche-timeline {
   display: flex;
@@ -3553,7 +3553,7 @@ td .symbol-name {
   line-height: 1.4;
 }
 
-/* 响应式：风险卡片在小屏幕上变两列 */
+/* 鍝嶅簲寮忥細椋庨櫓鍗＄墖鍦ㄥ皬灞忓箷涓婂彉涓ゅ垪 */
 @media (max-width: 1023px) {
   .ic__risk-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -3568,9 +3568,9 @@ td .symbol-name {
   }
 }
 
-/* ════════════════════════════════════════════════════
-   可折叠区块
-   ════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   鍙姌鍙犲尯鍧?
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 .ic__collapsible {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -3614,9 +3614,9 @@ td .symbol-name {
   transform: rotate(90deg);
 }
 
-/* ════════════════════════════════════════════════════
-   搜索增强：收藏星标 + 搜索历史
-   ════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   鎼滅储澧炲己锛氭敹钘忔槦鏍?+ 鎼滅储鍘嗗彶
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 .ic__fav-star {
   font-size: 16px;
   color: #d1d5db;
@@ -3657,9 +3657,9 @@ td .symbol-name {
   border-bottom: 1px solid rgba(31, 41, 51, 0.06);
 }
 
-/* ════════════════════════════════════════════════════
-   价格预警系统
-   ════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   浠锋牸棰勮绯荤粺
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 .ic__price-alerts {
   margin-bottom: 14px;
 }
@@ -3753,9 +3753,9 @@ td .symbol-name {
   color: var(--muted);
 }
 
-/* ════════════════════════════════════════════════════
-   图表入场价提示
-   ════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   鍥捐〃鍏ュ満浠锋彁绀?
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 .ic__entry-price-hint {
   display: inline-flex;
   align-items: center;
@@ -3893,9 +3893,9 @@ td .symbol-name {
   border-radius: 8px;
 }
 
-/* ════════════════════════════════════════
-   宏观数据 - 指标 Tooltip
-   ════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   瀹忚鏁版嵁 - 鎸囨爣 Tooltip
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 .macro__indicator-name {
   display: inline-flex;
   align-items: center;
@@ -3984,9 +3984,9 @@ td .symbol-name {
   color: #fbbf24;
 }
 
-/* ════════════════════════════════════════
-   宏观数据 - 市场脉搏摘要
-   ════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   瀹忚鏁版嵁 - 甯傚満鑴夋悘鎽樿
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 .macro-pulse-card {
   border-radius: 10px;
   overflow: hidden;
@@ -4073,7 +4073,7 @@ td .symbol-name {
 .macro__pulse--neutral .macro__pulse-score { color: #d97706; }
 .macro__pulse--bad .macro__pulse-score { color: #b42318; }
 
-/* 市场模式横幅 */
+/* 甯傚満妯″紡妯箙 */
 .macro__stance-banner {
   margin-top: 14px;
   padding: 12px 16px;
@@ -4259,9 +4259,9 @@ td .symbol-name {
   background-color: #fff !important;
 }
 
-/* ════════════════════════════════════════════════════
-   行情消息 Market News (.mn-*)
-   ════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   琛屾儏娑堟伅 Market News (.mn-*)
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .mn-page {
   display: flex;
@@ -4270,7 +4270,7 @@ td .symbol-name {
   width: 100%;
 }
 
-/* ── 头部 ── */
+/* 鈹€鈹€ 澶撮儴 鈹€鈹€ */
 .mn-hero {
   display: flex;
   align-items: flex-start;
@@ -4285,7 +4285,7 @@ td .symbol-name {
 .mn-subtitle { margin: 6px 0 0; color: #64748b; font-size: 13.5px; }
 .mn-alert { border-radius: 8px; }
 
-/* ── 筛选面板 ── */
+/* 鈹€鈹€ 绛涢€夐潰鏉?鈹€鈹€ */
 .mn-filter-panel { border-radius: 8px; border-color: rgba(31, 41, 55, 0.09); }
 .mn-filter-active { border-color: var(--accent) !important; color: var(--accent); }
 .mn-filter-grid {
@@ -4301,7 +4301,7 @@ td .symbol-name {
 }
 .mn-filter-item span { font-weight: 600; }
 
-/* ── Scope 维度卡片（带图标+颜色）── */
+/* 鈹€鈹€ Scope 缁村害鍗＄墖锛堝甫鍥炬爣+棰滆壊锛夆攢鈹€ */
 .mn-scope-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -4333,7 +4333,7 @@ td .symbol-name {
 .mn-scope-info strong { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mn-scope-count { font-size: 18px; font-weight: 800; }
 
-/* 各 scope 卡片主题色 */
+/* 鍚?scope 鍗＄墖涓婚鑹?*/
 .mn-scope--macro_policy     { border-left: 3px solid #b42318; }
 .mn-scope--macro_policy:hover,
 .mn-scope--macro_policy.active { background: rgba(180,35,24,0.05); }
@@ -4374,10 +4374,10 @@ td .symbol-name {
 .mn-scope--other.active { background: rgba(156,163,175,0.04); }
 .mn-scope--other .mn-scope-count { color: #9ca3af; }
 
-/* ── 消息列表 ── */
+/* 鈹€鈹€ 娑堟伅鍒楄〃 鈹€鈹€ */
 .mn-news-list { display: grid; gap: 10px; }
 
-/* 消息卡片基础 + 级别视觉差异 */
+/* 娑堟伅鍗＄墖鍩虹 + 绾у埆瑙嗚宸紓 */
 .mn-news-card {
   border-radius: 10px;
   border-color: rgba(31, 41, 55, 0.09);
@@ -4390,30 +4390,30 @@ td .symbol-name {
   border-color: rgba(15, 118, 110, 0.22);
 }
 
-/* 级别5：紧急 — 红色粗边框 + 浅红背景 */
+/* 绾у埆5锛氱揣鎬?鈥?绾㈣壊绮楄竟妗?+ 娴呯孩鑳屾櫙 */
 .mn-level-5 { border: solid 3px #b42318 !important; background: linear-gradient(135deg, rgba(180,35,24,0.03), rgba(255,255,255,0.95)); }
 .mn-level-5:hover { border-color: #991b1b !important; box-shadow: 0 8px 30px rgba(180,35,24,0.14) !important; }
 
-/* 级别4：重要 — 橙色粗边框 */
+/* 绾у埆4锛氶噸瑕?鈥?姗欒壊绮楄竟妗?*/
 .mn-level-4 { border: solid 3px #d97706 !important; background: linear-gradient(135deg, rgba(217,119,6,0.02), rgba(255,255,255,0.98)); }
 .mn-level-4:hover { border-color: #b45309 !important; box-shadow: 0 8px 30px rgba(217,119,6,0.12) !important; }
 
-/* 级别3：关注 — 蓝色边框 */
+/* 绾у埆3锛氬叧娉?鈥?钃濊壊杈规 */
 .mn-level-3 { border: solid 2px #2563eb !important; }
 .mn-level-3:hover { border-color: #1d4ed8 !important; }
 
-/* 卡片头部 */
+/* 鍗＄墖澶撮儴 */
 .mn-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 
-/* 标题 */
+/* 鏍囬 */
 .mn-title { margin: 0 0 6px; font-size: 15.5px; font-weight: 700; line-height: 1.45; color: #111827; }
 .mn-title-lvl5 { font-size: 17px; color: #b42318; }
 .mn-title-lvl4 { font-size: 16.5px; color: #9a3412; }
 
-/* 摘要 */
+/* 鎽樿 */
 .mn-summary { margin: 0; font-size: 13px; color: #475569; line-height: 1.55; }
 
-/* 展开详情面板 */
+/* 灞曞紑璇︽儏闈㈡澘 */
 .mn-detail-panel {
   margin-top: 12px;
   padding-top: 12px;
@@ -4422,7 +4422,7 @@ td .symbol-name {
 }
 .mn-detail-summary { margin-bottom: 12px; font-size: 13px; color: #334155; line-height: 1.65; }
 
-/* 影响评价区 */
+/* 褰卞搷璇勪环鍖?*/
 .mn-assessment {
   display: grid;
   gap: 6px;
@@ -4448,7 +4448,7 @@ td .symbol-name {
   margin: 4px 0;
 }
 
-/* 关键词标签 */
+/* 鍏抽敭璇嶆爣绛?*/
 .mn-keywords { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
 .mn-kw-label { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-right: 2px; }
 .mn-kw-tag { cursor: default; }
@@ -4462,22 +4462,22 @@ td .symbol-name {
   border-radius: 999px;
 }
 
-/* 底部元信息 */
+/* 搴曢儴鍏冧俊鎭?*/
 .mn-meta-footer { display: flex; align-items: center; gap: 10px; font-size: 12px; }
 .mn-source-link { color: var(--accent); font-weight: 600; text-decoration: none; margin-left: auto; }
 .mn-source-link:hover { text-decoration: underline; }
 
-/* 权威星级 */
+/* 鏉冨▉鏄熺骇 */
 .mn-credibility { font-size: 13px; letter-spacing: 2px; opacity: 0.85; }
 
-/* 空状态 & 底部统计 */
+/* 绌虹姸鎬?& 搴曢儴缁熻 */
 .mn-empty { border-radius: 8px; text-align: center; min-height: 240px; display: flex; align-items: center; justify-content: center; }
 .mn-footer-stats { text-align: right; font-size: 12.5px; padding: 4px 4px 0; }
 
-/* 动画 */
+/* 鍔ㄧ敾 */
 @keyframes mnFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-/* 响应式 */
+/* 鍝嶅簲寮?*/
 @media (max-width: 768px) {
   .mn-hero { flex-direction: column; }
   .mn-hero > div:last-child { width: 100%; }
@@ -4486,12 +4486,12 @@ td .symbol-name {
   .mn-scope-cards { grid-template-columns: repeat(2, 1fr); }
 }
 
-/* ════════════════════════════════════════
-   概念热点汇总面板 (.mn-concept-*) — 新版
-   板块级展示 + Tab切换
-   ════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   姒傚康鐑偣姹囨€婚潰鏉?(.mn-concept-*) 鈥?鏂扮増
+   鏉垮潡绾у睍绀?+ Tab鍒囨崲
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
-/* 全局 emoji 字体修复 */
+/* 鍏ㄥ眬 emoji 瀛椾綋淇 */
 .mn-concept-panel,
 .mn-scope-cards,
 .mn-hero {
@@ -4513,7 +4513,7 @@ td .symbol-name {
   font-weight: 400;
 }
 
-/* ── Tab 切换栏 ── */
+/* 鈹€鈹€ Tab 鍒囨崲鏍?鈹€鈹€ */
 .mn-tab-bar {
   display: flex;
   align-items: center;
@@ -4568,7 +4568,7 @@ td .symbol-name {
   background: linear-gradient(135deg, rgba(220,38,38,0.06), rgba(239,68,68,0.03));
 }
 
-/* ── 板块排行榜列表 ── */
+/* 鈹€鈹€ 鏉垮潡鎺掕姒滃垪琛?鈹€鈹€ */
 .mn-sector-list {
   display: grid;
   gap: 4px;
@@ -4587,7 +4587,7 @@ td .symbol-name {
   background: rgba(248,250,252,0.9);
 }
 
-/* 前三名高亮背景 */
+/* 鍓嶄笁鍚嶉珮浜儗鏅?*/
 .mn-sector--top0 { background: linear-gradient(90deg, rgba(251,191,36,0.1), transparent); }
 .mn-sector--top1 { background: linear-gradient(90deg, rgba(226,232,240,0.5), transparent); }
 .mn-sector--top2 { background: linear-gradient(90deg, rgba(254,243,199,0.4), transparent); }
@@ -4652,7 +4652,7 @@ td .symbol-name {
 .count-bull { color: #16a34a; }
 .count-bear { color: #dc2626; }
 
-/* 底部提示 */
+/* 搴曢儴鎻愮ず */
 .mn-panel-footer-hint {
   display: flex;
   justify-content: center;
@@ -4669,7 +4669,7 @@ td .symbol-name {
   box-shadow: 0 4px 20px rgba(31,41,51,0.05);
 }
 
-/* ── 头部 ── */
+/* 鈹€鈹€ 澶撮儴 鈹€鈹€ */
 .mn-concept-head {
   display: flex;
   align-items: center;
@@ -4689,7 +4689,7 @@ td .symbol-name {
   border: 1px solid rgba(15,118,110,0.15);
 }
 
-/* ── 热力排行条（横向条形图）── */
+/* 鈹€鈹€ 鐑姏鎺掕鏉★紙妯悜鏉″舰鍥撅級鈹€鈹€ */
 .mn-heat-bar-section { margin-bottom: 16px; }
 .mn-heat-label {
   display: block;
@@ -4719,7 +4719,7 @@ td .symbol-name {
 }
 .mn-heat-item:hover { background: rgba(255,255,255,0.7); }
 
-/* 前三名高亮背景 */
+/* 鍓嶄笁鍚嶉珮浜儗鏅?*/
 .mn-heat--top0 { background: rgba(251,191,36,0.12); border-radius: 4px; margin: 0 -4px; padding-left: 4px; padding-right: 4px; }
 .mn-heat--top1 { background: rgba(229,231,235,0.35); border-radius: 4px; margin: 0 -4px; padding-left: 4px; padding-right: 4px; }
 .mn-heat--top2 { background: rgba(250,204,21,0.08); border-radius: 4px; margin: 0 -4px; padding-left: 4px; padding-right: 4px; }
@@ -4771,7 +4771,7 @@ td .symbol-name {
   flex-shrink: 0;
 }
 
-/* ── 三列网格 ── */
+/* 鈹€鈹€ 涓夊垪缃戞牸 鈹€鈹€ */
 .mn-concept-grid {
   display: grid;
   grid-template-columns: 1fr 1.3fr 1fr;
@@ -4787,7 +4787,7 @@ td .symbol-name {
   min-height: 140px;
 }
 
-/* 列标题（带图标+颜色+计数角标）*/
+/* 鍒楁爣棰橈紙甯﹀浘鏍?棰滆壊+璁℃暟瑙掓爣锛?/
 .mn-col-header {
   display: flex;
   align-items: center;
@@ -4822,7 +4822,7 @@ td .symbol-name {
 .mn-col--red .mn-col-count { color: #b91c1c; background: rgba(220,38,38,0.06); border-color: rgba(220,38,38,0.15); }
 .mn-col--red { border-bottom-color: rgba(220,38,38,0.25); }
 
-/* ── 标签云（利好/风险概念用）── */
+/* 鈹€鈹€ 鏍囩浜戯紙鍒╁ソ/椋庨櫓姒傚康鐢級鈹€鈹€ */
 .mn-tag-cloud {
   display: flex;
   flex-wrap: wrap;
@@ -4866,7 +4866,7 @@ td .symbol-name {
   padding: 12px 0;
 }
 
-/* ── 情绪分布条形列表 ── */
+/* 鈹€鈹€ 鎯呯华鍒嗗竷鏉″舰鍒楄〃 鈹€鈹€ */
 .mn-sentiment-list { display: grid; gap: 5px; }
 .mn-sent-row {
   display: flex;
@@ -4907,7 +4907,7 @@ td .symbol-name {
 .mn-sent-ratio.up { color: #16a34a; }
 .mn-sent-ratio.down { color: #dc2626; }
 
-/* 响应式 */
+/* 鍝嶅簲寮?*/
 @media (max-width: 900px) {
   .mn-concept-grid { grid-template-columns: 1fr 1fr; }
   .mn-concept-col:last-child { grid-column: 1 / -1; }
@@ -4916,9 +4916,9 @@ td .symbol-name {
   .mn-concept-grid { grid-template-columns: 1fr; }
 }
 
-/* ════════════════════════════════════════
-   概念趋势图 (.mn-trend-*)
-   ════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   姒傚康瓒嬪娍鍥?(.mn-trend-*)
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .mn-trend-section {
   margin-top: 14px;
@@ -4948,7 +4948,7 @@ td .symbol-name {
   border: 1px solid rgba(148,163,184,0.2);
 }
 
-/* 图表整体布局：Y轴 | 图表区(X轴+网格) */
+/* 鍥捐〃鏁翠綋甯冨眬锛歒杞?| 鍥捐〃鍖?X杞?缃戞牸) */
 .mn-trend-chart {
   display: flex;
   gap: 6px;
@@ -4956,7 +4956,7 @@ td .symbol-name {
   min-height: 160px;
 }
 
-/* Y轴（概念名） */
+/* Y杞达紙姒傚康鍚嶏級 */
 .mn-trend-yaxis {
   flex-shrink: 0;
   display: grid;
@@ -4977,7 +4977,7 @@ td .symbol-name {
   border-right: 2px solid rgba(148,163,184,0.15);
 }
 
-/* 图表主体区域 */
+/* 鍥捐〃涓讳綋鍖哄煙 */
 .mn-trend-body {
   flex: 1;
   min-width: 300px;
@@ -4985,11 +4985,11 @@ td .symbol-name {
   gap: 2px;
 }
 
-/* X轴日期行 */
+/* X杞存棩鏈熻 */
 .mn-trend-xaxis {
   display: flex;
   gap: 0;
-  margin-left: 72px; /* 对齐 Y 轴宽度 */
+  margin-left: 72px; /* 瀵归綈 Y 杞村搴?*/
 }
 .mn-trend-xlabel {
   flex: 1;
@@ -5001,9 +5001,9 @@ td .symbol-name {
   white-space: nowrap;
 }
 
-/* 数据网格 */
+/* 鏁版嵁缃戞牸 */
 .mn-trend-grid {
-  display: contents; /* 让每行直接参与父级 grid 布局 */
+  display: contents; /* 璁╂瘡琛岀洿鎺ュ弬涓庣埗绾?grid 甯冨眬 */
 }
 .mn-trend-row {
   display: flex;
@@ -5012,7 +5012,7 @@ td .symbol-name {
   align-items: center;
 }
 
-/* 单元格 + 数据点 */
+/* 鍗曞厓鏍?+ 鏁版嵁鐐?*/
 .mn-trend-cell {
   flex: 1;
   height: 100%;
@@ -5301,9 +5301,9 @@ td .symbol-name {
   }
 }
 
-/* ════════════════════════════════════════════════════
-   P2 持仓管理 & 组合暴露
-   ════════════════════════════════════════════════════ */
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+   P2 鎸佷粨绠＄悊 & 缁勫悎鏆撮湶
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .holdings-section .holdings-grid {
   display: grid;
@@ -5554,9 +5554,9 @@ td .symbol-name {
   }
 }
 
-/* ════════════════════════════════════════
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
    P3 - Review Management Panel
-   ════════════════════════════════════════ */
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .review-panel {
   display: flex;
@@ -5648,9 +5648,9 @@ td .symbol-name {
   flex-wrap: wrap;
 }
 
-/* ════════════════════════════════════════
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
    P3 - Signal Validation Grid
-   ════════════════════════════════════════ */
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .signal-validation-grid {
   display: grid;
@@ -5703,9 +5703,9 @@ td .symbol-name {
   }
 }
 
-/* ════════════════════════════════════════
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
    P3 - Data Management Section
-   ════════════════════════════════════════ */
+   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
 
 .data-management-section {
   padding: 14px 16px;
@@ -6218,5 +6218,135 @@ td .symbol-name {
 
   .ic__tranche-edit-row {
     grid-template-columns: 1fr;
+  }
+}
+
+.settings-history-section {
+  display: grid;
+  gap: 16px;
+}
+
+.history-init-panel,
+.history-run-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.history-init-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.history-init-toolbar__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.history-init-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.history-init-overview-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.history-init-overview-card > span,
+.history-init-summary-grid > div > span,
+.history-run-item__head span,
+.history-run-item__meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.history-init-overview-card strong,
+.history-init-summary-grid > div > strong,
+.history-run-item__head strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.history-init-overview-card small,
+.history-run-item__message,
+.history-init-stage__message,
+.history-init-status-text {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.history-init-progress-wrap,
+.history-run-list,
+.history-init-stage-list {
+  display: grid;
+  gap: 12px;
+}
+
+.history-init-progress-head,
+.history-init-stage__head,
+.history-run-item__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-init-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.history-init-summary-grid > div,
+.history-init-stage,
+.history-run-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.history-run-item__head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.history-run-item__meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1100px) {
+  .history-init-overview-grid,
+  .history-init-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .history-init-overview-grid,
+  .history-init-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .history-init-toolbar {
+    align-items: stretch;
+  }
+
+  .history-init-toolbar__actions {
+    width: 100%;
   }
 }
