@@ -7,10 +7,11 @@ from collections import Counter
 from datetime import date, datetime, timezone
 from math import floor, sqrt
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.backtest import BacktestRun, BacktestTrade
+from app.models.custom_indicator import CustomIndicator
 from app.models.daily_bar import DailyBar
 from app.models.portfolio import Portfolio
 from app.models.score import Score
@@ -90,7 +91,7 @@ def _compute_price_context(bars: list[DailyBar], lookback_days: int) -> dict:
 
 
 def _compute_cost(price: float, quantity: float, side: str, config: dict) -> float:
-    """计算交易成本（佣金 + 印花税 + 滑点）"""
+    """Doc."""
     commission_rate = float(config.get("commission_rate", 0.0003))
     min_commission = float(config.get("min_commission", 5.0))
     stamp_tax_rate = float(config.get("stamp_tax_rate", 0.001))
@@ -115,7 +116,7 @@ def _evaluate_buy_signal(
     history_bars: list[DailyBar] | None = None,
     prev_bar: DailyBar | None = None,
 ) -> bool:
-    """Evaluate whether buy conditions are met."""
+    """判断买入条件是否满足。"""
     if rule_config.get("version", 1) >= 2:
         return _buy_reject_reason_v2(bar, prev_bar, score, rule_config, history_bars) is None
     return _buy_reject_reason(symbol_id, trade_date, bar, score, rule_config, history_bars) is None
@@ -129,10 +130,10 @@ def _buy_reject_reason(
     rule_config: dict,
     history_bars: list[DailyBar] | None = None,
 ) -> str | None:
-    """Return the first unmet buy condition; None means the signal passes."""
+    """返回第一个未满足的买入条件；None 表示信号通过。"""
     buy_conditions = rule_config.get("buy_conditions", {})
     
-    # Score thresholds
+    # 评分阈值
     if score is None:
         return "no_score"
     
@@ -144,7 +145,7 @@ def _buy_reject_reason(
     if timing_min is not None and score.timing_score < timing_min:
         return "timing_score_min"
     
-    # Stage and action filters
+    # 阶段和动作过滤
     allowed_stages = buy_conditions.get("stages")
     if allowed_stages and score.stage not in allowed_stages:
         return "stage"
@@ -204,7 +205,7 @@ def _evaluate_sell_signal(
     prev_bar: DailyBar | None = None,
     peak_price: float | None = None,
 ) -> tuple[bool, str | None]:
-    """Evaluate sell conditions and return the exit reason."""
+    """判断卖出条件是否满足，返回退出原因。"""
     if rule_config.get("version", 1) >= 2:
         return _evaluate_sell_v2(trade, current_bar, prev_bar, current_date, rule_config, score, history_bars, peak_price)
     sell_conditions = rule_config.get("sell_conditions", {})
@@ -264,7 +265,7 @@ def _evaluate_sell_signal(
 # ============================================================
 
 def _score_attr(score, attr: str, default=None):
-    """安全获取 Score 属性值"""
+    """安全读取 score 属性。"""
     if score is None:
         return default
     return getattr(score, attr, default)
@@ -477,11 +478,10 @@ _COMPARE_OPS = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt
 
 
 def _eval_sandboxed(tree, variables, functions):
-    """Evaluate a pre-validated AST tree without using eval().
+    """对预验证的 AST 树进行求值，不使用 eval()。
 
-    Only handles nodes whitelisted by _ALLOWED_EXPR_NODES; any other node
-    returns None. All arithmetic/comparison/call errors degrade to None
-    instead of raising.
+    仅处理 _ALLOWED_EXPR_NODES 白名单中的节点，其他节点返回 None。
+    所有算术/比较/调用错误降级为 None 而非抛出异常。
     """
     def _ev(node):
         if isinstance(node, ast.Expression):
@@ -589,8 +589,8 @@ def _value_from_token(token, bars: list[DailyBar], offset: int = 0):
     return None
 
 
-def _resolve_custom_expr(score, bar, prev_bar, history_bars, params) -> bool | float:
-    expr = str((params or {}).get("expr", "")).strip()
+def _resolve_formula_expr(score, bar, prev_bar, history_bars, expr: str) -> bool | float:
+    expr = str(expr or "").strip()
     if not expr or len(expr) > 500:
         return False
     bars = _history_with_current(history_bars, bar)
@@ -658,6 +658,17 @@ def _resolve_custom_expr(score, bar, prev_bar, history_bars, params) -> bool | f
         return False if result is None else result
     except Exception:
         return False
+
+
+def _resolve_custom_expr(score, bar, prev_bar, history_bars, params) -> bool | float:
+    return _resolve_formula_expr(score, bar, prev_bar, history_bars, str((params or {}).get("expr", "")))
+
+
+def _resolve_custom_indicator(score, bar, prev_bar, history_bars, params) -> bool | float:
+    indicator = (params or {}).get("indicator")
+    if not isinstance(indicator, dict):
+        return False
+    return _resolve_formula_expr(score, bar, prev_bar, history_bars, str(indicator.get("formula", "")))
 
 
 def _resolve_daily_change(score, bar, prev_bar, history_bars, params) -> float:
@@ -768,7 +779,7 @@ FIELD_RESOLVERS = {
     "pullback_score": lambda s, b, p, h, pm: _score_attr(s, "pullback_score", 0.0),
     "overheat_penalty": lambda s, b, p, h, pm: _score_attr(s, "overheat_penalty", 0.0),
     "event_score": lambda s, b, p, h, pm: _score_attr(s, "event_score", 0.0),
-    # Technical indicators
+    # 技术指标
     "open_price": lambda s, b, p, h, pm: float(b.open),
     "high_price": lambda s, b, p, h, pm: float(b.high),
     "low_price": lambda s, b, p, h, pm: float(b.low),
@@ -798,6 +809,7 @@ FIELD_RESOLVERS = {
     "breakout_high": _resolve_breakout_high,
     "pullback_ma": _resolve_pullback_ma,
     "custom_expr": _resolve_custom_expr,
+    "custom_indicator": _resolve_custom_indicator,
     # 卖出条件
     "stop_loss_pct": _resolve_stop_loss,
     "take_profit_pct": _resolve_take_profit,
@@ -809,7 +821,7 @@ FIELD_RESOLVERS = {
 
 
 def _compare(actual, operator: str, expected) -> bool:
-    """比较实际值与期望值"""
+    """Doc."""
     try:
         if operator == "gt":
             return float(actual) > float(expected)
@@ -840,7 +852,7 @@ def _evaluate_condition_tree(
     history_bars: list[DailyBar] | None,
     extra_params: dict | None = None,
 ) -> bool:
-    """递归求值条件树，返回是否通过"""
+    """递归求值条件树节点，返回该节点是否通过。"""
     if not node:
         return True
 
@@ -881,7 +893,7 @@ def _first_fail_reason_v2(
     history_bars: list[DailyBar] | None,
     extra_params: dict | None = None,
 ) -> str | None:
-    """返回条件树中第一个失败叶节点的 field 名；None 表示全部通过"""
+    """Doc."""
     if not node:
         return None
 
@@ -894,7 +906,7 @@ def _first_fail_reason_v2(
                 if reason is not None:
                     return reason
             return None
-        else:  # OR — 只要任一通过就 OK
+        else:  # OR：只要任一通过就 OK
             for c in children:
                 if _evaluate_condition_tree(c, score, bar, prev_bar, history_bars, extra_params):
                     return None
@@ -907,7 +919,7 @@ def _first_fail_reason_v2(
 
 
 def _extract_first_leaf_field(node: dict) -> str:
-    """提取条件树中第一个叶节点的 field 名"""
+    """Doc."""
     if "logic" not in node:
         return node.get("field", "unknown")
     for c in node.get("conditions", []):
@@ -924,7 +936,7 @@ def _buy_reject_reason_v2(
     rule_config: dict,
     history_bars: list[DailyBar] | None = None,
 ) -> str | None:
-    """v2 买入条件检查，返回第一个失败原因或 None"""
+    """v2 买入条件检查，返回第一个未通过的条件字段名。"""
     if score is None:
         return "no_score"
     buy_tree = rule_config.get("buy_conditions", {})
@@ -941,7 +953,7 @@ def _evaluate_sell_v2(
     history_bars: list[DailyBar] | None = None,
     peak_price: float | None = None,
 ) -> tuple[bool, str | None]:
-    """v2 卖出条件检查"""
+    """Doc."""
     sell_tree = rule_config.get("sell_conditions", {})
     hold_days = (current_date - trade.entry_date).days
     extra = {
@@ -964,7 +976,7 @@ def _first_match_reason_v2(
     history_bars: list[DailyBar] | None,
     extra_params: dict | None = None,
 ) -> str | None:
-    """返回条件树中第一个匹配成功的叶节点 field 名（用于卖出触发原因）"""
+    """Doc."""
     if not node:
         return None
 
@@ -977,11 +989,11 @@ def _first_match_reason_v2(
                 if reason is not None:
                     return reason
             return None
-        else:  # AND — all must pass
+        else:  # AND ?all must pass
             for c in children:
                 if not _evaluate_condition_tree(c, score, bar, prev_bar, history_bars, extra_params):
                     return None
-            # All passed, return the first leaf's field
+            # 全部通过，返回第一个叶节点的 field
             return _extract_first_leaf_field(node)
     else:
         field = node.get("field", "unknown")
@@ -995,13 +1007,13 @@ def _compute_equity_curve(
     date_range: list[date],
     close_prices: dict[tuple[int, date], float],
 ) -> list[dict]:
-    """计算每日权益曲线"""
+    """计算权益曲线，逐日跟踪现金与持仓市值。"""
     equity_curve = []
     cash = initial_capital
     positions: dict[int, BacktestTrade] = {}
     
     for current_date in date_range:
-        # 处理当日开仓
+        # 处理当日开盘
         for trade in trades:
             if trade.entry_date == current_date:
                 cash -= trade.entry_price * trade.quantity + trade.entry_cost
@@ -1034,7 +1046,7 @@ def _compute_statistics(
     initial_capital: float,
     equity_curve: list[dict],
 ) -> dict:
-    """计算回测统计指标"""
+    """根据交易记录和权益曲线计算回测统计指标。"""
     if not trades or not equity_curve:
         return {
             "total_return": 0.0,
@@ -1081,7 +1093,7 @@ def _compute_statistics(
     # 平均持有天数
     avg_hold_days = sum(t.hold_days or 0 for t in completed_trades) / len(completed_trades) if completed_trades else 0.0
     
-    # 夏普比率（简化版，假设无风险利率 3%）
+    # 夏普比率（简化版，假设无风险利率 3%?
     if len(equity_curve) > 1:
         returns = [(equity_curve[i]["equity"] - equity_curve[i-1]["equity"]) / equity_curve[i-1]["equity"]
                    for i in range(1, len(equity_curve))]
@@ -1105,8 +1117,150 @@ def _compute_statistics(
     }
 
 
-def build_backtest_detail_context(db: Session, run: BacktestRun) -> dict:
-    """Build non-persisted chart data and rule diagnostics for a run."""
+def _json_safe_trace_value(value):
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return round(float(value), 6)
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_trace_value(item) for item in value]
+    return str(value)
+
+
+
+def _collect_condition_traces(
+    node: dict,
+    score,
+    bar: DailyBar,
+    prev_bar: DailyBar | None,
+    history_bars: list[DailyBar] | None,
+    extra_params: dict | None = None,
+    field_filter: str | None = None,
+) -> list[dict]:
+    if not node:
+        return []
+    if "logic" in node:
+        traces: list[dict] = []
+        for child in node.get("conditions", []) or []:
+            traces.extend(_collect_condition_traces(child, score, bar, prev_bar, history_bars, extra_params, field_filter))
+        return traces
+
+    field = node.get("field", "")
+    if field_filter and field != field_filter:
+        return []
+
+    resolver = FIELD_RESOLVERS.get(field)
+    if resolver is None:
+        return []
+
+    operator = node.get("operator", "eq")
+    expected = node.get("value")
+    params = {**(node.get("params") or {}), **(extra_params or {})}
+    try:
+        actual = resolver(score, bar, prev_bar, history_bars, params)
+        matched = _compare(actual, operator, expected)
+    except Exception:
+        return []
+
+    indicator = params.get("indicator") if isinstance(params.get("indicator"), dict) else {}
+    trace = {
+        "field": field,
+        "operator": operator,
+        "expected": _json_safe_trace_value(expected),
+        "actual": _json_safe_trace_value(actual),
+        "matched": matched,
+    }
+    if field == "custom_indicator":
+        trace["indicator_key"] = params.get("indicator_key")
+        trace["indicator_name"] = indicator.get("name") or params.get("indicator_key") or "custom_indicator"
+        trace["value_type"] = indicator.get("value_type")
+    return [trace]
+
+
+
+def _build_trade_trace_map(
+    db: Session,
+    trades: list[BacktestTrade],
+    rule_config: dict,
+    bars_by_sym: dict[int, list[DailyBar]],
+    bar_idx: dict[tuple[int, date], int],
+) -> dict[int, dict]:
+    if not trades or rule_config.get("version", 1) < 2:
+        return {}
+
+    def _bar_context(symbol_id: int, trade_day: date, max_history: int = 250) -> tuple[DailyBar | None, DailyBar | None, list[DailyBar]]:
+        idx = bar_idx.get((symbol_id, trade_day))
+        if idx is None:
+            return None, None, []
+        sym_bars = bars_by_sym.get(symbol_id, [])
+        current_bar = sym_bars[idx]
+        prev_bar = sym_bars[idx - 1] if idx > 0 else None
+        history = sym_bars[max(0, idx - max_history):idx]
+        return current_bar, prev_bar, history
+
+    trade_annotations: dict[int, dict] = {}
+    buy_tree = rule_config.get("buy_conditions", {})
+    sell_tree = rule_config.get("sell_conditions", {})
+
+    for trade in trades:
+        score = db.execute(
+            select(Score)
+            .where(
+                Score.symbol_id == trade.symbol_id,
+                Score.trade_date <= trade.entry_date,
+            )
+            .order_by(Score.trade_date.desc())
+        ).scalars().first()
+        entry_bar, entry_prev_bar, entry_history = _bar_context(trade.symbol_id, trade.entry_date)
+        entry_traces = _collect_condition_traces(
+            buy_tree,
+            score,
+            entry_bar,
+            entry_prev_bar,
+            entry_history,
+        ) if entry_bar else []
+
+        exit_traces: list[dict] = []
+        if trade.exit_date:
+            exit_score = db.execute(
+                select(Score)
+                .where(
+                    Score.symbol_id == trade.symbol_id,
+                    Score.trade_date <= trade.exit_date,
+                )
+                .order_by(Score.trade_date.desc())
+            ).scalars().first()
+            exit_bar, exit_prev_bar, exit_history = _bar_context(trade.symbol_id, trade.exit_date)
+            trade_window = [
+                item for item in _history_with_current(exit_history, exit_bar)
+                if item.trade_date >= trade.entry_date
+            ] if exit_bar else []
+            peak_price = max((float(item.high) for item in trade_window), default=trade.entry_price)
+            exit_traces = _collect_condition_traces(
+                sell_tree,
+                exit_score,
+                exit_bar,
+                exit_prev_bar,
+                exit_history,
+                extra_params={
+                    "entry_price": trade.entry_price,
+                    "hold_days": (trade.exit_date - trade.entry_date).days,
+                    "peak_price": peak_price,
+                },
+            ) if exit_bar else []
+
+        if entry_traces or exit_traces:
+            trade_annotations[trade.id] = {
+                "entry_traces": entry_traces,
+                "exit_traces": exit_traces,
+            }
+
+    return trade_annotations
+
+
+
+def build_backtest_detail_context(db: Session, run: BacktestRun, trades: list[BacktestTrade] | None = None) -> dict:
+    """构建回测详情页所需的上下文数据。"""
     try:
         symbol_ids = json.loads(run.symbols_json or "[]")
     except json.JSONDecodeError:
@@ -1116,8 +1270,10 @@ def build_backtest_detail_context(db: Session, run: BacktestRun) -> dict:
     except json.JSONDecodeError:
         rule_config = {}
 
+    rule_config = _prepare_rule_config(db, rule_config)
+
     if not symbol_ids:
-        return {"price_series": [], "diagnostics": {}}
+        return {"price_series": [], "diagnostics": {}, "trade_annotations": {}}
 
     bars = db.execute(
         select(DailyBar)
@@ -1146,6 +1302,7 @@ def build_backtest_detail_context(db: Session, run: BacktestRun) -> dict:
     checked_days = 0
     sample_misses: list[dict] = []
     is_v2 = rule_config.get("version", 1) >= 2
+    buy_tree = rule_config.get("buy_conditions", {})
 
     # 构建诊断用的 bars 索引
     bars_by_sym: dict[int, list] = {}
@@ -1153,6 +1310,8 @@ def build_backtest_detail_context(db: Session, run: BacktestRun) -> dict:
     for idx, b in enumerate(bars):
         bars_by_sym.setdefault(b.symbol_id, []).append(b)
         bar_idx[(b.symbol_id, b.trade_date)] = len(bars_by_sym[b.symbol_id]) - 1
+
+    trade_annotations = _build_trade_trace_map(db, trades or [], rule_config, bars_by_sym, bar_idx)
 
     for bar in bars:
         checked_days += 1
@@ -1165,7 +1324,7 @@ def build_backtest_detail_context(db: Session, run: BacktestRun) -> dict:
             .order_by(Score.trade_date.desc())
         ).scalars().first()
 
-        # 获取 history_bars 和 prev_bar 用于诊断
+        # 获取 history_bars ?prev_bar 用于诊断
         sym_bars = bars_by_sym.get(bar.symbol_id, [])
         b_idx = bar_idx.get((bar.symbol_id, bar.trade_date), 0)
         prev_bar = sym_bars[b_idx - 1] if b_idx > 0 else None
@@ -1180,15 +1339,31 @@ def build_backtest_detail_context(db: Session, run: BacktestRun) -> dict:
         else:
             skipped[reason] += 1
             if len(sample_misses) < 8:
+                failed_traces = []
+                if is_v2:
+                    failed_traces = [
+                        trace
+                        for trace in _collect_condition_traces(
+                            buy_tree,
+                            score,
+                            bar,
+                            prev_bar,
+                            diag_history,
+                        )
+                        if not trace.get("matched")
+                    ]
                 sample_misses.append(
                     {
                         "date": bar.trade_date.isoformat(),
                         "symbol_id": bar.symbol_id,
                         "reason": reason,
+                        "open": float(bar.open),
+                        "close": float(bar.close),
                         "quality_score": float(score.quality_score) if score else None,
                         "timing_score": float(score.timing_score) if score else None,
                         "stage": score.stage if score else None,
                         "action": score.action if score else None,
+                        "failed_traces": failed_traces,
                     }
                 )
 
@@ -1202,16 +1377,182 @@ def build_backtest_detail_context(db: Session, run: BacktestRun) -> dict:
             "entry_price_field": _execution_price_field(rule_config, "entry_price_field"),
             "exit_price_field": _execution_price_field(rule_config, "exit_price_field"),
         },
-        "buy_conditions": rule_config.get("buy_conditions", {}),
+        "buy_conditions": buy_tree,
         "sell_conditions": rule_config.get("sell_conditions", {}),
         "position_config": rule_config.get("position_config", {}),
     }
     if buy_signal_days > 0 and not (run.trade_count or 0):
         diagnostics["fill_warning"] = "buy_signal_passed_but_no_trade"
 
-    return {"price_series": price_series, "diagnostics": diagnostics}
+    return {"price_series": price_series, "diagnostics": diagnostics, "trade_annotations": trade_annotations}
 
 
+
+def _collect_custom_indicator_keys(node: dict | list | None, keys: set[str]) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _collect_custom_indicator_keys(item, keys)
+        return
+    if not isinstance(node, dict):
+        return
+    if node.get("field") == "custom_indicator":
+        params = node.get("params") or {}
+        key = params.get("indicator_key")
+        if isinstance(key, str) and key:
+            keys.add(key)
+    for child in node.get("conditions", []) or []:
+        _collect_custom_indicator_keys(child, keys)
+
+
+def _load_custom_indicator_map(db: Session, rule_config: dict) -> dict[str, dict]:
+    keys: set[str] = set()
+    _collect_custom_indicator_keys(rule_config.get("buy_conditions"), keys)
+    _collect_custom_indicator_keys(rule_config.get("sell_conditions"), keys)
+    if not keys:
+        return {}
+    rows = db.execute(
+        select(CustomIndicator).where(CustomIndicator.key.in_(keys), CustomIndicator.enabled == True)
+    ).scalars().all()
+    return {
+        row.key: {
+            "key": row.key,
+            "name": row.name,
+            "formula": row.formula,
+            "value_type": row.value_type,
+        }
+        for row in rows
+    }
+
+
+def _attach_custom_indicators(node: dict | list | None, indicator_map: dict[str, dict]) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _attach_custom_indicators(item, indicator_map)
+        return
+    if not isinstance(node, dict):
+        return
+    if node.get("field") == "custom_indicator":
+        params = node.setdefault("params", {})
+        key = params.get("indicator_key")
+        if isinstance(key, str) and key in indicator_map:
+            params["indicator"] = indicator_map[key]
+    for child in node.get("conditions", []) or []:
+        _attach_custom_indicators(child, indicator_map)
+
+
+def _prepare_rule_config(db: Session, rule_config: dict) -> dict:
+    if not isinstance(rule_config, dict) or rule_config.get("version", 1) < 2:
+        return rule_config
+    indicator_map = _load_custom_indicator_map(db, rule_config)
+    if not indicator_map:
+        return rule_config
+    _attach_custom_indicators(rule_config.get("buy_conditions"), indicator_map)
+    _attach_custom_indicators(rule_config.get("sell_conditions"), indicator_map)
+    return rule_config
+
+
+
+def recommend_history_init_preset(start_date: date, end_date: date) -> str:
+    days = max(1, (end_date - start_date).days + 1)
+    if days <= 31:
+        return "1m"
+    if days <= 92:
+        return "1q"
+    if days <= 366:
+        return "1y"
+    return "3y"
+
+
+
+def assess_backtest_score_coverage(
+    db: Session,
+    symbol_ids: list[int],
+    start_date: date,
+    end_date: date,
+) -> dict:
+    if not symbol_ids:
+        return {
+            "symbols_total": 0,
+            "symbols_ready": 0,
+            "symbols_missing": 0,
+            "recommended_preset": recommend_history_init_preset(start_date, end_date),
+            "issues": [],
+        }
+
+    bar_stats = {
+        int(symbol_id): {
+            "bar_days": int(bar_days),
+            "bar_start": bar_start.isoformat() if hasattr(bar_start, "isoformat") else str(bar_start),
+            "bar_end": bar_end.isoformat() if hasattr(bar_end, "isoformat") else str(bar_end),
+        }
+        for symbol_id, bar_days, bar_start, bar_end in db.execute(
+            select(
+                DailyBar.symbol_id,
+                func.count(DailyBar.id),
+                func.min(DailyBar.trade_date),
+                func.max(DailyBar.trade_date),
+            )
+            .where(
+                DailyBar.symbol_id.in_(symbol_ids),
+                DailyBar.trade_date >= start_date,
+                DailyBar.trade_date <= end_date,
+            )
+            .group_by(DailyBar.symbol_id)
+        ).all()
+    }
+    score_stats = {
+        int(symbol_id): {
+            "score_days": int(score_days),
+            "score_start": score_start.isoformat() if hasattr(score_start, "isoformat") else str(score_start),
+            "score_end": score_end.isoformat() if hasattr(score_end, "isoformat") else str(score_end),
+        }
+        for symbol_id, score_days, score_start, score_end in db.execute(
+            select(
+                Score.symbol_id,
+                func.count(func.distinct(Score.trade_date)),
+                func.min(Score.trade_date),
+                func.max(Score.trade_date),
+            )
+            .where(
+                Score.symbol_id.in_(symbol_ids),
+                Score.trade_date >= start_date,
+                Score.trade_date <= end_date,
+            )
+            .group_by(Score.symbol_id)
+        ).all()
+    }
+
+    issues: list[dict] = []
+    for symbol_id in symbol_ids:
+        bars = bar_stats.get(symbol_id)
+        if not bars or bars["bar_days"] <= 0:
+            continue
+        scores = score_stats.get(symbol_id, {"score_days": 0, "score_start": None, "score_end": None})
+        bar_days = bars["bar_days"]
+        score_days = int(scores.get("score_days") or 0)
+        coverage_pct = round(score_days * 100 / bar_days, 2) if bar_days > 0 else 0.0
+        if score_days < bar_days:
+            issues.append(
+                {
+                    "symbol_id": symbol_id,
+                    "bar_days": bar_days,
+                    "score_days": score_days,
+                    "coverage_pct": coverage_pct,
+                    "missing_days": max(0, bar_days - score_days),
+                    "bar_start": bars.get("bar_start"),
+                    "bar_end": bars.get("bar_end"),
+                    "score_start": scores.get("score_start"),
+                    "score_end": scores.get("score_end"),
+                }
+            )
+
+    return {
+        "symbols_total": len(symbol_ids),
+        "symbols_ready": len(symbol_ids) - len(issues),
+        "symbols_missing": len(issues),
+        "recommended_preset": recommend_history_init_preset(start_date, end_date),
+        "issues": issues,
+    }
 def run_backtest(
     db: Session,
     portfolio_id: int,
@@ -1248,6 +1589,7 @@ def run_backtest(
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
         raise ValueError("Portfolio not found")
+    rule_config = _prepare_rule_config(db, rule_config)
     
     cost_config = cost_config or {
         "commission_rate": 0.0003,
@@ -1312,7 +1654,7 @@ def run_backtest(
         cash = initial_capital
         open_trades: dict[int, BacktestTrade] = {}
         completed_trades: list[BacktestTrade] = []
-        peak_prices: dict[int, float] = {}  # symbol_id -> peak price since entry
+        peak_prices: dict[int, float] = {}  # symbol_id -> 入场以来最高价
 
         # 预加载所有 K 线数据
         all_bars = db.execute(
@@ -1332,7 +1674,7 @@ def run_backtest(
             bar_index[(b.symbol_id, b.trade_date)] = len(bars_by_symbol[b.symbol_id]) - 1
 
         def _get_history(symbol_id: int, trade_date: date, max_history: int = 250) -> tuple[DailyBar | None, DailyBar | None, list[DailyBar]]:
-            """获取当前 bar、前一根 bar、以及历史 bars 列表"""
+            """Doc."""
             idx = bar_index.get((symbol_id, trade_date))
             if idx is None:
                 return None, None, []
@@ -1486,3 +1828,8 @@ def run_backtest(
         run.finished_at = datetime.now(timezone.utc)
         db.commit()
         raise
+
+
+
+
+

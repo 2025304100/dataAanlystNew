@@ -1,4 +1,4 @@
-"""Pydantic schemas for database configuration management."""
+"""数据库配置管理的 Pydantic 数据模型。"""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

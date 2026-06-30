@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta
+from copy import deepcopy
+from datetime import date, datetime, timedelta, timezone
 import logging
+from threading import Lock
 import os
 import time
+from uuid import uuid4
 
 import akshare as ak
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -24,6 +27,7 @@ from app.services.regions import region_from_market
 from app.services.scans import run_scan
 from app.services.symbol_names import refresh_symbol_name
 from app.services.trade_plans import upsert_trade_setup
+from app.db.session import get_session_local
 
 
 PROXY_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
@@ -491,3 +495,364 @@ def sync_market_data(
         "auto_scan": auto_scan_result,
         "results": results,
     }
+
+HISTORY_INIT_PRESET_DAYS = {
+    "1m": 30,
+    "1q": 90,
+    "1y": 365,
+    "3y": 365 * 3,
+}
+HISTORY_INIT_STAGE_KEYS = ("prepare", "sync_bars", "calc_scores", "finalize")
+_HISTORY_INIT_LOCK = Lock()
+_HISTORY_INIT_TASK: dict = {
+    "task_id": None,
+    "status": "idle",
+    "preset": "1y",
+    "adjust": "qfq",
+    "start_date": None,
+    "end_date": None,
+    "progress_pct": 0,
+    "message": None,
+    "started_at": None,
+    "finished_at": None,
+    "stages": [],
+    "summary": {
+        "symbols_total": 0,
+        "sync_ok_count": 0,
+        "sync_failed_count": 0,
+        "empty_count": 0,
+        "bars_rows": 0,
+        "score_days_total": 0,
+        "score_days_completed": 0,
+    },
+}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _build_history_stage(key: str) -> dict:
+    return {
+        "key": key,
+        "status": "pending",
+        "percent": 0,
+        "done": 0,
+        "total": 0,
+        "message": None,
+    }
+
+
+def _clone_history_task() -> dict:
+    with _HISTORY_INIT_LOCK:
+        return deepcopy(_HISTORY_INIT_TASK)
+
+
+def _set_history_task(task: dict) -> dict:
+    global _HISTORY_INIT_TASK
+    with _HISTORY_INIT_LOCK:
+        _HISTORY_INIT_TASK = task
+        return deepcopy(_HISTORY_INIT_TASK)
+
+
+def _mutate_history_task(task_id: str | None, mutator) -> dict:
+    global _HISTORY_INIT_TASK
+    with _HISTORY_INIT_LOCK:
+        if task_id is not None and _HISTORY_INIT_TASK.get("task_id") != task_id:
+            return deepcopy(_HISTORY_INIT_TASK)
+        mutator(_HISTORY_INIT_TASK)
+        return deepcopy(_HISTORY_INIT_TASK)
+
+
+def _history_stage(task: dict, key: str) -> dict | None:
+    for stage in task.get("stages", []):
+        if stage.get("key") == key:
+            return stage
+    return None
+
+
+def _recompute_history_progress(task: dict) -> None:
+    stages = task.get("stages") or []
+    if not stages:
+        task["progress_pct"] = 0
+        return
+    task["progress_pct"] = round(sum(int(stage.get("percent", 0)) for stage in stages) / len(stages))
+
+
+def get_history_initialization_status() -> dict:
+    return _clone_history_task()
+
+
+def start_history_initialization_task(
+    preset: str = "1y",
+    adjust: str = "qfq",
+    asset_types: list[str] | None = None,
+) -> dict:
+    preset_key = preset if preset in HISTORY_INIT_PRESET_DAYS else "1y"
+    resolved_end = date.today()
+    resolved_start = resolved_end - timedelta(days=HISTORY_INIT_PRESET_DAYS[preset_key])
+
+    with _HISTORY_INIT_LOCK:
+        if _HISTORY_INIT_TASK.get("status") == "running":
+            raise ValueError("A history initialization task is already running")
+
+    task = {
+        "task_id": uuid4().hex,
+        "status": "running",
+        "preset": preset_key,
+        "adjust": adjust,
+        "asset_types": asset_types or ["stock", "etf"],
+        "start_date": resolved_start,
+        "end_date": resolved_end,
+        "progress_pct": 0,
+        "message": "Task created. Preparing symbol universe.",
+        "started_at": _now_iso(),
+        "finished_at": None,
+        "stages": [_build_history_stage(key) for key in HISTORY_INIT_STAGE_KEYS],
+        "summary": {
+            "symbols_total": 0,
+            "sync_ok_count": 0,
+            "sync_failed_count": 0,
+            "empty_count": 0,
+            "bars_rows": 0,
+            "score_days_total": 0,
+            "score_days_completed": 0,
+        },
+    }
+    prepare_stage = _history_stage(task, "prepare")
+    if prepare_stage is not None:
+        prepare_stage.update({"status": "running", "total": 1, "message": "Collecting symbols"})
+    return _set_history_task(task)
+
+
+def _update_history_stage(
+    task_id: str,
+    key: str,
+    *,
+    status: str | None = None,
+    done: int | None = None,
+    total: int | None = None,
+    message: str | None = None,
+) -> dict:
+    def _apply(task: dict) -> None:
+        stage = _history_stage(task, key)
+        if stage is None:
+            return
+        if status is not None:
+            stage["status"] = status
+        if total is not None:
+            stage["total"] = total
+        if done is not None:
+            stage["done"] = done
+        if stage.get("total", 0) > 0:
+            stage["percent"] = max(0, min(100, round(stage.get("done", 0) * 100 / stage["total"])))
+        elif stage.get("status") == "completed":
+            stage["percent"] = 100
+        else:
+            stage["percent"] = 0
+        if message is not None:
+            stage["message"] = message
+            task["message"] = message
+        _recompute_history_progress(task)
+
+    return _mutate_history_task(task_id, _apply)
+
+
+def _complete_history_task(task_id: str, message: str) -> dict:
+    def _apply(task: dict) -> None:
+        task["status"] = "completed"
+        task["message"] = message
+        task["finished_at"] = _now_iso()
+        finalize_stage = _history_stage(task, "finalize")
+        if finalize_stage is not None:
+            finalize_stage.update({
+                "status": "completed",
+                "done": 1,
+                "total": 1,
+                "percent": 100,
+                "message": message,
+            })
+        _recompute_history_progress(task)
+        task["progress_pct"] = 100
+
+    return _mutate_history_task(task_id, _apply)
+
+
+def _fail_history_task(task_id: str, message: str) -> dict:
+    def _apply(task: dict) -> None:
+        task["status"] = "failed"
+        task["message"] = message
+        task["finished_at"] = _now_iso()
+        for key in reversed(HISTORY_INIT_STAGE_KEYS):
+            stage = _history_stage(task, key)
+            if stage is not None and stage.get("status") == "running":
+                stage["status"] = "failed"
+                stage["message"] = message
+                break
+        _recompute_history_progress(task)
+
+    return _mutate_history_task(task_id, _apply)
+
+
+def run_history_initialization_task(task_id: str) -> None:
+    snapshot = get_history_initialization_status()
+    if snapshot.get("task_id") != task_id:
+        return
+
+    SessionLocal = get_session_local()
+    db = SessionLocal()
+    try:
+        start_date = snapshot.get("start_date")
+        end_date = snapshot.get("end_date")
+        adjust = snapshot.get("adjust") or "qfq"
+        asset_types = snapshot.get("asset_types") or ["stock", "etf"]
+
+        symbols = db.execute(
+            select(Symbol)
+            .where(Symbol.is_active == 1, Symbol.asset_type.in_(asset_types))
+            .order_by(Symbol.id.asc())
+        ).scalars().all()
+
+        _update_history_stage(
+            task_id,
+            "prepare",
+            status="completed",
+            done=1,
+            total=1,
+            message=f"Universe ready: {len(symbols)} symbols",
+        )
+
+        def _set_symbol_total(task: dict) -> None:
+            task["summary"]["symbols_total"] = len(symbols)
+        _mutate_history_task(task_id, _set_symbol_total)
+
+        sync_total = len(symbols)
+        _update_history_stage(task_id, "sync_bars", status="running", done=0, total=sync_total, message="Syncing historical bars")
+
+        for index, symbol in enumerate(symbols, start=1):
+            try:
+                refresh_symbol_name(symbol)
+                result = sync_symbol_daily_bars(
+                    db=db,
+                    symbol=symbol,
+                    start_date=start_date,
+                    end_date=end_date,
+                    adjust=adjust,
+                )
+                db.commit()
+            except Exception as exc:
+                db.rollback()
+                logger.warning("History init sync failed for %s", symbol.symbol, exc_info=True)
+                result = {
+                    "status": "failed",
+                    "rows": 0,
+                    "error": str(exc),
+                }
+
+            def _sync_summary(task: dict, sync_result: dict = result) -> None:
+                summary = task["summary"]
+                summary["bars_rows"] += int(sync_result.get("rows") or 0)
+                if sync_result.get("status") == "ok":
+                    summary["sync_ok_count"] += 1
+                elif sync_result.get("status") == "empty":
+                    summary["empty_count"] += 1
+                else:
+                    summary["sync_failed_count"] += 1
+            _mutate_history_task(task_id, _sync_summary)
+            _update_history_stage(
+                task_id,
+                "sync_bars",
+                done=index,
+                total=sync_total,
+                message=f"Syncing bars {index}/{sync_total}: {symbol.symbol}",
+            )
+
+        _update_history_stage(
+            task_id,
+            "sync_bars",
+            status="completed",
+            done=sync_total,
+            total=sync_total,
+            message="Bar sync complete. Calculating scores.",
+        )
+
+        symbol_id_list = [symbol.id for symbol in symbols]
+        if symbol_id_list:
+            bar_counts = {
+                int(symbol_id): int(total)
+                for symbol_id, total in db.execute(
+                    select(DailyBar.symbol_id, func.count(DailyBar.id))
+                    .where(
+                        DailyBar.trade_date >= start_date,
+                        DailyBar.trade_date <= end_date,
+                        DailyBar.symbol_id.in_(symbol_id_list),
+                    )
+                    .group_by(DailyBar.symbol_id)
+                ).all()
+            }
+        else:
+            bar_counts = {}
+        score_total = sum(bar_counts.values())
+
+        def _set_score_total(task: dict) -> None:
+            task["summary"]["score_days_total"] = score_total
+        _mutate_history_task(task_id, _set_score_total)
+
+        _update_history_stage(
+            task_id,
+            "calc_scores",
+            status="running",
+            done=0,
+            total=score_total,
+            message="Calculating historical scores",
+        )
+
+        score_done = 0
+        for symbol in symbols:
+            trade_dates = db.execute(
+                select(DailyBar.trade_date)
+                .where(
+                    DailyBar.symbol_id == symbol.id,
+                    DailyBar.trade_date >= start_date,
+                    DailyBar.trade_date <= end_date,
+                )
+                .order_by(DailyBar.trade_date.asc())
+            ).scalars().all()
+            if not trade_dates:
+                continue
+            for trade_date in trade_dates:
+                calculate_symbol_score(db=db, symbol=symbol, trade_date=trade_date)
+                score_done += 1
+            db.commit()
+
+            def _score_summary(task: dict) -> None:
+                task["summary"]["score_days_completed"] = score_done
+            _mutate_history_task(task_id, _score_summary)
+            _update_history_stage(
+                task_id,
+                "calc_scores",
+                done=score_done,
+                total=score_total,
+                message=f"Calculating scores {score_done}/{score_total}: {symbol.symbol}",
+            )
+
+        _update_history_stage(
+            task_id,
+            "calc_scores",
+            status="completed",
+            done=score_done,
+            total=score_total,
+            message="Score calculation complete. Finalizing summary.",
+        )
+        _update_history_stage(task_id, "finalize", status="running", done=0, total=1, message="Finalizing initialization summary")
+        summary = get_history_initialization_status().get("summary", {})
+        _complete_history_task(
+            task_id,
+            f"Initialization complete: {summary.get('sync_ok_count', 0)} symbols synced, {summary.get('score_days_completed', 0)} score days refreshed.",
+        )
+    except Exception as exc:
+        db.rollback()
+        logger.exception("History initialization task failed")
+        _fail_history_task(task_id, f"Initialization failed: {exc}")
+    finally:
+        db.close()

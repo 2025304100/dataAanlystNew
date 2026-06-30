@@ -1,13 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Button, Collapse, DatePicker, Input, InputNumber, Modal,
-  Popconfirm, Radio, Select, Space, message,
+  Alert,
+  Button,
+  Collapse,
+  DatePicker,
+  Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Radio,
+  Select,
+  Space,
+  Tag,
+  message,
 } from "antd";
-import { SaveOutlined, DeleteOutlined } from "@ant-design/icons";
+import { DeleteOutlined, SaveOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api/client";
 import { t } from "../i18n";
-import type { BacktestRun, ConditionGroup } from "../types";
+import type {
+  BacktestCoverageWarning,
+  BacktestRuleConfigV2,
+  BacktestRun,
+  ConditionGroup,
+  CustomIndicator,
+  RuleTemplate,
+} from "../types";
 import ConditionBuilder from "./ConditionBuilder";
 import { DEFAULT_BUY_GROUP, DEFAULT_SELL_GROUP } from "../constants/conditionFields";
 
@@ -22,6 +40,40 @@ const DEFAULT_ACTIONS = ["open", "hold", "buy_dip"];
 
 type RuleMode = "standard" | "advanced";
 
+function collectBacktestIndicatorKeys(node: unknown, keys: Set<string>) {
+  if (!node) return;
+  if (Array.isArray(node)) {
+    node.forEach((item) => collectBacktestIndicatorKeys(item, keys));
+    return;
+  }
+  if (typeof node !== "object") return;
+  const record = node as Record<string, unknown>;
+  if (record.field === "custom_indicator") {
+    const params = record.params as Record<string, unknown> | undefined;
+    const indicatorKey = typeof params?.indicator_key === "string" ? params.indicator_key : "";
+    if (indicatorKey) keys.add(indicatorKey);
+  }
+  Object.values(record).forEach((value) => collectBacktestIndicatorKeys(value, keys));
+}
+
+type BacktestTemplateConfig = Partial<BacktestRuleConfigV2> & {
+  position_config?: {
+    value?: number;
+    max_positions?: number;
+  };
+  execution_config?: {
+    entry_price_field?: "open" | "close";
+    exit_price_field?: "open" | "close";
+  };
+};
+
+function presetLabel(preset: BacktestCoverageWarning["summary"]["recommended_preset"]): string {
+  if (preset === "1m") return "\u8fd11\u4e2a\u6708";
+  if (preset === "1q") return "1\u4e2a\u5b63\u5ea6";
+  if (preset === "3y") return "3\u5e74";
+  return "\u8fd11\u5e74";
+}
+
 export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }: BacktestConfigProps) {
   const [running, setRunning] = useState(false);
   const [runName, setRunName] = useState(t("backtestRunName"));
@@ -31,7 +83,6 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
     dayjs(),
   ]);
 
-  // ── v1 standard mode state ──
   const [qualityMin, setQualityMin] = useState(60);
   const [timingMin, setTimingMin] = useState(55);
   const [stages, setStages] = useState<string[]>(DEFAULT_STAGES);
@@ -40,11 +91,9 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
   const [stopLossPct, setStopLossPct] = useState(8);
   const [maxHoldDays, setMaxHoldDays] = useState(30);
 
-  // ── v2 advanced mode state ──
   const [buyConditions, setBuyConditions] = useState<ConditionGroup>(structuredClone(DEFAULT_BUY_GROUP));
   const [sellConditions, setSellConditions] = useState<ConditionGroup>(structuredClone(DEFAULT_SELL_GROUP));
 
-  // ── shared state ──
   const [positionPct, setPositionPct] = useState(5);
   const [maxPositions, setMaxPositions] = useState(5);
   const [entryPriceField, setEntryPriceField] = useState<"open" | "close">("close");
@@ -54,19 +103,41 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
   const [stampTaxRate, setStampTaxRate] = useState(0.1);
   const [slippageRate, setSlippageRate] = useState(0.1);
 
-  // ── template state ──
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<RuleTemplate[]>([]);
+  const [customIndicators, setCustomIndicators] = useState<CustomIndicator[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateDesc, setTemplateDesc] = useState("");
+  const [coverageWarning, setCoverageWarning] = useState<BacktestCoverageWarning | null>(null);
 
-  const disabled = useMemo(() => !portfolioId || !activeSymbolId || !range?.[0] || !range?.[1], [portfolioId, activeSymbolId, range]);
+  const disabled = useMemo(
+    () => !portfolioId || !activeSymbolId || !range?.[0] || !range?.[1],
+    [portfolioId, activeSymbolId, range],
+  );
+  const selectedTemplate = useMemo(
+    () => templates.find((tpl) => tpl.id === selectedTemplateId) ?? null,
+    [selectedTemplateId, templates],
+  );
+  const selectedTemplateIndicators = useMemo(() => {
+    if (!selectedTemplate) return [] as CustomIndicator[];
+    const keys = new Set<string>();
+    collectBacktestIndicatorKeys(selectedTemplate.rule_config ?? {}, keys);
+    return Array.from(keys)
+      .map((key) => customIndicators.find((item) => item.key === key))
+      .filter(Boolean) as CustomIndicator[];
+  }, [customIndicators, selectedTemplate]);
 
-  // Load templates on mount
   useEffect(() => {
     api.getBacktestTemplates().then(setTemplates).catch(() => {});
+    api.getCustomIndicators({ scope: "backtest", enabled: true })
+      .then((rows) => setCustomIndicators(rows as CustomIndicator[]))
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setCoverageWarning(null);
+  }, [activeSymbolId, range]);
 
   const buildRuleConfig = useCallback(() => {
     if (ruleMode === "advanced") {
@@ -84,12 +155,28 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
       position_config: { type: "fixed_pct", value: positionPct / 100, max_positions: maxPositions },
       execution_config: { entry_price_field: entryPriceField, exit_price_field: exitPriceField },
     };
-  }, [ruleMode, buyConditions, sellConditions, qualityMin, timingMin, stages, actions,
-      takeProfitPct, stopLossPct, maxHoldDays, positionPct, maxPositions, entryPriceField, exitPriceField]);
+  }, [
+    actions,
+    buyConditions,
+    entryPriceField,
+    exitPriceField,
+    maxHoldDays,
+    maxPositions,
+    positionPct,
+    qualityMin,
+    ruleMode,
+    sellConditions,
+    slippageRate,
+    stages,
+    stopLossPct,
+    takeProfitPct,
+    timingMin,
+  ]);
 
   const runBacktest = async () => {
     if (disabled || !portfolioId || !activeSymbolId) return;
     setRunning(true);
+    setCoverageWarning(null);
     try {
       const result = await api.runBacktest({
         portfolio_id: portfolioId,
@@ -107,18 +194,24 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
       });
       const detail = await api.getBacktestRun(result.id);
       onResult(detail);
+      message.success(t("backtestRunSuccess"));
     } catch (err: any) {
-      message.error(err?.message || t("backtestFailed"));
+      const detail = err?.detail as BacktestCoverageWarning | undefined;
+      if (detail?.code === "BACKTEST_SCORE_COVERAGE_INSUFFICIENT") {
+        setCoverageWarning(detail);
+        message.warning("\u5386\u53f2\u8bc4\u5206\u8986\u76d6\u4e0d\u8db3\uff0c\u8bf7\u5148\u53bb\u8bbe\u7f6e\u91cc\u6267\u884c\u521d\u59cb\u5316\u8865\u6570");
+      } else {
+        message.error(err?.message || t("backtestFailed"));
+      }
     } finally {
       setRunning(false);
     }
   };
 
-  // ── template handlers ──
   const loadTemplate = useCallback((id: number) => {
-    const tpl = templates.find((t: any) => t.id === id);
+    const tpl = templates.find((item) => item.id === id);
     if (!tpl) return;
-    const cfg = tpl.rule_config;
+    const cfg = tpl.rule_config as BacktestTemplateConfig;
     if (cfg?.version === 2) {
       setRuleMode("advanced");
       setBuyConditions(cfg.buy_conditions || structuredClone(DEFAULT_BUY_GROUP));
@@ -133,53 +226,55 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
       }
     }
     setSelectedTemplateId(id);
-    message.success(`已加载模板: ${tpl.name}`);
+    message.success(`${t("backtestTemplateLoaded")}：${tpl.name}`);
   }, [templates]);
 
   const saveTemplate = useCallback(async () => {
-    if (!templateName.trim()) { message.warning("请输入模板名称"); return; }
+    if (!templateName.trim()) {
+      message.warning(t("backtestTemplateNameRequired"));
+      return;
+    }
     try {
       await api.createBacktestTemplate({
         name: templateName.trim(),
         description: templateDesc,
         rule_config: buildRuleConfig(),
       });
-      message.success("模板已保存");
+      message.success(t("backtestTemplateSaved"));
       setSaveModalOpen(false);
       setTemplateName("");
       setTemplateDesc("");
       const updated = await api.getBacktestTemplates();
       setTemplates(updated);
     } catch (err: any) {
-      message.error(err?.message || "保存失败");
+      message.error(err?.message || t("backtestTemplateSaveFailed"));
     }
-  }, [templateName, templateDesc, buildRuleConfig]);
+  }, [buildRuleConfig, templateDesc, templateName]);
 
   const updateTemplate = useCallback(async () => {
     if (!selectedTemplateId) return;
     try {
       await api.updateBacktestTemplate(selectedTemplateId, { rule_config: buildRuleConfig() });
-      message.success("模板已更新");
+      message.success(t("backtestTemplateUpdated"));
       const updated = await api.getBacktestTemplates();
       setTemplates(updated);
     } catch (err: any) {
-      message.error(err?.message || "更新失败");
+      message.error(err?.message || t("backtestTemplateUpdateFailed"));
     }
-  }, [selectedTemplateId, buildRuleConfig]);
+  }, [buildRuleConfig, selectedTemplateId]);
 
   const deleteTemplate = useCallback(async (id: number) => {
     try {
       await api.deleteBacktestTemplate(id);
-      message.success("模板已删除");
+      message.success(t("backtestTemplateDeleted"));
       if (selectedTemplateId === id) setSelectedTemplateId(null);
       const updated = await api.getBacktestTemplates();
       setTemplates(updated);
     } catch (err: any) {
-      message.error(err?.message || "删除失败");
+      message.error(err?.message || t("backtestTemplateDeleteFailed"));
     }
   }, [selectedTemplateId]);
 
-  // ── render ──
   return (
     <section className="backtest-config">
       <div className="backtest-grid">
@@ -191,13 +286,12 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
           <span>{t("backtestDateRange")}</span>
           <DatePicker.RangePicker
             value={range}
-            onChange={(v) => v?.[0] && v?.[1] && setRange([v[0], v[1]])}
+            onChange={(value) => value?.[0] && value?.[1] && setRange([value[0], value[1]])}
             allowClear={false}
           />
         </label>
       </div>
 
-      {/* 规则模式切换 */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "12px 0 8px" }}>
         <Radio.Group
           value={ruleMode}
@@ -206,31 +300,32 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
           buttonStyle="solid"
           size="small"
         >
-          <Radio.Button value="standard">标准模式</Radio.Button>
-          <Radio.Button value="advanced">高级模式</Radio.Button>
+          <Radio.Button value="standard">{t("btModeStandard")}</Radio.Button>
+          <Radio.Button value="advanced">{t("btModeAdvanced")}</Radio.Button>
         </Radio.Group>
       </div>
 
-      {/* 高级模式：模板管理 */}
       {ruleMode === "advanced" && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
           <Select
             size="small"
             style={{ minWidth: 180 }}
-            placeholder="选择模板..."
-            value={selectedTemplateId}
-            onChange={(v) => { setSelectedTemplateId(v); loadTemplate(v); }}
-            options={templates.map((tpl: any) => ({ label: tpl.name, value: tpl.id }))}
+            placeholder={t("backtestSelectTemplate")}
+            value={selectedTemplateId ?? undefined}
+            onChange={(value) => {
+              if (typeof value === "number") loadTemplate(value);
+            }}
+            options={templates.map((tpl) => ({ label: tpl.name, value: tpl.id }))}
             allowClear
             onClear={() => setSelectedTemplateId(null)}
           />
           <Button size="small" icon={<SaveOutlined />} onClick={() => setSaveModalOpen(true)}>
-            保存为模板
+            {t("backtestSaveTemplate")}
           </Button>
           {selectedTemplateId && (
             <>
-              <Button size="small" type="primary" onClick={updateTemplate}>更新模板</Button>
-              <Popconfirm title="确定删除此模板？" onConfirm={() => deleteTemplate(selectedTemplateId)}>
+              <Button size="small" type="primary" onClick={updateTemplate}>{t("backtestUpdateTemplate")}</Button>
+              <Popconfirm title={t("backtestDeleteTemplateConfirm")} onConfirm={() => deleteTemplate(selectedTemplateId)}>
                 <Button size="small" danger icon={<DeleteOutlined />} />
               </Popconfirm>
             </>
@@ -238,44 +333,56 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
         </div>
       )}
 
+      {ruleMode === "advanced" && selectedTemplate && (
+        <div className="panel-meta" style={{ marginBottom: 12 }}>
+          <Space wrap>
+            <span>{selectedTemplateIndicators.length ? t("backtestTemplateIndicators") : t("backtestTemplateIndicatorsEmpty")}</span>
+            {selectedTemplateIndicators.map((indicator) => (
+              <Tag key={indicator.key} color={indicator.value_type === "number" ? "gold" : "blue"}>
+                {indicator.name}
+              </Tag>
+            ))}
+          </Space>
+        </div>
+      )}
+
       {ruleMode === "standard" ? (
         <>
           <div className="backtest-subtitle">{t("backtestBuyRule")}</div>
           <div className="backtest-grid compact">
-            <label><span>{t("backtestQualityMin")}</span><InputNumber min={0} max={100} value={qualityMin} onChange={(v) => setQualityMin(Number(v ?? 0))} /></label>
-            <label><span>{t("backtestTimingMin")}</span><InputNumber min={0} max={100} value={timingMin} onChange={(v) => setTimingMin(Number(v ?? 0))} /></label>
-            <label><span>{t("backtestStages")}</span><Select mode="multiple" value={stages} onChange={setStages} options={["start", "accel", "cooldown", "overheat"].map(v => ({ label: t(`stage_${v}`), value: v }))} /></label>
-            <label><span>{t("backtestActions")}</span><Select mode="multiple" value={actions} onChange={setActions} options={["open", "hold", "buy_dip", "reduce", "exit"].map(v => ({ label: t(`action_${v}`), value: v }))} /></label>
+            <label><span>{t("backtestQualityMin")}</span><InputNumber min={0} max={100} value={qualityMin} onChange={(value) => setQualityMin(Number(value ?? 0))} /></label>
+            <label><span>{t("backtestTimingMin")}</span><InputNumber min={0} max={100} value={timingMin} onChange={(value) => setTimingMin(Number(value ?? 0))} /></label>
+            <label><span>{t("backtestStages")}</span><Select mode="multiple" value={stages} onChange={setStages} options={["start", "accel", "cooldown", "overheat"].map((value) => ({ label: t(`stage_${value}`), value }))} /></label>
+            <label><span>{t("backtestActions")}</span><Select mode="multiple" value={actions} onChange={setActions} options={["open", "hold", "buy_dip", "reduce", "exit"].map((value) => ({ label: t(`action_${value}`), value }))} /></label>
           </div>
 
           <div className="backtest-subtitle">{t("backtestSellRule")}</div>
           <div className="backtest-grid compact">
-            <label><span>{t("backtestTakeProfit")}</span><InputNumber min={0} max={100} value={takeProfitPct} onChange={(v) => setTakeProfitPct(Number(v ?? 0))} /></label>
-            <label><span>{t("backtestStopLoss")}</span><InputNumber min={0} max={100} value={stopLossPct} onChange={(v) => setStopLossPct(Number(v ?? 0))} /></label>
-            <label><span>{t("backtestMaxHoldDays")}</span><InputNumber min={1} max={365} value={maxHoldDays} onChange={(v) => setMaxHoldDays(Number(v ?? 1))} /></label>
+            <label><span>{t("backtestTakeProfit")}</span><InputNumber min={0} max={100} value={takeProfitPct} onChange={(value) => setTakeProfitPct(Number(value ?? 0))} /></label>
+            <label><span>{t("backtestStopLoss")}</span><InputNumber min={0} max={100} value={stopLossPct} onChange={(value) => setStopLossPct(Number(value ?? 0))} /></label>
+            <label><span>{t("backtestMaxHoldDays")}</span><InputNumber min={1} max={365} value={maxHoldDays} onChange={(value) => setMaxHoldDays(Number(value ?? 1))} /></label>
           </div>
         </>
       ) : (
         <>
-          <div className="backtest-subtitle">买入规则</div>
-          <ConditionBuilder value={buyConditions} onChange={setBuyConditions} side="buy" />
-          <div className="backtest-subtitle">卖出规则</div>
-          <ConditionBuilder value={sellConditions} onChange={setSellConditions} side="sell" />
+          <div className="backtest-subtitle">{t("backtestAdvancedBuyConditions")}</div>
+          <ConditionBuilder value={buyConditions} onChange={setBuyConditions} side="buy" customIndicators={customIndicators} />
+          <div className="backtest-subtitle">{t("backtestAdvancedSellConditions")}</div>
+          <ConditionBuilder value={sellConditions} onChange={setSellConditions} side="sell" customIndicators={customIndicators} />
         </>
       )}
 
-      {/* 仓位 + 成交口径 (两种模式共享) */}
       <Collapse
         ghost
         size="small"
         defaultActiveKey={["position"]}
         items={[{
           key: "position",
-          label: <span className="backtest-subtitle" style={{ margin: 0 }}>{t("backtestPositionPct")} & {t("backtestExecutionRule")}</span>,
+          label: <span className="backtest-subtitle" style={{ margin: 0 }}>{t("backtestPositionPct")} / {t("backtestExecutionRule")}</span>,
           children: (
             <div className="backtest-grid compact">
-              <label><span>{t("backtestPositionPct")}</span><InputNumber min={0.1} max={100} value={positionPct} onChange={(v) => setPositionPct(Number(v ?? 0))} /></label>
-              <label><span>{t("backtestMaxPositions")}</span><InputNumber min={1} max={50} value={maxPositions} onChange={(v) => setMaxPositions(Number(v ?? 1))} /></label>
+              <label><span>{t("backtestPositionPct")}</span><InputNumber min={0.1} max={100} value={positionPct} onChange={(value) => setPositionPct(Number(value ?? 0))} /></label>
+              <label><span>{t("backtestMaxPositions")}</span><InputNumber min={1} max={50} value={maxPositions} onChange={(value) => setMaxPositions(Number(value ?? 1))} /></label>
               <label>
                 <span>{t("backtestEntryPriceField")}</span>
                 <Select value={entryPriceField} onChange={setEntryPriceField} options={[{ label: t("btOpenPrice"), value: "open" }, { label: t("btClosePrice"), value: "close" }]} />
@@ -289,7 +396,6 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
         }]}
       />
 
-      {/* 交易成本 */}
       <Collapse
         ghost
         size="small"
@@ -298,37 +404,70 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
           label: <span className="backtest-subtitle" style={{ margin: 0 }}>{t("backtestCostRule")}</span>,
           children: (
             <div className="backtest-grid compact">
-              <label><span>{t("backtestCommissionRate")}</span><InputNumber min={0} max={5} step={0.01} value={commissionRate} onChange={(v) => setCommissionRate(Number(v ?? 0))} /></label>
-              <label><span>{t("backtestMinCommission")}</span><InputNumber min={0} value={minCommission} onChange={(v) => setMinCommission(Number(v ?? 0))} /></label>
-              <label><span>{t("backtestStampTaxRate")}</span><InputNumber min={0} max={5} step={0.01} value={stampTaxRate} onChange={(v) => setStampTaxRate(Number(v ?? 0))} /></label>
-              <label><span>{t("backtestSlippageRate")}</span><InputNumber min={0} max={5} step={0.01} value={slippageRate} onChange={(v) => setSlippageRate(Number(v ?? 0))} /></label>
+              <label><span>{t("backtestCommissionRate")}</span><InputNumber min={0} max={5} step={0.01} value={commissionRate} onChange={(value) => setCommissionRate(Number(value ?? 0))} /></label>
+              <label><span>{t("backtestMinCommission")}</span><InputNumber min={0} value={minCommission} onChange={(value) => setMinCommission(Number(value ?? 0))} /></label>
+              <label><span>{t("backtestStampTaxRate")}</span><InputNumber min={0} max={5} step={0.01} value={stampTaxRate} onChange={(value) => setStampTaxRate(Number(value ?? 0))} /></label>
+              <label><span>{t("backtestSlippageRate")}</span><InputNumber min={0} max={5} step={0.01} value={slippageRate} onChange={(value) => setSlippageRate(Number(value ?? 0))} /></label>
             </div>
           ),
         }]}
       />
+
+      {coverageWarning && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="\u5386\u53f2\u8bc4\u5206\u8986\u76d6\u4e0d\u8db3\uff0c\u5f53\u524d\u56de\u6d4b\u5df2\u62e6\u622a"
+          description={(
+            <div style={{ display: "grid", gap: 8 }}>
+              <span>
+                {"\u5efa\u8bae\u5148\u5230\u8bbe\u7f6e\u91cc\u6267\u884c\u521d\u59cb\u5316\u8865\u6570\uff0c\u63a8\u8350\u533a\u95f4\uff1a"}
+                {presetLabel(coverageWarning.summary.recommended_preset)}
+                {". "}
+                {"\u5f53\u524d\u6700\u4f4e\u8986\u76d6\u7387 "}
+                {coverageWarning.summary.min_coverage_pct ?? 0}%
+                {"\u3002"}
+              </span>
+              {coverageWarning.issues.slice(0, 3).map((issue) => (
+                <span key={issue.symbol_id} className="panel-meta">
+                  {(issue.symbol || issue.symbol_id)} {issue.name ? `(${issue.name})` : ""}
+                  {". "}
+                  {"\uff1a\u8bc4\u5206 "}
+                  {issue.score_days}
+                  {" / \u4ea4\u6613\u65e5 "}
+                  {issue.bar_days}
+                  {"\uff0c\u7f3a\u5c11 "}
+                  {issue.missing_days}
+                  {" \u5929"}
+                </span>
+              ))}
+            </div>
+          )}
+        />
+      )}
 
       <Space className="backtest-actions">
         <Button type="primary" loading={running} disabled={disabled} onClick={runBacktest}>{t("runBacktest")}</Button>
         {disabled && <span className="panel-meta">{t("backtestRunHint")}</span>}
       </Space>
 
-      {/* 保存模板弹窗 */}
       <Modal
-        title="保存为回测模板"
+        title={t("backtestTemplateModalTitle")}
         open={saveModalOpen}
         onOk={saveTemplate}
         onCancel={() => setSaveModalOpen(false)}
-        okText="保存"
-        cancelText="取消"
+        okText={t("save")}
+        cancelText={t("cancel")}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <label>
-            <span>模板名称</span>
-            <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="如：稳健买入策略" />
+            <span>{t("backtestTemplateName")}</span>
+            <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder={t("backtestTemplateNamePlaceholder")} />
           </label>
           <label>
-            <span>描述（可选）</span>
-            <Input.TextArea value={templateDesc} onChange={(e) => setTemplateDesc(e.target.value)} rows={2} placeholder="模板说明..." />
+            <span>{t("backtestTemplateDescription")}</span>
+            <Input.TextArea value={templateDesc} onChange={(e) => setTemplateDesc(e.target.value)} rows={2} placeholder={t("backtestTemplateDescriptionPlaceholder")} />
           </label>
         </div>
       </Modal>

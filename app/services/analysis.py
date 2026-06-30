@@ -13,7 +13,7 @@ from app.models.symbol import Symbol
 
 
 def _safe_date(value):
-    """Safely convert a value to date, handling strings from MySQL."""
+    """安全地将值转换为 date 类型，处理 MySQL 返回的字符串。"""
     from datetime import date, datetime
     if value is None:
         return None

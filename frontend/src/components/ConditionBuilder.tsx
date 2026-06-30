@@ -6,9 +6,11 @@ import type {
   ConditionLeaf,
   ConditionOperator,
   ConditionFieldDef,
+  CustomIndicator,
   LogicOperator,
 } from "../types";
 import { isConditionGroup } from "../types";
+import { t, template } from "../i18n";
 import {
   CONDITION_FIELDS,
   OPERATOR_LABELS,
@@ -23,6 +25,7 @@ interface ConditionBuilderProps {
   side: "buy" | "sell";
   depth?: number;
   maxDepth?: number;
+  customIndicators?: CustomIndicator[];
 }
 
 const GROUP_BG: Record<LogicOperator, string> = {
@@ -35,67 +38,100 @@ const GROUP_BORDER: Record<LogicOperator, string> = {
   OR: "#b7eb8f",
 };
 
-function getFieldDef(key: string): ConditionFieldDef | undefined {
-  return CONDITION_FIELDS.find((f) => f.key === key);
+function getCustomIndicatorMeta(customIndicators: CustomIndicator[] = [], indicatorKey?: string | number) {
+  const key = typeof indicatorKey === "string" ? indicatorKey : "";
+  return customIndicators.find((item) => item.key === key) ?? customIndicators[0];
 }
 
-function getAvailableFields(side: "buy" | "sell"): ConditionFieldDef[] {
-  return CONDITION_FIELDS.filter(
-    (f) => f.side === "both" || f.side === side
-  );
+function buildCustomIndicatorField(customIndicators: CustomIndicator[] = [], indicatorKey?: string | number): ConditionFieldDef {
+  const indicator = getCustomIndicatorMeta(customIndicators, indicatorKey);
+  const isNumber = indicator?.value_type === "number";
+  return {
+    key: "custom_indicator",
+    label: t("cbCustomIndicator"),
+    category: "technical",
+    valueType: isNumber ? "number" : "boolean",
+    operators: isNumber ? ["gt", "gte", "lt", "lte", "eq", "neq"] : ["eq", "neq"],
+    requiresHistory: true,
+    side: "both",
+    params: [{ key: "indicator_key", label: t("cbIndicator"), type: "select", default: indicator?.key ?? "" }],
+  };
 }
 
-function makeEmptyLeaf(side: "buy" | "sell"): ConditionLeaf {
-  const fields = getAvailableFields(side);
+function getFieldDef(
+  key: string,
+  customIndicators: CustomIndicator[] = [],
+  indicatorKey?: string | number,
+): ConditionFieldDef | undefined {
+  if (key === "custom_indicator") {
+    return buildCustomIndicatorField(customIndicators, indicatorKey);
+  }
+  return CONDITION_FIELDS.find((field) => field.key === key);
+}
+
+function getAvailableFields(side: "buy" | "sell", customIndicators: CustomIndicator[] = []): ConditionFieldDef[] {
+  const base = CONDITION_FIELDS.filter((field) => field.side === "both" || field.side === side);
+  if (!customIndicators.length) return base;
+  return [...base, buildCustomIndicatorField(customIndicators)];
+}
+
+function makeEmptyLeaf(side: "buy" | "sell", customIndicators: CustomIndicator[] = []): ConditionLeaf {
+  const fields = getAvailableFields(side, customIndicators);
   const first = fields[0];
   return {
     field: first?.key ?? "quality_score",
     operator: (first?.operators[0] ?? "gte") as ConditionOperator,
-    value: 0,
+    value: first?.valueType === "boolean" ? true : 0,
   };
 }
-
-function makeEmptyGroup(): ConditionGroup {
-  return { logic: "AND", conditions: [] };
-}
-
-// ── Leaf Row ──────────────────────────────────────────────
 
 interface LeafRowProps {
   leaf: ConditionLeaf;
   side: "buy" | "sell";
   onChange: (leaf: ConditionLeaf) => void;
   onDelete: () => void;
+  customIndicators: CustomIndicator[];
 }
 
-function ConditionLeafRow({ leaf, side, onChange, onDelete }: LeafRowProps) {
-  const fields = useMemo(() => getAvailableFields(side), [side]);
-  const fieldDef = useMemo(() => getFieldDef(leaf.field), [leaf.field]);
+function ConditionLeafRow({ leaf, side, onChange, onDelete, customIndicators }: LeafRowProps) {
+  const fields = useMemo(() => getAvailableFields(side, customIndicators), [side, customIndicators]);
+  const selectedCustomIndicator = useMemo(
+    () => getCustomIndicatorMeta(customIndicators, leaf.params?.indicator_key),
+    [customIndicators, leaf.params],
+  );
+  const fieldDef = useMemo(
+    () => getFieldDef(leaf.field, customIndicators, leaf.params?.indicator_key),
+    [leaf.field, customIndicators, leaf.params],
+  );
 
   const groupedOptions = useMemo(() => {
     const groups: Record<string, { label: string; options: { label: string; value: string }[] }> = {};
-    for (const f of fields) {
-      const cat = f.category;
-      if (!groups[cat]) groups[cat] = { label: CATEGORY_LABELS[cat] || cat, options: [] };
-      groups[cat].options.push({ label: f.label, value: f.key });
+    for (const field of fields) {
+      const category = field.category;
+      if (!groups[category]) groups[category] = { label: CATEGORY_LABELS[category] || category, options: [] };
+      groups[category].options.push({ label: field.label, value: field.key });
     }
     return Object.values(groups);
   }, [fields]);
 
   const handleFieldChange = useCallback(
     (key: string) => {
-      const def = getFieldDef(key);
-      const op = def?.operators[0] ?? "gte";
-      let val: number | string | boolean | (string | number)[] = 0;
-      if (def?.valueType === "boolean") val = true;
-      else if (def?.valueType === "string_list") val = [];
-      else if (def?.valueType === "string") val = "";
-      const params = def?.params
-        ? Object.fromEntries(def.params.map((p) => [p.key, p.default]))
+      const def = getFieldDef(key, customIndicators);
+      const nextParams = def?.params
+        ? Object.fromEntries(def.params.map((param) => [param.key, param.default]))
         : undefined;
-      onChange({ field: key, operator: op as ConditionOperator, value: val, params });
+      let nextValue: ConditionLeaf["value"] = 0;
+      if (def?.valueType === "boolean") nextValue = true;
+      else if (def?.valueType === "string") nextValue = "";
+      else if (def?.valueType === "string_list") nextValue = [];
+      onChange({
+        field: key,
+        operator: (def?.operators[0] ?? "gte") as ConditionOperator,
+        value: nextValue,
+        params: nextParams,
+      });
     },
-    [onChange],
+    [customIndicators, onChange],
   );
 
   const operatorOptions = useMemo(
@@ -112,7 +148,7 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete }: LeafRowProps) {
             size="small"
             style={{ width: 100 }}
             value={typeof leaf.value === "number" ? leaf.value : 0}
-            onChange={(v) => onChange({ ...leaf, value: Number(v ?? 0) })}
+            onChange={(value) => onChange({ ...leaf, value: Number(value ?? 0) })}
           />
         );
       case "boolean":
@@ -120,23 +156,25 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete }: LeafRowProps) {
           <Switch
             size="small"
             checked={leaf.value === true}
-            onChange={(v) => onChange({ ...leaf, value: v })}
+            onChange={(checked) => onChange({ ...leaf, value: checked })}
           />
         );
       case "string_list": {
-        const opts = leaf.field === "stage" ? STAGE_OPTIONS
-          : leaf.field === "action" || leaf.field === "score_action" ? ACTION_OPTIONS
-          : [];
-        const val = Array.isArray(leaf.value) ? leaf.value as string[] : [];
+        const options = leaf.field === "stage"
+          ? STAGE_OPTIONS
+          : leaf.field === "action" || leaf.field === "score_action"
+            ? ACTION_OPTIONS
+            : [];
+        const value = Array.isArray(leaf.value) ? (leaf.value as string[]) : [];
         return (
           <Select
             size="small"
             mode="multiple"
             style={{ minWidth: 140 }}
-            value={val}
-            options={opts}
-            onChange={(v) => onChange({ ...leaf, value: v })}
-            placeholder="Select..."
+            value={value}
+            options={options}
+            onChange={(next) => onChange({ ...leaf, value: next })}
+            placeholder={t("cbPleaseSelect")}
           />
         );
       }
@@ -146,7 +184,7 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete }: LeafRowProps) {
             size="small"
             style={{ width: 160 }}
             value={typeof leaf.value === "string" ? leaf.value : ""}
-            onChange={(e) => onChange({ ...leaf, value: e.target.value })}
+            onChange={(event) => onChange({ ...leaf, value: event.target.value })}
           />
         );
       default:
@@ -156,20 +194,45 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete }: LeafRowProps) {
 
   const renderParams = () => {
     if (!fieldDef?.params?.length) return null;
-    return fieldDef.params.map((p) => {
-      if (p.type === "text") {
+    return fieldDef.params.map((param) => {
+      if (param.type === "select") {
+        const options = customIndicators.map((item) => ({ label: item.name, value: item.key }));
         return (
-          <Input
-            key={p.key}
+          <Select
+            key={param.key}
             size="small"
-            style={{ width: 360 }}
-            addonBefore={p.label}
-            value={String(leaf.params?.[p.key] ?? p.default ?? "")}
-            placeholder={p.placeholder}
-            onChange={(e) =>
+            style={{ minWidth: 180 }}
+            value={String(leaf.params?.[param.key] ?? param.default ?? "")}
+            options={options}
+            onChange={(value) => {
+              const nextIndicator = getCustomIndicatorMeta(customIndicators, value);
+              const nextFieldDef = buildCustomIndicatorField(customIndicators, value);
+              const nextValue = nextIndicator?.value_type === "number"
+                ? (typeof leaf.value === "number" ? leaf.value : 0)
+                : leaf.value === true;
               onChange({
                 ...leaf,
-                params: { ...leaf.params, [p.key]: e.target.value },
+                operator: nextFieldDef.operators.includes(leaf.operator) ? leaf.operator : nextFieldDef.operators[0],
+                value: nextValue,
+                params: { ...leaf.params, [param.key]: value },
+              });
+            }}
+          />
+        );
+      }
+      if (param.type === "text") {
+        return (
+          <Input
+            key={param.key}
+            size="small"
+            style={{ width: 360 }}
+            addonBefore={param.label}
+            value={String(leaf.params?.[param.key] ?? param.default ?? "")}
+            placeholder={param.placeholder}
+            onChange={(event) =>
+              onChange({
+                ...leaf,
+                params: { ...leaf.params, [param.key]: event.target.value },
               })
             }
           />
@@ -177,15 +240,15 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete }: LeafRowProps) {
       }
       return (
         <InputNumber
-          key={p.key}
+          key={param.key}
           size="small"
           style={{ width: 88 }}
-          addonBefore={p.label}
-          value={Number(leaf.params?.[p.key] ?? p.default)}
-          onChange={(v) =>
+          addonBefore={param.label}
+          value={Number(leaf.params?.[param.key] ?? param.default)}
+          onChange={(value) =>
             onChange({
               ...leaf,
-              params: { ...leaf.params, [p.key]: Number(v ?? p.default) },
+              params: { ...leaf.params, [param.key]: Number(value ?? param.default) },
             })
           }
         />
@@ -194,7 +257,7 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete }: LeafRowProps) {
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", flexWrap: "wrap" }}>
       <Select
         size="small"
         style={{ width: 150 }}
@@ -204,19 +267,22 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete }: LeafRowProps) {
       />
       <Select
         size="small"
-        style={{ width: 70 }}
+        style={{ width: 76 }}
         value={leaf.operator}
         options={operatorOptions}
-        onChange={(v) => onChange({ ...leaf, operator: v as ConditionOperator })}
+        onChange={(value) => onChange({ ...leaf, operator: value as ConditionOperator })}
       />
       {renderValueInput()}
       {renderParams()}
+      {leaf.field === "custom_indicator" && selectedCustomIndicator && (
+        <Tag color={selectedCustomIndicator.value_type === "number" ? "gold" : "blue"} style={{ margin: 0 }}>
+          {selectedCustomIndicator.value_type === "number" ? t("cbNumber") : t("cbBoolean")}
+        </Tag>
+      )}
       <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={onDelete} />
     </div>
   );
 }
-
-// ── Group Node (recursive) ────────────────────────────────
 
 interface GroupNodeProps {
   group: ConditionGroup;
@@ -226,6 +292,7 @@ interface GroupNodeProps {
   maxDepth: number;
   canDelete?: boolean;
   onDelete?: () => void;
+  customIndicators: CustomIndicator[];
 }
 
 function ConditionGroupNode({
@@ -236,6 +303,7 @@ function ConditionGroupNode({
   maxDepth,
   canDelete,
   onDelete,
+  customIndicators,
 }: GroupNodeProps) {
   const updateChild = useCallback(
     (index: number, updated: ConditionLeaf | ConditionGroup) => {
@@ -248,23 +316,23 @@ function ConditionGroupNode({
 
   const removeChild = useCallback(
     (index: number) => {
-      const next = group.conditions.filter((_, i) => i !== index);
+      const next = group.conditions.filter((_, itemIndex) => itemIndex !== index);
       onChange({ ...group, conditions: next });
     },
     [group, onChange],
   );
 
   const addLeaf = useCallback(() => {
-    onChange({ ...group, conditions: [...group.conditions, makeEmptyLeaf(side)] });
-  }, [group, onChange, side]);
+    onChange({ ...group, conditions: [...group.conditions, makeEmptyLeaf(side, customIndicators)] });
+  }, [group, onChange, side, customIndicators]);
 
   const addGroup = useCallback(() => {
     if (depth >= maxDepth) return;
     onChange({
       ...group,
-      conditions: [...group.conditions, { logic: "AND", conditions: [makeEmptyLeaf(side)] }],
+      conditions: [...group.conditions, { logic: "AND", conditions: [makeEmptyLeaf(side, customIndicators)] }],
     });
-  }, [group, onChange, side, depth, maxDepth]);
+  }, [depth, group, maxDepth, onChange, side, customIndicators]);
 
   return (
     <div
@@ -282,52 +350,54 @@ function ConditionGroupNode({
           size="small"
           value={group.logic}
           options={[
-            { label: "且 (AND)", value: "AND" },
-            { label: "或 (OR)", value: "OR" },
+            { label: "AND", value: "AND" },
+            { label: "OR", value: "OR" },
           ]}
-          onChange={(v) => onChange({ ...group, logic: v as LogicOperator })}
+          onChange={(value) => onChange({ ...group, logic: value as LogicOperator })}
         />
         <Tag color={group.logic === "AND" ? "blue" : "green"} style={{ margin: 0 }}>
-          {group.conditions.length} 个条件
+          {template("cbConditionCount", { count: group.conditions.length })}
         </Tag>
         <div style={{ flex: 1 }} />
         {canDelete && onDelete && (
           <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={onDelete}>
-            删除组
+            {t("cbDeleteGroup")}
           </Button>
         )}
       </div>
 
-      {group.conditions.map((child, i) =>
+      {group.conditions.map((child, index) =>
         isConditionGroup(child) ? (
           <ConditionGroupNode
-            key={`g-${i}`}
+            key={`g-${index}`}
             group={child}
-            onChange={(updated) => updateChild(i, updated)}
+            onChange={(updated) => updateChild(index, updated)}
             side={side}
             depth={depth + 1}
             maxDepth={maxDepth}
             canDelete
-            onDelete={() => removeChild(i)}
+            onDelete={() => removeChild(index)}
+            customIndicators={customIndicators}
           />
         ) : (
           <ConditionLeafRow
-            key={`l-${i}`}
+            key={`l-${index}`}
             leaf={child}
             side={side}
-            onChange={(updated) => updateChild(i, updated)}
-            onDelete={() => removeChild(i)}
+            onChange={(updated) => updateChild(index, updated)}
+            onDelete={() => removeChild(index)}
+            customIndicators={customIndicators}
           />
         ),
       )}
 
       <Space size={8} style={{ marginTop: 4 }}>
         <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addLeaf}>
-          添加条件
+          {t("cbAddCondition")}
         </Button>
         {depth < maxDepth && (
           <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addGroup}>
-            添加条件组
+            {t("cbAddGroup")}
           </Button>
         )}
       </Space>
@@ -335,14 +405,13 @@ function ConditionGroupNode({
   );
 }
 
-// ── Main Export ────────────────────────────────────────────
-
 export default function ConditionBuilder({
   value,
   onChange,
   side,
   depth = 0,
   maxDepth = 4,
+  customIndicators = [],
 }: ConditionBuilderProps) {
   return (
     <ConditionGroupNode
@@ -351,6 +420,7 @@ export default function ConditionBuilder({
       side={side}
       depth={depth}
       maxDepth={maxDepth}
+      customIndicators={customIndicators}
     />
   );
 }

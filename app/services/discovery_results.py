@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 from app.models.daily_bar import DailyBar
 from app.models.scan import ScanResult
 from app.models.symbol import Symbol
+from app.models.custom_indicator import CustomIndicator
+from app.models.score import Score
+from app.schemas.discovery import DiscoveryIndicatorEvaluateRequest
+from app.services.backtest import _resolve_formula_expr
 from app.schemas.discovery import DiscoveryResultUpdate
 from app.services.analysis import calculate_symbol_score
 from app.services.market_data import sync_symbol_daily_bars
@@ -95,3 +99,88 @@ def update_discovery_symbol(db: Session, scan_result_id: int) -> dict | None:
     db.commit()
     db.refresh(result)
     return _serialize_result(result)
+
+
+def evaluate_discovery_indicators(db: Session, payload: DiscoveryIndicatorEvaluateRequest) -> list[dict]:
+    result_ids = [int(item) for item in payload.scan_result_ids if int(item) > 0]
+    indicator_keys = [str(item).strip() for item in payload.indicator_keys if str(item).strip()]
+    if not result_ids or not indicator_keys:
+        return []
+
+    indicator_rows = db.execute(
+        select(CustomIndicator).where(
+            CustomIndicator.key.in_(indicator_keys),
+            CustomIndicator.enabled == True,
+        )
+    ).scalars().all()
+    indicator_map = {row.key: row for row in indicator_rows}
+    if not indicator_map:
+        return []
+
+    rows = db.execute(
+        select(ScanResult, Symbol)
+        .join(Symbol, Symbol.id == ScanResult.symbol_id)
+        .where(ScanResult.id.in_(result_ids))
+    ).all()
+    if not rows:
+        return []
+
+    response: list[dict] = []
+    for scan_result, symbol in rows:
+        latest_bar = (
+            db.execute(select(DailyBar).where(DailyBar.symbol_id == symbol.id).order_by(DailyBar.trade_date.desc()))
+            .scalars()
+            .first()
+        )
+        values: dict[str, bool | float | None] = {}
+        if latest_bar is not None:
+            history_bars = (
+                db.execute(
+                    select(DailyBar)
+                    .where(
+                        DailyBar.symbol_id == symbol.id,
+                        DailyBar.trade_date < latest_bar.trade_date,
+                    )
+                    .order_by(DailyBar.trade_date.desc())
+                    .limit(250)
+                )
+                .scalars()
+                .all()
+            )
+            history_bars = list(reversed(history_bars))
+            prev_bar = history_bars[-1] if history_bars else None
+            score = (
+                db.execute(
+                    select(Score)
+                    .where(
+                        Score.symbol_id == symbol.id,
+                        Score.trade_date <= latest_bar.trade_date,
+                    )
+                    .order_by(Score.trade_date.desc())
+                )
+                .scalars()
+                .first()
+            )
+            for key in indicator_keys:
+                indicator = indicator_map.get(key)
+                if indicator is None:
+                    values[key] = None
+                    continue
+                result = _resolve_formula_expr(score, latest_bar, prev_bar, history_bars, indicator.formula)
+                if indicator.value_type == "number":
+                    try:
+                        values[key] = float(result)
+                    except (TypeError, ValueError):
+                        values[key] = None
+                else:
+                    values[key] = bool(result)
+        else:
+            for key in indicator_keys:
+                values[key] = None
+
+        response.append({
+            "scan_result_id": scan_result.id,
+            "symbol_id": symbol.id,
+            "values": values,
+        })
+    return response

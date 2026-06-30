@@ -1,0 +1,219 @@
+INFO:     Started server process [34352]
+INFO:     Waiting for application startup.
+2026-06-30 12:50:11,041 [INFO] app.main: Initializing MySQL engine: 127.0.0.1:3306/gpfx
+2026-06-30 12:50:11,921 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-30 12:50:11,930 [INFO] app.main: Startup cleanup: no expired results to remove
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-06-30 13:20:12,302 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-30 13:50:12,832 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-30 14:20:13,345 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-30 14:50:13,871 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-30 15:20:14,368 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-30 15:50:14,906 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-30 16:20:15,317 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-30 16:50:15,868 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-06-30 17:20:16,333 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py", line 1936, in _exec_single_context
+    self.dialect.do_executemany(
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\dialects\mysql\mysqldb.py", line 196, in do_executemany
+    rowcount = cursor.executemany(statement, parameters)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\cursors.py", line 197, in executemany
+    self.rowcount = sum(self.execute(query, arg) for arg in args)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\cursors.py", line 197, in <genexpr>
+    self.rowcount = sum(self.execute(query, arg) for arg in args)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\cursors.py", line 159, in execute
+    result = self._query(query)
+             ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\cursors.py", line 330, in _query
+    conn.query(q)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\connections.py", line 582, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\connections.py", line 847, in _read_query_result
+    result.read()
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\connections.py", line 1245, in read
+    first_packet = self.connection._read_packet()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\connections.py", line 803, in _read_packet
+    packet.raise_for_error()
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\err.py", line 154, in raise_mysql_exception
+    raise errorclass(errno, errval, sqlstate=sqlstate)
+pymysql.err.OperationalError: (1205, 'Lock wait timeout exceeded; try restarting transaction')
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ai_project\dataAanlystNew\app\services\market_data.py", line 400, in sync_market_data
+  File "D:\ai_project\dataAanlystNew\app\services\market_data.py", line 348, in sync_symbol_daily_bars
+    "end_date": resolved_end.isoformat() if hasattr(resolved_end, 'isoformat') else str(resolved_end),
+    ^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\session.py", line 4331, in flush
+    self._flush(objects)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\session.py", line 4466, in _flush
+    with util.safe_reraise():
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\util\langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\session.py", line 4427, in _flush
+    flush_context.execute()
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\unitofwork.py", line 466, in execute
+    rec.execute(self)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\persistence.py", line 85, in save_obj
+    _emit_update_statements(
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\persistence.py", line 912, in _emit_update_statements
+    c = connection.execute(
+        ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py", line 1936, in _exec_single_context
+    self.dialect.do_executemany(
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\dialects\mysql\mysqldb.py", line 196, in do_executemany
+    rowcount = cursor.executemany(statement, parameters)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\cursors.py", line 197, in executemany
+    self.rowcount = sum(self.execute(query, arg) for arg in args)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\cursors.py", line 197, in <genexpr>
+    self.rowcount = sum(self.execute(query, arg) for arg in args)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\cursors.py", line 159, in execute
+    result = self._query(query)
+             ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\cursors.py", line 330, in _query
+    conn.query(q)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\connections.py", line 582, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\connections.py", line 847, in _read_query_result
+    result.read()
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\connections.py", line 1245, in read
+    first_packet = self.connection._read_packet()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\connections.py", line 803, in _read_packet
+    packet.raise_for_error()
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\pymysql\err.py", line 154, in raise_mysql_exception
+    raise errorclass(errno, errval, sqlstate=sqlstate)
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (1205, 'Lock wait timeout exceeded; try restarting transaction')
+[SQL: UPDATE daily_bars SET volume=%(volume)s, amount=%(amount)s, turnover_rate=%(turnover_rate)s WHERE daily_bars.id = %(daily_bars_id)s]
+[parameters: [{'volume': 94270804.0, 'amount': 1034554249.0, 'turnover_rate': 0.004857917344878796, 'daily_bars_id': 68686}, {'volume': 96582803.0, 'amount': 1046564896.0, 'turnover_rate': 0.004977058155892167, 'daily_bars_id': 68687}, {'volume': 142689316.0, 'amount': 1511009565.0, 'turnover_rate': 0.007352996619454859, 'daily_bars_id': 68688}, {'volume': 126531672.0, 'amount': 1334768053.0, 'turnover_rate': 0.006520368746248464, 'daily_bars_id': 69058}, {'volume': 119060407.0, 'amount': 1285360400.0, 'turnover_rate': 0.006135363142268617, 'daily_bars_id': 69059}, {'volume': 112584114.0, 'amount': 1193370304.0, 'turnover_rate': 0.0058016299527732015, 'daily_bars_id': 69060}, {'volume': 108399905.0, 'amount': 1136742126.0, 'turnover_rate': 0.0055860113241710955, 'daily_bars_id': 69061}, {'volume': 123648164.0, 'amount': 1270902948.0, 'turnover_rate': 0.006371777210662359, 'daily_bars_id': 69062}]]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\uvicorn\protocols\http\httptools_impl.py", line 416, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\uvicorn\middleware\proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\fastapi\applications.py", line 1160, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\fastapi\routing.py", line 130, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\fastapi\routing.py", line 116, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\fastapi\routing.py", line 670, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\fastapi\routing.py", line 324, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\api\routes\market_data.py", line 25, in trigger_market_data_update
+  File "D:\ai_project\dataAanlystNew\app\core\async_utils.py", line 14, in run_sync
+    return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\market_data.py", line 434, in sync_market_data
+    )
+      
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\attributes.py", line 569, in __get__
+    return self.impl.get(state, dict_)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\attributes.py", line 1096, in get
+    value = self._fire_loader_callables(state, key, passive)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\attributes.py", line 1126, in _fire_loader_callables
+    return state._load_expired(state, passive)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\state.py", line 828, in _load_expired
+    self.manager.expired_attribute_loader(self, toload, passive)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\loading.py", line 1674, in load_scalar_attributes
+    result = load_on_ident(
+             ^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\loading.py", line 510, in load_on_ident
+    return load_on_pk_identity(
+           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\loading.py", line 695, in load_on_pk_identity
+    session.execute(
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\session.py", line 2239, in _execute_internal
+    conn = self._connection_for_bind(bind)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\session.py", line 2108, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\state_changes.py", line 101, in _go
+    self._raise_for_prerequisite_state(fn.__name__, current_state)
+  File "C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\orm\session.py", line 971, in _raise_for_prerequisite_state
+    raise sa_exc.PendingRollbackError(
+sqlalchemy.exc.PendingRollbackError: This Session's transaction has been rolled back due to a previous exception during flush. To begin a new transaction with this Session, first issue Session.rollback(). Original exception was: (pymysql.err.OperationalError) (1205, 'Lock wait timeout exceeded; try restarting transaction')
+[SQL: UPDATE daily_bars SET volume=%(volume)s, amount=%(amount)s, turnover_rate=%(turnover_rate)s WHERE daily_bars.id = %(daily_bars_id)s]
+[parameters: [{'volume': 94270804.0, 'amount': 1034554249.0, 'turnover_rate': 0.004857917344878796, 'daily_bars_id': 68686}, {'volume': 96582803.0, 'amount': 1046564896.0, 'turnover_rate': 0.004977058155892167, 'daily_bars_id': 68687}, {'volume': 142689316.0, 'amount': 1511009565.0, 'turnover_rate': 0.007352996619454859, 'daily_bars_id': 68688}, {'volume': 126531672.0, 'amount': 1334768053.0, 'turnover_rate': 0.006520368746248464, 'daily_bars_id': 69058}, {'volume': 119060407.0, 'amount': 1285360400.0, 'turnover_rate': 0.006135363142268617, 'daily_bars_id': 69059}, {'volume': 112584114.0, 'amount': 1193370304.0, 'turnover_rate': 0.0058016299527732015, 'daily_bars_id': 69060}, {'volume': 108399905.0, 'amount': 1136742126.0, 'turnover_rate': 0.0055860113241710955, 'daily_bars_id': 69061}, {'volume': 123648164.0, 'amount': 1270902948.0, 'turnover_rate': 0.006371777210662359, 'daily_bars_id': 69062}]]
+(Background on this error at: https://sqlalche.me/e/20/e3q8) (Background on this error at: https://sqlalche.me/e/20/7s2a)
+2026-06-30 17:28:43,676 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove

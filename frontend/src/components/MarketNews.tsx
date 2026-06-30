@@ -676,7 +676,7 @@ export default function MarketNews() {
                       <div className="mn-meta-footer">
                         <Tooltip title={`${lb.source}: ${srcName(event.source)}`}><Text type="secondary">{srcName(event.source)}</Text></Tooltip>
                         <span className="mn-credibility" title={credLbl[locale === "zh-CN" ? "zh" : "en"]}>{credLbl.stars}</span>
-                        {event.source_url && (<a href={event.source_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="mn-source-link">Source</a>)}
+                        {event.source_url && (<a href={event.source_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="mn-source-link">{locale === "zh-CN" ? "来源" : "Source"}</a>)}
                       </div>
                     </div>
                   )}

@@ -27,8 +27,10 @@ export async function requestJson<T = any>(url: string, options: RequestInit & {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const detail = payload.detail || payload.message || response.statusText;
-      const msg = typeof detail === "string" ? detail : JSON.stringify(detail);
-      throw new Error(msg);
+      const msg = typeof detail === "string" ? detail : detail?.message || JSON.stringify(detail);
+      const error = new Error(msg) as Error & { detail?: any };
+      error.detail = detail;
+      throw error;
     }
     return payload as T;
   } catch (error: any) {
@@ -107,6 +109,16 @@ export const api = {
       timeoutMs: 60000,
     }),
 
+  startHistoryInitialization: (payload: { preset: string; adjust?: string; asset_types?: string[] }) =>
+    requestJson<any>(`${API}/market-data/initialize-history`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      timeoutMs: 30000,
+    }),
+  getHistoryInitializationStatus: () =>
+    requestJson<any>(`${API}/market-data/initialize-history/status`),
+
   // Scans
   createScanRun: (payload: any) =>
     requestJson(`${API}/scans/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
@@ -173,6 +185,12 @@ export const api = {
     requestJson(`${API}/discovery/results/${resultId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   refreshDiscoveryResult: (resultId: number) =>
     requestJson(`${API}/discovery/results/${resultId}/refresh`, { method: "POST" }),
+  evaluateDiscoveryIndicators: (payload: { scan_result_ids: number[]; indicator_keys: string[] }) =>
+    requestJson<any[]>(`${API}/discovery/indicators/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
   cleanupDiscoveryResults: () =>
     requestJson<{ deleted: number; skipped_frozen: number }>(`${API}/discovery/results/cleanup`, { method: "POST" }),
 
@@ -251,6 +269,38 @@ export const api = {
   deleteBacktestTemplate: (id: number) =>
     requestJson<any>(`${API}/backtest/templates/${id}`, { method: "DELETE" }),
 
+
+  // Custom indicators
+  getCustomIndicators: (params: { scope?: string; enabled?: boolean } = {}) => {
+    const q = new URLSearchParams();
+    if (params.scope) q.set("scope", params.scope);
+    if (params.enabled != null) q.set("enabled", String(params.enabled));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return requestJson<any[]>(`${API}/settings/custom-indicators${suffix}`);
+  },
+  createCustomIndicator: (payload: any) =>
+    requestJson<any>(`${API}/settings/custom-indicators`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  updateCustomIndicator: (id: number, payload: any) =>
+    requestJson<any>(`${API}/settings/custom-indicators/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  previewCustomIndicator: (payload: { symbol_id: number; formula: string; value_type: "boolean" | "number"; trade_date?: string }) =>
+    requestJson<any>(`${API}/settings/custom-indicators/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  deleteCustomIndicator: (id: number) =>
+    requestJson<any>(`${API}/settings/custom-indicators/${id}`, { method: "DELETE" }),
+
+
+  // Discovery plans
+  getDiscoveryPlans: () =>
+    requestJson<any[]>(`${API}/settings/discovery-plans`),
+  createDiscoveryPlan: (payload: any) =>
+    requestJson<any>(`${API}/settings/discovery-plans`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  updateDiscoveryPlan: (id: number, payload: any) =>
+    requestJson<any>(`${API}/settings/discovery-plans/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  deleteDiscoveryPlan: (id: number) =>
+    requestJson<any>(`${API}/settings/discovery-plans/${id}`, { method: "DELETE" }),
   // Backup & Export
   backupDatabase: () =>
     requestJson<any>(`${API}/system/backup`, { method: "POST" }),
@@ -261,3 +311,5 @@ export const api = {
   exportData: (dataType: string, portfolioId: number = 1) =>
     requestJson<any>(`${API}/system/export/${dataType}?portfolio_id=${portfolioId}`),
 };
+
+

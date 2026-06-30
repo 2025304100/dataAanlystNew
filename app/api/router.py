@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import backtest, dashboard, db_config, discovery, journals, macro, market_data, market_events, news, portfolios, scans, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists
+from app.api.routes import backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, journals, macro, market_data, market_events, news, portfolios, scans, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists
 from app.core.config import settings
 
 
@@ -22,4 +22,6 @@ api_router.include_router(journals.router, tags=["journals"])
 api_router.include_router(dashboard.router, tags=["dashboard"])
 api_router.include_router(system.router, tags=["system"])
 api_router.include_router(db_config.router, tags=["settings"])
+api_router.include_router(custom_indicators.router, tags=["settings"])
+api_router.include_router(discovery_plans.router, tags=["settings"])
 api_router.include_router(backtest.router, tags=["backtest"])

@@ -68,3 +68,14 @@ class DiscoveryResultUpdate(BaseModel):
     is_frozen: bool | None = None
     warning_days: int | None = Field(default=None, ge=1, le=60)
     valid_days: int | None = Field(default=None, ge=1, le=365)
+
+
+class DiscoveryIndicatorEvaluateRequest(BaseModel):
+    scan_result_ids: list[int] = Field(default_factory=list)
+    indicator_keys: list[str] = Field(default_factory=list)
+
+
+class DiscoveryIndicatorEvaluationRow(BaseModel):
+    scan_result_id: int
+    symbol_id: int
+    values: dict[str, bool | float | None] = Field(default_factory=dict)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,11 +9,19 @@ from app.models.symbol import Symbol
 from app.schemas.market_data import (
     DailyBarImportRequest,
     DailyBarRead,
+    HistoryInitializationRequest,
+    HistoryInitializationStatus,
     MarketDataRepairRequest,
     MarketDataUpdateRequest,
 )
 from app.services.analysis import calculate_symbol_score
-from app.services.market_data import sync_market_data, sync_symbol_daily_bars
+from app.services.market_data import (
+    get_history_initialization_status,
+    run_history_initialization_task,
+    start_history_initialization_task,
+    sync_market_data,
+    sync_symbol_daily_bars,
+)
 
 
 router = APIRouter()
@@ -44,6 +52,29 @@ async def trigger_market_data_update(payload: MarketDataUpdateRequest, db: Sessi
         "message": "Market data sync completed",
         "data": result,
     }
+
+
+@router.post("/market-data/initialize-history", response_model=HistoryInitializationStatus)
+def initialize_history_data(
+    payload: HistoryInitializationRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    try:
+        task = start_history_initialization_task(
+            preset=payload.preset,
+            adjust=payload.adjust,
+            asset_types=payload.asset_types,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    background_tasks.add_task(run_history_initialization_task, task["task_id"])
+    return task
+
+
+@router.get("/market-data/initialize-history/status", response_model=HistoryInitializationStatus)
+def get_initialize_history_status() -> dict:
+    return get_history_initialization_status()
 
 
 @router.post("/market-data/symbols/{symbol_id}/repair")

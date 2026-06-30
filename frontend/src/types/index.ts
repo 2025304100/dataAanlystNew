@@ -24,18 +24,18 @@ export interface Score {
   stage: string;
   action: string;
   priority_score: number;
-  // 股质评分分项
+  // 闂傚倷娴囬崑鎰偓鍏哥矙婵″爼宕ㄩ婊冩槬闂備浇宕垫慨鏉懨洪妶鍥ｅ亾濮樼厧澧寸€规洝顫夐幆鏃堝Ω閵壯屾Т闂備胶纭堕崜婵堢矙韫囨稑鐒?
   trend_score?: number;
   momentum_score?: number;
   volatility_score?: number;
   liquidity_score?: number;
   breadth_score?: number;
   event_score?: number;
-  // 时点评分分项（新增）
+  // 闂傚倷绀侀幖顐﹀疮椤愶絾娅犻幖娣妼绾惧鏌ㄥ┑鍡樺閻庢碍宀搁弻娑㈠即閵娿儰绨婚梺璇查椤兘寮诲☉銏犵闁瑰鍎愬Λ锕傛⒑闂堟稒顥滅紒澶婄秺瀵偄顓兼径濠囧敹闂佺粯鏌ㄩ幗婊堝储閹邦厾绡€闁冲皝鍋撻柛娑卞幖婢瑰绱?
   breakout_score?: number;
   pullback_score?: number;
   overheat_penalty?: number;
-  // 数据可信度（P0-4.3）
+  // 闂傚倷娴囧銊╂嚄閼稿灚娅犳俊銈傚亾闁伙絽鐏氱粭鐔煎焵椤掆偓閻ｇ兘鏁愭径妯绘櫖濠电偛妫楀ù椋庣不濮樿埖鐓欓柤鍦瑜把囨偣娓氬﹦鎮兼俊鍙夊姇椤?-4.3闂?
   data_credibility?: number;
   created_at?: string;
 }
@@ -454,6 +454,13 @@ export interface DiscoveryScopeStats {
   active_symbols: number;
 }
 
+
+export interface DiscoveryIndicatorEvaluation {
+  scan_result_id: number;
+  symbol_id: number;
+  values: Record<string, boolean | number | null>;
+}
+
 export interface NewsEvent {
   symbol_id: number;
   symbol: string;
@@ -562,9 +569,9 @@ export interface MarketDataUpdateResponse {
   };
 }
 
-// ════════════════════════════════════════
-//  行情消息 (Market News / Market Events)
-// ════════════════════════════════════════
+// 闂傚倷绀佺壕顓㈠磿閵堝绀夐煫鍥ㄧ☉閻ら箖鏌＄仦璇插姎闁绘挻鐩弻鐔兼嚋椤掆偓婵¤姤绻涢崨顔剧煉闁哄苯绉归幃婊兾熼崫鍕垫綂闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁?
+//  闂備浇宕甸崑鐐电矙閹达箑瀚夋い鎺戝绾惧潡鐓崶銊﹀皑婵℃彃鐗撻弻娑㈩敃閵堝懏鐎虹紓?(Market News / Market Events)
+// 闂傚倷绀佺壕顓㈠磿閵堝绀夐煫鍥ㄧ☉閻ら箖鏌＄仦璇插姎闁绘挻鐩弻鐔兼嚋椤掆偓婵¤姤绻涢崨顔剧煉闁哄苯绉归幃婊兾熼崫鍕垫綂闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁绘繃濞婂鍝勭暦閸パ冨闂佸憡鏌ㄧ换妯侯嚕閺屻儱钃熼柕澶堝劤閸樻悂姊虹涵鍛劷闁告柨绉撮埢宥咁煥閸喓鍘撻梺缁樺灦閿氬┑顔瑰亾闂備礁鎼幊蹇涙偂閿熺姴鏄ラ柨鐔哄Т缁犳盯鏌曟繝蹇涙闁?
 
 export interface MarketEvent {
   id: number;
@@ -572,13 +579,13 @@ export interface MarketEvent {
   summary: string | null;
   impact_scope: string;       // macro_policy | sector_dynamics | international | breaking | fund_flow | sentiment | other
   importance_level: number;   // 1-5
-  affected_market: string;     // A股 | 港股 | 美股
+  affected_market: string;     // A闂?| 濠电姷鏁搁崑鐐哄箹閳哄懎鍨傞柣銏㈩焾绾?| 缂傚倸鍊搁崐绋棵洪妶鍜佹僵闁挎洖鍊哥壕?
   affected_sectors: string | null;
   affected_symbols: string | null;
   sentiment: string;          // positive | negative | neutral
   source: string;             // cctv | baidu | baidu-report | manual | ...
   source_url: string | null;
-  is_manual: number;          // 0=自动采集, 1=手动录入
+  is_manual: number;          // 0=闂傚倷鑳堕崢褔銆冩惔銏㈩洸婵犲﹤瀚崣蹇涙煃閸濆嫭鍣洪柣鎾冲€块弻娑㈠Ψ椤旂厧顫梺? 1=闂傚倷绀佺紞濠傤焽瑜旈、鏍川椤旇棄寮块梺鍐叉惈鐎氥劍绂嶈ぐ鎺撶厸闁搞儮鏅涙禒婊呪偓?
   published_at: string | null;
   expires_at: string | null;
   created_at: string;
@@ -711,6 +718,17 @@ export interface BacktestDiagnostics {
   position_config?: Record<string, unknown>;
 }
 
+export interface BacktestConditionTrace {
+  field: string;
+  operator: string;
+  expected?: unknown;
+  actual?: unknown;
+  matched: boolean;
+  indicator_key?: string | null;
+  indicator_name?: string | null;
+  value_type?: string | null;
+}
+
 export interface BacktestTrade {
   id: number;
   run_id: number;
@@ -726,6 +744,8 @@ export interface BacktestTrade {
   hold_days?: number | null;
   entry_cost: number;
   exit_cost?: number | null;
+  entry_traces?: BacktestConditionTrace[];
+  exit_traces?: BacktestConditionTrace[];
 }
 
 export interface BacktestRun {
@@ -759,8 +779,86 @@ export interface BacktestRun {
   summary?: BacktestSummary;
 }
 
-// ── 条件树（v2 回测规则）──────────────────────────────────
+// 闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞?闂傚倷绀侀幖顐λ囬锕€鐒垫い鎺嗗亾鐎殿喖鐖奸、鏇熺鐎ｎ偆鍘搁悗骞垮劚濡鎮￠埀顒傜磽娴ｄ粙鍝洪柣? 闂傚倷鐒﹂幃鍫曞磿閹惰棄纾婚柣鎰暩閻牓鎮楅棃娑欏暈闁哥姴妫濋弻娑㈠即閵娿儰绨婚梺璇茬箳閸犳牠寮婚妸銉㈡婵妫欏瓭闂備浇銆€閸嬫捇鏌曡箛瀣偓鏇㈡偂濮椻偓閺屽秷顧侀柛鎾跺枛瀹曟椽鎮欓崫鍕姦濡炪倖甯掔€氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻宥堫檨闁告挾鍠栧畷娲倷閸濆嫮鍔﹀銈嗗笒鐎氼剟鎮″鈧弻?
 
+
+export interface CustomIndicatorParamDef {
+  key: string;
+  label: string;
+  type: "number" | "text" | "select";
+  default: number | string;
+}
+
+export interface CustomIndicator {
+  id: number;
+  name: string;
+  key: string;
+  description: string;
+  category: string;
+  formula: string;
+  value_type: "boolean" | "number";
+  params: CustomIndicatorParamDef[];
+  scope: string[];
+  enabled: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CustomIndicatorPayload = Omit<CustomIndicator, "id" | "version" | "created_at" | "updated_at">;
+
+export interface CustomIndicatorPreviewBar {
+  trade_date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number | null;
+}
+
+export interface CustomIndicatorPreviewScore {
+  quality_score?: number | null;
+  timing_score?: number | null;
+  trend_score?: number | null;
+  momentum_score?: number | null;
+}
+
+export interface CustomIndicatorPreviewResult {
+  ok: boolean;
+  message: string;
+  symbol_id: number;
+  symbol: string;
+  name: string;
+  trade_date: string;
+  value_type: "boolean" | "number";
+  result_boolean?: boolean | null;
+  result_number?: number | null;
+  display_value: string;
+  latest_bar: CustomIndicatorPreviewBar;
+  score_snapshot?: CustomIndicatorPreviewScore | null;
+}
+
+
+
+export interface DiscoveryPlanFilter {
+  id: string;
+  indicator_key?: string;
+  operator: "gt" | "gte" | "lt" | "lte" | "eq" | "neq";
+  number_value: number;
+  boolean_value: boolean;
+}
+
+export interface DiscoveryPlan {
+  id: number;
+  name: string;
+  logic: "AND" | "OR";
+  pool_tab: "all" | "highQuality" | "highTiming" | "actionable" | "overheatRisk" | "lowCredibility";
+  filters: DiscoveryPlanFilter[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type DiscoveryPlanPayload = Omit<DiscoveryPlan, "id" | "created_at" | "updated_at">;
 export type ConditionOperator = "gt" | "gte" | "lt" | "lte" | "eq" | "neq" | "in" | "not_in";
 export type LogicOperator = "AND" | "OR";
 
@@ -803,12 +901,12 @@ export interface ConditionFieldDef {
   category: "basic" | "sub_score" | "technical" | "sell";
   valueType: "number" | "string" | "boolean" | "string_list";
   operators: ConditionOperator[];
-  params?: { key: string; label: string; type: "number" | "text"; default: number | string; placeholder?: string }[];
+  params?: { key: string; label: string; type: "number" | "text" | "select"; default: number | string; placeholder?: string }[];
   requiresHistory: boolean;
   side?: "buy" | "sell" | "both";
 }
 
-// ── 数据库配置 ──────────────────────────────────────────
+// 闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞?闂傚倷娴囧銊╂嚄閼稿灚娅犳俊銈傚亾闁伙絽鐏氶幏鍛喆閸曨偄濡抽梻浣筋潐瀹曟﹢顢氳閺侇喖鐣烽崶鈺冿紳?闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞存粓绠栧娲礃閹绘帒杈呴梺绋款儐閹瑰洭寮诲澶婄濠㈣泛锕ｆ竟鏇㈡⒒娴ｇ鏆遍柛妯荤矒瀹曟垿骞樼紒妯煎帗闂佺绻愰ˇ顖涚妤ｅ啯鈷戦柛鎰絻鐢劑鏌涚€ｎ偅宕岄柡灞界Ч瀹曟寰勬繝浣割棜闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞存粓绠栧娲礃閹绘帒杈呴梺绋款儐閹瑰洭寮诲澶婄濠㈣泛锕ｆ竟鏇㈡⒒娴ｇ鏆遍柛妯荤矒瀹曟垿骞樼紒妯煎帗闂佺绻愰ˇ顖涚妤ｅ啯鈷戦柛鎰絻鐢劑鏌涚€ｎ偅宕岄柡灞界Ч瀹曟寰勬繝浣割棜闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞存粓绠栧娲礃閹绘帒杈呴梺绋款儐閹瑰洭寮诲澶婄濠㈣泛锕ｆ竟鏇㈡⒒娴ｇ鏆遍柛妯荤矒瀹曟垿骞樼紒妯煎帗闂佺绻愰ˇ顖涚妤ｅ啯鈷戦柛鎰絻鐢劑鏌涚€ｎ偅宕岄柡灞界Ч瀹曟寰勬繝浣割棜闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞存粓绠栧娲礃閹绘帒杈呴梺绋款儐閹瑰洭寮诲澶婄濠㈣泛锕ｆ竟鏇㈡⒒娴ｇ鏆遍柛妯荤矒瀹曟垿骞樼紒妯煎帗闂佺绻愰ˇ顖涚妤ｅ啯鈷戦柛鎰絻鐢劑鏌涚€ｎ偅宕岄柡灞界Ч瀹曟寰勬繝浣割棜闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞存粓绠栧娲礃閹绘帒杈呴梺绋款儐閹瑰洭寮诲澶婄濠㈣泛锕ｆ竟鏇㈡⒒娴ｇ鏆遍柛妯荤矒瀹曟垿骞樼紒妯煎帗闂佺绻愰ˇ顖涚妤ｅ啯鈷戦柛鎰絻鐢劑鏌涚€ｎ偅宕岄柡灞界Ч瀹曟寰勬繝浣割棜闂傚倷绀侀崯鍧楀储濠婂牆纾婚柟鍓х帛閻撳啴鏌涜箛鎿冩Ц濞?
 
 export interface MySQLConfig {
   host: string;
@@ -839,5 +937,63 @@ export interface MigrationProgress {
 }
 
 
+export interface HistoryInitializationStage {
+  key: "prepare" | "sync_bars" | "calc_scores" | "finalize" | string;
+  status: "pending" | "running" | "completed" | "failed";
+  percent: number;
+  done: number;
+  total: number;
+  message?: string | null;
+}
 
+export interface HistoryInitializationSummary {
+  symbols_total: number;
+  sync_ok_count: number;
+  sync_failed_count: number;
+  empty_count: number;
+  bars_rows: number;
+  score_days_total: number;
+  score_days_completed: number;
+}
 
+export interface HistoryInitializationTask {
+  task_id?: string | null;
+  status: "idle" | "running" | "completed" | "failed";
+  preset: "1m" | "1q" | "1y" | "3y";
+  adjust: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  progress_pct: number;
+  message?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  stages: HistoryInitializationStage[];
+  summary: HistoryInitializationSummary;
+}
+
+export interface BacktestCoverageIssue {
+  symbol_id: number;
+  symbol?: string;
+  name?: string;
+  bar_days: number;
+  score_days: number;
+  coverage_pct: number;
+  missing_days: number;
+  bar_start?: string | null;
+  bar_end?: string | null;
+  score_start?: string | null;
+  score_end?: string | null;
+}
+
+export interface BacktestCoverageWarning {
+  code: "BACKTEST_SCORE_COVERAGE_INSUFFICIENT" | string;
+  message: string;
+  summary: {
+    symbols_total: number;
+    symbols_ready: number;
+    symbols_missing: number;
+    recommended_preset: "1m" | "1q" | "1y" | "3y";
+    min_coverage_pct?: number;
+  };
+  issues: BacktestCoverageIssue[];
+}

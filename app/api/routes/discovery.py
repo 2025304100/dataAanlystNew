@@ -2,7 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.discovery import DiscoveryResultUpdate, DiscoveryScopeStatsRead, DiscoveryTaskCreate, DiscoveryTaskRead
+from app.schemas.discovery import (
+    DiscoveryIndicatorEvaluateRequest,
+    DiscoveryIndicatorEvaluationRow,
+    DiscoveryResultUpdate,
+    DiscoveryScopeStatsRead,
+    DiscoveryTaskCreate,
+    DiscoveryTaskRead,
+)
 from app.services.discovery_tasks import (
     cancel_discovery_task,
     create_discovery_task,
@@ -12,7 +19,7 @@ from app.services.discovery_tasks import (
     pause_discovery_task,
     resume_discovery_task,
 )
-from app.services.discovery_results import update_discovery_result, update_discovery_symbol
+from app.services.discovery_results import evaluate_discovery_indicators, update_discovery_result, update_discovery_symbol
 from app.services.discovery_cleanup import cleanup_expired_discovery_results
 
 
@@ -83,6 +90,11 @@ def refresh_result(scan_result_id: int, db: Session = Depends(get_db)):
     if result is None:
         raise HTTPException(status_code=404, detail="Discovery result not found")
     return result
+
+
+@router.post("/discovery/indicators/evaluate", response_model=list[DiscoveryIndicatorEvaluationRow])
+def evaluate_indicators(payload: DiscoveryIndicatorEvaluateRequest, db: Session = Depends(get_db)):
+    return evaluate_discovery_indicators(db, payload)
 
 
 @router.post("/discovery/results/cleanup")

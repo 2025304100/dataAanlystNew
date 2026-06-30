@@ -3,8 +3,10 @@ import { useApp } from "../context/AppContext";
 import { t, DOT } from "../i18n";
 import { statPct, pnlClass, clamp } from "../utils/format";
 import { Input, InputNumber, Checkbox, Button, Space, Card, Form } from "antd";
-import { DatabaseOutlined, SettingOutlined } from "@ant-design/icons";
+import { DatabaseOutlined, FunctionOutlined, SettingOutlined } from "@ant-design/icons";
 import DbConfigSection from "./DbConfigSection";
+import CustomIndicatorSettings from "./CustomIndicatorSettings";
+import DiscoveryPlanSettings from "./DiscoveryPlanSettings";
 
 export default function Settings() {
   const ctx = useApp();
@@ -13,7 +15,11 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "db">("rules");
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "db">(() => {
+    if (typeof window === "undefined") return "rules";
+    const stored = window.localStorage.getItem("settings_active_section");
+    return stored === "rules" || stored === "indicators" || stored === "db" ? stored : "rules";
+  });
 
   useEffect(() => {
     if (rule && activeSymbolId) {
@@ -21,6 +27,12 @@ export default function Settings() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSymbolId]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("settings_active_section", activeSection);
+    }
+  }, [activeSection]);
 
   const applyPreset = (mode: string) => {
     const preset = presets.find((p) => p.mode === mode);
@@ -121,13 +133,32 @@ export default function Settings() {
     <div className="tab-container" data-tab-content="settings">
       <div className="settings-layout">
         <nav className="settings-sidebar" aria-label="Settings categories">
-          <button type="button" className={`settings-nav-item ${activeSection === "rules" ? "active" : ""}`}
-            onClick={() => setActiveSection("rules")}>
-            <SettingOutlined style={{ marginRight: 6 }} />{t("tabRules")}
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "rules" ? "active" : ""}`}
+            aria-current={activeSection === "rules" ? "page" : undefined}
+            onClick={() => setActiveSection("rules")}
+          >
+            <span className="settings-nav-icon"><SettingOutlined /></span>
+            <span className="settings-nav-copy">{t("tabRules")}</span>
           </button>
-          <button type="button" className={`settings-nav-item ${activeSection === "db" ? "active" : ""}`}
-            onClick={() => setActiveSection("db")}>
-            <DatabaseOutlined style={{ marginRight: 6 }} />{t("dbTabTitle")}
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "indicators" ? "active" : ""}`}
+            aria-current={activeSection === "indicators" ? "page" : undefined}
+            onClick={() => setActiveSection("indicators")}
+          >
+            <span className="settings-nav-icon"><FunctionOutlined /></span>
+            <span className="settings-nav-copy">{t("tabIndicators")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "db" ? "active" : ""}`}
+            aria-current={activeSection === "db" ? "page" : undefined}
+            onClick={() => setActiveSection("db")}
+          >
+            <span className="settings-nav-icon"><DatabaseOutlined /></span>
+            <span className="settings-nav-copy">{t("dbTabTitle")}</span>
           </button>
         </nav>
         <div className="settings-content">
@@ -266,6 +297,16 @@ export default function Settings() {
             </section>
           </div>
           )}
+          {activeSection === "indicators" && (
+            <div className="settings-tab-container" data-settings-content="settings-indicators">
+              <section className="band">
+                <div className="settings-indicator-stack">
+                  <CustomIndicatorSettings />
+                  <DiscoveryPlanSettings />
+                </div>
+              </section>
+            </div>
+          )}
           {activeSection === "db" && (
             <div className="settings-tab-container" data-settings-content="settings-db">
               <section className="band">
@@ -278,3 +319,4 @@ export default function Settings() {
     </div>
   );
 }
+

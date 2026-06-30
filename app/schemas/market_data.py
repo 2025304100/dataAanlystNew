@@ -1,6 +1,7 @@
 from datetime import date
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DailyBarItem(BaseModel):
@@ -54,3 +55,48 @@ class MarketDataRepairRequest(BaseModel):
     end_date: date | None = None
     adjust: str = "qfq"
     auto_score: bool = True
+
+
+HistoryInitializationPreset = Literal["1m", "1q", "1y", "3y"]
+HistoryInitializationStageStatus = Literal["pending", "running", "completed", "failed"]
+HistoryInitializationTaskStatus = Literal["idle", "running", "completed", "failed"]
+
+
+class HistoryInitializationRequest(BaseModel):
+    preset: HistoryInitializationPreset = "1y"
+    adjust: str = "qfq"
+    asset_types: list[str] | None = None
+
+
+class HistoryInitializationStage(BaseModel):
+    key: str
+    status: HistoryInitializationStageStatus
+    percent: int
+    done: int
+    total: int
+    message: str | None = None
+
+
+class HistoryInitializationSummary(BaseModel):
+    symbols_total: int = 0
+    sync_ok_count: int = 0
+    sync_failed_count: int = 0
+    empty_count: int = 0
+    bars_rows: int = 0
+    score_days_total: int = 0
+    score_days_completed: int = 0
+
+
+class HistoryInitializationStatus(BaseModel):
+    task_id: str | None = None
+    status: HistoryInitializationTaskStatus
+    preset: HistoryInitializationPreset = "1y"
+    adjust: str = "qfq"
+    start_date: date | None = None
+    end_date: date | None = None
+    progress_pct: int = 0
+    message: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    stages: list[HistoryInitializationStage] = Field(default_factory=list)
+    summary: HistoryInitializationSummary = Field(default_factory=HistoryInitializationSummary)

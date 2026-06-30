@@ -140,7 +140,7 @@ function planDraftFromSetup(setup: TradeSetup): TradePlanDraft {
 
 function trancheDraftFromSetup(setup: TradeSetup): TrancheDraft[] {
   return (setup.tranche_plan ?? []).map((item) => ({
-    label: item.label || "Custom",
+    label: item.label || trancheLabel("Custom"),
     position_pct: Math.round(Number(item.position_pct || 0) * 10000) / 100,
     amount: Number(item.amount || 0),
     trigger: item.trigger || "",
@@ -151,7 +151,7 @@ function normalizeTrancheDrafts(drafts: TrancheDraft[]): TradeSetupTranche[] {
   return drafts
     .filter((item) => Number(item.position_pct || 0) > 0 || Number(item.amount || 0) > 0 || item.trigger.trim())
     .map((item) => ({
-      label: item.label.trim() || "Custom",
+      label: item.label.trim() || trancheLabel("Custom"),
       position_pct: Math.max(0, Number(item.position_pct || 0)) / 100,
       amount: Math.max(0, Number(item.amount || 0)),
       trigger: item.trigger.trim(),
@@ -741,7 +741,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       alerts.push({
         id: `stop_${lastDate}`, type: "stop_loss", level: "danger",
         message: template("alertStopLoss", { price: score(lastClose), stop: score(stopLoss) }),
-        detail: `当前价 ${score(lastClose)} 已跌破止损位 ${score(stopLoss)}`,
+        detail: template("icPriceBelowStop", { price: score(lastClose), stop: score(stopLoss) }),
         timestamp: Date.now(),
       });
     }
@@ -750,7 +750,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       alerts.push({
         id: `stop_near_${lastDate}`, type: "stop_near", level: "warning",
         message: template("alertNearStopLoss", { price: score(lastClose), stop: score(stopLoss) }),
-        detail: `距止损位仅 ${percent((lastClose - stopLoss) / lastClose)}`,
+        detail: template("icNearStopLoss", { pct: percent((lastClose - stopLoss) / lastClose) }),
         timestamp: Date.now(),
       });
     }
@@ -760,7 +760,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       alerts.push({
         id: `target_${lastDate}`, type: "target_hit", level: "info",
         message: template("alertTargetHit", { price: score(lastClose), target: score(targetPrice) }),
-        detail: `当前价 ${score(lastClose)} 已突破目标位 ${score(targetPrice)}`,
+        detail: template("icPriceAboveTarget", { price: score(lastClose), target: score(targetPrice) }),
         timestamp: Date.now(),
       });
     }
@@ -769,7 +769,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       alerts.push({
         id: `target_near_${lastDate}`, type: "target_near", level: "info",
         message: template("alertNearTarget", { price: score(lastClose), target: score(targetPrice) }),
-        detail: `距目标位仅 ${percent((targetPrice - lastClose) / targetPrice)}`,
+        detail: template("icNearTarget", { pct: percent((targetPrice - lastClose) / targetPrice) }),
         timestamp: Date.now(),
       });
     }
@@ -780,14 +780,14 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       alerts.push({
         id: `rsi_ob_${lastDate}`, type: "rsi_overbought", level: "warning",
         message: template("alertRSIOverbought", { rsi: lastRSI.toFixed(1) }),
-        detail: `RSI(${lastRSI.toFixed(1)}) 超过${alertSettings.rsiOverbought}，注意回调风险`,
+        detail: template("icRSIOverboughtWarn", { period: lastRSI.toFixed(1), threshold: alertSettings.rsiOverbought }),
         timestamp: Date.now(),
       });
     } else if (alertSettings.enableRsi && lastRSI != null && lastRSI < alertSettings.rsiOversold) {
       alerts.push({
         id: `rsi_os_${lastDate}`, type: "rsi_oversold", level: "info",
         message: template("alertRSIOversold", { rsi: lastRSI.toFixed(1) }),
-        detail: `RSI(${lastRSI.toFixed(1)}) 低于${alertSettings.rsiOversold}，可能存在反弹机会`,
+        detail: template("icRSIOversoldOpportunity", { period: lastRSI.toFixed(1), threshold: alertSettings.rsiOversold }),
         timestamp: Date.now(),
       });
     }
@@ -801,7 +801,10 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           id: `macd_${latestSignal.type}_${lastDate}`, type: latestSignal.type === "golden" ? "macd_golden" : "macd_death",
           level: latestSignal.type === "golden" ? "info" : "warning",
           message: latestSignal.type === "golden" ? t("alertMACDGolden") : t("alertMACDDeath"),
-          detail: `${latestSignal.index === chartData.dates.length - 1 ? "最新" : "近期"}MACD${latestSignal.type === "golden" ? "金叉" : "死叉"}信号`,
+          detail: template("icMACDCrossSignal", {
+            tense: latestSignal.index === chartData.dates.length - 1 ? t("icLatest") : t("icRecent"),
+            type: latestSignal.type === "golden" ? t("icGoldenCross") : t("icDeathCross"),
+          }),
           timestamp: Date.now(),
         });
       }
@@ -889,14 +892,14 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       const fromQuick = quickSymbols.find((s) => s.symbol_id === id);
       if (fromQuick) return fromQuick;
       const fromHistory = searchHistory.find((s) => s.symbol_id === id);
-      return fromHistory || { symbol_id: id, symbol: `ID:${id}`, name: "未知" };
+      return fromHistory || { symbol_id: id, symbol: `ID:${id}`, name: t("unknown") };
     });
 
     return (
       <div className="ic__modal-overlay" onClick={() => setShowHistoryModal(false)}>
         <div className="ic__modal-content" onClick={(e) => e.stopPropagation()}>
           <div className="ic__modal-header">
-            <h3>{zh ? "搜索历史与收藏" : "History & Favorites"}</h3>
+            <h3>{t("historyFavorites")}</h3>
             <button className="ic__modal-close" onClick={() => setShowHistoryModal(false)}>×</button>
           </div>
 
@@ -904,15 +907,15 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             {/* 收藏列表 */}
             <section className="ic__modal-section">
               <div className="ic__section-header">
-                <h4>{zh ? "收藏" : "Favorites"} ({favorites.size})</h4>
+                <h4>{t("favorites")} ({favorites.size})</h4>
                 {favorites.size > 0 && (
                   <Button size="small" danger onClick={clearFavorites}>
-                    {zh ? "清空收藏" : "Clear All"}
+                    {t("clearAll")}
                   </Button>
                 )}
               </div>
               {favorites.size === 0 ? (
-                <div className="ic__empty-state">{zh ? "暂无收藏" : "No favorites"}</div>
+                <div className="ic__empty-state">{t("noFavorites")}</div>
               ) : (
                 <div className="ic__symbol-list">
                   {favoriteSymbols.map((item) => (
@@ -922,7 +925,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                         <span className="symbol-name">{item.name}</span>
                       </button>
                       <button className="ic__remove-btn" onClick={() => removeFromFavorites(item.symbol_id)}>
-                        {zh ? "移除" : "Remove"}
+                        {t("remove")}
                       </button>
                     </div>
                   ))}
@@ -933,15 +936,15 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             {/* 搜索历史 */}
             <section className="ic__modal-section">
               <div className="ic__section-header">
-                <h4>{zh ? "搜索历史" : "Search History"} ({searchHistory.length})</h4>
+                <h4>{t("searchHistory")} ({searchHistory.length})</h4>
                 {searchHistory.length > 0 && (
                   <Button size="small" danger onClick={clearSearchHistory}>
-                    {zh ? "清空历史" : "Clear All"}
+                    {t("clearAll")}
                   </Button>
                 )}
               </div>
               {searchHistory.length === 0 ? (
-                <div className="ic__empty-state">{zh ? "暂无搜索历史" : "No search history"}</div>
+                <div className="ic__empty-state">{t("noSearchHistory")}</div>
               ) : (
                 <div className="ic__symbol-list">
                   {searchHistory.map((item) => (
@@ -955,7 +958,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                           {favorites.has(item.symbol_id) ? "★" : "☆"}
                         </button>
                         <button className="ic__remove-btn" onClick={() => removeFromHistory(item.symbol_id)}>
-                          {zh ? "删除" : "Delete"}
+                          {t("delete")}
                         </button>
                       </div>
                     </div>
@@ -972,30 +975,22 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   // Trigger formatting functions
   const formatOpenTrigger = useCallback((item: any) => {
     if (item.entry_min === null || item.entry_max === null) return "-";
-    return ctx.locale === "zh-CN"
-      ? `仅在 ${item.entry_min} - ${item.entry_max} 区间内开仓`
-      : `Open only inside ${item.entry_min} - ${item.entry_max}`;
+    return template("icOpenTrigger", { min: item.entry_min, max: item.entry_max });
   }, [ctx.locale]);
 
   const formatAddTrigger = useCallback((item: any) => {
     if (!item.allow_add_position) return "-";
-    return ctx.locale === "zh-CN"
-      ? "满足加仓条件后分批加仓"
-      : "Add in tranches when conditions met";
+    return t("icAddTrigger");
   }, [ctx.locale]);
 
   const formatStopTrigger = useCallback((item: any) => {
     if (item.stop_loss === null) return "-";
-    return ctx.locale === "zh-CN"
-      ? `跌破 ${item.stop_loss} 止损`
-      : `Stop if breaks below ${item.stop_loss}`;
+    return template("icStopTrigger", { price: item.stop_loss });
   }, [ctx.locale]);
 
   const formatTrimTrigger = useCallback((item: any) => {
     if (item.target_price === null) return "-";
-    return ctx.locale === "zh-CN"
-      ? `触及 ${item.target_price} 减仓`
-      : `Trim near ${item.target_price}`;
+    return template("icTrimTrigger", { price: item.target_price });
   }, [ctx.locale]);
 
   // ── Candlestick chart option ──
@@ -1051,7 +1046,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           const ma10Val = chartData.ma10?.[p.dataIndex];
           const ma20Val = chartData.ma20?.[p.dataIndex];
           let html = `<div style="font-size:12px;font-weight:bold;margin-bottom:4px">${p.axisValue}</div>`;
-          html += `<div>O:${score(open)} C:${score(close)} L:${score(low)} H:${score(high)}</div>`;
+          html += `<div>${t("chartOpen")}:${score(open)} ${t("chartClose")}:${score(close)} ${t("chartLow")}:${score(low)} ${t("chartHigh")}:${score(high)}</div>`;
           if (vol > 0) html += `<div>${t("volume")}: ${formatVolume(vol)}</div>`;
           if (ma10Val != null) html += `<div style="color:#f59e0b">MA10: ${score(ma10Val)}</div>`;
           if (ma20Val != null) html += `<div style="color:#3b82f6">MA20: ${score(ma20Val)}</div>`;
@@ -1087,7 +1082,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         { name: t("volume"), type: "bar", yAxisIndex: 1, data: chartData.volume },
       ],
     };
-  }, [chartData, detail?.latest_trade_setup, activeFutureBuyPlan, setup]);
+  }, [chartData, detail?.latest_trade_setup, activeFutureBuyPlan, setup, ctx.locale]);
 
   // ── MACD 副图 option ──
   const macdOption = useMemo(() => {
@@ -1108,7 +1103,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         ), barMaxWidth: 6 },
       ],
     };
-  }, [chartData?.macd, showMACD, chartData?.dates]);
+  }, [chartData?.macd, showMACD, chartData?.dates, ctx.locale]);
 
   // ── RSI 副图 option ──
   const rsiOption = useMemo(() => {
@@ -1127,8 +1122,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           symbol: "none",
           lineStyle: { type: "solid", width: 1, opacity: 0.4 },
           data: [
-            { yAxis: 70, lineStyle: { color: "#b42318" }, label: { formatter: "OB(70)", fontSize: 9 } },
-            { yAxis: 30, lineStyle: { color: "#0f766e" }, label: { formatter: "OS(30)", fontSize: 9 } },
+            { yAxis: 70, lineStyle: { color: "#b42318" }, label: { formatter: zh ? "\u8d85\u4e70(70)" : "OB(70)", fontSize: 9 } },
+            { yAxis: 30, lineStyle: { color: "#0f766e" }, label: { formatter: zh ? "\u8d85\u5356(30)" : "OS(30)", fontSize: 9 } },
             { yAxis: 50, lineStyle: { color: "#6b7280", type: "dashed" } },
           ],
         },
@@ -1151,7 +1146,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         } as any,
       }],
     };
-  }, [chartData?.rsi, showRSI, chartData?.dates, chartData?.rsiSignals]);
+  }, [chartData?.rsi, showRSI, chartData?.dates, chartData?.rsiSignals, zh]);
 
   const lastBar = detail?.bars?.[detail.bars.length - 1];
 
@@ -1248,8 +1243,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 {rm.currentStopDist.toFixed(1)}%
               </span>
               <div className="ic__risk-detail">
-                <span>当前: {score(rm.currentPrice)}</span>
-                <span>止损: {score(rm.stop)}</span>
+                <span>{t("icCurrent")}: {score(rm.currentPrice)}</span>
+                <span>{t("icStopLossLabel")}: {score(rm.stop)}</span>
                 {rm.atrStopRef != null && <span>{riskSettings.atrMultiplier}×ATR: {score(rm.atrStopRef)}</span>}
               </div>
             </div>
@@ -1278,9 +1273,9 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 {rm.maxLossAmount > 0 ? `-¥${rm.maxLossAmount.toFixed(0)}` : "-"}
               </span>
               <div className="ic__risk-detail">
-                <span>每股亏损: {score(rm.maxLossPerShare)}</span>
-                <span>数量: {quantity}</span>
-                {rm.maxLossLimitAmount > 0 && <span>上限: {money(rm.maxLossLimitAmount)}</span>}
+                <span>{t("icLossPerShare")}: {score(rm.maxLossPerShare)}</span>
+                <span>{t("icQuantityLabel")}: {quantity}</span>
+                {rm.maxLossLimitAmount > 0 && <span>{t("icUpperLimit")}: {money(rm.maxLossLimitAmount)}</span>}
               </div>
             </div>
           </div>
@@ -1417,10 +1412,10 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 <label><span>{t("tranchePct")}</span><InputNumber size="small" min={0} max={100} value={tranche.position_pct} addonAfter="%" onChange={(v) => updateTrancheDraft(i, "position_pct", Number(v ?? 0))} /></label>
                 <label><span>{t("positionAmount")}</span><InputNumber size="small" min={0} value={tranche.amount} onChange={(v) => updateTrancheDraft(i, "amount", Number(v ?? 0))} /></label>
                 <label><span>{t("trigger")}</span><Input size="small" value={tranche.trigger} onChange={(e) => updateTrancheDraft(i, "trigger", e.target.value)} /></label>
-                <Button size="small" danger onClick={() => setTrancheDrafts((prev) => prev.filter((_, idx) => idx !== i))}>删除</Button>
+                <Button size="small" danger onClick={() => setTrancheDrafts((prev) => prev.filter((_, idx) => idx !== i))}>{zh ? "删除" : "Delete"}</Button>
               </div>
             ))}
-            <Button size="small" onClick={() => setTrancheDrafts((prev) => [...prev, { label: "Custom", position_pct: 0, amount: 0, trigger: "" }])}>{icText.addTranche}</Button>
+            <Button size="small" onClick={() => setTrancheDrafts((prev) => [...prev, { label: trancheLabel("Custom"), position_pct: 0, amount: 0, trigger: "" }])}>{icText.addTranche}</Button>
             <div className="item-subline">
               {joinParts([
                 `${t("recommendedPosition")}: ${percent(setup.recommended_position_pct)}`,
@@ -1612,7 +1607,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           {chartData && (
             <div className="chart-legend">
               {lastBar && (
-                <span>O:{score(lastBar.open)} H:{score(lastBar.high)} L:{score(lastBar.low)} C:{score(lastBar.close)}</span>
+                <span>{t("chartOpen")}:{score(lastBar.open)} {t("chartHigh")}:{score(lastBar.high)} {t("chartLow")}:{score(lastBar.low)} {t("chartClose")}:{score(lastBar.close)}</span>
               )}
               <span>{t("ma10")}: {lastMAValue(chartData.ma10)}</span>
               <span>{t("ma20")}: {lastMAValue(chartData.ma20)}</span>

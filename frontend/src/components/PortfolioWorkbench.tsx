@@ -366,7 +366,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
         <div className="panel wide">
           <div className="panel-head">
             <div>
-              <p className="panel-kicker">Decision Path</p>
+              <p className="panel-kicker">{ctx.locale === "zh-CN" ? "决策路径" : "Decision Path"}</p>
               <h2>{t("todayOpportunities")}</h2>
             </div>
             <p className="panel-meta">{todayMeta}</p>

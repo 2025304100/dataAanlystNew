@@ -17,7 +17,7 @@ def _now() -> datetime:
 
 
 def _safe_datetime(value):
-    """Safely convert a value to datetime, handling strings from MySQL."""
+    """安全地将值转换为 datetime 类型，处理 MySQL 返回的字符串。"""
     from datetime import datetime
     if value is None:
         return None

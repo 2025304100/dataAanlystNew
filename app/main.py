@@ -20,7 +20,7 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Cleanup interval in seconds (default 30 minutes)
+# 清理间隔（秒），默认 30 分钟
 CLEANUP_INTERVAL_SECONDS = 30 * 60
 
 
@@ -46,10 +46,10 @@ async def lifespan(_: FastAPI):
 
     init_db()
 
-    # Startup cleanup: remove expired non-frozen discovery results
+    # 启动时清理：移除过期且未冻结的挖掘结果
     _run_startup_cleanup()
 
-    # Start periodic cleanup background task
+    # 启动定期清理后台任务
     cleanup_task = asyncio.create_task(_periodic_cleanup())
 
     yield
@@ -65,7 +65,7 @@ async def lifespan(_: FastAPI):
 
 
 def _run_startup_cleanup() -> None:
-    """Run cleanup once at startup."""
+    """启动时执行一次清理。"""
     try:
         SessionLocal = _get_session_local()
         db = SessionLocal()
@@ -85,7 +85,7 @@ def _run_startup_cleanup() -> None:
 
 
 async def _periodic_cleanup() -> None:
-    """Periodically clean up expired discovery results."""
+    """定期清理过期的挖掘结果。"""
     while True:
         await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
         try:
@@ -114,11 +114,11 @@ app.include_router(api_router)
 web_root = Path(__file__).resolve().parent / "web"
 dist_root = web_root / "dist"
 
-# Serve React build assets (JS/CSS chunks)
+# 提供 React 构建产物的静态服务（JS/CSS 分片）
 if dist_root.exists():
     app.mount("/assets", StaticFiles(directory=dist_root / "assets"), name="assets")
 
-# Keep legacy static mount for any remaining static files
+# 保留旧版静态文件挂载
 app.mount("/static", StaticFiles(directory=web_root / "static"), name="static")
 
 
@@ -134,10 +134,10 @@ def workbench() -> FileResponse:
     return FileResponse(index_path)
 
 
-# Catch-all for client-side routing (portfolio, discovery, settings tabs)
+# 前端路由兜底（组合、挖掘、设置等标签页）
 @app.get("/{full_path:path}", include_in_schema=False)
 def spa_fallback(full_path: str) -> FileResponse:
-    # Don't intercept API or static asset requests
+    # 不拦截 API 或静态资源请求
     if full_path.startswith(("api/", "static/", "assets/", "health")):
         raise HTTPException(status_code=404, detail="Not found")
     index_path = dist_root / "index.html" if dist_root.exists() else web_root / "index.html"
