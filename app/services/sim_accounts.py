@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from math import floor
 
 from fastapi import HTTPException
@@ -115,7 +115,7 @@ def _upsert_position(
                 symbol_id=symbol.id,
                 asset_type=symbol.asset_type,
                 theme=symbol.theme,
-                opened_at=datetime.utcnow(),
+                opened_at=datetime.now(timezone.utc).replace(tzinfo=None),
             )
             db.add(position)
             previous_quantity = 0.0
@@ -201,7 +201,7 @@ def place_sim_order(
         filled_amount=filled_amount,
         fee=fee,
         note=note,
-        filled_at=datetime.utcnow(),
+        filled_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     db.add(order)
     db.flush()
@@ -266,7 +266,7 @@ def build_sim_account_summary(db: Session, portfolio: Portfolio) -> dict:
     trades_7d = db.execute(
         select(func.count(SimTrade.id)).where(
             SimTrade.portfolio_id == portfolio.id,
-            SimTrade.created_at >= datetime.utcnow() - timedelta(days=7),
+            SimTrade.created_at >= datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7),
         )
     ).scalar_one()
     last_trade_at = db.execute(

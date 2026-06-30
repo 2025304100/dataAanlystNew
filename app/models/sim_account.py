@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,7 +19,7 @@ class CashLedger(Base):
     ref_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     ref_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
 class SimOrder(Base):
@@ -39,7 +39,7 @@ class SimOrder(Base):
     filled_amount: Mapped[float] = mapped_column(Float, default=0)
     fee: Mapped[float] = mapped_column(Float, default=0)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     filled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
@@ -57,4 +57,4 @@ class SimTrade(Base):
     fee: Mapped[float] = mapped_column(Float, default=0)
     realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)

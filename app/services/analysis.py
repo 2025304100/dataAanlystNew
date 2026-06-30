@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 import math
 from statistics import mean, pstdev
 
@@ -10,6 +10,24 @@ from sqlalchemy.orm import Session
 from app.models.daily_bar import DailyBar
 from app.models.score import Score
 from app.models.symbol import Symbol
+
+
+def _safe_date(value):
+    """Safely convert a value to date, handling strings from MySQL."""
+    from datetime import date, datetime
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(value, fmt).date()
+            except ValueError:
+                continue
+    return None
 
 
 def _clamp_score(value: float) -> float:
@@ -44,6 +62,10 @@ def calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date) -> Sco
         liquidity_score = 45.0
         breadth_score = 55.0 if symbol.theme else 50.0
         event_score = 50.0
+        breakout_score = 50.0
+        pullback_score = 40.0
+        overheat_penalty = 0.0
+        data_credibility = 0.2  # 数据极少，可信度极低
         stage = "cooldown"
         action = "hold"
     else:
@@ -82,14 +104,14 @@ def calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date) -> Sco
             + event_score * 0.10
         )
 
-        breakout = 70.0 if len(closes) >= 20 and last_close >= max(closes[-20:]) else 50.0
-        pullback = 65.0 if ma20 and last_close >= ma20 * 0.98 else 40.0
+        breakout_score = 70.0 if len(closes) >= 20 and last_close >= max(closes[-20:]) else 50.0
+        pullback_score = 65.0 if ma20 and last_close >= ma20 * 0.98 else 40.0
         overheat_penalty = 20.0 if ma20 and last_close >= ma20 * 1.12 else 0.0
         timing_score = _clamp_score(
-            breakout * 0.30
+            breakout_score * 0.30
             + momentum_score * 0.20
             + liquidity_score * 0.15
-            + pullback * 0.15
+            + pullback_score * 0.15
             + event_score * 0.10
             + (100 - overheat_penalty) * 0.10
         )
@@ -107,8 +129,21 @@ def calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date) -> Sco
             stage = "cooldown"
             action = "hold"
 
+    # 数据可信度计算（P0-4.3）
+    # 基于 K 线数量 + 行情时效综合评估
+    data_credibility = 0.0
+    bar_count = len(bars)
+    if bar_count >= 5:
+        # K 线数量因子: 5根=0.4, 20根=0.7, 50+=1.0
+        bar_factor = min(1.0, 0.4 + (bar_count - 5) * 0.02)
+        # 行情时效因子: 当天=1.0, 1天前=0.95, 3天前=0.8, 7天前=0.5
+        days_stale = (date.today() - _safe_date(trade_date)).days
+        freshness_factor = max(0.3, 1.0 - days_stale * 0.1) if days_stale <= 7 else max(0.1, 0.5 - (days_stale - 7) * 0.05)
+        data_credibility = round(min(1.0, bar_factor * freshness_factor), 2)
+    # data_credibility 已在 if 分支中赋值
+
     priority_score = round(timing_score * 0.4 + quality_score * 0.3 + liquidity_score * 0.2 + breadth_score * 0.1, 2)
-    calc_batch_id = f"manual-{trade_date.isoformat()}"
+    calc_batch_id = f"manual-{trade_date.isoformat() if hasattr(trade_date, 'isoformat') else str(trade_date)}"
 
     existing = db.execute(
         select(Score).where(
@@ -132,12 +167,19 @@ def calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date) -> Sco
     existing.stage = stage
     existing.action = action
     existing.priority_score = priority_score
+    # 股质评分分项
     existing.trend_score = trend_score
     existing.momentum_score = momentum_score
     existing.volatility_score = volatility_score
     existing.liquidity_score = liquidity_score
     existing.breadth_score = breadth_score
     existing.event_score = event_score
+    # 时点评分分项（新增）
+    existing.breakout_score = breakout_score
+    existing.pullback_score = pullback_score
+    existing.overheat_penalty = overheat_penalty
+    # 数据可信度（P0-4.3）
+    existing.data_credibility = data_credibility
     db.flush()
     return existing
 

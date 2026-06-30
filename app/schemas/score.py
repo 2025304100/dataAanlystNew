@@ -20,11 +20,18 @@ class ScoreRead(BaseModel):
     stage: str
     action: str
     priority_score: float
+    # 股质评分分项
     trend_score: float | None = None
     momentum_score: float | None = None
     volatility_score: float | None = None
     liquidity_score: float | None = None
     breadth_score: float | None = None
     event_score: float | None = None
+    # 时点评分分项（新增）
+    breakout_score: float | None = None
+    pullback_score: float | None = None
+    overheat_penalty: float | None = None
+    # 数据可信度（P0-4.3）
+    data_credibility: float | None = None
     created_at: datetime
 

@@ -1,5 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, func, select
+from datetime import datetime, timezone
+import json
+
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -20,6 +23,7 @@ from app.schemas.dashboard import (
     WorkbenchJournal,
     WorkbenchLatestScan,
     WorkbenchMarketScope,
+    WorkbenchPosition,
     WorkbenchScore,
     WorkbenchSymbolDetail,
     WorkbenchTrade,
@@ -33,6 +37,46 @@ from app.services.trade_plans import build_trade_setup_view, upsert_trade_setup
 
 
 router = APIRouter()
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _safe_datetime(value):
+    """Safely convert a value to datetime, handling strings from MySQL."""
+    from datetime import datetime
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+    return None
+
+
+def _is_scan_result_valid(result: ScanResult) -> bool:
+    if result.is_frozen:
+        return True
+    return (_now() - _safe_datetime(result.created_at)).days < result.valid_days
+
+
+def _delete_expired_scan_results(db: Session, rows: list[tuple[ScanResult, Symbol]]) -> list[tuple[ScanResult, Symbol]]:
+    valid_rows: list[tuple[ScanResult, Symbol]] = []
+    deleted = False
+    for result, symbol in rows:
+        if _is_scan_result_valid(result):
+            valid_rows.append((result, symbol))
+            continue
+        db.delete(result)
+        deleted = True
+    if deleted:
+        db.commit()
+    return valid_rows
 
 
 def _latest_score_map(db: Session, symbol_ids: list[int]) -> dict[int, Score]:
@@ -113,8 +157,8 @@ def get_dashboard_overview(
 @router.get("/dashboard/workbench", response_model=DashboardWorkbench)
 def get_dashboard_workbench(
     portfolio_id: int = Query(...),
-    candidate_limit: int = Query(default=8, ge=1, le=20),
-    score_limit: int = Query(default=10, ge=1, le=30),
+    candidate_limit: int = Query(default=8, ge=1, le=80),
+    score_limit: int = Query(default=10, ge=1, le=120),
     market_group: str = Query(default="all"),
     db: Session = Depends(get_db),
 ):
@@ -137,15 +181,24 @@ def get_dashboard_workbench(
             select(ScanResult, Symbol)
             .join(Symbol, Symbol.id == ScanResult.symbol_id)
             .where(ScanResult.scan_run_id == latest_run.id, ScanResult.result_type == "executable")
-            .order_by(ScanResult.rank_no.asc())
-            .limit(candidate_limit)
         )
         if market_codes:
             candidate_stmt = candidate_stmt.where(Symbol.market.in_(market_codes))
-        candidate_rows = db.execute(candidate_stmt).all()
+        candidate_rows = _delete_expired_scan_results(db, db.execute(candidate_stmt).all())
+        candidate_rows.sort(
+            key=lambda item: (
+                int(item[0].is_frozen),
+                float(item[0].priority_score or 0),
+                item[0].created_at,
+            ),
+            reverse=True,
+        )
+        candidate_rows = candidate_rows[:candidate_limit]
         candidate_score_map = _latest_score_map(db, [symbol.id for _, symbol in candidate_rows])
         candidates = [
             WorkbenchCandidate(
+                id=result.id,
+                scan_result_id=result.id,
                 symbol_id=symbol.id,
                 symbol=symbol.symbol,
                 name=symbol.name,
@@ -165,6 +218,10 @@ def get_dashboard_workbench(
                 action=result.action,
                 recommended_position_pct=result.recommended_position_pct,
                 rank_no=result.rank_no,
+                created_at=result.created_at,
+                warning_days=result.warning_days,
+                valid_days=result.valid_days,
+                is_frozen=bool(result.is_frozen),
             )
             for result, symbol in candidate_rows
         ]
@@ -233,6 +290,10 @@ def get_dashboard_workbench(
             liquidity_score=score.liquidity_score,
             breadth_score=score.breadth_score,
             event_score=score.event_score,
+            created_at=score.created_at,
+            warning_days=3,
+            valid_days=5,
+            is_frozen=False,
         )
         for score, symbol in score_rows
     ]
@@ -271,6 +332,15 @@ def get_dashboard_workbench(
             entry_type=journal.entry_type,
             symbol_id=journal.symbol_id,
             created_at=journal.created_at,
+            trade_setup_id=journal.trade_setup_id,
+            content=journal.content,
+            outcome=journal.outcome,
+            review_note=journal.review_note,
+            follow_system=journal.follow_system,
+            score_id=journal.score_id,
+            stage=journal.stage,
+            action=journal.action,
+            actual_action=journal.actual_action,
         )
         for journal in journal_rows
     ]
@@ -287,15 +357,55 @@ def get_dashboard_workbench(
             "currency": portfolio.currency,
         }
 
-    symbol_markets = db.execute(select(Symbol.market).where(Symbol.is_active == 1)).scalars().all()
+    region_expr = case(
+        (Symbol.market.in_(("sh", "sz", "bj", "cn", "SH", "SZ", "BJ", "CN")), "cn"),
+        (Symbol.market.in_(("us", "nasdaq", "nyse", "amex", "US", "NASDAQ", "NYSE", "AMEX")), "us"),
+        else_="other",
+    )
+    region_rows = db.execute(
+        select(region_expr.label("region"), func.count(Symbol.id).label("cnt"))
+        .where(Symbol.is_active == 1)
+        .group_by(region_expr)
+    ).all()
     region_counts = {"cn": 0, "us": 0, "other": 0}
-    for market in symbol_markets:
-        region = region_from_market(market)
-        region_counts[region] = region_counts.get(region, 0) + 1
-    total_symbols = len(symbol_markets)
+    for region, cnt in region_rows:
+        region_counts[region] = cnt
+    total_symbols = sum(region_counts.values())
     filtered_symbols = total_symbols if market_group == "all" else region_counts.get(market_group, 0)
     account_summary = build_sim_account_summary(db, portfolio)
     recent_trades = [WorkbenchTrade(**item) for item in recent_sim_trades(db, portfolio_id, limit=8)]
+
+    # Build all positions
+    position_rows = db.execute(
+        select(Position, Symbol)
+        .join(Symbol, Symbol.id == Position.symbol_id)
+        .where(Position.portfolio_id == portfolio_id)
+        .order_by(Position.market_value.desc())
+    ).all()
+    positions = []
+    for pos, sym in position_rows:
+        latest_bar = db.execute(
+            select(DailyBar).where(DailyBar.symbol_id == sym.id).order_by(desc(DailyBar.trade_date)).limit(1)
+        ).scalars().first()
+        lp = float(latest_bar.close) if latest_bar else (pos.latest_price or pos.avg_cost)
+        mv = round(pos.quantity * lp, 2)
+        pnl = round((lp - pos.avg_cost) * pos.quantity, 2)
+        pnl_pct = round((lp - pos.avg_cost) / pos.avg_cost, 4) if pos.avg_cost else 0.0
+        pct = round(mv / portfolio.total_capital, 4) if portfolio.total_capital else 0.0
+        positions.append(
+            WorkbenchPosition(
+                symbol_id=sym.id,
+                symbol=sym.symbol,
+                name=sym.name,
+                quantity=pos.quantity,
+                avg_cost=pos.avg_cost,
+                latest_price=lp,
+                market_value=mv,
+                position_pct=pct,
+                unrealized_pnl=pnl,
+                unrealized_pnl_pct=pnl_pct,
+            )
+        )
 
     return DashboardWorkbench(
         portfolio=portfolio_payload,
@@ -307,7 +417,10 @@ def get_dashboard_workbench(
             max_single_position_pct=active_rule.max_single_position_pct,
             max_stock_position_pct=active_rule.max_stock_position_pct,
             max_etf_position_pct=active_rule.max_etf_position_pct,
+            max_sector_position_pct=active_rule.max_sector_position_pct,
+            max_loss_per_trade_pct=active_rule.max_loss_per_trade_pct,
             max_open_positions=active_rule.max_open_positions,
+            stage_limits_json=json.loads(active_rule.stage_limits_json) if active_rule.stage_limits_json else None,
         ),
         market_scope=WorkbenchMarketScope(
             selected_group=market_group,
@@ -322,6 +435,7 @@ def get_dashboard_workbench(
         candidates=candidates,
         latest_scores=latest_scores,
         recent_trades=recent_trades,
+        positions=positions,
         watchlists=watchlists,
         journals=journals,
     )
@@ -332,6 +446,7 @@ def get_symbol_detail_panel(
     symbol_id: int = Query(...),
     portfolio_id: int = Query(...),
     sample_limit: int | None = Query(default=None, ge=5, le=240),
+    bar_limit: int = Query(default=60, ge=20, le=500),
     db: Session = Depends(get_db),
 ):
     portfolio = db.get(Portfolio, portfolio_id)
@@ -354,7 +469,7 @@ def get_symbol_detail_panel(
         select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id)).limit(20)
     ).scalars().all()
     bar_rows = db.execute(
-        select(DailyBar).where(DailyBar.symbol_id == symbol_id).order_by(desc(DailyBar.trade_date)).limit(60)
+        select(DailyBar).where(DailyBar.symbol_id == symbol_id).order_by(desc(DailyBar.trade_date)).limit(bar_limit)
     ).scalars().all()
     journal_rows = db.execute(
         select(JournalEntry)
@@ -393,13 +508,22 @@ def get_symbol_detail_panel(
         if latest_score is None
         else {
             "id": latest_score.id,
-            "trade_date": latest_score.trade_date.isoformat(),
+            "trade_date": _safe_datetime(latest_score.trade_date).isoformat() if _safe_datetime(latest_score.trade_date) else None,
             "quality_score": latest_score.quality_score,
             "quality_grade": latest_score.quality_grade,
             "timing_score": latest_score.timing_score,
             "stage": latest_score.stage,
             "action": latest_score.action,
             "priority_score": latest_score.priority_score,
+            "trend_score": latest_score.trend_score,
+            "momentum_score": latest_score.momentum_score,
+            "volatility_score": latest_score.volatility_score,
+            "liquidity_score": latest_score.liquidity_score,
+            "breadth_score": latest_score.breadth_score,
+            "event_score": latest_score.event_score,
+            "breakout_score": latest_score.breakout_score,
+            "pullback_score": latest_score.pullback_score,
+            "overheat_penalty": latest_score.overheat_penalty,
         },
         latest_trade_setup=None
         if latest_setup is None
@@ -429,7 +553,7 @@ def get_symbol_detail_panel(
         score_history=[
             {
                 "id": row.id,
-                "trade_date": row.trade_date.isoformat(),
+                "trade_date": _safe_datetime(row.trade_date).isoformat() if _safe_datetime(row.trade_date) else None,
                 "quality_score": row.quality_score,
                 "timing_score": row.timing_score,
                 "stage": row.stage,
@@ -456,6 +580,15 @@ def get_symbol_detail_panel(
                 entry_type=row.entry_type,
                 symbol_id=row.symbol_id,
                 created_at=row.created_at,
+                trade_setup_id=row.trade_setup_id,
+                content=row.content,
+                outcome=row.outcome,
+                review_note=row.review_note,
+                follow_system=row.follow_system,
+                score_id=row.score_id,
+                stage=row.stage,
+                action=row.action,
+                actual_action=row.actual_action,
             )
             for row in journal_rows
         ],

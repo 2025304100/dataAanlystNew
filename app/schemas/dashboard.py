@@ -13,6 +13,8 @@ class DashboardOverview(BaseModel):
 
 
 class WorkbenchCandidate(BaseModel):
+    id: int | None = None
+    scan_result_id: int | None = None
     symbol_id: int
     symbol: str
     name: str
@@ -32,6 +34,10 @@ class WorkbenchCandidate(BaseModel):
     action: str | None = None
     recommended_position_pct: float | None = None
     rank_no: int | None = None
+    created_at: datetime | None = None
+    warning_days: int | None = None
+    valid_days: int | None = None
+    is_frozen: bool = False
 
 
 class WorkbenchScore(BaseModel):
@@ -53,6 +59,10 @@ class WorkbenchScore(BaseModel):
     liquidity_score: float | None = None
     breadth_score: float | None = None
     event_score: float | None = None
+    created_at: datetime | None = None
+    warning_days: int | None = None
+    valid_days: int | None = None
+    is_frozen: bool = False
 
 
 class WorkbenchWatchlist(BaseModel):
@@ -68,6 +78,15 @@ class WorkbenchJournal(BaseModel):
     entry_type: str
     symbol_id: int
     created_at: datetime
+    trade_setup_id: int | None = None
+    content: str | None = None
+    outcome: str | None = None
+    review_note: str | None = None
+    follow_system: int = 0
+    score_id: int | None = None
+    stage: str | None = None
+    action: str | None = None
+    actual_action: str | None = None
 
 
 class WorkbenchLatestScan(BaseModel):
@@ -94,7 +113,10 @@ class WorkbenchActiveRule(BaseModel):
     max_single_position_pct: float
     max_stock_position_pct: float
     max_etf_position_pct: float
+    max_sector_position_pct: float | None = None
+    max_loss_per_trade_pct: float | None = None
     max_open_positions: int
+    stage_limits_json: dict | None = None
 
 
 class WorkbenchMarketScope(BaseModel):
@@ -117,6 +139,19 @@ class WorkbenchAccountSummary(BaseModel):
     position_count: int
     trade_count_7d: int
     last_trade_at: datetime | None = None
+
+
+class WorkbenchPosition(BaseModel):
+    symbol_id: int
+    symbol: str
+    name: str
+    quantity: float
+    avg_cost: float
+    latest_price: float
+    market_value: float
+    position_pct: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
 
 
 class WorkbenchTrade(BaseModel):
@@ -155,5 +190,6 @@ class DashboardWorkbench(BaseModel):
     candidates: list[WorkbenchCandidate]
     latest_scores: list[WorkbenchScore]
     recent_trades: list[WorkbenchTrade] = []
+    positions: list[WorkbenchPosition] = []
     watchlists: list[WorkbenchWatchlist]
     journals: list[WorkbenchJournal]

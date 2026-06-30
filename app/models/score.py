@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,14 +21,21 @@ class Score(Base):
     stage: Mapped[str] = mapped_column(String(16), index=True)
     action: Mapped[str] = mapped_column(String(16), index=True)
     priority_score: Mapped[float] = mapped_column(Float)
+    # 股质评分分项
     trend_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     momentum_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     volatility_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     liquidity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     breadth_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     event_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 时点评分分项（新增）
+    breakout_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pullback_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    overheat_penalty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 数据可信度（P0-4.3）
+    data_credibility: Mapped[float | None] = mapped_column(Float, nullable=True)
     calc_batch_id: Mapped[str] = mapped_column(String(64), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     symbol_ref = relationship("Symbol", back_populates="scores")
 

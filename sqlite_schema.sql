@@ -120,6 +120,9 @@ CREATE TABLE IF NOT EXISTS scores (
     liquidity_score REAL,
     breadth_score REAL,
     event_score REAL,
+    breakout_score REAL,
+    pullback_score REAL,
+    overheat_penalty REAL,
     calc_batch_id TEXT NOT NULL DEFAULT '',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (symbol_id, trade_date, calc_batch_id),
@@ -406,6 +409,9 @@ CREATE TABLE IF NOT EXISTS trade_setups (
     is_sector_overweight INTEGER NOT NULL DEFAULT 0 CHECK (is_sector_overweight IN (0, 1)),
     is_asset_overweight INTEGER NOT NULL DEFAULT 0 CHECK (is_asset_overweight IN (0, 1)),
     setup_reason TEXT,
+    manual_overrides_json TEXT,
+    field_sources_json TEXT,
+  manual_tranche_plan_json TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (portfolio_id) REFERENCES portfolios (id) ON DELETE CASCADE,
     FOREIGN KEY (symbol_id) REFERENCES symbols (id) ON DELETE CASCADE,
@@ -480,3 +486,4 @@ CREATE INDEX IF NOT EXISTS idx_journal_entries_portfolio_created
 
 CREATE INDEX IF NOT EXISTS idx_journal_entries_symbol_created
     ON journal_entries (symbol_id, created_at DESC);
+

@@ -1,5 +1,5 @@
 const DOT = " | ";
-const DEFAULT_CHART_WINDOW = 40;
+const DEFAULT_CHART_WINDOW = 60;
 const CHART_WINDOW_STEPS = [20, 40, 80, 120];
 
 const I18N = {
@@ -143,6 +143,15 @@ const I18N = {
     sellSide: "卖出",
     orderSummary: "模拟{side}成交 {symbol} {quantity} 股，成交价 {price}。",
     orderFailed: "模拟交易失败",
+    allIn: "全仓",
+    weight: "仓位",
+    currentPrice: "最新价",
+    totalCost: "总成本",
+    totalProceeds: "预计收入",
+    remainingCash: "剩余现金",
+    noPosition: "暂无持仓",
+    confirmBuy: "确认买入 {symbol} {quantity}股 @ {price}？预计花费 {cost}",
+    confirmSell: "确认卖出 {symbol} {quantity}股 @ {price}？预计收入 {proceeds}",
     holdingQty: "持仓数量",
     avgCost: "持仓均价",
     todayOpportunities: "今日机会",
@@ -165,6 +174,11 @@ const I18N = {
     newsUpdating: "消息查询中...",
     newsFailed: "消息查询失败",
     newsSummary: "已查询 {count} 个标的消息面",
+    justNow: "刚刚",
+    minutesAgo: "分钟前",
+    hoursAgo: "小时前",
+    daysAgo: "天前",
+    publishedAt: "发布于",
     futureBuyPlan: "未来买入计划",
     futureScenarioGeneral: "通用",
     futureScenarioShort: "短线",
@@ -340,6 +354,15 @@ const I18N = {
     sellSide: "Sell",
     orderSummary: "Simulated {side} filled for {symbol} {quantity} shares at {price}.",
     orderFailed: "Simulated order failed",
+    allIn: "All",
+    weight: "Weight",
+    currentPrice: "Latest",
+    totalCost: "Total Cost",
+    totalProceeds: "Est. Proceeds",
+    remainingCash: "Remaining Cash",
+    noPosition: "No positions",
+    confirmBuy: "Confirm buy {symbol} {quantity} shares @ {price}? Est. cost {cost}",
+    confirmSell: "Confirm sell {symbol} {quantity} shares @ {price}? Est. proceeds {proceeds}",
     holdingQty: "Holding qty",
     avgCost: "Avg cost",
     todayOpportunities: "Today Opportunities",
@@ -358,10 +381,15 @@ const I18N = {
     confidence: "Confidence",
     source: "Source",
     noScoreEvents: "No matched events; treated as neutral",
-    noNewsYet: "No news query yet",
-    newsUpdating: "Checking news...",
+    noNewsYet: "No news yet",
+    newsUpdating: "Updating news...",
     newsFailed: "News update failed",
-    newsSummary: "Checked news for {count} symbols",
+    newsSummary: "Queried news for {count} symbols",
+    justNow: "just now",
+    minutesAgo: "m ago",
+    hoursAgo: "h ago",
+    daysAgo: "d ago",
+    publishedAt: "Published",
     futureBuyPlan: "Future Buy Plan",
     futureScenarioGeneral: "General",
     futureScenarioShort: "Short",
@@ -443,6 +471,24 @@ Object.assign(EXTRA_I18N["zh-CN"], {
 });
 
 Object.assign(EXTRA_I18N["zh-CN"], {
+  tabWorkbench: "工作台",
+  tabDetail: "个股详情",
+  tabTrading: "模拟交易",
+  tabRules: "规则配置",
+  tabPortfolio: "目前观察池",
+  tabSettings: "设置",
+  subOverview: "总览",
+  subJournals: "交易日记",
+  subRules: "信号规则",
+  searchCandidates: "搜索标的...",
+  orderTitle: "下单",
+  holdings: "当前持仓",
+  tradeHistory: "成交记录",
+  expertMode: "专家模式",
+  invalidOrderInput: "请先提供有效数量和价格",
+});
+
+Object.assign(EXTRA_I18N["zh-CN"], {
   chartDaily: "日线",
   chartWeekly: "周线",
 });
@@ -465,6 +511,21 @@ Object.assign(EXTRA_I18N["en-US"], {
   plannedOrder: "Preview size",
   noScenarioEstimate: "No return preview yet.",
   daysUnit: "d",
+  tabWorkbench: "Workbench",
+  tabDetail: "Detail",
+  tabTrading: "Trading",
+  tabRules: "Rules",
+  tabPortfolio: "Portfolio",
+  tabSettings: "Settings",
+  subOverview: "Overview",
+  subJournals: "Journals",
+  subRules: "Signal Rules",
+  searchCandidates: "Search...",
+  orderTitle: "Place Order",
+  holdings: "Holdings",
+  tradeHistory: "Trade History",
+  expertMode: "Expert Mode",
+  invalidOrderInput: "Please provide a valid quantity and price",
 });
 
 Object.assign(EXTRA_I18N["zh-CN"], {
@@ -617,6 +678,144 @@ Object.assign(EXTRA_I18N["en-US"], {
   previewDiagnosis: "Diagnosis",
 });
 
+Object.assign(EXTRA_I18N["zh-CN"], {
+  tabDiscovery: "机会挖掘",
+  discoveryKicker: "全市场机会扫描",
+  discoveryTitle: "机会挖掘",
+  discoveryScope: "扫描范围",
+  discoveryScopeCnStock: "A股股票",
+  discoveryScopeCnEtf: "A股ETF",
+  discoveryScopeUsStock: "美股股票",
+  discoveryScopeUsEtf: "美股ETF",
+  minOpportunityScore: "最低机会分",
+  discoveryDataMode: "扫描方式",
+  discoveryModeCached: "快速：只扫已有行情池",
+  discoveryModeSync: "全量：同步缺失行情后扫描",
+  discoveryUniverseTotal: "范围总池",
+  discoveryCachedPool: "快速可扫",
+  discoveryCurrentRun: "本次处理",
+  discoveryCachedNote: "不是A股总数；切全量模式可扫总池",
+  discoveryBatchSize: "批量大小",
+  discoveryDelay: "限流间隔",
+  includeNewsScore: "合并消息面",
+  warningDays: "预警天数",
+  validDays: "有效天数",
+  startDiscovery: "开始挖掘",
+  pauseDiscovery: "暂停",
+  resumeDiscovery: "继续",
+  cancelDiscovery: "中止",
+  refreshResults: "刷新结果",
+  discoveryIdle: "准备就绪",
+  stepPrepare: "整理范围",
+  stepSync: "同步行情",
+  stepScan: "筛选机会",
+  stepNews: "消息面",
+  stepDone: "结果",
+  discoveryResultKicker: "按最终机会分排序",
+  discoveryResults: "挖掘结果",
+  freshness: "时效",
+  operations: "操作",
+  frozen: "已冻结",
+  freeze: "冻结",
+  unfreeze: "解冻",
+  updateCurrent: "更新本条",
+  freshnessToday: "今天数据",
+  freshnessDays: "{days}天前数据",
+  freshnessWarn: "接近过期",
+  discoveryStarted: "机会挖掘已开始",
+  requestTimeout: "请求超时，请稍后刷新重试",
+  discoveryStartedCached: "快速扫描已开始：本次只扫描已有行情池",
+  discoveryStartedSync: "全量扫描已开始：会先同步缺失行情",
+  discoveryPaused: "任务已暂停，1天内可继续",
+  discoveryResumed: "任务已继续",
+  discoveryCancelled: "任务已中止",
+  discoveryCompleted: "机会挖掘完成",
+  discoveryCommandFailed: "任务操作失败",
+  discoveryRefreshDone: "结果已刷新",
+  discoveryRowUpdated: "本条已更新",
+  discoveryRowFrozen: "已冻结，不会被自动更新或过期删除",
+  discoveryEmpty: "暂无挖掘结果，先选择范围开始挖掘。",
+  discoveryAddWatchlist: "加入观察池",
+  discoveryInWatchlist: "已在观察池",
+  discoveryAddedWatchlist: "已加入观察池",
+  noWatchlistAvailable: "暂无可用观察池，请先创建观察池",
+  tabDetail: "标的详情",
+  scoreRadar: "评分雷达图",
+  closeDialog: "关闭",
+  totalProgress: "本次 {total} / 已完成 {processed}",
+  scanCounters: "成功 {ok} / 空数据 {empty} / 失败 {failed} / 已评分 {scored}",
+  taskExpiredRestart: "暂停超过1天，需重新开始",
+});
+
+Object.assign(EXTRA_I18N["en-US"], {
+  tabDiscovery: "Opportunity Mining",
+  discoveryKicker: "Full-scope scanner",
+  discoveryTitle: "Opportunity Mining",
+  discoveryScope: "Scope",
+  discoveryScopeCnStock: "China A-shares",
+  discoveryScopeCnEtf: "China ETFs",
+  discoveryScopeUsStock: "US stocks",
+  discoveryScopeUsEtf: "US ETFs",
+  minOpportunityScore: "Min score",
+  discoveryDataMode: "Data mode",
+  discoveryModeCached: "Fast: cached pool only",
+  discoveryModeSync: "Full: sync missing bars",
+  discoveryUniverseTotal: "Universe",
+  discoveryCachedPool: "Fast scannable",
+  discoveryCurrentRun: "Current run",
+  discoveryCachedNote: "Not the full universe; use full mode to scan all",
+  discoveryBatchSize: "Batch size",
+  discoveryDelay: "Throttle",
+  includeNewsScore: "Include news score",
+  warningDays: "Warn days",
+  validDays: "Valid days",
+  startDiscovery: "Start Mining",
+  pauseDiscovery: "Pause",
+  resumeDiscovery: "Resume",
+  cancelDiscovery: "Cancel",
+  refreshResults: "Refresh Results",
+  discoveryIdle: "Ready",
+  stepPrepare: "Prepare",
+  stepSync: "Sync bars",
+  stepScan: "Scan",
+  stepNews: "News",
+  stepDone: "Results",
+  discoveryResultKicker: "Sorted by final score",
+  discoveryResults: "Mining Results",
+  freshness: "Freshness",
+  operations: "Ops",
+  frozen: "Frozen",
+  freeze: "Freeze",
+  unfreeze: "Unfreeze",
+  updateCurrent: "Update",
+  freshnessToday: "Today",
+  freshnessDays: "{days}d old",
+  freshnessWarn: "Near expiry",
+  discoveryStarted: "Opportunity mining started",
+  requestTimeout: "Request timed out. Please refresh and retry.",
+  discoveryStartedCached: "Fast scan started: cached pool only",
+  discoveryStartedSync: "Full scan started: syncing missing bars first",
+  discoveryPaused: "Paused. Resume within 1 day.",
+  discoveryResumed: "Resumed",
+  discoveryCancelled: "Cancelled",
+  discoveryCompleted: "Opportunity mining complete",
+  discoveryCommandFailed: "Task command failed",
+  discoveryRefreshDone: "Results refreshed",
+  discoveryRowUpdated: "Row updated",
+  discoveryRowFrozen: "Frozen. It will not auto-update or expire.",
+  discoveryEmpty: "No mining results yet. Pick a scope and start mining.",
+  discoveryAddWatchlist: "Add to Watchlist",
+  discoveryInWatchlist: "In Watchlist",
+  discoveryAddedWatchlist: "Added to watchlist",
+  noWatchlistAvailable: "No watchlist available. Create one first.",
+  tabDetail: "Symbol Detail",
+  scoreRadar: "Score Radar",
+  closeDialog: "Close",
+  totalProgress: "Run {total} / done {processed}",
+  scanCounters: "OK {ok} / empty {empty} / failed {failed} / scored {scored}",
+  taskExpiredRestart: "Paused for over 1 day. Start a new task.",
+});
+
 const STAGE_LABELS = {
   "zh-CN": { accel: "趋势加速", cooldown: "降温观察", overheat: "高位过热", start: "启动确认" },
   "en-US": { accel: "Accel", cooldown: "Cooldown", overheat: "Overheat", start: "Start" },
@@ -655,7 +854,8 @@ const state = {
   portfolioId: null,
   locale: "zh-CN",
   marketGroup: "all",
-  activeView: "overview",
+  activeTab: "portfolio",
+  activeSubTab: "watchlist-overview",
   activeSymbolId: null,
   workbench: null,
   detail: null,
@@ -663,6 +863,7 @@ const state = {
   detailOrder: [],
   activeWatchlistId: null,
   watchlistItems: {},
+  primaryWatchlistSymbolIds: new Set(),
   symbolDirectory: {},
   chartTimeframe: "daily",
   chartWindowSize: DEFAULT_CHART_WINDOW,
@@ -679,6 +880,9 @@ const state = {
   futurePlanScenario: "general",
   futurePlanCustom: { horizonDays: 20, pullbackPct: 3, positionPct: 5 },
   newsSnapshot: null,
+  discoveryTask: null,
+  discoveryPollTimer: null,
+  discoveryScopeStats: null,
   status: { level: "", message: "" },
 };
 
@@ -741,6 +945,37 @@ function formatDate(value) {
   return new Date(value).toLocaleString(state.locale);
 }
 
+function formatRelativeTime(value) {
+  if (!value) return "";
+  const now = Date.now();
+  const then = new Date(value).getTime();
+  const diff = Math.max(0, now - then);
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (minutes < 1) return t("justNow");
+  if (minutes < 60) return `${minutes}${t("minutesAgo")}`;
+  if (hours < 24) return `${hours}${t("hoursAgo")}`;
+  if (days < 30) return `${days}${t("daysAgo")}`;
+  return formatDate(value);
+}
+
+function ageDays(value) {
+  if (!value) return 0;
+  const diff = Date.now() - new Date(value).getTime();
+  return Math.max(0, Math.floor(diff / 86400000));
+}
+
+function discoveryFreshness(item) {
+  const days = ageDays(item.created_at);
+  if (item.is_frozen) {
+    return { className: "frozen", label: `${t("frozen")}${DOT}${days ? template("freshnessDays", { days }) : t("freshnessToday")}` };
+  }
+  const warningDays = Number(item.warning_days ?? 3);
+  const label = days ? template("freshnessDays", { days }) : t("freshnessToday");
+  return { className: days >= warningDays ? "warning" : "", label: days >= warningDays ? `${label}${DOT}${t("freshnessWarn")}` : label };
+}
+
 function badgeClass(value) {
   if (value === "overheat" || value === "exit" || value === "reduce") return "badge danger";
   if (value === "cooldown" || value === "hold") return "badge warn";
@@ -765,12 +1000,24 @@ function actionLabel(value) {
   return ACTION_LABELS[state.locale]?.[value] ?? value ?? "-";
 }
 
+function sentimentClass(value) {
+  if (value === "positive") return "sentiment-positive";
+  if (value === "negative") return "sentiment-negative";
+  return "sentiment-neutral";
+}
+
 function sentimentLabel(value) {
   const labels = {
     "zh-CN": { positive: "偏利好", negative: "偏利空", neutral: "中性" },
     "en-US": { positive: "Positive", negative: "Negative", neutral: "Neutral" },
   };
   return labels[state.locale]?.[value] ?? value ?? "-";
+}
+
+function riskClass(value) {
+  if (value === "high") return "risk-high";
+  if (value === "medium") return "risk-medium";
+  return "risk-low";
 }
 
 function riskLabel(value) {
@@ -966,6 +1213,7 @@ function computeDefaultSellQuantity(detail) {
 function syncOrderForm(detail) {
   const qtyInput = document.getElementById("simQuantityInput");
   const priceInput = document.getElementById("simPriceInput");
+  if (!qtyInput || !priceInput) return;
   if (!detail) {
     qtyInput.value = "";
     priceInput.value = "";
@@ -977,10 +1225,12 @@ function syncOrderForm(detail) {
   qtyInput.value = suggestedQty > 0 ? String(suggestedQty) : "";
   priceInput.value = suggestedPrice > 0 ? score(suggestedPrice) : "";
   renderOrderScenarioPreview(detail);
+  renderTradingOrderPreview();
 }
 
 function renderOrderScenarioPreview(detail) {
   const container = document.getElementById("orderScenarioPreview");
+  if (!container) return;
   const scenarios = detail?.latest_trade_setup?.return_scenarios;
   if (!detail || !scenarios) {
     setEmpty(container, t("noScenarioEstimate"));
@@ -1017,15 +1267,15 @@ function renderOrderScenarioPreview(detail) {
       <div class="scenario-preview-head">
         <strong>${t("scenarioPreview")}</strong>
         <span class="scenario-preview-meta">${joinParts([
-          `${t("plannedOrder")}: ${quantity || 0}`,
-          `${t("referencePrice")}: ${score(entryPrice)}`,
-          `${t("positionAmount")}: ${money(plannedAmount, 0)}`,
-        ])}</span>
+    `${t("plannedOrder")}: ${quantity || 0}`,
+    `${t("referencePrice")}: ${score(entryPrice)}`,
+    `${t("positionAmount")}: ${money(plannedAmount, 0)}`,
+  ])}</span>
       </div>
       <div class="scenario-preview-meta">${joinParts([
-        `${t("estimateConfidence")}: ${score(scenarios.confidence_pct, 1)}%`,
-        `${t("estimateHorizon")}: ${scenarios.horizon_days}${t("daysUnit")}`,
-      ])}</div>
+    `${t("estimateConfidence")}: ${score(scenarios.confidence_pct, 1)}%`,
+    `${t("estimateHorizon")}: ${scenarios.horizon_days}${t("daysUnit")}`,
+  ])}</div>
       <div class="scenario-grid">
         ${buildScenarioBox("expectedCase", scenarios.expected)}
         ${buildScenarioBox("optimisticCase", scenarios.optimistic)}
@@ -1071,45 +1321,120 @@ function formatTrimTrigger(item) {
 }
 
 function setEmpty(container, message) {
+  if (!container) return;
   container.innerHTML = `<div class="empty">${message}</div>`;
 }
 
 function renderToolbarOptions() {
   const localeSelect = document.getElementById("localeSelect");
   const marketSelect = document.getElementById("marketSelect");
+  const discoveryScopeSelect = document.getElementById("discoveryScopeSelect");
+  const discoveryDataModeSelect = document.getElementById("discoveryDataModeSelect");
 
-  localeSelect.innerHTML = `
+  if (localeSelect) {
+    localeSelect.innerHTML = `
     <option value="zh-CN">简体中文</option>
     <option value="en-US">English</option>
   `;
-  localeSelect.value = state.locale;
+    localeSelect.value = state.locale;
+  }
 
-  marketSelect.innerHTML = `
+  if (marketSelect) {
+    marketSelect.innerHTML = `
     <option value="all">${t("all")}</option>
     <option value="cn">${t("chinaMainland")}</option>
     <option value="us">${t("unitedStates")}</option>
   `;
-  marketSelect.value = state.marketGroup;
+    marketSelect.value = state.marketGroup;
+  }
+
+  if (discoveryScopeSelect) {
+    const current = discoveryScopeSelect.value || "cn-stock";
+    discoveryScopeSelect.innerHTML = `
+      <option value="cn-stock">${t("discoveryScopeCnStock")}</option>
+      <option value="cn-etf">${t("discoveryScopeCnEtf")}</option>
+      <option value="us-stock">${t("discoveryScopeUsStock")}</option>
+      <option value="us-etf">${t("discoveryScopeUsEtf")}</option>
+    `;
+    discoveryScopeSelect.value = current;
+  }
+
+  if (discoveryDataModeSelect) {
+    const current = discoveryDataModeSelect.value || "cached";
+    discoveryDataModeSelect.innerHTML = `
+      <option value="cached">${t("discoveryModeCached")}</option>
+      <option value="sync">${t("discoveryModeSync")}</option>
+    `;
+    discoveryDataModeSelect.value = current;
+  }
+}
+
+function showToast(level, message, duration = 3000) {
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
+  const toast = document.createElement("div");
+  const cls = level === "error" ? "toast-error" : level === "success" ? "toast-success" : "toast-info";
+  toast.className = `toast ${cls}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add("toast-out");
+    toast.addEventListener("animationend", () => toast.remove());
+  }, duration);
 }
 
 function renderStatus() {
-  const node = document.getElementById("actionStatus");
-  node.className = `action-status ${state.status.level || ""}`.trim();
-  node.textContent = state.status.message;
+  // No-op: status messages now use toasts
 }
 
 function setStatus(level, message) {
-  state.status = { level, message };
-  renderStatus();
+  if (!message) return;
+  showToast(level, message);
 }
 
-function switchView(view) {
-  state.activeView = view;
-  document.body.dataset.activeView = view;
+function switchTab(tab) {
+  state.activeTab = tab;
+  document.body.dataset.activeTab = tab;
   document.querySelectorAll("[data-view-tab]").forEach((button) => {
-    const active = button.dataset.viewTab === view;
+    const active = button.dataset.viewTab === tab;
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-tab-content]").forEach((container) => {
+    container.hidden = container.dataset.tabContent !== tab;
+  });
+  // Activate the first sub-tab in the active tab container
+  const activeContainer = document.querySelector(`[data-tab-content="${tab}"]`);
+  if (activeContainer) {
+    const firstSubTab = activeContainer.querySelector("[data-sub-tab]");
+    if (firstSubTab) {
+      switchSubTab(firstSubTab.dataset.subTab, activeContainer);
+    } else {
+      // Hide all sub-content when no sub-tabs present
+      activeContainer.querySelectorAll("[data-sub-content]").forEach((c) => {
+        c.hidden = false;
+      });
+    }
+  }
+}
+
+function switchTabToSub(tab, subTab) {
+  switchTab(tab);
+  const container = document.querySelector(`[data-tab-content="${tab}"]`);
+  if (container) {
+    switchSubTab(subTab, container);
+  }
+}
+
+function switchSubTab(subTab, scope) {
+  state.activeSubTab = subTab;
+  const root = scope || document;
+  root.querySelectorAll("[data-sub-tab]").forEach((button) => {
+    const active = button.dataset.subTab === subTab;
+    button.classList.toggle("active", active);
+  });
+  root.querySelectorAll("[data-sub-content]").forEach((container) => {
+    container.hidden = container.dataset.subContent !== subTab;
   });
 }
 
@@ -1121,17 +1446,46 @@ function applyI18n() {
     node.dataset.tip = t(node.dataset.tipI18n);
   });
   renderToolbarOptions();
-  switchView(state.activeView);
-  renderStatus();
+  switchTab(state.activeTab);
   document.documentElement.lang = state.locale;
   document.title = t("eyebrow");
 }
 
+let activeRequests = 0;
+
+function updateRequestIndicator() {
+  const indicator = document.getElementById("requestIndicator");
+  if (!indicator) return;
+  if (activeRequests > 0) {
+    indicator.style.display = "flex";
+  } else {
+    indicator.style.display = "none";
+  }
+}
+
 async function requestJson(url, options = {}) {
-  const response = await fetch(url, options);
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.detail || payload.message || response.statusText);
-  return payload;
+  activeRequests++;
+  updateRequestIndicator();
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? 20000;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  const requestOptions = { ...options, signal: options.signal ?? controller.signal };
+  delete requestOptions.timeoutMs;
+  try {
+    const response = await fetch(url, requestOptions);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || payload.message || response.statusText);
+    return payload;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(t("requestTimeout"));
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+    activeRequests = Math.max(0, activeRequests - 1);
+    updateRequestIndicator();
+  }
 }
 
 function signalRulePresetPayload(preset) {
@@ -1240,7 +1594,7 @@ function markSignalRuleExpert() {
     ...collectSignalRuleForm(),
     id: state.signalRule.id,
     portfolio_id: state.portfolioId,
-    rule_name: "专家模式",
+    rule_name: t("expertMode"),
     mode: "expert",
     is_active: true,
   };
@@ -1362,6 +1716,7 @@ function scheduleSignalRulePreview(delay = 350) {
 
 function renderMetrics(data) {
   const grid = document.getElementById("metricGrid");
+  if (!grid) return;
   const marketScope = data.market_scope ?? {};
   const activeRule = data.active_rule;
   const metrics = [
@@ -1385,9 +1740,8 @@ function renderMetrics(data) {
   grid.innerHTML = metrics
     .map(
       (item) => `
-      <article class="metric-card ${item.modalType ? "metric-action" : ""}" ${
-        item.modalType ? `role="button" tabindex="0" data-metric-type="${item.modalType}" aria-label="${item.label} ${t("openList")}"` : ""
-      }>
+      <article class="metric-card ${item.modalType ? "metric-action" : ""}" ${item.modalType ? `role="button" tabindex="0" data-metric-type="${item.modalType}" aria-label="${item.label} ${t("openList")}"` : ""
+        }>
         <div class="metric-label">${item.label}</div>
         <div class="metric-value">${item.value}</div>
         <div class="metric-note">${item.note}</div>
@@ -1415,11 +1769,11 @@ function renderTodayList(items, emptyText) {
           <span>
             ${renderSymbolTitle(item)}
             <span class="item-subline">${joinParts([
-              regionShortLabel(item.region),
-              assetTypeLabel(item.asset_type),
-              stageLabel(item.stage),
-              actionLabel(item.action),
-            ])}</span>
+        regionShortLabel(item.region),
+        assetTypeLabel(item.asset_type),
+        stageLabel(item.stage),
+        actionLabel(item.action),
+      ])}</span>
           </span>
           <span class="today-score-wrap">
             <span class="today-score">${score(opportunityScoreValue(item))}</span>
@@ -1493,11 +1847,11 @@ function renderOpportunityScoreTooltip(item) {
       <strong>${t("finalOpportunityScore")}: ${score(opportunityScoreValue(item))}</strong>
       <span>${t("scoreFormula")}: ${t("finalOpportunityFormula")}</span>
       <span>${joinParts([
-        `${t("baseOpportunityScore")} ${score(baseOpportunityScoreValue(item))}`,
-        `${t("messageScore")} ${score(item.news_message_score ?? 0, 1)}`,
-        `${t("newsMultiplier")} ${score(item.news_multiplier ?? 1, 3)}`,
-        `${t("newsAdjustment")} ${percent(item.news_adjustment_pct ?? 0)}`,
-      ])}</span>
+    `${t("baseOpportunityScore")} ${score(baseOpportunityScoreValue(item))}`,
+    `${t("messageScore")} ${score(item.news_message_score ?? 0, 1)}`,
+    `${t("newsMultiplier")} ${score(item.news_multiplier ?? 1, 3)}`,
+    `${t("newsAdjustment")} ${percent(item.news_adjustment_pct ?? 0)}`,
+  ])}</span>
       <span>${t("opportunityFormula")}</span>
       <span>${t("scoreContext")}: ${joinParts([stageLabel(item.stage), actionLabel(item.action)])}</span>
       <span>${t("scoreBreakdown")}</span>
@@ -1511,25 +1865,26 @@ function renderOpportunityScoreTooltip(item) {
 function renderNewsScoreTooltip(item, options = {}) {
   const events = (item.events ?? []).slice(0, 4);
   const stats = options.macro
-    ? joinParts([riskLabel(item.risk_level), sentimentLabel(item.sentiment)])
+    ? joinParts([`<span class="${riskClass(item.risk_level)}">${riskLabel(item.risk_level)}</span>`, `<span class="${sentimentClass(item.sentiment)}">${sentimentLabel(item.sentiment)}</span>`])
     : joinParts([
-        `${t("messagePositive")} ${item.positive_count ?? 0}`,
-        `${t("messageNegative")} ${item.negative_count ?? 0}`,
-        `${t("messageRisk")} ${item.risk_count ?? 0}`,
-        `${t("confidence")} ${score(item.confidence ?? 0, 2)}`,
-      ]);
+      `${t("messagePositive")} ${item.positive_count ?? 0}`,
+      `${t("messageNegative")} ${item.negative_count ?? 0}`,
+      `${t("messageRisk")} ${item.risk_count ?? 0}`,
+      `${t("confidence")} ${score(item.confidence ?? 0, 2)}`,
+    ]);
   const eventRows = events.length
     ? events
-        .map(
-          (event) => `
+      .map(
+        (event) => `
             <div class="score-tooltip-event">
               <strong class="${pnlClass(event.effective_score)}">${score(event.effective_score, 1)}</strong>
-              <span>${escapeHtml(newsSourceLabel(event.source))}${DOT}${escapeHtml(sentimentLabel(event.sentiment))}</span>
+              <span>${escapeHtml(newsSourceLabel(event.source))}${DOT}<span class="${sentimentClass(event.sentiment)}">${escapeHtml(sentimentLabel(event.sentiment))}</span></span>
               <em>${escapeHtml(event.title)}</em>
+              <span class="item-subline">${formatRelativeTime(event.published_at)}</span>
             </div>
           `
-        )
-        .join("")
+      )
+      .join("")
     : `<div class="score-tooltip-empty">${t("noScoreEvents")}</div>`;
 
   return `
@@ -1576,10 +1931,10 @@ function renderTodayNewsList(news) {
             ${renderNewsScoreTooltip(item)}
           </span>
           <span class="item-subline">${joinParts([
-            `${t("messagePositive")} ${item.positive_count}`,
-            `${t("messageNegative")} ${item.negative_count}`,
-            `${t("messageRisk")} ${item.risk_count}`,
-          ])}</span>
+        `${t("messagePositive")} ${item.positive_count}`,
+        `${t("messageNegative")} ${item.negative_count}`,
+        `${t("messageRisk")} ${item.risk_count}`,
+      ])}</span>
         </button>
       `
     )
@@ -1677,20 +2032,19 @@ function renderMetricModalActions(type, selected) {
     type === "watchlists"
       ? `
         <div class="modal-mini-list">
-          ${
-            watchlistItems.length
-              ? watchlistItems
-                  .map((watchItem) => {
-                    const symbol = watchItem.symbol;
-                    return `
+          ${watchlistItems.length
+        ? watchlistItems
+          .map((watchItem) => {
+            const symbol = watchItem.symbol;
+            return `
                       <button type="button" class="symbol-chip" data-modal-watch-symbol-id="${watchItem.symbol_id}">
                         ${symbol ? `${symbol.symbol}${DOT}${symbol.name}` : `#${watchItem.symbol_id}`}
                       </button>
                     `;
-                  })
-                  .join("")
-              : `<span class="item-subline">${t("modalEmpty")}</span>`
-          }
+          })
+          .join("")
+        : `<span class="item-subline">${t("modalEmpty")}</span>`
+      }
         </div>
       `
       : "";
@@ -1851,6 +2205,7 @@ async function handleMetricModalAction(action) {
 function renderAccountSummary(data) {
   const grid = document.getElementById("accountSummaryGrid");
   const meta = document.getElementById("accountMeta");
+  if (!grid || !meta) return;
   const summary = data.account_summary;
   if (!summary) {
     meta.textContent = "-";
@@ -1893,21 +2248,41 @@ function renderAccountSummary(data) {
     `
     )
     .join("");
+
+  // Also populate trading tab
+  const tradingGrid = document.getElementById("tradingAccountGrid");
+  const tradingMeta = document.getElementById("tradingAccountMeta");
+  if (tradingGrid) tradingGrid.innerHTML = grid.innerHTML;
+  if (tradingMeta) tradingMeta.textContent = meta.textContent;
 }
 
 function renderCandidates(data) {
   const body = document.getElementById("candidateBody");
+  if (!body) return;
   const meta = document.getElementById("scanMeta");
   meta.textContent = data.latest_scan.scan_run_id
     ? `${data.latest_scan.run_name}${DOT}${formatDate(data.latest_scan.created_at)}`
     : t("noScanYet");
 
-  if (!data.candidates.length) {
-    body.innerHTML = `<tr><td colspan="7" class="empty">${t("noCandidates")}</td></tr>`;
+  // Search filter
+  const searchInput = document.getElementById("candidateSearch");
+  const searchTerm = searchInput?.value?.toLowerCase() ?? "";
+
+  const filtered = searchTerm
+    ? data.candidates.filter((item) =>
+      item.symbol?.toLowerCase().includes(searchTerm) ||
+      item.name?.toLowerCase().includes(searchTerm) ||
+      stageLabel(item.stage).toLowerCase().includes(searchTerm) ||
+      actionLabel(item.action).toLowerCase().includes(searchTerm)
+    )
+    : data.candidates;
+
+  if (!filtered.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty">${data.candidates.length ? (searchTerm ? "-" : t("noCandidates")) : t("noCandidates")}</td></tr>`;
     return;
   }
 
-  body.innerHTML = data.candidates
+  body.innerHTML = filtered
     .map(
       (item) => `
       <tr class="clickable ${state.activeSymbolId === item.symbol_id ? "active" : ""}" data-symbol-id="${item.symbol_id}">
@@ -1931,8 +2306,147 @@ function renderCandidates(data) {
   });
 }
 
+function sortedDiscoveryRows(data) {
+  return (data?.candidates ?? [])
+    .map(withFinalOpportunityScore)
+    .sort((a, b) => {
+      const frozenDiff = Number(Boolean(b.is_frozen)) - Number(Boolean(a.is_frozen));
+      if (frozenDiff) return frozenDiff;
+      const scoreDiff = Number(opportunityScoreValue(b) ?? 0) - Number(opportunityScoreValue(a) ?? 0);
+      if (scoreDiff) return scoreDiff;
+      return new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
+    });
+}
+
+function renderDiscoveryMetrics(data) {
+  const grid = document.getElementById("discoveryMetricGrid");
+  if (!grid) return;
+  const task = state.discoveryTask;
+  const scope = document.getElementById("discoveryScopeSelect")?.value ?? "cn-stock";
+  const stats = state.discoveryScopeStats?.scope === scope ? state.discoveryScopeStats : null;
+  const rows = sortedDiscoveryRows(data);
+  const metrics = [
+    { label: t("discoveryScope"), value: t(`discoveryScope${scope.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join("")}`) || scope, note: t("market") },
+    { label: t("discoveryUniverseTotal"), value: stats?.total_symbols ?? "-", note: t("discoveryScope") },
+    { label: t("discoveryCachedPool"), value: stats?.cached_symbols ?? "-", note: t("discoveryCachedNote") },
+    { label: t("candidates"), value: rows.length, note: t("discoveryResultKicker") },
+    { label: t("discoveryCurrentRun"), value: task ? `${task.processed}/${task.total}` : "-", note: task?.message ?? t("discoveryIdle") },
+    { label: t("messageScore"), value: state.newsSnapshot?.symbols_total ?? 0, note: t("includeNewsScore") },
+  ];
+  grid.innerHTML = metrics
+    .map(
+      (item) => `
+      <article class="metric-card">
+        <div class="metric-label">${item.label}</div>
+        <div class="metric-value">${item.value}</div>
+        <div class="metric-note">${item.note}</div>
+      </article>
+    `
+    )
+    .join("");
+}
+
+function renderDiscoveryResults(data) {
+  const body = document.getElementById("discoveryResultBody");
+  const meta = document.getElementById("discoveryResultMeta");
+  if (!body) return;
+  const rows = sortedDiscoveryRows(data);
+  if (meta) {
+    meta.textContent = data?.latest_scan?.scan_run_id
+      ? `${data.latest_scan.run_name}${DOT}${formatDate(data.latest_scan.created_at)}${DOT}${rows.length}`
+      : t("noScanYet");
+  }
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="11" class="empty">${t("discoveryEmpty")}</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows
+    .map((item, index) => {
+      const freshness = discoveryFreshness(item);
+      const inWatchlist = isInPrimaryWatchlist(item.symbol_id);
+      const rowClass = [
+        state.activeSymbolId === item.symbol_id ? "active" : "",
+        freshness.className === "warning" ? "discovery-row-warning" : "",
+        item.is_frozen ? "discovery-row-frozen" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return `
+        <tr class="${rowClass}" data-symbol-id="${item.symbol_id}" data-scan-result-id="${item.scan_result_id ?? item.id ?? ""}">
+          <td>${index + 1}</td>
+          <td>
+            ${renderSymbolTitle(item)}
+            <div class="item-subline">${joinParts([regionShortLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
+          </td>
+          <td>
+            <span class="today-score-wrap">
+              <span class="today-score">${score(opportunityScoreValue(item))}</span>
+              ${renderOpportunityScoreTooltip(item)}
+            </span>
+          </td>
+          <td>${score(item.news_message_score ?? 0, 1)}</td>
+          <td>${score(item.quality_score)}</td>
+          <td>${score(item.timing_score)}</td>
+          <td><span class="${badgeClass(item.stage)}">${stageLabel(item.stage)}</span></td>
+          <td><span class="${badgeClass(item.action)}">${actionLabel(item.action)}</span></td>
+          <td>${percent(item.recommended_position_pct)}</td>
+          <td><span class="freshness-chip ${freshness.className}">${freshness.label}</span></td>
+          <td>
+            <span class="row-actions">
+              <button type="button" data-discovery-action="add-watchlist" ${inWatchlist ? "disabled" : ""}>${inWatchlist ? t("discoveryInWatchlist") : t("discoveryAddWatchlist")}</button>
+              <button type="button" data-discovery-action="toggle-freeze">${item.is_frozen ? t("unfreeze") : t("freeze")}</button>
+              <button type="button" data-discovery-action="refresh-row">${t("updateCurrent")}</button>
+            </span>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+  body.querySelectorAll("tr[data-symbol-id]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button")) return;
+      loadSymbolDetail(Number(row.dataset.symbolId), { focus: true });
+    });
+  });
+  body.querySelectorAll("[data-discovery-action]").forEach((button) => {
+    button.addEventListener("click", (event) => handleDiscoveryRowAction(event.currentTarget));
+  });
+}
+
+function discoveryTaskActive(task = state.discoveryTask) {
+  return Boolean(task && ["queued", "running"].includes(task.status));
+}
+
+function renderDiscoveryTask(task = state.discoveryTask) {
+  const title = document.getElementById("discoveryProgressTitle");
+  const pct = document.getElementById("discoveryProgressPct");
+  const fill = document.getElementById("discoveryProgressFill");
+  const meta = document.getElementById("discoveryMeta");
+  const percentValue = clamp(Number(task?.percent ?? 0), 0, 100);
+  if (title) title.textContent = task?.message || t("discoveryIdle");
+  if (pct) pct.textContent = task ? `${percentValue.toFixed(0)}%${DOT}${template("totalProgress", { total: task.total ?? 0, processed: task.processed ?? 0 })}` : "0%";
+  if (fill) fill.style.width = `${percentValue}%`;
+  if (meta) {
+    meta.textContent = task
+      ? `${task.status}${DOT}${template("scanCounters", { ok: task.ok_count ?? 0, empty: task.empty_count ?? 0, failed: task.failed_count ?? 0, scored: task.scored_count ?? 0 })}`
+      : t("discoveryIdle");
+  }
+  document.querySelectorAll("[data-discovery-step]").forEach((node) => {
+    const step = node.dataset.discoveryStep;
+    const order = ["prepare", "sync", "scan", "news", "done"];
+    const current = task?.stage === "failed" || task?.stage === "cancelled" || task?.stage === "paused" ? task.stage : task?.stage;
+    node.classList.toggle("active", current === step);
+    node.classList.toggle("done", order.indexOf(step) >= 0 && order.indexOf(step) < order.indexOf(current));
+  });
+  document.getElementById("discoveryRunButton").disabled = discoveryTaskActive(task);
+  document.getElementById("discoveryPauseButton").disabled = !discoveryTaskActive(task);
+  document.getElementById("discoveryResumeButton").disabled = !(task?.status === "paused" && task?.can_resume);
+  document.getElementById("discoveryCancelButton").disabled = !(task && ["queued", "running", "paused"].includes(task.status));
+}
+
 function renderScoreList(data) {
   const list = document.getElementById("scoreList");
+  if (!list) return;
   if (!data.latest_scores.length) {
     setEmpty(list, t("noScores"));
     return;
@@ -1948,12 +2462,12 @@ function renderScoreList(data) {
         </div>
         <div class="item-subline">
           ${joinParts([
-            regionShortLabel(item.region),
-            assetTypeLabel(item.asset_type),
-            `${t("quality")} ${score(item.quality_score)}`,
-            `${t("timing")} ${score(item.timing_score)}`,
-            actionLabel(item.action),
-          ])}
+        regionShortLabel(item.region),
+        assetTypeLabel(item.asset_type),
+        `${t("quality")} ${score(item.quality_score)}`,
+        `${t("timing")} ${score(item.timing_score)}`,
+        actionLabel(item.action),
+      ])}
         </div>
       </article>
     `
@@ -1965,9 +2479,33 @@ function renderScoreList(data) {
   });
 }
 
+function openDetailModal() {
+  const backdrop = document.getElementById("detailModalBackdrop");
+  if (!backdrop) return;
+  backdrop.hidden = false;
+  document.body.classList.add("detail-modal-open");
+  window.requestAnimationFrame(() => {
+    renderScoreRadar(state.detail);
+    renderChart(state.detail);
+  });
+}
+
+function closeDetailModal() {
+  const backdrop = document.getElementById("detailModalBackdrop");
+  if (!backdrop) return;
+  backdrop.hidden = true;
+  document.body.classList.remove("detail-modal-open");
+  if (state.chartExpanded) {
+    state.chartExpanded = false;
+    document.body.classList.remove("chart-expanded");
+    document.getElementById("chartCard")?.classList.remove("chart-card-expanded");
+    document.getElementById("detailChart")?.classList.remove("expanded");
+  }
+}
+
 function focusDetailPanel() {
-  switchView("detail");
-  document.getElementById("detailTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  openDetailModal();
+  document.getElementById("detailModal")?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function ensureSymbolDirectory() {
@@ -1991,6 +2529,25 @@ async function fetchWatchlistItems(watchlistId) {
   return state.watchlistItems[watchlistId];
 }
 
+function primaryWatchlist() {
+  const lists = state.workbench?.watchlists ?? [];
+  return lists.find((item) => item.list_type === "watch") ?? lists[0] ?? null;
+}
+
+async function refreshPrimaryWatchlistMembership() {
+  const watchlist = primaryWatchlist();
+  if (!watchlist) {
+    state.primaryWatchlistSymbolIds = new Set();
+    return;
+  }
+  const items = await fetchWatchlistItems(watchlist.id);
+  state.primaryWatchlistSymbolIds = new Set(items.map((item) => Number(item.symbol_id)));
+}
+
+function isInPrimaryWatchlist(symbolId) {
+  return state.primaryWatchlistSymbolIds.has(Number(symbolId));
+}
+
 async function loadWatchlistItems(watchlistId) {
   await fetchWatchlistItems(watchlistId);
   state.activeWatchlistId = state.activeWatchlistId === watchlistId ? null : watchlistId;
@@ -1999,6 +2556,7 @@ async function loadWatchlistItems(watchlistId) {
 
 function renderWatchlists(data) {
   const list = document.getElementById("watchlistList");
+  if (!list) return;
   if (!data.watchlists.length) {
     setEmpty(list, t("noWatchlists"));
     return;
@@ -2016,28 +2574,26 @@ function renderWatchlists(data) {
           <span class="badge">${item.item_count} ${t("items")}</span>
         </div>
         <div class="item-subline">${watchlistTypeLabel(item.list_type)}</div>
-        ${
-          expanded
+        ${expanded
             ? `
           <div class="watchlist-symbols">
-            ${
-              items.length
-                ? items
-                    .map((watchItem) => {
-                      const symbol = watchItem.symbol;
-                      return `
+            ${items.length
+              ? items
+                .map((watchItem) => {
+                  const symbol = watchItem.symbol;
+                  return `
                         <button type="button" class="symbol-chip" data-watch-symbol-id="${watchItem.symbol_id}">
                           ${symbol ? `${symbol.symbol}${DOT}${symbol.name}` : `#${watchItem.symbol_id}`}
                         </button>
                       `;
-                    })
-                    .join("")
-                : `<span class="item-subline">${t("noScores")}</span>`
+                })
+                .join("")
+              : `<span class="item-subline">${t("noScores")}</span>`
             }
           </div>
         `
             : ""
-        }
+          }
       </article>
     `;
       }
@@ -2061,6 +2617,7 @@ function renderWatchlists(data) {
 
 function renderJournals(data) {
   const list = document.getElementById("journalList");
+  if (!list) return;
   if (!data.journals.length) {
     setEmpty(list, t("noJournals"));
     return;
@@ -2218,13 +2775,13 @@ function updateChartControls(totalBars, visibleBars, isCustomRange) {
   const currentIndex = windows.findIndex((value) => value === visibleBars);
   const hasChart = Boolean(totalBars);
 
-  zoomInButton.disabled = !hasChart || currentIndex <= 0;
-  zoomOutButton.disabled = !hasChart || currentIndex === -1 || currentIndex >= windows.length - 1;
-  resetButton.disabled = !hasChart || (!isCustomRange && visibleBars === getResetChartWindow(totalBars));
+  if (zoomInButton) zoomInButton.disabled = !hasChart || currentIndex <= 0;
+  if (zoomOutButton) zoomOutButton.disabled = !hasChart || currentIndex === -1 || currentIndex >= windows.length - 1;
+  if (resetButton) resetButton.disabled = !hasChart || (!isCustomRange && visibleBars === getResetChartWindow(totalBars));
   const timeframeLabel = t(state.chartTimeframe === "weekly" ? "chartWeekly" : "chartDaily");
-  windowPill.textContent = hasChart ? `${timeframeLabel} ${visibleBars}/${totalBars} ${t("barsUnit")}` : "-";
-  chartHint.textContent = hasChart ? t("chartDragHint") : "";
-  expandButton.textContent = t(state.chartExpanded ? "collapseChart" : "expandChart");
+  if (windowPill) windowPill.textContent = hasChart ? `${timeframeLabel} ${visibleBars}/${totalBars} ${t("barsUnit")}` : "-";
+  if (chartHint) chartHint.textContent = hasChart ? t("chartDragHint") : "";
+  if (expandButton) expandButton.textContent = t(state.chartExpanded ? "collapseChart" : "expandChart");
   updateChartTimeframeButtons();
 }
 
@@ -2482,6 +3039,7 @@ function buildFuturePlanOverlay(setup, latestClose, dimensions, priceY) {
 function renderChart(detail) {
   const container = document.getElementById("detailChart");
   const meta = document.getElementById("chartMeta");
+  if (!container) return;
   clearChartCleanup();
   updateChartExpandedState();
   const bars = getChartBars(detail);
@@ -2489,7 +3047,7 @@ function renderChart(detail) {
 
   if (!bars.length) {
     state.chartView = null;
-    meta.textContent = "-";
+    if (meta) meta.textContent = "-";
     setEmpty(container, t("noChart"));
     updateChartControls(0, 0, false);
     return;
@@ -2498,14 +3056,15 @@ function renderChart(detail) {
   const slice = getVisibleChartSlice(bars);
   const windowBars = slice.bars;
   updateChartControls(bars.length, windowBars.length, slice.isCustomRange);
-  const width = state.chartExpanded ? 1360 : 1040;
-  const height = state.chartExpanded ? 620 : 420;
+  const containerWidth = container.clientWidth || (state.chartExpanded ? 1360 : 1040);
+  const width = state.chartExpanded ? Math.max(1360, containerWidth) : containerWidth;
+  const height = state.chartExpanded ? 620 : 520;
   const left = 56;
   const right = 28;
   const top = 20;
-  const priceHeight = state.chartExpanded ? 360 : 240;
-  const volumeTop = state.chartExpanded ? 420 : 286;
-  const volumeHeight = state.chartExpanded ? 110 : 82;
+  const priceHeight = state.chartExpanded ? 360 : 310;
+  const volumeTop = state.chartExpanded ? 420 : 355;
+  const volumeHeight = state.chartExpanded ? 110 : 115;
   const futurePlans = getActiveFutureBuyPlan(setup);
   const futureWidth = futurePlans.length ? (state.chartExpanded ? 210 : 168) : 0;
   const futureGap = futurePlans.length ? 16 : 0;
@@ -2562,7 +3121,7 @@ function renderChart(detail) {
     priceY
   );
 
-  meta.textContent = `${t("lastBar")}: ${latest.trade_date}${DOT}${t("close")} ${score(latest.close)}`;
+  if (meta) meta.textContent = `${t("lastBar")}: ${latest.trade_date}${DOT}${t("close")} ${score(latest.close)}`;
 
   const gridLines = Array.from({ length: 4 }, (_, index) => {
     const ratio = index / 3;
@@ -2666,14 +3225,14 @@ function renderRecentTradeCards(container, trades) {
           <span class="${sideBadgeClass(item.side)}">${sideLabel(item.side)}</span>
         </div>
         <div class="item-subline">${joinParts([
-          `${t("orderQty")}: ${item.quantity}`,
-          `${t("orderPrice")}: ${score(item.price)}`,
-          `${t("positionAmount")}: ${money(item.amount)}`,
-        ])}</div>
+        `${t("orderQty")}: ${item.quantity}`,
+        `${t("orderPrice")}: ${score(item.price)}`,
+        `${t("positionAmount")}: ${money(item.amount)}`,
+      ])}</div>
         <div class="item-subline ${pnlClass(item.realized_pnl)}">${joinParts([
-          `${t("accountRealizedPnl")}: ${money(item.realized_pnl)}`,
-          formatDate(item.created_at),
-        ])}</div>
+        `${t("accountRealizedPnl")}: ${money(item.realized_pnl)}`,
+        formatDate(item.created_at),
+      ])}</div>
       </article>
     `
     )
@@ -2701,6 +3260,7 @@ function removeDetailFromDock(symbolId) {
 
 function renderDetailDock() {
   const rail = document.getElementById("detailQuickRail");
+  if (!rail) return;
   if (!state.detailOrder.length) {
     setEmpty(rail, t("noDetail"));
     return;
@@ -2721,16 +3281,16 @@ function renderDetailDock() {
             <button type="button" class="detail-chip-close" data-close-detail="${symbolId}">x</button>
           </div>
           <div class="detail-chip-meta">${joinParts([
-            regionShortLabel(item.symbol.region),
-            assetTypeLabel(item.symbol.asset_type),
-            stageLabel(item.latest_score?.stage),
-            actionLabel(item.latest_score?.action),
-          ])}</div>
+        regionShortLabel(item.symbol.region),
+        assetTypeLabel(item.symbol.asset_type),
+        stageLabel(item.latest_score?.stage),
+        actionLabel(item.latest_score?.action),
+      ])}</div>
           <div class="detail-chip-note">${joinParts([
-            `${t("quality")} ${score(item.latest_score?.quality_score)}`,
-            `${t("timing")} ${score(item.latest_score?.timing_score)}`,
-            `${t("close")} ${score(lastBar?.close)}`,
-          ])}</div>
+        `${t("quality")} ${score(item.latest_score?.quality_score)}`,
+        `${t("timing")} ${score(item.latest_score?.timing_score)}`,
+        `${t("close")} ${score(lastBar?.close)}`,
+      ])}</div>
         </article>
       `;
     })
@@ -2778,19 +3338,19 @@ function renderSignalStatsCard(stats) {
         <span class="tip-icon" data-tip="${t("sampleLimitTip")}">?</span>
       </label>
       <div class="item-subline">${joinParts([
-        `${t("matchedSignals")}: ${stats.matched_count ?? 0}`,
-        `${t("win5d")}: ${statPct(stats.win_rate_5d)}`,
-        `${t("win20d")}: ${statPct(stats.win_rate_20d)}`,
-      ])}</div>
+    `${t("matchedSignals")}: ${stats.matched_count ?? 0}`,
+    `${t("win5d")}: ${statPct(stats.win_rate_5d)}`,
+    `${t("win20d")}: ${statPct(stats.win_rate_20d)}`,
+  ])}</div>
       <div class="item-subline">${joinParts([
-        `${t("avgReturn20d")}: ${statPct(stats.avg_return_20d)}`,
-        `${t("maxGain20d")}: ${statPct(stats.avg_max_gain_20d)}`,
-        `${t("maxDrawdown20d")}: ${statPct(stats.avg_max_drawdown_20d)}`,
-      ])}</div>
+    `${t("avgReturn20d")}: ${statPct(stats.avg_return_20d)}`,
+    `${t("maxGain20d")}: ${statPct(stats.avg_max_gain_20d)}`,
+    `${t("maxDrawdown20d")}: ${statPct(stats.avg_max_drawdown_20d)}`,
+  ])}</div>
       <div class="item-subline">${joinParts([
-        `${t("best20d")}: ${statPct(stats.best_return_20d)}`,
-        `${t("worst20d")}: ${statPct(stats.worst_return_20d)}`,
-      ])}</div>
+    `${t("best20d")}: ${statPct(stats.best_return_20d)}`,
+    `${t("worst20d")}: ${statPct(stats.worst_return_20d)}`,
+  ])}</div>
       ${enoughSamples ? "" : `<div class="item-subline ${drawdownClass || avgReturnClass}">${t("sampleInsufficient")}</div>`}
     </article>
   `;
@@ -2829,7 +3389,7 @@ function bindSignalStatsControls() {
     state.signalSampleLimit = value;
     input.value = value;
     if (state.activeSymbolId) {
-      await loadSymbolDetail(state.activeSymbolId);
+      await loadSymbolDetail(state.activeSymbolId, { force: true });
     }
   };
   input.addEventListener("change", applySampleLimit);
@@ -2843,6 +3403,92 @@ function bindSignalStatsControls() {
   });
 }
 
+function renderScoreRadar(detail) {
+  const canvas = document.getElementById("detailRadar");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(300, Math.floor(rect.width || canvas.width));
+  const height = Math.max(240, Math.floor(rect.height || canvas.height));
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#fffaf0";
+  ctx.fillRect(0, 0, width, height);
+
+  const latest = detail?.latest_score;
+  const metrics = [
+    { label: t("trendScore"), value: latest?.trend_score },
+    { label: t("momentumScore"), value: latest?.momentum_score },
+    { label: t("volatilityScore"), value: latest?.volatility_score },
+    { label: t("liquidityScore"), value: latest?.liquidity_score },
+    { label: t("breadthScore"), value: latest?.breadth_score },
+    { label: t("eventScore"), value: latest?.event_score },
+  ].map((item) => ({ ...item, value: clamp(Number(item.value ?? 0), 0, 100) }));
+
+  const cx = width / 2;
+  const cy = height / 2 + 4;
+  const radius = Math.min(width, height) * 0.32;
+  const angleStep = (Math.PI * 2) / metrics.length;
+  const start = -Math.PI / 2;
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(31, 41, 51, 0.12)";
+  ctx.fillStyle = "rgba(31, 41, 51, 0.52)";
+  ctx.font = "12px Segoe UI, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  [0.25, 0.5, 0.75, 1].forEach((level) => {
+    ctx.beginPath();
+    metrics.forEach((_, index) => {
+      const angle = start + index * angleStep;
+      const x = cx + Math.cos(angle) * radius * level;
+      const y = cy + Math.sin(angle) * radius * level;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+  });
+
+  metrics.forEach((item, index) => {
+    const angle = start + index * angleStep;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+
+    const labelX = cx + Math.cos(angle) * (radius + 34);
+    const labelY = cy + Math.sin(angle) * (radius + 22);
+    ctx.fillText(item.label, labelX, labelY - 7);
+    ctx.fillStyle = "#0f766e";
+    ctx.font = "700 12px Segoe UI, sans-serif";
+    ctx.fillText(score(item.value), labelX, labelY + 8);
+    ctx.fillStyle = "rgba(31, 41, 51, 0.52)";
+    ctx.font = "12px Segoe UI, sans-serif";
+  });
+
+  ctx.beginPath();
+  metrics.forEach((item, index) => {
+    const angle = start + index * angleStep;
+    const x = cx + Math.cos(angle) * radius * (item.value / 100);
+    const y = cy + Math.sin(angle) * radius * (item.value / 100);
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.closePath();
+  ctx.fillStyle = "rgba(15, 118, 110, 0.18)";
+  ctx.strokeStyle = "#0f766e";
+  ctx.lineWidth = 2;
+  ctx.fill();
+  ctx.stroke();
+}
+
 function renderDetail(detail) {
   const title = document.getElementById("detailTitle");
   const meta = document.getElementById("detailMeta");
@@ -2852,8 +3498,6 @@ function renderDetail(detail) {
   const journals = document.getElementById("detailJournals");
   const trades = document.getElementById("detailTrades");
   const setupButton = document.getElementById("setupButton");
-  const simBuyButton = document.getElementById("simBuyButton");
-  const simSellButton = document.getElementById("simSellButton");
 
   state.detail = detail;
   if (detail?.symbol?.id) {
@@ -2866,30 +3510,27 @@ function renderDetail(detail) {
   }
 
   if (!detail) {
-    title.textContent = t("selectSymbol");
-    meta.textContent = "-";
+    if (title) title.textContent = t("selectSymbol");
+    if (meta) meta.textContent = "-";
     setEmpty(summary, t("noDetail"));
     setEmpty(setup, t("latestTradeSetupEmpty"));
-    history.innerHTML = `<tr><td colspan="5" class="empty">${t("noDetail")}</td></tr>`;
+    renderScoreRadar(null);
+    if (history) history.innerHTML = `<tr><td colspan="5" class="empty">${t("noDetail")}</td></tr>`;
     renderChart(null);
-    setEmpty(trades, t("noTrades"));
-    setEmpty(journals, t("noJournals"));
-    setupButton.disabled = true;
-    simBuyButton.disabled = true;
-    simSellButton.disabled = true;
-    syncOrderForm(null);
+    if (trades) setEmpty(trades, t("noTrades"));
+    if (journals) setEmpty(journals, t("noJournals"));
+    if (setupButton) setupButton.disabled = true;
     return;
   }
 
-  setupButton.disabled = !detail.latest_score;
-  simBuyButton.disabled = false;
-  simSellButton.disabled = !(detail.position?.quantity > 0);
-  title.textContent = `${detail.symbol.symbol}${DOT}${detail.symbol.name}`;
-  meta.textContent = joinParts([
+  if (setupButton) setupButton.disabled = !detail.latest_score;
+  if (title) title.textContent = `${detail.symbol.symbol}${DOT}${detail.symbol.name}`;
+  if (meta) meta.textContent = joinParts([
     `${t("marketLabel")}: ${String(detail.symbol.market || "-").toUpperCase()}`,
     `${t("regionLabel")}: ${regionLongLabel(detail.symbol.region)}`,
     `${t("assetLabel")}: ${assetTypeLabel(detail.symbol.asset_type)}`,
   ]);
+  renderScoreRadar(detail);
 
   const summaryRows = [];
   if (detail.latest_score) {
@@ -2897,11 +3538,11 @@ function renderDetail(detail) {
       <article class="list-item">
         <div class="item-topline"><strong>${t("latestScoreDate")}</strong><span>${detail.latest_score.trade_date}</span></div>
         <div class="item-subline">${joinParts([
-          `${t("quality")} ${score(detail.latest_score.quality_score)} (${detail.latest_score.quality_grade})`,
-          `${t("timing")} ${score(detail.latest_score.timing_score)}`,
-          stageLabel(detail.latest_score.stage),
-          actionLabel(detail.latest_score.action),
-        ])}</div>
+      `${t("quality")} ${score(detail.latest_score.quality_score)} (${detail.latest_score.quality_grade})`,
+      `${t("timing")} ${score(detail.latest_score.timing_score)}`,
+      stageLabel(detail.latest_score.stage),
+      actionLabel(detail.latest_score.action),
+    ])}</div>
       </article>
     `);
   }
@@ -2913,18 +3554,18 @@ function renderDetail(detail) {
       <article class="list-item">
         <div class="item-topline"><strong>${t("currentPosition")}</strong><span>${percent(detail.position.position_pct)}</span></div>
         <div class="item-subline">${joinParts([
-          `${t("holdingQty")}: ${detail.position.quantity}`,
-          `${t("avgCost")}: ${score(detail.position.avg_cost)}`,
-          `${t("close")}: ${score(detail.position.latest_price)}`,
-        ])}</div>
+      `${t("holdingQty")}: ${detail.position.quantity}`,
+      `${t("avgCost")}: ${score(detail.position.avg_cost)}`,
+      `${t("close")}: ${score(detail.position.latest_price)}`,
+    ])}</div>
         <div class="item-subline">${joinParts([
-          `${t("accountMarketValue")}: ${money(detail.position.market_value)}`,
-          `${t("assetLabel")}: ${assetTypeLabel(detail.position.asset_type)}`,
-        ])}</div>
+      `${t("accountMarketValue")}: ${money(detail.position.market_value)}`,
+      `${t("assetLabel")}: ${assetTypeLabel(detail.position.asset_type)}`,
+    ])}</div>
       </article>
     `);
   }
-  summary.innerHTML = summaryRows.length ? summaryRows.join("") : `<div class="empty">${t("noScores")}</div>`;
+  if (summary) summary.innerHTML = summaryRows.length ? summaryRows.join("") : `<div class="empty">${t("noScores")}</div>`;
   bindSignalStatsControls();
 
   if (detail.latest_trade_setup) {
@@ -2935,107 +3576,106 @@ function renderDetail(detail) {
     const tranches = item.tranche_plan ?? [];
     const futureBuyPlan = getActiveFutureBuyPlan(item);
 
-    setup.innerHTML = `
+    if (setup) setup.innerHTML = `
       <article class="list-item">
         <div class="item-topline">
           <strong>${t("buyZone")}</strong>
           <span>${item.entry_min ?? "-"} - ${item.entry_max ?? "-"}</span>
         </div>
         <div class="item-subline">${joinParts([
-          `${t("stopLoss")}: ${item.stop_loss ?? "-"}`,
-          `${t("target")}: ${item.target_price ?? "-"}`,
-          `${t("riskReward")}: ${item.risk_reward_ratio ?? "-"}`,
-        ])}</div>
+      `${t("stopLoss")}: ${item.stop_loss ?? "-"}`,
+      `${t("target")}: ${item.target_price ?? "-"}`,
+      `${t("riskReward")}: ${item.risk_reward_ratio ?? "-"}`,
+    ])}</div>
         <div class="item-subline">${joinParts([
-          `${t("recommendedPosition")}: ${percent(item.recommended_position_pct)}`,
-          `${t("positionAmount")}: ${money(item.recommended_position_amount)}`,
-          `${t("allowAdd")}: ${item.allow_add_position ? t("yes") : t("no")}`,
-        ])}</div>
+      `${t("recommendedPosition")}: ${percent(item.recommended_position_pct)}`,
+      `${t("positionAmount")}: ${money(item.recommended_position_amount)}`,
+      `${t("allowAdd")}: ${item.allow_add_position ? t("yes") : t("no")}`,
+    ])}</div>
         <div class="item-subline">${joinParts([
-          `${t("stageCap")}: ${percent(item.stage_cap_pct)} / ${money(item.stage_cap_amount)}`,
-          `${t("stageRoom")}: ${percent(item.remaining_stage_pct)} / ${money(item.remaining_stage_amount)}`,
-        ])}</div>
+      `${t("stageCap")}: ${percent(item.stage_cap_pct)} / ${money(item.stage_cap_amount)}`,
+      `${t("stageRoom")}: ${percent(item.remaining_stage_pct)} / ${money(item.remaining_stage_amount)}`,
+    ])}</div>
         <div class="item-subline">${joinParts([
-          `${t("currentPosition")}: ${percent(item.current_position_pct)} / ${money(item.current_position_amount)}`,
-          `${t("riskBudget")}: ${money(item.risk_budget_amount)}`,
-          `${t("riskShare")}: ${score(item.risk_per_share)}`,
-          `${t("shareCap")}: ${item.risk_capped_shares ?? "-"}`,
-        ])}</div>
+      `${t("currentPosition")}: ${percent(item.current_position_pct)} / ${money(item.current_position_amount)}`,
+      `${t("riskBudget")}: ${money(item.risk_budget_amount)}`,
+      `${t("riskShare")}: ${score(item.risk_per_share)}`,
+      `${t("shareCap")}: ${item.risk_capped_shares ?? "-"}`,
+    ])}</div>
         <div class="item-subline">${joinParts([
-          stageLabel(item.stage),
-          actionLabel(item.action),
-          guardrails.length ? `${t("guardrails")}: ${guardrails.join(", ")}` : t("stable"),
-        ])}</div>
+      stageLabel(item.stage),
+      actionLabel(item.action),
+      guardrails.length ? `${t("guardrails")}: ${guardrails.join(", ")}` : t("stable"),
+    ])}</div>
         <div class="item-subline">${t("openTrigger")}: ${formatOpenTrigger(item)}</div>
         <div class="item-subline">${t("addTrigger")}: ${formatAddTrigger(item)}</div>
         <div class="item-subline">${t("stopTrigger")}: ${formatStopTrigger(item)}</div>
         <div class="item-subline">${t("trimTrigger")}: ${formatTrimTrigger(item)}</div>
         <div class="item-subline">${t("reason")}: ${item.setup_reason ?? "-"}</div>
         ${tranches.length
-          ? `
+        ? `
           <div class="item-subline"><strong>${t("tranchePlan")}</strong></div>
           ${tranches
-            .map(
-              (tranche) => `
+          .map(
+            (tranche) => `
               <div class="item-subline">
                 ${joinParts([
-                  tranche.label,
-                  `${t("tranchePct")}: ${percent(tranche.position_pct)}`,
-                  `${t("positionAmount")}: ${money(tranche.amount)}`,
-                  `${t("trigger")}: ${tranche.trigger}`,
-                ])}
+              tranche.label,
+              `${t("tranchePct")}: ${percent(tranche.position_pct)}`,
+              `${t("positionAmount")}: ${money(tranche.amount)}`,
+              `${t("trigger")}: ${tranche.trigger}`,
+            ])}
               </div>
             `
-            )
-            .join("")}
+          )
+          .join("")}
         `
-          : ""}
+        : ""}
         ${futureBuyPlan.length
-          ? `
+        ? `
           <div class="future-plan-head">
             <strong>${t("futureBuyPlan")}</strong>
             <div class="future-scenario-tabs">
               ${["general", "short", "mid", "long", "custom"]
-                .map(
-                  (scenario) => `
+          .map(
+            (scenario) => `
                     <button type="button" class="ghost-button detail-action ${state.futurePlanScenario === scenario ? "active" : ""}" data-future-scenario="${scenario}">
                       ${t(`futureScenario${scenario.charAt(0).toUpperCase()}${scenario.slice(1)}`)}
                     </button>
                   `
-                )
-                .join("")}
+          )
+          .join("")}
             </div>
           </div>
-          ${
-            state.futurePlanScenario === "custom"
-              ? `
+          ${state.futurePlanScenario === "custom"
+          ? `
                 <div class="future-custom-grid">
                   <label><span>${t("customHorizon")}</span><input id="futureCustomHorizon" type="number" min="1" max="120" step="1" value="${state.futurePlanCustom.horizonDays}" /></label>
                   <label><span>${t("customPullback")}</span><input id="futureCustomPullback" type="number" min="0" max="30" step="0.5" value="${state.futurePlanCustom.pullbackPct}" /></label>
                   <label><span>${t("customPosition")}</span><input id="futureCustomPosition" type="number" min="0" max="100" step="0.5" value="${state.futurePlanCustom.positionPct}" /></label>
                 </div>
               `
-              : ""
-          }
+          : ""
+        }
           ${futureBuyPlan
-            .map(
-              (plan) => `
+          .map(
+            (plan) => `
               <div class="item-subline">
                 ${joinParts([
-                  futureBuyLabel(plan.label),
-                  `${t("futureHorizon")}: ${plan.horizon_days}${t("daysUnit")}`,
-                  `${t("futureZone")}: ${plan.zone_min ?? "-"} - ${plan.zone_max ?? "-"}`,
-                  `${t("futurePriority")}: ${futurePriorityLabel(plan.priority)}`,
-                  `${t("tranchePct")}: ${percent(plan.position_pct)}`,
-                  `${t("positionAmount")}: ${money(plan.amount)}`,
-                ])}
+              futureBuyLabel(plan.label),
+              `${t("futureHorizon")}: ${plan.horizon_days}${t("daysUnit")}`,
+              `${t("futureZone")}: ${plan.zone_min ?? "-"} - ${plan.zone_max ?? "-"}`,
+              `${t("futurePriority")}: ${futurePriorityLabel(plan.priority)}`,
+              `${t("tranchePct")}: ${percent(plan.position_pct)}`,
+              `${t("positionAmount")}: ${money(plan.amount)}`,
+            ])}
               </div>
               <div class="item-subline">${t("trigger")}: ${futureTriggerLabel(plan)}</div>
             `
-            )
-            .join("")}
+          )
+          .join("")}
         `
-          : ""}
+        : ""}
       </article>
     `;
     bindFuturePlanControls();
@@ -3043,10 +3683,10 @@ function renderDetail(detail) {
     setEmpty(setup, t("latestTradeSetupEmpty"));
   }
 
-  history.innerHTML = detail.score_history.length
+  if (history) history.innerHTML = detail.score_history.length
     ? detail.score_history
-        .map(
-          (item) => `
+      .map(
+        (item) => `
             <tr>
               <td>${item.trade_date}</td>
               <td>${score(item.quality_score)}</td>
@@ -3055,37 +3695,46 @@ function renderDetail(detail) {
               <td>${actionLabel(item.action)}</td>
             </tr>
           `
-        )
-        .join("")
+      )
+      .join("")
     : `<tr><td colspan="5" class="empty">${t("noScores")}</td></tr>`;
 
   renderChart(detail);
-  renderRecentTradeCards(trades, detail.recent_trades);
+  if (trades) renderRecentTradeCards(trades, detail.recent_trades);
 
-  if (!detail.journals.length) {
-    setEmpty(journals, t("noJournals"));
-  } else {
-    journals.innerHTML = detail.journals
-      .map(
-        (item) => `
-        <article class="list-item">
-          <div class="item-topline">
-            <strong>${item.title}</strong>
-            <span class="badge">${item.entry_type}</span>
-          </div>
-          <div class="item-subline">${formatDate(item.created_at)}</div>
-        </article>
-      `
-      )
-      .join("");
+  if (journals) {
+    if (!detail.journals.length) {
+      setEmpty(journals, t("noJournals"));
+    } else {
+      journals.innerHTML = detail.journals
+        .map(
+          (item) => `
+          <article class="list-item">
+            <div class="item-topline">
+              <strong>${item.title}</strong>
+              <span class="badge">${item.entry_type}</span>
+            </div>
+            <div class="item-subline">${formatDate(item.created_at)}</div>
+          </article>
+        `
+        )
+        .join("");
+    }
   }
-
-  syncOrderForm(detail);
 }
 
 async function loadSymbolDetail(symbolId, options = {}) {
   state.activeSymbolId = symbolId;
   resetChartInteraction();
+  const cached = state.detailCache[symbolId];
+  if (cached && !options.force) {
+    renderDetail(cached);
+    if (options.focus) {
+      focusDetailPanel();
+    }
+    scheduleSignalRulePreview();
+    return cached;
+  }
   const params = new URLSearchParams({
     portfolio_id: String(state.portfolioId),
     symbol_id: String(symbolId),
@@ -3096,9 +3745,10 @@ async function loadSymbolDetail(symbolId, options = {}) {
   const detail = await requestJson(`/api/v1/dashboard/symbol-detail?${params.toString()}`);
   renderDetail(detail);
   scheduleSignalRulePreview();
-  if (options.focus) {
+  if (options.focus && !cached) {
     focusDetailPanel();
   }
+  return detail;
 }
 
 async function generateTradeSetup() {
@@ -3112,7 +3762,7 @@ async function generateTradeSetup() {
       score_id: state.detail.latest_score.id,
     }),
   });
-  await loadSymbolDetail(state.activeSymbolId);
+  await loadSymbolDetail(state.activeSymbolId, { force: true });
   setStatus("success", template("planSummary"));
 }
 
@@ -3239,32 +3889,170 @@ async function loadLatestNewsSnapshot(data) {
   }
 }
 
+function renderAllPositions(detail) {
+  const body = document.getElementById("allPositionBody");
+  const meta = document.getElementById("tradingPositionMeta");
+  if (!body) return;
+
+  const positions = state.workbench?.positions ?? [];
+  if (!positions.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty">${t("noPosition")}</td></tr>`;
+    if (meta) meta.textContent = "-";
+    return;
+  }
+
+  const currentSymbolId = detail?.symbol?.id ?? state.activeSymbolId;
+  const totalValue = positions.reduce((sum, p) => sum + p.market_value, 0);
+  if (meta) meta.textContent = `${positions.length} ${t("currentPosition")}`;
+
+  body.innerHTML = positions
+    .map(
+      (p) => `
+      <tr class="clickable ${p.symbol_id === currentSymbolId ? "current-symbol" : ""}" data-symbol-id="${p.symbol_id}">
+        <td><strong>${p.symbol}</strong><br /><span class="item-subline">${p.name}</span></td>
+        <td>${p.quantity}</td>
+        <td>${score(p.avg_cost)}</td>
+        <td>${score(p.latest_price)}</td>
+        <td>${money(p.market_value)}</td>
+        <td>${percent(p.position_pct)}</td>
+        <td class="${pnlClass(p.unrealized_pnl)}">
+          ${money(p.unrealized_pnl)}<br />
+          <span class="pnl-pct ${pnlClass(p.unrealized_pnl)}">${percent(p.unrealized_pnl_pct)}</span>
+        </td>
+      </tr>
+    `
+    )
+    .join("");
+
+  body.querySelectorAll("tr[data-symbol-id]").forEach((row) => {
+    row.addEventListener("click", () => loadSymbolDetail(Number(row.dataset.symbolId), { focus: true }));
+  });
+}
+
+function renderTradingOrderPreview() {
+  const preview = document.getElementById("tradingOrderPreview");
+  if (!preview) return;
+
+  const detail = state.detail;
+  if (!detail) {
+    preview.innerHTML = "";
+    return;
+  }
+
+  const qtyInput = document.getElementById("simQuantityInput");
+  const priceInput = document.getElementById("simPriceInput");
+  const quantity = Number(qtyInput?.value) || 0;
+  const price = Number(priceInput?.value) || 0;
+
+  if (!(quantity > 0) || !(price > 0)) {
+    preview.innerHTML = "";
+    return;
+  }
+
+  const totalCost = quantity * price;
+  const cash = state.workbench?.account_summary?.available_cash ?? 0;
+  const remaining = cash - totalCost;
+
+  preview.innerHTML = `
+    <div class="preview-row">
+      <span class="label">${t("totalCost")}</span>
+      <span class="value">${money(totalCost)}</span>
+    </div>
+    <div class="preview-row">
+      <span class="label">${t("remainingCash")}</span>
+      <span class="value ${remaining < 0 ? "pnl-negative" : ""}">${money(remaining)}</span>
+    </div>
+  `;
+}
+
+function renderTradingSymbolInfo(detail) {
+  const container = document.getElementById("tradingSymbolInfo");
+  if (!container) return;
+  if (!detail?.symbol) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const pos = detail.position;
+  const parts = [];
+  if (pos && pos.quantity > 0) {
+    parts.push(`<div class="info-item"><span>${t("holdingQty")}</span><strong>${pos.quantity}</strong></div>`);
+    parts.push(`<div class="info-item"><span>${t("avgCost")}</span><strong>${score(pos.avg_cost)}</strong></div>`);
+    parts.push(`<div class="info-item"><span>${t("weight")}</span><strong>${percent(pos.position_pct)}</strong></div>`);
+  }
+  const lastBar = detail.bars?.[detail.bars.length - 1];
+  if (lastBar) {
+    parts.push(`<div class="info-item"><span>${t("close")}</span><strong>${score(lastBar.close)}</strong></div>`);
+  }
+  container.innerHTML = parts.join("");
+}
+
+function renderTradingTab(detail) {
+  const d = detail ?? state.detail;
+
+  // Sync order form
+  syncOrderForm(d);
+
+  // Update symbol title and price
+  const tradingTitle = document.getElementById("tradingDetailTitle");
+  const priceEl = document.getElementById("tradingCurrentPrice");
+  if (tradingTitle && d?.symbol) {
+    tradingTitle.textContent = `${d.symbol.symbol} ${DOT} ${d.symbol.name}`;
+  }
+  if (priceEl && d) {
+    const lastBar = d.bars?.[d.bars.length - 1];
+    const lp = lastBar?.close ?? d.position?.latest_price;
+    if (lp) {
+      priceEl.textContent = score(lp);
+      priceEl.className = "trading-current-price";
+    } else {
+      priceEl.textContent = "-";
+    }
+  }
+
+  // Render symbol info box
+  renderTradingSymbolInfo(d);
+
+  // Render order preview
+  renderTradingOrderPreview();
+
+  // Render all positions
+  renderAllPositions(d);
+
+  // Render recent trades
+  const tradesContainer = document.getElementById("tradingTrades");
+  if (tradesContainer) {
+    const trades = d?.recent_trades ?? state.detail?.recent_trades ?? [];
+    renderRecentTradeCards(tradesContainer, trades);
+  }
+}
+
 async function loadWorkbench() {
   if (!state.portfolioId) return;
+  await loadDiscoveryScopeStats();
   const data = await requestJson(`/api/v1/dashboard/workbench?portfolio_id=${state.portfolioId}&market_group=${state.marketGroup}`);
   state.workbench = data;
+  await refreshPrimaryWatchlistMembership();
   await loadLatestNewsSnapshot(data);
   renderTodayOpportunities(data);
   renderMetrics(data);
+  renderDiscoveryMetrics(data);
   renderAccountSummary(data);
   renderCandidates(data);
   renderScoreList(data);
-  renderWatchlists(data);
+  renderDiscoveryResults(data);
+  renderDiscoveryTask(state.discoveryTask);
   renderJournals(data);
+  renderTradingTab(state.detail);
 
   const visibleSymbolIds = new Set([
     ...data.candidates.map((item) => item.symbol_id),
     ...data.latest_scores.map((item) => item.symbol_id),
   ]);
-  if (state.activeSymbolId && visibleSymbolIds.has(state.activeSymbolId)) {
-    await loadSymbolDetail(state.activeSymbolId);
-  } else if (data.latest_scores.length) {
-    await loadSymbolDetail(data.latest_scores[0].symbol_id);
-  } else if (data.candidates.length) {
-    await loadSymbolDetail(data.candidates[0].symbol_id);
+  if (state.activeSymbolId && visibleSymbolIds.has(state.activeSymbolId) && (state.detail || state.detailCache[state.activeSymbolId])) {
+    await loadSymbolDetail(state.activeSymbolId, { force: true });
   } else {
-    state.activeSymbolId = null;
-    renderDetail(null);
+    renderDetail(state.detail ?? null);
   }
 }
 
@@ -3354,6 +4142,147 @@ async function runScan() {
   setStatus("success", template("scanSummary", { count: state.workbench?.latest_scan?.executable_count ?? 0 }));
 }
 
+function buildDiscoveryPayload() {
+  const dataMode = document.getElementById("discoveryDataModeSelect")?.value || "cached";
+  return {
+    scope: document.getElementById("discoveryScopeSelect")?.value || "cn-stock",
+    min_score: Number(document.getElementById("discoveryMinScoreInput")?.value || 55),
+    include_news: Boolean(document.getElementById("discoveryNewsInput")?.checked ?? true),
+    portfolio_id: state.portfolioId,
+    portfolio_rule_id: state.workbench?.active_rule?.id ?? null,
+    batch_size: Number(document.getElementById("discoveryBatchSizeInput")?.value || 20),
+    delay_seconds: Number(document.getElementById("discoveryDelayInput")?.value || 0.25),
+    warning_days: Number(document.getElementById("discoveryWarningDaysInput")?.value || 3),
+    valid_days: Number(document.getElementById("discoveryValidDaysInput")?.value || 5),
+    news_limit: 30,
+    refresh_universe: dataMode === "sync",
+    use_cached_bars_first: true,
+    use_cached_symbols_only: dataMode === "cached",
+    global_mode: "library",
+  };
+}
+
+function updateDiscoveryButtons(task) {
+  renderDiscoveryTask(task);
+}
+
+async function fetchDiscoveryTasks() {
+  const tasks = await requestJson("/api/v1/discovery/tasks?limit=10");
+  const active = tasks.find((item) => ["queued", "running"].includes(item.status)) ?? tasks.find((item) => item.status === "paused" && item.can_resume) ?? tasks[0] ?? null;
+  state.discoveryTask = active;
+  updateDiscoveryButtons(active);
+  return tasks;
+}
+
+async function runDiscoveryMining() {
+  const payload = buildDiscoveryPayload();
+  const task = await requestJson("/api/v1/discovery/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  state.discoveryTask = task;
+  updateDiscoveryButtons(task);
+  setStatus("success", payload.use_cached_symbols_only ? t("discoveryStartedCached") : t("discoveryStartedSync"));
+  await loadWorkbench();
+  startDiscoveryPolling();
+}
+
+async function sendDiscoveryTaskCommand(command) {
+  const task = state.discoveryTask;
+  if (!task?.id) return;
+  const result = await requestJson(`/api/v1/discovery/tasks/${task.id}/${command}`, { method: "POST" });
+  state.discoveryTask = result;
+  updateDiscoveryButtons(result);
+  return result;
+}
+
+async function handleDiscoveryRowAction(button) {
+  const row = button.closest("tr[data-scan-result-id]");
+  const scanResultId = Number(row?.dataset.scanResultId);
+  if (!scanResultId) return;
+  const action = button.dataset.discoveryAction;
+  const symbolId = Number(row?.dataset.symbolId);
+  if (action === "add-watchlist") {
+    const watchlist = primaryWatchlist();
+    if (!watchlist) {
+      setStatus("error", t("noWatchlistAvailable"));
+      return;
+    }
+    button.disabled = true;
+    await addSymbolToWatchlist(watchlist.id, symbolId);
+    await refreshPrimaryWatchlistMembership();
+    renderDiscoveryResults(state.workbench);
+    renderWatchlists(state.workbench);
+    setStatus("success", t("discoveryAddedWatchlist"));
+    return;
+  }
+  if (action === "toggle-freeze") {
+    const item = (state.workbench?.candidates ?? []).find((candidate) => Number(candidate.scan_result_id ?? candidate.id) === scanResultId);
+    const nextFrozen = !(item?.is_frozen);
+    await requestJson(`/api/v1/discovery/results/${scanResultId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        is_frozen: nextFrozen,
+        warning_days: Number(document.getElementById("discoveryWarningDaysInput")?.value || 3),
+        valid_days: Number(document.getElementById("discoveryValidDaysInput")?.value || 5),
+      }),
+    });
+    setStatus("success", nextFrozen ? t("discoveryRowFrozen") : t("discoveryRefreshDone"));
+  }
+  if (action === "refresh-row") {
+    await requestJson(`/api/v1/discovery/results/${scanResultId}/refresh`, { method: "POST" });
+    setStatus("success", t("discoveryRowUpdated"));
+  }
+  await loadWorkbench();
+}
+
+async function refreshDiscoveryTasks() {
+  await fetchDiscoveryTasks();
+  await loadWorkbench();
+}
+
+function startDiscoveryPolling() {
+  if (state.discoveryPollTimer) return;
+  state.discoveryPollTimer = window.setInterval(async () => {
+    try {
+      const tasks = await requestJson("/api/v1/discovery/tasks?limit=10");
+      const current = tasks.find((item) => ["queued", "running"].includes(item.status)) ?? tasks[0] ?? null;
+      state.discoveryTask = current;
+      renderDiscoveryTask(current);
+      if (!current || ["done", "failed", "cancelled", "expired", "paused"].includes(current.status)) {
+        stopDiscoveryPolling();
+        if (current?.status === "done") {
+          setStatus("success", t("discoveryCompleted"));
+          await loadWorkbench();
+        } else if (current?.status === "expired") {
+          setStatus("error", t("taskExpiredRestart"));
+        }
+      }
+      if (state.workbench) renderDiscoveryMetrics(state.workbench);
+    } catch (error) {
+      console.warn("Discovery polling failed", error);
+    }
+  }, 2000);
+}
+
+function stopDiscoveryPolling() {
+  if (state.discoveryPollTimer) {
+    window.clearInterval(state.discoveryPollTimer);
+    state.discoveryPollTimer = null;
+  }
+}
+
+async function loadDiscoveryScopeStats() {
+  const scope = document.getElementById("discoveryScopeSelect")?.value || "cn-stock";
+  try {
+    state.discoveryScopeStats = await requestJson(`/api/v1/discovery/scopes/${encodeURIComponent(scope)}/stats`);
+  } catch (error) {
+    console.warn("Discovery scope stats failed", error);
+  }
+}
+
 async function runNewsUpdate() {
   const candidateIds = state.workbench?.candidates?.map((item) => item.symbol_id) ?? [];
   let symbolIds = candidateIds;
@@ -3402,8 +4331,20 @@ async function submitSimOrder(side) {
     price = computeSuggestedPrice(state.detail);
   }
   if (!(quantity > 0) || !(price > 0)) {
-    throw new Error(state.locale === "zh-CN" ? "请先提供有效数量和价格" : "Please provide a valid quantity and price");
+    throw new Error(t("invalidOrderInput"));
   }
+
+  const totalAmount = quantity * price;
+  const confirmKey = side === "buy" ? "confirmBuy" : "confirmSell";
+  const confirmMsg = template(confirmKey, {
+    symbol: symbolCode,
+    quantity,
+    price: score(price),
+    cost: money(totalAmount),
+    proceeds: money(totalAmount),
+  });
+
+  if (!window.confirm(confirmMsg)) return;
 
   const result = await requestJson(`/api/v1/portfolios/${state.portfolioId}/sim-orders`, {
     method: "POST",
@@ -3444,8 +4385,8 @@ document.getElementById("localeSelect").addEventListener("change", async (event)
     renderAccountSummary(state.workbench);
     renderCandidates(state.workbench);
     renderScoreList(state.workbench);
-    renderWatchlists(state.workbench);
     renderJournals(state.workbench);
+    renderTradingTab(state.detail);
   }
   renderDetail(state.detail);
   renderSignalRuleConfig();
@@ -3457,21 +4398,109 @@ document.getElementById("marketSelect").addEventListener("change", async (event)
   await loadWorkbench();
 });
 
+document.getElementById("discoveryScopeSelect")?.addEventListener("change", async () => {
+  await loadDiscoveryScopeStats();
+  if (state.workbench) renderDiscoveryMetrics(state.workbench);
+});
+
+document.getElementById("discoveryDataModeSelect")?.addEventListener("change", () => {
+  if (state.workbench) renderDiscoveryMetrics(state.workbench);
+});
+
 document.getElementById("refreshButton").addEventListener("click", async () => {
   await loadWorkbench();
   setStatus("", "");
 });
 
-document.getElementById("ruleConfigButton").addEventListener("click", () => {
-  switchView("rules");
-  document.getElementById("ruleConfigSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+document.getElementById("discoveryRunButton")?.addEventListener("click", async (event) => {
+  try {
+    await setButtonBusy(event.currentTarget, "startDiscovery", runDiscoveryMining);
+  } catch (error) {
+    setStatus("error", `${t("discoveryCommandFailed")}: ${error.message}`);
+  }
 });
+
+document.getElementById("discoveryPauseButton")?.addEventListener("click", async () => {
+  try {
+    await sendDiscoveryTaskCommand("pause");
+    setStatus("success", t("discoveryPaused"));
+  } catch (error) {
+    setStatus("error", `${t("discoveryCommandFailed")}: ${error.message}`);
+  }
+});
+
+document.getElementById("discoveryResumeButton")?.addEventListener("click", async () => {
+  try {
+    const task = await sendDiscoveryTaskCommand("resume");
+    if (task?.status === "expired") {
+      setStatus("error", t("taskExpiredRestart"));
+      return;
+    }
+    startDiscoveryPolling();
+    setStatus("success", t("discoveryResumed"));
+  } catch (error) {
+    setStatus("error", `${t("discoveryCommandFailed")}: ${error.message}`);
+  }
+});
+
+document.getElementById("discoveryCancelButton")?.addEventListener("click", async () => {
+  try {
+    await sendDiscoveryTaskCommand("cancel");
+    stopDiscoveryPolling();
+    setStatus("success", t("discoveryCancelled"));
+  } catch (error) {
+    setStatus("error", `${t("discoveryCommandFailed")}: ${error.message}`);
+  }
+});
+
+document.getElementById("discoveryRefreshButton")?.addEventListener("click", async () => {
+  try {
+    await refreshDiscoveryTasks();
+    setStatus("success", t("discoveryRefreshDone"));
+  } catch (error) {
+    setStatus("error", `${t("discoveryCommandFailed")}: ${error.message}`);
+  }
+});
+
+// ruleConfigButton removed - rules now in Research tab
 
 document.querySelectorAll("[data-view-tab]").forEach((button) => {
   button.addEventListener("click", () => {
-    switchView(button.dataset.viewTab);
+    switchTab(button.dataset.viewTab);
   });
 });
+
+document.querySelectorAll("[data-sub-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const scope = button.closest("[data-tab-content]");
+    switchSubTab(button.dataset.subTab, scope);
+    // If switching to trading sub-tab, refresh trading data
+    if (button.dataset.subTab === "portfolio-trading") {
+      renderTradingTab(state.detail);
+    }
+  });
+});
+
+document.querySelectorAll("[data-settings-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const settingsContainer = document.querySelector('[data-tab-content="settings"]');
+    if (!settingsContainer) return;
+    const tabId = button.dataset.settingsTab;
+    settingsContainer.querySelectorAll(".settings-nav-item").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.settingsTab === tabId);
+    });
+    settingsContainer.querySelectorAll("[data-settings-content]").forEach((container) => {
+      container.hidden = container.dataset.settingsContent !== tabId;
+    });
+  });
+});
+
+const candidateSearchInput = document.getElementById("candidateSearch");
+if (candidateSearchInput) {
+  candidateSearchInput.addEventListener("input", () => {
+    if (state.workbench) renderCandidates(state.workbench);
+  });
+}
 
 document.getElementById("signalRuleForm").addEventListener("input", () => {
   markSignalRuleExpert();
@@ -3555,10 +4584,39 @@ document.getElementById("simSellButton").addEventListener("click", async (event)
 
 document.getElementById("simQuantityInput").addEventListener("input", () => {
   renderOrderScenarioPreview(state.detail);
+  renderTradingOrderPreview();
 });
 
 document.getElementById("simPriceInput").addEventListener("input", () => {
   renderOrderScenarioPreview(state.detail);
+  renderTradingOrderPreview();
+});
+
+// Quick quantity buttons
+document.querySelectorAll(".quick-qty-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const pct = Number(btn.dataset.pct);
+    const detail = state.detail;
+    if (!detail) return;
+
+    const price = Number(document.getElementById("simPriceInput").value) || computeSuggestedPrice(detail);
+    if (!(price > 0)) return;
+
+    const lotSize = lotSizeForDetail(detail);
+    const cash = state.workbench?.account_summary?.available_cash ?? 0;
+    const budget = cash * (pct / 100);
+    const qty = Math.floor(budget / price / lotSize) * lotSize;
+
+    if (qty > 0) {
+      document.getElementById("simQuantityInput").value = String(qty);
+      renderOrderScenarioPreview(detail);
+      renderTradingOrderPreview();
+    }
+
+    // Update active state
+    document.querySelectorAll(".quick-qty-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+  });
 });
 
 document.getElementById("chartDailyButton").addEventListener("click", () => {
@@ -3595,6 +4653,16 @@ document.getElementById("metricModalBackdrop").addEventListener("click", (event)
   }
 });
 
+document.getElementById("detailModalClose")?.addEventListener("click", () => {
+  closeDetailModal();
+});
+
+document.getElementById("detailModalBackdrop")?.addEventListener("click", (event) => {
+  if (event.target === event.currentTarget) {
+    closeDetailModal();
+  }
+});
+
 document.getElementById("detailChart").addEventListener(
   "wheel",
   (event) => {
@@ -3613,6 +4681,18 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape" && state.chartExpanded) {
     toggleChartExpanded();
+    return;
+  }
+  const modalDetailOpen = !document.getElementById("detailModalBackdrop")?.hidden;
+  if (event.key === "Escape" && modalDetailOpen) {
+    closeDetailModal();
+  }
+});
+
+window.addEventListener("resize", () => {
+  const modalDetailOpen = !document.getElementById("detailModalBackdrop")?.hidden;
+  if (modalDetailOpen) {
+    renderScoreRadar(state.detail);
   }
 });
 
@@ -3620,7 +4700,11 @@ async function bootstrap() {
   applyI18n();
   await loadPortfolios();
   await loadSignalRuleConfig();
+  await fetchDiscoveryTasks();
   await loadWorkbench();
+  if (discoveryTaskActive(state.discoveryTask)) {
+    startDiscoveryPolling();
+  }
 }
 
 bootstrap().catch((error) => {

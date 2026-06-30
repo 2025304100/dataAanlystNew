@@ -30,5 +30,7 @@ class ScanResultRead(BaseModel):
     is_sector_overweight: int
     is_asset_overweight: int
     reason_tags: str | None = None
+    warning_days: int = 3
+    valid_days: int = 5
+    is_frozen: int = 0
     created_at: datetime
-

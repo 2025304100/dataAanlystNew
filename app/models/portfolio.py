@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,8 +19,8 @@ class Portfolio(Base):
     cash_reserve_ratio: Mapped[float] = mapped_column(Float)
     currency: Mapped[str] = mapped_column(String(16), default="CNY")
     is_default: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     rules = relationship("PortfolioRule", back_populates="portfolio_ref", cascade="all, delete-orphan")
     positions = relationship("Position", back_populates="portfolio_ref", cascade="all, delete-orphan")
@@ -40,7 +40,7 @@ class PortfolioRule(Base):
     max_open_positions: Mapped[int] = mapped_column(Integer)
     stage_limits_json: Mapped[str] = mapped_column(Text)
     is_active: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     portfolio_ref = relationship("Portfolio", back_populates="rules")
 
@@ -60,7 +60,7 @@ class Position(Base):
     asset_type: Mapped[str] = mapped_column(String(16))
     theme: Mapped[str | None] = mapped_column(String(64), nullable=True)
     opened_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     portfolio_ref = relationship("Portfolio", back_populates="positions")
 

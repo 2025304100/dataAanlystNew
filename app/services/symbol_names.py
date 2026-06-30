@@ -5,6 +5,7 @@ from functools import lru_cache
 import akshare as ak
 
 from app.models.symbol import Symbol
+from app.services.akshare_utils import quiet_akshare_output
 
 
 def _is_placeholder_name(symbol: str, name: str | None) -> bool:
@@ -27,7 +28,8 @@ def _should_use_official_cn_name(symbol: str, current_name: str | None, official
 
 @lru_cache(maxsize=1)
 def _cn_stock_name_map() -> dict[str, str]:
-    frame = ak.stock_info_a_code_name()
+    with quiet_akshare_output():
+        frame = ak.stock_info_a_code_name()
     return {
         str(row["code"]).zfill(6): str(row["name"]).strip()
         for row in frame.to_dict("records")
@@ -37,7 +39,8 @@ def _cn_stock_name_map() -> dict[str, str]:
 
 @lru_cache(maxsize=1)
 def _fund_name_map() -> dict[str, str]:
-    frame = ak.fund_name_em()
+    with quiet_akshare_output():
+        frame = ak.fund_name_em()
     return {
         str(row["基金代码"]).zfill(6): str(row["基金简称"]).strip()
         for row in frame.to_dict("records")
@@ -49,6 +52,8 @@ def resolve_symbol_name(symbol_code: str, asset_type: str, market: str, current_
     symbol = symbol_code.strip().upper()
     market_lower = (market or "").lower()
     if market_lower not in {"sh", "sz", "bj", "cn"}:
+        return current_name
+    if not _is_placeholder_name(symbol, current_name) and _contains_cjk(current_name):
         return current_name
 
     lookups = [_fund_name_map] if asset_type == "etf" else [_cn_stock_name_map, _fund_name_map]

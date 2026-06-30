@@ -2,20 +2,28 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.async_utils import run_sync
 from app.db.session import get_db
 from app.models.daily_bar import DailyBar
 from app.models.symbol import Symbol
-from app.schemas.market_data import DailyBarImportRequest, DailyBarRead, MarketDataUpdateRequest
-from app.services.market_data import sync_market_data
+from app.schemas.market_data import (
+    DailyBarImportRequest,
+    DailyBarRead,
+    MarketDataRepairRequest,
+    MarketDataUpdateRequest,
+)
+from app.services.analysis import calculate_symbol_score
+from app.services.market_data import sync_market_data, sync_symbol_daily_bars
 
 
 router = APIRouter()
 
 
 @router.post("/market-data/update")
-def trigger_market_data_update(payload: MarketDataUpdateRequest, db: Session = Depends(get_db)) -> dict:
+async def trigger_market_data_update(payload: MarketDataUpdateRequest, db: Session = Depends(get_db)) -> dict:
     try:
-        result = sync_market_data(
+        result = await run_sync(
+            sync_market_data,
             db=db,
             scope=payload.scope,
             watchlist_id=payload.watchlist_id,
@@ -35,6 +43,52 @@ def trigger_market_data_update(payload: MarketDataUpdateRequest, db: Session = D
         "success": True,
         "message": "Market data sync completed",
         "data": result,
+    }
+
+
+@router.post("/market-data/symbols/{symbol_id}/repair")
+async def repair_symbol_market_data(symbol_id: int, payload: MarketDataRepairRequest, db: Session = Depends(get_db)) -> dict:
+    symbol = db.get(Symbol, symbol_id)
+    if symbol is None or symbol.is_active != 1:
+        raise HTTPException(status_code=404, detail="Symbol not found")
+
+    try:
+        result = await run_sync(
+            sync_symbol_daily_bars,
+            db=db,
+            symbol=symbol,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            adjust=payload.adjust,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Market data repair failed: {exc}") from exc
+
+    latest_score = None
+    if payload.auto_score and result.get("status") == "ok":
+        latest_bar = db.execute(
+            select(DailyBar)
+            .where(DailyBar.symbol_id == symbol.id)
+            .order_by(DailyBar.trade_date.desc())
+        ).scalars().first()
+        if latest_bar is not None:
+            score = calculate_symbol_score(db=db, symbol=symbol, trade_date=latest_bar.trade_date)
+            latest_score = {
+                "trade_date": latest_bar.trade_date,
+                "quality_score": score.quality_score,
+                "timing_score": score.timing_score,
+                "stage": score.stage,
+                "action": score.action,
+            }
+
+    db.commit()
+    return {
+        "success": result.get("status") == "ok",
+        "message": "Symbol market data repair completed",
+        "data": result,
+        "latest_score": latest_score,
     }
 
 

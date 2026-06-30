@@ -71,5 +71,18 @@ def get_symbol_detail(symbol_id: int, db: Session = Depends(get_db)):
             "action": latest_score.action,
             "priority_score": latest_score.priority_score,
             "trade_date": latest_score.trade_date,
+            # 股质评分分项
+            "trend_score": latest_score.trend_score,
+            "momentum_score": latest_score.momentum_score,
+            "volatility_score": latest_score.volatility_score,
+            "liquidity_score": latest_score.liquidity_score,
+            "breadth_score": latest_score.breadth_score,
+            "event_score": latest_score.event_score,
+            # 时点评分分项（P1 新增）
+            "breakout_score": latest_score.breakout_score,
+            "pullback_score": latest_score.pullback_score,
+            "overheat_penalty": latest_score.overheat_penalty,
+            # 数据可信度（P0-4.3）
+            "data_credibility": latest_score.data_credibility,
         },
     }

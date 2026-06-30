@@ -94,28 +94,50 @@ def build_similar_signal_stats(
             continue
 
         forward = bars[1:]
+        horizon3 = forward[:3]
         horizon5 = forward[:5]
+        horizon10 = forward[:10]
         horizon20 = forward[:20]
         sample = {
             "symbol_id": row_symbol.id,
             "symbol": row_symbol.symbol,
-            "trade_date": row.trade_date.isoformat(),
+            "trade_date": row.trade_date.isoformat() if hasattr(row.trade_date, 'isoformat') else str(row.trade_date),
             "entry_price": round(entry, 2),
+            "return_3d": None,
             "return_5d": None,
+            "return_10d": None,
             "return_20d": None,
+            "max_gain_3d": None,
+            "max_drawdown_3d": None,
+            "max_gain_10d": None,
+            "max_drawdown_10d": None,
             "max_gain_20d": None,
             "max_drawdown_20d": None,
         }
+        if horizon3:
+            sample["return_3d"] = round((horizon3[-1].close - entry) / entry, 4)
+            sample["max_gain_3d"] = round((max(item.high for item in horizon3) - entry) / entry, 4)
+            sample["max_drawdown_3d"] = round((min(item.low for item in horizon3) - entry) / entry, 4)
         if horizon5:
             sample["return_5d"] = round((horizon5[-1].close - entry) / entry, 4)
+        if horizon10:
+            sample["return_10d"] = round((horizon10[-1].close - entry) / entry, 4)
+            sample["max_gain_10d"] = round((max(item.high for item in horizon10) - entry) / entry, 4)
+            sample["max_drawdown_10d"] = round((min(item.low for item in horizon10) - entry) / entry, 4)
         if horizon20:
             sample["return_20d"] = round((horizon20[-1].close - entry) / entry, 4)
             sample["max_gain_20d"] = round((max(item.high for item in horizon20) - entry) / entry, 4)
             sample["max_drawdown_20d"] = round((min(item.low for item in horizon20) - entry) / entry, 4)
         samples.append(sample)
 
+    returns_3d = [item["return_3d"] for item in samples if item["return_3d"] is not None]
     returns_5d = [item["return_5d"] for item in samples if item["return_5d"] is not None]
+    returns_10d = [item["return_10d"] for item in samples if item["return_10d"] is not None]
     returns_20d = [item["return_20d"] for item in samples if item["return_20d"] is not None]
+    max_gains_3d = [item["max_gain_3d"] for item in samples if item["max_gain_3d"] is not None]
+    max_drawdowns_3d = [item["max_drawdown_3d"] for item in samples if item["max_drawdown_3d"] is not None]
+    max_gains_10d = [item["max_gain_10d"] for item in samples if item["max_gain_10d"] is not None]
+    max_drawdowns_10d = [item["max_drawdown_10d"] for item in samples if item["max_drawdown_10d"] is not None]
     max_gains_20d = [item["max_gain_20d"] for item in samples if item["max_gain_20d"] is not None]
     max_drawdowns_20d = [item["max_drawdown_20d"] for item in samples if item["max_drawdown_20d"] is not None]
 
@@ -139,10 +161,18 @@ def build_similar_signal_stats(
             "same_action": True if rule is None else rule.same_action,
         },
         "min_sample_count": min_sample_count,
+        "win_rate_3d": _rate([value > 0 for value in returns_3d]),
         "win_rate_5d": _rate([value > 0 for value in returns_5d]),
+        "win_rate_10d": _rate([value > 0 for value in returns_10d]),
         "win_rate_20d": _rate([value > 0 for value in returns_20d]),
+        "avg_return_3d": _avg(returns_3d),
         "avg_return_5d": _avg(returns_5d),
+        "avg_return_10d": _avg(returns_10d),
         "avg_return_20d": _avg(returns_20d),
+        "avg_max_gain_3d": _avg(max_gains_3d),
+        "avg_max_drawdown_3d": _avg(max_drawdowns_3d),
+        "avg_max_gain_10d": _avg(max_gains_10d),
+        "avg_max_drawdown_10d": _avg(max_drawdowns_10d),
         "avg_max_gain_20d": _avg(max_gains_20d),
         "avg_max_drawdown_20d": _avg(max_drawdowns_20d),
         "best_return_20d": round(max(returns_20d), 4) if returns_20d else None,

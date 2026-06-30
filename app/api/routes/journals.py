@@ -51,6 +51,10 @@ def create_journal(payload: JournalCreate, db: Session = Depends(get_db)):
         follow_system=int(payload.follow_system),
         outcome=payload.outcome,
         review_note=payload.review_note,
+        score_id=payload.score_id,
+        stage=payload.stage,
+        action=payload.action,
+        actual_action=payload.actual_action,
     )
     db.add(journal)
     db.commit()
@@ -73,3 +77,13 @@ def update_journal(journal_id: int, payload: JournalUpdate, db: Session = Depend
     db.commit()
     db.refresh(journal)
     return journal
+
+
+@router.delete("/journals/{journal_id}")
+def delete_journal(journal_id: int, db: Session = Depends(get_db)):
+    journal = db.get(JournalEntry, journal_id)
+    if journal is None:
+        raise HTTPException(status_code=404, detail="Journal not found")
+    db.delete(journal)
+    db.commit()
+    return {"deleted": journal_id}

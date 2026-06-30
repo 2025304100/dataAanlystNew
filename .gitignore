@@ -1,0 +1,38 @@
+# Database config (contains credentials)
+config/db_config.json
+
+# Python
+__pycache__/
+.pycache_tmp/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Database files
+*.db
+*.db-journal
+
+# Environment
+.env
+.env.local
+
+# Node
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Test artifacts
+test_*.png
+
+# Temp files
+tmp/*.db-journal
+tmp/*.txt
+.pip_packages/

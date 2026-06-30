@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+import json
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -29,7 +30,40 @@ class TradeSetup(Base):
     is_sector_overweight: Mapped[int] = mapped_column(Integer, default=0)
     is_asset_overweight: Mapped[int] = mapped_column(Integer, default=0)
     setup_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    manual_overrides_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    field_sources_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    manual_tranche_plan_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def manual_overrides(self) -> dict | None:
+        if not self.manual_overrides_json:
+            return None
+        try:
+            parsed = json.loads(self.manual_overrides_json)
+            return parsed if isinstance(parsed, dict) else None
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def field_sources(self) -> dict | None:
+        if not self.field_sources_json:
+            return None
+        try:
+            parsed = json.loads(self.field_sources_json)
+            return parsed if isinstance(parsed, dict) else None
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def manual_tranche_plan(self) -> list[dict] | None:
+        if not self.manual_tranche_plan_json:
+            return None
+        try:
+            parsed = json.loads(self.manual_tranche_plan_json)
+            return parsed if isinstance(parsed, list) else None
+        except (TypeError, ValueError):
+            return None
 
 
 class TradeSignal(Base):
@@ -44,5 +78,7 @@ class TradeSignal(Base):
     message: Mapped[str] = mapped_column(Text)
     trigger_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 

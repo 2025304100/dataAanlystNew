@@ -145,11 +145,21 @@ def upsert_position(portfolio_id: int, payload: PositionUpsert, db: Session = De
         )
         db.add(position)
 
-    market_value = payload.quantity * payload.latest_price
+    # 如果未提供 latest_price，从最新行情获取
+    latest_price = payload.latest_price
+    if latest_price is None:
+        from app.models.daily_bar import DailyBar
+        from sqlalchemy import desc
+        latest_bar = db.execute(
+            select(DailyBar).where(DailyBar.symbol_id == payload.symbol_id).order_by(desc(DailyBar.trade_date)).limit(1)
+        ).scalars().first()
+        latest_price = float(latest_bar.close) if latest_bar else payload.avg_cost
+
+    market_value = payload.quantity * latest_price
     position_pct = market_value / portfolio.total_capital if portfolio.total_capital else 0
     position.quantity = payload.quantity
     position.avg_cost = payload.avg_cost
-    position.latest_price = payload.latest_price
+    position.latest_price = latest_price
     position.market_value = market_value
     position.position_pct = round(position_pct, 4)
     position.asset_type = symbol.asset_type

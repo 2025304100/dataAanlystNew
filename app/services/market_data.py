@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
+import logging
 import os
 import time
 
@@ -10,6 +11,9 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+logger = logging.getLogger(__name__)
+
+from app.services.akshare_utils import quiet_akshare_output
 from app.models.daily_bar import DailyBar
 from app.models.scan import ScanResult
 from app.models.symbol import Symbol
@@ -198,67 +202,73 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
     for attempt in range(3):
         try:
             with _proxy_bypass():
-                if region == "cn" and symbol.asset_type == "stock":
-                    try:
-                        return _normalize_cn_em_history(
-                            ak.stock_zh_a_hist(
-                                symbol=symbol.symbol,
-                                period="daily",
-                                start_date=start,
-                                end_date=end,
-                                adjust=adjust,
-                            )
-                        )
-                    except Exception:
+                with quiet_akshare_output():
+                    if region == "cn" and symbol.asset_type == "stock":
                         try:
-                            return _normalize_cn_stock_sina_history(
-                                ak.stock_zh_a_daily(
-                                    symbol=_cn_prefixed_symbol(symbol),
+                            return _normalize_cn_em_history(
+                                ak.stock_zh_a_hist(
+                                    symbol=symbol.symbol,
+                                    period="daily",
                                     start_date=start,
                                     end_date=end,
                                     adjust=adjust,
-                                ),
-                                start_date=start_date,
-                                end_date=end_date,
+                                )
                             )
                         except Exception:
-                            return _normalize_cn_stock_tx_history(
-                                ak.stock_zh_a_hist_tx(
-                                    symbol=_cn_prefixed_symbol(symbol),
+                            logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
+                            try:
+                                return _normalize_cn_stock_sina_history(
+                                    ak.stock_zh_a_daily(
+                                        symbol=_cn_prefixed_symbol(symbol),
+                                        start_date=start,
+                                        end_date=end,
+                                        adjust=adjust,
+                                    ),
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                )
+                            except Exception:
+                                logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
+                                return _normalize_cn_stock_tx_history(
+                                    ak.stock_zh_a_hist_tx(
+                                        symbol=_cn_prefixed_symbol(symbol),
+                                        start_date=start,
+                                        end_date=end,
+                                        adjust=adjust,
+                                    ),
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                )
+                    if region == "cn" and symbol.asset_type == "etf":
+                        try:
+                            return _normalize_cn_em_history(
+                                ak.fund_etf_hist_em(
+                                    symbol=symbol.symbol,
+                                    period="daily",
                                     start_date=start,
                                     end_date=end,
                                     adjust=adjust,
-                                ),
+                                )
+                            )
+                        except Exception:
+                            logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
+                            return _normalize_cn_etf_sina_history(
+                                ak.fund_etf_hist_sina(symbol=_cn_prefixed_symbol(symbol)),
                                 start_date=start_date,
                                 end_date=end_date,
                             )
-                if region == "cn" and symbol.asset_type == "etf":
-                    try:
-                        return _normalize_cn_em_history(
-                            ak.fund_etf_hist_em(
-                                symbol=symbol.symbol,
-                                period="daily",
-                                start_date=start,
-                                end_date=end,
-                                adjust=adjust,
-                            )
-                        )
-                    except Exception:
-                        return _normalize_cn_etf_sina_history(
-                            ak.fund_etf_hist_sina(symbol=_cn_prefixed_symbol(symbol)),
-                            start_date=start_date,
-                            end_date=end_date,
-                        )
-                if region == "us":
-                    us_adjust = adjust if adjust in {"", "qfq"} else ""
-                    frame = ak.stock_us_daily(symbol=symbol.symbol, adjust=us_adjust)
-                    return _normalize_us_history(frame=frame, start_date=start_date, end_date=end_date)
+                    if region == "us":
+                        us_adjust = adjust if adjust in {"", "qfq"} else ""
+                        frame = ak.stock_us_daily(symbol=symbol.symbol, adjust=us_adjust)
+                        return _normalize_us_history(frame=frame, start_date=start_date, end_date=end_date)
         except Exception as exc:
             last_error = exc
+            logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
             if attempt < 2:
                 time.sleep(1 + attempt)
             continue
     if last_error is not None:
+        logger.warning("All AKShare sources failed for %s", symbol.symbol, exc_info=True)
         raise last_error
     raise RuntimeError("AKShare fetch failed without an explicit exception")
 
@@ -330,8 +340,8 @@ def sync_symbol_daily_bars(
             "inserted": 0,
             "updated": 0,
             "rows": 0,
-            "start_date": resolved_start.isoformat(),
-            "end_date": resolved_end.isoformat(),
+            "start_date": resolved_start.isoformat() if hasattr(resolved_start, 'isoformat') else str(resolved_start),
+            "end_date": resolved_end.isoformat() if hasattr(resolved_end, 'isoformat') else str(resolved_end),
         }
 
     inserted, updated = _upsert_bars(db=db, symbol=symbol, frame=frame)
@@ -344,8 +354,8 @@ def sync_symbol_daily_bars(
         "inserted": inserted,
         "updated": updated,
         "rows": len(frame),
-        "start_date": resolved_start.isoformat(),
-        "end_date": resolved_end.isoformat(),
+        "start_date": resolved_start.isoformat() if hasattr(resolved_start, 'isoformat') else str(resolved_start),
+        "end_date": resolved_end.isoformat() if hasattr(resolved_end, 'isoformat') else str(resolved_end),
     }
 
 
@@ -404,7 +414,7 @@ def sync_market_data(
                     score = calculate_symbol_score(db=db, symbol=symbol, trade_date=latest_bar.trade_date)
                     result["score_refreshed"] = True
                     result["latest_score"] = {
-                        "trade_date": latest_bar.trade_date.isoformat(),
+                        "trade_date": latest_bar.trade_date.isoformat() if hasattr(latest_bar.trade_date, 'isoformat') else str(latest_bar.trade_date),
                         "quality_score": score.quality_score,
                         "timing_score": score.timing_score,
                         "stage": score.stage,
@@ -442,8 +452,8 @@ def sync_market_data(
             scope_snapshot=scope_snapshot,
             filters_snapshot={
                 "source": "market-data.update",
-                "start_date": start_date.isoformat() if start_date else None,
-                "end_date": end_date.isoformat() if end_date else None,
+                "start_date": start_date.isoformat() if start_date and hasattr(start_date, 'isoformat') else str(start_date) if start_date else None,
+                "end_date": end_date.isoformat() if end_date and hasattr(end_date, 'isoformat') else str(end_date) if end_date else None,
             },
             portfolio_id=resolved_portfolio_id,
             portfolio_rule_id=resolved_portfolio_rule_id,
