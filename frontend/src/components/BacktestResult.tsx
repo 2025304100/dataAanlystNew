@@ -1,4 +1,4 @@
-﻿import ReactECharts from "echarts-for-react";
+import ReactECharts from "echarts-for-react";
 import { Alert, Card, Col, Row, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { t } from "../i18n";
@@ -36,6 +36,25 @@ function priceFieldLabel(value: string | undefined | null): string {
 
 function priceFieldCode(value: string | undefined | null): string {
   return value === "open" ? "O" : "C";
+}
+
+function resolveExecutionTiming(execution: Record<string, any>, side: "entry" | "exit"): string {
+  const explicit = execution?.[`${side}_timing`];
+  if (explicit === "signal_close" || explicit === "next_open" || explicit === "signal_open") return explicit;
+  const field = execution?.[`${side}_price_field`];
+  return field === "open" ? "signal_open" : "signal_close";
+}
+
+function executionTimingLabel(value: string | null | undefined): string {
+  if (value === "next_open") return t("btTimingNextOpen");
+  if (value === "signal_open") return t("btTimingSignalOpen");
+  return t("btTimingSignalClose");
+}
+
+function executionTimingShortLabel(value: string | null | undefined): string {
+  if (value === "next_open") return t("btTimingNextOpenShort");
+  if (value === "signal_open") return t("btTimingSignalOpenShort");
+  return t("btTimingSignalCloseShort");
 }
 
 const CONDITION_LABELS = new Map(CONDITION_FIELDS.map((field) => [field.key, field.label]));
@@ -141,8 +160,10 @@ export default function BacktestResult({ result }: BacktestResultProps) {
   const config = parseRunConfig(result);
   const diagnostics = result?.diagnostics ?? {};
   const execution = diagnostics.execution ?? config.execution_config ?? {};
-  const entryField = execution.entry_price_field ?? "close";
-  const exitField = execution.exit_price_field ?? "close";
+  const entryTiming = resolveExecutionTiming(execution, "entry");
+  const exitTiming = resolveExecutionTiming(execution, "exit");
+  const entryField = execution.entry_price_field ?? (entryTiming === "signal_close" ? "close" : "open");
+  const exitField = execution.exit_price_field ?? (exitTiming === "signal_close" ? "close" : "open");
   const skipReasons = Object.entries(diagnostics.skip_reasons ?? {}).sort((a, b) => Number(b[1]) - Number(a[1]));
   const checkedDays = diagnostics.checked_days ?? priceSeries.length;
   const buySignalDays = diagnostics.buy_signal_days ?? 0;
@@ -165,34 +186,46 @@ export default function BacktestResult({ result }: BacktestResultProps) {
   }));
   const priceDates = priceRows.map((point) => point.date);
 
-  const buyMarkers = trades.map((trade) => ({
-    value: [trade.entry_date, trade.entry_price],
-    markerLabel: `${t("btBuyPoint")}-${priceFieldCode(entryField)}`,
-    tooltipLabel: `${t("btBuyPoint")}: ${score(trade.entry_price)} (${priceFieldLabel(entryField)})`,
-    hoverLines: [
-      `<div><strong>${t("btBuyPoint")}</strong></div>`,
-      `<div>${t("btEntryDate")}: ${trade.entry_date}</div>`,
-      `<div>${t("btEntryPrice")}: ${score(trade.entry_price)} (${priceFieldLabel(entryField)})</div>`,
-      `<div>${t("btQuantity")}: ${score(trade.quantity)}</div>`,
-      ...traceHoverLines(trade.entry_traces),
-    ],
-    trade,
-  }));
-  const sellMarkers = trades
-    .filter((trade) => trade.exit_date && trade.exit_price != null)
-    .map((trade) => ({
-      value: [trade.exit_date as string, trade.exit_price as number],
-      markerLabel: `${t("btSellPoint")}-${priceFieldCode(exitField)}`,
-      tooltipLabel: `${t("btSellPoint")}: ${score(trade.exit_price)} (${priceFieldLabel(exitField)})`,
+  const buyMarkers = trades.map((trade) => {
+    const tradeTiming = trade.entry_execution_timing ?? entryTiming;
+    const signalPriceField = trade.entry_signal_price_field ?? (tradeTiming === "signal_open" ? "open" : "close");
+    return {
+      value: [trade.entry_date, trade.entry_price],
+      markerLabel: `${t("btBuyPoint")}-${executionTimingShortLabel(tradeTiming)}` ,
+      tooltipLabel: `${t("btBuyPoint")}: ${score(trade.entry_price)} (${executionTimingLabel(tradeTiming)})`,
       hoverLines: [
-        `<div><strong>${t("btSellPoint")}</strong></div>`,
-        `<div>${t("btExitDate")}: ${trade.exit_date as string}</div>`,
-        `<div>${t("btExitPrice")}: ${score(trade.exit_price)} (${priceFieldLabel(exitField)})</div>`,
-        `<div>${t("btExitReason")}: ${exitReasonLabel(trade.exit_reason)}</div>`,
-        ...traceHoverLines(trade.exit_traces),
+        `<div><strong>${t("btBuyPoint")}</strong></div>`,
+        `<div>${t("btEntryDate")}: ${trade.entry_date}</div>`,
+        `<div>${t("btEntryPrice")}: ${score(trade.entry_price)} (${executionTimingLabel(tradeTiming)})</div>`,
+        ...(trade.entry_signal_date ? [`<div>${t("btSignalDate")}: ${trade.entry_signal_date}</div>`] : []),
+        ...(trade.entry_signal_price != null ? [`<div>${t("btSignalPrice")}: ${score(trade.entry_signal_price)} (${priceFieldLabel(signalPriceField)})</div>`] : []),
+        `<div>${t("btQuantity")}: ${score(trade.quantity)}</div>`,
+        ...traceHoverLines(trade.entry_traces),
       ],
       trade,
-    }));
+    };
+  });
+  const sellMarkers = trades
+    .filter((trade) => trade.exit_date && trade.exit_price != null)
+    .map((trade) => {
+      const tradeTiming = trade.exit_execution_timing ?? exitTiming;
+      const signalPriceField = trade.exit_signal_price_field ?? (tradeTiming === "signal_open" ? "open" : "close");
+      return {
+        value: [trade.exit_date as string, trade.exit_price as number],
+        markerLabel: `${t("btSellPoint")}-${executionTimingShortLabel(tradeTiming)}` ,
+        tooltipLabel: `${t("btSellPoint")}: ${score(trade.exit_price)} (${executionTimingLabel(tradeTiming)})`,
+        hoverLines: [
+          `<div><strong>${t("btSellPoint")}</strong></div>`,
+          `<div>${t("btExitDate")}: ${trade.exit_date as string}</div>`,
+          `<div>${t("btExitPrice")}: ${score(trade.exit_price)} (${executionTimingLabel(tradeTiming)})</div>`,
+          ...(trade.exit_signal_date ? [`<div>${t("btSignalDate")}: ${trade.exit_signal_date}</div>`] : []),
+          ...(trade.exit_signal_price != null ? [`<div>${t("btSignalPrice")}: ${score(trade.exit_signal_price)} (${priceFieldLabel(signalPriceField)})</div>`] : []),
+          `<div>${t("btExitReason")}: ${exitReasonLabel(trade.exit_reason)}</div>`,
+          ...traceHoverLines(trade.exit_traces),
+        ],
+        trade,
+      };
+    });
 
   const tradeEventsByDate = new Map<string, string[]>();
   buyMarkers.forEach((marker) => {
@@ -328,13 +361,13 @@ export default function BacktestResult({ result }: BacktestResultProps) {
 
   const columns: ColumnsType<BacktestTrade> = [
     { title: t("btSymbolId"), dataIndex: "symbol_id", width: 90 },
-    { title: t("btEntryDate"), dataIndex: "entry_date", width: 110 },
-    { title: `${t("btEntryPrice")}(${priceFieldLabel(entryField)})`, dataIndex: "entry_price", render: (value) => score(value), align: "right" },
-    { title: t("btEntryMode"), width: 92, render: () => <Tag color="green">{priceFieldLabel(entryField)}</Tag> },
+    { title: t("btEntryDate"), dataIndex: "entry_date", width: 124, render: (value, trade) => <div><div>{value}</div>{trade.entry_signal_date && trade.entry_signal_date !== value ? <div className="item-subline">{t("btSignalDate")}: {trade.entry_signal_date}</div> : null}</div> },
+    { title: `${t("btEntryPrice")}(${priceFieldLabel(entryField)})`, dataIndex: "entry_price", render: (value, trade) => <div style={{ textAlign: "right" }}><div>{score(value)}</div>{trade.entry_signal_price != null ? <div className="item-subline">{t("btSignalPrice")}: {score(trade.entry_signal_price)}</div> : null}</div>, align: "right" },
+    { title: t("btEntryMode"), width: 124, render: (_, trade) => <Tag color="green">{executionTimingLabel(trade.entry_execution_timing ?? entryTiming)}</Tag> },
     { title: t("btQuantity"), dataIndex: "quantity", render: (value) => score(value), align: "right" },
-    { title: t("btExitDate"), dataIndex: "exit_date", width: 110, render: (value) => value ?? t("btNotClosed") },
-    { title: `${t("btExitPrice")}(${priceFieldLabel(exitField)})`, dataIndex: "exit_price", render: (value) => value == null ? "-" : score(value), align: "right" },
-    { title: t("btExitMode"), width: 92, render: (value, trade) => trade.exit_date ? <Tag color="red">{priceFieldLabel(exitField)}</Tag> : <Tag>{t("btNotClosed")}</Tag> },
+    { title: t("btExitDate"), dataIndex: "exit_date", width: 124, render: (value, trade) => value ? <div><div>{value}</div>{trade.exit_signal_date && trade.exit_signal_date !== value ? <div className="item-subline">{t("btSignalDate")}: {trade.exit_signal_date}</div> : null}</div> : t("btNotClosed") },
+    { title: `${t("btExitPrice")}(${priceFieldLabel(exitField)})`, dataIndex: "exit_price", render: (value, trade) => value == null ? "-" : <div style={{ textAlign: "right" }}><div>{score(value)}</div>{trade.exit_signal_price != null ? <div className="item-subline">{t("btSignalPrice")}: {score(trade.exit_signal_price)}</div> : null}</div>, align: "right" },
+    { title: t("btExitMode"), width: 124, render: (_, trade) => trade.exit_date ? <Tag color="red">{executionTimingLabel(trade.exit_execution_timing ?? exitTiming)}</Tag> : <Tag>{t("btNotClosed")}</Tag> },
     {
       title: t("btExitReason"),
       dataIndex: "exit_reason",
@@ -392,7 +425,7 @@ export default function BacktestResult({ result }: BacktestResultProps) {
       <div className="backtest-diagnostics">
         <div className="backtest-diagnostics-head">
           <strong>{t("btRuleDiagnosis")}</strong>
-          <span>{t("btExecutionBasis")}: {t("btBuyPoint")}={priceFieldLabel(entryField)} / {t("btSellPoint")}={priceFieldLabel(exitField)}</span>
+          <span>{t("btExecutionBasis")}: {t("btBuyPoint")}={executionTimingLabel(entryTiming)} / {t("btSellPoint")}={executionTimingLabel(exitTiming)}</span>
         </div>
         <div className="backtest-diagnostics-grid">
           <span><b>{t("btCheckedDays")}</b><strong>{checkedDays}</strong></span>
@@ -435,8 +468,8 @@ export default function BacktestResult({ result }: BacktestResultProps) {
         <div className="backtest-chart-title">{t("btTradePointChart")}</div>
         <div className="panel-meta" style={{ marginBottom: 10 }}>
           <Space wrap>
-            <Tag color="green">{t("btBuyPoint")}: {priceFieldLabel(entryField)}</Tag>
-            <Tag color="red">{t("btSellPoint")}: {priceFieldLabel(exitField)}</Tag>
+            <Tag color="green">{t("btBuyPoint")}: {executionTimingLabel(entryTiming)}</Tag>
+            <Tag color="red">{t("btSellPoint")}: {executionTimingLabel(exitTiming)}</Tag>
             <Tag>{t("btBuyPoint")} {buyMarkers.length}</Tag>
             <Tag>{t("btSellPoint")} {sellMarkers.length}</Tag>
           </Space>
@@ -482,7 +515,7 @@ export default function BacktestResult({ result }: BacktestResultProps) {
                 {renderTraceList(
                   t("btEntryTriggerTitle"),
                   trade.entry_traces,
-                  `${t("btEntryPrice")} · ${priceFieldLabel(entryField)}`,
+                  `${t("btEntryPrice")} (${priceFieldLabel(entryField)})`,
                   trade.entry_price,
                   [
                     `${t("btQuantity")} ${score(trade.quantity)}`,
@@ -492,7 +525,7 @@ export default function BacktestResult({ result }: BacktestResultProps) {
                 {renderTraceList(
                   t("btExitTriggerTitle"),
                   trade.exit_traces,
-                  `${t("btExitPrice")} · ${priceFieldLabel(exitField)}`,
+                  `${t("btExitPrice")} (${priceFieldLabel(exitField)})`,
                   trade.exit_price,
                   [
                     `${t("btExitReason")} ${exitReasonLabel(trade.exit_reason)}`,

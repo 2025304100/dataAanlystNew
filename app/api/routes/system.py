@@ -16,6 +16,7 @@ from app.db.dialect import days_since
 from app.db.manager import DatabaseManager
 from app.db.session import get_db
 from app.models.daily_bar import DailyBar
+from app.models.async_task import AsyncTaskRecord
 from app.models.discovery import DiscoveryTaskRecord
 from app.models.journal_entry import JournalEntry
 from app.models.macro_data import MacroIndicatorValue, MacroSnapshot
@@ -302,6 +303,252 @@ def get_data_health(db: Session = Depends(get_db)):
             "frozen_results": frozen_results,
         },
     }
+
+
+@router.get("/system/data-health/symbols/{symbol_id}")
+def get_symbol_data_health(symbol_id: int, db: Session = Depends(get_db)):
+    """标的维度的数据覆盖诊断：按 1月/1季/1年/3年 展示覆盖率，区分问题类型，给出修复建议。"""
+    symbol = db.get(Symbol, symbol_id)
+    if symbol is None:
+        raise HTTPException(status_code=404, detail="Symbol not found")
+
+    today = _now().date()
+    stale_cutoff = today - timedelta(days=7)
+
+    periods = {
+        "1m": today - timedelta(days=30),
+        "1q": today - timedelta(days=90),
+        "1y": today - timedelta(days=365),
+        "3y": today - timedelta(days=1095),
+    }
+
+    bar_stats = db.execute(
+        select(
+            func.count(DailyBar.id),
+            func.min(DailyBar.trade_date),
+            func.max(DailyBar.trade_date),
+        ).where(DailyBar.symbol_id == symbol_id)
+    ).one()
+    total_bars = int(bar_stats[0] or 0)
+    earliest_bar = _parse_date(bar_stats[1])
+    latest_bar = _parse_date(bar_stats[2])
+
+    coverage: dict[str, dict] = {}
+    for label, start_date in periods.items():
+        end_date = today
+        bar_count = db.execute(
+            select(func.count(DailyBar.id)).where(
+                DailyBar.symbol_id == symbol_id,
+                DailyBar.trade_date >= start_date,
+                DailyBar.trade_date <= end_date,
+            )
+        ).scalar_one()
+        trading_days_approx = min((today - start_date).days, (today - (earliest_bar or today)).days) if earliest_bar and earliest_bar > start_date else (today - start_date).days
+        trading_days_approx = max(1, int(trading_days_approx * 5 / 7))
+        actual = int(bar_count)
+        coverage_pct = round(min(100, (actual / trading_days_approx) * 100), 1) if trading_days_approx > 0 else 0.0
+        coverage[label] = {
+            "bar_count": actual,
+            "expected_bars": trading_days_approx,
+            "coverage_pct": coverage_pct,
+        }
+
+    score_stats = db.execute(
+        select(
+            func.count(Score.id),
+            func.max(Score.trade_date),
+        ).where(Score.symbol_id == symbol_id)
+    ).one()
+    total_scores = int(score_stats[0] or 0)
+    latest_score = _parse_date(score_stats[1])
+
+    score_coverage: dict[str, dict] = {}
+    for label, start_date in periods.items():
+        end_date = today
+        score_count = db.execute(
+            select(func.count(Score.id)).where(
+                Score.symbol_id == symbol_id,
+                Score.trade_date >= start_date,
+                Score.trade_date <= end_date,
+            )
+        ).scalar_one()
+        bar_count = coverage[label]["bar_count"]
+        score_coverage[label] = {
+            "score_count": int(score_count),
+            "bar_count": bar_count,
+            "coverage_pct": round((int(score_count) / bar_count) * 100, 1) if bar_count > 0 else 0.0,
+        }
+
+    issues: list[dict] = []
+    if total_bars == 0:
+        issues.append({"type": "missing_bars", "severity": "error", "message": "没有任何K线数据", "period": "all"})
+    else:
+        if latest_bar and latest_bar < stale_cutoff:
+            age = (today - latest_bar).days
+            issues.append({"type": "stale_bars", "severity": "warn", "message": f"K线数据已过期，最后更新距今 {age} 天", "period": "all", "latest_date": latest_bar.isoformat()})
+        for label, cov in coverage.items():
+            if cov["coverage_pct"] < 50:
+                issues.append({"type": "low_coverage", "severity": "warn", "message": f"近{label}K线覆盖率仅 {cov['coverage_pct']}%", "period": label})
+
+    if total_scores == 0 and total_bars > 0:
+        issues.append({"type": "missing_scores", "severity": "warn", "message": "有K线但没有任何评分数据", "period": "all"})
+    else:
+        for label, sc in score_coverage.items():
+            if sc["bar_count"] > 0 and sc["coverage_pct"] < 60:
+                issues.append({"type": "low_score_coverage", "severity": "warn", "message": f"近{label}评分覆盖率仅 {sc['coverage_pct']}%", "period": label})
+
+    suggestions: list[str] = []
+    if total_bars == 0:
+        suggestions.append("建议先初始化该标的的历史K线数据")
+    elif any(i["type"] == "stale_bars" for i in issues):
+        suggestions.append("建议补拉最近7天的K线数据")
+    if any(i["type"] in ("missing_scores", "low_score_coverage") for i in issues):
+        suggestions.append("建议重新计算评分")
+
+    return {
+        "symbol_id": symbol.id,
+        "symbol": symbol.symbol,
+        "name": symbol.name,
+        "asset_type": symbol.asset_type,
+        "market": symbol.market,
+        "summary": {
+            "total_bars": total_bars,
+            "earliest_bar": earliest_bar.isoformat() if earliest_bar else None,
+            "latest_bar": latest_bar.isoformat() if latest_bar else None,
+            "latest_age_days": _age_days(latest_bar),
+            "total_scores": total_scores,
+            "latest_score": latest_score.isoformat() if latest_score else None,
+            "score_age_days": _age_days(latest_score),
+        },
+        "coverage": coverage,
+        "score_coverage": score_coverage,
+        "issues": issues,
+        "suggestions": suggestions,
+    }
+
+
+@router.get("/system/tasks")
+def list_unified_tasks(
+    task_type: str | None = Query(default=None),
+    limit: int = Query(default=30, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """统一任务历史：聚合 async_tasks 和 discovery_tasks，按时间倒序。"""
+    import json as _json
+
+    items: list[dict] = []
+
+    # --- async_tasks (market_data_sync / history_initialization) ---
+    stmt_async = select(AsyncTaskRecord).order_by(AsyncTaskRecord.created_at.desc()).limit(limit)
+    for row in db.execute(stmt_async).scalars().all():
+        errors = []
+        if row.errors_json:
+            try:
+                errors = _json.loads(row.errors_json)
+            except Exception:
+                pass
+        result = {}
+        if row.result_json:
+            try:
+                result = _json.loads(row.result_json)
+            except Exception:
+                pass
+        payload = {}
+        if row.payload_json:
+            try:
+                payload = _json.loads(row.payload_json)
+            except Exception:
+                pass
+
+        duration_sec = None
+        if row.started_at and row.finished_at:
+            duration_sec = round((row.finished_at - row.started_at).total_seconds(), 1)
+
+        items.append({
+            "id": row.id,
+            "source": "async",
+            "task_type": row.task_type,
+            "status": row.status,
+            "stage": row.stage,
+            "percent": round(row.percent, 1),
+            "message": row.message or "",
+            "total": row.total,
+            "processed": row.processed,
+            "ok_count": row.ok_count,
+            "failed_count": row.failed_count,
+            "current_item": row.current_item,
+            "payload": payload,
+            "result": result,
+            "errors": errors[:10],
+            "duration_sec": duration_sec,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "started_at": row.started_at.isoformat() if row.started_at else None,
+            "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        })
+
+    # --- discovery_tasks ---
+    stmt_disc = select(DiscoveryTaskRecord).order_by(DiscoveryTaskRecord.created_at.desc()).limit(limit)
+    for row in db.execute(stmt_disc).scalars().all():
+        errors = []
+        if row.errors_json:
+            try:
+                errors = _json.loads(row.errors_json)
+            except Exception:
+                pass
+        payload = {}
+        if row.payload_json:
+            try:
+                payload = _json.loads(row.payload_json)
+            except Exception:
+                pass
+
+        duration_sec = None
+        if row.started_at and row.finished_at:
+            duration_sec = round((row.finished_at - row.started_at).total_seconds(), 1)
+
+        items.append({
+            "id": row.id,
+            "source": "discovery",
+            "task_type": "discovery_mining",
+            "status": row.status,
+            "stage": row.stage,
+            "percent": round(row.percent, 1),
+            "message": row.message or "",
+            "total": row.total,
+            "processed": row.processed,
+            "ok_count": row.ok_count,
+            "failed_count": row.failed_count,
+            "current_item": row.current_symbol,
+            "payload": {
+                "scope": row.scope,
+                "min_score": row.min_score,
+                "batch_size": row.batch_size,
+                "include_news": bool(row.include_news),
+                **payload,
+            },
+            "result": {
+                "executable_count": row.executable_count,
+                "scored_count": row.scored_count,
+                "empty_count": row.empty_count,
+                "news_symbols_total": row.news_symbols_total,
+            },
+            "errors": errors[:10],
+            "duration_sec": duration_sec,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "started_at": row.started_at.isoformat() if row.started_at else None,
+            "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        })
+
+    # Sort all items by created_at descending
+    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+
+    # Filter by task_type if specified
+    if task_type:
+        items = [i for i in items if i["task_type"] == task_type]
+
+    return {"tasks": items[:limit]}
 
 
 @router.post("/system/backup")

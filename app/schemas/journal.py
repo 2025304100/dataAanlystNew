@@ -1,6 +1,8 @@
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+import json
 
 
 class JournalCreate(BaseModel):
@@ -18,6 +20,16 @@ class JournalCreate(BaseModel):
     stage: str | None = None
     action: str | None = None
     actual_action: str | None = None
+    review_tags: list[str] | None = None
+
+    @field_validator("review_tags", mode="before")
+    @classmethod
+    def serialize_review_tags(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v
+        return json.dumps(v, ensure_ascii=False)
 
 
 class JournalUpdate(BaseModel):
@@ -31,6 +43,16 @@ class JournalUpdate(BaseModel):
     stage: str | None = None
     action: str | None = None
     actual_action: str | None = None
+    review_tags: list[str] | str | None = None
+
+    @field_validator("review_tags", mode="before")
+    @classmethod
+    def serialize_review_tags(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v
+        return json.dumps(v, ensure_ascii=False)
 
 
 class JournalRead(BaseModel):
@@ -51,6 +73,7 @@ class JournalRead(BaseModel):
     stage: str | None = None
     action: str | None = None
     actual_action: str | None = None
+    review_tags: str | None = None
     created_at: datetime
     updated_at: datetime
 

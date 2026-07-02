@@ -60,6 +60,7 @@ class MarketDataRepairRequest(BaseModel):
 HistoryInitializationPreset = Literal["1m", "1q", "1y", "3y"]
 HistoryInitializationStageStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 HistoryInitializationTaskStatus = Literal["idle", "running", "completed", "failed", "cancelled"]
+HistoryInitializationRepairMode = Literal["both", "bars", "scores"]
 
 
 class HistoryInitializationRequest(BaseModel):
@@ -67,6 +68,7 @@ class HistoryInitializationRequest(BaseModel):
     adjust: str = "qfq"
     asset_types: list[str] | None = None
     symbol_ids: list[int] | None = None
+    repair_mode: HistoryInitializationRepairMode = "both"
 
 
 class HistoryInitializationRetryRequest(BaseModel):
@@ -108,6 +110,7 @@ class HistoryInitializationRunRecord(BaseModel):
     status: HistoryInitializationTaskStatus
     preset: HistoryInitializationPreset = "1y"
     adjust: str = "qfq"
+    repair_mode: HistoryInitializationRepairMode = "both"
     asset_types: list[str] | None = None
     symbol_ids: list[int] = Field(default_factory=list)
     start_date: date | None = None
@@ -126,6 +129,7 @@ class HistoryInitializationStatus(BaseModel):
     status: HistoryInitializationTaskStatus
     preset: HistoryInitializationPreset = "1y"
     adjust: str = "qfq"
+    repair_mode: HistoryInitializationRepairMode = "both"
     asset_types: list[str] | None = None
     symbol_ids: list[int] = Field(default_factory=list)
     start_date: date | None = None

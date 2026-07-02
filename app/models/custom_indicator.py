@@ -36,4 +36,5 @@ class CustomIndicatorVersion(Base):
     formula: Mapped[str] = mapped_column(Text)
     params_json: Mapped[str] = mapped_column(Text, default="[]")
     value_type: Mapped[str] = mapped_column(String(16), default="boolean")
+    change_note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

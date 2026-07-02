@@ -615,6 +615,29 @@ export default function Discovery() {
     }
   }, [ctx]);
 
+  const handleRunBacktest = useCallback((symbolId: number) => {
+    ctx.setActiveSymbolId(symbolId);
+    ctx.setActiveTab("investment");
+    ctx.showToast("success", t("discoveryNavigatedToBacktest"));
+  }, [ctx]);
+
+  const handleCreateJournal = useCallback(async (symbolId: number, item: WorkbenchCandidate) => {
+    try {
+      await api.createJournal({
+        portfolio_id: ctx.portfolioId,
+        symbol_id: symbolId,
+        title: `${item.symbol || ""}${item.name ? " | " + item.name : ""} - ${t("discoveryCreateJournal")}`,
+        entry_type: "discovery",
+        stage: item.stage || "watching",
+        action: item.action || "hold",
+        review_note: item.reason_tags?.length ? `发现标签: ${item.reason_tags.join(", ")}` : "",
+      });
+      ctx.showToast("success", t("discoveryJournalCreated"));
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("discoveryJournalFailed"));
+    }
+  }, [ctx]);
+
   const handleToggleFreeze = useCallback(async (resultId: number, isFrozen: boolean, symbolId: number) => {
     setRowLoading(symbolId, "freeze", true);
     try {
@@ -743,12 +766,12 @@ export default function Discovery() {
     const operationsColumn = {
       title: t("operations"),
       key: "operations",
-      width: 240,
+      width: 360,
       render: (_: unknown, item: WorkbenchCandidate) => {
         const inWatchlist = ctx.primaryWatchlistSymbolIds.has(item.symbol_id);
         const resultId = Number(item.scan_result_id ?? item.id);
         return (
-          <Space size="small" onClick={(e) => e.stopPropagation()}>
+          <Space size="small" wrap onClick={(e) => e.stopPropagation()}>
             <Button
               size="small"
               loading={rowActionLoading[item.symbol_id]?.watchlist}
@@ -760,19 +783,23 @@ export default function Discovery() {
             </Button>
             <Button
               size="small"
+              onClick={() => handleRunBacktest(item.symbol_id)}
+            >
+              {t("discoveryRunBacktest")}
+            </Button>
+            <Button
+              size="small"
+              onClick={() => handleCreateJournal(item.symbol_id, item)}
+            >
+              {t("discoveryCreateJournal")}
+            </Button>
+            <Button
+              size="small"
               loading={rowActionLoading[item.symbol_id]?.freeze}
               onClick={() => resultId && handleToggleFreeze(resultId, !!item.is_frozen, item.symbol_id)}
               aria-label={item.is_frozen ? t("unfreeze") : t("freeze")}
             >
               {item.is_frozen ? t("unfreeze") : t("freeze")}
-            </Button>
-            <Button
-              size="small"
-              loading={rowActionLoading[item.symbol_id]?.update}
-              onClick={() => resultId && handleUpdateRow(resultId, item.symbol_id)}
-              aria-label={t("updateCurrent")}
-            >
-              {t("updateCurrent")}
             </Button>
           </Space>
         );
@@ -846,7 +873,7 @@ export default function Discovery() {
       indicatorColumn,
       operationsColumn,
     ];
-  }, [t, indicatorColumnTitle, activeFilters, indicatorMap, indicatorValues, ctx.locale, ctx.primaryWatchlistSymbolIds, rowActionLoading, handleAddToWatchlist, handleToggleFreeze, handleUpdateRow]);
+  }, [t, indicatorColumnTitle, activeFilters, indicatorMap, indicatorValues, ctx.locale, ctx.primaryWatchlistSymbolIds, rowActionLoading, handleAddToWatchlist, handleRunBacktest, handleCreateJournal, handleToggleFreeze, handleUpdateRow]);
 
   return (
     <div className="tab-container" data-tab-content="discovery">

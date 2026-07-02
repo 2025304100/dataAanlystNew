@@ -53,6 +53,7 @@ export const SYSTEM_HEALTH_URL = API + "/system/data-health";
 export const api = {
   // System
   getDataHealth: () => requestJson<any>(SYSTEM_HEALTH_URL),
+  getSymbolDataHealth: (symbolId: number) => requestJson<any>(`${API}/system/data-health/symbols/${symbolId}`),
 
   // Portfolios
   getPortfolios: () => requestJson<any[]>(`${API}/portfolios`),
@@ -120,7 +121,7 @@ export const api = {
   cancelMarketDataSyncTask: (taskId: string) =>
     requestJson<any>(`${API}/market-data/sync-tasks/${taskId}/cancel`, { method: "POST" }),
 
-  startHistoryInitialization: (payload: { preset: string; adjust?: string; asset_types?: string[]; symbol_ids?: number[] }) =>
+  startHistoryInitialization: (payload: { preset: string; adjust?: string; asset_types?: string[]; symbol_ids?: number[]; repair_mode?: "both" | "bars" | "scores" }) =>
     requestJson<any>(`${API}/market-data/initialize-history`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -316,6 +317,10 @@ export const api = {
     }),
   deleteCustomIndicator: (id: number) =>
     requestJson<any>(`${API}/settings/custom-indicators/${id}`, { method: "DELETE" }),
+  getIndicatorVersions: (id: number) =>
+    requestJson<any[]>(`${API}/settings/custom-indicators/${id}/versions`),
+  rollbackIndicator: (id: number, version: number) =>
+    requestJson<any>(`${API}/settings/custom-indicators/${id}/rollback/${version}`, { method: "POST", headers: { "Content-Type": "application/json" } }),
 
 
   // Discovery plans
@@ -336,6 +341,30 @@ export const api = {
     requestJson<any>(`${API}/system/restore?backup_path=${encodeURIComponent(backupPath)}`, { method: "POST", timeoutMs: 120000 }),
   exportData: (dataType: string, portfolioId: number = 1) =>
     requestJson<any>(`${API}/system/export/${dataType}?portfolio_id=${portfolioId}`),
+
+  // Unified task history
+  getTaskHistory: (taskType?: string, limit: number = 30) =>
+    requestJson<{ tasks: any[] }>(`${API}/system/tasks?limit=${limit}${taskType ? `&task_type=${encodeURIComponent(taskType)}` : ""}`),
+
+  // Alerts
+  getAlertRules: () =>
+    requestJson<any[]>(`${API}/alerts/rules`),
+  createAlertRule: (payload: any) =>
+    requestJson<any>(`${API}/alerts/rules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  updateAlertRule: (id: number, payload: any) =>
+    requestJson<any>(`${API}/alerts/rules/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  deleteAlertRule: (id: number) =>
+    requestJson<any>(`${API}/alerts/rules/${id}`, { method: "DELETE" }),
+  getActiveAlerts: (limit: number = 50) =>
+    requestJson<{ events: any[]; count: number }>(`${API}/alerts/active?limit=${limit}`),
+  getAlertEvents: (limit: number = 50, includeAcknowledged: boolean = false) =>
+    requestJson<{ events: any[]; unacknowledged_count: number }>(`${API}/alerts/events?limit=${limit}&include_acknowledged=${includeAcknowledged}`),
+  acknowledgeAlert: (eventId: number) =>
+    requestJson<any>(`${API}/alerts/acknowledge/${eventId}`, { method: "POST" }),
+  acknowledgeAllAlerts: () =>
+    requestJson<any>(`${API}/alerts/acknowledge-all`, { method: "POST" }),
+  evaluateAlerts: () =>
+    requestJson<any>(`${API}/alerts/evaluate`, { method: "POST" }),
 };
 
 

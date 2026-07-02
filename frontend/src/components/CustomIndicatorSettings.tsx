@@ -11,6 +11,7 @@ import type {
   CustomIndicatorPayload,
   CustomIndicatorPreviewRead,
   CustomIndicatorPreviewSeriesItem,
+  CustomIndicatorVersion,
   DiscoveryPlan,
   RuleTemplate,
   Symbol,
@@ -216,6 +217,10 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
   const [resourceCategoryFilter, setResourceCategoryFilter] = useState("all");
   const [resourceScopeFilter, setResourceScopeFilter] = useState("all");
   const [functionViewMode, setFunctionViewMode] = useState<"all" | "used">("all");
+  const [versions, setVersions] = useState<CustomIndicatorVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [changeNote, setChangeNote] = useState("");
+  const [expandedVersionId, setExpandedVersionId] = useState<number | null>(null);
 
   const categoryOptions = useMemo(() => [
     { label: t("ciCatTrend"), value: "trend" },
@@ -408,6 +413,18 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
     }
   };
 
+  const loadVersions = async (indicatorId: number) => {
+    setVersionsLoading(true);
+    try {
+      const data = await api.getIndicatorVersions(indicatorId);
+      setVersions(data as CustomIndicatorVersion[]);
+    } catch {
+      setVersions([]);
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
+
   const searchPreviewSymbols = async (keyword?: string) => {
     try {
       const rows = await api.getSymbols(keyword, { page: 1, pageSize: 20 });
@@ -443,6 +460,9 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
     setForm(DEFAULT_FORM);
     setPreviewResult(null);
     setPreviewFeedback(null);
+    setVersions([]);
+    setChangeNote("");
+    setExpandedVersionId(null);
   };
 
   const loadIndicator = (row: CustomIndicator) => {
@@ -450,6 +470,9 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
     setForm({ name: row.name, key: row.key, description: row.description, category: row.category, formula: row.formula, value_type: row.value_type, params: row.params ?? [], scope: row.scope ?? ["backtest"], enabled: row.enabled });
     setPreviewResult(null);
     setPreviewFeedback(null);
+    setChangeNote("");
+    setExpandedVersionId(null);
+    loadVersions(row.id);
   };
 
   const insertFormulaSnippet = (snippet: string) => {
@@ -510,15 +533,20 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
     }
     setSaving(true);
     try {
+      const payload = { ...form, change_note: changeNote || undefined };
       if (selectedId) {
-        const updated = await api.updateCustomIndicator(selectedId, form);
+        const updated = await api.updateCustomIndicator(selectedId, payload);
         message.success(t("ciIndicatorSaved"));
         setRows((prev) => prev.map((row) => row.id === selectedId ? updated : row));
+        setChangeNote("");
+        loadVersions(selectedId);
       } else {
-        const created = await api.createCustomIndicator(form);
+        const created = await api.createCustomIndicator(payload);
         message.success(t("ciIndicatorCreated"));
         setRows((prev) => [created, ...prev]);
         setSelectedId(created.id);
+        setChangeNote("");
+        loadVersions(created.id);
       }
     } catch (error: any) {
       message.error(error?.message || t("ciSaveFailed"));
@@ -535,6 +563,19 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
       if (selectedId === id) startCreate();
     } catch (error: any) {
       message.error(error?.message || t("ciDeleteFailed"));
+    }
+  };
+
+  const rollbackToVersion = async (version: number) => {
+    if (!selectedId) return;
+    try {
+      const updated = await api.rollbackIndicator(selectedId, version);
+      message.success(template("ciRollbackSuccess", { version: String(version) }));
+      setRows((prev) => prev.map((row) => row.id === selectedId ? updated : row));
+      setForm((prev) => ({ ...prev, formula: updated.formula, value_type: updated.value_type, params: updated.params ?? prev.params }));
+      loadVersions(selectedId);
+    } catch (error: any) {
+      message.error(error?.message || t("ciSaveFailed"));
     }
   };
 
@@ -619,6 +660,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                     <Form.Item label={t("ciScope")}><Checkbox.Group options={scopeOptions} value={form.scope} onChange={(value) => setForm((prev) => ({ ...prev, scope: value as string[] }))} /></Form.Item>
                     <Form.Item label={t("ciEnabled")}><Checkbox checked={form.enabled} onChange={(event) => setForm((prev) => ({ ...prev, enabled: event.target.checked }))}>{form.enabled ? (isZh ? "保存后生效" : "Active after save") : (isZh ? "保存为停用" : "Save as disabled")}</Checkbox></Form.Item>
                   </div>
+                  {selectedId && <Form.Item label={t("ciChangeNote")}><Input value={changeNote} onChange={(event) => setChangeNote(event.target.value)} placeholder={t("ciChangeNotePlaceholder")} /></Form.Item>}
                   <Space wrap className="indicator-action-row"><Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>{t("ciSaveIndicator")}</Button>{selectedId && <Popconfirm title={t("ciConfirmDeleteIndicator")} onConfirm={() => remove(selectedId)}><Button danger icon={<DeleteOutlined />}>{t("ciDelete")}</Button></Popconfirm>}</Space>
                 </div>
               </Card>
@@ -772,7 +814,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                   <div className="indicator-preview-config">
                     <div className="indicator-preview-count">
                       <span className="metric-label">{isZh ? "最近N日" : "Recent N"}</span>
-                      <InputNumber min={3} max={30} value={previewRecentCount} onChange={(value) => setPreviewRecentCount(value ?? 7)} size="small" style={{ width: 96 }} />
+                      <InputNumber min={1} max={30} value={previewRecentCount} onChange={(value) => setPreviewRecentCount(value ?? 7)} size="small" style={{ width: 96 }} />
                     </div>
                   </div>
                   <Space wrap className="indicator-preview-actions">
@@ -818,7 +860,46 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                 </div>
               </Card>
 
-              {selected && <Card className="indicator-usage-card formula-section-card" size="small" title={t("ciUsage")}><div className="indicator-usage-grid"><div><div className="metric-label">{t("ciDiscoveryPlan")}</div><Space wrap className="indicator-preview-actions">{usageSummary.discovery.length > 0 ? usageSummary.discovery.map((plan) => <Tag key={'plan_' + plan.id}>{plan.name}</Tag>) : <span className="item-subline">{t("ciNoReferences")}</span>}</Space></div><div><div className="metric-label">{t("ciBacktestTemplate")}</div><Space wrap className="indicator-preview-actions">{usageSummary.backtest.length > 0 ? usageSummary.backtest.map((template) => <Tag key={'tpl_' + template.id} color="blue">{template.name}</Tag>) : <span className="item-subline">{t("ciNoReferences")}</span>}</Space></div></div></Card>}
+              {selected && <Card className="indicator-usage-card formula-section-card" size="small" title={t("ciUsage")}><div className="indicator-usage-grid"><div><div className="metric-label">{t("ciDiscoveryPlan")}</div><Space wrap className="indicator-preview-actions">{usageSummary.discovery.length > 0 ? usageSummary.discovery.map((plan) => <Tag key={'plan_' + plan.id}>{plan.name}</Tag>) : <span className="item-subline">{t("ciNoReferences")}</span>}</Space></div><div><div className="metric-label">{t("ciBacktestTemplate")}</div><Space wrap className="indicator-preview-actions">{usageSummary.backtest.length > 0 ? usageSummary.backtest.map((tpl) => <Tag key={'tpl_' + tpl.id} color="blue">{tpl.name}</Tag>) : <span className="item-subline">{t("ciNoReferences")}</span>}</Space></div></div></Card>}
+
+              {selected && <Card className="indicator-version-card formula-section-card" size="small" title={<Space>{t("ciVersionHistory")}<Tag>{versions.length}</Tag></Space>} extra={versionsLoading ? <Tag>{isZh ? "加载中…" : "Loading…"}</Tag> : <Button size="small" icon={<ReloadOutlined />} onClick={() => loadVersions(selected.id)}>{t("refresh")}</Button>}>
+                {versions.length > 0 ? (
+                  <div className="formula-version-list">
+                    {versions.map((ver) => {
+                      const isCurrent = ver.version === selected.version;
+                      const isExpanded = expandedVersionId === ver.id;
+                      const formulaDiff = ver.formula !== selected.formula;
+                      return (
+                        <div key={ver.id} className={"formula-version-item" + (isCurrent ? " formula-version-item--current" : "")}>
+                          <div className="formula-version-item__head" onClick={() => setExpandedVersionId(isExpanded ? null : ver.id)} style={{ cursor: "pointer" }}>
+                            <Space size={8}>
+                              <Tag color={isCurrent ? "green" : "default"}>v{ver.version}</Tag>
+                              {isCurrent && <Tag color="green">{t("ciVersionCurrent")}</Tag>}
+                              <span className="item-subline">{new Date(ver.created_at).toLocaleString()}</span>
+                            </Space>
+                            {!isCurrent && <Popconfirm title={template("ciRollbackConfirm", { version: String(ver.version) })} onConfirm={(e) => { e?.stopPropagation(); rollbackToVersion(ver.version); }}><Button size="small" type="link" onClick={(e) => e.stopPropagation()}>{t("ciRollback")}</Button></Popconfirm>}
+                          </div>
+                          {ver.change_note && <div className="item-subline" style={{ marginTop: 4 }}>{ver.change_note}</div>}
+                          {isExpanded && (
+                            <div className="formula-version-item__detail" style={{ marginTop: 8 }}>
+                              <div>
+                                <div className="metric-label">{t("ciVersionFormula")}{formulaDiff && <Tag color="orange" style={{ marginLeft: 8 }}>{t("ciVersionDiff")}</Tag>}</div>
+                                <code className="formula-inline-code" style={{ display: "block", whiteSpace: "pre-wrap", marginTop: 4 }}>{ver.formula}</code>
+                              </div>
+                              <div style={{ marginTop: 8 }}>
+                                <div className="metric-label">{t("ciReturnType")}</div>
+                                <Tag color={ver.value_type === "number" ? "gold" : "blue"}>{ver.value_type === "number" ? t("ciNumber") : t("ciBoolean")}</Tag>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="item-subline">{t("ciNoVersionHistory")}</div>
+                )}
+              </Card>}
             </div>
           </div>
         </Form>

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any, Literal
@@ -26,7 +26,7 @@ class CustomIndicatorBase(BaseModel):
 
 
 class CustomIndicatorCreate(CustomIndicatorBase):
-    pass
+    change_note: str | None = Field(None, max_length=500)
 
 
 class CustomIndicatorUpdate(BaseModel):
@@ -39,6 +39,7 @@ class CustomIndicatorUpdate(BaseModel):
     params: list[dict[str, Any]] | None = None
     scope: list[str] | None = None
     enabled: bool | None = None
+    change_note: str | None = Field(None, max_length=500)
 
 
 class CustomIndicatorRead(CustomIndicatorBase):
@@ -48,6 +49,19 @@ class CustomIndicatorRead(CustomIndicatorBase):
     created_at: datetime
     updated_at: datetime
     version: int = 1
+
+
+class CustomIndicatorVersionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    indicator_id: int
+    version: int
+    formula: str
+    params_json: str
+    value_type: str
+    change_note: str = ""
+    created_at: datetime
 
 
 class CustomIndicatorPreviewRequest(BaseModel):

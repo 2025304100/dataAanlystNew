@@ -226,6 +226,57 @@ export interface JournalEntry {
   stage?: string;
   action?: string;
   actual_action?: string;
+  review_tags?: string;
+}
+
+export interface UnifiedTask {
+  id: string;
+  source: "async" | "discovery";
+  task_type: string;
+  status: string;
+  stage: string;
+  percent: number;
+  message: string;
+  total: number;
+  processed: number;
+  ok_count: number;
+  failed_count: number;
+  current_item?: string;
+  payload: Record<string, any>;
+  result: Record<string, any>;
+  errors: any[];
+  duration_sec?: number;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  updated_at: string;
+}
+
+export interface AlertRule {
+  id: number;
+  name: string;
+  alert_type: string;
+  enabled: number;
+  severity: string;
+  config_json: string | null;
+  last_triggered_at?: string;
+  cooldown_minutes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlertEvent {
+  id: number;
+  rule_id: number;
+  alert_type: string;
+  severity: string;
+  title: string;
+  message: string;
+  symbol_id?: number;
+  symbol?: { id: number; symbol: string; name: string } | null;
+  data?: Record<string, any>;
+  acknowledged: number;
+  created_at: string;
 }
 
 export interface TradeRecord {
@@ -711,7 +762,7 @@ export interface BacktestDiagnostics {
   skip_reasons?: Record<string, number>;
   sample_misses?: Array<Record<string, unknown>>;
   fill_warning?: string;
-  execution?: { entry_price_field?: "open" | "close" | string; exit_price_field?: "open" | "close" | string };
+  execution?: { entry_timing?: string; exit_timing?: string; entry_price_field?: "open" | "close" | string; exit_price_field?: "open" | "close" | string };
   buy_conditions?: Record<string, unknown>;
   sell_conditions?: Record<string, unknown>;
   position_config?: Record<string, unknown>;
@@ -734,9 +785,17 @@ export interface BacktestTrade {
   symbol_id: number;
   entry_date: string;
   entry_price: number;
+  entry_signal_date?: string | null;
+  entry_signal_price?: number | null;
+  entry_signal_price_field?: string | null;
+  entry_execution_timing?: string | null;
   quantity: number;
   exit_date?: string | null;
   exit_price?: number | null;
+  exit_signal_date?: string | null;
+  exit_signal_price?: number | null;
+  exit_signal_price_field?: string | null;
+  exit_execution_timing?: string | null;
   exit_reason?: string | null;
   pnl?: number | null;
   pnl_pct?: number | null;
@@ -804,7 +863,20 @@ export interface CustomIndicator {
   updated_at: string;
 }
 
-export type CustomIndicatorPayload = Omit<CustomIndicator, "id" | "version" | "created_at" | "updated_at">;
+export type CustomIndicatorPayload = Omit<CustomIndicator, "id" | "version" | "created_at" | "updated_at"> & {
+  change_note?: string;
+};
+
+export interface CustomIndicatorVersion {
+  id: number;
+  indicator_id: number;
+  version: number;
+  formula: string;
+  params_json: string;
+  value_type: "boolean" | "number";
+  change_note: string;
+  created_at: string;
+}
 
 export interface CustomIndicatorPreviewBar {
   trade_date: string;
@@ -980,6 +1052,7 @@ export interface HistoryInitializationRunRecord {
   status: "idle" | "running" | "completed" | "failed" | "cancelled";
   preset: "1m" | "1q" | "1y" | "3y";
   adjust: string;
+  repair_mode?: "both" | "bars" | "scores";
   asset_types?: string[] | null;
   symbol_ids?: number[];
   start_date?: string | null;
@@ -998,6 +1071,7 @@ export interface HistoryInitializationTask {
   status: "idle" | "running" | "completed" | "failed" | "cancelled";
   preset: "1m" | "1q" | "1y" | "3y";
   adjust: string;
+  repair_mode?: "both" | "bars" | "scores";
   asset_types?: string[] | null;
   symbol_ids?: number[];
   start_date?: string | null;

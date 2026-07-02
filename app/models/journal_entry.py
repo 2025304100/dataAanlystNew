@@ -26,6 +26,7 @@ class JournalEntry(Base):
     stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
     action: Mapped[str | None] = mapped_column(String(16), nullable=True)
     actual_action: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    review_tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

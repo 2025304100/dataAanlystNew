@@ -94,6 +94,7 @@ def initialize_history_data(payload: HistoryInitializationRequest) -> dict:
             adjust=payload.adjust,
             asset_types=payload.asset_types,
             symbol_ids=payload.symbol_ids,
+            repair_mode=payload.repair_mode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

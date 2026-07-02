@@ -9,7 +9,7 @@ from app.db.base import Base
 from app.db.manager import DatabaseManager
 
 from app.models import (
-    backtest, custom_indicator, daily_bar, discovery, discovery_plan, factor, journal_entry, macro_data,
+    alert, backtest, custom_indicator, daily_bar, discovery, discovery_plan, factor, journal_entry, macro_data,
     market_event, news_event, portfolio, scan, score, signal_rule,
     sim_account, symbol, trade_setup, watchlist,
 )
@@ -63,6 +63,62 @@ def _ensure_sqlite_trade_setup_columns(engine) -> None:
     )
 
 
+def _ensure_sqlite_indicator_version_columns(engine) -> None:
+    _ensure_sqlite_columns(
+        engine,
+        "custom_indicator_versions",
+        {
+            "change_note": "TEXT DEFAULT ''",
+        },
+    )
+
+
+def _ensure_sqlite_journal_columns(engine) -> None:
+    _ensure_sqlite_columns(
+        engine,
+        "journal_entries",
+        {
+            "review_tags_json": "TEXT",
+        },
+    )
+
+
+def _ensure_mysql_indicator_version_columns(engine) -> None:
+    """为 MySQL 中已存在的表补充新增列。"""
+    import logging
+    logger = logging.getLogger(__name__)
+    with engine.begin() as conn:
+        db_name = conn.execute(text("SELECT DATABASE()")).scalar()
+        if not db_name:
+            return
+        # custom_indicator_versions.change_note
+        result = conn.execute(text(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'custom_indicator_versions' AND COLUMN_NAME = 'change_note'"
+        ), {"db": db_name})
+        if result.first() is None:
+            try:
+                conn.execute(text(
+                    "ALTER TABLE custom_indicator_versions ADD COLUMN change_note TEXT DEFAULT ''"
+                ))
+                logger.info("Added change_note column to custom_indicator_versions")
+            except Exception as e:
+                logger.warning("Failed to add change_note column: %s", e)
+        # journal_entries.review_tags_json
+        result = conn.execute(text(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'journal_entries' AND COLUMN_NAME = 'review_tags_json'"
+        ), {"db": db_name})
+        if result.first() is None:
+            try:
+                conn.execute(text(
+                    "ALTER TABLE journal_entries ADD COLUMN review_tags_json TEXT"
+                ))
+                logger.info("Added review_tags_json column to journal_entries")
+            except Exception as e:
+                logger.warning("Failed to add review_tags_json column: %s", e)
+
+
 def _convert_myisam_to_innodb(engine) -> None:
     """将 MySQL 中已存在的 MyISAM 表转为 InnoDB，确保外键兼容。"""
     import logging
@@ -102,6 +158,10 @@ def init_db() -> None:
         _ensure_sqlite_scan_result_columns(eng)
         _ensure_sqlite_score_columns(eng)
         _ensure_sqlite_trade_setup_columns(eng)
+        _ensure_sqlite_indicator_version_columns(eng)
+        _ensure_sqlite_journal_columns(eng)
         with eng.begin() as conn:
             conn.execute(text("PRAGMA journal_mode=WAL;"))
             conn.execute(text("PRAGMA busy_timeout=30000;"))
+    else:
+        _ensure_mysql_indicator_version_columns(eng)

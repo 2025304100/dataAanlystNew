@@ -64,6 +64,7 @@ interface AppContextValue extends AppState {
   setChartWindowSize: (size: number) => void;
   setChartRange: (range: { start: number; end: number } | null) => void;
   setChartExpanded: (expanded: boolean) => void;
+  setActiveSymbolId: (id: number | null) => void;
   setFuturePlanScenario: (scenario: string) => void;
   setFuturePlanCustom: (custom: { horizonDays: number; pullbackPct: number; positionPct: number }) => void;
   setSimQuantity: (qty: string) => void;
@@ -191,6 +192,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setChartWindowSize = useCallback((size: number) => update({ chartWindowSize: size }), [update]);
   const setChartRange = useCallback((range: { start: number; end: number } | null) => update({ chartRange: range }), [update]);
   const setChartExpanded = useCallback((expanded: boolean) => update({ chartExpanded: expanded }), [update]);
+  const setActiveSymbolId = useCallback((id: number | null) => update({ activeSymbolId: id }), [update]);
   const setFuturePlanScenario = useCallback((scenario: string) => update({ futurePlanScenario: scenario }), [update]);
   const setFuturePlanCustom = useCallback((custom: { horizonDays: number; pullbackPct: number; positionPct: number }) => update({ futurePlanCustom: custom }), [update]);
   const setSimQuantity = useCallback((qty: string) => update({ simQuantity: qty }), [update]);
@@ -835,6 +837,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setChartWindowSize,
     setChartRange,
     setChartExpanded,
+    setActiveSymbolId,
     setFuturePlanScenario,
     setFuturePlanCustom,
     setSimQuantity,

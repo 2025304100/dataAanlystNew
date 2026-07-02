@@ -366,6 +366,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
   const [reviewActualAction, setReviewActualAction] = useState("follow_system");
   const [reviewOutcome, setReviewOutcome] = useState("pending");
   const [reviewNote, setReviewNote] = useState("");
+  const [reviewTags, setReviewTags] = useState<string[]>([]);
   const [reviewEditingId, setReviewEditingId] = useState<number | null>(null);
   const [reviewSaving, setReviewSaving] = useState(false);
   const [reviewList, setReviewList] = useState<JournalEntry[]>([]);
@@ -490,6 +491,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     setReviewActualAction("follow_system");
     setReviewOutcome("pending");
     setReviewNote("");
+    setReviewTags([]);
     setReviewEditingId(null);
   }, []);
 
@@ -500,6 +502,11 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     setReviewActualAction(journal.actual_action || "follow_system");
     setReviewOutcome(journal.outcome || "pending");
     setReviewNote(journal.review_note || "");
+    try {
+      setReviewTags(journal.review_tags ? JSON.parse(journal.review_tags) : []);
+    } catch {
+      setReviewTags([]);
+    }
     setReviewFormOpen(true);
   }, []);
 
@@ -519,6 +526,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
       actual_action: reviewActualAction,
       outcome: reviewOutcome,
       review_note: reviewNote,
+      review_tags: reviewTags,
       score_id: score?.id ?? null,
       stage: score?.stage ?? null,
       action: score?.action ?? null,
@@ -2081,6 +2089,23 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                     />
                   </label>
                   <label className="review-form-field review-form-field-wide">
+                    <span>{t("reviewTags")}</span>
+                    <Select
+                      mode="multiple"
+                      value={reviewTags}
+                      onChange={setReviewTags}
+                      placeholder={t("reviewTagsPlaceholder")}
+                      style={{ width: "100%" }}
+                      options={[
+                        { value: "pattern_valid", label: t("reviewTagPatternValid") },
+                        { value: "execution_deviation", label: t("reviewTagExecDeviation") },
+                        { value: "data_misjudge", label: t("reviewTagDataMisjudge") },
+                        { value: "risk_uncontrolled", label: t("reviewTagRiskUncontrolled") },
+                        { value: "market_change", label: t("reviewTagMarketChange") },
+                      ]}
+                    />
+                  </label>
+                  <label className="review-form-field review-form-field-wide">
                     <span>{t("reviewNote")}</span>
                     <Input.TextArea
                       value={reviewNote}
@@ -2135,6 +2160,19 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                               {journal.outcome}
                             </Tag>
                           )}
+                          {journal.review_tags && (() => {
+                            try {
+                              const tags: string[] = JSON.parse(journal.review_tags);
+                              const tagLabels: Record<string, string> = {
+                                pattern_valid: t("reviewTagPatternValid"),
+                                execution_deviation: t("reviewTagExecDeviation"),
+                                data_misjudge: t("reviewTagDataMisjudge"),
+                                risk_uncontrolled: t("reviewTagRiskUncontrolled"),
+                                market_change: t("reviewTagMarketChange"),
+                              };
+                              return tags.map((tag) => <Tag key={tag} color={tag === "pattern_valid" ? "green" : tag === "risk_uncontrolled" ? "red" : "orange"}>{tagLabels[tag] || tag}</Tag>);
+                            } catch { return null; }
+                          })()}
                         </Space>
                       </div>
                       {journal.review_note && (

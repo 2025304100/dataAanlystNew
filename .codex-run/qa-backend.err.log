@@ -1,0 +1,8 @@
+INFO:     Started server process [71464]
+INFO:     Waiting for application startup.
+2026-07-02 22:13:32,365 [INFO] app.main: Initializing MySQL engine: 127.0.0.1:3306/gpfx
+2026-07-02 22:13:32,906 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-02 22:13:32,907 [INFO] app.main: Startup cleanup: no expired results to remove
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-07-02 22:43:33,012 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove

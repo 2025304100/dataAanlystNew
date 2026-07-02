@@ -90,3 +90,222 @@ AggregateError [ECONNREFUSED]:
 AggregateError [ECONNREFUSED]: 
     at internalConnectMultiple (node:net:1118:18)
     at afterConnectMultiple (node:net:1685:7)
+13:19:32 [vite] Internal server error: D:\ai_project\dataAanlystNew\frontend\src\components\BacktestConfig.tsx: Unterminated string constant. (430:17)
+
+  428 |                 {t("btCoverageCurrentMin")}
+  429 |                 {coverageWarning.summary.min_coverage_pct ?? 0}%
+> 430 |                 {"銆?}
+      |                  ^
+  431 |               </span>
+  432 |               {coverageWarning.issues.slice(0, 3).map((issue) => (
+  433 |                 <span key={issue.symbol_id} className="panel-meta">
+  Plugin: vite:react-babel
+  File: D:/ai_project/dataAanlystNew/frontend/src/components/BacktestConfig.tsx:430:17
+  428|                  {t("btCoverageCurrentMin")}
+  429|                  {coverageWarning.summary.min_coverage_pct ?? 0}%
+  430|                  {"銆?}
+     |                   ^
+  431|                </span>
+  432|                {coverageWarning.issues.slice(0, 3).map((issue) => (
+      at constructor (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6616:19)
+      at Object.unterminated (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5681:20)
+      at readStringContents (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5423:16)
+      at TypeScriptParserMixin.readString (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6515:9)
+      at TypeScriptParserMixin.getTokenFromCode (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6275:14)
+      at TypeScriptParserMixin.getTokenFromCode (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4809:11)
+      at TypeScriptParserMixin.getTokenFromCode (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10004:11)
+      at TypeScriptParserMixin.nextToken (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5799:10)
+      at TypeScriptParserMixin.next (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5709:10)
+      at TypeScriptParserMixin.jsxParseElementAt (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4719:20)
+      at TypeScriptParserMixin.jsxParseElementAt (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4710:32)
+      at TypeScriptParserMixin.jsxParseElement (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4761:17)
+      at TypeScriptParserMixin.parseExprAtom (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4771:19)
+      at TypeScriptParserMixin.parseExprSubscripts (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11098:23)
+      at TypeScriptParserMixin.parseUpdate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11083:21)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11063:23)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9854:18)
+      at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10916:61)
+      at TypeScriptParserMixin.parseExprOps (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10921:23)
+      at TypeScriptParserMixin.parseMaybeConditional (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10898:23)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10848:21)
+      at D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9792:39
+      at TypeScriptParserMixin.tryParse (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6924:20)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9792:18)
+      at D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10817:39
+      at TypeScriptParserMixin.allowInAnd (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12443:12)
+      at TypeScriptParserMixin.parseMaybeAssignAllowIn (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10817:17)
+      at TypeScriptParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12510:17)
+      at TypeScriptParserMixin.parseParenAndDistinguishExpression (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11692:28)
+      at TypeScriptParserMixin.parseExprAtom (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11348:23)
+      at TypeScriptParserMixin.parseExprAtom (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4776:20)
+      at TypeScriptParserMixin.parseExprSubscripts (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11098:23)
+      at TypeScriptParserMixin.parseUpdate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11083:21)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11063:23)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9854:18)
+      at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10916:61)
+      at TypeScriptParserMixin.parseExprOps (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10921:23)
+      at TypeScriptParserMixin.parseMaybeConditional (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10898:23)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10848:21)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9803:20)
+      at TypeScriptParserMixin.parseExpressionBase (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10801:23)
+      at D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10797:39
+      at TypeScriptParserMixin.allowInAnd (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12443:12)
+      at TypeScriptParserMixin.parseExpression (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10797:17)
+      at TypeScriptParserMixin.jsxParseExpressionContainer (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4644:31)
+      at TypeScriptParserMixin.jsxParseAttributeValue (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4616:21)
+      at TypeScriptParserMixin.jsxParseAttribute (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4665:38)
+      at TypeScriptParserMixin.jsxParseOpeningElementAfterName (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4679:28)
+      at TypeScriptParserMixin.jsxParseOpeningElementAfterName (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10060:18)
+13:20:22 [vite] Internal server error: D:\ai_project\dataAanlystNew\frontend\src\components\BacktestConfig.tsx: Unterminated string constant. (443:17)
+
+  441 |                 {t("btCoverageCurrentMin")}
+  442 |                 {coverageWarning.summary.min_coverage_pct ?? 0}%
+> 443 |                 {"閵?}
+      |                  ^
+  444 |               </span>
+  445 |               {coverageWarning.issues.slice(0, 3).map((issue) => (
+  446 |                 <span key={issue.symbol_id} className="panel-meta">
+  Plugin: vite:react-babel
+  File: D:/ai_project/dataAanlystNew/frontend/src/components/BacktestConfig.tsx:443:17
+  450|                    {t("btCoverageIssueBar")}
+  451|                    {issue.bar_days}
+  452|                    {t("btCoverageIssueMissing")}
+     |                            ^
+  453|                    {issue.missing_days}
+  454|                    {t("btCoverageIssueDays")}
+      at constructor (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6616:19)
+      at Object.unterminated (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5681:20)
+      at readStringContents (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5423:16)
+      at TypeScriptParserMixin.readString (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6515:9)
+      at TypeScriptParserMixin.getTokenFromCode (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6275:14)
+      at TypeScriptParserMixin.getTokenFromCode (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4809:11)
+      at TypeScriptParserMixin.getTokenFromCode (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10004:11)
+      at TypeScriptParserMixin.nextToken (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5799:10)
+      at TypeScriptParserMixin.next (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5709:10)
+      at TypeScriptParserMixin.jsxParseElementAt (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4719:20)
+      at TypeScriptParserMixin.jsxParseElementAt (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4710:32)
+      at TypeScriptParserMixin.jsxParseElement (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4761:17)
+      at TypeScriptParserMixin.parseExprAtom (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4771:19)
+      at TypeScriptParserMixin.parseExprSubscripts (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11098:23)
+      at TypeScriptParserMixin.parseUpdate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11083:21)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11063:23)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9854:18)
+      at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10916:61)
+      at TypeScriptParserMixin.parseExprOps (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10921:23)
+      at TypeScriptParserMixin.parseMaybeConditional (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10898:23)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10848:21)
+      at D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9792:39
+      at TypeScriptParserMixin.tryParse (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6924:20)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9792:18)
+      at D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10817:39
+      at TypeScriptParserMixin.allowInAnd (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12443:12)
+      at TypeScriptParserMixin.parseMaybeAssignAllowIn (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10817:17)
+      at TypeScriptParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12510:17)
+      at TypeScriptParserMixin.parseParenAndDistinguishExpression (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11692:28)
+      at TypeScriptParserMixin.parseExprAtom (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11348:23)
+      at TypeScriptParserMixin.parseExprAtom (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4776:20)
+      at TypeScriptParserMixin.parseExprSubscripts (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11098:23)
+      at TypeScriptParserMixin.parseUpdate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11083:21)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11063:23)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9854:18)
+      at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10916:61)
+      at TypeScriptParserMixin.parseExprOps (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10921:23)
+      at TypeScriptParserMixin.parseMaybeConditional (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10898:23)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10848:21)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9803:20)
+      at TypeScriptParserMixin.parseExpressionBase (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10801:23)
+      at D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10797:39
+      at TypeScriptParserMixin.allowInAnd (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12443:12)
+      at TypeScriptParserMixin.parseExpression (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10797:17)
+      at TypeScriptParserMixin.jsxParseExpressionContainer (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4644:31)
+      at TypeScriptParserMixin.jsxParseAttributeValue (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4616:21)
+      at TypeScriptParserMixin.jsxParseAttribute (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4665:38)
+      at TypeScriptParserMixin.jsxParseOpeningElementAfterName (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4679:28)
+      at TypeScriptParserMixin.jsxParseOpeningElementAfterName (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10060:18)
+13:23:47 [vite] Pre-transform error: D:\ai_project\dataAanlystNew\frontend\src\components\BacktestConfig.tsx: Unterminated string constant. (443:17)
+
+  441 |                 {t("btCoverageCurrentMin")}
+  442 |                 {coverageWarning.summary.min_coverage_pct ?? 0}%
+> 443 |                 {"閵?}
+      |                  ^
+  444 |               </span>
+  445 |               {coverageWarning.issues.slice(0, 3).map((issue) => (
+  446 |                 <span key={issue.symbol_id} className="panel-meta">
+13:23:47 [vite] Internal server error: D:\ai_project\dataAanlystNew\frontend\src\components\BacktestConfig.tsx: Unterminated string constant. (443:17)
+
+  441 |                 {t("btCoverageCurrentMin")}
+  442 |                 {coverageWarning.summary.min_coverage_pct ?? 0}%
+> 443 |                 {"閵?}
+      |                  ^
+  444 |               </span>
+  445 |               {coverageWarning.issues.slice(0, 3).map((issue) => (
+  446 |                 <span key={issue.symbol_id} className="panel-meta">
+  Plugin: vite:react-babel
+  File: D:/ai_project/dataAanlystNew/frontend/src/components/BacktestConfig.tsx:443:17
+  450|                    {t("btCoverageIssueBar")}
+  451|                    {issue.bar_days}
+  452|                    {t("btCoverageIssueMissing")}
+     |                            ^
+  453|                    {issue.missing_days}
+  454|                    {t("btCoverageIssueDays")}
+      at constructor (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:365:19)
+      at TypeScriptParserMixin.raise (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6616:19)
+      at Object.unterminated (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5681:20)
+      at readStringContents (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5423:16)
+      at TypeScriptParserMixin.readString (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6515:9)
+      at TypeScriptParserMixin.getTokenFromCode (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6275:14)
+      at TypeScriptParserMixin.getTokenFromCode (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4809:11)
+      at TypeScriptParserMixin.getTokenFromCode (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10004:11)
+      at TypeScriptParserMixin.nextToken (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5799:10)
+      at TypeScriptParserMixin.next (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:5709:10)
+      at TypeScriptParserMixin.jsxParseElementAt (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4719:20)
+      at TypeScriptParserMixin.jsxParseElementAt (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4710:32)
+      at TypeScriptParserMixin.jsxParseElement (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4761:17)
+      at TypeScriptParserMixin.parseExprAtom (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4771:19)
+      at TypeScriptParserMixin.parseExprSubscripts (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11098:23)
+      at TypeScriptParserMixin.parseUpdate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11083:21)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11063:23)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9854:18)
+      at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10916:61)
+      at TypeScriptParserMixin.parseExprOps (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10921:23)
+      at TypeScriptParserMixin.parseMaybeConditional (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10898:23)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10848:21)
+      at D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9792:39
+      at TypeScriptParserMixin.tryParse (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:6924:20)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9792:18)
+      at D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10817:39
+      at TypeScriptParserMixin.allowInAnd (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12443:12)
+      at TypeScriptParserMixin.parseMaybeAssignAllowIn (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10817:17)
+      at TypeScriptParserMixin.parseMaybeAssignAllowInOrVoidPattern (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12510:17)
+      at TypeScriptParserMixin.parseParenAndDistinguishExpression (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11692:28)
+      at TypeScriptParserMixin.parseExprAtom (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11348:23)
+      at TypeScriptParserMixin.parseExprAtom (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4776:20)
+      at TypeScriptParserMixin.parseExprSubscripts (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11098:23)
+      at TypeScriptParserMixin.parseUpdate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11083:21)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:11063:23)
+      at TypeScriptParserMixin.parseMaybeUnary (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9854:18)
+      at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10916:61)
+      at TypeScriptParserMixin.parseExprOps (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10921:23)
+      at TypeScriptParserMixin.parseMaybeConditional (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10898:23)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10848:21)
+      at TypeScriptParserMixin.parseMaybeAssign (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:9803:20)
+      at TypeScriptParserMixin.parseExpressionBase (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10801:23)
+      at D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10797:39
+      at TypeScriptParserMixin.allowInAnd (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:12443:12)
+      at TypeScriptParserMixin.parseExpression (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10797:17)
+      at TypeScriptParserMixin.jsxParseExpressionContainer (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4644:31)
+      at TypeScriptParserMixin.jsxParseAttributeValue (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4616:21)
+      at TypeScriptParserMixin.jsxParseAttribute (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4665:38)
+      at TypeScriptParserMixin.jsxParseOpeningElementAfterName (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:4679:28)
+      at TypeScriptParserMixin.jsxParseOpeningElementAfterName (D:\ai_project\dataAanlystNew\frontend\node_modules\@babel\parser\lib\index.js:10060:18)
+13:23:48 [vite] Pre-transform error: D:\ai_project\dataAanlystNew\frontend\src\components\BacktestConfig.tsx: Unterminated string constant. (443:17)
+
+  441 |                 {t("btCoverageCurrentMin")}
+  442 |                 {coverageWarning.summary.min_coverage_pct ?? 0}%
+> 443 |                 {"閵?}
+      |                  ^
+  444 |               </span>
+  445 |               {coverageWarning.issues.slice(0, 3).map((issue) => (
+  446 |                 <span key={issue.symbol_id} className="panel-meta">

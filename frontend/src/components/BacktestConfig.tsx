@@ -40,6 +40,15 @@ const DEFAULT_ACTIONS = ["open", "hold", "buy_dip"];
 
 type RuleMode = "standard" | "advanced";
 
+type ExecutionTimingMode = "signal_close" | "next_open";
+
+function deriveExecutionTimingFromConfig(config: BacktestTemplateConfig["execution_config"] | undefined, key: "entry" | "exit"): ExecutionTimingMode {
+  const explicit = config?.[`${key}_timing` as keyof typeof config];
+  if (explicit === "next_open" || explicit === "signal_close") return explicit;
+  const priceField = config?.[`${key}_price_field` as keyof typeof config];
+  return priceField === "open" ? "next_open" : "signal_close";
+}
+
 function collectBacktestIndicatorKeys(node: unknown, keys: Set<string>) {
   if (!node) return;
   if (Array.isArray(node)) {
@@ -62,6 +71,8 @@ type BacktestTemplateConfig = Partial<BacktestRuleConfigV2> & {
     max_positions?: number;
   };
   execution_config?: {
+    entry_timing?: ExecutionTimingMode;
+    exit_timing?: ExecutionTimingMode;
     entry_price_field?: "open" | "close";
     exit_price_field?: "open" | "close";
   };
@@ -96,8 +107,10 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
 
   const [positionPct, setPositionPct] = useState(5);
   const [maxPositions, setMaxPositions] = useState(5);
-  const [entryPriceField, setEntryPriceField] = useState<"open" | "close">("close");
-  const [exitPriceField, setExitPriceField] = useState<"open" | "close">("close");
+  const [entryTiming, setEntryTiming] = useState<ExecutionTimingMode>("signal_close");
+  const [exitTiming, setExitTiming] = useState<ExecutionTimingMode>("signal_close");
+  const entryPriceField: "open" | "close" = entryTiming === "signal_close" ? "close" : "open";
+  const exitPriceField: "open" | "close" = exitTiming === "signal_close" ? "close" : "open";
   const [commissionRate, setCommissionRate] = useState(0.03);
   const [minCommission, setMinCommission] = useState(5);
   const [stampTaxRate, setStampTaxRate] = useState(0.1);
@@ -146,20 +159,20 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
         buy_conditions: buyConditions,
         sell_conditions: sellConditions,
         position_config: { type: "fixed_pct", value: positionPct / 100, max_positions: maxPositions },
-        execution_config: { entry_price_field: entryPriceField, exit_price_field: exitPriceField },
+        execution_config: { entry_timing: entryTiming, exit_timing: exitTiming, entry_price_field: entryPriceField, exit_price_field: exitPriceField },
       };
     }
     return {
       buy_conditions: { quality_score_min: qualityMin, timing_score_min: timingMin, stages, actions },
       sell_conditions: { take_profit_pct: takeProfitPct / 100, stop_loss_pct: stopLossPct / 100, max_hold_days: maxHoldDays },
       position_config: { type: "fixed_pct", value: positionPct / 100, max_positions: maxPositions },
-      execution_config: { entry_price_field: entryPriceField, exit_price_field: exitPriceField },
+      execution_config: { entry_timing: entryTiming, exit_timing: exitTiming, entry_price_field: entryPriceField, exit_price_field: exitPriceField },
     };
   }, [
     actions,
     buyConditions,
-    entryPriceField,
-    exitPriceField,
+    entryTiming,
+    exitTiming,
     maxHoldDays,
     maxPositions,
     positionPct,
@@ -221,8 +234,8 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
         if (cfg.position_config.max_positions != null) setMaxPositions(Number(cfg.position_config.max_positions));
       }
       if (cfg.execution_config) {
-        setEntryPriceField((cfg.execution_config.entry_price_field as "open" | "close") || "close");
-        setExitPriceField((cfg.execution_config.exit_price_field as "open" | "close") || "close");
+        setEntryTiming(deriveExecutionTimingFromConfig(cfg.execution_config, "entry"));
+        setExitTiming(deriveExecutionTimingFromConfig(cfg.execution_config, "exit"));
       }
     }
     setSelectedTemplateId(id);
@@ -384,12 +397,12 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
               <label><span>{t("backtestPositionPct")}</span><InputNumber min={0.1} max={100} value={positionPct} onChange={(value) => setPositionPct(Number(value ?? 0))} /></label>
               <label><span>{t("backtestMaxPositions")}</span><InputNumber min={1} max={50} value={maxPositions} onChange={(value) => setMaxPositions(Number(value ?? 1))} /></label>
               <label>
-                <span>{t("backtestEntryPriceField")}</span>
-                <Select value={entryPriceField} onChange={setEntryPriceField} options={[{ label: t("btOpenPrice"), value: "open" }, { label: t("btClosePrice"), value: "close" }]} />
+                <span>{t("backtestEntryTiming")}</span>
+                <Select value={entryTiming} onChange={setEntryTiming} options={[{ label: t("btTimingSignalClose"), value: "signal_close" }, { label: t("btTimingNextOpen"), value: "next_open" }]} />
               </label>
               <label>
-                <span>{t("backtestExitPriceField")}</span>
-                <Select value={exitPriceField} onChange={setExitPriceField} options={[{ label: t("btOpenPrice"), value: "open" }, { label: t("btClosePrice"), value: "close" }]} />
+                <span>{t("backtestExitTiming")}</span>
+                <Select value={exitTiming} onChange={setExitTiming} options={[{ label: t("btTimingSignalClose"), value: "signal_close" }, { label: t("btTimingNextOpen"), value: "next_open" }]} />
               </label>
             </div>
           ),
@@ -427,7 +440,7 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
                 {". "}
                 {t("btCoverageCurrentMin")}
                 {coverageWarning.summary.min_coverage_pct ?? 0}%
-                {"。"}
+                {"."}
               </span>
               {coverageWarning.issues.slice(0, 3).map((issue) => (
                 <span key={issue.symbol_id} className="panel-meta">

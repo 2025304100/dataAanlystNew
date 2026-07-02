@@ -64,6 +64,28 @@ function presetLabel(value: string): string {
   return found ? t(found.i18nKey) : value;
 }
 
+function repairModeLabel(mode?: "both" | "bars" | "scores"): string {
+  if (mode === "bars") return t("diagRepairBars");
+  if (mode === "scores") return t("diagRepairScores");
+  return t("diagRepairBoth");
+}
+
+function repairModeColor(mode?: "both" | "bars" | "scores"): string {
+  if (mode === "bars") return "orange";
+  if (mode === "scores") return "purple";
+  return "blue";
+}
+
+function repairModeHint(mode?: "both" | "bars" | "scores"): string {
+  if (mode === "bars") return t("histModeExplainBars");
+  if (mode === "scores") return t("histModeExplainScores");
+  return t("histModeExplainBoth");
+}
+
+function isSkippedStage(stage: HistoryInitializationStage): boolean {
+  return stage.status === "completed" && stage.total === 0 && (stage.message || "").toLowerCase().includes("skip");
+}
+
 function formatDuration(seconds?: number | null): string {
   if (seconds === null || seconds === undefined || Number.isNaN(Number(seconds))) return "-";
   const value = Math.max(0, Math.round(Number(seconds)));
@@ -118,9 +140,10 @@ function csvEscape(value: string | number | null | undefined): string {
 }
 
 type HistoryInitSectionProps = {
-  context?: { symbolId?: number | null; symbolLabel?: string | null } | null;
+  context?: { symbolId?: number | null; symbolLabel?: string | null; repairMode?: "both" | "bars" | "scores" } | null;
   onClearContext?: () => void;
   focusSignal?: number;
+  onOpenDiagnostic?: (symbolId: number) => void;
 };
 
 function formatScopedSymbolLabel(rawLabel?: string | null, symbol?: { symbol: string; name?: string | null } | null, symbolId?: number | null): string {
@@ -133,7 +156,7 @@ function formatScopedSymbolLabel(rawLabel?: string | null, symbol?: { symbol: st
   return "-";
 }
 
-export default function HistoryInitSection({ focusSignal = 0, context = null, onClearContext }: HistoryInitSectionProps) {
+export default function HistoryInitSection({ focusSignal = 0, context = null, onClearContext, onOpenDiagnostic }: HistoryInitSectionProps) {
   const ctx = useApp();
   const [historyPreset, setHistoryPreset] = useState<HistoryInitializationTask["preset"]>("1y");
   const [historyTask, setHistoryTask] = useState<HistoryInitializationTask | null>(null);
@@ -155,6 +178,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   const presetFocusRef = useRef<HTMLDivElement | null>(null);
   const scopedSymbolId = context?.symbolId ?? null;
   const scopedSymbolLabel = context?.symbolLabel ?? null;
+  const requestedRepairMode = context?.repairMode ?? "both";
   const getSymbolRecord = useCallback((symbolId?: number | null) => {
     if (symbolId == null) return null;
     if (ctx.detail?.symbol?.id === symbolId) return ctx.detail.symbol;
@@ -240,7 +264,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   const runHistoryInitialization = async (preset: HistoryInitializationTask["preset"]) => {
     try {
       setHistoryLoading(true);
-      const task = await api.startHistoryInitialization({ preset, adjust: "qfq", symbol_ids: activeScopedSymbolId ? [activeScopedSymbolId] : undefined }) as HistoryInitializationTask;
+      const task = await api.startHistoryInitialization({ preset, adjust: "qfq", symbol_ids: activeScopedSymbolId ? [activeScopedSymbolId] : undefined, repair_mode: requestedRepairMode }) as HistoryInitializationTask;
       setHistoryPreset(preset);
       setHistoryTask(task);
       startHistoryPolling();
@@ -414,13 +438,18 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
     return (
       <div key={stage.key} className="history-init-stage" style={compact ? { marginBottom: 8 } : undefined}>
         <div className="history-init-stage__head">
-          <strong>{stageLabel(stage.key)}</strong>
+          <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <strong>{stageLabel(stage.key)}</strong>
+            {isSkippedStage(stage) ? <Tag>{t("histStageSkipped")}</Tag> : null}
+          </span>
           <span>
-            {stage.total > 0
-              ? `${stage.done}/${stage.total}`
-              : stage.status === "completed"
-                ? t("histStageCompleted")
-                : t("histStageWaiting")}
+            {isSkippedStage(stage)
+              ? t("histStageSkipped")
+              : stage.total > 0
+                ? `${stage.done}/${stage.total}`
+                : stage.status === "completed"
+                  ? t("histStageCompleted")
+                  : t("histStageWaiting")}
           </span>
         </div>
         <Progress percent={percent} size="small" status={progressStatus as any} showInfo={false} />
@@ -431,12 +460,13 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
 
   const renderFailureItem = (item: HistoryInitializationFailureItem) => (
     <div key={`${item.symbol_id}-${item.stage}`} className="history-run-failed-item" style={{ padding: "8px 0", borderTop: "1px solid #f0f0f0" }}>
-      <div style={{ display: "grid", gap: 6, gridTemplateColumns: "minmax(160px, 1.3fr) minmax(90px, 0.8fr) minmax(220px, 2fr) minmax(90px, 0.8fr) minmax(120px, 1fr)" }}>
+      <div style={{ display: "grid", gap: 6, gridTemplateColumns: "minmax(160px, 1.3fr) minmax(90px, 0.8fr) minmax(220px, 2fr) minmax(90px, 0.8fr) minmax(120px, 1fr) auto" }}>
         <span><strong>{item.symbol}</strong>{item.name ? ` / ${item.name}` : ""}</span>
         <span>{stageLabel(item.stage)}</span>
         <span>{item.message}</span>
         <span>{item.failed_days || "-"}</span>
         <span>{item.last_trade_date || "-"}</span>
+        {onOpenDiagnostic && <Button size="small" type="link" onClick={() => onOpenDiagnostic(item.symbol_id)}>{t("diagTitle")}</Button>}
       </div>
     </div>
   );
@@ -473,8 +503,9 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
     return (
       <div key={runId} className="history-run-item">
         <div className="history-run-item__head">
-          <div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <strong>{presetLabel(run.preset) || run.preset}</strong>
+            <Tag color={repairModeColor(run.repair_mode)}>{repairModeLabel(run.repair_mode)}</Tag>
             <span>{formatDateRange(run.start_date, run.end_date)}</span>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -492,6 +523,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
           <span>{template("histRunDuration", { duration: formatDuration(deriveDurationSeconds(run)) })}</span>
           <span>{template("histRunBarsOk", { count: run.summary.sync_ok_count })}</span>
           <span>{template("histRunScoreDone", { done: run.summary.score_days_completed, total: run.summary.score_days_total })}</span>
+          <span><Tag color={repairModeColor(run.repair_mode)}>{repairModeLabel(run.repair_mode)}</Tag></span>
           {runScopeLabel && <span>{template("histScopeCurrentSymbol", { symbol: runScopeLabel })}</span>}
         </div>
         {run.message && (run.status === "failed" || run.status === "cancelled") && (
@@ -500,6 +532,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
         {expanded && (
           <div className="history-run-item__details" style={{ marginTop: 12, padding: "12px 16px", background: "#fafafa", borderRadius: 6 }}>
             <div style={{ marginBottom: 12 }}>
+              <div className="item-subline" style={{ marginBottom: 10 }}>{repairModeHint(run.repair_mode)}</div>
               {stages && stages.length > 0
                 ? stages.map((stage) => renderHistoryStage(stage, true))
                 : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("histNoStageDetail")} />}
@@ -600,9 +633,12 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
             <p className="panel-kicker">{t("histPanelKicker")}</p>
             <h2>{t("histPanelTitle")}</h2>
           </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Tag color={repairModeColor(historyTask?.repair_mode ?? requestedRepairMode)}>{repairModeLabel(historyTask?.repair_mode ?? requestedRepairMode)}</Tag>
           <Tag color={HISTORY_STATUS_COLORS[historyTask?.status || "idle"]}>
             {statusLabel(historyTask?.status || "idle")}
           </Tag>
+        </div>
         </div>
 
         <Alert type="info" showIcon style={{ marginBottom: 16 }} message={t("histPanelDesc")} />
@@ -615,7 +651,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
             message={t("histScopePinned")}
             description={
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                <span>{template("histScopeCurrentSymbol", { symbol: activeScopedSymbolLabel || String(activeScopedSymbolId) })}</span>
+                <span>{template("histScopeCurrentSymbol", { symbol: activeScopedSymbolLabel || String(activeScopedSymbolId) })}<Tag style={{ marginInlineStart: 8 }}>{repairModeLabel(requestedRepairMode)}</Tag></span>
                 {onClearContext && scopedSymbolId ? <Button size="small" type="link" style={{ padding: 0, height: "auto" }} onClick={onClearContext}>{t("histClearScope")}</Button> : null}
               </div>
             }
@@ -653,7 +689,7 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
           <div className="history-init-overview-card">
             <span>{t("histLastRun")}</span>
             <strong>{formatDate(latestRun?.started_at)}</strong>
-            <small>{latestRun ? presetLabel(latestRun.preset) || latestRun.preset : t("histNoRecord")}</small>
+            <small>{latestRun ? `${presetLabel(latestRun.preset) || latestRun.preset} / ${repairModeLabel(latestRun.repair_mode)}` : t("histNoRecord")}</small>
           </div>
           <div className="history-init-overview-card">
             <span>{t("histDuration")}</span>
@@ -687,11 +723,15 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
         {historyTask && historyTask.status !== "idle" && (
           <div className="history-init-progress-wrap">
             <div className="history-init-progress-head">
-              <strong>{t("histOverallProgress")}</strong>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <strong>{t("histOverallProgress")}</strong>
+                <Tag color={repairModeColor(historyTask.repair_mode)}>{repairModeLabel(historyTask.repair_mode)}</Tag>
+              </div>
               <span>{historyTask.progress_pct}%</span>
             </div>
             <Progress percent={historyTask.progress_pct} status={historyTask.status === "failed" || historyTask.status === "cancelled" ? "exception" : historyTask.status === "completed" ? "success" : "active"} />
             {historyTask.message && <div className="history-init-status-text">{historyTask.message}</div>}
+            <div className="item-subline" style={{ marginTop: 6 }}>{repairModeHint(historyTask.repair_mode)}</div>
 
             <div className="history-init-summary-grid">
               <div>

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import ast
 import json
@@ -20,6 +20,7 @@ from app.schemas.custom_indicator import (
     CustomIndicatorPreviewSeriesItem,
     CustomIndicatorRead,
     CustomIndicatorUpdate,
+    CustomIndicatorVersionRead,
 )
 from app.services.backtest import _resolve_formula_expr
 
@@ -88,7 +89,7 @@ def _ensure_unique(db: Session, key: str, name: str, exclude_id: int | None = No
         raise HTTPException(status_code=409, detail="Indicator key or name already exists")
 
 
-def _write_version(db: Session, indicator: CustomIndicator) -> int:
+def _write_version(db: Session, indicator: CustomIndicator, change_note: str = "") -> int:
     latest = db.execute(
         select(func.max(CustomIndicatorVersion.version)).where(CustomIndicatorVersion.indicator_id == indicator.id)
     ).scalar_one()
@@ -99,6 +100,7 @@ def _write_version(db: Session, indicator: CustomIndicator) -> int:
         formula=indicator.formula,
         params_json=indicator.params_json,
         value_type=indicator.value_type,
+        change_note=change_note,
     ))
     return next_version
 
@@ -226,7 +228,7 @@ def create_custom_indicator(payload: CustomIndicatorCreate, db: Session = Depend
     )
     db.add(row)
     db.flush()
-    version = _write_version(db, row)
+    version = _write_version(db, row, payload.change_note or "")
     db.commit()
     db.refresh(row)
     return _format_indicator(row, version)
@@ -272,7 +274,8 @@ def update_custom_indicator(indicator_id: int, payload: CustomIndicatorUpdate, d
     version = _latest_version(row.id, db)
     if formula_changed:
         db.flush()
-        version = _write_version(db, row)
+        change_note = payload.change_note or ""
+        version = _write_version(db, row, change_note)
     db.commit()
     db.refresh(row)
     return _format_indicator(row, version)
@@ -398,6 +401,44 @@ def preview_custom_indicator(payload: CustomIndicatorPreviewRequest, db: Session
         "score_snapshot": _preview_score_payload(score),
         "recent_results": recent_results,
     }
+
+
+@router.get("/settings/custom-indicators/{indicator_id}/versions", response_model=list[CustomIndicatorVersionRead])
+def list_indicator_versions(indicator_id: int, db: Session = Depends(get_db)):
+    row = db.get(CustomIndicator, indicator_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Custom indicator not found")
+    stmt = (
+        select(CustomIndicatorVersion)
+        .where(CustomIndicatorVersion.indicator_id == indicator_id)
+        .order_by(desc(CustomIndicatorVersion.version))
+    )
+    versions = db.execute(stmt).scalars().all()
+    return versions
+
+
+@router.post("/settings/custom-indicators/{indicator_id}/rollback/{version}", response_model=CustomIndicatorRead)
+def rollback_indicator_version(indicator_id: int, version: int, db: Session = Depends(get_db)):
+    row = db.get(CustomIndicator, indicator_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Custom indicator not found")
+    ver_row = db.execute(
+        select(CustomIndicatorVersion).where(
+            CustomIndicatorVersion.indicator_id == indicator_id,
+            CustomIndicatorVersion.version == version,
+        )
+    ).scalars().first()
+    if ver_row is None:
+        raise HTTPException(status_code=404, detail=f"Version {version} not found")
+    row.formula = ver_row.formula
+    row.params_json = ver_row.params_json
+    row.value_type = ver_row.value_type
+    row.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    next_ver = _write_version(db, row, change_note=f"Rollback to v{version}")
+    db.commit()
+    db.refresh(row)
+    return _format_indicator(row, next_ver)
 
 
 @router.delete("/settings/custom-indicators/{indicator_id}")

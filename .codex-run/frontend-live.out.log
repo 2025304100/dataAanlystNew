@@ -36,3 +36,42 @@
 13:07:03 [vite] hmr update /src/main.tsx, /src/App.tsx, /src/components/PortfolioWorkbench.tsx, /src/components/MetricModal.tsx, /src/components/TodayDecision.tsx, /src/components/Trading.tsx, /src/components/Settings.tsx, /src/components/MacroData.tsx, /src/components/MarketNews.tsx, /src/components/Discovery.tsx, /src/components/DetailModal.tsx, /src/components/InvestmentCenter.tsx, /src/components/CustomIndicatorSettings.tsx, /src/components/HistoryInitSection.tsx
 13:07:03 [vite] hmr invalidate /src/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
 13:07:03 [vite] page reload src/main.tsx
+13:18:46 [vite] hmr update /src/components/ConditionBuilder.tsx
+13:19:32 [vite] hmr update /src/components/BacktestConfig.tsx
+13:20:22 [vite] hmr update /src/components/BacktestConfig.tsx
+13:21:44 [vite] hmr update /src/components/BacktestResult.tsx
+13:22:19 [vite] hmr update /src/components/BacktestResult.tsx
+13:22:49 [vite] hmr update /src/components/BacktestResult.tsx
+13:23:22 [vite] hmr update /src/components/BacktestResult.tsx
+13:23:47 [vite] hmr update /src/App.tsx, /src/context/AppContext.tsx, /src/components/PortfolioWorkbench.tsx, /src/components/MetricModal.tsx, /src/components/TodayDecision.tsx, /src/components/MacroData.tsx, /src/components/MarketNews.tsx, /src/components/Discovery.tsx, /src/components/DetailModal.tsx, /src/components/InvestmentCenter.tsx, /src/components/CustomIndicatorSettings.tsx, /src/components/DiscoveryPlanSettings.tsx, /src/components/HistoryInitSection.tsx, /src/components/DbConfigSection.tsx, /src/components/BacktestConfig.tsx, /src/components/Trading.tsx, /src/components/Settings.tsx, /src/components/BacktestResult.tsx, /src/components/ConditionBuilder.tsx
+13:23:47 [vite] hmr invalidate /src/context/AppContext.tsx Could not Fast Refresh ("useApp" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+13:23:47 [vite] hmr update /src/main.tsx, /src/App.tsx, /src/components/PortfolioWorkbench.tsx, /src/components/MetricModal.tsx, /src/components/TodayDecision.tsx, /src/components/Trading.tsx, /src/components/Settings.tsx, /src/components/MacroData.tsx, /src/components/MarketNews.tsx, /src/components/Discovery.tsx, /src/components/DetailModal.tsx, /src/components/InvestmentCenter.tsx, /src/components/CustomIndicatorSettings.tsx, /src/components/HistoryInitSection.tsx
+13:24:55 [vite] hmr update /src/components/BacktestConfig.tsx
+13:29:09 [vite] hmr update /src/components/BacktestResult.tsx
+13:29:34 [vite] hmr update /src/components/BacktestResult.tsx
+17:49:10 [vite] hmr update /src/components/ConditionBuilder.tsx
+17:49:27 [vite] hmr update /src/context/AppContext.tsx, /src/components/PortfolioWorkbench.tsx, /src/components/MetricModal.tsx, /src/components/TodayDecision.tsx, /src/components/MacroData.tsx, /src/components/MarketNews.tsx, /src/components/Discovery.tsx, /src/components/DetailModal.tsx, /src/components/InvestmentCenter.tsx, /src/components/CustomIndicatorSettings.tsx, /src/components/DiscoveryPlanSettings.tsx, /src/components/HistoryInitSection.tsx, /src/components/DbConfigSection.tsx, /src/components/BacktestConfig.tsx
+17:49:28 [vite] hmr invalidate /src/context/AppContext.tsx Could not Fast Refresh ("useApp" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+17:49:28 [vite] hmr update /src/main.tsx, /src/App.tsx, /src/components/PortfolioWorkbench.tsx, /src/components/MetricModal.tsx, /src/components/TodayDecision.tsx, /src/components/Trading.tsx, /src/components/Settings.tsx, /src/components/MacroData.tsx, /src/components/MarketNews.tsx, /src/components/Discovery.tsx, /src/components/DetailModal.tsx, /src/components/InvestmentCenter.tsx, /src/components/CustomIndicatorSettings.tsx, /src/components/HistoryInitSection.tsx
+17:49:28 [vite] hmr invalidate /src/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+17:49:28 [vite] page reload src/main.tsx
+17:49:57 [vite] hmr update /src/App.tsx, /src/context/AppContext.tsx, /src/components/PortfolioWorkbench.tsx, /src/components/MetricModal.tsx, /src/components/TodayDecision.tsx, /src/components/MacroData.tsx, /src/components/MarketNews.tsx, /src/components/Discovery.tsx, /src/components/DetailModal.tsx, /src/components/InvestmentCenter.tsx, /src/components/CustomIndicatorSettings.tsx, /src/components/DiscoveryPlanSettings.tsx, /src/components/HistoryInitSection.tsx, /src/components/DbConfigSection.tsx, /src/components/BacktestConfig.tsx, /src/components/Trading.tsx, /src/components/Settings.tsx, /src/components/BacktestResult.tsx, /src/components/ConditionBuilder.tsx
+17:49:57 [vite] hmr invalidate /src/context/AppContext.tsx Could not Fast Refresh ("useApp" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+17:49:57 [vite] hmr update /src/main.tsx, /src/App.tsx, /src/components/PortfolioWorkbench.tsx, /src/components/MetricModal.tsx, /src/components/TodayDecision.tsx, /src/components/Trading.tsx, /src/components/Settings.tsx, /src/components/MacroData.tsx, /src/components/MarketNews.tsx, /src/components/Discovery.tsx, /src/components/DetailModal.tsx, /src/components/InvestmentCenter.tsx, /src/components/CustomIndicatorSettings.tsx, /src/components/HistoryInitSection.tsx
+17:49:57 [vite] hmr invalidate /src/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+17:49:57 [vite] page reload src/main.tsx
+17:50:40 [vite] hmr update /src/App.tsx, /src/context/AppContext.tsx, /src/components/PortfolioWorkbench.tsx, /src/components/MetricModal.tsx, /src/components/TodayDecision.tsx, /src/components/MacroData.tsx, /src/components/MarketNews.tsx, /src/components/Discovery.tsx, /src/components/DetailModal.tsx, /src/components/InvestmentCenter.tsx, /src/components/CustomIndicatorSettings.tsx, /src/components/DiscoveryPlanSettings.tsx, /src/components/HistoryInitSection.tsx, /src/components/DbConfigSection.tsx, /src/components/BacktestConfig.tsx, /src/components/Trading.tsx, /src/components/Settings.tsx, /src/components/BacktestResult.tsx, /src/components/ConditionBuilder.tsx
+17:50:40 [vite] hmr invalidate /src/context/AppContext.tsx Could not Fast Refresh ("useApp" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+17:50:40 [vite] hmr update /src/main.tsx, /src/App.tsx, /src/components/PortfolioWorkbench.tsx, /src/components/MetricModal.tsx, /src/components/TodayDecision.tsx, /src/components/Trading.tsx, /src/components/Settings.tsx, /src/components/MacroData.tsx, /src/components/MarketNews.tsx, /src/components/Discovery.tsx, /src/components/DetailModal.tsx, /src/components/InvestmentCenter.tsx, /src/components/CustomIndicatorSettings.tsx, /src/components/HistoryInitSection.tsx
+17:50:40 [vite] hmr invalidate /src/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+17:50:40 [vite] page reload src/main.tsx
+17:50:47 [vite] hmr update /src/components/CustomIndicatorSettings.tsx
+17:50:53 [vite] hmr update /src/components/CustomIndicatorSettings.tsx
+17:51:01 [vite] hmr update /src/components/CustomIndicatorSettings.tsx
+17:51:09 [vite] hmr update /src/components/CustomIndicatorSettings.tsx
+17:51:14 [vite] hmr update /src/components/CustomIndicatorSettings.tsx
+17:51:22 [vite] hmr update /src/components/CustomIndicatorSettings.tsx
+17:51:29 [vite] hmr update /src/components/CustomIndicatorSettings.tsx
+17:51:38 [vite] hmr update /src/components/CustomIndicatorSettings.tsx
+17:51:53 [vite] hmr update /src/components/CustomIndicatorSettings.tsx
+17:52:21 [vite] hmr update /src/styles/workbench.css

@@ -3,11 +3,14 @@ import { useApp } from "../context/AppContext";
 import { t, DOT } from "../i18n";
 import { statPct, pnlClass, clamp } from "../utils/format";
 import { Input, InputNumber, Checkbox, Button, Space, Card, Form } from "antd";
-import { DatabaseOutlined, FunctionOutlined, SettingOutlined, SyncOutlined } from "@ant-design/icons";
+import { DatabaseOutlined, FunctionOutlined, SettingOutlined, SyncOutlined, MedicineBoxOutlined, UnorderedListOutlined, BellOutlined } from "@ant-design/icons";
 import DbConfigSection from "./DbConfigSection";
 import CustomIndicatorSettings from "./CustomIndicatorSettings";
 import DiscoveryPlanSettings from "./DiscoveryPlanSettings";
 import HistoryInitSection from "./HistoryInitSection";
+import DataDiagnosticPanel from "./DataDiagnosticPanel";
+import TaskCenter from "./TaskCenter";
+import AlertCenter from "./AlertCenter";
 
 export default function Settings() {
   const ctx = useApp();
@@ -16,10 +19,10 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "db">(() => {
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "alerts" | "db">(() => {
     if (typeof window === "undefined") return "rules";
     const stored = window.localStorage.getItem("settings_active_section");
-    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "db" ? stored : "rules";
+    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "alerts" || stored === "db" ? stored : "rules";
   });
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<"formulas" | "plans">(() => {
     if (typeof window === "undefined") return "formulas";
@@ -27,7 +30,8 @@ export default function Settings() {
     return stored === "formulas" || stored === "plans" ? stored : "formulas";
   });
   const [historyFocusSignal, setHistoryFocusSignal] = useState(0);
-  const [historyInitContext, setHistoryInitContext] = useState<{ symbolId?: number | null; symbolLabel?: string | null } | null>(null);
+  const [diagnosticSymbolId, setDiagnosticSymbolId] = useState<number | null>(null);
+  const [historyInitContext, setHistoryInitContext] = useState<{ symbolId?: number | null; symbolLabel?: string | null; repairMode?: "both" | "bars" | "scores" } | null>(null);
 
   useEffect(() => {
     if (rule && activeSymbolId) {
@@ -93,7 +97,7 @@ export default function Settings() {
   };
   const summary = rule ? `${rule.rule_name}${DOT}${rule.mode}` : "-";
 
-  const openHistoryInitialization = (context?: { symbolId?: number | null; symbolLabel?: string | null }) => {
+  const openHistoryInitialization = (context?: { symbolId?: number | null; symbolLabel?: string | null; repairMode?: "both" | "bars" | "scores" }) => {
     setHistoryInitContext(context ?? null);
     setActiveSection("history");
     setHistoryFocusSignal((value) => value + 1);
@@ -178,6 +182,33 @@ export default function Settings() {
           >
             <span className="settings-nav-icon"><SyncOutlined /></span>
             <span className="settings-nav-copy">{t("histSettingsNav")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "diagnostic" ? "active" : ""}`}
+            aria-current={activeSection === "diagnostic" ? "page" : undefined}
+            onClick={() => setActiveSection("diagnostic")}
+          >
+            <span className="settings-nav-icon"><MedicineBoxOutlined /></span>
+            <span className="settings-nav-copy">{t("diagTitle")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "tasks" ? "active" : ""}`}
+            aria-current={activeSection === "tasks" ? "page" : undefined}
+            onClick={() => setActiveSection("tasks")}
+          >
+            <span className="settings-nav-icon"><UnorderedListOutlined /></span>
+            <span className="settings-nav-copy">{t("taskCenter")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "alerts" ? "active" : ""}`}
+            aria-current={activeSection === "alerts" ? "page" : undefined}
+            onClick={() => setActiveSection("alerts")}
+          >
+            <span className="settings-nav-icon"><BellOutlined /></span>
+            <span className="settings-nav-copy">{t("alertCenter")}</span>
           </button>
           <button
             type="button"
@@ -360,7 +391,28 @@ export default function Settings() {
           {activeSection === "history" && (
             <div className="settings-tab-container" data-settings-content="settings-history">
               <section className="band">
-                <HistoryInitSection focusSignal={historyFocusSignal} context={historyInitContext} onClearContext={() => setHistoryInitContext(null)} />
+                <HistoryInitSection focusSignal={historyFocusSignal} context={historyInitContext} onClearContext={() => setHistoryInitContext(null)} onOpenDiagnostic={(symbolId) => { setDiagnosticSymbolId(symbolId); setActiveSection("diagnostic"); }} />
+              </section>
+            </div>
+          )}
+          {activeSection === "diagnostic" && (
+            <div className="settings-tab-container" data-settings-content="settings-diagnostic">
+              <section className="band">
+                <DataDiagnosticPanel symbolId={diagnosticSymbolId} onOpenHistoryInit={openHistoryInitialization} />
+              </section>
+            </div>
+          )}
+          {activeSection === "tasks" && (
+            <div className="settings-tab-container" data-settings-content="settings-tasks">
+              <section className="band">
+                <TaskCenter />
+              </section>
+            </div>
+          )}
+          {activeSection === "alerts" && (
+            <div className="settings-tab-container" data-settings-content="settings-alerts">
+              <section className="band">
+                <AlertCenter />
               </section>
             </div>
           )}

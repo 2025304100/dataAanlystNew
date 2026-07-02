@@ -19,9 +19,34 @@ from app.models.symbol import Symbol
 
 
 EXECUTION_PRICE_FIELDS = {"open", "close"}
+EXECUTION_TIMING_MODES = {"signal_open", "signal_close", "next_open"}
+
+
+def _execution_timing_mode(rule_config: dict, prefix: str, default: str = "signal_close") -> str:
+    execution_config = rule_config.get("execution_config", {})
+    if not isinstance(execution_config, dict):
+        return default
+    timing = execution_config.get(f"{prefix}_timing")
+    if timing in EXECUTION_TIMING_MODES:
+        return timing
+    legacy_field = execution_config.get(f"{prefix}_price_field")
+    if legacy_field == "open":
+        return "signal_open"
+    return default
+
+
+def _execution_price_field_for_timing(timing: str) -> str:
+    return "open" if timing in {"signal_open", "next_open"} else "close"
+
+
+def _signal_price_field_for_timing(timing: str) -> str:
+    return "open" if timing == "signal_open" else "close"
 
 
 def _execution_price_field(rule_config: dict, key: str, default: str = "close") -> str:
+    prefix = "entry" if key.startswith("entry") else "exit" if key.startswith("exit") else None
+    if prefix is not None:
+        return _execution_price_field_for_timing(_execution_timing_mode(rule_config, prefix, default="signal_close"))
     execution_config = rule_config.get("execution_config", {})
     if not isinstance(execution_config, dict):
         return default
@@ -116,7 +141,7 @@ def _evaluate_buy_signal(
     history_bars: list[DailyBar] | None = None,
     prev_bar: DailyBar | None = None,
 ) -> bool:
-    """判断买入条件是否满足。"""
+    """Doc."""
     if rule_config.get("version", 1) >= 2:
         return _buy_reject_reason_v2(bar, prev_bar, score, rule_config, history_bars) is None
     return _buy_reject_reason(symbol_id, trade_date, bar, score, rule_config, history_bars) is None
@@ -130,13 +155,12 @@ def _buy_reject_reason(
     rule_config: dict,
     history_bars: list[DailyBar] | None = None,
 ) -> str | None:
-    """返回第一个未满足的买入条件；None 表示信号通过。"""
+    """Doc."""
     buy_conditions = rule_config.get("buy_conditions", {})
     
-    # 评分阈值
+    # Score is required for standard-mode buy evaluation.
     if score is None:
         return "no_score"
-    
     quality_min = buy_conditions.get("quality_score_min")
     if quality_min is not None and score.quality_score < quality_min:
         return "quality_score_min"
@@ -145,11 +169,10 @@ def _buy_reject_reason(
     if timing_min is not None and score.timing_score < timing_min:
         return "timing_score_min"
     
-    # 阶段和动作过滤
+    # Stage and action filters are optional guards in standard mode.
     allowed_stages = buy_conditions.get("stages")
     if allowed_stages and score.stage not in allowed_stages:
         return "stage"
-    
     allowed_actions = buy_conditions.get("actions")
     if allowed_actions and score.action not in allowed_actions:
         return "action"
@@ -205,7 +228,7 @@ def _evaluate_sell_signal(
     prev_bar: DailyBar | None = None,
     peak_price: float | None = None,
 ) -> tuple[bool, str | None]:
-    """判断卖出条件是否满足，返回退出原因。"""
+    """Doc."""
     if rule_config.get("version", 1) >= 2:
         return _evaluate_sell_v2(trade, current_bar, prev_bar, current_date, rule_config, score, history_bars, peak_price)
     sell_conditions = rule_config.get("sell_conditions", {})
@@ -261,11 +284,10 @@ def _evaluate_sell_signal(
 
 
 # ============================================================
-# v2: 条件树求值引擎
-# ============================================================
+# v2: 闂備礁鎼ˇ顐﹀焵椤掆偓瀵爼顢曟禒瀣厸鐎广儱妫楅悘锕傛煟椤忓啫宓嗙€规洘鍔欓幃鈩冩償閿濆洠鏁嶉梻?# ============================================================
 
 def _score_attr(score, attr: str, default=None):
-    """安全读取 score 属性。"""
+    """Doc."""
     if score is None:
         return default
     return getattr(score, attr, default)
@@ -478,11 +500,8 @@ _COMPARE_OPS = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt
 
 
 def _eval_sandboxed(tree, variables, functions):
-    """对预验证的 AST 树进行求值，不使用 eval()。
-
-    仅处理 _ALLOWED_EXPR_NODES 白名单中的节点，其他节点返回 None。
-    所有算术/比较/调用错误降级为 None 而非抛出异常。
-    """
+    """Doc."""
+    # Evaluate a parsed expression tree against the sandboxed allow-list.
     def _ev(node):
         if isinstance(node, ast.Expression):
             return _ev(node.body)
@@ -762,14 +781,13 @@ def _resolve_max_hold_days(score, bar, prev_bar, history_bars, params) -> bool:
     return int(hold_days) >= int(days)
 
 
-# 字段注册表
 FIELD_RESOLVERS = {
-    # 基础评分
+    # Score-derived fields.
     "quality_score": lambda s, b, p, h, pm: _score_attr(s, "quality_score", 0.0),
     "timing_score": lambda s, b, p, h, pm: _score_attr(s, "timing_score", 0.0),
     "stage": lambda s, b, p, h, pm: _score_attr(s, "stage", ""),
     "action": lambda s, b, p, h, pm: _score_attr(s, "action", ""),
-    # 子评分
+    # Expanded score breakdown fields.
     "trend_score": lambda s, b, p, h, pm: _score_attr(s, "trend_score", 0.0),
     "momentum_score": lambda s, b, p, h, pm: _score_attr(s, "momentum_score", 0.0),
     "volatility_score": lambda s, b, p, h, pm: _score_attr(s, "volatility_score", 0.0),
@@ -778,8 +796,7 @@ FIELD_RESOLVERS = {
     "breakout_score": lambda s, b, p, h, pm: _score_attr(s, "breakout_score", 0.0),
     "pullback_score": lambda s, b, p, h, pm: _score_attr(s, "pullback_score", 0.0),
     "overheat_penalty": lambda s, b, p, h, pm: _score_attr(s, "overheat_penalty", 0.0),
-    "event_score": lambda s, b, p, h, pm: _score_attr(s, "event_score", 0.0),
-    # 技术指标
+    # Price and technical fields.
     "open_price": lambda s, b, p, h, pm: float(b.open),
     "high_price": lambda s, b, p, h, pm: float(b.high),
     "low_price": lambda s, b, p, h, pm: float(b.low),
@@ -810,7 +827,7 @@ FIELD_RESOLVERS = {
     "pullback_ma": _resolve_pullback_ma,
     "custom_expr": _resolve_custom_expr,
     "custom_indicator": _resolve_custom_indicator,
-    # 卖出条件
+    # 闂備礁鎲￠〃鍡涙偋閺囥垹鍚规い鎾卞灩缁狙囨煃閵夈儱绾фい?
     "stop_loss_pct": _resolve_stop_loss,
     "take_profit_pct": _resolve_take_profit,
     "trailing_stop": _resolve_trailing_stop,
@@ -852,7 +869,7 @@ def _evaluate_condition_tree(
     history_bars: list[DailyBar] | None,
     extra_params: dict | None = None,
 ) -> bool:
-    """递归求值条件树节点，返回该节点是否通过。"""
+    """Doc."""
     if not node:
         return True
 
@@ -906,17 +923,16 @@ def _first_fail_reason_v2(
                 if reason is not None:
                     return reason
             return None
-        else:  # OR：只要任一通过就 OK
+        else:  # OR: any passing child is enough.
             for c in children:
                 if _evaluate_condition_tree(c, score, bar, prev_bar, history_bars, extra_params):
                     return None
-            # 全部失败，返回第一个叶节点的 field 名
+            # For OR groups, return the first leaf field as a fallback explanation.
             return _extract_first_leaf_field(node)
     else:
         field = node.get("field", "unknown")
         passed = _evaluate_condition_tree(node, score, bar, prev_bar, history_bars, extra_params)
         return None if passed else field
-
 
 def _extract_first_leaf_field(node: dict) -> str:
     """Doc."""
@@ -936,7 +952,7 @@ def _buy_reject_reason_v2(
     rule_config: dict,
     history_bars: list[DailyBar] | None = None,
 ) -> str | None:
-    """v2 买入条件检查，返回第一个未通过的条件字段名。"""
+    """Doc."""
     if score is None:
         return "no_score"
     buy_tree = rule_config.get("buy_conditions", {})
@@ -993,7 +1009,7 @@ def _first_match_reason_v2(
             for c in children:
                 if not _evaluate_condition_tree(c, score, bar, prev_bar, history_bars, extra_params):
                     return None
-            # 全部通过，返回第一个叶节点的 field
+            # 闂備胶顭堢换鍫ュ礉閹达箑纾块柟缁㈠枟閻掔粯鎱ㄥΟ铏癸紞缂佺姵鐗犻弻銊モ槈濡偐鍔紓浣虹帛閸ㄥ灝鐣烽崼鏇熷€锋繛鍫濈仢閸撹櫕绻涢幋鐐村皑闁稿鎸搁埥澶愬箼閸愌呯泿閻熸粈鍗崇粻鏍箠閻愬搫纾兼繝濠傚暕閸栨牠姊?field
             return _extract_first_leaf_field(node)
     else:
         field = node.get("field", "unknown")
@@ -1007,19 +1023,18 @@ def _compute_equity_curve(
     date_range: list[date],
     close_prices: dict[tuple[int, date], float],
 ) -> list[dict]:
-    """计算权益曲线，逐日跟踪现金与持仓市值。"""
+    """Doc."""
     equity_curve = []
     cash = initial_capital
     positions: dict[int, BacktestTrade] = {}
     
     for current_date in date_range:
-        # 处理当日开盘
+        # Apply entries that fill on the current date.
         for trade in trades:
             if trade.entry_date == current_date:
                 cash -= trade.entry_price * trade.quantity + trade.entry_cost
                 positions[trade.id] = trade
-        
-        # 处理当日平仓
+        # 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崨顐℃睏闂佽鍎抽悺銊╂晬婢跺娈介柣鎰絻鐢姷绱?
         for trade in trades:
             if trade.exit_date == current_date and trade.id in positions:
                 cash += trade.exit_price * trade.quantity - (trade.exit_cost or 0)
@@ -1046,7 +1061,7 @@ def _compute_statistics(
     initial_capital: float,
     equity_curve: list[dict],
 ) -> dict:
-    """根据交易记录和权益曲线计算回测统计指标。"""
+    """Doc."""
     if not trades or not equity_curve:
         return {
             "total_return": 0.0,
@@ -1059,13 +1074,11 @@ def _compute_statistics(
             "trade_count": 0,
             "avg_holding_days": 0.0,
         }
-    
-    # 总收益
+    # Total return.
     final_equity = equity_curve[-1]["equity"]
     total_return = final_equity - initial_capital
     total_return_pct = total_return / initial_capital if initial_capital > 0 else 0.0
-    
-    # 最大回撤
+    # Max drawdown.
     peak = initial_capital
     max_dd = 0.0
     max_dd_pct = 0.0
@@ -1079,7 +1092,7 @@ def _compute_statistics(
             max_dd = dd
             max_dd_pct = dd_pct
     
-    # 胜率和盈亏比
+    # 闂備浇澹堝▍鏇犲垝鎼粹槅鍟呭┑鍌滎焾濡炵晫鈧厜鍋撻柍褜鍓欓埢鏃堝煛閸屾粠娲搁棅顐㈡处濮婅危?
     completed_trades = [t for t in trades if t.exit_date is not None and t.pnl is not None]
     win_trades = [t for t in completed_trades if t.pnl > 0]
     loss_trades = [t for t in completed_trades if t.pnl < 0]
@@ -1090,10 +1103,10 @@ def _compute_statistics(
     avg_loss = abs(sum(t.pnl for t in loss_trades) / len(loss_trades)) if loss_trades else 0.0
     profit_factor = (avg_win * len(win_trades)) / (avg_loss * len(loss_trades)) if loss_trades else float('inf')
     
-    # 平均持有天数
+    # 婵°倗濮烽崑娑㈠疮閸噮鐒介幖娣妼缁犳澘霉閿濆牜娼愮紒鐘冲笒椤潡宕瑰☉娆愮彆闂?
     avg_hold_days = sum(t.hold_days or 0 for t in completed_trades) / len(completed_trades) if completed_trades else 0.0
     
-    # 夏普比率（简化版，假设无风险利率 3%?
+    # 濠电姰鍨煎▔娑氭崲閹存績鏋嶆俊顖滄磪閹烘绫嶉柛灞句亢婵敻姊洪幐搴ｂ槈闁绘绻橀幃鎯р攽鐎ｎ亞顦遍梺鍝勭▉閸嬪嫰銆傛總鍛婄叆婵炴垶顭堢€氭澘霉濠婃劗鎮奸柟宄邦儔閹瑩顢楁笟濠囩崪濠碉紕鍋涢鍛存煀閿濆應鏋嶉柟鎹愵嚙缁€鍡涙煃閸濆嫬鏆欓柤?3%?
     if len(equity_curve) > 1:
         returns = [(equity_curve[i]["equity"] - equity_curve[i-1]["equity"]) / equity_curve[i-1]["equity"]
                    for i in range(1, len(equity_curve))]
@@ -1174,6 +1187,7 @@ def _collect_condition_traces(
         trace["indicator_key"] = params.get("indicator_key")
         trace["indicator_name"] = indicator.get("name") or params.get("indicator_key") or "custom_indicator"
         trace["value_type"] = indicator.get("value_type")
+        trace["indicator_version"] = indicator.get("version")
     return [trace]
 
 
@@ -1185,7 +1199,7 @@ def _build_trade_trace_map(
     bars_by_sym: dict[int, list[DailyBar]],
     bar_idx: dict[tuple[int, date], int],
 ) -> dict[int, dict]:
-    if not trades or rule_config.get("version", 1) < 2:
+    if not trades:
         return {}
 
     def _bar_context(symbol_id: int, trade_day: date, max_history: int = 250) -> tuple[DailyBar | None, DailyBar | None, list[DailyBar]]:
@@ -1198,39 +1212,65 @@ def _build_trade_trace_map(
         history = sym_bars[max(0, idx - max_history):idx]
         return current_bar, prev_bar, history
 
+    def _signal_day(symbol_id: int, execution_day: date, timing: str) -> date | None:
+        if timing != "next_open":
+            return execution_day
+        idx = bar_idx.get((symbol_id, execution_day))
+        if idx is None or idx <= 0:
+            return None
+        sym_bars = bars_by_sym.get(symbol_id, [])
+        return sym_bars[idx - 1].trade_date if idx - 1 < len(sym_bars) else None
+
     trade_annotations: dict[int, dict] = {}
+    is_v2 = rule_config.get("version", 1) >= 2
     buy_tree = rule_config.get("buy_conditions", {})
     sell_tree = rule_config.get("sell_conditions", {})
+    entry_timing = _execution_timing_mode(rule_config, "entry")
+    exit_timing = _execution_timing_mode(rule_config, "exit")
 
     for trade in trades:
+        entry_signal_day = _signal_day(trade.symbol_id, trade.entry_date, entry_timing)
+        entry_signal_bar, entry_prev_bar, entry_history = _bar_context(trade.symbol_id, entry_signal_day) if entry_signal_day else (None, None, [])
         score = db.execute(
             select(Score)
             .where(
                 Score.symbol_id == trade.symbol_id,
-                Score.trade_date <= trade.entry_date,
+                Score.trade_date <= (entry_signal_day or trade.entry_date),
             )
             .order_by(Score.trade_date.desc())
         ).scalars().first()
-        entry_bar, entry_prev_bar, entry_history = _bar_context(trade.symbol_id, trade.entry_date)
         entry_traces = _collect_condition_traces(
             buy_tree,
             score,
-            entry_bar,
+            entry_signal_bar,
             entry_prev_bar,
             entry_history,
-        ) if entry_bar else []
+        ) if is_v2 and entry_signal_bar else []
 
-        exit_traces: list[dict] = []
+        annotation = {
+            "entry_signal_date": entry_signal_day,
+            "entry_signal_price": _bar_price(entry_signal_bar, _signal_price_field_for_timing(entry_timing)) if entry_signal_bar else None,
+            "entry_signal_price_field": _signal_price_field_for_timing(entry_timing) if entry_signal_bar else None,
+            "entry_execution_timing": entry_timing,
+            "entry_traces": entry_traces,
+            "exit_traces": [],
+            "exit_execution_timing": exit_timing,
+            "exit_signal_date": None,
+            "exit_signal_price": None,
+            "exit_signal_price_field": None,
+        }
+
         if trade.exit_date:
+            exit_signal_day = _signal_day(trade.symbol_id, trade.exit_date, exit_timing)
             exit_score = db.execute(
                 select(Score)
                 .where(
                     Score.symbol_id == trade.symbol_id,
-                    Score.trade_date <= trade.exit_date,
+                    Score.trade_date <= (exit_signal_day or trade.exit_date),
                 )
                 .order_by(Score.trade_date.desc())
             ).scalars().first()
-            exit_bar, exit_prev_bar, exit_history = _bar_context(trade.symbol_id, trade.exit_date)
+            exit_bar, exit_prev_bar, exit_history = _bar_context(trade.symbol_id, exit_signal_day) if exit_signal_day else (None, None, [])
             trade_window = [
                 item for item in _history_with_current(exit_history, exit_bar)
                 if item.trade_date >= trade.entry_date
@@ -1244,23 +1284,25 @@ def _build_trade_trace_map(
                 exit_history,
                 extra_params={
                     "entry_price": trade.entry_price,
-                    "hold_days": (trade.exit_date - trade.entry_date).days,
+                    "hold_days": ((exit_signal_day or trade.exit_date) - trade.entry_date).days,
                     "peak_price": peak_price,
                 },
-            ) if exit_bar else []
-
-        if entry_traces or exit_traces:
-            trade_annotations[trade.id] = {
-                "entry_traces": entry_traces,
+            ) if is_v2 and exit_bar else []
+            annotation.update({
+                "exit_signal_date": exit_signal_day,
+                "exit_signal_price": _bar_price(exit_bar, _signal_price_field_for_timing(exit_timing)) if exit_bar else None,
+                "exit_signal_price_field": _signal_price_field_for_timing(exit_timing) if exit_bar else None,
                 "exit_traces": exit_traces,
-            }
+            })
+
+        trade_annotations[trade.id] = annotation
 
     return trade_annotations
 
 
 
 def build_backtest_detail_context(db: Session, run: BacktestRun, trades: list[BacktestTrade] | None = None) -> dict:
-    """构建回测详情页所需的上下文数据。"""
+    """Doc."""
     try:
         symbol_ids = json.loads(run.symbols_json or "[]")
     except json.JSONDecodeError:
@@ -1304,7 +1346,7 @@ def build_backtest_detail_context(db: Session, run: BacktestRun, trades: list[Ba
     is_v2 = rule_config.get("version", 1) >= 2
     buy_tree = rule_config.get("buy_conditions", {})
 
-    # 构建诊断用的 bars 索引
+    # 闂備礁鎼鍛偓姘煎墰缁辨捇骞橀懜闈涚彴婵犵數濮撮崯顖炴倿娴犲鐓熸い顐墮婵℃寧绻?bars 缂傚倷妞掔粚鍫曞垂閸︻厽顫?
     bars_by_sym: dict[int, list] = {}
     bar_idx: dict[tuple[int, date], int] = {}
     for idx, b in enumerate(bars):
@@ -1324,7 +1366,7 @@ def build_backtest_detail_context(db: Session, run: BacktestRun, trades: list[Ba
             .order_by(Score.trade_date.desc())
         ).scalars().first()
 
-        # 获取 history_bars ?prev_bar 用于诊断
+        # 闂備礁鍚嬮崕鎶藉床閼艰翰浜?history_bars ?prev_bar 闂備焦妞垮鍧楀礉鐎ｎ剝濮虫い鎺戝€圭€氭艾鈹戦悩鎻掓殲闁?
         sym_bars = bars_by_sym.get(bar.symbol_id, [])
         b_idx = bar_idx.get((bar.symbol_id, bar.trade_date), 0)
         prev_bar = sym_bars[b_idx - 1] if b_idx > 0 else None
@@ -1374,6 +1416,8 @@ def build_backtest_detail_context(db: Session, run: BacktestRun, trades: list[Ba
         "skip_reasons": dict(skipped),
         "sample_misses": sample_misses,
         "execution": {
+            "entry_timing": _execution_timing_mode(rule_config, "entry"),
+            "exit_timing": _execution_timing_mode(rule_config, "exit"),
             "entry_price_field": _execution_price_field(rule_config, "entry_price_field"),
             "exit_price_field": _execution_price_field(rule_config, "exit_price_field"),
         },
@@ -1413,12 +1457,24 @@ def _load_custom_indicator_map(db: Session, rule_config: dict) -> dict[str, dict
     rows = db.execute(
         select(CustomIndicator).where(CustomIndicator.key.in_(keys), CustomIndicator.enabled == True)
     ).scalars().all()
+    from app.models.custom_indicator import CustomIndicatorVersion
+    from sqlalchemy import func as sa_func
+    version_map: dict[int, int] = {}
+    if rows:
+        ids = [r.id for r in rows]
+        ver_rows = db.execute(
+            select(CustomIndicatorVersion.indicator_id, sa_func.max(CustomIndicatorVersion.version))
+            .where(CustomIndicatorVersion.indicator_id.in_(ids))
+            .group_by(CustomIndicatorVersion.indicator_id)
+        ).all()
+        version_map = {row[0]: int(row[1]) for row in ver_rows}
     return {
         row.key: {
             "key": row.key,
             "name": row.name,
             "formula": row.formula,
             "value_type": row.value_type,
+            "version": version_map.get(row.id, 1),
         }
         for row in rows
     }
@@ -1434,7 +1490,10 @@ def _attach_custom_indicators(node: dict | list | None, indicator_map: dict[str,
     if node.get("field") == "custom_indicator":
         params = node.setdefault("params", {})
         key = params.get("indicator_key")
-        if isinstance(key, str) and key in indicator_map:
+        # If indicator data is already snapshot in params (from stored rule_config_json), keep it
+        if isinstance(params.get("indicator"), dict) and params["indicator"].get("formula"):
+            pass
+        elif isinstance(key, str) and key in indicator_map:
             params["indicator"] = indicator_map[key]
     for child in node.get("conditions", []) or []:
         _attach_custom_indicators(child, indicator_map)
@@ -1563,44 +1622,22 @@ def run_backtest(
     cost_config: dict | None = None,
     run_name: str | None = None,
 ) -> BacktestRun:
-    """
-    运行回测
-    
-    rule_config 结构：
-    {
-        "buy_conditions": {
-            "quality_score_min": 60,
-            "timing_score_min": 55,
-            "stages": ["start", "accel"],
-            "actions": ["open", "hold", "buy_dip"]
-        },
-        "sell_conditions": {
-            "take_profit_pct": 0.15,
-            "stop_loss_pct": 0.08,
-            "max_hold_days": 30
-        },
-        "position_config": {
-            "type": "fixed_pct",
-            "value": 0.05,
-            "max_positions": 10
-        }
-    }
-    """
+    """Doc."""
+    # Execute a backtest run for the selected portfolio and symbols.
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
         raise ValueError("Portfolio not found")
     rule_config = _prepare_rule_config(db, rule_config)
-    
+
     cost_config = cost_config or {
         "commission_rate": 0.0003,
         "min_commission": 5.0,
         "stamp_tax_rate": 0.001,
         "slippage_rate": 0.001,
     }
-    
+
     initial_capital = float(portfolio.total_capital)
-    
-    # 创建回测记录
+
     run = BacktestRun(
         portfolio_id=portfolio_id,
         run_name=run_name or f"Backtest {datetime.now().strftime('%Y%m%d_%H%M%S')}",
@@ -1615,9 +1652,8 @@ def run_backtest(
     )
     db.add(run)
     db.flush()
-    
+
     try:
-        # 获取交易日列表
         date_bars = db.execute(
             select(DailyBar.trade_date)
             .where(
@@ -1628,7 +1664,7 @@ def run_backtest(
             .distinct()
             .order_by(DailyBar.trade_date)
         ).scalars().all()
-        
+
         if not date_bars:
             raise ValueError("No trading data found in date range")
 
@@ -1642,21 +1678,23 @@ def run_backtest(
                 )
             ).all()
         }
-        
-        # 仓位配置
+
         position_config = rule_config.get("position_config", {})
         position_type = position_config.get("type", "fixed_pct")
         position_value = float(position_config.get("value", 0.05))
         max_positions = int(position_config.get("max_positions", 10))
-        entry_price_field = _execution_price_field(rule_config, "entry_price_field")
-        exit_price_field = _execution_price_field(rule_config, "exit_price_field")
-        
+        entry_timing = _execution_timing_mode(rule_config, "entry")
+        exit_timing = _execution_timing_mode(rule_config, "exit")
+        entry_price_field = _execution_price_field_for_timing(entry_timing)
+        exit_price_field = _execution_price_field_for_timing(exit_timing)
+
         cash = initial_capital
         open_trades: dict[int, BacktestTrade] = {}
         completed_trades: list[BacktestTrade] = []
-        peak_prices: dict[int, float] = {}  # symbol_id -> 入场以来最高价
+        peak_prices: dict[int, float] = {}
+        pending_entries: dict[int, dict] = {}
+        pending_exits: dict[int, dict] = {}
 
-        # 预加载所有 K 线数据
         all_bars = db.execute(
             select(DailyBar)
             .where(
@@ -1669,12 +1707,11 @@ def run_backtest(
 
         bars_by_symbol: dict[int, list[DailyBar]] = {}
         bar_index: dict[tuple[int, date], int] = {}
-        for idx, b in enumerate(all_bars):
+        for b in all_bars:
             bars_by_symbol.setdefault(b.symbol_id, []).append(b)
             bar_index[(b.symbol_id, b.trade_date)] = len(bars_by_symbol[b.symbol_id]) - 1
 
         def _get_history(symbol_id: int, trade_date: date, max_history: int = 250) -> tuple[DailyBar | None, DailyBar | None, list[DailyBar]]:
-            """Doc."""
             idx = bar_index.get((symbol_id, trade_date))
             if idx is None:
                 return None, None, []
@@ -1684,19 +1721,107 @@ def run_backtest(
             history = sym_bars[max(0, idx - max_history):idx]
             return current_bar, prev_bar, history
 
-        # 逐日模拟
-        for current_date in date_bars:
-            # 评估卖出信号
-            for symbol_id, trade in list(open_trades.items()):
-                bar, prev_bar, history = _get_history(symbol_id, current_date)
+        def _get_next_bar(symbol_id: int, trade_date: date) -> DailyBar | None:
+            idx = bar_index.get((symbol_id, trade_date))
+            if idx is None:
+                return None
+            sym_bars = bars_by_symbol.get(symbol_id, [])
+            next_idx = idx + 1
+            return sym_bars[next_idx] if next_idx < len(sym_bars) else None
 
+        def _compute_entry_quantity(symbol_id: int, entry_price: float) -> tuple[float, float, float] | None:
+            if entry_price <= 0:
+                return None
+            if position_type == "fixed_pct":
+                position_amount = initial_capital * position_value
+            else:
+                position_amount = position_value
+            symbol = db.get(Symbol, symbol_id)
+            lot_size = 100 if symbol and symbol.market in {"SH", "SZ", "BJ"} else 1
+            quantity = floor(position_amount / entry_price / lot_size) * lot_size
+            if quantity <= 0:
+                return None
+            entry_cost = _compute_cost(entry_price, quantity, "buy", cost_config)
+            total_cost = entry_price * quantity + entry_cost
+            return quantity, entry_cost, total_cost
+
+        for current_date in date_bars:
+            for symbol_id, pending in list(pending_exits.items()):
+                if pending.get("execute_date") != current_date:
+                    continue
+                trade = open_trades.get(symbol_id)
+                if trade is None:
+                    del pending_exits[symbol_id]
+                    continue
+                bar, _, _ = _get_history(symbol_id, current_date)
+                if bar is None:
+                    continue
+                exit_price = _bar_price(bar, pending.get("price_field", "open"))
+                exit_cost = _compute_cost(exit_price, trade.quantity, "sell", cost_config)
+                pnl = (exit_price - trade.entry_price) * trade.quantity - trade.entry_cost - exit_cost
+                pnl_pct = pnl / (trade.entry_price * trade.quantity)
+                hold_days = (current_date - trade.entry_date).days
+
+                trade.exit_date = current_date
+                trade.exit_price = exit_price
+                trade.exit_reason = pending.get("reason")
+                trade.exit_cost = exit_cost
+                trade.pnl = round(pnl, 2)
+                trade.pnl_pct = round(pnl_pct, 4)
+                trade.hold_days = hold_days
+
+                cash += exit_price * trade.quantity - exit_cost
+                completed_trades.append(trade)
+                del open_trades[symbol_id]
+                del pending_exits[symbol_id]
+                peak_prices.pop(symbol_id, None)
+
+            for symbol_id, pending in list(pending_entries.items()):
+                if pending.get("execute_date") != current_date:
+                    continue
+                if symbol_id in open_trades:
+                    del pending_entries[symbol_id]
+                    continue
+                if len(open_trades) >= max_positions:
+                    break
+                bar, _, _ = _get_history(symbol_id, current_date)
+                if bar is None:
+                    continue
+                entry_price = _bar_price(bar, pending.get("price_field", "open"))
+                entry_plan = _compute_entry_quantity(symbol_id, entry_price)
+                if entry_plan is None:
+                    del pending_entries[symbol_id]
+                    continue
+                quantity, entry_cost, total_cost = entry_plan
+                if total_cost > cash:
+                    del pending_entries[symbol_id]
+                    continue
+
+                trade = BacktestTrade(
+                    run_id=run.id,
+                    symbol_id=symbol_id,
+                    entry_date=current_date,
+                    entry_price=entry_price,
+                    quantity=quantity,
+                    entry_cost=entry_cost,
+                )
+                db.add(trade)
+                db.flush()
+
+                cash -= total_cost
+                open_trades[symbol_id] = trade
+                peak_prices[symbol_id] = float(bar.high)
+                del pending_entries[symbol_id]
+
+            for symbol_id, trade in list(open_trades.items()):
+                if symbol_id in pending_exits:
+                    continue
+                bar, prev_bar, history = _get_history(symbol_id, current_date)
                 if bar is None:
                     continue
 
-                # 更新 peak_price
                 peak_prices[symbol_id] = max(peak_prices.get(symbol_id, trade.entry_price), float(bar.high))
 
-                # 获取评分（v2 卖出条件可能用到）
                 score = None
                 if rule_config.get("version", 1) >= 2:
                     score = db.execute(
@@ -1709,103 +1834,114 @@ def run_backtest(
                     ).scalars().first()
 
                 should_sell, exit_reason = _evaluate_sell_signal(
-                    trade, bar, current_date, trade.entry_date, rule_config,
-                    score=score, history_bars=history, prev_bar=prev_bar,
+                    trade,
+                    bar,
+                    current_date,
+                    trade.entry_date,
+                    rule_config,
+                    score=score,
+                    history_bars=history,
+                    prev_bar=prev_bar,
                     peak_price=peak_prices.get(symbol_id),
                 )
 
-                if should_sell:
-                    exit_price = _bar_price(bar, exit_price_field)
-                    exit_cost = _compute_cost(exit_price, trade.quantity, "sell", cost_config)
-                    pnl = (exit_price - trade.entry_price) * trade.quantity - trade.entry_cost - exit_cost
-                    pnl_pct = pnl / (trade.entry_price * trade.quantity)
-                    hold_days = (current_date - trade.entry_date).days
+                if not should_sell:
+                    continue
 
-                    trade.exit_date = current_date
-                    trade.exit_price = exit_price
-                    trade.exit_reason = exit_reason
-                    trade.exit_cost = exit_cost
-                    trade.pnl = round(pnl, 2)
-                    trade.pnl_pct = round(pnl_pct, 4)
-                    trade.hold_days = hold_days
-
-                    cash += exit_price * trade.quantity - exit_cost
-                    completed_trades.append(trade)
-                    del open_trades[symbol_id]
-                    peak_prices.pop(symbol_id, None)
-
-            # 评估买入信号
-            if len(open_trades) < max_positions:
-                for symbol_id in symbol_ids:
-                    if symbol_id in open_trades:
+                if exit_timing == "next_open":
+                    next_bar = _get_next_bar(symbol_id, current_date)
+                    if next_bar is None:
                         continue
+                    pending_exits[symbol_id] = {
+                        "signal_date": current_date,
+                        "execute_date": next_bar.trade_date,
+                        "price_field": exit_price_field,
+                        "reason": exit_reason,
+                    }
+                    continue
 
-                    bar, prev_bar, history = _get_history(symbol_id, current_date)
+                exit_price = _bar_price(bar, exit_price_field)
+                exit_cost = _compute_cost(exit_price, trade.quantity, "sell", cost_config)
+                pnl = (exit_price - trade.entry_price) * trade.quantity - trade.entry_cost - exit_cost
+                pnl_pct = pnl / (trade.entry_price * trade.quantity)
+                hold_days = (current_date - trade.entry_date).days
 
-                    if bar is None:
+                trade.exit_date = current_date
+                trade.exit_price = exit_price
+                trade.exit_reason = exit_reason
+                trade.exit_cost = exit_cost
+                trade.pnl = round(pnl, 2)
+                trade.pnl_pct = round(pnl_pct, 4)
+                trade.hold_days = hold_days
+
+                cash += exit_price * trade.quantity - exit_cost
+                completed_trades.append(trade)
+                del open_trades[symbol_id]
+                peak_prices.pop(symbol_id, None)
+
+            if len(open_trades) + len(pending_entries) >= max_positions:
+                continue
+
+            for symbol_id in symbol_ids:
+                if symbol_id in open_trades or symbol_id in pending_entries:
+                    continue
+                if len(open_trades) + len(pending_entries) >= max_positions:
+                    break
+
+                bar, prev_bar, history = _get_history(symbol_id, current_date)
+                if bar is None:
+                    continue
+
+                score = db.execute(
+                    select(Score)
+                    .where(
+                        Score.symbol_id == symbol_id,
+                        Score.trade_date <= current_date,
+                    )
+                    .order_by(Score.trade_date.desc())
+                ).scalars().first()
+
+                if not _evaluate_buy_signal(symbol_id, current_date, bar, score, rule_config, history_bars=history, prev_bar=prev_bar):
+                    continue
+
+                if entry_timing == "next_open":
+                    next_bar = _get_next_bar(symbol_id, current_date)
+                    if next_bar is None:
                         continue
+                    pending_entries[symbol_id] = {
+                        "signal_date": current_date,
+                        "execute_date": next_bar.trade_date,
+                        "price_field": entry_price_field,
+                    }
+                    continue
 
-                    # 获取评分
-                    score = db.execute(
-                        select(Score)
-                        .where(
-                            Score.symbol_id == symbol_id,
-                            Score.trade_date <= current_date,
-                        )
-                        .order_by(Score.trade_date.desc())
-                    ).scalars().first()
+                entry_price = _bar_price(bar, entry_price_field)
+                entry_plan = _compute_entry_quantity(symbol_id, entry_price)
+                if entry_plan is None:
+                    continue
+                quantity, entry_cost, total_cost = entry_plan
+                if total_cost > cash:
+                    continue
 
-                    if _evaluate_buy_signal(symbol_id, current_date, bar, score, rule_config,
-                                           history_bars=history, prev_bar=prev_bar):
-                        # 计算买入数量
-                        entry_price = _bar_price(bar, entry_price_field)
-                        if entry_price <= 0:
-                            continue
-                        if position_type == "fixed_pct":
-                            position_amount = initial_capital * position_value
-                        else:
-                            position_amount = position_value
-                        
-                        # 获取标的信息确定手数
-                        symbol = db.get(Symbol, symbol_id)
-                        lot_size = 100 if symbol and symbol.market in {"SH", "SZ", "BJ"} else 1
-                        
-                        quantity = floor(position_amount / entry_price / lot_size) * lot_size
-                        if quantity <= 0:
-                            continue
-                        
-                        entry_cost = _compute_cost(entry_price, quantity, "buy", cost_config)
-                        total_cost = entry_price * quantity + entry_cost
-                        
-                        if total_cost > cash:
-                            continue
-                        
-                        trade = BacktestTrade(
-                            run_id=run.id,
-                            symbol_id=symbol_id,
-                            entry_date=current_date,
-                            entry_price=entry_price,
-                            quantity=quantity,
-                            entry_cost=entry_cost,
-                        )
-                        db.add(trade)
-                        db.flush()
-                        
-                        cash -= total_cost
-                        open_trades[symbol_id] = trade
-                        peak_prices[symbol_id] = float(bar.high)
-                        
-                        if len(open_trades) >= max_positions:
-                            break
-        
-        # 收集所有交易
+                trade = BacktestTrade(
+                    run_id=run.id,
+                    symbol_id=symbol_id,
+                    entry_date=current_date,
+                    entry_price=entry_price,
+                    quantity=quantity,
+                    entry_cost=entry_cost,
+                )
+                db.add(trade)
+                db.flush()
+
+                cash -= total_cost
+                open_trades[symbol_id] = trade
+                peak_prices[symbol_id] = float(bar.high)
+
         all_trades = completed_trades + list(open_trades.values())
-        
-        # 计算权益曲线和统计指标
         equity_curve = _compute_equity_curve(all_trades, initial_capital, date_bars, close_prices)
         stats = _compute_statistics(all_trades, initial_capital, equity_curve)
-        
-        # 更新回测记录
+
         run.status = "completed"
         run.finished_at = datetime.now(timezone.utc)
         run.total_return = stats["total_return"]
@@ -1818,17 +1954,16 @@ def run_backtest(
         run.trade_count = stats["trade_count"]
         run.avg_holding_days = stats["avg_holding_days"]
         run.equity_curve_json = json.dumps(equity_curve, ensure_ascii=False)
-        
+
         db.commit()
         return run
-    
+
     except Exception as e:
         run.status = "failed"
         run.error_message = str(e)
         run.finished_at = datetime.now(timezone.utc)
         db.commit()
         raise
-
 
 
 
