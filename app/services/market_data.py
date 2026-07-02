@@ -29,7 +29,7 @@ from app.services.symbol_names import refresh_symbol_name
 from app.services.trade_plans import upsert_trade_setup
 from app.db.session import get_session_local
 from app.schemas.async_task import AsyncTaskRead
-from app.services.async_tasks import _set_task, _start_worker, create_async_task, list_async_tasks
+from app.services.async_tasks import _set_task, _start_worker, create_async_task, get_async_task, list_async_tasks
 
 
 PROXY_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
@@ -569,6 +569,48 @@ def _build_history_stage(key: str) -> dict:
     }
 
 
+
+def _history_parse_date(value: str | date | None) -> date | None:
+    if value is None or isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
+def _upsert_history_failure(
+    task: dict,
+    *,
+    symbol: Symbol,
+    stage: str,
+    message: str,
+    failed_days: int = 0,
+    last_trade_date: date | None = None,
+) -> None:
+    items = task.setdefault("failed_items", [])
+    for item in items:
+        if int(item.get("symbol_id") or 0) == int(symbol.id) and item.get("stage") == stage:
+            item["message"] = message
+            item["name"] = symbol.name
+            item["asset_type"] = symbol.asset_type
+            item["symbol"] = symbol.symbol
+            if failed_days:
+                item["failed_days"] = int(item.get("failed_days") or 0) + int(failed_days)
+            if last_trade_date is not None:
+                item["last_trade_date"] = last_trade_date.isoformat()
+            return
+    items.append({
+        "symbol_id": symbol.id,
+        "symbol": symbol.symbol,
+        "name": symbol.name,
+        "asset_type": symbol.asset_type,
+        "stage": stage,
+        "message": message,
+        "failed_days": int(failed_days or 0),
+        "last_trade_date": last_trade_date.isoformat() if last_trade_date is not None else None,
+    })
+
 def _history_duration_seconds(started_at: str | None, finished_at: str | None = None) -> int | None:
     if not started_at:
         return None
@@ -595,6 +637,8 @@ def _history_status_to_async_status(status: str | None) -> str:
         return "done"
     if status == "failed":
         return "failed"
+    if status == "cancelled":
+        return "cancelled"
     if status == "running":
         return "running"
     return "queued"
@@ -606,7 +650,7 @@ def _history_active_stage(task: dict) -> dict | None:
         if stage.get("status") == "running":
             return stage
     for stage in reversed(stages):
-        if stage.get("status") in {"failed", "completed"}:
+        if stage.get("status") in {"failed", "completed", "cancelled"}:
             return stage
     return stages[0] if stages else None
 
@@ -618,6 +662,9 @@ def _history_async_stage(task: dict) -> str:
     if status == "failed":
         failed_stage = _history_active_stage(task)
         return (failed_stage or {}).get("key") or "failed"
+    if status == "cancelled":
+        cancelled_stage = _history_active_stage(task)
+        return (cancelled_stage or {}).get("key") or "cancelled"
     active_stage = _history_active_stage(task)
     return (active_stage or {}).get("key") or status or "queued"
 
@@ -666,7 +713,7 @@ def _history_run_record(task: AsyncTaskRead) -> dict:
     if not status:
         if task.status == "done":
             status = "completed"
-        elif task.status in {"running", "failed"}:
+        elif task.status in {"running", "failed", "cancelled"}:
             status = task.status
         else:
             status = "idle"
@@ -678,6 +725,8 @@ def _history_run_record(task: AsyncTaskRead) -> dict:
         "status": status,
         "preset": snapshot.get("preset") or "1y",
         "adjust": snapshot.get("adjust") or "qfq",
+        "asset_types": deepcopy(snapshot.get("asset_types") or ["stock", "etf"]),
+        "symbol_ids": deepcopy(snapshot.get("symbol_ids") or []),
         "start_date": snapshot.get("start_date"),
         "end_date": snapshot.get("end_date"),
         "started_at": started_at,
@@ -685,6 +734,8 @@ def _history_run_record(task: AsyncTaskRead) -> dict:
         "duration_seconds": snapshot.get("duration_seconds")
         or _history_duration_seconds(started_at, finished_at),
         "message": snapshot.get("message") or task.message,
+        "stages": deepcopy(snapshot.get("stages") or []),
+        "failed_items": deepcopy(snapshot.get("failed_items") or []),
         "summary": deepcopy(snapshot.get("summary") or {}),
     }
 
@@ -761,10 +812,15 @@ def start_history_initialization_task(
     preset: str = "1y",
     adjust: str = "qfq",
     asset_types: list[str] | None = None,
+    symbol_ids: list[int] | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> dict:
     preset_key = preset if preset in HISTORY_INIT_PRESET_DAYS else "1y"
-    resolved_end = date.today()
-    resolved_start = resolved_end - timedelta(days=HISTORY_INIT_PRESET_DAYS[preset_key])
+    resolved_end = end_date or date.today()
+    resolved_start = start_date or (resolved_end - timedelta(days=HISTORY_INIT_PRESET_DAYS[preset_key]))
+    resolved_asset_types = asset_types or ["stock", "etf"]
+    resolved_symbol_ids = [int(item) for item in (symbol_ids or []) if item is not None]
 
     with _HISTORY_INIT_LOCK:
         if _HISTORY_INIT_TASK.get("status") == "running":
@@ -775,7 +831,8 @@ def start_history_initialization_task(
         "status": "running",
         "preset": preset_key,
         "adjust": adjust,
-        "asset_types": asset_types or ["stock", "etf"],
+        "asset_types": resolved_asset_types,
+        "symbol_ids": resolved_symbol_ids,
         "start_date": resolved_start,
         "end_date": resolved_end,
         "progress_pct": 0,
@@ -792,6 +849,7 @@ def start_history_initialization_task(
             "score_days_total": 0,
             "score_days_completed": 0,
         },
+        "failed_items": [],
     }
     prepare_stage = _history_stage(task, "prepare")
     if prepare_stage is not None:
@@ -801,7 +859,8 @@ def start_history_initialization_task(
         {
             "preset": preset_key,
             "adjust": adjust,
-            "asset_types": asset_types or ["stock", "etf"],
+            "asset_types": resolved_asset_types,
+            "symbol_ids": resolved_symbol_ids,
             "start_date": resolved_start.isoformat(),
             "end_date": resolved_end.isoformat(),
         },
@@ -814,11 +873,20 @@ def create_history_initialization_task(
     preset: str = "1y",
     adjust: str = "qfq",
     asset_types: list[str] | None = None,
+    symbol_ids: list[int] | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> dict:
-    task = start_history_initialization_task(preset=preset, adjust=adjust, asset_types=asset_types)
+    task = start_history_initialization_task(
+        preset=preset,
+        adjust=adjust,
+        asset_types=asset_types,
+        symbol_ids=symbol_ids,
+        start_date=start_date,
+        end_date=end_date,
+    )
     _start_worker(task["task_id"], run_history_initialization_task)
     return task
-
 
 def _update_history_stage(
     task_id: str,
@@ -901,11 +969,13 @@ def run_history_initialization_task(task_id: str) -> None:
         end_date = snapshot.get("end_date")
         adjust = snapshot.get("adjust") or "qfq"
         asset_types = snapshot.get("asset_types") or ["stock", "etf"]
+        symbol_ids = [int(item) for item in (snapshot.get("symbol_ids") or []) if item is not None]
 
+        stmt = select(Symbol).where(Symbol.is_active == 1, Symbol.asset_type.in_(asset_types))
+        if symbol_ids:
+            stmt = stmt.where(Symbol.id.in_(symbol_ids))
         symbols = db.execute(
-            select(Symbol)
-            .where(Symbol.is_active == 1, Symbol.asset_type.in_(asset_types))
-            .order_by(Symbol.id.asc())
+            stmt.order_by(Symbol.id.asc())
         ).scalars().all()
 
         _update_history_stage(
@@ -926,7 +996,7 @@ def run_history_initialization_task(task_id: str) -> None:
 
         for index, symbol in enumerate(symbols, start=1):
             if _HISTORY_INIT_CANCEL_EVENT.is_set():
-                _fail_history_task(task_id, "Task cancelled by user")
+                cancel_history_initialization_task(force_task_id=task_id, from_worker=True)
                 return
             try:
                 refresh_symbol_name(symbol)
@@ -947,7 +1017,7 @@ def run_history_initialization_task(task_id: str) -> None:
                     "error": str(exc),
                 }
 
-            def _sync_summary(task: dict, sync_result: dict = result) -> None:
+            def _sync_summary(task: dict, sync_result: dict = result, current_symbol: Symbol = symbol) -> None:
                 summary = task["summary"]
                 summary["bars_rows"] += int(sync_result.get("rows") or 0)
                 if sync_result.get("status") == "ok":
@@ -956,6 +1026,12 @@ def run_history_initialization_task(task_id: str) -> None:
                     summary["empty_count"] += 1
                 else:
                     summary["sync_failed_count"] += 1
+                    _upsert_history_failure(
+                        task,
+                        symbol=current_symbol,
+                        stage="sync_bars",
+                        message=str(sync_result.get("error") or sync_result.get("message") or "Bar sync failed"),
+                    )
             _mutate_history_task(task_id, _sync_summary)
             _update_history_stage(
                 task_id,
@@ -1008,7 +1084,7 @@ def run_history_initialization_task(task_id: str) -> None:
         score_done = 0
         for symbol in symbols:
             if _HISTORY_INIT_CANCEL_EVENT.is_set():
-                _fail_history_task(task_id, "Task cancelled by user")
+                cancel_history_initialization_task(force_task_id=task_id, from_worker=True)
                 return
             trade_dates = db.execute(
                 select(DailyBar.trade_date)
@@ -1022,7 +1098,31 @@ def run_history_initialization_task(task_id: str) -> None:
             if not trade_dates:
                 continue
             symbol_failed = False
+            score_failed_days = 0
+            last_failed_trade_date = None
+            last_score_error = None
             for trade_date in trade_dates:
+                try:
+                    calculate_symbol_score(db=db, symbol=symbol, trade_date=trade_date)
+                    score_done += 1
+                except Exception as exc:
+                    db.rollback()
+                    logger.warning("History init score calc failed for %s on %s: %s", symbol.symbol, trade_date, exc)
+                    symbol_failed = True
+                    score_failed_days += 1
+                    last_failed_trade_date = trade_date
+                    last_score_error = str(exc)
+            if symbol_failed:
+                def _score_failure(task: dict, current_symbol: Symbol = symbol, failed_days: int = score_failed_days, failed_date = last_failed_trade_date, error_message: str | None = last_score_error) -> None:
+                    _upsert_history_failure(
+                        task,
+                        symbol=current_symbol,
+                        stage="calc_scores",
+                        message=error_message or "Score calculation failed",
+                        failed_days=failed_days,
+                        last_trade_date=failed_date,
+                    )
+                _mutate_history_task(task_id, _score_failure)
                 try:
                     calculate_symbol_score(db=db, symbol=symbol, trade_date=trade_date)
                     score_done += 1
@@ -1068,15 +1168,17 @@ def run_history_initialization_task(task_id: str) -> None:
         db.close()
 
 
-def cancel_history_initialization_task() -> dict:
-    """取消当前正在运行的历史初始化任务。"""
+def cancel_history_initialization_task(force_task_id: str | None = None, from_worker: bool = False) -> dict:
+    """Cancel the current history initialization task."""
     from app.services.async_tasks import cancel_async_task
 
     with _HISTORY_INIT_LOCK:
         task = _HISTORY_INIT_TASK
-        if task.get("status") != "running":
+        task_id = force_task_id or task.get("task_id")
+        if task_id is None:
             raise ValueError("No running history initialization task to cancel")
-        task_id = task.get("task_id")
+        if not from_worker and task.get("status") != "running":
+            raise ValueError("No running history initialization task to cancel")
         _HISTORY_INIT_CANCEL_EVENT.set()
 
     if task_id:
@@ -1086,22 +1188,45 @@ def cancel_history_initialization_task() -> dict:
             logger.warning("Async task %s not found for cancel", task_id)
 
     def _apply(task: dict) -> None:
-        task["status"] = "failed"
+        task["status"] = "cancelled"
         task["message"] = "Task cancelled by user"
         task["finished_at"] = _now_iso()
         for key in reversed(HISTORY_INIT_STAGE_KEYS):
             stage = _history_stage(task, key)
             if stage is not None and stage.get("status") == "running":
-                stage["status"] = "failed"
-                stage["message"] = "Cancelled"
+                stage["status"] = "cancelled"
+                stage["message"] = "Cancelled by user"
                 break
         _recompute_history_progress(task)
 
     return _mutate_history_task(task_id, _apply)
 
 
+def retry_history_initialization_failed_items(source_task_id: str) -> dict:
+    source_task = get_async_task(source_task_id)
+    if source_task is None:
+        raise ValueError("History initialization task not found")
+
+    snapshot = deepcopy(source_task.result or {})
+    failed_items = snapshot.get("failed_items") or []
+    symbol_ids = sorted({int(item.get("symbol_id")) for item in failed_items if item.get("symbol_id") is not None})
+    if not symbol_ids:
+        raise ValueError("No failed items to retry")
+
+    start_date = _history_parse_date(snapshot.get("start_date"))
+    end_date = _history_parse_date(snapshot.get("end_date"))
+    return create_history_initialization_task(
+        preset=snapshot.get("preset") or "1y",
+        adjust=snapshot.get("adjust") or "qfq",
+        asset_types=snapshot.get("asset_types") or ["stock", "etf"],
+        symbol_ids=symbol_ids,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
 def cleanup_history_records(keep: int = 5) -> dict:
-    """清理历史初始化记录，仅保留最近 keep 条。"""
+    """Cleanup history initialization records and keep the latest N runs."""
     from app.models.async_task import AsyncTaskRecord
     from sqlalchemy import delete
 

@@ -1,0 +1,92 @@
+09:52:21 [vite] http proxy error: /api/v1/macro/overview?region=all
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:21 [vite] http proxy error: /api/v1/market-events?importance_level_min=3&limit=8&offset=0&sort_by=importance_level
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:21 [vite] http proxy error: /api/v1/system/data-health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:21 [vite] http proxy error: /api/v1/market-data/sync-tasks?limit=1
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:21 [vite] http proxy error: /api/v1/portfolios
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:21 [vite] http proxy error: /api/v1/macro/overview?region=all
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:21 [vite] http proxy error: /api/v1/market-events?importance_level_min=3&limit=8&offset=0&sort_by=importance_level
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:21 [vite] http proxy error: /api/v1/system/data-health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:21 [vite] http proxy error: /api/v1/portfolios
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:21 [vite] http proxy error: /api/v1/discovery/tasks?limit=10
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:21 [vite] http proxy error: /api/v1/discovery/tasks?limit=10
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/settings/discovery-plans
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/settings/custom-indicators
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/backtest/templates
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/symbols?page=1&page_size=20
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/settings/custom-indicators?scope=discovery
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/settings/discovery-plans
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/settings/custom-indicators
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/backtest/templates
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/symbols?page=1&page_size=20
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/settings/custom-indicators?scope=discovery
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/settings/discovery-plans
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)
+09:52:41 [vite] http proxy error: /api/v1/settings/discovery-plans
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1118:18)
+    at afterConnectMultiple (node:net:1685:7)

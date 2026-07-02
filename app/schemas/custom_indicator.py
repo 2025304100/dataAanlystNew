@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any, Literal
@@ -55,6 +55,7 @@ class CustomIndicatorPreviewRequest(BaseModel):
     formula: str = Field(min_length=1, max_length=500)
     value_type: Literal["boolean", "number"] = "boolean"
     trade_date: date | None = None
+    recent_count: int = Field(default=7, ge=1, le=30)
 
 
 class CustomIndicatorPreviewBar(BaseModel):
@@ -73,6 +74,16 @@ class CustomIndicatorPreviewScore(BaseModel):
     momentum_score: float | None = None
 
 
+class CustomIndicatorPreviewSeriesItem(BaseModel):
+    trade_date: date
+    value_type: Literal["boolean", "number"]
+    result_boolean: bool | None = None
+    result_number: float | None = None
+    display_value: str
+    latest_bar: CustomIndicatorPreviewBar
+    score_snapshot: CustomIndicatorPreviewScore | None = None
+
+
 class CustomIndicatorPreviewRead(BaseModel):
     ok: bool = True
     message: str = "Preview ready"
@@ -86,3 +97,4 @@ class CustomIndicatorPreviewRead(BaseModel):
     display_value: str
     latest_bar: CustomIndicatorPreviewBar
     score_snapshot: CustomIndicatorPreviewScore | None = None
+    recent_results: list[CustomIndicatorPreviewSeriesItem] = Field(default_factory=list)

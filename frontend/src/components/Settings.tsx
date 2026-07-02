@@ -21,6 +21,13 @@ export default function Settings() {
     const stored = window.localStorage.getItem("settings_active_section");
     return stored === "rules" || stored === "indicators" || stored === "history" || stored === "db" ? stored : "rules";
   });
+  const [activeIndicatorTab, setActiveIndicatorTab] = useState<"formulas" | "plans">(() => {
+    if (typeof window === "undefined") return "formulas";
+    const stored = window.localStorage.getItem("settings_indicator_subtab");
+    return stored === "formulas" || stored === "plans" ? stored : "formulas";
+  });
+  const [historyFocusSignal, setHistoryFocusSignal] = useState(0);
+  const [historyInitContext, setHistoryInitContext] = useState<{ symbolId?: number | null; symbolLabel?: string | null } | null>(null);
 
   useEffect(() => {
     if (rule && activeSymbolId) {
@@ -34,6 +41,12 @@ export default function Settings() {
       window.localStorage.setItem("settings_active_section", activeSection);
     }
   }, [activeSection]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("settings_indicator_subtab", activeIndicatorTab);
+    }
+  }, [activeIndicatorTab]);
 
   const applyPreset = (mode: string) => {
     const preset = presets.find((p) => p.mode === mode);
@@ -78,8 +91,13 @@ export default function Settings() {
       })
       .finally(() => setSaving(false));
   };
-
   const summary = rule ? `${rule.rule_name}${DOT}${rule.mode}` : "-";
+
+  const openHistoryInitialization = (context?: { symbolId?: number | null; symbolLabel?: string | null }) => {
+    setHistoryInitContext(context ?? null);
+    setActiveSection("history");
+    setHistoryFocusSignal((value) => value + 1);
+  };
 
   const renderPreview = () => {
     if (!activeSymbolId) {
@@ -311,8 +329,30 @@ export default function Settings() {
             <div className="settings-tab-container" data-settings-content="settings-indicators">
               <section className="band">
                 <div className="settings-indicator-stack">
-                  <CustomIndicatorSettings />
-                  <DiscoveryPlanSettings />
+                  <div className="sub-tabs" aria-label={t("tabIndicators")}>
+                    <button
+                      type="button"
+                      className={`sub-tab ${activeIndicatorTab === "formulas" ? "active" : ""}`}
+                      aria-current={activeIndicatorTab === "formulas" ? "page" : undefined}
+                      onClick={() => setActiveIndicatorTab("formulas")}
+                    >
+                      {t("settingsIndicatorTabFormulas")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`sub-tab ${activeIndicatorTab === "plans" ? "active" : ""}`}
+                      aria-current={activeIndicatorTab === "plans" ? "page" : undefined}
+                      onClick={() => setActiveIndicatorTab("plans")}
+                    >
+                      {t("settingsIndicatorTabPlans")}
+                    </button>
+                  </div>
+                  <div className="sub-tab-container" hidden={activeIndicatorTab !== "formulas"}>
+                    <CustomIndicatorSettings onOpenHistoryInit={openHistoryInitialization} />
+                  </div>
+                  <div className="sub-tab-container" hidden={activeIndicatorTab !== "plans"}>
+                    <DiscoveryPlanSettings />
+                  </div>
                 </div>
               </section>
             </div>
@@ -320,7 +360,7 @@ export default function Settings() {
           {activeSection === "history" && (
             <div className="settings-tab-container" data-settings-content="settings-history">
               <section className="band">
-                <HistoryInitSection />
+                <HistoryInitSection focusSignal={historyFocusSignal} context={historyInitContext} onClearContext={() => setHistoryInitContext(null)} />
               </section>
             </div>
           )}

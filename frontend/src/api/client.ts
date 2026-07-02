@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+import type { CustomIndicatorPreviewRead } from "../types";
 
 let activeRequests = 0;
 const requestListeners: Array<(count: number) => void> = [];
@@ -119,7 +120,7 @@ export const api = {
   cancelMarketDataSyncTask: (taskId: string) =>
     requestJson<any>(`${API}/market-data/sync-tasks/${taskId}/cancel`, { method: "POST" }),
 
-  startHistoryInitialization: (payload: { preset: string; adjust?: string; asset_types?: string[] }) =>
+  startHistoryInitialization: (payload: { preset: string; adjust?: string; asset_types?: string[]; symbol_ids?: number[] }) =>
     requestJson<any>(`${API}/market-data/initialize-history`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -132,6 +133,13 @@ export const api = {
     requestJson<any>(`${API}/market-data/initialize-history/cancel`, {
       method: "POST",
     }),
+  retryHistoryInitializationFailed: (taskId: string) =>
+    requestJson<any>(`${API}/market-data/initialize-history/retry-failed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId }),
+    }),
+
   cleanupHistoryRecords: (keep: number) =>
     requestJson<any>(`${API}/market-data/initialize-history/cleanup?keep=${keep}`, {
       method: "POST",
@@ -300,8 +308,8 @@ export const api = {
     requestJson<any>(`${API}/settings/custom-indicators`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   updateCustomIndicator: (id: number, payload: any) =>
     requestJson<any>(`${API}/settings/custom-indicators/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
-  previewCustomIndicator: (payload: { symbol_id: number; formula: string; value_type: "boolean" | "number"; trade_date?: string }) =>
-    requestJson<any>(`${API}/settings/custom-indicators/preview`, {
+  previewCustomIndicator: (payload: { symbol_id: number; formula: string; value_type: "boolean" | "number"; trade_date?: string; recent_count?: number }) =>
+    requestJson<CustomIndicatorPreviewRead>(`${API}/settings/custom-indicators/preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

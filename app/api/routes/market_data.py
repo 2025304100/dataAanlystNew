@@ -11,6 +11,7 @@ from app.schemas.market_data import (
     DailyBarImportRequest,
     DailyBarRead,
     HistoryInitializationRequest,
+    HistoryInitializationRetryRequest,
     HistoryInitializationStatus,
     MarketDataRepairRequest,
     MarketDataUpdateRequest,
@@ -22,6 +23,7 @@ from app.services.market_data import (
     cleanup_history_records,
     create_history_initialization_task,
     get_history_initialization_status,
+    retry_history_initialization_failed_items,
     sync_market_data,
     sync_symbol_daily_bars,
 )
@@ -91,6 +93,7 @@ def initialize_history_data(payload: HistoryInitializationRequest) -> dict:
             preset=payload.preset,
             adjust=payload.adjust,
             asset_types=payload.asset_types,
+            symbol_ids=payload.symbol_ids,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -109,6 +112,13 @@ def cancel_initialize_history() -> dict:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+
+@router.post("/market-data/initialize-history/retry-failed", response_model=HistoryInitializationStatus)
+def retry_initialize_history_failed(payload: HistoryInitializationRetryRequest) -> dict:
+    try:
+        return retry_history_initialization_failed_items(payload.task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 @router.post("/market-data/initialize-history/cleanup")
 def cleanup_initialize_history(keep: int = Query(5, ge=1, le=50)) -> dict:
     return cleanup_history_records(keep=keep)

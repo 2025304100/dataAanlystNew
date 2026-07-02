@@ -84,10 +84,16 @@ def _expire_stale_tasks(db: Session) -> None:
 
 
 def _set_task(db: Session, task_id: str, **updates) -> AsyncTaskRecord:
-    """原子更新任务字段并提交。"""
+    """原子更新任务字段并提交。如果任务已处于终态则不再覆盖 status/stage。"""
     task = db.get(AsyncTaskRecord, task_id)
     if task is None:
         raise ValueError(f"Async task not found: {task_id}")
+    # 终态保护：已完成的任务不允许被覆盖回 running 等状态
+    if task.status in ("done", "failed", "cancelled"):
+        # 只允许更新非状态字段（如 updated_at），不覆盖 status/stage
+        updates = {k: v for k, v in updates.items() if k not in ("status", "stage")}
+        if not updates:
+            return task
     for key, value in updates.items():
         setattr(task, key, value)
     task.updated_at = _now()

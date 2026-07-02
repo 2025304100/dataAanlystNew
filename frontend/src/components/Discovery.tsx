@@ -2,8 +2,9 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
 import { t, template, regionShortLabel, assetTypeLabel, stageLabel, actionLabel } from "../i18n";
-import { Checkbox, Select, Button, Tag, Space, InputNumber, Switch, Input } from "antd";
-import type { CustomIndicator, DiscoveryIndicatorEvaluation, DiscoveryPlan as StoredDiscoveryPlan, DiscoveryPlanFilter as StoredDiscoveryPlanFilter } from "../types";
+import { Checkbox, Select, Button, Tag, Space, InputNumber, Switch, Input, Empty, Table } from "antd";
+import type { ColumnsType } from "antd/es/table";
+import type { CustomIndicator, DiscoveryIndicatorEvaluation, DiscoveryPlan as StoredDiscoveryPlan, DiscoveryPlanFilter as StoredDiscoveryPlanFilter, WorkbenchCandidate } from "../types";
 import {
   percent,
   score,
@@ -659,6 +660,194 @@ export default function Discovery() {
       })}`
     : "-";
 
+  const columns: ColumnsType<WorkbenchCandidate> = useMemo(() => {
+    const rankColumn = {
+      title: t("rank"),
+      key: "rank",
+      width: 60,
+      render: (_: unknown, __: WorkbenchCandidate, index: number) => index + 1,
+    };
+    const symbolColumn = {
+      title: t("symbol"),
+      key: "symbol",
+      render: (_: unknown, item: WorkbenchCandidate) => (
+        <div>
+          <div className="symbol-title">
+            <span className="symbol-code">{item.symbol}</span>
+            <span className="symbol-name">{item.name}</span>
+          </div>
+          <div className="item-subline">{joinParts([regionShortLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
+          {(item.reason_tags ?? []).length > 0 && (
+            <div className="item-reason-tags">
+              {(item.reason_tags ?? []).slice(0, 3).map((tag: string, tagIndex: number) => (
+                <span key={tagIndex} className="reason-tag">{tag}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      ),
+    };
+    const indicatorColumn = {
+      title: indicatorColumnTitle,
+      key: "indicator",
+      render: (_: unknown, item: WorkbenchCandidate) => {
+        const resultId = Number(item.scan_result_id ?? item.id);
+        const freshness = discoveryFreshness(item);
+        const rowAgeDays = ageDays(item.created_at);
+        const isLowCredibility = rowAgeDays > 7 || !item.created_at;
+        if (!activeFilters.length) {
+          return (
+            <>
+              <span className={`freshness-chip ${freshness.className}`}>{freshness.label}</span>
+              {isLowCredibility && <span className="credibility-badge credibility-low">{t("lowCredibility")}</span>}
+            </>
+          );
+        }
+        const indicatorEntries = activeFilters.map((filter) => {
+          const key = filter.indicator_key as string;
+          const indicator = indicatorMap[key];
+          const actualValue = indicatorValues[resultId]?.[key];
+          const expectedValue = indicatorExpectedValue(filter, indicator);
+          const matched = compareIndicator(actualValue, filter.operator, expectedValue);
+          return {
+            key,
+            name: indicator?.name ?? key,
+            actualText: indicatorDisplayValue(actualValue),
+            expectedText: indicatorDisplayValue(expectedValue),
+            operator: filter.operator,
+            matched,
+          };
+        });
+        const matchedIndicatorCount = indicatorEntries.filter((entry) => entry.matched).length;
+        if (!indicatorEntries.length) return "-";
+        return (
+          <div style={{ display: "grid", gap: 4 }}>
+            <div className="discovery-indicator-tags">
+              {indicatorEntries.map((entry) => (
+                <span key={entry.key} className={`discovery-indicator-tag ${entry.matched ? "is-match" : "is-miss"}`}>
+                  {entry.name}: {entry.actualText}
+                </span>
+              ))}
+            </div>
+            <div className="item-subline">
+              {template("matchedIndicators", {
+                matched: matchedIndicatorCount,
+                total: indicatorEntries.length,
+              })}
+              {indicatorEntries.length > 0 && ` | ${indicatorEntries.map((entry) => `${entry.name} ${entry.operator} ${entry.expectedText}`).join(DOT)}`}
+            </div>
+          </div>
+        );
+      },
+    };
+    const operationsColumn = {
+      title: t("operations"),
+      key: "operations",
+      width: 240,
+      render: (_: unknown, item: WorkbenchCandidate) => {
+        const inWatchlist = ctx.primaryWatchlistSymbolIds.has(item.symbol_id);
+        const resultId = Number(item.scan_result_id ?? item.id);
+        return (
+          <Space size="small" onClick={(e) => e.stopPropagation()}>
+            <Button
+              size="small"
+              loading={rowActionLoading[item.symbol_id]?.watchlist}
+              disabled={inWatchlist}
+              onClick={() => handleAddToWatchlist(item.symbol_id)}
+              aria-label={t("discoveryAddWatchlist")}
+            >
+              {inWatchlist ? t("discoveryInWatchlist") : t("discoveryAddWatchlist")}
+            </Button>
+            <Button
+              size="small"
+              loading={rowActionLoading[item.symbol_id]?.freeze}
+              onClick={() => resultId && handleToggleFreeze(resultId, !!item.is_frozen, item.symbol_id)}
+              aria-label={item.is_frozen ? t("unfreeze") : t("freeze")}
+            >
+              {item.is_frozen ? t("unfreeze") : t("freeze")}
+            </Button>
+            <Button
+              size="small"
+              loading={rowActionLoading[item.symbol_id]?.update}
+              onClick={() => resultId && handleUpdateRow(resultId, item.symbol_id)}
+              aria-label={t("updateCurrent")}
+            >
+              {t("updateCurrent")}
+            </Button>
+          </Space>
+        );
+      },
+    };
+    return [
+      rankColumn,
+      symbolColumn,
+      {
+        title: t("finalOpportunityScore"),
+        dataIndex: "opportunity_score",
+        key: "opportunity_score",
+        sorter: (a, b) => opportunityScoreValue(a) - opportunityScoreValue(b),
+        render: (_: unknown, item: WorkbenchCandidate) => score(opportunityScoreValue(item)),
+        width: 120,
+      },
+      {
+        title: t("messageScore"),
+        dataIndex: "news_message_score",
+        key: "news_message_score",
+        sorter: (a, b) => (a.news_message_score ?? 0) - (b.news_message_score ?? 0),
+        render: (v: number | undefined) => score(v),
+        width: 110,
+      },
+      {
+        title: t("quality"),
+        dataIndex: "quality_score",
+        key: "quality_score",
+        sorter: (a, b) => a.quality_score - b.quality_score,
+        render: (v: number) => score(v),
+        width: 90,
+      },
+      {
+        title: t("timing"),
+        dataIndex: "timing_score",
+        key: "timing_score",
+        sorter: (a, b) => a.timing_score - b.timing_score,
+        render: (v: number) => score(v),
+        width: 90,
+      },
+      {
+        title: t("priority"),
+        dataIndex: "priority_score",
+        key: "priority_score",
+        sorter: (a, b) => a.priority_score - b.priority_score,
+        render: (v: number) => score(v),
+        width: 90,
+      },
+      {
+        title: t("stage"),
+        dataIndex: "stage",
+        key: "stage",
+        render: (v: string) => <Tag className={badgeClass(v)}>{stageLabel(v)}</Tag>,
+        width: 90,
+      },
+      {
+        title: t("action"),
+        dataIndex: "action",
+        key: "action",
+        render: (v: string) => <Tag className={badgeClass(v)}>{actionLabel(v)}</Tag>,
+        width: 90,
+      },
+      {
+        title: t("position"),
+        dataIndex: "recommended_position_pct",
+        key: "recommended_position_pct",
+        sorter: (a, b) => (a.recommended_position_pct ?? 0) - (b.recommended_position_pct ?? 0),
+        render: (v: number | undefined) => percent(v),
+        width: 90,
+      },
+      indicatorColumn,
+      operationsColumn,
+    ];
+  }, [t, indicatorColumnTitle, activeFilters, indicatorMap, indicatorValues, ctx.locale, ctx.primaryWatchlistSymbolIds, rowActionLoading, handleAddToWatchlist, handleToggleFreeze, handleUpdateRow]);
+
   return (
     <div className="tab-container" data-tab-content="discovery">
       <section className="band discovery-band">
@@ -766,7 +955,14 @@ export default function Discovery() {
 
           <div className="pool-tabs">
             {Object.entries(poolLabels).map(([key, cfg]) => (
-              <button key={key} className={`pool-tab ${poolTab === key ? "pool-tab--active" : ""}`} style={{ borderColor: poolTab === key ? cfg.color : "transparent" }} onClick={() => setPoolTab(key as PoolTab)}>
+              <button
+                key={key}
+                className={`pool-tab ${poolTab === key ? "pool-tab--active" : ""}`}
+                style={{ borderColor: poolTab === key ? cfg.color : "transparent" }}
+                onClick={() => setPoolTab(key as PoolTab)}
+                aria-pressed={poolTab === key}
+                aria-label={template("poolTabLabel", { label: ctx.locale === "zh-CN" ? cfg.zh : cfg.en })}
+              >
                 <span className="pool-tab-label">{ctx.locale === "zh-CN" ? cfg.zh : cfg.en}</span>
                 <span className="pool-tab-count" style={{ backgroundColor: cfg.color }}>{(candidatePools as Record<string, any[]>)[key]?.length ?? 0}</span>
               </button>
@@ -835,103 +1031,34 @@ export default function Discovery() {
           )}
 
           <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>{t("rank")}</th>
-                  <th>{t("symbol")}</th>
-                  <th>{t("finalOpportunityScore")}</th>
-                  <th>{t("messageScore")}</th>
-                  <th>{t("quality")}</th>
-                  <th>{t("timing")}</th>
-                  <th>{t("priority")}</th>
-                  <th>{t("stage")}</th>
-                  <th>{t("action")}</th>
-                  <th>{t("position")}</th>
-                  <th>{indicatorColumnTitle}</th>
-                  <th>{t("operations")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPool.map((item: any, index: number) => {
-                  const inWatchlist = ctx.primaryWatchlistSymbolIds.has(item.symbol_id);
-                  const resultId = Number(item.scan_result_id ?? item.id);
-                  const freshness = discoveryFreshness(item);
-                  const rowAgeDays = ageDays(item.created_at);
-                  const isLowCredibility = rowAgeDays > 7 || !item.created_at;
-                  const reasonTags: string[] = item.reason_tags ?? [];
-                  const indicatorEntries = activeFilters.length
-                    ? activeFilters.map((filter) => {
-                        const key = filter.indicator_key as string;
-                        const indicator = indicatorMap[key];
-                        const actualValue = indicatorValues[resultId]?.[key];
-                        const expectedValue = indicatorExpectedValue(filter, indicator);
-                        const matched = compareIndicator(actualValue, filter.operator, expectedValue);
-                        return {
-                          key,
-                          name: indicator?.name ?? key,
-                          actualText: indicatorDisplayValue(actualValue),
-                          expectedText: indicatorDisplayValue(expectedValue),
-                          operator: filter.operator,
-                          matched,
-                        };
-                      })
-                    : [];
-                  const matchedIndicatorCount = indicatorEntries.filter((entry) => entry.matched).length;
-                  return (
-                    <tr key={item.symbol_id} className={["clickable", item.is_frozen ? "discovery-row-frozen" : "", freshness.className === "warning" ? "discovery-row-warning" : "", isLowCredibility ? "discovery-row-low-credibility" : ""].filter(Boolean).join(" ")} onClick={() => handleRowClick(item.symbol_id)}>
-                      <td>{index + 1}</td>
-                      <td>
-                        <div className="symbol-title"><span className="symbol-code">{item.symbol}</span><span className="symbol-name">{item.name}</span></div>
-                        <div className="item-subline">{joinParts([regionShortLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
-                        {reasonTags.length > 0 && <div className="item-reason-tags">{reasonTags.slice(0, 3).map((tag: string, tagIndex: number) => <span key={tagIndex} className="reason-tag">{tag}</span>)}</div>}
-                      </td>
-                      <td>{score(opportunityScoreValue(item))}</td>
-                      <td>{score(item.news_message_score)}</td>
-                      <td>{score(item.quality_score)}</td>
-                      <td>{score(item.timing_score)}</td>
-                      <td>{score(item.priority_score)}</td>
-                      <td><Tag className={badgeClass(item.stage)}>{stageLabel(item.stage)}</Tag></td>
-                      <td><Tag className={badgeClass(item.action)}>{actionLabel(item.action)}</Tag></td>
-                      <td>{percent(item.recommended_position_pct)}</td>
-                      <td>
-                        {activeFilters.length > 0 ? (
-                          indicatorEntries.length > 0 ? (
-                            <div style={{ display: "grid", gap: 4 }}>
-                              <div className="discovery-indicator-tags">
-                                {indicatorEntries.map((entry) => (
-                                  <span key={entry.key} className={`discovery-indicator-tag ${entry.matched ? "is-match" : "is-miss"}`}>
-                                    {entry.name}: {entry.actualText}
-                                  </span>
-                                ))}
-                              </div>
-                              <div className="item-subline">
-                                {ctx.locale === "zh-CN"
-                                  ? `Matched ${matchedIndicatorCount}/${indicatorEntries.length}`
-                                  : `Matched ${matchedIndicatorCount}/${indicatorEntries.length}`}
-                                {indicatorEntries.length > 0 && ` | ${indicatorEntries.map((entry) => `${entry.name} ${entry.operator} ${entry.expectedText}`).join(DOT)}`}
-                              </div>
-                            </div>
-                          ) : "-"
-                        ) : (
-                          <>
-                            <span className={`freshness-chip ${freshness.className}`}>{freshness.label}</span>
-                            {isLowCredibility && <span className="credibility-badge credibility-low">Low</span>}
-                          </>
-                        )}
-                      </td>
-                      <td>
-                        <Space size="small">
-                          <Button size="small" loading={rowActionLoading[item.symbol_id]?.watchlist} disabled={inWatchlist} onClick={(event: any) => { event.stopPropagation(); handleAddToWatchlist(item.symbol_id); }}>{inWatchlist ? t("discoveryInWatchlist") : t("discoveryAddWatchlist")}</Button>
-                          <Button size="small" loading={rowActionLoading[item.symbol_id]?.freeze} onClick={(event: any) => { event.stopPropagation(); if (resultId) handleToggleFreeze(resultId, !!item.is_frozen, item.symbol_id); }}>{item.is_frozen ? t("unfreeze") : t("freeze")}</Button>
-                          <Button size="small" loading={rowActionLoading[item.symbol_id]?.update} onClick={(event: any) => { event.stopPropagation(); if (resultId) handleUpdateRow(resultId, item.symbol_id); }}>{t("updateCurrent")}</Button>
-                        </Space>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <Table<WorkbenchCandidate>
+              columns={columns}
+              dataSource={filteredPool}
+              rowKey="symbol_id"
+              pagination={{ pageSize: 20, hideOnSinglePage: true }}
+              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noDiscoveryResults")} /> }}
+              onRow={(record) => ({
+                onClick: () => handleRowClick(record.symbol_id),
+                onKeyDown: (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleRowClick(record.symbol_id);
+                  }
+                },
+                tabIndex: 0,
+                role: "button",
+                "aria-label": template("viewSymbolDetail", { symbol: record.symbol }),
+                className: [
+                  "discovery-table-row",
+                  record.is_frozen ? "discovery-row-frozen" : "",
+                  (() => {
+                    const f = discoveryFreshness(record);
+                    return f.className === "warning" ? "discovery-row-warning" : "";
+                  })(),
+                  ageDays(record.created_at) > 7 || !record.created_at ? "discovery-row-low-credibility" : "",
+                ].filter(Boolean).join(" "),
+              })}
+            />
           </div>
         </div>
       </section>

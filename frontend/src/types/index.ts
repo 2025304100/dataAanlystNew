@@ -24,18 +24,18 @@ export interface Score {
   stage: string;
   action: string;
   priority_score: number;
-  // 机会分拆解：各维度子分数
+  // Detailed sub-scores used by the scoring pipeline.
   trend_score?: number;
   momentum_score?: number;
   volatility_score?: number;
   liquidity_score?: number;
   breadth_score?: number;
   event_score?: number;
-  // 机会评分组成：突破、回落、过热惩罚及数据可信度
+  // Entry/exit structure details derived from breakout and pullback logic.
   breakout_score?: number;
   pullback_score?: number;
   overheat_penalty?: number;
-  // 数据可信度评分范围约 -4.3 ~ 0，来源权威性越高分数越高
+  // Data credibility indicator. Lower values imply weaker underlying coverage.
   data_credibility?: number;
   created_at?: string;
 }
@@ -569,9 +569,8 @@ export interface MarketDataUpdateResponse {
   };
 }
 
-// 行情消息/市场事件数据结构
-// 汇总影响大盘及期货行情的重大消息（Market News / Market Events）
-// 每条消息包含影响范围、级别、情绪、来源等维度的专业评价
+// Market events and news items surfaced in the workbench.
+// Scope, impact, and source metadata are used for filtering and display.
 
 export interface MarketEvent {
   id: number;
@@ -579,13 +578,13 @@ export interface MarketEvent {
   summary: string | null;
   impact_scope: string;       // macro_policy | sector_dynamics | international | breaking | fund_flow | sentiment | other
   importance_level: number;   // 1-5
-  affected_market: string;     // A股 | 港股 | 美股
+  affected_market: string;     // A-share | Hong Kong | US
   affected_sectors: string | null;
   affected_symbols: string | null;
   sentiment: string;          // positive | negative | neutral
   source: string;             // cctv | baidu | baidu-report | manual | ...
   source_url: string | null;
-  is_manual: number;          // 0=系统自动采集的消息 1=手动录入的消息
+  is_manual: number;          // 0 = synced from source, 1 = manually entered
   published_at: string | null;
   expires_at: string | null;
   created_at: string;
@@ -779,7 +778,7 @@ export interface BacktestRun {
   summary?: BacktestSummary;
 }
 
-// 自定义指标参数定义与回测条件字段映射
+// Custom indicator definitions and preview payloads.
 
 
 export interface CustomIndicatorParamDef {
@@ -823,7 +822,17 @@ export interface CustomIndicatorPreviewScore {
   momentum_score?: number | null;
 }
 
-export interface CustomIndicatorPreviewResult {
+export interface CustomIndicatorPreviewSeriesItem {
+  trade_date: string;
+  value_type: "boolean" | "number";
+  result_boolean?: boolean | null;
+  result_number?: number | null;
+  display_value: string;
+  latest_bar: CustomIndicatorPreviewBar;
+  score_snapshot?: CustomIndicatorPreviewScore | null;
+}
+
+export interface CustomIndicatorPreviewRead {
   ok: boolean;
   message: string;
   symbol_id: number;
@@ -836,9 +845,8 @@ export interface CustomIndicatorPreviewResult {
   display_value: string;
   latest_bar: CustomIndicatorPreviewBar;
   score_snapshot?: CustomIndicatorPreviewScore | null;
+  recent_results?: CustomIndicatorPreviewSeriesItem[];
 }
-
-
 
 export interface DiscoveryPlanFilter {
   id: string;
@@ -906,7 +914,7 @@ export interface ConditionFieldDef {
   side?: "buy" | "sell" | "both";
 }
 
-// 数据库配置：MySQL 远程连接参数
+// Database configuration for optional MySQL connectivity.
 
 export interface MySQLConfig {
   host: string;
@@ -928,7 +936,7 @@ export interface TestConnectionResult {
 }
 
 export interface MigrationProgress {
-  status: "idle" | "running" | "completed" | "failed";
+  status: "idle" | "running" | "completed" | "failed" | "cancelled";
   current_table?: string;
   tables_done: number;
   tables_total: number;
@@ -939,7 +947,7 @@ export interface MigrationProgress {
 
 export interface HistoryInitializationStage {
   key: "prepare" | "sync_bars" | "calc_scores" | "finalize" | string;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   percent: number;
   done: number;
   total: number;
@@ -956,25 +964,42 @@ export interface HistoryInitializationSummary {
   score_days_completed: number;
 }
 
+export interface HistoryInitializationFailureItem {
+  symbol_id: number;
+  symbol: string;
+  name?: string | null;
+  asset_type?: string | null;
+  stage: string;
+  message: string;
+  failed_days: number;
+  last_trade_date?: string | null;
+}
+
 export interface HistoryInitializationRunRecord {
   task_id?: string | null;
-  status: "idle" | "running" | "completed" | "failed";
+  status: "idle" | "running" | "completed" | "failed" | "cancelled";
   preset: "1m" | "1q" | "1y" | "3y";
   adjust: string;
+  asset_types?: string[] | null;
+  symbol_ids?: number[];
   start_date?: string | null;
   end_date?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
   duration_seconds?: number | null;
   message?: string | null;
+  stages: HistoryInitializationStage[];
+  failed_items: HistoryInitializationFailureItem[];
   summary: HistoryInitializationSummary;
 }
 
 export interface HistoryInitializationTask {
   task_id?: string | null;
-  status: "idle" | "running" | "completed" | "failed";
+  status: "idle" | "running" | "completed" | "failed" | "cancelled";
   preset: "1m" | "1q" | "1y" | "3y";
   adjust: string;
+  asset_types?: string[] | null;
+  symbol_ids?: number[];
   start_date?: string | null;
   end_date?: string | null;
   progress_pct: number;
@@ -983,6 +1008,7 @@ export interface HistoryInitializationTask {
   finished_at?: string | null;
   duration_seconds?: number | null;
   stages: HistoryInitializationStage[];
+  failed_items: HistoryInitializationFailureItem[];
   summary: HistoryInitializationSummary;
   recent_runs?: HistoryInitializationRunRecord[];
 }

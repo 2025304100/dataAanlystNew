@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import ast
 import json
@@ -17,6 +17,7 @@ from app.schemas.custom_indicator import (
     CustomIndicatorCreate,
     CustomIndicatorPreviewRead,
     CustomIndicatorPreviewRequest,
+    CustomIndicatorPreviewSeriesItem,
     CustomIndicatorRead,
     CustomIndicatorUpdate,
 )
@@ -144,6 +145,51 @@ def _resolve_preview_bar(db: Session, symbol_id: int, trade_date):
     return db.execute(stmt).scalars().first()
 
 
+def _preview_score_payload(score: Score | None) -> dict | None:
+    if score is None:
+        return None
+    return {
+        "quality_score": float(score.quality_score) if score.quality_score is not None else None,
+        "timing_score": float(score.timing_score) if score.timing_score is not None else None,
+        "trend_score": float(score.trend_score) if score.trend_score is not None else None,
+        "momentum_score": float(score.momentum_score) if score.momentum_score is not None else None,
+    }
+
+
+def _preview_series_payload(bar: DailyBar, score: Score | None, raw_value, value_type: str) -> dict:
+    result_boolean: bool | None = None
+    result_number: float | None = None
+    display_value = "—"
+    if value_type == "number":
+        if raw_value is not None:
+            try:
+                result_number = float(raw_value)
+            except (TypeError, ValueError):
+                result_number = None
+            else:
+                display_value = _format_preview_number(result_number)
+    else:
+        if raw_value is not None:
+            result_boolean = bool(raw_value)
+            display_value = "True" if result_boolean else "False"
+
+    return {
+        "trade_date": bar.trade_date,
+        "value_type": value_type,
+        "result_boolean": result_boolean,
+        "result_number": result_number,
+        "display_value": display_value,
+        "latest_bar": {
+            "trade_date": bar.trade_date,
+            "open": float(bar.open),
+            "high": float(bar.high),
+            "low": float(bar.low),
+            "close": float(bar.close),
+            "volume": float(bar.volume) if bar.volume is not None else None,
+        },
+        "score_snapshot": _preview_score_payload(score),
+    }
+
 @router.get("/settings/custom-indicators", response_model=list[CustomIndicatorRead])
 def list_custom_indicators(
     scope: str | None = Query(default=None),
@@ -245,27 +291,32 @@ def preview_custom_indicator(payload: CustomIndicatorPreviewRequest, db: Session
             raise HTTPException(status_code=400, detail=f"No daily bar data available on {payload.trade_date.isoformat()}")
         raise HTTPException(status_code=400, detail="No daily bar data available for preview")
 
-    history_bars = (
+    bars = (
         db.execute(
             select(DailyBar)
-            .where(DailyBar.symbol_id == payload.symbol_id, DailyBar.trade_date < preview_bar.trade_date)
+            .where(DailyBar.symbol_id == payload.symbol_id, DailyBar.trade_date <= preview_bar.trade_date)
             .order_by(DailyBar.trade_date.desc())
-            .limit(250)
+            .limit(251)
         )
         .scalars()
         .all()
     )
-    history_bars = list(reversed(history_bars))
+    bars = list(reversed(bars))
+    history_bars = bars[:-1]
     prev_bar = history_bars[-1] if history_bars else None
-    score = (
+
+    score_rows = (
         db.execute(
             select(Score)
             .where(Score.symbol_id == payload.symbol_id, Score.trade_date <= preview_bar.trade_date)
             .order_by(Score.trade_date.desc())
+            .limit(251)
         )
         .scalars()
-        .first()
+        .all()
     )
+    score_by_date = {row.trade_date: row for row in reversed(score_rows)}
+    score = score_by_date.get(preview_bar.trade_date)
 
     raw_value = _resolve_formula_expr(score, preview_bar, prev_bar, history_bars, payload.formula)
     result_boolean: bool | None = None
@@ -279,6 +330,51 @@ def preview_custom_indicator(payload: CustomIndicatorPreviewRequest, db: Session
     else:
         result_boolean = bool(raw_value)
         display_value = "True" if result_boolean else "False"
+
+    recent_count = max(1, min(int(payload.recent_count), len(bars)))
+    recent_results: list[dict] = []
+    for idx in range(len(bars) - 1, len(bars) - recent_count - 1, -1):
+        current_bar = bars[idx]
+        current_history = bars[:idx]
+        current_prev_bar = bars[idx - 1] if idx > 0 else None
+        current_score = score_by_date.get(current_bar.trade_date)
+        try:
+            current_raw_value = _resolve_formula_expr(current_score, current_bar, current_prev_bar, current_history, payload.formula)
+        except Exception:
+            current_raw_value = None
+
+        series_boolean: bool | None = None
+        series_number: float | None = None
+        series_display = "—"
+        if payload.value_type == "number":
+            if current_raw_value is not None:
+                try:
+                    series_number = float(current_raw_value)
+                except (TypeError, ValueError):
+                    series_number = None
+                else:
+                    series_display = _format_preview_number(series_number)
+        else:
+            if current_raw_value is not None:
+                series_boolean = bool(current_raw_value)
+                series_display = "True" if series_boolean else "False"
+
+        recent_results.append({
+            "trade_date": current_bar.trade_date,
+            "value_type": payload.value_type,
+            "result_boolean": series_boolean,
+            "result_number": series_number,
+            "display_value": series_display,
+            "latest_bar": {
+                "trade_date": current_bar.trade_date,
+                "open": float(current_bar.open),
+                "high": float(current_bar.high),
+                "low": float(current_bar.low),
+                "close": float(current_bar.close),
+                "volume": float(current_bar.volume) if current_bar.volume is not None else None,
+            },
+            "score_snapshot": _preview_score_payload(current_score),
+        })
 
     return {
         "ok": True,
@@ -299,12 +395,8 @@ def preview_custom_indicator(payload: CustomIndicatorPreviewRequest, db: Session
             "close": float(preview_bar.close),
             "volume": float(preview_bar.volume) if preview_bar.volume is not None else None,
         },
-        "score_snapshot": None if score is None else {
-            "quality_score": float(score.quality_score) if score.quality_score is not None else None,
-            "timing_score": float(score.timing_score) if score.timing_score is not None else None,
-            "trend_score": float(score.trend_score) if score.trend_score is not None else None,
-            "momentum_score": float(score.momentum_score) if score.momentum_score is not None else None,
-        },
+        "score_snapshot": _preview_score_payload(score),
+        "recent_results": recent_results,
     }
 
 

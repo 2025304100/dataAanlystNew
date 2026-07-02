@@ -39,11 +39,10 @@ logger = logging.getLogger(__name__)
 
 TASK_TYPE = "market_data_sync"
 
-# 阶段 → 百分比区间
+# 阶段 → 百分比区间（评分内联在 sync 中，sync 阶段范围扩展到 90%）
 STAGE_PERCENT = {
     "prepare": (0, 5),
-    "sync": (5, 75),
-    "score": (75, 90),
+    "sync": (5, 90),   # sync + score 内联
     "scan": (90, 98),
     "done": (98, 100),
 }
@@ -65,7 +64,17 @@ def _check_cancelled(db: Session, task_id: str) -> bool:
 
 
 def create_market_data_sync_task(payload: MarketDataSyncCreate) -> dict:
-    """创建市场数据异步同步任务，启动后台 worker。"""
+    """创建市场数据异步同步任务，启动后台 worker。
+    
+    如果已有同类型任务处于 queued/running 状态，则拒绝创建并返回已有任务。
+    """
+    from app.services.async_tasks import list_async_tasks
+
+    # 检查是否有运行中的同类型任务
+    existing = list_async_tasks(task_type=TASK_TYPE, limit=1)
+    if existing and existing[0].status in ("queued", "running"):
+        return existing[0].model_dump()
+
     task_read = create_async_task(TASK_TYPE, payload.model_dump())
     _start_worker(task_read.id, _run_market_data_sync)
     return task_read.model_dump()
@@ -113,6 +122,15 @@ def _run_market_data_sync(task_id: str) -> None:
                 resolved_portfolio_rule_id = active_rule.id
 
         total = len(symbols)
+        if total == 0:
+            _set_task(db, task_id,
+                      status="done", stage="done", percent=100,
+                      total=0, processed=0, ok_count=0, failed_count=0,
+                      message="无需同步的标的",
+                      result_json=json.dumps({"scope": payload.scope, "symbols_total": 0, "ok_count": 0, "failed_count": 0, "scored_count": 0}, ensure_ascii=False),
+                      finished_at=_now())
+            return
+
         _set_task(db, task_id,
                   total=total, processed=0,
                   ok_count=0, failed_count=0,
@@ -129,6 +147,10 @@ def _run_market_data_sync(task_id: str) -> None:
             if _check_cancelled(db, task_id):
                 return
 
+            # 保存 symbol 信息，避免 rollback 后懒加载失败
+            symbol_code = symbol.symbol
+            symbol_id = symbol.id
+
             try:
                 refresh_symbol_name(symbol)
                 result = sync_symbol_daily_bars(
@@ -140,30 +162,37 @@ def _run_market_data_sync(task_id: str) -> None:
                 )
 
                 if result["status"] == "ok":
-                    # 评分和交易计划
-                    latest_bar = db.execute(
-                        select(DailyBar)
-                        .where(DailyBar.symbol_id == symbol.id)
-                        .order_by(DailyBar.trade_date.desc())
-                    ).scalars().first()
+                    # 先提交行情数据，确保不被后续评分失败回滚
+                    db.commit()
 
-                    if latest_bar is not None:
-                        score = calculate_symbol_score(
-                            db=db, symbol=symbol,
-                            trade_date=latest_bar.trade_date,
-                        )
-                        scored_count += 1
-                        if resolved_portfolio_id is not None:
-                            upsert_trade_setup(
-                                db=db,
-                                portfolio_id=resolved_portfolio_id,
-                                symbol=symbol,
-                                score=score,
+                    # 评分和交易计划单独 try，失败不影响已保存的行情
+                    try:
+                        latest_bar = db.execute(
+                            select(DailyBar)
+                            .where(DailyBar.symbol_id == symbol.id)
+                            .order_by(DailyBar.trade_date.desc())
+                        ).scalars().first()
+
+                        if latest_bar is not None:
+                            score = calculate_symbol_score(
+                                db=db, symbol=symbol,
+                                trade_date=latest_bar.trade_date,
                             )
+                            scored_count += 1
+                            if resolved_portfolio_id is not None:
+                                upsert_trade_setup(
+                                    db=db,
+                                    portfolio_id=resolved_portfolio_id,
+                                    symbol=symbol,
+                                    score=score,
+                                )
+                            db.commit()
+                    except Exception as score_exc:
+                        db.rollback()
+                        logger.warning("Score/trade-plan failed for %s: %s", symbol_code, score_exc)
 
                     ok_count += 1
-                    synced_symbol_ids.append(symbol.id)
-                    db.commit()
+                    synced_symbol_ids.append(symbol_id)
                 else:
                     ok_count += 1  # empty 也算 ok
                     db.commit()
@@ -171,12 +200,14 @@ def _run_market_data_sync(task_id: str) -> None:
             except Exception as exc:
                 db.rollback()
                 failed_count += 1
-                _append_error(db.get(AsyncTaskRecord, task_id), {
-                    "symbol": symbol.symbol,
-                    "symbol_id": symbol.id,
-                    "error": str(exc),
-                })
-                logger.warning("Sync failed for %s: %s", symbol.symbol, exc)
+                task_record = db.get(AsyncTaskRecord, task_id)
+                if task_record is not None:
+                    _append_error(task_record, {
+                        "symbol": symbol_code,
+                        "symbol_id": symbol_id,
+                        "error": str(exc),
+                    })
+                logger.warning("Sync failed for %s: %s", symbol_code, exc)
 
             # 更新进度
             _set_task(db, task_id,
@@ -189,6 +220,9 @@ def _run_market_data_sync(task_id: str) -> None:
 
         # ── stage: scan ─────────────────────────────────
         auto_scan_result = None
+        if _check_cancelled(db, task_id):
+            return
+
         if payload.auto_scan and synced_symbol_ids:
             _set_task(db, task_id,
                       stage="scan",

@@ -1,9 +1,10 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { Input, InputNumber, Button, Tag, Space, Modal, Dropdown } from "antd";
+import { Input, InputNumber, Button, Tag, Space, Modal, Dropdown, Empty, Skeleton, Table } from "antd";
 import type { MenuProps } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
-import { t, DOT, stageLabel, actionLabel } from "../i18n";
+import { t, template, DOT, stageLabel, actionLabel } from "../i18n";
 import {
   percent,
   score,
@@ -15,7 +16,7 @@ import {
   opportunityScoreValue,
   inferSymbolPayload,
 } from "../utils/format";
-import type { Position, AllocationSnapshot } from "../types";
+import type { Position, AllocationSnapshot, WorkbenchCandidate } from "../types";
 
 interface PortfolioWorkbenchProps {
   openMetricModal: (type: string) => void;
@@ -107,7 +108,9 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
   // ── P2: 持仓管理 & 组合暴露 state ──
   const portfolioId = ctx.portfolioId ?? 1;
   const [positions, setPositions] = useState<Position[]>(workbench?.positions ?? []);
+  const [positionsLoading, setPositionsLoading] = useState(false);
   const [allocation, setAllocation] = useState<AllocationSnapshot | null>(null);
+  const [allocationLoading, setAllocationLoading] = useState(false);
   const [posSymbolCode, setPosSymbolCode] = useState("");
   const [posQuantity, setPosQuantity] = useState<number | null>(null);
   const [posAvgCost, setPosAvgCost] = useState<number | null>(null);
@@ -131,20 +134,26 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
   const [loadingBackups, setLoadingBackups] = useState(false);
 
   const loadPositions = useCallback(async () => {
+    setPositionsLoading(true);
     try {
       const data = await api.getPositions(portfolioId);
       setPositions(Array.isArray(data) ? (data as Position[]) : []);
     } catch {
       // ignore load error
+    } finally {
+      setPositionsLoading(false);
     }
   }, [portfolioId]);
 
   const loadAllocation = useCallback(async () => {
+    setAllocationLoading(true);
     try {
       const data = await api.getAllocation(portfolioId);
       setAllocation(data as AllocationSnapshot);
     } catch {
       // ignore load error
+    } finally {
+      setAllocationLoading(false);
     }
   }, [portfolioId]);
 
@@ -190,7 +199,11 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
   if (!workbench) {
     return (
       <div className="sub-tab-container" data-sub-content="portfolio-workbench">
-        <div className="empty">{t("noScanYet")}</div>
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t("noScanYet")}
+          className="workbench-empty"
+        />
       </div>
     );
   }
@@ -359,6 +372,82 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
     ? positions.reduce((top, p) => ((p.position_pct ?? 0) > (top.position_pct ?? 0) ? p : top), positions[0])
     : null;
 
+  const positionColumns: ColumnsType<Position> = [
+    {
+      title: t("symbol"),
+      key: "symbol",
+      render: (_, item) => (
+        <div className="symbol-title">
+          <span className="symbol-code">{item.symbol}</span>
+          <span className="symbol-name">{item.name}</span>
+        </div>
+      ),
+    },
+    { title: t("quantity"), dataIndex: "quantity", key: "quantity" },
+    { title: t("avgCost"), dataIndex: "avg_cost", key: "avg_cost", render: (v) => score(v) },
+    { title: t("currentPrice"), dataIndex: "latest_price", key: "latest_price", render: (v) => score(v) },
+    { title: t("marketValue"), dataIndex: "market_value", key: "market_value", render: (v) => money(v) },
+    { title: t("position"), dataIndex: "position_pct", key: "position_pct", render: (v) => percent(v) },
+    {
+      title: t("unrealizedPnl"),
+      dataIndex: "unrealized_pnl",
+      key: "unrealized_pnl",
+      render: (v) => <span className={pnlClass(v)}>{money(v)}</span>,
+    },
+    {
+      title: t("unrealizedPnlPct"),
+      dataIndex: "unrealized_pnl_pct",
+      key: "unrealized_pnl_pct",
+      render: (v) => <span className={pnlClass(v)}>{percent(v)}</span>,
+    },
+    {
+      title: t("operations"),
+      key: "operations",
+      render: (_, item) => (
+        <Button
+          className="delete-btn"
+          size="small"
+          danger
+          loading={deletingPositionSymbolId === item.symbol_id}
+          onClick={(e) => { e.stopPropagation(); handleDeletePosition(item.symbol_id); }}
+          aria-label={template("deletePositionFor", { symbol: item.symbol })}
+        >
+          {t("deletePosition")}
+        </Button>
+      ),
+    },
+  ];
+
+  const candidateColumns: ColumnsType<WorkbenchCandidate> = [
+    {
+      title: t("rank"),
+      key: "rank",
+      width: 70,
+      render: (_, item, index) => item.rank_no ?? index + 1,
+    },
+    {
+      title: t("symbol"),
+      key: "symbol",
+      render: (_, item) => (
+        <div className="symbol-title">
+          <span className="symbol-code">{item.symbol}</span>
+          <span className="symbol-name">{item.name}</span>
+        </div>
+      ),
+    },
+    { title: t("quality"), dataIndex: "quality_score", key: "quality_score", sorter: (a, b) => a.quality_score - b.quality_score, render: (v) => score(v), width: 90 },
+    { title: t("timing"), dataIndex: "timing_score", key: "timing_score", sorter: (a, b) => a.timing_score - b.timing_score, render: (v) => score(v), width: 90 },
+    { title: t("stage"), dataIndex: "stage", key: "stage", render: (v) => <Tag className={badgeClass(v)}>{stageLabel(v)}</Tag>, width: 100 },
+    { title: t("action"), dataIndex: "action", key: "action", render: (v) => <Tag className={badgeClass(v)}>{actionLabel(v)}</Tag>, width: 100 },
+    { title: t("position"), dataIndex: "recommended_position_pct", key: "recommended_position_pct", sorter: (a, b) => (a.recommended_position_pct ?? 0) - (b.recommended_position_pct ?? 0), render: (v) => percent(v), width: 100 },
+  ];
+
+  const rowKeyboardHandler = (symbolId: number) => (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleSymbolClick(symbolId);
+    }
+  };
 
   return (
     <div className="sub-tab-container" data-sub-content="portfolio-workbench">
@@ -376,7 +465,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
               <p className="panel-kicker">{t("todayExecutable")}</p>
               <div className="today-list">
                 {todayExecutable.length === 0 ? (
-                  <div className="empty">{t("noCandidates")}</div>
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noCandidates")} />
                 ) : (
                   todayExecutable.map((item) => (
                     <Button
@@ -385,6 +474,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                       className="today-item"
                       data-symbol-id={item.symbol_id}
                       onClick={() => handleSymbolClick(item.symbol_id)}
+                      aria-label={template("viewSymbolDetail", { symbol: item.symbol })}
                     >
                       <div>
                         <div className="symbol-title">
@@ -406,7 +496,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
               <p className="panel-kicker">{t("todayWatch")}</p>
               <div className="today-list">
                 {watchQueue.length === 0 ? (
-                  <div className="empty">{t("noScores")}</div>
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noScores")} />
                 ) : (
                   watchQueue.map((item) => (
                     <Button
@@ -415,6 +505,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                       className="today-item"
                       data-symbol-id={item.symbol_id}
                       onClick={() => handleSymbolClick(item.symbol_id)}
+                      aria-label={template("viewSymbolDetail", { symbol: item.symbol })}
                     >
                       <div>
                         <div className="symbol-title">
@@ -436,7 +527,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
               <p className="panel-kicker">{t("todayMessages")}</p>
               <div className="today-list">
                 {todayMessages.length === 0 ? (
-                  <div className="empty">{t("noNewsYet")}</div>
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noNewsYet")} />
                 ) : (
                   todayMessages.map((item) => (
                     <Button
@@ -445,6 +536,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                       className="today-item"
                       data-symbol-id={item.symbol_id}
                       onClick={() => handleSymbolClick(item.symbol_id)}
+                      aria-label={template("viewSymbolDetail", { symbol: item.symbol })}
                     >
                       <div>
                         <div className="symbol-title">
@@ -465,12 +557,12 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
 
       <section className="band metrics-band">
         <div className="metric-grid">
-          <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("symbols")}>
+          <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("symbols")} aria-label={template("metricActionView", { label: t("trackedUniverse") })}>
             <span className="metric-label">{t("trackedUniverse")}</span>
             <span className="metric-value">{marketScope?.filtered_symbols ?? overview.symbols_count}</span>
             <span className="metric-note">{t("items")}</span>
           </Button>
-          <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("watchlists")}>
+          <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("watchlists")} aria-label={template("metricActionView", { label: t("watchlists") })}>
             <span className="metric-label">{t("watchlists")}</span>
             <span className="metric-value">{overview.watchlists_count}</span>
             <span className="metric-note">{t("items")}</span>
@@ -485,7 +577,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
             <span className="metric-value">{percent(overview.cash_pct)}</span>
             <span className="metric-note">{t("reserveLeft")}</span>
           </div>
-          <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("candidates")}>
+          <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("candidates")} aria-label={template("metricActionView", { label: t("candidates") })}>
             <span className="metric-label">{t("candidates")}</span>
             <span className="metric-value">{workbench.candidates.length}</span>
             <span className="metric-note">{t("items")}</span>
@@ -541,7 +633,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                   </div>
                 </div>
               ) : (
-                <div className="empty">{t("noTrades")}</div>
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noTrades")} />
               )}
             </div>
           </section>
@@ -609,59 +701,24 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
 
                 <div className="position-table">
                   <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>{t("symbol")}</th>
-                          <th>{t("quantity")}</th>
-                          <th>{t("avgCost")}</th>
-                          <th>{t("currentPrice")}</th>
-                          <th>{t("marketValue")}</th>
-                          <th>{t("position")}</th>
-                          <th>{t("unrealizedPnl")}</th>
-                          <th>{t("unrealizedPnlPct")}</th>
-                          <th>{t("operations")}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {positions.length === 0 ? (
-                          <tr>
-                            <td colSpan={9}>
-                              <div className="empty">{t("noPositions")}</div>
-                            </td>
-                          </tr>
-                        ) : (
-                          positions.map((item) => (
-                            <tr key={item.symbol_id}>
-                              <td>
-                                <div className="symbol-title">
-                                  <span className="symbol-code">{item.symbol}</span>
-                                  <span className="symbol-name">{item.name}</span>
-                                </div>
-                              </td>
-                              <td>{item.quantity}</td>
-                              <td>{score(item.avg_cost)}</td>
-                              <td>{score(item.latest_price)}</td>
-                              <td>{money(item.market_value)}</td>
-                              <td>{percent(item.position_pct)}</td>
-                              <td className={pnlClass(item.unrealized_pnl)}>{money(item.unrealized_pnl)}</td>
-                              <td className={pnlClass(item.unrealized_pnl)}>{percent(item.unrealized_pnl_pct)}</td>
-                              <td>
-                                <Button
-                                  className="delete-btn"
-                                  size="small"
-                                  danger
-                                  loading={deletingPositionSymbolId === item.symbol_id}
-                                  onClick={() => handleDeletePosition(item.symbol_id)}
-                                >
-                                  {t("deletePosition")}
-                                </Button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                    {positionsLoading ? (
+                      <Skeleton active paragraph={{ rows: 4 }} />
+                    ) : (
+                      <Table<Position>
+                        columns={positionColumns}
+                        dataSource={positions}
+                        rowKey="symbol_id"
+                        pagination={false}
+                        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("positionsTableEmpty")} /> }}
+                        onRow={(record) => ({
+                          onClick: () => handleSymbolClick(record.symbol_id),
+                          onKeyDown: rowKeyboardHandler(record.symbol_id),
+                          tabIndex: 0,
+                          role: "button",
+                          "aria-label": template("viewSymbolDetail", { symbol: record.symbol }),
+                        })}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
@@ -680,7 +737,9 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
               <div className="exposure-rule-grid">
                 <div className="exposure-panel">
                   <p className="exposure-kicker">{t("exposureKicker")}</p>
-                  {allocation ? (
+                  {allocationLoading ? (
+                    <Skeleton active paragraph={{ rows: 3 }} />
+                  ) : allocation ? (
                     <>
                       <div className="exposure-stats">
                         <div className="exposure-stat">
@@ -737,7 +796,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                       </div>
                     </>
                   ) : (
-                    <div className="empty">{t("noAllocation")}</div>
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noAllocation")} />
                   )}
                 </div>
 
@@ -884,36 +943,21 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                 </div>
               </div>
               <div className="table-wrap">
-                              <table>
-                                <thead>
-                                  <tr>
-                                    <th>{t("rank")}</th>
-                                    <th>{t("symbol")}</th>
-                                    <th>{t("quality")}</th>
-                                    <th>{t("timing")}</th>
-                                    <th>{t("stage")}</th>
-                                    <th>{t("action")}</th>
-                                    <th>{t("position")}</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {filteredCandidates.map((item, idx) => (
-                                  <tr
-                                    key={item.symbol_id}
-                                    className={`clickable ${ctx.activeSymbolId === item.symbol_id ? "active" : ""}`}
-                                    onClick={() => handleSymbolClick(item.symbol_id)}
-                                  >
-                                    <td>{item.rank_no ?? idx + 1}</td>
-                                    <td><div className="symbol-title"><span className="symbol-code">{item.symbol}</span><span className="symbol-name">{item.name}</span></div></td>
-                                    <td>{score(item.quality_score)}</td>
-                                    <td>{score(item.timing_score)}</td>
-                                    <td><Tag className={badgeClass(item.stage)}>{stageLabel(item.stage)}</Tag></td>
-                                    <td><Tag className={badgeClass(item.action)}>{actionLabel(item.action)}</Tag></td>
-                                    <td>{percent(item.recommended_position_pct)}</td>
-                                  </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                <Table<WorkbenchCandidate>
+                  columns={candidateColumns}
+                  dataSource={filteredCandidates}
+                  rowKey="symbol_id"
+                  pagination={{ pageSize: 20, hideOnSinglePage: true }}
+                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("candidatesTableEmpty")} /> }}
+                  onRow={(record) => ({
+                    onClick: () => handleSymbolClick(record.symbol_id),
+                    onKeyDown: rowKeyboardHandler(record.symbol_id),
+                    tabIndex: 0,
+                    role: "button",
+                    "aria-label": template("viewSymbolDetail", { symbol: record.symbol }),
+                    className: `clickable ${ctx.activeSymbolId === record.symbol_id ? "active" : ""}`,
+                  })}
+                />
               </div>
             </div>
           </section>
@@ -929,7 +973,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                 </div>
               </div>
               {workbench.latest_scores.length === 0 ? (
-                <div className="empty">{t("noScores")}</div>
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noScores")} />
               ) : (
                 <div className="list">
                   {workbench.latest_scores.map((item) => (
@@ -969,9 +1013,9 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
         width={560}
       >
         {loadingBackups ? (
-          <div className="empty">{t("loading")}</div>
+          <Skeleton active paragraph={{ rows: 3 }} />
         ) : backupList.length === 0 ? (
-          <div className="empty">{t("noBackups")}</div>
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noBackups")} />
         ) : (
           <div className="list">
             {backupList.map((backup: any, idx: number) => {

@@ -58,14 +58,19 @@ class MarketDataRepairRequest(BaseModel):
 
 
 HistoryInitializationPreset = Literal["1m", "1q", "1y", "3y"]
-HistoryInitializationStageStatus = Literal["pending", "running", "completed", "failed"]
-HistoryInitializationTaskStatus = Literal["idle", "running", "completed", "failed"]
+HistoryInitializationStageStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
+HistoryInitializationTaskStatus = Literal["idle", "running", "completed", "failed", "cancelled"]
 
 
 class HistoryInitializationRequest(BaseModel):
     preset: HistoryInitializationPreset = "1y"
     adjust: str = "qfq"
     asset_types: list[str] | None = None
+    symbol_ids: list[int] | None = None
+
+
+class HistoryInitializationRetryRequest(BaseModel):
+    task_id: str
 
 
 class HistoryInitializationStage(BaseModel):
@@ -87,17 +92,32 @@ class HistoryInitializationSummary(BaseModel):
     score_days_completed: int = 0
 
 
+class HistoryInitializationFailureItem(BaseModel):
+    symbol_id: int
+    symbol: str
+    name: str | None = None
+    asset_type: str | None = None
+    stage: str
+    message: str
+    failed_days: int = 0
+    last_trade_date: date | None = None
+
+
 class HistoryInitializationRunRecord(BaseModel):
     task_id: str | None = None
     status: HistoryInitializationTaskStatus
     preset: HistoryInitializationPreset = "1y"
     adjust: str = "qfq"
+    asset_types: list[str] | None = None
+    symbol_ids: list[int] = Field(default_factory=list)
     start_date: date | None = None
     end_date: date | None = None
     started_at: str | None = None
     finished_at: str | None = None
     duration_seconds: int | None = None
     message: str | None = None
+    stages: list[HistoryInitializationStage] = Field(default_factory=list)
+    failed_items: list[HistoryInitializationFailureItem] = Field(default_factory=list)
     summary: HistoryInitializationSummary = Field(default_factory=HistoryInitializationSummary)
 
 
@@ -106,6 +126,8 @@ class HistoryInitializationStatus(BaseModel):
     status: HistoryInitializationTaskStatus
     preset: HistoryInitializationPreset = "1y"
     adjust: str = "qfq"
+    asset_types: list[str] | None = None
+    symbol_ids: list[int] = Field(default_factory=list)
     start_date: date | None = None
     end_date: date | None = None
     progress_pct: int = 0
@@ -114,5 +136,6 @@ class HistoryInitializationStatus(BaseModel):
     finished_at: str | None = None
     duration_seconds: int | None = None
     stages: list[HistoryInitializationStage] = Field(default_factory=list)
+    failed_items: list[HistoryInitializationFailureItem] = Field(default_factory=list)
     summary: HistoryInitializationSummary = Field(default_factory=HistoryInitializationSummary)
     recent_runs: list[HistoryInitializationRunRecord] = Field(default_factory=list)

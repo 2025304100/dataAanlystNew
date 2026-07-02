@@ -776,7 +776,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [update]);
 
+  // Resume sync polling on mount (only once)
+  const syncResumeDone = useRef(false);
   useEffect(() => {
+    if (syncResumeDone.current) return;
+    syncResumeDone.current = true;
     (async () => {
       try {
         const tasks = await api.listMarketDataSyncTasks(1);
@@ -789,7 +793,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // ignore resume errors
       }
     })();
-  }, [startSyncPolling, update]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Bootstrap
   useEffect(() => {

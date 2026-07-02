@@ -1,0 +1,14 @@
+INFO:     Started server process [19668]
+INFO:     Waiting for application startup.
+2026-07-02 09:53:43,924 [INFO] app.main: Initializing MySQL engine: 127.0.0.1:3306/gpfx
+2026-07-02 09:53:44,727 [INFO] app.services.discovery_cleanup: Cleanup: removed 608 expired discovery results
+2026-07-02 09:53:44,741 [INFO] app.main: Startup cleanup completed: 608 expired results removed
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-07-02 10:23:45,119 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-02 10:53:45,490 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-02 11:23:45,843 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-02 11:53:46,848 [INFO] app.services.discovery_cleanup: Cleanup: removed 11646 expired discovery results
+2026-07-02 11:53:46,856 [INFO] app.main: Periodic cleanup: 11646 expired results removed
+2026-07-02 12:23:46,965 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-02 12:53:46,967 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
