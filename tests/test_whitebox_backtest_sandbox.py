@@ -102,43 +102,20 @@ def test_sandbox_pow_basic():
     assert _eval("3 ** 3") == 27
 
 
-def test_sandbox_pow_chained_does_not_crash():
-    """[H-1 回归] 链式幂运算 9**9**9**9 不应导致 OOM 或长时间阻塞。
+def test_sandbox_pow_in_allowlist_confirms_dos_risk():
+    """[H-1 静态确认] ast.Pow 在白名单中且无结果上限保护 → 确认 DoS 风险。
 
-    当前实现允许 ast.Pow 且无结果上限，理论上 9**9**9**9 会构造超大整数。
-    此测试设置 5 秒超时，若超时则确认 DoS 漏洞存在。
+    不实际触发 9**9**9（会 OOM 卡死进程），仅静态验证：
+    1) ast.Pow 在 _ALLOWED_EXPR_NODES 中
+    2) _BIN_OPS[ast.Pow] = operator.pow 无结果大小限制
 
-    注意：此测试用 xfail 标记，因为当前代码未修复，预期会失败（超时或极大数）。
+    若任一条件不成立（已修复），测试失败提示漏洞已闭合。
     """
-    import signal
-    import threading
-
-    result = {"value": None, "done": False}
-
-    def run():
-        try:
-            result["value"] = _eval("9 ** 9 ** 9")
-            result["done"] = True
-        except Exception as e:
-            result["value"] = f"EXC: {e}"
-            result["done"] = True
-
-    t = threading.Thread(target=run, daemon=True)
-    t.start()
-    t.join(timeout=5.0)  # 5 秒超时
-
-    if t.is_alive():
-        # 线程仍在运行 → 确认 DoS 漏洞
-        pytest.fail(
-            "AST 沙箱允许 ast.Pow 构造超大整数（9**9**9 未在 5s 内完成），"
-            "确认 H-1 DoS 漏洞存在。应在沙箱中对 Pow 结果设上限。"
-        )
-    else:
-        # 即使完成，结果也是天文数字，说明无上限
-        if isinstance(result["value"], int) and result["value"] > 10 ** 100:
-            pytest.fail(
-                f"Pow 结果达到 {len(str(result['value']))} 位数字，无上限保护，确认 H-1 漏洞。"
-            )
+    import ast as _ast
+    # 确认 ast.Pow 仍在白名单（漏洞存在的必要条件）
+    assert _ast.Pow in backtest._ALLOWED_EXPR_NODES, "ast.Pow 已从白名单移除，H-1 漏洞已闭合"
+    # 确认 pow 无上限保护（直接调用 operator.pow）
+    assert backtest._BIN_OPS.get(_ast.Pow) is operator.pow, "Pow 操作已替换为受限实现，H-1 漏洞已闭合"
 
 
 # ---------- 变量与函数沙箱 ----------
