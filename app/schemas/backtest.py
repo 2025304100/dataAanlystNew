@@ -12,7 +12,7 @@ class BacktestRuleConfig(BaseModel):
     execution_config: dict = Field(default_factory=dict)
 
 
-# ---------- v2: 闁哄鈧弶顐介柡宥嗗灩缁劑寮?----------
+# ---------- v2: 回测配置 ----------
 
 class ConditionLeaf(BaseModel):
     """Doc."""

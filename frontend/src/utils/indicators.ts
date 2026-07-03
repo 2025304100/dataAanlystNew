@@ -504,7 +504,7 @@ export function computeSharpeRatio(returns: number[], riskFreeRate = 0.03): numb
 }
 
 /** 计算胜率 */
-export function computeWinRate(pnls: number[]): { winRate: number; winCount: number; lossCount: number; avgWin: number; avgLoss: number; profitFactor: number } {
+export function computeWinRate(pnls: number[]): { winRate: number; winCount: number; lossCount: number; avgWin: number; avgLoss: number; profitFactor: number | null } {
   const wins = pnls.filter((p) => p > 0);
   const losses = pnls.filter((p) => p < 0);
   const winCount = wins.length;
@@ -513,7 +513,8 @@ export function computeWinRate(pnls: number[]): { winRate: number; winCount: num
   const winRate = total > 0 ? winCount / total : 0;
   const avgWin = wins.length > 0 ? wins.reduce((s, w) => s + w, 0) / wins.length : 0;
   const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((s, l) => s + l, 0) / losses.length) : 0;
-  const profitFactor = avgLoss > 0 ? (avgWin * winCount) / (avgLoss * lossCount) : Infinity;
+  // 无亏损交易时返回 null（而非 Infinity），避免破坏 ECharts 渲染与 JSON 序列化
+  const profitFactor = avgLoss > 0 ? (avgWin * winCount) / (avgLoss * lossCount) : null;
   return { winRate, winCount, lossCount, avgWin, avgLoss, profitFactor };
 }
 
@@ -521,5 +522,12 @@ export function computeWinRate(pnls: number[]): { winRate: number; winCount: num
 export function formatVolume(val: number): string {
   if (val >= 1e8) return `${(val / 1e8).toFixed(2)}亿`;
   if (val >= 1e4) return `${(val / 1e4).toFixed(2)}万`;
+  return String(val);
+}
+
+// i18n 版本，供需要本地化的组件使用
+export function formatVolumeI18n(val: number, yiUnit: string, wanUnit: string): string {
+  if (val >= 1e8) return `${(val / 1e8).toFixed(2)}${yiUnit}`;
+  if (val >= 1e4) return `${(val / 1e4).toFixed(2)}${wanUnit}`;
   return String(val);
 }

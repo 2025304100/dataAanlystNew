@@ -25,14 +25,14 @@ import {
   score,
   money,
   joinParts,
-  badgeClass,
   pnlClass,
   clamp,
+  roundPrice,
   aggregateWeeklyBars,
   computeSuggestedPrice,
   signalLabel,
 } from "../utils/format";
-import type { BacktestRun, FutureBuyPlan, FuturePlanTuning, TradeSetup, TradeSetupOverrides, TradeSetupTranche } from "../types";
+import type { BacktestRun, FutureBuyPlan, FuturePlanTuning, ReturnScenarios, Symbol as SymbolInfo, TradeSetup, TradeSetupOverrides, TradeSetupTranche, WorkbenchBar } from "../types";
 import { api } from "../api/client";
 
 // ─── 共享工具库导入 ───
@@ -50,6 +50,8 @@ import {
   type RSIExtremePoint,
   type BOLLResult,
 } from "../utils/indicators";
+// 复用 constants/chartTheme 中统一导出的图表样式与颜色映射
+import { FUTURE_PLAN_STYLE_MAP, SIGNAL_COLOR_MAP } from "../constants/chartTheme";
 import {
   planWithRatio,
   invalidFuturePlan,
@@ -70,6 +72,12 @@ type TradePlanDraft = {
   recommended_position_pct: number | null;
   recommended_position_amount: number | null;
 };
+
+// 场景预演扩展类型：在 ReturnScenarios 基础上附加调整后的止损/目标价（_adjStop/_adjTarget）
+type ScenarioPreview = ReturnScenarios & { _adjStop?: number; _adjTarget?: number };
+
+// 标的快捷引用（仅包含展示所需的最少字段，用于搜索历史/收藏等）
+type SymbolQuickRef = { symbol_id: number; symbol: string; name: string };
 
 type TrancheDraft = TradeSetupTranche;
 type FuturePlanTunings = Record<string, FuturePlanTuning>;
@@ -188,12 +196,8 @@ function FuturePlanOverlay({
     return plotTop + ratio * plotHeight;
   };
 
-  const styleMap: Record<string, { fill: string; stroke: string; dash: string }> = {
-    avoid: { fill: "rgba(180, 35, 24, 0.12)", stroke: "#b42318", dash: "6,4" },
-    high: { fill: "rgba(15, 118, 110, 0.16)", stroke: "#0f766e", dash: "" },
-    low: { fill: "rgba(37, 99, 235, 0.11)", stroke: "#2563eb", dash: "4,4" },
-    normal: { fill: "rgba(15, 118, 110, 0.10)", stroke: "#0f766e", dash: "4,4" },
-  };
+  // 复用 constants/chartTheme 中统一导出的样式映射，避免重复定义
+  const styleMap = FUTURE_PLAN_STYLE_MAP;
 
   const usablePlans = plans.filter((plan) => plan.zone_min !== null && plan.zone_max !== null);
   const nonAvoidPlans = usablePlans.filter((p) => p.priority !== "avoid").slice(0, 3);
@@ -271,12 +275,12 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   // 搜索状态
   const [isMobile, setIsMobile] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SymbolInfo[]>([]);
   const [searching, setSearching] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // K线本地缓存：懒加载更多数据
-  const [extraBarsCache, setExtraBarsCache] = useState<Record<number, any[]>>({});
+  const [extraBarsCache, setExtraBarsCache] = useState<Record<number, WorkbenchBar[]>>({});
   const loadingBarsRef = useRef<Set<number>>(new Set());
   const windowInitializedRef = useRef(false);
 
@@ -295,7 +299,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   }, []);
 
   // 搜索历史（最近5个）+ 收藏
-  const [searchHistory, setSearchHistory] = useState<any[]>(() => {
+  const [searchHistory, setSearchHistory] = useState<SymbolQuickRef[]>(() => {
     try { return JSON.parse(localStorage.getItem("ic_search_history") || "[]"); } catch { return []; }
   });
   const [favorites, setFavorites] = useState<Set<number>>(() => {
@@ -353,10 +357,10 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     loadingBarsRef.current.add(symbolId);
 
     api.getBars(symbolId, Math.max(neededBars + 60, 250))
-      .then((fetched: any[]) => {
+      .then((fetched: WorkbenchBar[]) => {
         if (!fetched || !fetched.length) return;
-        const existingDates = new Set(detail.bars.map((b: any) => b.trade_date));
-        const newBars = fetched.filter((b: any) => !existingDates.has(b.trade_date));
+        const existingDates = new Set(detail.bars.map((b: WorkbenchBar) => b.trade_date));
+        const newBars = fetched.filter((b: WorkbenchBar) => !existingDates.has(b.trade_date));
         if (newBars.length > 0) {
           setExtraBarsCache((prev) => ({ ...prev, [symbolId]: [...newBars, ...(prev[symbolId] ?? [])] }));
         }
@@ -381,9 +385,9 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   }, [searchQuery]);
 
   // 快捷标的（持仓 + 最新评分）
-  const quickSymbols = useMemo(() => {
+  const quickSymbols = useMemo<SymbolQuickRef[]>(() => {
     if (!workbench) return [];
-    const map = new Map<number, any>();
+    const map = new Map<number, SymbolQuickRef>();
     for (const p of workbench.positions)
       map.set(p.symbol_id, { symbol_id: p.symbol_id, symbol: p.symbol, name: p.name });
     for (const s of workbench.latest_scores) {
@@ -393,7 +397,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     return Array.from(map.values());
   }, [workbench]);
 
-  const handleSelectSymbol = useCallback((symbolId: number, symbolInfo?: any) => {
+  const handleSelectSymbol = useCallback((symbolId: number, symbolInfo?: Pick<SymbolInfo, "symbol" | "name">) => {
     ctx.loadSymbolDetail(symbolId, { focus: true, barLimit: 180 });
     setSearchQuery("");
     setSearchResults([]);
@@ -401,7 +405,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     if (symbolInfo) {
       setSearchHistory((prev) => {
         const filtered = prev.filter((h) => h.symbol_id !== symbolId);
-        const updated = [{ symbol_id: symbolId, symbol: symbolInfo.symbol, name: symbolInfo.name }, ...filtered].slice(0, 5);
+        const updated: SymbolQuickRef[] = [{ symbol_id: symbolId, symbol: symbolInfo.symbol, name: symbolInfo.name }, ...filtered].slice(0, 5);
         try { localStorage.setItem("ic_search_history", JSON.stringify(updated)); } catch {}
         return updated;
       });
@@ -475,44 +479,43 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
      ════════════════════════════════════════════════════ */
 
   const setup = detail?.latest_trade_setup ?? null;
-  const zh = ctx.locale === "zh-CN";
   const icText = {
-    editPlan: zh ? "编辑计划" : "Edit plan",
-    exitEdit: zh ? "退出编辑" : "Exit edit",
-    savePlan: zh ? "重新计算" : "Recalculate",
-    cancelEdit: zh ? "取消" : "Cancel",
-    manual: zh ? "手动" : "Manual",
-    system: zh ? "系统" : "System",
-    overview: zh ? "计划概览" : "Overview",
-    scenario: zh ? "收益预演" : "Scenarios",
-    tranches: zh ? "分批执行" : "Tranches",
-    future: zh ? "未来计划" : "Future plan",
-    riskSettings: zh ? "风险参数" : "Risk settings",
-    alertSettings: zh ? "预警设置" : "Alert settings",
-    atrMultiplier: zh ? "ATR倍数" : "ATR multiplier",
-    mediumPosition: zh ? "中等仓位%" : "Medium position %",
-    highPosition: zh ? "高仓位%" : "High position %",
-    maxLossPct: zh ? "单笔最大亏损%" : "Max loss %",
-    stopNearPct: zh ? "止损接近%" : "Near stop %",
-    targetNearPct: zh ? "目标接近%" : "Near target %",
-    rsiOverbought: zh ? "RSI超买" : "RSI overbought",
-    rsiOversold: zh ? "RSI超卖" : "RSI oversold",
-    enableStopLoss: zh ? "止损" : "Stop",
-    enableTarget: zh ? "目标" : "Target",
-    enableRsi: zh ? "RSI" : "RSI",
-    enableMacd: zh ? "MACD" : "MACD",
-    invalidPlan: zh ? "买入区间下限不能大于上限" : "Buy zone min cannot exceed max",
-    editTranches: zh ? "编辑分批" : "Edit tranches",
-    saveTranches: zh ? "保存分批" : "Save tranches",
-    addTranche: zh ? "新增一批" : "Add tranche",
-    resetTranches: zh ? "恢复系统" : "Reset system",
-    trancheLabel: zh ? "批次" : "Label",
-    futureTuning: zh ? "场景参数" : "Scenario settings",
-    horizonDays: zh ? "观察天数" : "Horizon days",
-    pullbackPct: zh ? "回撤%" : "Pullback %",
-    positionPct: zh ? "仓位%" : "Position %",
-    bandPct: zh ? "区间宽度%" : "Band %",
-    scalePct: zh ? "缩放%" : "Scale %",
+    editPlan: t("icEditPlan"),
+    exitEdit: t("icExitEdit"),
+    savePlan: t("icSavePlan"),
+    cancelEdit: t("icCancelEdit"),
+    manual: t("icManual"),
+    system: t("icSystem"),
+    overview: t("icOverview"),
+    scenario: t("icScenario"),
+    tranches: t("icTranches"),
+    future: t("icFuture"),
+    riskSettings: t("icRiskSettings"),
+    alertSettings: t("icAlertSettings"),
+    atrMultiplier: t("icAtrMultiplier"),
+    mediumPosition: t("icMediumPosition"),
+    highPosition: t("icHighPosition"),
+    maxLossPct: t("icMaxLossPct"),
+    stopNearPct: t("icStopNearPct"),
+    targetNearPct: t("icTargetNearPct"),
+    rsiOverbought: t("icRsiOverbought"),
+    rsiOversold: t("icRsiOversold"),
+    enableStopLoss: t("icEnableStopLoss"),
+    enableTarget: t("icEnableTarget"),
+    enableRsi: t("icEnableRsi"),
+    enableMacd: t("icEnableMacd"),
+    invalidPlan: t("icInvalidPlan"),
+    editTranches: t("icEditTranches"),
+    saveTranches: t("icSaveTranches"),
+    addTranche: t("icAddTranche"),
+    resetTranches: t("icResetTranches"),
+    trancheLabel: t("icTrancheLabel"),
+    futureTuning: t("icFutureTuning"),
+    horizonDays: t("icHorizonDays"),
+    pullbackPct: t("icPullbackPct"),
+    positionPct: t("icPositionPct"),
+    bandPct: t("icBandPct"),
+    scalePct: t("icScalePct"),
   };
 
   useEffect(() => {
@@ -654,20 +657,14 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     const adjHorizon = Math.max(3, Math.round((baseScenarios.horizon_days ?? 20) * cfg.horizonMult));
     const adjRisk = effectiveRisk * cfg.targetMult;
     const adjStopOffset = effectiveRisk * cfg.stopMult;
-    const adjStop = _round_price(refPrice - adjStopOffset);
-    const adjTarget = _round_price(refPrice + adjRisk);
-    const adjConfidence = _clamp((baseScenarios.confidence_pct ?? 60) + cfg.confidenceAdj, 35, 82) / 100;
-    const pessimisticPrice = _round_price(adjStop);
+    // 复用 utils/format 中导出的 roundPrice / clamp，删除本地重复定义
+    const adjStop = roundPrice(refPrice - adjStopOffset);
+    const adjTarget = roundPrice(refPrice + adjRisk);
+    const adjConfidence = clamp((baseScenarios.confidence_pct ?? 60) + cfg.confidenceAdj, 35, 82) / 100;
+    const pessimisticPrice = roundPrice(adjStop);
     const optimisticAnchor = adjTarget + Math.max(effectiveRisk * 0.4, refPrice * 0.02);
-    const optimisticPrice = _round_price(optimisticAnchor);
-    const expectedPrice = _round_price(adjTarget * adjConfidence + pessimisticPrice * (1 - adjConfidence));
-
-    function _round_price(v: number | undefined | null): number {
-      return v != null ? Math.round(v * 100) / 100 : 0;
-    }
-    function _clamp(v: number, lo: number, hi: number): number {
-      return Math.max(lo, Math.min(hi, v));
-    }
+    const optimisticPrice = roundPrice(optimisticAnchor);
+    const expectedPrice = roundPrice(adjTarget * adjConfidence + pessimisticPrice * (1 - adjConfidence));
 
     return {
       ...baseScenarios,
@@ -683,8 +680,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
 
   // ── Chart data memo（含全部技术指标） ──
   interface ChartDataExt {
-    bars: any[]; dates: string[]; closes: number[];
-    candlestick: any[]; volume: any[];
+    bars: WorkbenchBar[]; dates: string[]; closes: number[];
+    candlestick: number[][]; volume: Array<{ value: number; itemStyle: { color: string } }>;
     ma10: (number | null)[]; ma20: (number | null)[];
     macd: MACDResult | null;
     rsi: (number | null)[];
@@ -733,8 +730,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     const lastClose = detail.bars[detail.bars.length - 1].close;
     const lastDate = detail.bars[detail.bars.length - 1].trade_date;
     const alerts: typeof priceAlerts = [];
-    const stopLoss = (scenarios as any)?._adjStop ?? setup.stop_loss;
-    const targetPrice = (scenarios as any)?._adjTarget ?? setup.target_price;
+    const stopLoss = (scenarios as ScenarioPreview)?._adjStop ?? setup.stop_loss;
+    const targetPrice = (scenarios as ScenarioPreview)?._adjTarget ?? setup.target_price;
 
     // 1. 跌破止损
     if (alertSettings.enableStopLoss && stopLoss != null && lastClose <= stopLoss) {
@@ -825,8 +822,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   // ── 风险指标计算 ──
   const riskMetrics = useMemo(() => {
     if (!setup || !(entryPrice > 0)) return null;
-    const stop = (scenarios as any)?._adjStop ?? setup.stop_loss;
-    const target = (scenarios as any)?._adjTarget ?? setup.target_price;
+    const stop = (scenarios as ScenarioPreview)?._adjStop ?? setup.stop_loss;
+    const target = (scenarios as ScenarioPreview)?._adjTarget ?? setup.target_price;
     const currentPrice = detail?.bars?.[detail.bars.length - 1]?.close ?? entryPrice;
 
     // 盈亏比 = (目标价 - 入场价) / (入场价 - 止损价)
@@ -900,7 +897,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         <div className="ic__modal-content" onClick={(e) => e.stopPropagation()}>
           <div className="ic__modal-header">
             <h3>{t("historyFavorites")}</h3>
-            <button className="ic__modal-close" onClick={() => setShowHistoryModal(false)}>×</button>
+            <button type="button" className="ic__modal-close" onClick={() => setShowHistoryModal(false)}>×</button>
           </div>
 
           <div className="ic__modal-body">
@@ -920,11 +917,11 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 <div className="ic__symbol-list">
                   {favoriteSymbols.map((item) => (
                     <div key={item.symbol_id} className="ic__symbol-item">
-                      <button className="ic__symbol-btn" onClick={() => { handleSelectSymbol(item.symbol_id); setShowHistoryModal(false); }}>
+                      <button type="button" className="ic__symbol-btn" onClick={() => { handleSelectSymbol(item.symbol_id); setShowHistoryModal(false); }}>
                         <span className="symbol-code">{item.symbol}</span>
                         <span className="symbol-name">{item.name}</span>
                       </button>
-                      <button className="ic__remove-btn" onClick={() => removeFromFavorites(item.symbol_id)}>
+                      <button type="button" className="ic__remove-btn" onClick={() => removeFromFavorites(item.symbol_id)}>
                         {t("remove")}
                       </button>
                     </div>
@@ -949,15 +946,15 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 <div className="ic__symbol-list">
                   {searchHistory.map((item) => (
                     <div key={item.symbol_id} className="ic__symbol-item">
-                      <button className="ic__symbol-btn" onClick={() => { handleSelectSymbol(item.symbol_id, item); setShowHistoryModal(false); }}>
+                      <button type="button" className="ic__symbol-btn" onClick={() => { handleSelectSymbol(item.symbol_id, item); setShowHistoryModal(false); }}>
                         <span className="symbol-code">{item.symbol}</span>
                         <span className="symbol-name">{item.name}</span>
                       </button>
                       <div className="ic__symbol-actions">
-                        <button className="ic__fav-toggle" onClick={() => toggleFavorite(item.symbol_id)}>
+                        <button type="button" className="ic__fav-toggle" onClick={() => toggleFavorite(item.symbol_id)}>
                           {favorites.has(item.symbol_id) ? "★" : "☆"}
                         </button>
-                        <button className="ic__remove-btn" onClick={() => removeFromHistory(item.symbol_id)}>
+                        <button type="button" className="ic__remove-btn" onClick={() => removeFromHistory(item.symbol_id)}>
                           {t("delete")}
                         </button>
                       </div>
@@ -973,22 +970,22 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   };
 
   // Trigger formatting functions
-  const formatOpenTrigger = useCallback((item: any) => {
+  const formatOpenTrigger = useCallback((item: TradeSetup) => {
     if (item.entry_min === null || item.entry_max === null) return "-";
     return template("icOpenTrigger", { min: item.entry_min, max: item.entry_max });
   }, [ctx.locale]);
 
-  const formatAddTrigger = useCallback((item: any) => {
+  const formatAddTrigger = useCallback((item: TradeSetup) => {
     if (!item.allow_add_position) return "-";
     return t("icAddTrigger");
   }, [ctx.locale]);
 
-  const formatStopTrigger = useCallback((item: any) => {
+  const formatStopTrigger = useCallback((item: TradeSetup) => {
     if (item.stop_loss === null) return "-";
     return template("icStopTrigger", { price: item.stop_loss });
   }, [ctx.locale]);
 
-  const formatTrimTrigger = useCallback((item: any) => {
+  const formatTrimTrigger = useCallback((item: TradeSetup) => {
     if (item.target_price === null) return "-";
     return template("icTrimTrigger", { price: item.target_price });
   }, [ctx.locale]);
@@ -999,9 +996,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     const signals = detail?.latest_trade_setup?.chart_signals ?? [];
 
     const markLineData = signals.map((sig) => {
-      const colorMap: Record<string, string> = {
-        stop: "#b42318", target: "#0f766e", "buy-zone": "#7c3aed",
-      };
+      // 复用 constants/chartTheme 中统一导出的信号颜色映射
+      const colorMap = SIGNAL_COLOR_MAP;
       const lineColor = colorMap[sig.kind] ?? "#059669";
       return {
         yAxis: sig.price,
@@ -1035,6 +1031,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           crossStyle: { color: "rgba(100,100,100,0.25)", width: 1 },
           label: { backgroundColor: "#333", fontSize: 10 },
         },
+        // TODO: 待后续类型强化——ECharts tooltip 回调参数类型较复杂，暂保留 any
         formatter: (params: any) => {
           if (!params || !Array.isArray(params) || !params.length) return "";
           const p = params[0];
@@ -1071,7 +1068,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       xAxis: { type: "category", data: chartData.dates, axisLabel: { fontSize: 10 } },
       yAxis: [
         { type: "value", min: priceMin, max: priceMax, axisLabel: { fontSize: 10 } },
-        { type: "value", scale: true, splitLine: { show: false }, axisLabel: { fontSize: 10, formatter: (v: any) => formatVolume(Number(v)) } },
+        { type: "value", scale: true, splitLine: { show: false }, axisLabel: { fontSize: 10, formatter: (v: any) => formatVolume(Number(v)) } }, // TODO: 待后续类型强化——ECharts axisLabel 回调参数暂保留 any
       ],
       series: [
         { name: "K", type: "candlestick", data: chartData.candlestick,
@@ -1122,8 +1119,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           symbol: "none",
           lineStyle: { type: "solid", width: 1, opacity: 0.4 },
           data: [
-            { yAxis: 70, lineStyle: { color: "#b42318" }, label: { formatter: zh ? "\u8d85\u4e70(70)" : "OB(70)", fontSize: 9 } },
-            { yAxis: 30, lineStyle: { color: "#0f766e" }, label: { formatter: zh ? "\u8d85\u5356(30)" : "OS(30)", fontSize: 9 } },
+            { yAxis: 70, lineStyle: { color: "#b42318" }, label: { formatter: t("rsiOBLineLabel"), fontSize: 9 } },
+            { yAxis: 30, lineStyle: { color: "#0f766e" }, label: { formatter: t("rsiOSLineLabel"), fontSize: 9 } },
             { yAxis: 50, lineStyle: { color: "#6b7280", type: "dashed" } },
           ],
         },
@@ -1136,17 +1133,17 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         markPoint: {
           data: chartData.rsiSignals.map((s) => ({
             coord: [s.index, s.value],
-            value: s.type === "overbought" ? "超买" : "超卖",
+            value: s.type === "overbought" ? t("icRsiOverbought") : t("icRsiOversold"),
             symbol: s.type === "overbought" ? "triangle" : "triangle",
             symbolSize: 8,
             symbolRotate: s.type === "overbought" ? 180 : 0,
             itemStyle: { color: s.type === "overbought" ? "#b42318" : "#0f766e" },
             label: { fontSize: 9, color: s.type === "overbought" ? "#b42318" : "#0f766e" },
           })),
-        } as any,
+        } as any, // TODO: 待后续类型强化——ECharts markPoint 配置类型暂保留 as any
       }],
     };
-  }, [chartData?.rsi, showRSI, chartData?.dates, chartData?.rsiSignals, zh]);
+  }, [chartData?.rsi, showRSI, chartData?.dates, chartData?.rsiSignals]);
 
   const lastBar = detail?.bars?.[detail.bars.length - 1];
 
@@ -1323,12 +1320,12 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             </div>
             <div className="ic__plan-summary-card">
               <span>{t("stopLoss")}</span>
-              <strong>{score((scenarios as any)?._adjStop ?? setup.stop_loss)}</strong>
+              <strong>{score((scenarios as ScenarioPreview)?._adjStop ?? setup.stop_loss)}</strong>
               <em>{fieldSourceBadge("stop_loss")}</em>
             </div>
             <div className="ic__plan-summary-card">
               <span>{t("target")}</span>
-              <strong>{score((scenarios as any)?._adjTarget ?? setup.target_price)}</strong>
+              <strong>{score((scenarios as ScenarioPreview)?._adjTarget ?? setup.target_price)}</strong>
               <em>{fieldSourceBadge("target_price")}</em>
             </div>
             <div className="ic__plan-summary-card">
@@ -1412,7 +1409,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 <label><span>{t("tranchePct")}</span><InputNumber size="small" min={0} max={100} value={tranche.position_pct} addonAfter="%" onChange={(v) => updateTrancheDraft(i, "position_pct", Number(v ?? 0))} /></label>
                 <label><span>{t("positionAmount")}</span><InputNumber size="small" min={0} value={tranche.amount} onChange={(v) => updateTrancheDraft(i, "amount", Number(v ?? 0))} /></label>
                 <label><span>{t("trigger")}</span><Input size="small" value={tranche.trigger} onChange={(e) => updateTrancheDraft(i, "trigger", e.target.value)} /></label>
-                <Button size="small" danger onClick={() => setTrancheDrafts((prev) => prev.filter((_, idx) => idx !== i))}>{zh ? "删除" : "Delete"}</Button>
+                <Button size="small" danger onClick={() => setTrancheDrafts((prev) => prev.filter((_, idx) => idx !== i))}>{t("delete")}</Button>
               </div>
             ))}
             <Button size="small" onClick={() => setTrancheDrafts((prev) => [...prev, { label: trancheLabel("Custom"), position_pct: 0, amount: 0, trigger: "" }])}>{icText.addTranche}</Button>
@@ -1544,8 +1541,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           </div>
           {/* 指标面板开关 */}
           <div className="ic__indicator-toggles">
-            <button className={`ic__toggle-btn${showMACD ? " active" : ""}`} onClick={() => setShowMACD(!showMACD)}>MACD</button>
-            <button className={`ic__toggle-btn${showRSI ? " active" : ""}`} onClick={() => setShowRSI(!showRSI)}>RSI</button>
+            <button type="button" className={`ic__toggle-btn${showMACD ? " active" : ""}`} onClick={() => setShowMACD(!showMACD)}>MACD</button>
+            <button type="button" className={`ic__toggle-btn${showRSI ? " active" : ""}`} onClick={() => setShowRSI(!showRSI)}>RSI</button>
           </div>
         </div>
 
@@ -1558,6 +1555,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                   option={chartOption}
                   style={{ height: ctx.chartExpanded ? 520 : 400, width: "100%" }}
                   onEvents={{
+                    // TODO: 待后续类型强化——ECharts 事件回调参数类型暂保留 any
                     click: (params: any) => {
                       if (params.dataIndex != null && chartData?.closes[params.dataIndex] != null) {
                         const clickedClose = chartData.closes[params.dataIndex];
@@ -1660,7 +1658,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           {searchResults.length > 0 && (
             <div className="ic__search-dropdown">
               {searchResults.map((item) => (
-                <button key={item.id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.id, item)}>
+                <button type="button" key={item.id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.id, item)}>
                   <span className={`ic__fav-star${favorites.has(item.id) ? " active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}>
                     {favorites.has(item.id) ? "★" : "☆"}
                   </span>
@@ -1675,7 +1673,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             <div className="ic__search-dropdown ic__search-history">
               <div className="ic__history-header">{t("searchHistory")}</div>
               {searchHistory.map((item) => (
-                <button key={item.symbol_id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.symbol_id, item)}>
+                <button type="button" key={item.symbol_id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.symbol_id, item)}>
                   <span className={`ic__fav-star${favorites.has(item.symbol_id) ? " active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(item.symbol_id); }}>
                     {favorites.has(item.symbol_id) ? "★" : "☆"}
                   </span>
@@ -1689,7 +1687,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         {quickSymbols.length > 0 && !searchQuery && (
           <div className="ic__quick-chips">
             {quickSymbols.slice(0, 8).map((item) => (
-              <button key={item.symbol_id} className={`ic__chip${ctx.activeSymbolId === item.symbol_id ? " active" : ""}`}
+              <button type="button" key={item.symbol_id} className={`ic__chip${ctx.activeSymbolId === item.symbol_id ? " active" : ""}`}
                 onClick={() => handleSelectSymbol(item.symbol_id)}>
                 {item.symbol} {item.name}
               </button>
@@ -1720,7 +1718,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         {searchResults.length > 0 && (
           <div className="ic__search-dropdown">
             {searchResults.map((item) => (
-              <button key={item.id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.id, item)}>
+              <button type="button" key={item.id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.id, item)}>
                 <span className={`ic__fav-star${favorites.has(item.id) ? " active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id); }}>
                   {favorites.has(item.id) ? "★" : "☆"}
                 </span>
@@ -1735,7 +1733,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
           <div className="ic__search-dropdown ic__search-history">
             <div className="ic__history-header">{t("searchHistory")}</div>
             {searchHistory.map((item) => (
-              <button key={item.symbol_id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.symbol_id, item)}>
+              <button type="button" key={item.symbol_id} className="ic__search-result-item" onClick={() => handleSelectSymbol(item.symbol_id, item)}>
                 <span className={`ic__fav-star${favorites.has(item.symbol_id) ? " active" : ""}`} onClick={(e) => { e.stopPropagation(); toggleFavorite(item.symbol_id); }}>
                   {favorites.has(item.symbol_id) ? "★" : "☆"}
                 </span>
@@ -1751,7 +1749,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
         {!searchQuery && quickSymbols.length > 0 && (
           <nav className="ic__quick-bar">
             {quickSymbols.map((item) => (
-              <button key={item.symbol_id} className={`ic__chip${ctx.activeSymbolId === item.symbol_id ? " active" : ""}`}
+              <button type="button" key={item.symbol_id} className={`ic__chip${ctx.activeSymbolId === item.symbol_id ? " active" : ""}`}
                 onClick={() => handleSelectSymbol(item.symbol_id)}>
                 {item.symbol} {item.name}
             </button>
@@ -1784,7 +1782,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             {chartEntryPrice && (
               <div className="ic__entry-price-hint">
                 <span>{t("chartEntry")}: <strong>{score(chartEntryPrice)}</strong></span>
-                <button onClick={() => { setChartEntryPrice(null); ctx.setSimPrice(""); }} className="ic__hint-close">x</button>
+                <button type="button" onClick={() => { setChartEntryPrice(null); ctx.setSimPrice(""); }} className="ic__hint-close">x</button>
               </div>
             )}
           </div>

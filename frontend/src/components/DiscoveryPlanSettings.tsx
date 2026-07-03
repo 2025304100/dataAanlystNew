@@ -19,11 +19,15 @@ function makeId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function makeEmptyFilter(defaultIndicatorKey?: string): DiscoveryPlanFilter {
+function defaultOperator(valueType?: CustomIndicator["value_type"]): DiscoveryPlanFilter["operator"] {
+  return valueType === "number" ? "gte" : "eq";
+}
+
+function makeEmptyFilter(defaultIndicator?: CustomIndicator): DiscoveryPlanFilter {
   return {
     id: makeId("filter"),
-    indicator_key: defaultIndicatorKey,
-    operator: defaultIndicatorKey ? "gte" : "eq",
+    indicator_key: defaultIndicator?.key,
+    operator: defaultOperator(defaultIndicator?.value_type),
     number_value: 0,
     boolean_value: true,
   };
@@ -31,7 +35,8 @@ function makeEmptyFilter(defaultIndicatorKey?: string): DiscoveryPlanFilter {
 
 function normalizeOperator(operator: DiscoveryPlanFilter["operator"] | undefined, valueType?: CustomIndicator["value_type"]) {
   const options = valueType === "number" ? NUMBER_OPERATORS : BOOLEAN_OPERATORS;
-  return options.includes(operator ?? "eq") ? (operator ?? "eq") : (valueType === "number" ? "gte" : "eq");
+  const fallback = defaultOperator(valueType);
+  return options.includes(operator ?? fallback) ? (operator ?? fallback) : fallback;
 }
 
 export default function DiscoveryPlanSettings() {
@@ -61,7 +66,7 @@ export default function DiscoveryPlanSettings() {
       return acc;
     }, {});
   }, [customIndicators]);
-  const defaultIndicatorKey = customIndicators[0]?.key;
+  const defaultIndicator = customIndicators[0];
   const selected = useMemo(() => rows.find((row) => row.id === selectedId) ?? null, [rows, selectedId]);
   const usedIndicators = useMemo(() => {
     const keys = Array.from(new Set((form.filters || []).map((filter) => filter.indicator_key).filter(Boolean) as string[]));
@@ -89,14 +94,14 @@ export default function DiscoveryPlanSettings() {
   }, []);
 
   useEffect(() => {
-    if (!selectedId && form.filters.length === 0 && defaultIndicatorKey) {
-      setForm((prev) => (prev.filters.length === 0 ? { ...prev, filters: [makeEmptyFilter(defaultIndicatorKey)] } : prev));
+    if (!selectedId && form.filters.length === 0 && defaultIndicator) {
+      setForm((prev) => (prev.filters.length === 0 ? { ...prev, filters: [makeEmptyFilter(defaultIndicator)] } : prev));
     }
-  }, [defaultIndicatorKey, form.filters.length, selectedId]);
+  }, [defaultIndicator, form.filters.length, selectedId]);
 
   const startCreate = () => {
     setSelectedId(null);
-    setForm({ ...EMPTY_FORM, filters: [makeEmptyFilter(defaultIndicatorKey)] });
+    setForm({ ...EMPTY_FORM, filters: [makeEmptyFilter(defaultIndicator)] });
   };
 
   const loadPlan = (row: DiscoveryPlan) => {
@@ -105,7 +110,7 @@ export default function DiscoveryPlanSettings() {
       name: row.name,
       logic: row.logic,
       pool_tab: row.pool_tab,
-      filters: (row.filters?.length ? row.filters : [makeEmptyFilter(defaultIndicatorKey)]).map((filter) => {
+      filters: (row.filters?.length ? row.filters : [makeEmptyFilter(defaultIndicator)]).map((filter) => {
         const indicator = filter.indicator_key ? indicatorMap[filter.indicator_key] : undefined;
         return {
           ...filter,
@@ -123,13 +128,13 @@ export default function DiscoveryPlanSettings() {
   };
 
   const addFilter = () => {
-    setForm((prev) => ({ ...prev, filters: [...prev.filters, makeEmptyFilter(defaultIndicatorKey)] }));
+    setForm((prev) => ({ ...prev, filters: [...prev.filters, makeEmptyFilter(defaultIndicator)] }));
   };
 
   const removeFilter = (filterId: string) => {
     setForm((prev) => {
       const next = prev.filters.filter((filter) => filter.id !== filterId);
-      return { ...prev, filters: next.length ? next : [makeEmptyFilter(defaultIndicatorKey)] };
+      return { ...prev, filters: next.length ? next : [makeEmptyFilter(defaultIndicator)] };
     });
   };
 
@@ -243,7 +248,7 @@ export default function DiscoveryPlanSettings() {
       </Card>
 
       <Card className="indicator-card indicator-card--editor" size="small" title={selected ? template("dpEditPlan", { name: selected.name }) : t("dpNewPlan")}>
-        <Form layout="vertical">
+        <Form layout="vertical" className="discovery-plan-form">
           <div className="indicator-editor-head">
             <Space wrap className="indicator-editor-meta">
               <Tag>{logicOptions.find((item) => item.value === form.logic)?.label ?? form.logic}</Tag>
@@ -251,8 +256,8 @@ export default function DiscoveryPlanSettings() {
               <Tag color="blue">{form.filters.length} {t("items")}</Tag>
             </Space>
           </div>
-          <div className="item-subline indicator-editor-summary">{template("dpEnabledIndicators", { count: customIndicators.length })}</div>
-          <div className="indicator-form-grid">
+          <div className="item-subline indicator-editor-summary discovery-plan-summary">{template("dpEnabledIndicators", { count: customIndicators.length })}</div>
+          <div className="indicator-form-grid discovery-plan-grid">
             <Form.Item label={t("dpName")}>
               <Input value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} placeholder={t("dpNamePlaceholder")} />
             </Form.Item>
@@ -285,23 +290,23 @@ export default function DiscoveryPlanSettings() {
                     {indicator && <Tag color={indicator.value_type === "number" ? "gold" : "blue"}>{indicator.name}</Tag>}
                   </div>
                   <div className="discovery-filter-grid">
-                    <label className="inline-control inline-control--wide">
+                    <label className="inline-control inline-control--wide discovery-filter-control discovery-filter-control--wide">
                       <span>{t("dpSelectIndicator")}</span>
                       <Select allowClear placeholder={t("dpSelectIndicator")} value={filter.indicator_key} onChange={(value) => handleIndicatorChange(filter.id, value)} options={customIndicators.map((item) => ({ label: item.name, value: item.key }))} />
                     </label>
-                    <label className="inline-control">
+                    <label className="inline-control discovery-filter-control">
                       <span>{t("dpOperator")}</span>
                       <Select value={filter.operator} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, operator: value }))} options={operatorOptions.map((item) => ({ label: OPERATOR_LABELS[item] ?? item, value: item }))} disabled={!indicator} />
                     </label>
                     {indicator?.value_type === "number" ? (
-                      <label className="inline-control">
+                      <label className="inline-control discovery-filter-control">
                         <span>{t("dpThreshold")}</span>
-                        <InputNumber value={filter.number_value} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, number_value: Number(value ?? 0) }))} />
+                        <InputNumber className="discovery-filter-number" value={filter.number_value} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, number_value: Number(value ?? 0) }))} />
                       </label>
                     ) : (
-                      <label className="inline-control">
+                      <label className="inline-control discovery-filter-control">
                         <span>{t("dpTargetValue")}</span>
-                        <Switch checked={filter.boolean_value} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, boolean_value: value }))} disabled={!indicator} />
+                        <Switch checked={filter.boolean_value} checkedChildren={t("yes")} unCheckedChildren={t("no")} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, boolean_value: value }))} disabled={!indicator} />
                       </label>
                     )}
                   </div>

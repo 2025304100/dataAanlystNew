@@ -102,20 +102,27 @@ def test_sandbox_pow_basic():
     assert _eval("3 ** 3") == 27
 
 
-def test_sandbox_pow_in_allowlist_confirms_dos_risk():
-    """[H-1 静态确认] ast.Pow 在白名单中且无结果上限保护 → 确认 DoS 风险。
+def test_sandbox_pow_has_result_limit():
+    """[H-1 已修复] ast.Pow 仍保留在白名单（兼容正常指标公式），但已替换为 _safe_pow 受限实现。
 
-    不实际触发 9**9**9（会 OOM 卡死进程），仅静态验证：
-    1) ast.Pow 在 _ALLOWED_EXPR_NODES 中
-    2) _BIN_OPS[ast.Pow] = operator.pow 无结果大小限制
-
-    若任一条件不成立（已修复），测试失败提示漏洞已闭合。
+    验证：
+    1) ast.Pow 在 _ALLOWED_EXPR_NODES 中（兼容正常公式如 2**10）
+    2) _BIN_OPS[ast.Pow] 不再是 operator.pow，而是 _safe_pow（带结果上限）
+    3) 超大结果（>1e100）返回 None
     """
     import ast as _ast
-    # 确认 ast.Pow 仍在白名单（漏洞存在的必要条件）
-    assert _ast.Pow in backtest._ALLOWED_EXPR_NODES, "ast.Pow 已从白名单移除，H-1 漏洞已闭合"
-    # 确认 pow 无上限保护（直接调用 operator.pow）
-    assert backtest._BIN_OPS.get(_ast.Pow) is operator.pow, "Pow 操作已替换为受限实现，H-1 漏洞已闭合"
+    # ast.Pow 仍在白名单（正常幂运算仍可用）
+    assert _ast.Pow in backtest._ALLOWED_EXPR_NODES
+    # 但已替换为受限实现（不再是 operator.pow）
+    assert backtest._BIN_OPS.get(_ast.Pow) is not operator.pow, "Pow 仍是 operator.pow，H-1 漏洞未修复"
+    assert backtest._BIN_OPS.get(_ast.Pow) is backtest._safe_pow
+    # 超大结果返回 None（用 1e200 直接验证上限检查，不实际触发 OOM 计算）
+    assert backtest._safe_pow(10, 200) is None  # 10**200 远超 1e100
+    # 正常幂运算仍可用
+    assert backtest._safe_pow(2, 10) == 1024
+    assert backtest._safe_pow(3, 3) == 27
+    # 负指数（小数）也安全
+    assert backtest._safe_pow(2, -1) == 0.5
 
 
 # ---------- 变量与函数沙箱 ----------

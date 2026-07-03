@@ -167,10 +167,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const signalRulePreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const signalSampleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const portfolioIdRef = useRef<number | null>(null);
+  // detailCache 的 ref 镜像：供 useCallback 读取最新值而不必进入依赖数组
+  const detailCacheRef = useRef<Record<number, SymbolDetail>>({});
 
   const update = useCallback((partial: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...partial }));
     if (partial.portfolioId !== undefined) portfolioIdRef.current = partial.portfolioId;
+    if (partial.detailCache !== undefined) detailCacheRef.current = partial.detailCache;
   }, []);
 
   const showToast = useCallback((type: "success" | "error" | "info", msg: string) => {
@@ -263,7 +266,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!pid) return;
       const response = await api.getLatestNews(pid, symbolIds);
       update({ newsSnapshot: response.symbols_total || response.macro ? response : null });
-    } catch {
+    } catch (err) {
+      console.warn("loadLatestNewsSnapshot failed", err);
       update({ newsSnapshot: null });
     }
   }, [update]);
@@ -283,19 +287,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...data.candidates.map((item: { symbol_id: number }) => item.symbol_id),
         ...data.latest_scores.map((item: { symbol_id: number }) => item.symbol_id),
       ]);
-      if (state.activeSymbolId && visibleSymbolIds.has(state.activeSymbolId) && state.detailCache[state.activeSymbolId]) {
+      if (state.activeSymbolId && visibleSymbolIds.has(state.activeSymbolId) && detailCacheRef.current[state.activeSymbolId]) {
         await loadSymbolDetail(state.activeSymbolId, { force: true });
       }
     } catch (error: any) {
       showToast("error", error?.message || t("loadFailed"));
     }
-  }, [state.marketGroup, state.activeSymbolId, state.detailCache, update, showToast]);
+  }, [state.marketGroup, state.activeSymbolId, update, showToast]);
 
   const loadSymbolDetail = useCallback(async (symbolId: number, options?: { force?: boolean; focus?: boolean; barLimit?: number }): Promise<SymbolDetail | undefined> => {
     const initialUpdates: Partial<AppState> = { chartRange: null, chartWindowSize: DEFAULT_CHART_WINDOW };
     if (state.activeSymbolId !== symbolId) initialUpdates.activeSymbolId = symbolId;
     update(initialUpdates);
-    const cached = state.detailCache[symbolId];
+    const cached = detailCacheRef.current[symbolId];
     if (cached && !options?.force) {
       update({ detail: cached });
       scheduleSignalRulePreviewInternal();
@@ -306,7 +310,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const detail = await api.getSymbolDetail(pid, symbolId, state.signalSampleLimit ?? undefined, options?.barLimit);
       // Remember detail
-      const newCache = { ...state.detailCache, [symbolId]: detail };
+      const newCache = { ...detailCacheRef.current, [symbolId]: detail };
       const newOrder = [symbolId, ...state.detailOrder.filter((item) => item !== symbolId)].slice(0, 4);
       update({ detail: detail, detailCache: newCache, detailOrder: newOrder });
       syncOrderForm(detail);
@@ -315,7 +319,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       showToast("error", error?.message || t("loadFailed"));
     }
-  }, [state.detailCache, state.detailOrder, state.signalSampleLimit, update, syncOrderForm, showToast]);
+  }, [state.activeSymbolId, state.detailOrder, state.signalSampleLimit, update, syncOrderForm, showToast]);
 
   const loadPortfolios = useCallback(async () => {
     try {
@@ -381,7 +385,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Schedule preview with debounce
     if (signalRulePreviewTimer.current) clearTimeout(signalRulePreviewTimer.current);
     signalRulePreviewTimer.current = setTimeout(() => {
-      loadSignalRulePreview().catch(() => {});
+      loadSignalRulePreview().catch((err: unknown) => console.warn("signalRulePreview failed", err));
     }, 350);
   }, [state.signalRule, update, loadSignalRulePreview]);
 
@@ -411,7 +415,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const scheduleSignalRulePreviewInternal = useCallback((delay = 350) => {
     if (signalRulePreviewTimer.current) clearTimeout(signalRulePreviewTimer.current);
     signalRulePreviewTimer.current = setTimeout(() => {
-      loadSignalRulePreview().catch(() => {});
+      loadSignalRulePreview().catch((err: unknown) => console.warn("signalRulePreview failed", err));
     }, delay);
   }, [loadSignalRulePreview]);
 
@@ -420,8 +424,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const stats = await api.getDiscoveryScopeStats(scope);
       update({ discoveryScopeStats: stats });
-    } catch {
-      // ignore
+    } catch (err) {
+      console.warn("loadDiscoveryScopeStats failed", err);
     }
   }, [update]);
 
@@ -462,8 +466,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             showToast("error", t("taskExpiredRestart"));
           }
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn("discovery task polling failed", err);
       }
     }, 2000);
   }, [update, showToast, loadWorkbench]);
@@ -601,8 +605,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
           update({ syncTask: null });
         }
-      } catch {
-        // ignore polling errors
+      } catch (err) {
+        console.warn("sync task polling failed", err);
       }
     }, 2000);
   }, [update, showToast, loadWorkbench, stopSyncPolling]);
@@ -755,7 +759,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [state.portfolioId, state.activeSymbolId, state.detail, state.simQuantity, state.simPrice, loadWorkbench, showToast]);
 
   const removeDetailFromDock = useCallback((symbolId: number) => {
-    const newCache = { ...state.detailCache };
+    const newCache = { ...detailCacheRef.current };
     delete newCache[symbolId];
     const newOrder = state.detailOrder.filter((item) => item !== symbolId);
     if (state.activeSymbolId === symbolId) {
@@ -769,7 +773,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } else {
       update({ detailCache: newCache, detailOrder: newOrder });
     }
-  }, [state.detailCache, state.detailOrder, state.activeSymbolId, update]);
+  }, [state.detailOrder, state.activeSymbolId, update]);
 
   // Track active requests for a global loading indicator
   useEffect(() => {
@@ -791,8 +795,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           update({ syncTask: latestTask });
           startSyncPolling(latestTask.id);
         }
-      } catch {
-        // ignore resume errors
+      } catch (err) {
+        console.warn("resume sync task failed", err);
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps

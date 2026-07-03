@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   color-scheme: light;
   --bg: #f5f1e8;
   --panel: #fffaf0;
@@ -2535,15 +2535,15 @@ body.chart-expanded {
 /* ============ SETTINGS LAYOUT ============ */
 .settings-layout {
   display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 16px;
+  grid-template-columns: 196px minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
 .settings-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -2553,12 +2553,15 @@ body.chart-expanded {
 }
 
 .settings-nav-item {
-  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  padding: 0 16px;
+  padding: 0 14px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -2577,7 +2580,23 @@ body.chart-expanded {
   color: var(--accent);
 }
 
+.settings-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+}
+
+.settings-nav-copy {
+  min-width: 0;
+}
+
 .settings-content {
+  min-width: 0;
+}
+
+.settings-tab-container {
   min-width: 0;
 }
 
@@ -2607,7 +2626,68 @@ body.chart-expanded {
 }
 
 .indicator-card__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
   flex-wrap: wrap;
+}
+
+.indicator-settings-grid--formula {
+  grid-template-columns: 1fr;
+}
+
+.indicator-card--library .ant-card-head {
+  min-height: auto;
+}
+
+.indicator-card--library .ant-card-head-wrapper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.indicator-library-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.indicator-library-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: center;
+}
+
+.indicator-library-search {
+  grid-column: span 2;
+}
+
+.indicator-library-search,
+.indicator-library-filter {
+  width: 100%;
+  min-width: 0;
+}
+
+.indicator-library-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.indicator-library-table-wrap {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.indicator-library-table .ant-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.indicator-library-table .ant-table-placeholder > td {
+  padding-block: 28px !important;
 }
 
 .indicator-library-table .selected-row > td {
@@ -2807,15 +2887,42 @@ body.chart-expanded {
   .formula-workbench {
     grid-template-columns: 1fr;
   }
+
+  .indicator-library-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1100px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-sidebar {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
   .indicator-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .indicator-card--library .ant-card-head-wrapper {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 720px) {
+  .indicator-library-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .indicator-library-search {
+    grid-column: span 1;
+  }
+
   .indicator-form-grid,
   .indicator-form-grid.compact,
   .indicator-usage-grid {
@@ -2824,17 +2931,18 @@ body.chart-expanded {
 }
 
 @media (max-width: 768px) {
-  .settings-layout {
-    grid-template-columns: 1fr;
-  }
-
   .settings-sidebar {
-    flex-direction: row;
-    overflow-x: auto;
-    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .settings-nav-item {
+    justify-content: center;
+    padding: 0 12px;
+  }
+
+  .settings-nav-copy {
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 }
@@ -3258,6 +3366,109 @@ td .symbol-name {
   color: var(--muted);
 }
 
+.discovery-plan-form {
+  display: grid;
+  gap: 16px;
+}
+
+.discovery-plan-grid {
+  grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(180px, 0.7fr));
+  align-items: end;
+}
+
+.discovery-plan-grid .ant-form-item,
+.discovery-plan-form .indicator-usage-card {
+  margin-bottom: 0 !important;
+}
+
+.discovery-plan-summary {
+  margin-bottom: 0;
+}
+
+.discovery-filter-list {
+  display: grid;
+  gap: 12px;
+}
+
+.discovery-filter-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 250, 240, 0.48);
+}
+
+.discovery-filter-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.discovery-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.45fr) minmax(140px, 0.75fr) minmax(160px, 0.8fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.discovery-filter-control {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+
+.discovery-filter-control--wide {
+  min-width: 0;
+}
+
+.discovery-filter-control > span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.discovery-filter-control .ant-select,
+.discovery-filter-control .ant-input-number {
+  width: 100%;
+  min-width: 0;
+}
+
+.discovery-filter-number {
+  width: 100%;
+}
+
+.discovery-filter-control .ant-switch {
+  align-self: flex-start;
+}
+
+.discovery-filter-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.discovery-filter-actions .ant-btn {
+  min-width: 112px;
+}
+
+@media (max-width: 1280px) {
+  .discovery-plan-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .discovery-plan-grid > :first-child {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 900px) {
+  .discovery-filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
 /* ============================================================
    DetailModal - fix content overflow / clipping
    ============================================================ */

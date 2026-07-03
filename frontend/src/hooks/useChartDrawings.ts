@@ -82,6 +82,7 @@ export function useChartDrawings(symbolId: number | null) {
 
   // ECharts click handler
   const handleChartClick = useCallback(
+    // params/chartInstance 为 ECharts 事件参数与实例，类型复杂暂用 any
     (params: any, chartInstance: any) => {
       if (drawingMode === "none" || !chartInstance) return;
       try {
@@ -121,8 +122,8 @@ export function useChartDrawings(symbolId: number | null) {
           setPendingPoint(null);
           setDrawingMode("none");
         }
-      } catch {
-        /* ignore conversion errors */
+      } catch (err) {
+        console.warn("图表绘制坐标转换失败", err);
       }
     },
     [drawingMode, pendingPoint]

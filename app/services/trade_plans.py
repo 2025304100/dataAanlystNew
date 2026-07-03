@@ -501,9 +501,13 @@ def build_trade_setup_view(
     max_loss_per_trade_pct = None
     stage_limits = {}
     if rule is not None:
-        stage_limits = json.loads(rule.stage_limits_json)
-        stage_cap_pct = float(stage_limits.get(symbol.asset_type, {}).get(score.stage, 0.0))
-        max_loss_per_trade_pct = float(rule.max_loss_per_trade_pct)
+        try:
+            stage_limits = json.loads(rule.stage_limits_json) if rule.stage_limits_json else {}
+        except (json.JSONDecodeError, TypeError):
+            stage_limits = {}
+        stage_cfg = stage_limits.get(symbol.asset_type, {}) if isinstance(stage_limits, dict) else {}
+        stage_cap_pct = float(stage_cfg.get(score.stage, 0.0)) if isinstance(stage_cfg, dict) else 0.0
+        max_loss_per_trade_pct = float(rule.max_loss_per_trade_pct) if rule.max_loss_per_trade_pct is not None else None
 
     position_budget = compute_position_budget(
         db=db,

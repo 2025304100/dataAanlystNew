@@ -587,39 +587,76 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
         title={t("ciFormulaLibrary")}
         extra={<Space size={8} className="indicator-card__toolbar"><Tag>{filteredRows.length}/{rows.length}</Tag><Button size="small" icon={<ReloadOutlined />} onClick={loadRows}>{t("refresh")}</Button><Button size="small" icon={<PlusOutlined />} onClick={startCreate}>{t("ciNew")}</Button></Space>}
       >
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Input allowClear size="small" value={libraryKeyword} onChange={(event) => setLibraryKeyword(event.target.value)} placeholder={isZh ? "搜索名称 / 标识 / 公式" : "Search name / key / formula"} style={{ width: 220, maxWidth: "100%" }} />
-            <Select size="small" value={libraryCategoryFilter} onChange={setLibraryCategoryFilter} style={{ width: 120 }} options={[{ label: isZh ? "全部分类" : "All categories", value: "all" }, ...categoryOptions]} />
-            <Select size="small" value={libraryValueTypeFilter} onChange={setLibraryValueTypeFilter} style={{ width: 110 }} options={[{ label: isZh ? "全部类型" : "All types", value: "all" }, { label: t("ciBoolean"), value: "boolean" }, { label: t("ciNumber"), value: "number" }]} />
-            <Select size="small" value={libraryStatusFilter} onChange={setLibraryStatusFilter} style={{ width: 110 }} options={[{ label: isZh ? "全部状态" : "All status", value: "all" }, { label: isZh ? "启用中" : "Enabled", value: "enabled" }, { label: isZh ? "已停用" : "Disabled", value: "disabled" }]} />
-            <Select size="small" value={libraryScopeFilter} onChange={setLibraryScopeFilter} style={{ width: 130 }} options={[{ label: isZh ? "全部范围" : "All scopes", value: "all" }, ...scopeOptions]} />
+        <div className="indicator-library-panel">
+          <div className="indicator-library-filters">
+            <Input
+              allowClear
+              size="small"
+              className="indicator-library-search"
+              value={libraryKeyword}
+              onChange={(event) => setLibraryKeyword(event.target.value)}
+              placeholder={isZh ? "搜索名称 / 标识 / 公式" : "Search name / key / formula"}
+            />
+            <Select
+              size="small"
+              className="indicator-library-filter"
+              value={libraryCategoryFilter}
+              onChange={setLibraryCategoryFilter}
+              options={[{ label: isZh ? "全部分类" : "All categories", value: "all" }, ...categoryOptions]}
+            />
+            <Select
+              size="small"
+              className="indicator-library-filter"
+              value={libraryValueTypeFilter}
+              onChange={setLibraryValueTypeFilter}
+              options={[{ label: isZh ? "全部类型" : "All types", value: "all" }, { label: t("ciBoolean"), value: "boolean" }, { label: t("ciNumber"), value: "number" }]}
+            />
+            <Select
+              size="small"
+              className="indicator-library-filter"
+              value={libraryStatusFilter}
+              onChange={setLibraryStatusFilter}
+              options={[
+                { label: isZh ? "全部状态" : "All status", value: "all" },
+                { label: isZh ? "启用中" : "Enabled", value: "enabled" },
+                { label: isZh ? "已停用" : "Disabled", value: "disabled" },
+              ]}
+            />
+            <Select
+              size="small"
+              className="indicator-library-filter"
+              value={libraryScopeFilter}
+              onChange={setLibraryScopeFilter}
+              options={[{ label: isZh ? "全部范围" : "All scopes", value: "all" }, ...scopeOptions]}
+            />
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="indicator-library-summary">
             <Tag color="blue">{isZh ? "启用 " + rows.filter((row) => row.enabled).length : "Enabled " + rows.filter((row) => row.enabled).length}</Tag>
             <Tag color="gold">{isZh ? "数值型 " + rows.filter((row) => row.value_type === "number").length : "Numeric " + rows.filter((row) => row.value_type === "number").length}</Tag>
             <Tag color="green">{isZh ? "布尔型 " + rows.filter((row) => row.value_type === "boolean").length : "Boolean " + rows.filter((row) => row.value_type === "boolean").length}</Tag>
           </div>
-          <Table<CustomIndicator>
-            className="indicator-library-table"
-            size="small"
-            rowKey="id"
-            loading={loading}
-            dataSource={filteredRows}
-            pagination={{ pageSize: 8, showSizeChanger: false }}
-            scroll={{ x: 760 }}
-            locale={{ emptyText: isZh ? "当前筛选下没有公式" : "No formulas match the current filter" }}
-            onRow={(record) => ({ onClick: () => loadIndicator(record) })}
-            rowClassName={(record) => record.id === selectedId ? "selected-row" : ""}
-            columns={[
-              { title: t("ciName"), dataIndex: "name", render: (value, row) => <Space size={6}><span>{value}</span>{!row.enabled && <Tag>{t("ciDisabled")}</Tag>}</Space> },
-              { title: t("ciKey"), dataIndex: "key", width: 140 },
-              { title: t("ciCategory"), dataIndex: "category", width: 110, render: (value: string) => categoryOptions.find((item) => item.value === value)?.label ?? value },
-              { title: t("ciReturnType"), dataIndex: "value_type", width: 90, render: (value: string) => value === "number" ? t("ciNumber") : t("ciBoolean") },
-              { title: t("ciScope"), dataIndex: "scope", render: (scope: string[]) => (scope || []).map((item) => <Tag key={item}>{scopeOptions.find((opt) => opt.value === item)?.label ?? item}</Tag>) },
-              { title: t("ciVersion"), dataIndex: "version", width: 64 },
-            ]}
-          />
+          <div className="indicator-library-table-wrap">
+            <Table<CustomIndicator>
+              className="indicator-library-table"
+              size="small"
+              rowKey="id"
+              loading={loading}
+              dataSource={filteredRows}
+              pagination={{ pageSize: 8, showSizeChanger: false }}
+              scroll={{ x: 760 }}
+              locale={{ emptyText: isZh ? "当前筛选下没有公式" : "No formulas match the current filter" }}
+              onRow={(record) => ({ onClick: () => loadIndicator(record) })}
+              rowClassName={(record) => record.id === selectedId ? "selected-row" : ""}
+              columns={[
+                { title: t("ciName"), dataIndex: "name", render: (value, row) => <Space size={6}><span>{value}</span>{!row.enabled && <Tag>{t("ciDisabled")}</Tag>}</Space> },
+                { title: t("ciKey"), dataIndex: "key", width: 140 },
+                { title: t("ciCategory"), dataIndex: "category", width: 110, render: (value: string) => categoryOptions.find((item) => item.value === value)?.label ?? value },
+                { title: t("ciReturnType"), dataIndex: "value_type", width: 90, render: (value: string) => value === "number" ? t("ciNumber") : t("ciBoolean") },
+                { title: t("ciScope"), dataIndex: "scope", render: (scope: string[]) => (scope || []).map((item) => <Tag key={item}>{scopeOptions.find((opt) => opt.value === item)?.label ?? item}</Tag>) },
+                { title: t("ciVersion"), dataIndex: "version", width: 64 },
+              ]}
+            />
+          </div>
         </div>
       </Card>
 

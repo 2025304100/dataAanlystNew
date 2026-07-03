@@ -100,10 +100,19 @@ def _task_to_dict(task: DiscoveryTaskRecord) -> dict:
     }
 
 
+_TERMINAL_STATES = ("done", "failed", "cancelled", "expired")
+
+
 def _set_task(db: Session, task_id: str, **updates) -> DiscoveryTaskRecord:
     task = db.get(DiscoveryTaskRecord, task_id)
     if task is None:
         raise ValueError("Discovery task not found")
+    # 终态保护：已 done/failed/cancelled 的任务不允许被 worker 覆盖状态/阶段
+    # 防止用户取消后 worker 仍标记 done 的竞态
+    if task.status in _TERMINAL_STATES:
+        updates = {k: v for k, v in updates.items() if k not in ("status", "stage")}
+        if not updates:
+            return task
     for key, value in updates.items():
         setattr(task, key, value)
     task.updated_at = _now()
@@ -170,6 +179,15 @@ def create_discovery_task(payload: DiscoveryTaskCreate) -> dict:
     task_id = uuid.uuid4().hex
     db = SessionLocal()
     try:
+        # 并发保护：已有 queued/running 任务时拒绝创建
+        existing = db.execute(
+            select(DiscoveryTaskRecord).where(
+                DiscoveryTaskRecord.status.in_(("queued", "running"))
+            )
+        ).scalars().first()
+        if existing is not None:
+            raise ValueError("已有正在运行的发现任务，请等待完成后再创建")
+
         task = DiscoveryTaskRecord(
             id=task_id,
             status="queued",

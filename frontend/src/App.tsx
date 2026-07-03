@@ -3,7 +3,6 @@ import { Button, Input, Select, Spin } from "antd";
 import type { InputRef } from "antd";
 import { useApp } from "./context/AppContext";
 import { t, template } from "./i18n";
-import { regionLongLabel } from "./i18n";
 import PortfolioWorkbench from "./components/PortfolioWorkbench";
 import Trading from "./components/Trading";
 import InvestmentCenter from "./components/InvestmentCenter";
@@ -14,8 +13,6 @@ import MarketNews from "./components/MarketNews";  // 行情消息
 import Settings from "./components/Settings";
 import DetailModal from "./components/DetailModal";
 import MetricModal from "./components/MetricModal";
-
-const DOT = " | ";
 
 export default function App() {
   const ctx = useApp();
@@ -131,7 +128,7 @@ export default function App() {
           className={`view-tab${ctx.activeTab === "decision" ? " active" : ""}`}
           onClick={() => ctx.setActiveTab("decision")}
         >
-          {ctx.locale === "en-US" ? "Today Decision" : "\u4eca\u65e5\u51b3\u7b56"}
+          {t("tabTodayDecision")}
         </button>
 
         {/* ✨ 新增：投资中心导航（放在第一位） */}

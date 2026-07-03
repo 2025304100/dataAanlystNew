@@ -125,26 +125,39 @@ def test_budget_no_rule_returns_blocked(db_session):
     assert "no_active_rule" in result["blocked_reasons"]
 
 
-def test_budget_etf_with_null_max_etf_pct_raises(db_session):
+def test_budget_etf_with_null_max_etf_pct_raises(db_session, monkeypatch):
     """[M-7 回归] ETF 标的但规则 max_etf_position_pct 为 None 时应抛 TypeError。
 
     代码审查发现：allocation.py:119 行
     `float(rule.max_stock_position_pct if symbol.asset_type == "stock" else rule.max_etf_position_pct)`
     当 ETF 字段为 None 时 float(None) 会抛 TypeError。
 
-    注意：PortfolioRule 模型中 max_etf_position_pct 是 non-nullable Float，
-    但历史脏数据或迁移可能残留 NULL。此测试模拟该场景。
+    模型层 max_etf_position_pct 为 NOT NULL，正常 DB 写入拒绝 NULL；
+    但历史脏数据/直接 SQL/迁移可能残留 NULL。用 monkeypatch 注入脏规则对象。
     """
     p = _make_portfolio(db_session)
     sym = _make_symbol(db_session, symbol="510300", asset_type="etf", theme=None)
-    r = _make_rule(db_session, p.id, stock=0.4, etf=0.3)
-    # 模拟脏数据：将 max_etf_position_pct 设为 None
-    r.max_etf_position_pct = None
-    db_session.commit()
+    _make_rule(db_session, p.id, stock=0.4, etf=0.3)
 
-    # 当前实现会抛 TypeError，这正是 bug
+    # 用 monkeypatch 让 get_active_rule 返回一个 max_etf_position_pct=None 的脏规则
+    dirty_rule = type(db_session.query(PortfolioRule).first())(
+        portfolio_id=p.id, rule_name="dirty",
+        max_single_position_pct=0.1, max_sector_position_pct=0.3,
+        max_stock_position_pct=0.4, max_etf_position_pct=None,  # 脏数据
+        max_loss_per_trade_pct=0.05, max_open_positions=10,
+        stage_limits_json='{"etf":{"start":0.1}}', is_active=1,
+    )
+
+    def _fake_get_active_rule(db, portfolio_id):
+        return dirty_rule
+
+    monkeypatch.setattr(allocation, "get_active_rule", _fake_get_active_rule)
+
+    # 当前实现会抛 TypeError（float(None)），这正是 M-7 bug
     with pytest.raises(TypeError):
-        allocation.compute_position_budget(db_session, p.id, sym, "start", entry_price=5.0, stop_loss=4.5)
+        allocation.compute_position_budget(
+            db_session, p.id, sym, "start", entry_price=5.0, stop_loss=4.5
+        )
 
 
 def test_budget_stock_with_full_rule(db_session):
@@ -178,19 +191,31 @@ def test_budget_stage_limit_lookup(db_session):
     assert stage_constraints[0]["limit_pct"] == 0.20
 
 
-def test_budget_stage_limits_json_null_handled(db_session):
+def test_budget_stage_limits_json_null_handled(db_session, monkeypatch):
     """[M-6 回归] stage_limits_json 为 NULL 时不应崩溃。
 
     allocation.py:115 使用 `json.loads(rule.stage_limits_json or "{}")` 已有兜底，
-    确认 NULL 时回退到 {}。
+    确认 NULL 时回退到 {}。用 monkeypatch 注入脏规则绕过 DB NOT NULL 约束。
     """
     p = _make_portfolio(db_session)
     sym = _make_symbol(db_session)
-    r = _make_rule(db_session, p.id)
-    r.stage_limits_json = None
-    db_session.commit()
+    _make_rule(db_session, p.id)
 
-    # 不应抛 JSONDecodeError/TypeError
+    dirty_rule = type(db_session.query(PortfolioRule).first())(
+        portfolio_id=p.id, rule_name="dirty",
+        max_single_position_pct=0.1, max_sector_position_pct=0.3,
+        max_stock_position_pct=0.4, max_etf_position_pct=0.3,
+        max_loss_per_trade_pct=0.05, max_open_positions=10,
+        stage_limits_json=None,  # 脏数据：NULL
+        is_active=1,
+    )
+
+    def _fake_get_active_rule(db, portfolio_id):
+        return dirty_rule
+
+    monkeypatch.setattr(allocation, "get_active_rule", _fake_get_active_rule)
+
+    # 不应抛 JSONDecodeError/TypeError，应回退到 {}
     result = allocation.compute_position_budget(
         db_session, p.id, sym, "start", entry_price=10.0, stop_loss=9.5
     )

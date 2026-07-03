@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
-import { t, template, regionShortLabel, assetTypeLabel, stageLabel, actionLabel } from "../i18n";
+import { t, template, regionShortLabel, assetTypeLabel, stageLabel, actionLabel, DOT } from "../i18n";
 import { Checkbox, Select, Button, Tag, Space, InputNumber, Switch, Input, Empty, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { CustomIndicator, DiscoveryIndicatorEvaluation, DiscoveryPlan as StoredDiscoveryPlan, DiscoveryPlanFilter as StoredDiscoveryPlanFilter, WorkbenchCandidate } from "../types";
@@ -16,7 +16,6 @@ import {
   ageDays,
 } from "../utils/format";
 
-const DOT = " | ";
 const STEP_ORDER = ["prepare", "sync", "scan", "news", "done"] as const;
 const STEP_LABEL_KEYS: Record<string, string> = {
   prepare: "stepPrepare",
@@ -244,9 +243,9 @@ export default function Discovery() {
       if (!bars) return;
       const pct = bars.coverage_pct ?? 100;
       if (pct < 60) {
-        setCoverageHint(ctx.locale === "zh-CN" ? `行情覆盖率只有 ${pct.toFixed(0)}%，本次扫描结果可能不完整` : `Bar coverage only ${pct.toFixed(0)}%, scan results may be incomplete`);
+        setCoverageHint(template("coverageLow", { pct: pct.toFixed(0) }));
       } else if (pct < 85) {
-        setCoverageHint(ctx.locale === "zh-CN" ? `行情覆盖率 ${pct.toFixed(0)}%，部分标的可能缺少数据` : `Bar coverage ${pct.toFixed(0)}%, some symbols may lack data`);
+        setCoverageHint(template("coverageMid", { pct: pct.toFixed(0) }));
       } else {
         setCoverageHint(null);
       }
@@ -402,7 +401,7 @@ export default function Discovery() {
       setIndicatorValues(map);
     }).catch((error: any) => {
       setIndicatorValues({});
-      ctx.showToast("error", error?.message || (ctx.locale === "zh-CN" ? "指标计算失败" : "Indicator evaluation failed"));
+      ctx.showToast("error", error?.message || t("indicatorEvalFailed"));
     }).finally(() => {
       setIndicatorLoading(false);
     });

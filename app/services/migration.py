@@ -141,22 +141,22 @@ def run_migration() -> dict:
 
             try:
                 # 从 SQLite 读取全部数据
+                # 设计说明：迁移为一次性运维操作，源库表数据量可控；
+                # 后续逻辑需要 len(rows) 与切片分批，故使用 fetchall 一次性读取而非流式。
                 with sqlite_engine.connect() as src_conn:
                     rows = src_conn.execute(table.select()).fetchall()
 
-                # 先清空 MySQL 目标表（幂等设计）
+                # 合并 delete + insert 到同一事务，避免中途失败导致目标表被清空
                 with mysql_engine.begin() as mysql_conn:
                     mysql_conn.execute(table.delete())
-
-                if rows:
-                    cols = [c.name for c in table.columns]
-                    # 分批插入
-                    for batch_start in range(0, len(rows), BATCH_SIZE):
-                        batch = rows[batch_start:batch_start + BATCH_SIZE]
-                        data = [dict(zip(cols, row)) for row in batch]
-                        with mysql_engine.begin() as mysql_conn:
+                    if rows:
+                        cols = [c.name for c in table.columns]
+                        for batch_start in range(0, len(rows), BATCH_SIZE):
+                            batch = rows[batch_start:batch_start + BATCH_SIZE]
+                            data = [dict(zip(cols, row)) for row in batch]
                             mysql_conn.execute(table.insert(), data)
 
+                if rows:
                     total_rows += len(rows)
                     logger.info("Migrated %s: %d rows", table_name, len(rows))
                 else:

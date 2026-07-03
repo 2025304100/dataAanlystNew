@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import Position
@@ -55,15 +55,33 @@ def run_scan(
 
     symbols = db.execute(stmt).scalars().all()
 
-    latest_scores = []
-    for symbol in symbols:
-        score = db.execute(
+    # 批量查询每个 symbol 的最新 score，避免 N+1
+    symbol_ids = [s.id for s in symbols]
+    latest_scores: list[tuple[Symbol, Score]] = []
+    if symbol_ids:
+        # 子查询：每个 symbol 的最新 trade_date 对应的 score
+        latest_score_subq = (
+            select(
+                Score.symbol_id,
+                func.max(Score.trade_date).label("max_date"),
+            )
+            .where(Score.symbol_id.in_(symbol_ids))
+            .group_by(Score.symbol_id)
+            .subquery()
+        )
+        score_rows = db.execute(
             select(Score)
-            .where(Score.symbol_id == symbol.id)
-            .order_by(desc(Score.trade_date), desc(Score.id))
-        ).scalars().first()
-        if score is not None:
-            latest_scores.append((symbol, score))
+            .join(
+                latest_score_subq,
+                (Score.symbol_id == latest_score_subq.c.symbol_id)
+                & (Score.trade_date == latest_score_subq.c.max_date),
+            )
+        ).scalars().all()
+        score_map = {s.symbol_id: s for s in score_rows}
+        for symbol in symbols:
+            score = score_map.get(symbol.id)
+            if score is not None:
+                latest_scores.append((symbol, score))
 
     latest_scores.sort(key=lambda item: item[1].priority_score, reverse=True)
 

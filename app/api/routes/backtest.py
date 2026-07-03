@@ -1,4 +1,5 @@
-import json
+﻿import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
@@ -75,7 +76,8 @@ def create_backtest_run(payload: BacktestRunRequest, db: Session = Depends(get_d
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logging.getLogger(__name__).exception("回测执行失败")
+        raise HTTPException(status_code=500, detail="回测执行失败，请检查配置或稍后重试") from exc
 
 
 @router.get("/backtest/runs", response_model=list[BacktestRunRead])

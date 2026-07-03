@@ -1,5 +1,8 @@
 import { t } from "../i18n";
-import type { CustomIndicatorPreviewRead } from "../types";
+import type { CustomIndicatorPreviewRead, SignalRule, SignalRulePreviewResult } from "../types";
+
+// 通用 API 响应类型：默认 unknown，调用方可显式指定具体类型
+type ApiResponse<T = unknown> = T;
 
 let activeRequests = 0;
 const requestListeners: Array<(count: number) => void> = [];
@@ -16,27 +19,39 @@ function notifyRequestChange() {
   requestListeners.forEach((fn) => fn(activeRequests));
 }
 
-export async function requestJson<T = any>(url: string, options: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
+export async function requestJson<T = unknown>(url: string, options: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
   activeRequests++;
   notifyRequestChange();
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs ?? 20000;
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-  const { timeoutMs: _omit, ...requestOptions } = options as any;
+  // 标记位：区分"超时触发 abort"与"调用方主动取消"
+  let timedOut = false;
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  // 移除自定义 timeoutMs 字段，保留标准 RequestInit 字段
+  const { timeoutMs: _omit, ...requestOptions } = options;
   try {
     const response = await fetch(url, { ...requestOptions, signal: requestOptions.signal ?? controller.signal });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const detail = payload.detail || payload.message || response.statusText;
       const msg = typeof detail === "string" ? detail : detail?.message || JSON.stringify(detail);
-      const error = new Error(msg) as Error & { detail?: any };
+      const error = new Error(msg) as Error & { detail?: unknown };
       error.detail = detail;
       throw error;
     }
     return payload as T;
-  } catch (error: any) {
-    if (error.name === "AbortError") {
-      throw new Error(t("requestTimeout"));
+  } catch (error: unknown) {
+    // 收窄 unknown 类型，仅对 Error 实例判断 name 属性
+    if (error instanceof Error && error.name === "AbortError") {
+      // 仅超时（timedOut=true）时抛出超时错误；调用方主动取消则静默返回 rejected
+      if (timedOut) {
+        throw new Error(t("requestTimeout"));
+      }
+      // 调用方主动取消：抛出 AbortError 让调用方自行判断
+      throw error;
     }
     throw error;
   } finally {
@@ -50,6 +65,8 @@ const API = "/api/v1";
 
 export const SYSTEM_HEALTH_URL = API + "/system/data-health";
 
+// TODO: 待后续类型强化——下方 requestJson<any>/requestJson<any[]> 调用保留 any 是为了
+// 兼容各调用方对返回值字段的直接访问（如 .id / .symbol 等），避免大面积级联报错。
 export const api = {
   // System
   getDataHealth: () => requestJson<any>(SYSTEM_HEALTH_URL),
@@ -92,7 +109,7 @@ export const api = {
     }
     return rows;
   },
-  createSymbol: (payload: any) =>
+  createSymbol: (payload: unknown) =>
     requestJson<any>(`${API}/symbols`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
 
   // Watchlists
@@ -101,9 +118,9 @@ export const api = {
     requestJson(`${API}/watchlists/${watchlistId}/items`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol_id: symbolId }) }),
 
   // Market data
-  syncMarketData: (payload: any) =>
+  syncMarketData: (payload: unknown) =>
     requestJson(`${API}/market-data/update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
-  repairSymbolMarketData: (symbolId: number, payload: any = {}) =>
+  repairSymbolMarketData: (symbolId: number, payload: unknown = {}) =>
     requestJson(`${API}/market-data/symbols/${symbolId}/repair`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -112,7 +129,7 @@ export const api = {
     }),
 
   // Async sync tasks (heartbeat polling)
-  createMarketDataSyncTask: (payload: any) =>
+  createMarketDataSyncTask: (payload: unknown) =>
     requestJson<any>(`${API}/market-data/sync-tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   listMarketDataSyncTasks: (limit: number = 10) =>
     requestJson<any[]>(`${API}/market-data/sync-tasks?limit=${limit}`),
@@ -147,45 +164,45 @@ export const api = {
     }),
 
   // Scans
-  createScanRun: (payload: any) =>
+  createScanRun: (payload: unknown) =>
     requestJson(`${API}/scans/runs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 60000 }),
 
   // Scores
-  calculateScores: (payload: any) =>
+  calculateScores: (payload: unknown) =>
     requestJson(`${API}/scores/calculate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 120000 }),
 
   // Trade setups
-  generateTradeSetup: (payload: any) =>
+  generateTradeSetup: (payload: unknown) =>
     requestJson(`${API}/trade-setups/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 60000 }),
-  saveTradeSetupTranches: (setupId: number, payload: any) =>
+  saveTradeSetupTranches: (setupId: number, payload: unknown) =>
     requestJson(`${API}/trade-setups/${setupId}/tranches`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
 
   // Signal rules
   getSignalRulePresets: () => requestJson<any[]>(`${API}/signal-rules/presets`),
-  getSignalRule: (portfolioId: number) => requestJson<any>(`${API}/portfolios/${portfolioId}/signal-rule`),
-  saveSignalRule: (portfolioId: number, payload: any) =>
-    requestJson(`${API}/portfolios/${portfolioId}/signal-rule`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
-  previewSignalRule: (portfolioId: number, payload: any) =>
-    requestJson(`${API}/portfolios/${portfolioId}/signal-rule/preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  getSignalRule: (portfolioId: number) => requestJson<SignalRule>(`${API}/portfolios/${portfolioId}/signal-rule`),
+  saveSignalRule: (portfolioId: number, payload: unknown) =>
+    requestJson<SignalRule>(`${API}/portfolios/${portfolioId}/signal-rule`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  previewSignalRule: (portfolioId: number, payload: unknown) =>
+    requestJson<SignalRulePreviewResult>(`${API}/portfolios/${portfolioId}/signal-rule/preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
 
   // Sim accounts
-  submitSimOrder: (portfolioId: number, payload: any) =>
+  submitSimOrder: (portfolioId: number, payload: unknown) =>
     requestJson<any>(`${API}/portfolios/${portfolioId}/sim-orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
 
   // Positions, allocation & portfolio rules (P2 holdings management)
   getPositions: (portfolioId: number) =>
     requestJson<any[]>(`${API}/portfolios/${portfolioId}/positions`),
-  upsertPosition: (portfolioId: number, payload: any) =>
+  upsertPosition: (portfolioId: number, payload: unknown) =>
     requestJson<any>(`${API}/portfolios/${portfolioId}/positions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   deletePosition: (portfolioId: number, symbolId: number) =>
     requestJson<any>(`${API}/portfolios/${portfolioId}/positions/${symbolId}`, { method: "DELETE" }),
-  upsertPortfolioRule: (portfolioId: number, payload: any) =>
+  upsertPortfolioRule: (portfolioId: number, payload: unknown) =>
     requestJson<any>(`${API}/portfolios/${portfolioId}/rules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   getAllocation: (portfolioId: number) =>
     requestJson<any>(`${API}/portfolios/${portfolioId}/allocation`),
 
   // News
-  updateNews: (payload: any) =>
+  updateNews: (payload: unknown) =>
     requestJson<any>(`${API}/news/update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   getLatestNews: (portfolioId: number, symbolIds: number[], days = 7, limit = 20) => {
     const params = new URLSearchParams({ portfolio_id: String(portfolioId), days: String(days), limit: String(limit) });
@@ -196,19 +213,19 @@ export const api = {
   // Macro
   getMacroOverview: (region = "all") =>
     requestJson<any>(`${API}/macro/overview?region=${encodeURIComponent(region)}`),
-  updateMacroData: (payload: any) =>
+  updateMacroData: (payload: unknown) =>
     requestJson<any>(`${API}/macro/update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 60000 }),
   getMacroIndicatorHistory: (region: string, indicatorKey: string, limit = 60) =>
     requestJson<any[]>(`${API}/macro/indicators/${encodeURIComponent(indicatorKey)}/history?region=${encodeURIComponent(region)}&limit=${limit}`),
 
   // Discovery
   getDiscoveryTasks: (limit = 10) => requestJson<any[]>(`${API}/discovery/tasks?limit=${limit}`),
-  createDiscoveryTask: (payload: any) =>
+  createDiscoveryTask: (payload: unknown) =>
     requestJson<any>(`${API}/discovery/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   sendDiscoveryCommand: (taskId: number, command: string) =>
     requestJson<any>(`${API}/discovery/tasks/${taskId}/${command}`, { method: "POST" }),
   getDiscoveryScopeStats: (scope: string) => requestJson<any>(`${API}/discovery/scopes/${encodeURIComponent(scope)}/stats`),
-  updateDiscoveryResult: (resultId: number, payload: any) =>
+  updateDiscoveryResult: (resultId: number, payload: unknown) =>
     requestJson(`${API}/discovery/results/${resultId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   refreshDiscoveryResult: (resultId: number) =>
     requestJson(`${API}/discovery/results/${resultId}/refresh`, { method: "POST" }),
@@ -265,9 +282,9 @@ export const api = {
     if (symbolId) params.set("symbol_id", String(symbolId));
     return requestJson<any[]>(`${API}/journals?${params.toString()}`);
   },
-  createJournal: (payload: any) =>
+  createJournal: (payload: unknown) =>
     requestJson<any>(`${API}/journals`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
-  updateJournal: (journalId: number, payload: any) =>
+  updateJournal: (journalId: number, payload: unknown) =>
     requestJson<any>(`${API}/journals/${journalId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   deleteJournal: (journalId: number) =>
     requestJson<any>(`${API}/journals/${journalId}`, { method: "DELETE" }),
@@ -277,7 +294,7 @@ export const api = {
     requestJson<any>(`${API}/signal-rules/stats/${symbolId}?portfolio_id=${portfolioId}`),
 
   // Backtest
-  runBacktest: (payload: any) =>
+  runBacktest: (payload: unknown) =>
     requestJson<any>(`${API}/backtest/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 120000 }),
   getBacktestRuns: (portfolioId: number, limit = 20) =>
     requestJson<any[]>(`${API}/backtest/runs?portfolio_id=${portfolioId}&limit=${limit}`),
@@ -305,9 +322,9 @@ export const api = {
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return requestJson<any[]>(`${API}/settings/custom-indicators${suffix}`);
   },
-  createCustomIndicator: (payload: any) =>
+  createCustomIndicator: (payload: unknown) =>
     requestJson<any>(`${API}/settings/custom-indicators`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
-  updateCustomIndicator: (id: number, payload: any) =>
+  updateCustomIndicator: (id: number, payload: unknown) =>
     requestJson<any>(`${API}/settings/custom-indicators/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   previewCustomIndicator: (payload: { symbol_id: number; formula: string; value_type: "boolean" | "number"; trade_date?: string; recent_count?: number }) =>
     requestJson<CustomIndicatorPreviewRead>(`${API}/settings/custom-indicators/preview`, {
@@ -326,9 +343,9 @@ export const api = {
   // Discovery plans
   getDiscoveryPlans: () =>
     requestJson<any[]>(`${API}/settings/discovery-plans`),
-  createDiscoveryPlan: (payload: any) =>
+  createDiscoveryPlan: (payload: unknown) =>
     requestJson<any>(`${API}/settings/discovery-plans`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
-  updateDiscoveryPlan: (id: number, payload: any) =>
+  updateDiscoveryPlan: (id: number, payload: unknown) =>
     requestJson<any>(`${API}/settings/discovery-plans/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   deleteDiscoveryPlan: (id: number) =>
     requestJson<any>(`${API}/settings/discovery-plans/${id}`, { method: "DELETE" }),
@@ -349,9 +366,9 @@ export const api = {
   // Alerts
   getAlertRules: () =>
     requestJson<any[]>(`${API}/alerts/rules`),
-  createAlertRule: (payload: any) =>
+  createAlertRule: (payload: unknown) =>
     requestJson<any>(`${API}/alerts/rules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
-  updateAlertRule: (id: number, payload: any) =>
+  updateAlertRule: (id: number, payload: unknown) =>
     requestJson<any>(`${API}/alerts/rules/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   deleteAlertRule: (id: number) =>
     requestJson<any>(`${API}/alerts/rules/${id}`, { method: "DELETE" }),

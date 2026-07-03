@@ -18,6 +18,16 @@ import {
 } from "../utils/format";
 import type { Position, AllocationSnapshot, WorkbenchCandidate } from "../types";
 
+// P3 M-10: 备份条目类型 —— 后端可能返回字符串路径，或包含详细字段的对象
+interface BackupEntryObject {
+  path?: string;
+  backup_path?: string;
+  name?: string;
+  created_at?: string;
+  size?: number | string;
+}
+type BackupEntry = string | BackupEntryObject;
+
 interface PortfolioWorkbenchProps {
   openMetricModal: (type: string) => void;
 }
@@ -130,7 +140,8 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
   const [backingUp, setBackingUp] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
-  const [backupList, setBackupList] = useState<any[]>([]);
+  // P3 M-10: 使用 BackupEntry 强类型替代 any[]
+  const [backupList, setBackupList] = useState<BackupEntry[]>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
 
   const loadPositions = useCallback(async () => {
@@ -328,10 +339,17 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
     try {
       setLoadingBackups(true);
       const data = await api.listBackups();
-      const list = Array.isArray(data) ? data : (data as any)?.backups ?? [];
+      // P3 M-10: 后端可能返回数组或 { backups: [...] } 对象，统一归一化为 BackupEntry[]
+      const list: BackupEntry[] = Array.isArray(data)
+        ? (data as BackupEntry[])
+        : (data && typeof data === "object" && Array.isArray((data as { backups?: BackupEntry[] }).backups)
+            ? (data as { backups: BackupEntry[] }).backups
+            : []);
       setBackupList(list);
-    } catch (error: any) {
-      ctx.showToast("error", error?.message || t("restoreFailed"));
+    } catch (error: unknown) {
+      // P3 M-10: 使用 unknown 类型并通过 instanceof 收窄，避免 any
+      const msg = error instanceof Error ? error.message : "";
+      ctx.showToast("error", msg || t("restoreFailed"));
       setBackupList([]);
     } finally {
       setLoadingBackups(false);
@@ -347,8 +365,10 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
       ctx.showToast("success", t("restoreSuccess"));
       setRestoreModalOpen(false);
       await ctx.loadWorkbench();
-    } catch (error: any) {
-      ctx.showToast("error", error?.message || t("restoreFailed"));
+    } catch (error: unknown) {
+      // P3 M-10: 使用 unknown 类型并通过 instanceof 收窄，避免 any
+      const msg = error instanceof Error ? error.message : "";
+      ctx.showToast("error", msg || t("restoreFailed"));
     } finally {
       setRestoring(false);
     }
@@ -455,7 +475,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
         <div className="panel wide">
           <div className="panel-head">
             <div>
-              <p className="panel-kicker">{ctx.locale === "zh-CN" ? "决策路径" : "Decision Path"}</p>
+              <p className="panel-kicker">{t("decisionPath")}</p>
               <h2>{t("todayOpportunities")}</h2>
             </div>
             <p className="panel-meta">{todayMeta}</p>
@@ -1018,7 +1038,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noBackups")} />
         ) : (
           <div className="list">
-            {backupList.map((backup: any, idx: number) => {
+            {backupList.map((backup: BackupEntry, idx: number) => {
               const path = typeof backup === "string" ? backup : (backup.path ?? backup.backup_path ?? backup.name ?? "");
               const label = typeof backup === "string" ? backup : (backup.name ?? backup.path ?? backup.backup_path ?? `Backup ${idx + 1}`);
               const createdAt = typeof backup === "string" ? null : (backup.created_at ?? backup.size ?? null);

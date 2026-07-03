@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import operator
 from collections import Counter
 from datetime import date, datetime, timezone
@@ -20,6 +21,20 @@ from app.models.symbol import Symbol
 
 EXECUTION_PRICE_FIELDS = {"open", "close"}
 EXECUTION_TIMING_MODES = {"signal_open", "signal_close", "next_open"}
+
+# 默认交易成本配置（与 schema 校验默认值保持一致，避免硬编码重复）
+DEFAULT_COST_CONFIG = {
+    "commission_rate": 0.0003,
+    "min_commission": 5.0,
+    "stamp_tax_rate": 0.001,
+    "slippage_rate": 0.001,
+}
+# 年化交易日数（用于夏普比率等年化指标计算）
+TRADING_DAYS_PER_YEAR = 252
+# 无风险利率（用于夏普比率计算）
+RISK_FREE_RATE = 0.03
+
+logger = logging.getLogger(__name__)
 
 
 def _execution_timing_mode(rule_config: dict, prefix: str, default: str = "signal_close") -> str:
@@ -284,7 +299,8 @@ def _evaluate_sell_signal(
 
 
 # ============================================================
-# v2: 闂備礁鎼ˇ顐﹀焵椤掆偓瀵爼顢曟禒瀣厸鐎广儱妫楅悘锕傛煟椤忓啫宓嗙€规洘鍔欓幃鈩冩償閿濆洠鏁嶉梻?# ============================================================
+# v2: 指标计算与信号判定
+# ============================================================
 
 def _score_attr(score, attr: str, default=None):
     """Doc."""
@@ -494,7 +510,30 @@ def _resolve_ma_cross(score, bar, prev_bar, history_bars, params, direction: str
 
 _ALLOWED_EXPR_NODES = (ast.Expression, ast.BoolOp, ast.BinOp, ast.UnaryOp, ast.Compare, ast.Call, ast.Name, ast.Load, ast.Constant, ast.And, ast.Or, ast.Not, ast.USub, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.Pow, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)
 
-_BIN_OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv, ast.Mod: operator.mod, ast.Pow: operator.pow}
+
+def _safe_pow(a, b):
+    """受限的幂运算：防止 9**9**9 类 OOM 攻击。"""
+    # 预检查：指数过大直接拒绝，避免 operator.pow 计算时耗尽内存
+    if isinstance(b, int) and abs(b) > 1000:
+        return None
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        try:
+            import math
+            log_result = abs(b * math.log(abs(a) if a != 0 else 1))
+            if log_result > 230:
+                return None
+        except (ValueError, TypeError):
+            pass
+    try:
+        result = operator.pow(a, b)
+    except (TypeError, ValueError, OverflowError, ZeroDivisionError, MemoryError):
+        return None
+    if isinstance(result, (int, float)) and abs(result) > 1e100:
+        return None
+    return result
+
+
+_BIN_OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv, ast.Mod: operator.mod, ast.Pow: _safe_pow}
 _UNARY_OPS = {ast.USub: operator.neg, ast.Not: operator.not_}
 _COMPARE_OPS = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt, ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge}
 
@@ -827,7 +866,7 @@ FIELD_RESOLVERS = {
     "pullback_ma": _resolve_pullback_ma,
     "custom_expr": _resolve_custom_expr,
     "custom_indicator": _resolve_custom_indicator,
-    # 闂備礁鎲￠〃鍡涙偋閺囥垹鍚规い鎾卞灩缁狙囨煃閵夈儱绾фい?
+    # 计算买卖信号
     "stop_loss_pct": _resolve_stop_loss,
     "take_profit_pct": _resolve_take_profit,
     "trailing_stop": _resolve_trailing_stop,
@@ -1009,7 +1048,7 @@ def _first_match_reason_v2(
             for c in children:
                 if not _evaluate_condition_tree(c, score, bar, prev_bar, history_bars, extra_params):
                     return None
-            # 闂備胶顭堢换鍫ュ礉閹达箑纾块柟缁㈠枟閻掔粯鎱ㄥΟ铏癸紞缂佺姵鐗犻弻銊モ槈濡偐鍔紓浣虹帛閸ㄥ灝鐣烽崼鏇熷€锋繛鍫濈仢閸撹櫕绻涢幋鐐村皑闁稿鎸搁埥澶愬箼閸愌呯泿閻熸粈鍗崇粻鏍箠閻愬搫纾兼繝濠傚暕閸栨牠姊?field
+            # 条件字段映射
             return _extract_first_leaf_field(node)
     else:
         field = node.get("field", "unknown")
@@ -1034,7 +1073,7 @@ def _compute_equity_curve(
             if trade.entry_date == current_date:
                 cash -= trade.entry_price * trade.quantity + trade.entry_cost
                 positions[trade.id] = trade
-        # 濠电姰鍨煎▔娑氣偓姘煎櫍楠炲啯绻濋崨顐℃睏闂佽鍎抽悺銊╂晬婢跺娈介柣鎰絻鐢姷绱?
+        # 处理当日退出持仓
         for trade in trades:
             if trade.exit_date == current_date and trade.id in positions:
                 cash += trade.exit_price * trade.quantity - (trade.exit_cost or 0)
@@ -1092,7 +1131,7 @@ def _compute_statistics(
             max_dd = dd
             max_dd_pct = dd_pct
     
-    # 闂備浇澹堝▍鏇犲垝鎼粹槅鍟呭┑鍌滎焾濡炵晫鈧厜鍋撻柍褜鍓欓埢鏃堝煛閸屾粠娲搁棅顐㈡处濮婅危?
+    # 统计胜率与盈亏比
     completed_trades = [t for t in trades if t.exit_date is not None and t.pnl is not None]
     win_trades = [t for t in completed_trades if t.pnl > 0]
     loss_trades = [t for t in completed_trades if t.pnl < 0]
@@ -1103,17 +1142,17 @@ def _compute_statistics(
     avg_loss = abs(sum(t.pnl for t in loss_trades) / len(loss_trades)) if loss_trades else 0.0
     profit_factor = (avg_win * len(win_trades)) / (avg_loss * len(loss_trades)) if loss_trades else float('inf')
     
-    # 婵°倗濮烽崑娑㈠疮閸噮鐒介幖娣妼缁犳澘霉閿濆牜娼愮紒鐘冲笒椤潡宕瑰☉娆愮彆闂?
+    # 计算平均持仓天数
     avg_hold_days = sum(t.hold_days or 0 for t in completed_trades) / len(completed_trades) if completed_trades else 0.0
     
-    # 濠电姰鍨煎▔娑氭崲閹存績鏋嶆俊顖滄磪閹烘绫嶉柛灞句亢婵敻姊洪幐搴ｂ槈闁绘绻橀幃鎯р攽鐎ｎ亞顦遍梺鍝勭▉閸嬪嫰銆傛總鍛婄叆婵炴垶顭堢€氭澘霉濠婃劗鎮奸柟宄邦儔閹瑩顢楁笟濠囩崪濠碉紕鍋涢鍛存煀閿濆應鏋嶉柟鎹愵嚙缁€鍡涙煃閸濆嫬鏆欓柤?3%?
+    # 计算夏普比率等年化指标
     if len(equity_curve) > 1:
         returns = [(equity_curve[i]["equity"] - equity_curve[i-1]["equity"]) / equity_curve[i-1]["equity"]
                    for i in range(1, len(equity_curve))]
         mean_return = sum(returns) / len(returns) if returns else 0.0
         variance = sum((r - mean_return) ** 2 for r in returns) / len(returns) if returns else 0.0
         std = variance ** 0.5
-        sharpe_ratio = (mean_return * 252 - 0.03) / (std * (252 ** 0.5)) if std > 0 else 0.0
+        sharpe_ratio = (mean_return * TRADING_DAYS_PER_YEAR - RISK_FREE_RATE) / (std * (TRADING_DAYS_PER_YEAR ** 0.5)) if std > 0 else 0.0
     else:
         sharpe_ratio = 0.0
     
@@ -1346,7 +1385,7 @@ def build_backtest_detail_context(db: Session, run: BacktestRun, trades: list[Ba
     is_v2 = rule_config.get("version", 1) >= 2
     buy_tree = rule_config.get("buy_conditions", {})
 
-    # 闂備礁鎼鍛偓姘煎墰缁辨捇骞橀懜闈涚彴婵犵數濮撮崯顖炴倿娴犲鐓熸い顐墮婵℃寧绻?bars 缂傚倷妞掔粚鍫曞垂閸︻厽顫?
+    # bars 数据预处理
     bars_by_sym: dict[int, list] = {}
     bar_idx: dict[tuple[int, date], int] = {}
     for idx, b in enumerate(bars):
@@ -1366,7 +1405,7 @@ def build_backtest_detail_context(db: Session, run: BacktestRun, trades: list[Ba
             .order_by(Score.trade_date.desc())
         ).scalars().first()
 
-        # 闂備礁鍚嬮崕鎶藉床閼艰翰浜?history_bars ?prev_bar 闂備焦妞垮鍧楀礉鐎ｎ剝濮虫い鎺戝€圭€氭艾鈹戦悩鎻掓殲闁?
+        # history_bars 与 prev_bar 对齐
         sym_bars = bars_by_sym.get(bar.symbol_id, [])
         b_idx = bar_idx.get((bar.symbol_id, bar.trade_date), 0)
         prev_bar = sym_bars[b_idx - 1] if b_idx > 0 else None
@@ -1629,12 +1668,7 @@ def run_backtest(
         raise ValueError("Portfolio not found")
     rule_config = _prepare_rule_config(db, rule_config)
 
-    cost_config = cost_config or {
-        "commission_rate": 0.0003,
-        "min_commission": 5.0,
-        "stamp_tax_rate": 0.001,
-        "slippage_rate": 0.001,
-    }
+    cost_config = cost_config or DEFAULT_COST_CONFIG
 
     initial_capital = float(portfolio.total_capital)
 
@@ -1962,7 +1996,11 @@ def run_backtest(
         run.status = "failed"
         run.error_message = str(e)
         run.finished_at = datetime.now(timezone.utc)
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            logger.error("回测异常分支提交失败", exc_info=True)
+            db.rollback()
         raise
 
 

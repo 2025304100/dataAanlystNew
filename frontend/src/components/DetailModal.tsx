@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ReactECharts from "echarts-for-react";
-import { Modal, InputNumber, Button, Input, Select, Tag, Space } from "antd";
+import { Modal, Button, Input, Select, Tag, Space } from "antd";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
 import {
@@ -27,6 +27,7 @@ import {
   pnlClass,
   statPct,
   clamp,
+  roundPrice,
   aggregateWeeklyBars,
   computeSuggestedPrice,
   signalLabel,
@@ -35,28 +36,19 @@ import {
 } from "../utils/format";
 import type { FutureBuyPlan, TradeSetup, JournalEntry, TradeRecord } from "../types";
 import { useChartDrawings } from "../hooks/useChartDrawings";
+// 复用 utils/indicators 中的共享指标工具，避免重复定义
+import { computeMA } from "../utils/indicators";
+// 复用 constants/chartTheme 中统一导出的图表样式与颜色映射
+import { FUTURE_PLAN_STYLE_MAP, SIGNAL_COLOR_MAP } from "../constants/chartTheme";
 
 interface DetailModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-function computeMA(values: number[], period: number): (number | null)[] {
-  const result: (number | null)[] = [];
-  for (let i = 0; i < values.length; i++) {
-    if (i < period - 1) {
-      result.push(null);
-      continue;
-    }
-    let sum = 0;
-    for (let j = 0; j < period; j++) {
-      sum += values[i - j];
-    }
-    result.push(sum / period);
-  }
-  return result;
-}
-
+// 说明：此处保留本地 formatVolume 实现，未与 utils/indicators.formatVolume 统一。
+// 本版本使用 t() 进行 i18n 本地化（亿/万单位随语言切换），而 indicators 版本为硬编码中文，
+// 两者行为存在差异，故保持现状不强行替换。
 function formatVolume(val: number): string {
   if (val >= 1e8) return `${(val / 1e8).toFixed(2)}${t("yiUnit")}`;
   if (val >= 1e4) return `${(val / 1e4).toFixed(2)}${t("wanUnit")}`;
@@ -213,13 +205,8 @@ function FuturePlanOverlay({
     return plotTop + ratio * plotHeight;
   };
 
-  // Style map matching original FUTURE_PLAN_STYLE
-  const styleMap: Record<string, { fill: string; stroke: string; dash: string }> = {
-    avoid: { fill: "rgba(180, 35, 24, 0.12)", stroke: "#b42318", dash: "6,4" },
-    high: { fill: "rgba(15, 118, 110, 0.16)", stroke: "#0f766e", dash: "" },
-    low: { fill: "rgba(37, 99, 235, 0.11)", stroke: "#2563eb", dash: "4,4" },
-    normal: { fill: "rgba(15, 118, 110, 0.10)", stroke: "#0f766e", dash: "4,4" },
-  };
+  // 复用 constants/chartTheme 中统一导出的样式映射，避免重复定义
+  const styleMap = FUTURE_PLAN_STYLE_MAP;
 
   // Filter usable plans (those with zone_min and zone_max)
   const usablePlans = plans.filter((plan) => plan.zone_min !== null && plan.zone_max !== null);
@@ -934,12 +921,8 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     if (!chartData) return null;
     const signals = detail?.latest_trade_setup?.chart_signals ?? [];
     const markLineData = signals.map((sig) => {
-      // Distinct colors per signal kind: stop=red, target=teal, buy-zone=purple, default=green
-      const colorMap: Record<string, string> = {
-        stop: "#b42318",
-        target: "#0f766e",
-        "buy-zone": "#7c3aed",
-      };
+      // 复用 constants/chartTheme 中统一导出的信号颜色映射
+      const colorMap = SIGNAL_COLOR_MAP;
       const lineColor = colorMap[sig.kind] ?? "#059669";
       return {
         yAxis: sig.price,
@@ -1113,20 +1096,14 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     const adjHorizon = Math.max(3, Math.round((baseScenarios.horizon_days ?? 20) * cfg.horizonMult));
     const adjRisk = effectiveRisk * cfg.targetMult;
     const adjStopOffset = effectiveRisk * cfg.stopMult;
-    const adjStop = _round_price(refPrice - adjStopOffset);
-    const adjTarget = _round_price(refPrice + adjRisk);
-    const adjConfidence = _clamp((baseScenarios.confidence_pct ?? 60) + cfg.confidenceAdj, 35, 82) / 100;
-    const pessimisticPrice = _round_price(adjStop);
+    // 复用 utils/format 中导出的 roundPrice / clamp，删除本地重复定义
+    const adjStop = roundPrice(refPrice - adjStopOffset);
+    const adjTarget = roundPrice(refPrice + adjRisk);
+    const adjConfidence = clamp((baseScenarios.confidence_pct ?? 60) + cfg.confidenceAdj, 35, 82) / 100;
+    const pessimisticPrice = roundPrice(adjStop);
     const optimisticAnchor = adjTarget + Math.max(effectiveRisk * 0.4, refPrice * 0.02);
-    const optimisticPrice = _round_price(optimisticAnchor);
-    const expectedPrice = _round_price(adjTarget * adjConfidence + pessimisticPrice * (1 - adjConfidence));
-
-    function _round_price(v: number | undefined | null): number {
-      return v != null ? Math.round(v * 100) / 100 : 0;
-    }
-    function _clamp(v: number, lo: number, hi: number): number {
-      return Math.max(lo, Math.min(hi, v));
-    }
+    const optimisticPrice = roundPrice(optimisticAnchor);
+    const expectedPrice = roundPrice(adjTarget * adjConfidence + pessimisticPrice * (1 - adjConfidence));
 
     return {
       ...baseScenarios,

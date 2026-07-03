@@ -6,3 +6,14 @@ INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 2026-07-02 22:43:33,012 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-02 23:13:33,121 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-02 23:43:33,248 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-03 00:13:33,251 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-03 00:43:33,368 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-03 01:13:33,477 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-03 01:43:33,577 [INFO] app.services.discovery_cleanup: Cleanup: removed 6 expired discovery results
+2026-07-03 01:43:33,577 [INFO] app.main: Periodic cleanup: 6 expired results removed
+2026-07-03 02:13:33,682 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-03 02:43:33,757 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-03 03:13:33,850 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove
+2026-07-03 07:18:22,119 [INFO] app.services.discovery_cleanup: Cleanup: no expired discovery results to remove

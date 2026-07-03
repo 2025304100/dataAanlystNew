@@ -12,12 +12,12 @@ import {
   Select,
   Space,
   Tag,
-  message,
 } from "antd";
 import { DeleteOutlined, SaveOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api/client";
 import { t } from "../i18n";
+import { useApp } from "../context/AppContext";
 import type {
   BacktestCoverageWarning,
   BacktestRuleConfigV2,
@@ -86,6 +86,7 @@ function presetLabel(preset: BacktestCoverageWarning["summary"]["recommended_pre
 }
 
 export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }: BacktestConfigProps) {
+  const { showToast } = useApp();
   const [running, setRunning] = useState(false);
   const [runName, setRunName] = useState(t("backtestRunName"));
   const [ruleMode, setRuleMode] = useState<RuleMode>("standard");
@@ -171,7 +172,9 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
   }, [
     actions,
     buyConditions,
+    entryPriceField,
     entryTiming,
+    exitPriceField,
     exitTiming,
     maxHoldDays,
     maxPositions,
@@ -179,7 +182,7 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
     qualityMin,
     ruleMode,
     sellConditions,
-    slippageRate,
+    // 修正：slippageRate 属于 runBacktest 的 cost_config，不在此函数中使用，已移除
     stages,
     stopLossPct,
     takeProfitPct,
@@ -207,14 +210,14 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
       });
       const detail = await api.getBacktestRun(result.id);
       onResult(detail);
-      message.success(t("backtestRunSuccess"));
-    } catch (err: any) {
-      const detail = err?.detail as BacktestCoverageWarning | undefined;
+      showToast("success",t("backtestRunSuccess"));
+    } catch (err: unknown) {
+      const detail = (err as { detail?: BacktestCoverageWarning })?.detail;
       if (detail?.code === "BACKTEST_SCORE_COVERAGE_INSUFFICIENT") {
         setCoverageWarning(detail);
-        message.warning(t("btCoverageInsufficient"));
+        showToast("info",t("btCoverageInsufficient"));
       } else {
-        message.error(err?.message || t("backtestFailed"));
+        showToast("error",(err instanceof Error ? err.message : "") || t("backtestFailed"));
       }
     } finally {
       setRunning(false);
@@ -239,12 +242,12 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
       }
     }
     setSelectedTemplateId(id);
-    message.success(`${t("backtestTemplateLoaded")}: ${tpl.name}`);
+    showToast("success",`${t("backtestTemplateLoaded")}: ${tpl.name}`);
   }, [templates]);
 
   const saveTemplate = useCallback(async () => {
     if (!templateName.trim()) {
-      message.warning(t("backtestTemplateNameRequired"));
+      showToast("info",t("backtestTemplateNameRequired"));
       return;
     }
     try {
@@ -253,14 +256,14 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
         description: templateDesc,
         rule_config: buildRuleConfig(),
       });
-      message.success(t("backtestTemplateSaved"));
+      showToast("success",t("backtestTemplateSaved"));
       setSaveModalOpen(false);
       setTemplateName("");
       setTemplateDesc("");
       const updated = await api.getBacktestTemplates();
       setTemplates(updated);
-    } catch (err: any) {
-      message.error(err?.message || t("backtestTemplateSaveFailed"));
+    } catch (err: unknown) {
+      showToast("error",(err instanceof Error ? err.message : "") || t("backtestTemplateSaveFailed"));
     }
   }, [buildRuleConfig, templateDesc, templateName]);
 
@@ -268,23 +271,23 @@ export default function BacktestConfig({ portfolioId, activeSymbolId, onResult }
     if (!selectedTemplateId) return;
     try {
       await api.updateBacktestTemplate(selectedTemplateId, { rule_config: buildRuleConfig() });
-      message.success(t("backtestTemplateUpdated"));
+      showToast("success",t("backtestTemplateUpdated"));
       const updated = await api.getBacktestTemplates();
       setTemplates(updated);
-    } catch (err: any) {
-      message.error(err?.message || t("backtestTemplateUpdateFailed"));
+    } catch (err: unknown) {
+      showToast("error",(err instanceof Error ? err.message : "") || t("backtestTemplateUpdateFailed"));
     }
   }, [buildRuleConfig, selectedTemplateId]);
 
   const deleteTemplate = useCallback(async (id: number) => {
     try {
       await api.deleteBacktestTemplate(id);
-      message.success(t("backtestTemplateDeleted"));
+      showToast("success",t("backtestTemplateDeleted"));
       if (selectedTemplateId === id) setSelectedTemplateId(null);
       const updated = await api.getBacktestTemplates();
       setTemplates(updated);
-    } catch (err: any) {
-      message.error(err?.message || t("backtestTemplateDeleteFailed"));
+    } catch (err: unknown) {
+      showToast("error",(err instanceof Error ? err.message : "") || t("backtestTemplateDeleteFailed"));
     }
   }, [selectedTemplateId]);
 

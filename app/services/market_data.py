@@ -34,16 +34,20 @@ from app.services.async_tasks import _set_task, _start_worker, create_async_task
 
 PROXY_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
 
+# 跨线程保护 os.environ 修改的锁
+_proxy_lock = Lock()
+
 
 @contextmanager
 def _proxy_bypass():
-    previous = {key: os.environ.pop(key, None) for key in PROXY_KEYS}
-    try:
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is not None:
-                os.environ[key] = value
+    with _proxy_lock:
+        previous = {key: os.environ.pop(key, None) for key in PROXY_KEYS}
+        try:
+            yield
+        finally:
+            for key, value in previous.items():
+                if value is not None:
+                    os.environ[key] = value
 
 
 def _resolve_sync_symbols(
@@ -271,7 +275,8 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
             last_error = exc
             logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
             if attempt < 2:
-                time.sleep(1 + attempt)
+                # 指数退避：1s、2s、4s，避免高频重试加剧外部服务压力
+                time.sleep(2 ** attempt)
             continue
     if last_error is not None:
         logger.warning("All AKShare sources failed for %s", symbol.symbol, exc_info=True)
@@ -289,11 +294,23 @@ def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int,
     inserted = 0
     updated = 0
 
-    for row in frame.to_dict(orient="records"):
+    rows = frame.to_dict(orient="records")
+    if not rows:
+        return inserted, updated
+
+    # 批量查询已存在的日期，避免行级 N+1
+    trade_dates = [_normalize_trade_date(r["trade_date"]) for r in rows]
+    existing_bars = db.execute(
+        select(DailyBar).where(
+            DailyBar.symbol_id == symbol.id,
+            DailyBar.trade_date.in_(trade_dates),
+        )
+    ).scalars().all()
+    existing_map = {bar.trade_date: bar for bar in existing_bars}
+
+    for row in rows:
         trade_date = _normalize_trade_date(row["trade_date"])
-        existing = db.execute(
-            select(DailyBar).where(DailyBar.symbol_id == symbol.id, DailyBar.trade_date == trade_date)
-        ).scalars().first()
+        existing = existing_map.get(trade_date)
         if existing is None:
             existing = DailyBar(symbol_id=symbol.id, trade_date=trade_date)
             db.add(existing)
@@ -436,6 +453,8 @@ def sync_market_data(
                         )
                 synced_symbol_ids.append(symbol.id)
         except Exception as exc:
+            # 单标的失败时回滚脏数据，避免混入后续 commit
+            db.rollback()
             result = {
                 "symbol_id": symbol.id,
                 "symbol": symbol.symbol,

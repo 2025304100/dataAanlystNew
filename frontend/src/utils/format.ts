@@ -1,11 +1,16 @@
-import { t, getLocale } from "../i18n";
+import { t, getLocale, DOT } from "../i18n";
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+// 价格保留两位小数；null/undefined 时返回 0
+export function roundPrice(v: number | null | undefined): number {
+  return v != null ? Math.round(v * 100) / 100 : 0;
+}
+
 export function percent(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "-";
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "-";
   return `${(value * 100).toFixed(1)}%`;
 }
 
@@ -14,7 +19,8 @@ export function statPct(value: number | null | undefined): string {
 }
 
 export function score(value: number | null | undefined, digits = 2): string {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  // 处理 NaN/Infinity，避免 ECharts 渲染异常
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "-";
   return Number(value).toFixed(digits);
 }
 
@@ -24,7 +30,8 @@ export function setCurrency(c: string) {
 }
 
 export function money(value: number | null | undefined, digits = 0): string {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  // 处理 NaN/Infinity，避免 ECharts 渲染异常
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "-";
   const currency = currencyCache || "CNY";
   try {
     return new Intl.NumberFormat(getLocale(), {
@@ -74,7 +81,6 @@ export function ageDays(value: string | null | undefined): number {
 
 export function discoveryFreshness(item: { created_at?: string; is_frozen?: boolean; warning_days?: number }) {
   const days = ageDays(item.created_at);
-  const DOT = " | ";
   if (item.is_frozen) {
     return {
       className: "frozen",

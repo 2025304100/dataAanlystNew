@@ -5,24 +5,44 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="eae150bd-df2a-4f7e-81a1-1cd4fda7fe59" name="更改" comment="feat(App): 新增投资中心功能模块&#10;A- 新增 InvestmentCenter 组件实现投资中心视图&#10;- 在主应用中添加投资中心导航标签页和路由逻辑&#10;- 修改详情弹窗打开条件以兼容投资中心内联显示&#10;- 扩展 loadSymbolDetail 方法支持 barLimit 参数&#10;- 添加 getBars API 接口用于懒加载更多K线数据&#10;- 更新后端 dashboard API 支持 bar_limit 查询参数&#10;- 添加投资中心相关国际化文案配置&#10;- 实现投资中心响应式布局和搜索功能样式&#10;- 新增试探、确认、扩展等分批标签翻译">
+      <change beforePath="$PROJECT_DIR$/.codex-run/qa-backend.err.log" beforeDir="false" afterPath="$PROJECT_DIR$/.codex-run/qa-backend.err.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex-run/qa-backend.out.log" beforeDir="false" afterPath="$PROJECT_DIR$/.codex-run/qa-backend.out.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex-run/qa-frontend.out.log" beforeDir="false" afterPath="$PROJECT_DIR$/.codex-run/qa-frontend.out.log" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/routes/market_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/routes/market_data.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/schemas/market_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/schemas/market_data.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/async_tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/async_tasks.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/routes/backtest.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/routes/backtest.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/routes/db_config.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/routes/db_config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/routes/symbols.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/routes/symbols.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/db/init_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/init_db.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/schemas/backtest.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/schemas/backtest.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/analysis.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/backtest.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/backtest.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/discovery_tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/discovery_tasks.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/services/market_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/market_data.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/market_data_sync_task.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/market_data_sync_task.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/migration.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/migration.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/scans.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/scans.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/sim_accounts.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/sim_accounts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/trade_plans.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/trade_plans.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/web/dist/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/app/web/dist/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/api/client.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/api/client.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/CustomIndicatorSettings.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/CustomIndicatorSettings.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/BacktestConfig.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/BacktestConfig.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/DetailModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/DetailModal.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/Discovery.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Discovery.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/HistoryInitSection.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/HistoryInitSection.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/InvestmentCenter.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/InvestmentCenter.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/PortfolioWorkbench.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/PortfolioWorkbench.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/Settings.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Settings.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/TaskCenter.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/TaskCenter.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/Trading.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Trading.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/context/AppContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/context/AppContext.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/hooks/useChartDrawings.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/hooks/useChartDrawings.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/i18n/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/i18n/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/styles/workbench.css" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/styles/workbench.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/types/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/types/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/quant_workbench.db" beforeDir="false" afterPath="$PROJECT_DIR$/quant_workbench.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/utils/format.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/utils/format.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/utils/indicators.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/utils/indicators.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/utils/trade-plan.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/utils/trade-plan.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/tsconfig.tsbuildinfo" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/tsconfig.tsbuildinfo" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_blackbox_api.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_blackbox_api.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_whitebox_allocation.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_whitebox_allocation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_whitebox_analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_whitebox_analysis.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_whitebox_backtest_sandbox.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_whitebox_backtest_sandbox.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -81,6 +101,19 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
+  <component name="RunManager">
+    <configuration default="true" type="JetRunConfigurationType">
+      <module name="dataAanlystNew" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration default="true" type="KotlinStandaloneScriptRunConfigurationType">
+      <module name="dataAanlystNew" />
+      <option name="filePath" />
+      <method v="2" />
+    </configuration>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -101,6 +134,7 @@
       <workItem from="1782088373156" duration="2838000" />
       <workItem from="1782832909736" duration="1378000" />
       <workItem from="1782867909020" duration="595000" />
+      <workItem from="1783040575597" duration="1439000" />
     </task>
     <task id="LOCAL-00001" summary="feat(App): 新增投资中心功能模块&#10;&#10;- 新增 InvestmentCenter 组件实现投资中心视图&#10;- 在主应用中添加投资中心导航标签页和路由逻辑&#10;- 修改详情弹窗打开条件以兼容投资中心内联显示&#10;- 扩展 loadSymbolDetail 方法支持 barLimit 参数&#10;- 添加 getBars API 接口用于懒加载更多K线数据&#10;- 更新后端 dashboard API 支持 bar_limit 查询参数&#10;- 添加投资中心相关国际化文案配置&#10;- 实现投资中心响应式布局和搜索功能样式&#10;- 新增试探、确认、扩展等分批标签翻译">
       <option name="closed" value="true" />

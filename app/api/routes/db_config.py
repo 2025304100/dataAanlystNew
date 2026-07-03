@@ -4,11 +4,14 @@
 """
 from __future__ import annotations
 
+import logging
 import threading
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import create_engine, text
+
+logger = logging.getLogger(__name__)
 
 from app.core.config import (
     build_mysql_url,
@@ -93,7 +96,9 @@ def update_db_config(config: DbConfigUpdate):
                 conn.execute(text("SELECT 1"))
             test_engine.dispose()
         except Exception as e:
-            raise HTTPException(400, f"MySQL 连接失败：{e}")
+            # 安全：异常信息可能含完整连接串（含密码），仅记录服务端日志，不回传前端
+            logger.exception("MySQL 连接测试失败")
+            raise HTTPException(400, "MySQL 连接失败，请检查主机、端口、用户名和密码")
 
         # 热切换引擎
         mgr.initialize(url, db_type="mysql")
@@ -144,9 +149,11 @@ def test_connection(config: DbConfigUpdate):
             server_version=str(version),
         )
     except Exception as e:
+        # 安全：异常信息可能含完整连接串（含密码），仅记录服务端日志，不回传前端
+        logger.exception("MySQL 连接测试失败")
         return TestConnectionResult(
             success=False,
-            message=str(e),
+            message="连接失败，请检查主机、端口、用户名和密码配置",
         )
 
 

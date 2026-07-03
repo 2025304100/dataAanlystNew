@@ -1,6 +1,5 @@
 import type { FutureBuyPlan, FuturePlanTuning, TradeSetup } from "../types";
-
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+import { clamp } from "./format";
 
 export function planWithRatio(plan: FutureBuyPlan, ratio: number): FutureBuyPlan {
   return {
@@ -76,7 +75,7 @@ export function buildLongFuturePlan(
   const amount = Number(setup.recommended_position_amount || 0) * 0.5;
   const pullback = Math.max(0, Number(tuning?.pullbackPct ?? 0)) / 100;
   const band = clamp(Number(tuning?.bandPct ?? 5) / 100, 0.001, 0.5);
-  const zoneMax = anchor * (1 - pullback + 0.02);
+  const zoneMax = Math.max(0, anchor * (1 - pullback + 0.02));
   const plans: FutureBuyPlan[] = [
     {
       label: "long_accumulate_zone",
@@ -113,7 +112,7 @@ export function buildCustomFuturePlan(
   };
   const pullback = Math.max(0, Number(merged.pullbackPct || 0)) / 100;
   const band = clamp(Number(merged.bandPct || 1.5) / 100, 0.001, 0.5);
-  const zoneMax = base * (1 - pullback);
+  const zoneMax = Math.max(0, base * (1 - pullback));
   const positionPct = clamp(Number(merged.positionPct || 0) / 100, 0, 1);
   const plans: FutureBuyPlan[] = [
     {

@@ -73,8 +73,10 @@ export default function TaskCenter() {
     try {
       const data = await api.getTaskHistory(undefined, 50);
       setTasks(data.tasks);
-    } catch (error: any) {
-      showToast("error", error?.message || t("loadFailed"));
+    } catch (error: unknown) {
+      // 收窄 unknown 类型，安全提取错误消息
+      const msg = error instanceof Error ? error.message : "";
+      showToast("error", msg || t("loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -86,12 +88,12 @@ export default function TaskCenter() {
 
   const filteredTasks = useMemo(() => {
     if (filter === "all") return tasks;
-    if (filter === "active") return tasks.filter((t) => ["running", "queued"].includes(t.status));
-    if (filter === "failed") return tasks.filter((t) => t.status === "failed");
-    return tasks.filter((t) => t.task_type === filter);
+    if (filter === "active") return tasks.filter((task) => ["running", "queued"].includes(task.status));
+    if (filter === "failed") return tasks.filter((task) => task.status === "failed");
+    return tasks.filter((task) => task.task_type === filter);
   }, [tasks, filter]);
 
-  const activeCount = tasks.filter((t) => ["running", "queued"].includes(t.status)).length;
+  const activeCount = tasks.filter((task) => ["running", "queued"].includes(task.status)).length;
 
   const taskTypeLabel = (taskType: string): string => {
     const key = TASK_TYPE_LABELS[taskType];
@@ -103,7 +105,7 @@ export default function TaskCenter() {
     const icon = STATUS_ICONS[status] || null;
     return (
       <Tag color={color} icon={icon}>
-        {t(`taskStatus_${status}` as any) || status}
+        {t(`taskStatus_${status}`) || status}
       </Tag>
     );
   };
@@ -182,7 +184,7 @@ export default function TaskCenter() {
           <div className="task-detail-section">
             <span className="task-detail-label" style={{ color: "#b42318" }}>{t("taskErrors")} ({task.errors.length})</span>
             <div className="task-error-list">
-              {task.errors.map((err: any, idx: number) => (
+              {task.errors.map((err: unknown, idx: number) => (
                 <div key={idx} className="task-error-item">
                   {typeof err === "string" ? err : JSON.stringify(err)}
                 </div>

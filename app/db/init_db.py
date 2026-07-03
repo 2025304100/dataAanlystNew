@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from sqlalchemy import inspect, text
+
+# 合法标识符校验正则：字母或下划线开头，仅含字母、数字、下划线
+_IDENTIFIER_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 from app.core.config import settings
 from app.db.base import Base
@@ -24,7 +28,10 @@ def _ensure_sqlite_columns(engine, table_name: str, additions: dict[str, str]) -
     with engine.begin() as conn:
         for name, ddl in additions.items():
             if name not in columns:
-                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {ddl}"))
+                # 安全说明：table_name/name/ddl 均来自本模块内受信任的硬编码常量
+                # （见下方各 _ensure_sqlite_*_columns 调用），非用户输入，无注入风险。
+                # 使用双引号包裹标识符以符合 SQLite 规范，进一步加固。
+                conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN "{name}" {ddl}'))
 
 
 def _ensure_sqlite_scan_result_columns(engine) -> None:
@@ -133,6 +140,10 @@ def _convert_myisam_to_innodb(engine) -> None:
         ), {"db": db_name})
         tables = [row[0] for row in result]
         for tbl in tables:
+            # 防御性校验：tbl 来自 information_schema，仍需校验表名合法性，避免异常表名注入
+            if not _IDENTIFIER_RE.match(tbl):
+                logger.warning("跳过非法表名（不匹配标识符规则）: %s", tbl)
+                continue
             try:
                 conn.execute(text(f"ALTER TABLE `{tbl}` ENGINE=InnoDB"))
                 logger.info("Converted table '%s' from MyISAM to InnoDB", tbl)

@@ -28,8 +28,12 @@ def list_symbols(
 ):
     stmt = select(Symbol)
     if keyword:
-        like_pattern = f"%{keyword}%"
-        stmt = stmt.where((Symbol.symbol.like(like_pattern)) | (Symbol.name.like(like_pattern)))
+        # 转义用户输入中的 LIKE 通配符（%、_、\），防止关键词被当作通配符导致误匹配
+        escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like_pattern = f"%{escaped}%"
+        stmt = stmt.where(
+            (Symbol.symbol.like(like_pattern, escape="\\")) | (Symbol.name.like(like_pattern, escape="\\"))
+        )
     if asset_type:
         stmt = stmt.where(Symbol.asset_type == asset_type)
     if market:

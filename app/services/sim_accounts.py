@@ -122,7 +122,7 @@ def _upsert_position(
             previous_cost = 0.0
         else:
             previous_quantity = float(position.quantity)
-            previous_cost = float(position.avg_cost)
+            previous_cost = float(position.avg_cost) if position.avg_cost is not None else 0.0
         new_quantity = previous_quantity + quantity
         new_avg_cost = ((previous_quantity * previous_cost) + (quantity * fill_price)) / new_quantity if new_quantity else 0.0
         position.quantity = new_quantity
@@ -249,12 +249,16 @@ def build_sim_account_summary(db: Session, portfolio: Portfolio) -> dict:
     unrealized_pnl = 0.0
     for position in positions:
         latest_price = latest_price_for_symbol(db, position.symbol_id) or position.latest_price or position.avg_cost
+        if latest_price is None:
+            # 无法确定价格，跳过该持仓避免计算异常
+            continue
         latest_price = _round_money(latest_price)
+        avg_cost = position.avg_cost if position.avg_cost is not None else latest_price
         position.latest_price = latest_price
         position.market_value = _round_money(position.quantity * latest_price)
         position.position_pct = round(position.market_value / portfolio.total_capital, 4) if portfolio.total_capital else 0.0
         market_value += position.market_value
-        unrealized_pnl += (latest_price - position.avg_cost) * position.quantity
+        unrealized_pnl += (latest_price - avg_cost) * position.quantity
 
     realized_pnl = db.execute(
         select(func.coalesce(func.sum(SimTrade.realized_pnl), 0.0)).where(

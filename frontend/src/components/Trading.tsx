@@ -1,5 +1,6 @@
 import { useMemo, useCallback, useState } from "react";
-import { InputNumber, Button } from "antd";
+import { InputNumber, Button, Table } from "antd";
+import type { TableColumnsType } from "antd";
 import { useApp } from "../context/AppContext";
 import { t, sideLabel } from "../i18n";
 import {
@@ -291,41 +292,47 @@ export default function Trading() {
                 </div>
               </div>
               <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{t("symbol")}</th>
-                      <th>{t("orderQty")}</th>
-                      <th>{t("avgCost")}</th>
-                      <th>{t("currentPrice")}</th>
-                      <th>{t("accountMarketValue")}</th>
-                      <th>{t("weight")}</th>
-                      <th>{t("accountUnrealizedPnl")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {positions.map((record: any) => (
-                    <tr
-                      key={record.symbol_id}
-                      className={`clickable ${ctx.activeSymbolId === record.symbol_id ? "active" : ""}`}
-                      onClick={() => handlePositionClick(record.symbol_id)}
-                    >
-                      <td><div className="symbol-title"><span className="symbol-code">{record.symbol}</span><span className="symbol-name">{record.name}</span></div></td>
-                      <td>{record.quantity}</td>
-                      <td>{score(record.avg_cost)}</td>
-                      <td>{score(record.latest_price)}</td>
-                      <td>{money(record.market_value)}</td>
-                      <td>{percent(record.position_pct)}</td>
-                      <td>
-                        <div className={pnlClass(record.unrealized_pnl)}>{money(record.unrealized_pnl)}</div>
-                        <div className={`pnl-pct ${pnlClass(record.unrealized_pnl_pct)}`}>
-                          {percent(record.unrealized_pnl_pct)}
+                <Table
+                  size="small"
+                  rowKey="symbol_id"
+                  dataSource={positions}
+                  pagination={false}
+                  scroll={{ x: "max-content" }}
+                  rowClassName={(record: any) =>
+                    `clickable ${ctx.activeSymbolId === record.symbol_id ? "active" : ""}`
+                  }
+                  onRow={(record: any) => ({
+                    onClick: () => handlePositionClick(record.symbol_id),
+                  })}
+                  columns={[
+                    {
+                      title: t("symbol"),
+                      dataIndex: "symbol",
+                      render: (_: unknown, record: any) => (
+                        <div className="symbol-title">
+                          <span className="symbol-code">{record.symbol}</span>
+                          <span className="symbol-name">{record.name}</span>
                         </div>
-                      </td>
-                    </tr>
-                    ))}
-                  </tbody>
-                </table>
+                      ),
+                    },
+                    { title: t("orderQty"), dataIndex: "quantity" },
+                    { title: t("avgCost"), dataIndex: "avg_cost", render: (v: number) => score(v) },
+                    { title: t("currentPrice"), dataIndex: "latest_price", render: (v: number) => score(v) },
+                    { title: t("accountMarketValue"), dataIndex: "market_value", render: (v: number) => money(v) },
+                    { title: t("weight"), dataIndex: "position_pct", render: (v: number) => percent(v) },
+                    {
+                      title: t("accountUnrealizedPnl"),
+                      render: (_: unknown, record: any) => (
+                        <>
+                          <div className={pnlClass(record.unrealized_pnl)}>{money(record.unrealized_pnl)}</div>
+                          <div className={`pnl-pct ${pnlClass(record.unrealized_pnl_pct)}`}>
+                            {percent(record.unrealized_pnl_pct)}
+                          </div>
+                        </>
+                      ),
+                    },
+                  ] as TableColumnsType<any>}
+                />
               </div>
             </div>
           </section>
