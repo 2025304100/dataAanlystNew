@@ -1018,13 +1018,16 @@ export interface MigrationProgress {
 
 
 export interface HistoryInitializationStage {
-  key: "prepare" | "sync_bars" | "calc_scores" | "finalize" | string;
+  key: "prepare" | "sync_bars" | "calc_scores" | "scan" | "finalize" | string;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   percent: number;
   done: number;
   total: number;
   message?: string | null;
 }
+
+export type HistoryInitializationSymbolSource =
+  | "all" | "watchlist" | "positions" | "scored" | "candidates" | "cn-stock" | "cn-etf";
 
 export interface HistoryInitializationSummary {
   symbols_total: number;
@@ -1034,6 +1037,8 @@ export interface HistoryInitializationSummary {
   bars_rows: number;
   score_days_total: number;
   score_days_completed: number;
+  scan_run_id?: number | null;
+  scan_executable_count?: number;
 }
 
 export interface HistoryInitializationFailureItem {
@@ -1053,6 +1058,10 @@ export interface HistoryInitializationRunRecord {
   preset: "1m" | "1q" | "1y" | "3y";
   adjust: string;
   repair_mode?: "both" | "bars" | "scores";
+  symbol_source?: HistoryInitializationSymbolSource;
+  auto_scan?: boolean;
+  portfolio_id?: number | null;
+  watchlist_id?: number | null;
   asset_types?: string[] | null;
   symbol_ids?: number[];
   start_date?: string | null;
@@ -1072,6 +1081,10 @@ export interface HistoryInitializationTask {
   preset: "1m" | "1q" | "1y" | "3y";
   adjust: string;
   repair_mode?: "both" | "bars" | "scores";
+  symbol_source?: HistoryInitializationSymbolSource;
+  auto_scan?: boolean;
+  portfolio_id?: number | null;
+  watchlist_id?: number | null;
   asset_types?: string[] | null;
   symbol_ids?: number[];
   start_date?: string | null;

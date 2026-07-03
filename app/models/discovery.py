@@ -32,6 +32,7 @@ class DiscoveryTaskRecord(Base):
     current_symbol: Mapped[str | None] = mapped_column(String(32), nullable=True)
     scan_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     executable_count: Mapped[int] = mapped_column(Integer, default=0)
+    cleanup_count: Mapped[int] = mapped_column(Integer, default=0)
     news_symbols_total: Mapped[int] = mapped_column(Integer, default=0)
     errors_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)

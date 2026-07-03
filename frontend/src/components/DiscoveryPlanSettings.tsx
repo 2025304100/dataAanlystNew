@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Form, Input, InputNumber, Popconfirm, Select, Space, Switch, Table, Tag, message } from "antd";
+import { Button, Card, Empty, Form, Input, InputNumber, Popconfirm, Select, Space, Switch, Table, Tag, Tooltip, message } from "antd";
 import { CopyOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
+import { OPERATOR_LABELS } from "../constants/conditionFields";
 import { t, template } from "../i18n";
 import type { CustomIndicator, DiscoveryPlan, DiscoveryPlanFilter, DiscoveryPlanPayload } from "../types";
 
 const NUMBER_OPERATORS: DiscoveryPlanFilter["operator"][] = ["gt", "gte", "lt", "lte", "eq", "neq"];
 const BOOLEAN_OPERATORS: DiscoveryPlanFilter["operator"][] = ["eq", "neq"];
-const OPERATOR_LABELS: Record<string, string> = { gt: ">", gte: ">=", lt: "<", lte: "<=", eq: "=", neq: "!=" };
 const EMPTY_FORM: DiscoveryPlanPayload = {
   name: "",
   logic: "AND",
@@ -46,6 +46,7 @@ export default function DiscoveryPlanSettings() {
   const [form, setForm] = useState<DiscoveryPlanPayload>(EMPTY_FORM);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
 
   const POOL_OPTIONS: Array<{ label: string; value: DiscoveryPlan["pool_tab"] }> = [
     { label: t("dpPoolAll"), value: "all" },
@@ -99,6 +100,17 @@ export default function DiscoveryPlanSettings() {
     }
   }, [defaultIndicator, form.filters.length, selectedId]);
 
+  useEffect(() => {
+    const nextFilters = form.filters.map((filter) => {
+      const indicator = filter.indicator_key ? indicatorMap[filter.indicator_key] : undefined;
+      const operator = normalizeOperator(filter.operator, indicator?.value_type);
+      return operator === filter.operator ? filter : { ...filter, operator };
+    });
+    if (nextFilters.some((filter, index) => filter !== form.filters[index])) {
+      setForm((prev) => ({ ...prev, filters: nextFilters }));
+    }
+  }, [form.filters, indicatorMap]);
+
   const startCreate = () => {
     setSelectedId(null);
     setForm({ ...EMPTY_FORM, filters: [makeEmptyFilter(defaultIndicator)] });
@@ -151,9 +163,11 @@ export default function DiscoveryPlanSettings() {
 
   const save = async () => {
     if (!form.name.trim()) {
+      setNameError(t("dpNameRequired"));
       message.warning(t("dpNameRequired"));
       return;
     }
+    setNameError(null);
     setSaving(true);
     try {
       const payload: DiscoveryPlanPayload = {
@@ -215,7 +229,7 @@ export default function DiscoveryPlanSettings() {
         className="indicator-card indicator-card--library"
         size="small"
         title={t("dpDiscoveryPlans")}
-        extra={<Space size={8} className="indicator-card__toolbar"><Tag>{rows.length} {t("items")}</Tag><Button size="small" icon={<ReloadOutlined />} onClick={loadRows}>{t("refresh")}</Button><Button size="small" icon={<PlusOutlined />} onClick={startCreate}>{t("dpNew")}</Button></Space>}
+        extra={<Space size={8} className="indicator-card__toolbar"><Tag>{rows.length} {t("items")}</Tag><Button size="small" icon={<ReloadOutlined />} onClick={loadRows} aria-label={t("refresh")}>{t("refresh")}</Button><Button size="small" icon={<PlusOutlined />} onClick={startCreate} aria-label={t("dpNew")}>{t("dpNew")}</Button></Space>}
       >
         <Table<DiscoveryPlan>
           className="indicator-library-table"
@@ -225,7 +239,19 @@ export default function DiscoveryPlanSettings() {
           dataSource={rows}
           pagination={{ pageSize: 8 }}
           scroll={{ x: 760 }}
-          onRow={(record) => ({ onClick: () => loadPlan(record) })}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("dpEmptyPlans")} /> }}
+          onRow={(record) => ({
+            onClick: () => loadPlan(record),
+            onKeyDown: (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                loadPlan(record);
+              }
+            },
+            tabIndex: 0,
+            role: "button",
+            "aria-label": template("dpLoadPlanAria", { name: record.name }),
+          })}
           rowClassName={(record) => (record.id === selectedId ? "selected-row" : "")}
           columns={[
             { title: t("dpName"), dataIndex: "name" },
@@ -258,14 +284,22 @@ export default function DiscoveryPlanSettings() {
           </div>
           <div className="item-subline indicator-editor-summary discovery-plan-summary">{template("dpEnabledIndicators", { count: customIndicators.length })}</div>
           <div className="indicator-form-grid discovery-plan-grid">
-            <Form.Item label={t("dpName")}>
-              <Input value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} placeholder={t("dpNamePlaceholder")} />
+            <Form.Item label={t("dpName")} required validateStatus={nameError ? "error" : ""} help={nameError}>
+              <Input
+                value={form.name}
+                onChange={(event) => {
+                  setForm((prev) => ({ ...prev, name: event.target.value }));
+                  if (nameError) setNameError(null);
+                }}
+                placeholder={t("dpNamePlaceholder")}
+                aria-label={t("dpName")}
+              />
             </Form.Item>
             <Form.Item label={t("dpLogic")}>
-              <Select value={form.logic} options={logicOptions} onChange={(value) => setForm((prev) => ({ ...prev, logic: value }))} />
+              <Select value={form.logic} options={logicOptions} onChange={(value) => setForm((prev) => ({ ...prev, logic: value }))} aria-label={t("dpLogic")} />
             </Form.Item>
             <Form.Item label={t("dpOpportunityPool")}>
-              <Select value={form.pool_tab} options={POOL_OPTIONS} onChange={(value) => setForm((prev) => ({ ...prev, pool_tab: value }))} />
+              <Select value={form.pool_tab} options={POOL_OPTIONS} onChange={(value) => setForm((prev) => ({ ...prev, pool_tab: value }))} aria-label={t("dpOpportunityPool")} />
             </Form.Item>
           </div>
 
@@ -286,32 +320,41 @@ export default function DiscoveryPlanSettings() {
               return (
                 <div key={filter.id} className="discovery-filter-card">
                   <div className="discovery-filter-head">
-                    <strong>{template("dpRuleN", { n: index + 1 })}</strong>
-                    {indicator && <Tag color={indicator.value_type === "number" ? "gold" : "blue"}>{indicator.name}</Tag>}
+                    <div className="discovery-filter-title">
+                      <strong>{template("dpRuleN", { n: index + 1 })}</strong>
+                      {indicator && <Tag color={indicator.value_type === "number" ? "gold" : "blue"}>{indicator.name}</Tag>}
+                    </div>
+                    <Tooltip title={t("dpDeleteRule")}>
+                      <Button
+                        type="text"
+                        danger
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        aria-label={template("dpDeleteRuleAria", { n: index + 1 })}
+                        onClick={() => removeFilter(filter.id)}
+                      />
+                    </Tooltip>
                   </div>
                   <div className="discovery-filter-grid">
                     <label className="inline-control inline-control--wide discovery-filter-control discovery-filter-control--wide">
                       <span>{t("dpSelectIndicator")}</span>
-                      <Select allowClear placeholder={t("dpSelectIndicator")} value={filter.indicator_key} onChange={(value) => handleIndicatorChange(filter.id, value)} options={customIndicators.map((item) => ({ label: item.name, value: item.key }))} />
+                      <Select allowClear placeholder={t("dpSelectIndicator")} value={filter.indicator_key} onChange={(value) => handleIndicatorChange(filter.id, value)} options={customIndicators.map((item) => ({ label: item.name, value: item.key }))} aria-label={t("dpSelectIndicator")} />
                     </label>
                     <label className="inline-control discovery-filter-control">
                       <span>{t("dpOperator")}</span>
-                      <Select value={filter.operator} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, operator: value }))} options={operatorOptions.map((item) => ({ label: OPERATOR_LABELS[item] ?? item, value: item }))} disabled={!indicator} />
+                      <Select value={filter.operator} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, operator: value }))} options={operatorOptions.map((item) => ({ label: OPERATOR_LABELS[item] ?? item, value: item }))} disabled={!indicator} aria-label={t("dpOperator")} />
                     </label>
                     {indicator?.value_type === "number" ? (
                       <label className="inline-control discovery-filter-control">
                         <span>{t("dpThreshold")}</span>
-                        <InputNumber className="discovery-filter-number" value={filter.number_value} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, number_value: Number(value ?? 0) }))} />
+                        <InputNumber className="discovery-filter-number" value={filter.number_value} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, number_value: Number(value ?? 0) }))} aria-label={t("dpThreshold")} />
                       </label>
                     ) : (
                       <label className="inline-control discovery-filter-control">
                         <span>{t("dpTargetValue")}</span>
-                        <Switch checked={filter.boolean_value} checkedChildren={t("yes")} unCheckedChildren={t("no")} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, boolean_value: value }))} disabled={!indicator} />
+                        <Switch checked={filter.boolean_value} checkedChildren={t("yes")} unCheckedChildren={t("no")} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, boolean_value: value }))} disabled={!indicator} aria-label={t("dpTargetValue")} />
                       </label>
                     )}
-                  </div>
-                  <div className="discovery-filter-actions">
-                    <Button danger icon={<DeleteOutlined />} onClick={() => removeFilter(filter.id)}>{t("dpDeleteRule")}</Button>
                   </div>
                 </div>
               );
@@ -319,12 +362,12 @@ export default function DiscoveryPlanSettings() {
           </div>
 
           <Space wrap className="indicator-action-row">
-            <Button icon={<PlusOutlined />} onClick={addFilter} disabled={customIndicators.length === 0}>{t("dpAddRule")}</Button>
-            <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>{t("dpSavePlan")}</Button>
-            <Button icon={<CopyOutlined />} loading={saving} onClick={duplicate}>{t("dpCopy")}</Button>
+            <Button icon={<PlusOutlined />} onClick={addFilter} disabled={customIndicators.length === 0} aria-label={t("dpAddRule")}>{t("dpAddRule")}</Button>
+            <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save} aria-label={t("dpSavePlan")}>{t("dpSavePlan")}</Button>
+            <Button icon={<CopyOutlined />} loading={saving} onClick={duplicate} aria-label={t("dpCopy")}>{t("dpCopy")}</Button>
             {selectedId && (
               <Popconfirm title={t("dpConfirmDeletePlan")} onConfirm={() => remove(selectedId)}>
-                <Button danger icon={<DeleteOutlined />}>{t("dpDelete")}</Button>
+                <Button danger icon={<DeleteOutlined />} aria-label={t("dpDelete")}>{t("dpDelete")}</Button>
               </Popconfirm>
             )}
           </Space>

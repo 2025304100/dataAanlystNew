@@ -9,14 +9,16 @@ import uuid
 from typing import Any
 
 import akshare as ak
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
 from app.models.daily_bar import DailyBar
 from app.models.discovery import DiscoveryTaskRecord
+from app.models.portfolio import Position
 from app.models.scan import ScanResult
 from app.models.symbol import Symbol
+from app.models.watchlist import WatchlistItem
 from app.schemas.discovery import DiscoveryTaskCreate
 from app.services.akshare_utils import quiet_akshare_output
 from app.schemas.news import NewsUpdateRequest
@@ -89,6 +91,7 @@ def _task_to_dict(task: DiscoveryTaskRecord) -> dict:
         "symbol_limit": task.symbol_limit,
         "scan_run_id": task.scan_run_id,
         "executable_count": task.executable_count,
+        "cleanup_count": task.cleanup_count,
         "news_symbols_total": task.news_symbols_total,
         "errors": _json_loads(task.errors_json, [])[-20:],
         "created_at": task.created_at,
@@ -566,6 +569,68 @@ def _payload_from_task(task: DiscoveryTaskRecord) -> DiscoveryTaskCreate:
     return DiscoveryTaskCreate.model_validate_json(task.payload_json or "{}")
 
 
+def _cleanup_discovery_symbols(
+    db: Session,
+    *,
+    scoped_symbol_ids: set[int],
+    preserve_extra_ids: set[int] | None = None,
+    scope: str | None = None,
+) -> int:
+    """清理挖掘范围内的僵尸标的（is_active=0）。
+
+    保留：executable 候选（由 preserve_extra_ids 传入）+ 观察池 + 持仓。
+    清理范围：
+      - 优先用 scope（按 asset_type + region markets）确定的全集，覆盖 prepare 阶段
+        _refresh_discovery_universe 写入的全市场僵尸标的（即使没进 synced_symbol_ids）。
+      - 若未传 scope，回退到 scoped_symbol_ids（仅实际同步过 K 线的标的）。
+    返回：清理数量。
+    """
+    # 确定待清理候选集：scope 全集 优先；否则回退 synced_symbol_ids
+    candidate_ids: set[int] = set()
+    scoped_id_set = set(scoped_symbol_ids) if scoped_symbol_ids else set()
+    if scope and scope in DISCOVERY_SCOPE_CONFIG:
+        config = DISCOVERY_SCOPE_CONFIG[scope]
+        stmt = select(Symbol.id).where(Symbol.is_active == 1)
+        asset_type = config.get("asset_type")
+        region = config.get("region")
+        if asset_type:
+            stmt = stmt.where(Symbol.asset_type == asset_type)
+        markets = markets_for_region(region)
+        if markets:
+            stmt = stmt.where(Symbol.market.in_(markets))
+        candidate_ids = {row[0] for row in db.execute(stmt).all() if row[0] is not None}
+        # 若同时传了 synced_symbol_ids，合并进来（兜底）
+        candidate_ids |= scoped_id_set
+    else:
+        candidate_ids = scoped_id_set
+
+    if not candidate_ids:
+        return 0
+
+    preserve_ids: set[int] = set()
+
+    if preserve_extra_ids:
+        preserve_ids |= preserve_extra_ids
+
+    wl_rows = db.execute(select(WatchlistItem.symbol_id).distinct()).all()
+    preserve_ids |= {r[0] for r in wl_rows if r[0] is not None}
+
+    pos_rows = db.execute(select(Position.symbol_id).distinct()).all()
+    preserve_ids |= {r[0] for r in pos_rows if r[0] is not None}
+
+    deactivate_ids = candidate_ids - preserve_ids
+    if not deactivate_ids:
+        return 0
+
+    db.execute(
+        update(Symbol)
+        .where(Symbol.id.in_(deactivate_ids))
+        .values(is_active=0)
+    )
+    db.commit()
+    return len(deactivate_ids)
+
+
 def _check_stop_state(db: Session, task_id: str) -> str | None:
     db.expire_all()
     task = db.get(DiscoveryTaskRecord, task_id)
@@ -699,12 +764,21 @@ def _run_discovery_task(task_id: str) -> None:
             row.valid_days = payload.valid_days
             row.is_frozen = 0
         db.commit()
+        # done 清理：保留 executable 候选 + 观察池 + 持仓，其余 is_active=0
+        # 传 scope 以覆盖 prepare 阶段 _refresh_discovery_universe 写入的全市场僵尸标的
+        cleanup_count = _cleanup_discovery_symbols(
+            db,
+            scoped_symbol_ids=set(synced_symbol_ids),
+            preserve_extra_ids={row.symbol_id for row in executable_rows},
+            scope=payload.scope,
+        )
         _set_task(
             db,
             task_id,
             scan_run_id=scan_run.id,
             executable_count=len(executable_rows),
-            message=f"扫描完成，找到 {len(executable_rows)} 个可执行候选",
+            cleanup_count=cleanup_count,
+            message=f"扫描完成，找到 {len(executable_rows)} 个可执行候选，已清理 {cleanup_count} 个僵尸标的",
         )
 
         if payload.include_news and payload.news_limit > 0 and executable_rows:
@@ -738,12 +812,39 @@ def _run_discovery_task(task_id: str) -> None:
         db.rollback()
         task = db.get(DiscoveryTaskRecord, task_id)
         if task is not None:
+            # failed 清理：只保留观察池 + 持仓，没有 executable
+            # 传 scope 以清理 prepare 阶段写入的全市场僵尸标的
+            try:
+                synced_ids = set(_json_loads(task.synced_symbol_ids_json, []))
+                failed_scope = _payload_from_task(task).scope if task.payload_json else None
+                cleanup_cnt = _cleanup_discovery_symbols(
+                    db, scoped_symbol_ids=synced_ids, preserve_extra_ids=None, scope=failed_scope,
+                )
+            except Exception:
+                cleanup_cnt = 0
             task.status = "failed"
             task.stage = "failed"
             task.percent = 100
+            task.cleanup_count = cleanup_cnt
             task.message = f"机会挖掘失败：{exc}"
             task.finished_at = _now()
             _append_error(task, {"scope": "task", "error": str(exc), "traceback": traceback.format_exc(limit=8)})
             db.commit()
     finally:
+        # cancelled 清理：只保留观察池 + 持仓
+        # paused 不清理，等续跑或定时任务
+        # 传 scope 以清理 prepare 阶段写入的全市场僵尸标的
+        try:
+            task = db.get(DiscoveryTaskRecord, task_id)
+            if task is not None and task.status == "cancelled":
+                synced_ids = set(_json_loads(task.synced_symbol_ids_json, []))
+                cancelled_scope = _payload_from_task(task).scope if task.payload_json else None
+                cleanup_cnt = _cleanup_discovery_symbols(
+                    db, scoped_symbol_ids=synced_ids, preserve_extra_ids=None, scope=cancelled_scope,
+                )
+                if cleanup_cnt:
+                    task.cleanup_count = cleanup_cnt
+                    db.commit()
+        except Exception:
+            pass
         db.close()

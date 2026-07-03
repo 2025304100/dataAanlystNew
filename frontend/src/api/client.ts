@@ -138,7 +138,17 @@ export const api = {
   cancelMarketDataSyncTask: (taskId: string) =>
     requestJson<any>(`${API}/market-data/sync-tasks/${taskId}/cancel`, { method: "POST" }),
 
-  startHistoryInitialization: (payload: { preset: string; adjust?: string; asset_types?: string[]; symbol_ids?: number[]; repair_mode?: "both" | "bars" | "scores" }) =>
+  startHistoryInitialization: (payload: {
+    preset: string;
+    adjust?: string;
+    asset_types?: string[];
+    symbol_ids?: number[];
+    repair_mode?: "both" | "bars" | "scores";
+    symbol_source?: "all" | "watchlist" | "positions" | "scored" | "candidates" | "cn-stock" | "cn-etf";
+    auto_scan?: boolean;
+    portfolio_id?: number | null;
+    watchlist_id?: number | null;
+  }) =>
     requestJson<any>(`${API}/market-data/initialize-history`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

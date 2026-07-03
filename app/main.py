@@ -12,6 +12,7 @@ from app.core.config import settings, load_db_config, build_mysql_url
 from app.db.init_db import init_db
 from app.db.manager import DatabaseManager
 from app.services.discovery_cleanup import cleanup_expired_discovery_results
+from app.services.symbol_cleanup import cleanup_stale_discovery_symbols
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,6 +79,14 @@ def _run_startup_cleanup() -> None:
                 )
             else:
                 logger.info("Startup cleanup: no expired results to remove")
+            # 清理挖掘遗留的僵尸标的
+            stale_result = cleanup_stale_discovery_symbols(db)
+            if stale_result["total_cleaned"] > 0:
+                logger.info(
+                    "Startup cleanup: %d stale symbols deactivated (tasks: %s)",
+                    stale_result["total_cleaned"],
+                    stale_result["cleaned_task_ids"],
+                )
         finally:
             db.close()
     except Exception:
@@ -97,6 +106,13 @@ async def _periodic_cleanup() -> None:
                     logger.info(
                         "Periodic cleanup: %d expired results removed",
                         result["deleted"],
+                    )
+                # 清理挖掘遗留的僵尸标的
+                stale_result = cleanup_stale_discovery_symbols(db)
+                if stale_result["total_cleaned"] > 0:
+                    logger.info(
+                        "Periodic cleanup: %d stale symbols deactivated",
+                        stale_result["total_cleaned"],
                     )
             finally:
                 db.close()

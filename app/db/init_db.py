@@ -90,6 +90,16 @@ def _ensure_sqlite_journal_columns(engine) -> None:
     )
 
 
+def _ensure_sqlite_discovery_columns(engine) -> None:
+    _ensure_sqlite_columns(
+        engine,
+        "discovery_tasks",
+        {
+            "cleanup_count": "INTEGER DEFAULT 0",
+        },
+    )
+
+
 def _ensure_mysql_indicator_version_columns(engine) -> None:
     """为 MySQL 中已存在的表补充新增列。"""
     import logging
@@ -124,6 +134,19 @@ def _ensure_mysql_indicator_version_columns(engine) -> None:
                 logger.info("Added review_tags_json column to journal_entries")
             except Exception as e:
                 logger.warning("Failed to add review_tags_json column: %s", e)
+        # discovery_tasks.cleanup_count
+        result = conn.execute(text(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'discovery_tasks' AND COLUMN_NAME = 'cleanup_count'"
+        ), {"db": db_name})
+        if result.first() is None:
+            try:
+                conn.execute(text(
+                    "ALTER TABLE discovery_tasks ADD COLUMN cleanup_count INTEGER DEFAULT 0"
+                ))
+                logger.info("Added cleanup_count column to discovery_tasks")
+            except Exception as e:
+                logger.warning("Failed to add cleanup_count column: %s", e)
 
 
 def _convert_myisam_to_innodb(engine) -> None:
@@ -171,6 +194,7 @@ def init_db() -> None:
         _ensure_sqlite_trade_setup_columns(eng)
         _ensure_sqlite_indicator_version_columns(eng)
         _ensure_sqlite_journal_columns(eng)
+        _ensure_sqlite_discovery_columns(eng)
         with eng.begin() as conn:
             conn.execute(text("PRAGMA journal_mode=WAL;"))
             conn.execute(text("PRAGMA busy_timeout=30000;"))

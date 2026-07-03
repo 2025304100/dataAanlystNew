@@ -18,12 +18,14 @@ logger = logging.getLogger(__name__)
 
 from app.services.akshare_utils import quiet_akshare_output
 from app.models.daily_bar import DailyBar
+from app.models.portfolio import Position
 from app.models.scan import ScanResult
+from app.models.score import Score
 from app.models.symbol import Symbol
 from app.models.watchlist import WatchlistItem
 from app.services.allocation import get_active_rule, get_default_portfolio
 from app.services.analysis import calculate_symbol_score
-from app.services.regions import region_from_market
+from app.services.regions import markets_for_region, region_from_market
 from app.services.scans import run_scan
 from app.services.symbol_names import refresh_symbol_name
 from app.services.trade_plans import upsert_trade_setup
@@ -523,10 +525,11 @@ HISTORY_INIT_PRESET_DAYS = {
     "1y": 365,
     "3y": 365 * 3,
 }
-HISTORY_INIT_STAGE_KEYS = ("prepare", "sync_bars", "calc_scores", "finalize")
+HISTORY_INIT_STAGE_KEYS = ("prepare", "sync_bars", "calc_scores", "scan", "finalize")
 HISTORY_INIT_TASK_TYPE = "history_initialization"
 HISTORY_INIT_RECENT_LIMIT = 8
 HISTORY_INIT_REPAIR_MODES = {"both", "bars", "scores"}
+HISTORY_INIT_SYMBOL_SOURCES = {"all", "watchlist", "positions", "scored", "candidates", "cn-stock", "cn-etf"}
 _HISTORY_INIT_LOCK = Lock()
 _HISTORY_INIT_CANCEL_EVENT: Event = Event()
 _HISTORY_INIT_TASK: dict = {
@@ -535,6 +538,10 @@ _HISTORY_INIT_TASK: dict = {
     "preset": "1y",
     "adjust": "qfq",
     "repair_mode": "both",
+    "symbol_source": "all",
+    "auto_scan": False,
+    "portfolio_id": None,
+    "watchlist_id": None,
     "start_date": None,
     "end_date": None,
     "progress_pct": 0,
@@ -551,6 +558,8 @@ _HISTORY_INIT_TASK: dict = {
         "bars_rows": 0,
         "score_days_total": 0,
         "score_days_completed": 0,
+        "scan_run_id": None,
+        "scan_executable_count": 0,
     },
 }
 
@@ -830,6 +839,140 @@ def _recompute_history_progress(task: dict) -> None:
 def get_history_initialization_status() -> dict:
     return _clone_history_task()
 
+
+def _resolve_symbols_by_source(
+    db: Session,
+    *,
+    source: str,
+    asset_types: list[str],
+    symbol_ids: list[int] | None = None,
+    portfolio_id: int | None = None,
+    watchlist_id: int | None = None,
+) -> list[Symbol]:
+    """根据来源类型解析历史初始化需要处理的标的列表。
+
+    来源语义：
+    - all: 全部 is_active=1 的标的（按 asset_types 过滤），默认行为
+    - watchlist: 观察池标的（可选 watchlist_id 过滤）
+    - positions: 持仓标的（可选 portfolio_id 过滤）
+    - scored: 已有评分记录的标的
+    - candidates: 最新一次扫描的 executable 候选
+    - cn-stock: A 股标的（asset_type=stock + CN 市场）
+    - cn-etf: CN ETF 标的（asset_type=etf + CN 市场）
+
+    若 symbol_ids 非空，则在来源结果上再做 id 过滤（取交集）。
+    """
+    # symbol_ids 优先：显式指定时直接按 id 取，但仍受 is_active=1 约束
+    if symbol_ids:
+        stmt = select(Symbol).where(Symbol.is_active == 1, Symbol.id.in_(symbol_ids))
+        if asset_types:
+            stmt = stmt.where(Symbol.asset_type.in_(asset_types))
+        return db.execute(stmt.order_by(Symbol.id.asc())).scalars().all()
+
+    resolved_source = source if source in HISTORY_INIT_SYMBOL_SOURCES else "all"
+
+    if resolved_source == "cn-stock":
+        stmt = select(Symbol).where(Symbol.is_active == 1, Symbol.asset_type == "stock")
+        cn_markets = markets_for_region("cn")
+        if cn_markets:
+            stmt = stmt.where(Symbol.market.in_(cn_markets))
+        return db.execute(stmt.order_by(Symbol.id.asc())).scalars().all()
+
+    if resolved_source == "cn-etf":
+        stmt = select(Symbol).where(Symbol.is_active == 1, Symbol.asset_type == "etf")
+        cn_markets = markets_for_region("cn")
+        if cn_markets:
+            stmt = stmt.where(Symbol.market.in_(cn_markets))
+        return db.execute(stmt.order_by(Symbol.id.asc())).scalars().all()
+
+    if resolved_source == "watchlist":
+        stmt = (
+            select(Symbol)
+            .join(WatchlistItem, WatchlistItem.symbol_id == Symbol.id)
+            .where(Symbol.is_active == 1)
+        )
+        if watchlist_id is not None:
+            stmt = stmt.where(WatchlistItem.watchlist_id == int(watchlist_id))
+        if asset_types:
+            stmt = stmt.where(Symbol.asset_type.in_(asset_types))
+        return db.execute(stmt.distinct().order_by(Symbol.id.asc())).scalars().all()
+
+    if resolved_source == "positions":
+        stmt = (
+            select(Symbol)
+            .join(Position, Position.symbol_id == Symbol.id)
+            .where(Symbol.is_active == 1)
+        )
+        if portfolio_id is not None:
+            stmt = stmt.where(Position.portfolio_id == int(portfolio_id))
+        if asset_types:
+            stmt = stmt.where(Symbol.asset_type.in_(asset_types))
+        return db.execute(stmt.distinct().order_by(Symbol.id.asc())).scalars().all()
+
+    if resolved_source == "scored":
+        stmt = (
+            select(Symbol)
+            .join(Score, Score.symbol_id == Symbol.id)
+            .where(Symbol.is_active == 1)
+        )
+        if asset_types:
+            stmt = stmt.where(Symbol.asset_type.in_(asset_types))
+        return db.execute(stmt.distinct().order_by(Symbol.id.asc())).scalars().all()
+
+    if resolved_source == "candidates":
+        # 最新一次扫描的 executable 候选
+        latest_run_id_row = (
+            db.execute(
+                select(ScanResult.scan_run_id)
+                .where(ScanResult.result_type == "executable")
+                .order_by(ScanResult.created_at.desc())
+                .limit(1)
+            )
+            .first()
+        )
+        if latest_run_id_row is None:
+            return []
+        stmt = (
+            select(Symbol)
+            .join(ScanResult, ScanResult.symbol_id == Symbol.id)
+            .where(
+                Symbol.is_active == 1,
+                ScanResult.scan_run_id == int(latest_run_id_row[0]),
+                ScanResult.result_type == "executable",
+            )
+        )
+        if asset_types:
+            stmt = stmt.where(Symbol.asset_type.in_(asset_types))
+        return db.execute(stmt.distinct().order_by(Symbol.id.asc())).scalars().all()
+
+    # 默认 all
+    stmt = select(Symbol).where(Symbol.is_active == 1)
+    if asset_types:
+        stmt = stmt.where(Symbol.asset_type.in_(asset_types))
+    return db.execute(stmt.order_by(Symbol.id.asc())).scalars().all()
+
+
+def _resolve_history_scan_refs(
+    db: Session,
+    portfolio_id: int | None,
+) -> tuple[int | None, int | None]:
+    """解析自动扫描所需的 portfolio_id 与 portfolio_rule_id。
+
+    若未传入 portfolio_id，则回退到默认组合及其激活规则。
+    """
+    resolved_portfolio_id = portfolio_id
+    resolved_rule_id: int | None = None
+    if resolved_portfolio_id is None:
+        default_portfolio = get_default_portfolio(db)
+        if default_portfolio is not None:
+            resolved_portfolio_id = default_portfolio.id
+    if resolved_portfolio_id is not None:
+        active_rule = get_active_rule(db, resolved_portfolio_id)
+        if active_rule is not None:
+            resolved_rule_id = active_rule.id
+    return resolved_portfolio_id, resolved_rule_id
+
+
 def start_history_initialization_task(
     preset: str = "1y",
     adjust: str = "qfq",
@@ -838,6 +981,10 @@ def start_history_initialization_task(
     start_date: date | None = None,
     end_date: date | None = None,
     repair_mode: str = "both",
+    symbol_source: str = "all",
+    auto_scan: bool = False,
+    portfolio_id: int | None = None,
+    watchlist_id: int | None = None,
 ) -> dict:
     preset_key = preset if preset in HISTORY_INIT_PRESET_DAYS else "1y"
     resolved_end = end_date or date.today()
@@ -845,6 +992,9 @@ def start_history_initialization_task(
     resolved_asset_types = asset_types or ["stock", "etf"]
     resolved_symbol_ids = [int(item) for item in (symbol_ids or []) if item is not None]
     resolved_repair_mode = repair_mode if repair_mode in HISTORY_INIT_REPAIR_MODES else "both"
+    resolved_source = symbol_source if symbol_source in HISTORY_INIT_SYMBOL_SOURCES else "all"
+    resolved_portfolio_id = int(portfolio_id) if portfolio_id is not None else None
+    resolved_watchlist_id = int(watchlist_id) if watchlist_id is not None else None
 
     with _HISTORY_INIT_LOCK:
         if _HISTORY_INIT_TASK.get("status") == "running":
@@ -856,6 +1006,10 @@ def start_history_initialization_task(
         "preset": preset_key,
         "adjust": adjust,
         "repair_mode": resolved_repair_mode,
+        "symbol_source": resolved_source,
+        "auto_scan": bool(auto_scan),
+        "portfolio_id": resolved_portfolio_id,
+        "watchlist_id": resolved_watchlist_id,
         "asset_types": resolved_asset_types,
         "symbol_ids": resolved_symbol_ids,
         "start_date": resolved_start,
@@ -873,6 +1027,8 @@ def start_history_initialization_task(
             "bars_rows": 0,
             "score_days_total": 0,
             "score_days_completed": 0,
+            "scan_run_id": None,
+            "scan_executable_count": 0,
         },
         "failed_items": [],
     }
@@ -885,6 +1041,10 @@ def start_history_initialization_task(
             "preset": preset_key,
             "adjust": adjust,
             "repair_mode": resolved_repair_mode,
+            "symbol_source": resolved_source,
+            "auto_scan": bool(auto_scan),
+            "portfolio_id": resolved_portfolio_id,
+            "watchlist_id": resolved_watchlist_id,
             "asset_types": resolved_asset_types,
             "symbol_ids": resolved_symbol_ids,
             "start_date": resolved_start.isoformat(),
@@ -903,6 +1063,10 @@ def create_history_initialization_task(
     start_date: date | None = None,
     end_date: date | None = None,
     repair_mode: str = "both",
+    symbol_source: str = "all",
+    auto_scan: bool = False,
+    portfolio_id: int | None = None,
+    watchlist_id: int | None = None,
 ) -> dict:
     task = start_history_initialization_task(
         preset=preset,
@@ -912,6 +1076,10 @@ def create_history_initialization_task(
         start_date=start_date,
         end_date=end_date,
         repair_mode=repair_mode,
+        symbol_source=symbol_source,
+        auto_scan=auto_scan,
+        portfolio_id=portfolio_id,
+        watchlist_id=watchlist_id,
     )
     _start_worker(task["task_id"], run_history_initialization_task)
     return task
@@ -999,11 +1167,19 @@ def run_history_initialization_task(task_id: str) -> None:
         repair_mode = snapshot.get("repair_mode") or "both"
         asset_types = snapshot.get("asset_types") or ["stock", "etf"]
         symbol_ids = [int(item) for item in (snapshot.get("symbol_ids") or []) if item is not None]
+        symbol_source = snapshot.get("symbol_source") or "all"
+        auto_scan = bool(snapshot.get("auto_scan"))
+        portfolio_id = snapshot.get("portfolio_id")
+        watchlist_id = snapshot.get("watchlist_id")
 
-        stmt = select(Symbol).where(Symbol.is_active == 1, Symbol.asset_type.in_(asset_types))
-        if symbol_ids:
-            stmt = stmt.where(Symbol.id.in_(symbol_ids))
-        symbols = db.execute(stmt.order_by(Symbol.id.asc())).scalars().all()
+        symbols = _resolve_symbols_by_source(
+            db,
+            source=symbol_source,
+            asset_types=asset_types,
+            symbol_ids=symbol_ids or None,
+            portfolio_id=portfolio_id,
+            watchlist_id=watchlist_id,
+        )
 
         _update_history_stage(
             task_id,
@@ -1204,6 +1380,78 @@ def run_history_initialization_task(task_id: str) -> None:
                 message="Score calculation complete. Finalizing summary.",
             )
 
+        # 扫描阶段：可选，auto_scan=true 时触发候选池扫描
+        if auto_scan:
+            if _HISTORY_INIT_CANCEL_EVENT.is_set():
+                cancel_history_initialization_task(force_task_id=task_id, from_worker=True)
+                return
+            _update_history_stage(
+                task_id,
+                "scan",
+                status="running",
+                done=0,
+                total=1,
+                message="Running candidate scan",
+            )
+            try:
+                synced_symbol_ids = [s.id for s in symbols]
+                resolved_portfolio_id, resolved_rule_id = _resolve_history_scan_refs(db, portfolio_id)
+                scan_run = run_scan(
+                    db=db,
+                    scope_snapshot={"symbol_ids": synced_symbol_ids},
+                    filters_snapshot={
+                        "source": "history_initialization",
+                        "task_id": task_id,
+                        "symbol_source": symbol_source,
+                    },
+                    portfolio_id=resolved_portfolio_id,
+                    portfolio_rule_id=resolved_rule_id,
+                    run_name="history-initialization-scan",
+                    preset_id=None,
+                )
+                executable_count = (
+                    db.execute(
+                        select(func.count(ScanResult.id)).where(
+                            ScanResult.scan_run_id == scan_run.id,
+                            ScanResult.result_type == "executable",
+                        )
+                    ).scalar_one()
+                    or 0
+                )
+
+                def _scan_summary(task: dict, run_id: int = scan_run.id, exec_count: int = int(executable_count)) -> None:
+                    task["summary"]["scan_run_id"] = run_id
+                    task["summary"]["scan_executable_count"] = exec_count
+                _mutate_history_task(task_id, _scan_summary)
+                _update_history_stage(
+                    task_id,
+                    "scan",
+                    status="completed",
+                    done=1,
+                    total=1,
+                    message=f"Scan complete: {int(executable_count)} executable candidates",
+                )
+            except Exception as scan_exc:
+                db.rollback()
+                logger.warning("History init auto scan failed: %s", scan_exc, exc_info=True)
+                _update_history_stage(
+                    task_id,
+                    "scan",
+                    status="completed",
+                    done=1,
+                    total=1,
+                    message=f"Scan skipped: {scan_exc}",
+                )
+        else:
+            _update_history_stage(
+                task_id,
+                "scan",
+                status="completed",
+                done=0,
+                total=0,
+                message="Scan skipped. auto_scan disabled.",
+            )
+
         _update_history_stage(task_id, "finalize", status="running", done=0, total=1, message="Finalizing initialization summary")
         summary = get_history_initialization_status().get("summary", {})
         _complete_history_task(
@@ -1278,6 +1526,10 @@ def retry_history_initialization_failed_items(source_task_id: str) -> dict:
         start_date=start_date,
         end_date=end_date,
         repair_mode=repair_mode,
+        symbol_source=snapshot.get("symbol_source") or "all",
+        auto_scan=bool(snapshot.get("auto_scan")),
+        portfolio_id=snapshot.get("portfolio_id"),
+        watchlist_id=snapshot.get("watchlist_id"),
     )
 def cleanup_history_records(keep: int = 5) -> dict:
     """Cleanup history initialization records and keep the latest N runs."""

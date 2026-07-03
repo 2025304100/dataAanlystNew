@@ -181,7 +181,12 @@ def get_data_health(db: Session = Depends(get_db)):
         .limit(BAR_ISSUE_SAMPLE_LIMIT)
     ).all()
     latest_score_date = _parse_date(db.execute(select(func.max(Score.trade_date))).scalar_one())
-    scored_symbols = db.execute(select(func.count(func.distinct(Score.symbol_id)))).scalar_one()
+    # 只统计当前 is_active=1 标的的评分数量，避免已清理的僵尸标的评分记录污染覆盖率诊断
+    scored_symbols = db.execute(
+        select(func.count(func.distinct(Score.symbol_id)))
+        .join(Symbol, Symbol.id == Score.symbol_id)
+        .where(Symbol.is_active == 1)
+    ).scalar_one()
 
     latest_macro_at = _parse_datetime(db.execute(select(func.max(MacroIndicatorValue.updated_at))).scalar_one())
     latest_macro_snapshot = db.execute(select(MacroSnapshot).order_by(MacroSnapshot.id.desc())).scalars().first()

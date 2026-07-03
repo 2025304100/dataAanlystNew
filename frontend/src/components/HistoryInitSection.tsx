@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Empty, Input, InputNumber, Popconfirm, Progress, Radio, Tag } from "antd";
+import { Alert, Button, Empty, Input, InputNumber, Popconfirm, Progress, Radio, Select, Switch, Tag, Tooltip } from "antd";
 import { CloseOutlined, DeleteOutlined, DownloadOutlined, DownOutlined, HistoryOutlined, ReloadOutlined, SyncOutlined, UpOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
@@ -9,6 +9,7 @@ import type {
   HistoryInitializationFailureItem,
   HistoryInitializationRunRecord,
   HistoryInitializationStage,
+  HistoryInitializationSymbolSource,
   HistoryInitializationTask,
 } from "../types";
 
@@ -30,8 +31,19 @@ const HISTORY_STAGE_I18N: Record<string, string> = {
   prepare: "histStagePrepare",
   sync_bars: "histStageSyncBars",
   calc_scores: "histStageCalcScores",
+  scan: "histStageScan",
   finalize: "histStageFinalize",
 };
+
+const HISTORY_SYMBOL_SOURCE_VALUES: Array<{ i18nKey: string; value: HistoryInitializationSymbolSource }> = [
+  { i18nKey: "histSourceAll", value: "all" },
+  { i18nKey: "histSourceWatchlist", value: "watchlist" },
+  { i18nKey: "histSourcePositions", value: "positions" },
+  { i18nKey: "histSourceScored", value: "scored" },
+  { i18nKey: "histSourceCandidates", value: "candidates" },
+  { i18nKey: "histSourceCnStock", value: "cn-stock" },
+  { i18nKey: "histSourceCnEtf", value: "cn-etf" },
+];
 
 const HISTORY_STATUS_I18N: Record<string, string> = {
   idle: "histStatusIdle",
@@ -159,6 +171,8 @@ function formatScopedSymbolLabel(rawLabel?: string | null, symbol?: { symbol: st
 export default function HistoryInitSection({ focusSignal = 0, context = null, onClearContext, onOpenDiagnostic }: HistoryInitSectionProps) {
   const ctx = useApp();
   const [historyPreset, setHistoryPreset] = useState<HistoryInitializationTask["preset"]>("1y");
+  const [symbolSource, setSymbolSource] = useState<HistoryInitializationSymbolSource>("all");
+  const [autoScan, setAutoScan] = useState(false);
   const [historyTask, setHistoryTask] = useState<HistoryInitializationTask | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
@@ -264,7 +278,16 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   const runHistoryInitialization = async (preset: HistoryInitializationTask["preset"]) => {
     try {
       setHistoryLoading(true);
-      const task = await api.startHistoryInitialization({ preset, adjust: "qfq", symbol_ids: activeScopedSymbolId ? [activeScopedSymbolId] : undefined, repair_mode: requestedRepairMode }) as HistoryInitializationTask;
+      // 单标的上下文：显式传 symbol_ids（resolver 中 id 优先）；否则按来源选择处理
+      const scopedSymbolIds = activeScopedSymbolId ? [activeScopedSymbolId] : undefined;
+      const task = await api.startHistoryInitialization({
+        preset,
+        adjust: "qfq",
+        symbol_ids: scopedSymbolIds,
+        repair_mode: requestedRepairMode,
+        symbol_source: scopedSymbolIds ? "all" : symbolSource,
+        auto_scan: scopedSymbolIds ? false : autoScan,
+      }) as HistoryInitializationTask;
       setHistoryPreset(preset);
       setHistoryTask(task);
       startHistoryPolling();
@@ -664,6 +687,21 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
               <Radio.Button key={item.value} value={item.value} disabled={isRunning}>{t(item.i18nKey)}</Radio.Button>
             ))}
           </Radio.Group>
+          <Tooltip title={activeScopedSymbolId ? t("histSourceDisabledByScope") : t("histSourceHint")}>
+            <Select
+              value={symbolSource}
+              onChange={(value: HistoryInitializationSymbolSource) => setSymbolSource(value)}
+              disabled={isRunning || !!activeScopedSymbolId}
+              style={{ minWidth: 140 }}
+              options={HISTORY_SYMBOL_SOURCE_VALUES.map((item) => ({ label: t(item.i18nKey), value: item.value }))}
+            />
+          </Tooltip>
+          <Tooltip title={activeScopedSymbolId ? t("histSourceDisabledByScope") : t("histAutoScanHint")}>
+            <div className="history-init-autoscan" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Switch size="small" checked={autoScan} onChange={setAutoScan} disabled={isRunning || !!activeScopedSymbolId} />
+              <span className="history-init-autoscan__label">{t("histAutoScan")}</span>
+            </div>
+          </Tooltip>
           <div className="history-init-toolbar__actions">
             <Button icon={<ReloadOutlined />} onClick={loadHistoryTask} disabled={isRunning}>
               {t("histBtnRefresh")}
@@ -750,6 +788,12 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
                 <span>{t("histScoreCompleted")}</span>
                 <strong>{historyTask.summary.score_days_completed}/{historyTask.summary.score_days_total}</strong>
               </div>
+              {typeof historyTask.summary.scan_executable_count === "number" && historyTask.summary.scan_executable_count > 0 && (
+                <div>
+                  <span>{t("histScanExecutable")}</span>
+                  <strong>{historyTask.summary.scan_executable_count}</strong>
+                </div>
+              )}
             </div>
 
             <div className="history-init-stage-list">

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
+import { OPERATOR_LABELS } from "../constants/conditionFields";
 import { t, template, regionShortLabel, assetTypeLabel, stageLabel, actionLabel, DOT } from "../i18n";
 import { Checkbox, Select, Button, Tag, Space, InputNumber, Switch, Input, Empty, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -1028,7 +1029,7 @@ export default function Discovery() {
                   </label>
                   <label className="inline-control">
                     <span>{t("dpOperator")}</span>
-                    <Select value={filter.operator} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, operator: value }))} options={operatorOptions.map((item) => ({ label: item, value: item }))} disabled={!indicator} />
+                    <Select value={filter.operator} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, operator: value }))} options={operatorOptions.map((item) => ({ label: OPERATOR_LABELS[item] ?? item, value: item }))} disabled={!indicator} />
                   </label>
                   {indicator?.value_type === "number" ? (
                     <label className="inline-control">

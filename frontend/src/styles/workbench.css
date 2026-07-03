@@ -3395,21 +3395,33 @@ td .symbol-name {
   border-radius: 8px;
   padding: 12px;
   background: rgba(255, 250, 240, 0.48);
+  overflow-x: auto;
+  min-width: 0;
 }
 
 .discovery-filter-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 10px;
 }
 
+.discovery-filter-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
 .discovery-filter-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1.45fr) minmax(140px, 0.75fr) minmax(160px, 0.8fr);
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.75fr) minmax(0, 0.8fr);
   gap: 12px;
   align-items: end;
+  min-width: 0;
 }
 
 .discovery-filter-control {

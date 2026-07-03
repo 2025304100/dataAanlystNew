@@ -7,6 +7,7 @@ from app.models.score import Score
 from app.models.symbol import Symbol
 from app.schemas.symbol import SymbolCreate, SymbolRead
 from app.services.regions import region_from_market
+from app.services.symbol_cleanup import cleanup_stale_discovery_symbols
 from app.services.symbol_names import refresh_symbol_name
 
 
@@ -24,9 +25,13 @@ def list_symbols(
     market: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
+    include_inactive: bool = Query(default=False, description="是否包含已停用（is_active=0）的僵尸标的，默认只返回活跃标的"),
     db: Session = Depends(get_db),
 ):
     stmt = select(Symbol)
+    # 默认只返回 is_active=1 的活跃标的，避免挖掘清理后的僵尸标的污染前端下拉框
+    if not include_inactive:
+        stmt = stmt.where(Symbol.is_active == 1)
     if keyword:
         # 转义用户输入中的 LIKE 通配符（%、_、\），防止关键词被当作通配符导致误匹配
         escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -89,4 +94,15 @@ def get_symbol_detail(symbol_id: int, db: Session = Depends(get_db)):
             # 数据可信度（P0-4.3）
             "data_credibility": latest_score.data_credibility,
         },
+    }
+
+
+@router.post("/symbols/cleanup-stale")
+def cleanup_stale_symbols(db: Session = Depends(get_db)) -> dict:
+    """手动清理挖掘遗留的僵尸标的（paused 超 24h / running 僵死超 30m）。"""
+    result = cleanup_stale_discovery_symbols(db)
+    return {
+        "ok": True,
+        "cleaned_count": result["total_cleaned"],
+        "cleaned_tasks": result["cleaned_task_ids"],
     }

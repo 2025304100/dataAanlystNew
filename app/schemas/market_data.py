@@ -61,6 +61,15 @@ HistoryInitializationPreset = Literal["1m", "1q", "1y", "3y"]
 HistoryInitializationStageStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 HistoryInitializationTaskStatus = Literal["idle", "running", "completed", "failed", "cancelled"]
 HistoryInitializationRepairMode = Literal["both", "bars", "scores"]
+HistoryInitializationSymbolSource = Literal[
+    "all",          # 全部 is_active=1（默认）
+    "watchlist",    # 观察池标的
+    "positions",    # 持仓标的
+    "scored",       # 有评分的标的
+    "candidates",   # 最新扫描候选
+    "cn-stock",     # A股
+    "cn-etf",       # CN ETF
+]
 
 
 class HistoryInitializationRequest(BaseModel):
@@ -68,7 +77,11 @@ class HistoryInitializationRequest(BaseModel):
     adjust: str = "qfq"
     asset_types: list[str] | None = None
     symbol_ids: list[int] | None = None
+    symbol_source: HistoryInitializationSymbolSource = "all"
     repair_mode: HistoryInitializationRepairMode = "both"
+    auto_scan: bool = False
+    portfolio_id: int | None = None
+    watchlist_id: int | None = None
 
 
 class HistoryInitializationRetryRequest(BaseModel):
@@ -92,6 +105,8 @@ class HistoryInitializationSummary(BaseModel):
     bars_rows: int = 0
     score_days_total: int = 0
     score_days_completed: int = 0
+    scan_run_id: int | None = None
+    scan_executable_count: int = 0
 
 
 class HistoryInitializationFailureItem(BaseModel):
