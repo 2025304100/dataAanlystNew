@@ -29,6 +29,8 @@ _migration_state: dict = {
     "tables_total": 0,
     "rows_migrated": 0,
     "error": None,
+    "failed_tables": [],
+    "fk_checks_restored": True,
 }
 _migration_lock = threading.Lock()
 
@@ -99,6 +101,8 @@ def run_migration() -> dict:
             "tables_total": 0,
             "rows_migrated": 0,
             "error": None,
+            "failed_tables": [],
+            "fk_checks_restored": True,
         }
 
     mgr = DatabaseManager.get()
@@ -135,6 +139,7 @@ def run_migration() -> dict:
 
         # 逐表迁移
         total_rows = 0
+        failed_tables: list[str] = []
         for i, table_name in enumerate(table_order):
             _migration_state["current_table"] = table_name
             table = Base.metadata.tables[table_name]
@@ -163,19 +168,48 @@ def run_migration() -> dict:
                     logger.info("Migrated %s: 0 rows (empty)", table_name)
 
             except Exception as table_err:
-                logger.warning("Table %s migration warning: %s", table_name, table_err)
-                # 继续迁移其他表
+                # 风控加固：单表失败用 exception 记录完整堆栈（不是 warning 仅一行）
+                # 并将失败表名加入 failed_tables，最终状态根据是否有失败区分
+                logger.exception("Table %s migration failed, skipping to next table", table_name)
+                failed_tables.append(table_name)
 
             _migration_state["tables_done"] = i + 1
             _migration_state["rows_migrated"] = total_rows
+            _migration_state["failed_tables"] = list(failed_tables)
 
         # 恢复 MySQL 外键检查
-        with mysql_engine.begin() as conn:
-            conn.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
+        fk_restored = True
+        try:
+            with mysql_engine.begin() as conn:
+                conn.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
+        except Exception as fk_err:
+            # 风控加固：FK 检查恢复失败是最危险的情况——MySQL 将永久关闭 FK 检查
+            # 后续业务写入都不会校验外键，可能产生大量孤儿行，数据完整性彻底失守
+            # 必须 critical 级别日志 + 状态记录，前端展示醒目警告
+            logger.critical(
+                "CRITICAL: Failed to restore FOREIGN_KEY_CHECKS=1 after migration. "
+                "MySQL will remain FK-disabled, data integrity at risk! Error: %s",
+                fk_err,
+            )
+            fk_restored = False
+            _migration_state["error"] = (
+                f"FK checks restore failed: {fk_err}. "
+                "MySQL remains FK-disabled, manual intervention required."
+            )
 
-        _migration_state["status"] = "completed"
+        _migration_state["fk_checks_restored"] = fk_restored
+        # 风控加固：有表失败时状态为 partial 而非 completed，前端明确展示
+        if failed_tables:
+            _migration_state["status"] = "partial"
+            logger.warning(
+                "Migration completed with errors: %d/%d tables failed: %s",
+                len(failed_tables), len(table_order), failed_tables,
+            )
+        else:
+            _migration_state["status"] = "completed"
         _migration_state["current_table"] = None
-        logger.info("Migration completed: %d tables, %d rows", len(table_order), total_rows)
+        logger.info("Migration finished: %d tables, %d rows, status=%s",
+                    len(table_order), total_rows, _migration_state["status"])
 
     except Exception as e:
         _migration_state["status"] = "failed"
@@ -186,8 +220,15 @@ def run_migration() -> dict:
         try:
             with mysql_engine.begin() as conn:
                 conn.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
-        except Exception:
-            pass
+            _migration_state["fk_checks_restored"] = True
+        except Exception as fk_err:
+            # 风控加固：失败路径下 FK 恢复失败同样 critical
+            logger.critical(
+                "CRITICAL: Failed to restore FOREIGN_KEY_CHECKS=1 after migration failure. "
+                "MySQL remains FK-disabled! Error: %s",
+                fk_err,
+            )
+            _migration_state["fk_checks_restored"] = False
 
     finally:
         if sqlite_engine is not None:

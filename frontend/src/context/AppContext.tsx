@@ -519,10 +519,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (command === "pause") showToast("success", t("discoveryPaused"));
       else if (command === "resume") showToast("success", t("discoveryResumed"));
       else if (command === "cancel") showToast("success", t("discoveryCancelled"));
+      else if (command === "retry") {
+        showToast("success", t("discoveryRetried"));
+        startDiscoveryPolling();
+      }
     } catch (error: any) {
       showToast("error", error?.message || t("discoveryCommandFailed"));
     }
-  }, [state.discoveryTask, update, showToast]);
+  }, [state.discoveryTask, update, showToast, startDiscoveryPolling]);
 
   const refreshDiscoveryTasks = useCallback(async () => {
     try {

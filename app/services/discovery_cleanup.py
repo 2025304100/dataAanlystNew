@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models.discovery import DiscoveryResultState
 from app.models.scan import ScanResult
 
 logger = logging.getLogger(__name__)
@@ -35,8 +34,6 @@ def _safe_datetime(value):
 def cleanup_expired_discovery_results(db: Session) -> dict:
     """Delete non-frozen ScanResults whose age exceeds valid_days.
 
-    Also cascades to DiscoveryResultState rows (via FK ondelete=CASCADE).
-
     Returns a summary dict with deleted counts.
     """
     now = _now()
@@ -64,13 +61,6 @@ def cleanup_expired_discovery_results(db: Session) -> dict:
     if not expired_ids:
         logger.info("Cleanup: no expired discovery results to remove")
         return {"deleted": 0, "skipped_frozen": 0}
-
-    # Delete related discovery_result_states first (explicitly, before scan_results)
-    db.execute(
-        delete(DiscoveryResultState).where(
-            DiscoveryResultState.scan_result_id.in_(expired_ids)
-        )
-    )
 
     # Delete expired scan_results
     result = db.execute(

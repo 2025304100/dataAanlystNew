@@ -1,0 +1,31 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0 -- C:\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 21 items / 9 deselected / 12 selected
+
+tests/test_blackbox_api_mgmt.py::test_list_apis_zh_returns_all_17 PASSED [  8%]
+tests/test_blackbox_api_mgmt.py::test_list_apis_en_returns_english_names PASSED [ 16%]
+tests/test_blackbox_api_mgmt.py::test_list_apis_contains_required_fields PASSED [ 25%]
+tests/test_blackbox_api_mgmt.py::test_list_apis_locale_fallback PASSED   [ 33%]
+tests/test_blackbox_api_mgmt.py::test_list_strategies_returns_five PASSED [ 41%]
+tests/test_blackbox_api_mgmt.py::test_list_strategies_custom_has_null_delay PASSED [ 50%]
+tests/test_blackbox_api_mgmt.py::test_update_config_unknown_key_returns_404 FAILED [ 58%]
+tests/test_blackbox_api_mgmt.py::test_update_config_invalid_strategy_returns_400 PASSED [ 66%]
+tests/test_blackbox_api_mgmt.py::test_update_config_custom_min_gt_max_returns_400 PASSED [ 75%]
+tests/test_blackbox_api_mgmt.py::test_update_config_delay_out_of_range_returns_422 PASSED [ 83%]
+tests/test_blackbox_api_mgmt.py::test_update_config_negative_delay_returns_422 PASSED [ 91%]
+tests/test_blackbox_api_mgmt.py::test_discovery_tasks_list_returns_quickly PASSED [100%]
+
+================================== FAILURES ===================================
+_________________ test_update_config_unknown_key_returns_404 __________________
+tests\test_blackbox_api_mgmt.py:160: in test_update_config_unknown_key_returns_404
+    assert r.status_code == 404
+E   assert 422 == 404
+E    +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+=========================== short test summary info ===========================
+FAILED tests/test_blackbox_api_mgmt.py::test_update_config_unknown_key_returns_404 - assert 422 == 404
+ +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+================= 1 failed, 11 passed, 9 deselected in 2.93s ==================

@@ -81,6 +81,7 @@ def list_alert_events(
     db: Session = Depends(get_db),
 ):
     from app.models.alert import AlertEvent
+    from app.services.alerts import _safe_load_data_json
     from sqlalchemy import select as sa_select
 
     stmt = sa_select(AlertEvent).order_by(AlertEvent.created_at.desc()).limit(limit)
@@ -90,12 +91,8 @@ def list_alert_events(
 
     result = []
     for ev in rows:
-        data = {}
-        if ev.data_json:
-            try:
-                data = json.loads(ev.data_json)
-            except Exception:
-                pass
+        # 风控加固：复用 service 层统一解析函数，避免静默吞没 JSON 异常
+        data = _safe_load_data_json(ev)
         result.append({
             "id": ev.id,
             "rule_id": ev.rule_id,

@@ -33,5 +33,14 @@ class ScoreRead(BaseModel):
     overheat_penalty: float | None = None
     # 数据可信度（P0-4.3）
     data_credibility: float | None = None
+    # 评分配置快照（P0：轻量自定义评分配置）
+    scoring_asset_type: str | None = None
+    scoring_config_id: int | None = None
+    scoring_preset_key: str | None = None
+    scoring_preset_name: str | None = None
+    scoring_config_version: int | None = None
+    scoring_config_snapshot_json: str | None = None
+    dimension_scores_json: str | None = None
+    factor_scores_json: str | None = None
     created_at: datetime
 

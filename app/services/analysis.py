@@ -45,6 +45,22 @@ def _grade(score: float) -> str:
 
 
 def calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date) -> Score:
+    """计算 symbol 评分。
+
+    P0 改造：委托给 scoring_config_engine.calculate_symbol_score_with_config，
+    按 symbol.asset_type 自动读取当前激活预设。
+    若 scoring_configs 表不存在或无激活预设，则回退到旧的硬编码逻辑。
+    """
+    try:
+        from app.services.scoring_config_engine import calculate_symbol_score_with_config
+        return calculate_symbol_score_with_config(db, symbol, trade_date, config=None)
+    except Exception:
+        # 兜底：表未建/无激活预设时走旧硬编码逻辑，保证向后兼容
+        return _legacy_calculate_symbol_score(db, symbol, trade_date)
+
+
+def _legacy_calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date) -> Score:
+    """旧的硬编码评分逻辑（向后兼容兜底）。"""
     bars = db.execute(
         select(DailyBar)
         .where(DailyBar.symbol_id == symbol.id, DailyBar.trade_date <= trade_date)
@@ -182,4 +198,3 @@ def calculate_symbol_score(db: Session, symbol: Symbol, trade_date: date) -> Sco
     existing.data_credibility = data_credibility
     db.flush()
     return existing
-

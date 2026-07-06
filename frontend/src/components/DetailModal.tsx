@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ReactECharts from "echarts-for-react";
-import { Modal, Button, Input, Select, Tag, Space } from "antd";
+import { Modal, Button, Input, Select, Tag, Space, Tooltip } from "antd";
+import { QuestionCircleOutlined } from "@ant-design/icons";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
 import {
@@ -690,8 +691,18 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     const s = detail.latest_score;
     const isZh = ctx.locale === "zh-CN";
 
+    // P1：优先使用评分时保存的配置快照 + dimension_scores_json
+    let dimScoresMap: Record<string, number> = {};
+    let configSnapshot: { dimensions?: Array<{ key: string; name: string; enabled?: boolean; weight?: number; score_bucket?: string }> } | null = null;
+    try {
+      if (s.dimension_scores_json) dimScoresMap = JSON.parse(s.dimension_scores_json);
+      if (s.scoring_config_snapshot_json) configSnapshot = JSON.parse(s.scoring_config_snapshot_json);
+    } catch { /* ignore */ }
+
+    const hasConfigSnapshot = !!(configSnapshot && configSnapshot.dimensions && configSnapshot.dimensions.length > 0 && Object.keys(dimScoresMap).length > 0);
+
     // 分项配置：权重 + 解释规则
-    const factors = [
+    const legacyFactors = [
       {
         key: "trend",
         label: t("trendScore"),
@@ -759,6 +770,33 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
       },
     ];
 
+    // legacy 解释函数复用：按维度 key 复用对应文案
+    const explainByDimKey = (dimKey: string, v: number): string => {
+      const legacy = legacyFactors.find((f) => f.key === dimKey || f.key === dimKey.replace("_score", ""));
+      return legacy ? legacy.explain(v) : (v >= 60 ? (isZh ? "表现偏强" : "Strong") : v >= 40 ? (isZh ? "表现中性" : "Neutral") : (isZh ? "表现偏弱" : "Weak"));
+    };
+
+    let factors: Array<{ key: string; label: string; score: number; weight: number; explain: (v: number) => string }>;
+    if (hasConfigSnapshot && configSnapshot) {
+      // P1：按配置快照构建分项（只展示属于 quality bucket 的启用维度）
+      const enabledQualityDims = configSnapshot.dimensions!.filter((d) => d.enabled !== false && d.score_bucket === "quality");
+      const totalW = enabledQualityDims.reduce((sum, d) => sum + (Number(d.weight) || 0), 0) || 1;
+      factors = enabledQualityDims.map((d) => {
+        const dimScore = dimScoresMap[d.key] ?? 50;
+        return {
+          key: d.key,
+          label: d.name || d.key,
+          score: Number(dimScore) || 0,
+          weight: (Number(d.weight) || 0) / totalW,
+          explain: (v: number) => explainByDimKey(d.key, v),
+        };
+      });
+      // 若配置中无 quality bucket 维度（罕见），回退 legacy
+      if (factors.length === 0) factors = legacyFactors;
+    } else {
+      factors = legacyFactors;
+    }
+
     // 计算贡献值并排序
     const withContribution = factors.map((f) => ({
       ...f,
@@ -780,6 +818,10 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
       bottomFactor,
       totalContribution: Math.round(totalContribution * 100) / 100,
       qualityScore: s.quality_score,
+      // P1：附加配置快照信息（用于在 UI 上展示当前预设和版本）
+      presetName: s.scoring_preset_name ?? null,
+      presetVersion: s.scoring_config_version ?? null,
+      hasConfigSnapshot,
     };
   }, [detail?.latest_score, ctx.locale]);
 
@@ -791,8 +833,17 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     const s = detail.latest_score;
     const isZh = ctx.locale === "zh-CN";
 
-    // 时点评分分项配置
-    const factors = [
+    // P1：优先使用评分时保存的配置快照 + dimension_scores_json
+    let dimScoresMap: Record<string, number> = {};
+    let configSnapshot: { dimensions?: Array<{ key: string; name: string; enabled?: boolean; weight?: number; score_bucket?: string; factors?: Array<{ key: string }> }> } | null = null;
+    try {
+      if (s.dimension_scores_json) dimScoresMap = JSON.parse(s.dimension_scores_json);
+      if (s.scoring_config_snapshot_json) configSnapshot = JSON.parse(s.scoring_config_snapshot_json);
+    } catch { /* ignore */ }
+    const hasConfigSnapshot = !!(configSnapshot && configSnapshot.dimensions && configSnapshot.dimensions.length > 0 && Object.keys(dimScoresMap).length > 0);
+
+    // 时点评分分项配置（legacy 兜底）
+    const legacyFactors = [
       {
         key: "breakout",
         label: isZh ? "突破信号" : "Breakout",
@@ -855,6 +906,31 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
       },
     ];
 
+    // P1：按配置快照构建 timing 分项（取 score_bucket === 'timing' 的启用维度）
+    const explainByDimKey = (dimKey: string, v: number): string => {
+      const legacy = legacyFactors.find((f) => f.key === dimKey || f.key === dimKey.replace("_score", ""));
+      return legacy ? legacy.explain(v) : (v >= 60 ? (isZh ? "表现偏强" : "Strong") : v >= 40 ? (isZh ? "表现中性" : "Neutral") : (isZh ? "表现偏弱" : "Weak"));
+    };
+
+    let factors: Array<{ key: string; label: string; score: number; weight: number; explain: (v: number) => string }>;
+    if (hasConfigSnapshot && configSnapshot) {
+      const enabledTimingDims = configSnapshot.dimensions!.filter((d) => d.enabled !== false && d.score_bucket === "timing");
+      const totalW = enabledTimingDims.reduce((sum, d) => sum + (Number(d.weight) || 0), 0) || 1;
+      factors = enabledTimingDims.map((d) => {
+        const dimScore = dimScoresMap[d.key] ?? 50;
+        return {
+          key: d.key,
+          label: d.name || d.key,
+          score: Number(dimScore) || 0,
+          weight: (Number(d.weight) || 0) / totalW,
+          explain: (v: number) => explainByDimKey(d.key, v),
+        };
+      });
+      if (factors.length === 0) factors = legacyFactors;
+    } else {
+      factors = legacyFactors;
+    }
+
     // 计算贡献值
     const withContribution = factors.map((f) => ({
       ...f,
@@ -904,8 +980,37 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
       timingScore: s.timing_score,
       stage: s.stage,
       action: s.action,
+      presetName: s.scoring_preset_name ?? null,
+      presetVersion: s.scoring_config_version ?? null,
+      hasConfigSnapshot,
     };
   }, [detail?.latest_score, ctx.locale]);
+
+  // ════════════════════════════════════════════════
+  // P2: External Data Factors（PE/PB 估值、资金流、ETF 溢价折价）
+  // ════════════════════════════════════════════════
+  const externalFactors = useMemo(() => {
+    if (!detail?.latest_score?.factor_scores_json) return [];
+    let factorDetail: Record<string, { normalized_value?: number; weight?: number; contribution?: number }> = {};
+    try {
+      factorDetail = JSON.parse(detail.latest_score.factor_scores_json);
+    } catch { /* ignore */ }
+    const isZh = ctx.locale === "zh-CN";
+    const EXTERNAL_KEYS: Record<string, string> = {
+      pe_score: isZh ? "PE 估值分" : "PE Valuation Score",
+      main_net_inflow_score: isZh ? "主力净流入分" : "Main Net Inflow Score",
+      premium_discount_score: isZh ? "溢价折价分" : "Premium/Discount Score",
+    };
+    return Object.entries(factorDetail)
+      .filter(([key]) => key in EXTERNAL_KEYS)
+      .map(([key, info]) => ({
+        key,
+        label: EXTERNAL_KEYS[key],
+        score: Number(info.normalized_value ?? 0),
+        weight: Number(info.weight ?? 0),
+        contribution: Number(info.contribution ?? 0),
+      }));
+  }, [detail?.latest_score?.factor_scores_json, ctx.locale]);
 
   // Active future buy plan (scenario-filtered)
   const activeFutureBuyPlan = useMemo(() => {
@@ -1337,6 +1442,16 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                         {ctx.locale === "zh-CN" ? "总分" : "Total"}: {score(scoreBreakdown.qualityScore ?? 0)}
                       </span>
                     </div>
+                    {scoreBreakdown.presetName && (
+                      <div style={{ marginBottom: 8, fontSize: 12, color: "#888", display: "flex", gap: 8, alignItems: "center" }}>
+                        <Tag color="blue" style={{ margin: 0 }}>
+                          {scoreBreakdown.presetName} v{scoreBreakdown.presetVersion}
+                        </Tag>
+                        <Tooltip title={ctx.locale === "zh-CN" ? "本评分按该预设版本计算并保存快照，切换预设不会重算历史评分。" : "Score computed with this preset version (snapshot saved). Switching presets will not recompute historical scores."}>
+                          <span style={{ cursor: "help" }}><QuestionCircleOutlined /></span>
+                        </Tooltip>
+                      </div>
+                    )}
                     <div className="breakdown-list">
                       {scoreBreakdown.factors.map((f) => (
                         <div
@@ -1449,6 +1564,45 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                 </div>
               </div>
             )}
+
+            {/* P2: External Data Factors */}
+            <div className="detail-card wide">
+              <div className="detail-card-head">
+                <h3>{t("extFactorCardTitle")}</h3>
+                <Tooltip title={t("extFactorTip")}>
+                  <span style={{ cursor: "help", color: "#888" }}>
+                    <QuestionCircleOutlined />
+                  </span>
+                </Tooltip>
+              </div>
+              {externalFactors.length > 0 ? (
+                <div className="external-factors-grid">
+                  {externalFactors.map((f) => (
+                    <div key={f.key} className="breakdown-item">
+                      <div className="breakdown-item-head">
+                        <span className="breakdown-label">{f.label}</span>
+                        <span className="breakdown-weight">{(f.weight * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="breakdown-item-row">
+                        <span className="breakdown-score">{score(f.score)}</span>
+                        <div className="breakdown-bar-wrap">
+                          <div
+                            className="breakdown-bar"
+                            style={{
+                              width: `${Math.max(0, Math.min(100, f.score))}%`,
+                              backgroundColor: f.score >= 60 ? "#0f766e" : f.score >= 40 ? "#d97706" : "#b42318",
+                            }}
+                          />
+                        </div>
+                        <span className="breakdown-contribution">+{f.contribution.toFixed(1)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty">{t("extFactorEmpty")}</div>
+              )}
+            </div>
 
             {/* Trade Setup */}
             <div className="detail-card wide">

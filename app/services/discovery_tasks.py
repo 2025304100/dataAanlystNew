@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 import threading
 import time
 import traceback
@@ -20,7 +21,7 @@ from app.models.scan import ScanResult
 from app.models.symbol import Symbol
 from app.models.watchlist import WatchlistItem
 from app.schemas.discovery import DiscoveryTaskCreate
-from app.services.akshare_utils import quiet_akshare_output
+from app.services.akshare_utils import call_akshare_with_retry, quiet_akshare_output
 from app.schemas.news import NewsUpdateRequest
 from app.services.allocation import get_active_rule, get_default_portfolio
 from app.services.analysis import calculate_symbol_score
@@ -30,6 +31,9 @@ from app.services.regions import markets_for_region
 from app.services.scans import run_scan
 from app.services.symbol_names import refresh_symbol_name
 from app.services.trade_plans import upsert_trade_setup
+
+
+logger = logging.getLogger(__name__)
 
 
 TASK_STAGE_PERCENT = {
@@ -52,7 +56,25 @@ DISCOVERY_SCOPE_CONFIG = {
 }
 
 RESUME_DEADLINE = timedelta(days=1)
-STALE_RUNNING_DEADLINE = timedelta(minutes=30)
+# 从 30 分钟降到 10 分钟：卡死任务更快被清理。
+# 配合单 symbol 90s 超时 + watchdog 心跳，正常任务不会误判（watchdog 每 30s 更新 updated_at）。
+STALE_RUNNING_DEADLINE = timedelta(minutes=10)
+
+# 单 symbol 同步超时（秒）
+# 覆盖 _fetch_history 3 次重试（每次最多 20s = 连接 5s + 读取 15s）+ 退避 sleep + 余量
+# 超时后跳过该 symbol，记录 failed_count，继续下一个，避免单 symbol 卡死阻塞整个任务
+SYNC_ONE_SYMBOL_TIMEOUT_SECONDS = 90
+
+# universe 刷新超时（秒）
+# 覆盖 _refresh_cn_stock_universe / _refresh_cn_etf_universe 的 akshare 调用
+# akshare 内部 pd.read_excel 可能绕过 requests timeout 永久阻塞，需 ThreadPoolExecutor 兜底
+# 超时后返回 None，调用方标记 task=failed，避免 prepare 阶段永久卡死
+UNIVERSE_REFRESH_TIMEOUT_SECONDS = 120
+
+# watchdog 心跳间隔（秒）
+# 每 30s 更新 task.updated_at，防止 _expire_stale_tasks 误判正常任务为 stale
+# 真正的卡死由单 symbol 超时（90s）兜底，watchdog 只防止误判
+_WATCHDOG_HEARTBEAT_SECONDS = 30
 
 
 def _now() -> datetime:
@@ -99,7 +121,9 @@ def _task_to_dict(task: DiscoveryTaskRecord) -> dict:
         "paused_at": task.paused_at,
         "cancelled_at": task.cancelled_at,
         "finished_at": task.finished_at,
+        "updated_at": task.updated_at,
         "can_resume": task.status == "paused" and task.paused_at is not None and _now() - task.paused_at <= RESUME_DEADLINE,
+        "can_retry": task.status in ("failed", "cancelled", "expired"),
     }
 
 
@@ -168,7 +192,9 @@ def _expire_stale_tasks(db: Session) -> None:
     )
     if not rows:
         return
+    logger.warning("expire stale tasks: %d rows matched (cutoff=%s)", len(rows), cutoff.isoformat())
     for task in rows:
+        logger.warning("expire stale task %s: updated_at=%s stage=%s", task.id, task.updated_at, task.stage)
         task.status = "failed"
         task.stage = "failed"
         task.percent = 100
@@ -289,6 +315,47 @@ def resume_discovery_task(task_id: str) -> dict:
         db.close()
 
 
+def retry_discovery_task(task_id: str) -> dict:
+    """重试已失败/取消/过期的任务。
+
+    关键设计：保留 processed_symbol_ids_json 实现断点续扫（已处理的标的不会重复扫描），
+    清空 errors_json，重置状态为 queued 并重启 worker。
+    """
+    db = SessionLocal()
+    try:
+        task = db.get(DiscoveryTaskRecord, task_id)
+        if task is None:
+            raise ValueError("Discovery task not found")
+        # 仅终态任务可重试
+        if task.status not in ("failed", "cancelled", "expired"):
+            return _task_to_dict(task)
+        # 并发保护：已有 queued/running 任务时拒绝
+        existing = db.execute(
+            select(DiscoveryTaskRecord).where(
+                DiscoveryTaskRecord.status.in_(("queued", "running"))
+            )
+        ).scalars().first()
+        if existing is not None:
+            raise ValueError("已有正在运行的发现任务，请等待完成后再重试")
+        # 保留 processed_symbol_ids_json 实现断点续扫；清空 errors 重新开始
+        task.status = "queued"
+        task.stage = "queued"
+        task.percent = 0
+        task.message = "任务已重试，等待后台继续（保留已处理进度）"
+        task.errors_json = "[]"
+        task.started_at = None
+        task.paused_at = None
+        task.cancelled_at = None
+        task.finished_at = None
+        task.current_symbol = None
+        db.commit()
+        db.refresh(task)
+        _start_worker(task_id)
+        return _task_to_dict(task)
+    finally:
+        db.close()
+
+
 def _start_worker(task_id: str) -> None:
     worker = threading.Thread(target=_run_discovery_task, args=(task_id,), daemon=True)
     worker.start()
@@ -348,14 +415,46 @@ def _upsert_symbol(
     return created
 
 
+def _cn_stock_universe_frame(db: Session):
+    errors: list[str] = []
+    sources = [
+        ("stock_info_a_code_name", ak.stock_info_a_code_name),
+        ("stock_zh_a_spot_em", ak.stock_zh_a_spot_em),
+    ]
+    for api_key, func in sources:
+        try:
+            with quiet_akshare_output():
+                return call_akshare_with_retry(func, api_key=api_key, max_attempts=2, db=db)
+        except Exception as exc:
+            errors.append(f"{api_key}: {type(exc).__name__}: {exc}")
+            logger.warning("Failed to refresh cn-stock universe via %s: %s", api_key, exc)
+    raise RuntimeError("A-share universe refresh failed; " + " | ".join(errors))
+
+
 def _refresh_cn_stock_universe(db: Session) -> dict:
-    with quiet_akshare_output():
-        frame = ak.stock_info_a_code_name()
+    logger.info("refresh cn-stock universe start")
+    try:
+        frame = _cn_stock_universe_frame(db)
+    except Exception as exc:
+        cached_count = db.execute(
+            select(func.count(Symbol.id)).where(
+                Symbol.is_active == 1,
+                Symbol.asset_type == "stock",
+                Symbol.market.in_(markets_for_region("cn")),
+            )
+        ).scalar_one()
+        if cached_count:
+            logger.warning("Using cached cn-stock universe after refresh failure: %s", exc)
+            return {"seen": int(cached_count), "created": 0, "source": "cache", "warning": str(exc)}
+        raise
+
     created = 0
     seen = 0
+    code_keys = ["code", "代码", "symbol"]
+    name_keys = ["name", "名称"]
     for row in frame.to_dict("records"):
-        raw_code = row.get("code")
-        raw_name = row.get("name")
+        raw_code = _first_row_value(row, code_keys)
+        raw_name = _first_row_value(row, name_keys)
         if not raw_code or not raw_name:
             continue
         code = str(raw_code).strip().zfill(6)
@@ -372,6 +471,7 @@ def _refresh_cn_stock_universe(db: Session) -> dict:
         ):
             created += 1
     db.flush()
+    logger.info("refresh cn-stock universe done: seen=%d created=%d", seen, created)
     return {"seen": seen, "created": created}
 
 
@@ -384,17 +484,30 @@ def _first_row_value(row: dict[str, Any], keys: list[str]) -> Any:
 
 
 def _refresh_cn_etf_universe(db: Session) -> dict:
+    logger.info("refresh cn-etf universe start")
     created = 0
     seen = 0
     try:
         with quiet_akshare_output():
-            frame = ak.fund_etf_spot_em()
+            # P0 稳定性：用 call_akshare_with_retry 包装，避免直接调用卡死
+            frame = call_akshare_with_retry(
+                ak.fund_etf_spot_em,
+                api_key="fund_etf_spot_em",
+                max_attempts=2,
+                db=db,
+            )
         records = frame.to_dict("records")
         code_keys = ["代码", "基金代码", "symbol", "code"]
         name_keys = ["名称", "基金简称", "name"]
     except Exception:
         with quiet_akshare_output():
-            frame = ak.fund_etf_category_sina()
+            # 备用源同样用 call_akshare_with_retry 包装
+            frame = call_akshare_with_retry(
+                ak.fund_etf_category_sina,
+                api_key="fund_etf_category_sina",
+                max_attempts=2,
+                db=db,
+            )
         records = frame.to_dict("records")
         code_keys = ["代码", "symbol", "code"]
         name_keys = ["名称", "name"]
@@ -419,6 +532,7 @@ def _refresh_cn_etf_universe(db: Session) -> dict:
         ):
             created += 1
     db.flush()
+    logger.info("refresh cn-etf universe done: seen=%d created=%d", seen, created)
     return {"seen": seen, "created": created}
 
 
@@ -566,7 +680,15 @@ def _sync_progress(processed: int, total: int) -> float:
 
 
 def _payload_from_task(task: DiscoveryTaskRecord) -> DiscoveryTaskCreate:
-    return DiscoveryTaskCreate.model_validate_json(task.payload_json or "{}")
+    """从任务记录解析 payload。payload_json 损坏时抛 ValidationError，调用方需捕获并跳过 scope 清理。
+
+    注意：早期实现用 `or "{}"` 回退默认值，会导致 scope 错误（默认 cn-stock）从而误清其他范围的标的。
+    现改为显式抛异常，由调用方决定是否跳过清理。
+    """
+    if not task.payload_json:
+        from pydantic import ValidationError
+        raise ValidationError("payload_json 为空", DiscoveryTaskCreate)
+    return DiscoveryTaskCreate.model_validate_json(task.payload_json)
 
 
 def _cleanup_discovery_symbols(
@@ -650,8 +772,130 @@ def _check_stop_state(db: Session, task_id: str) -> str | None:
     return None
 
 
+def _watchdog_heartbeat(task_id: str, stop_event: threading.Event) -> None:
+    """watchdog 心跳线程：每 30s 更新 task.updated_at，防止 _expire_stale_tasks 误判。
+
+    风控加固（P1-7 竞态修复）：
+    只用条件 UPDATE 更新 updated_at 字段，WHERE 限定 status NOT IN 终态 AND stage != 'prepare'。
+    这样避免整行覆盖 worker 主线程刚写入的 status/stage/percent 等字段，
+    同时通过 rowcount 判断是否真的更新了行（若 status 已是终态或 stage 已切走则跳过）。
+
+    真正的卡死由单 symbol 超时（SYNC_ONE_SYMBOL_TIMEOUT_SECONDS=90s）兜底。
+    当任务进入终态或 stop_event 被设置时退出。
+
+    关键：prepare 阶段（universe 刷新）不更新 updated_at，让 _expire_stale_tasks
+    能兜底中断卡死的 prepare。sync 阶段才正常心跳（单 symbol 90s 超时已兜底）。
+    """
+    from sqlalchemy import update
+
+    while not stop_event.wait(timeout=_WATCHDOG_HEARTBEAT_SECONDS):
+        try:
+            db = SessionLocal()
+            try:
+                # 风控加固：先用条件 UPDATE 只更新 updated_at 字段，避免整行覆盖
+                # WHERE 限定非终态 + 非 prepare 阶段，rowcount=0 表示任务已终态或仍在 prepare
+                now = _now()
+                stmt = (
+                    update(DiscoveryTaskRecord.__table__)
+                    .where(
+                        DiscoveryTaskRecord.id == task_id,
+                        DiscoveryTaskRecord.status.notin_(_TERMINAL_STATES),
+                        DiscoveryTaskRecord.stage != "prepare",
+                    )
+                    .values(updated_at=now)
+                )
+                result = db.execute(stmt)
+                db.commit()
+
+                if result.rowcount == 0:
+                    # 行未更新：可能是任务已进入终态，或仍在 prepare 阶段
+                    # 再查一次状态判断是否该退出
+                    task = db.get(DiscoveryTaskRecord, task_id)
+                    if task is None or task.status in _TERMINAL_STATES:
+                        logger.info(
+                            "watchdog %s exit: status=%s",
+                            task_id, task.status if task else "None",
+                        )
+                        return
+                    # 仍在 prepare 阶段，跳过本次心跳（让 _expire_stale_tasks 兜底）
+                    logger.debug("watchdog %s skip heartbeat in prepare stage", task_id)
+                else:
+                    logger.debug("watchdog %s heartbeat (rowcount=%d)", task_id, result.rowcount)
+            finally:
+                db.close()
+        except Exception:
+            # watchdog 失败不影响主流程，下次心跳再试，但需记录日志便于诊断
+            logger.warning("watchdog %s heartbeat failed", task_id, exc_info=True)
+
+
+def _sync_one_symbol_with_timeout(
+    db: Session, symbol: Symbol, payload: Any, portfolio_id: int | None
+) -> tuple[dict, bool]:
+    """包装 _sync_one_symbol 加超时保护，防止单 symbol 卡死阻塞整个任务。
+
+    使用 concurrent.futures.ThreadPoolExecutor + future.result(timeout=) 实现。
+    超时后抛出 TimeoutError，由调用方记录 failed_count 并继续下一个 symbol。
+    注意：超时后子线程仍会泄漏（Python 无法强制 kill 线程），但不阻塞主流程。
+
+    关键：子线程使用独立的 db Session，避免主子线程并发操作同一 Session 导致死锁或脏数据。
+    """
+    import concurrent.futures
+    from app.db.manager import DatabaseManager
+
+    SessionLocal = DatabaseManager.get().session_factory
+
+    def _run() -> tuple[dict, bool]:
+        sub_db = SessionLocal()
+        try:
+            return _sync_one_symbol(sub_db, symbol, payload, portfolio_id)
+        finally:
+            sub_db.close()
+
+    logger.info("sync_one %s start (timeout=%ds)", symbol.symbol, SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_run)
+        return future.result(timeout=SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
+
+
+def _refresh_universe_with_timeout(db: Session, payload: DiscoveryTaskCreate) -> dict | None:
+    """universe 刷新加 timeout 保护，防止 prepare 阶段永久阻塞。
+
+    akshare 内部 pd.read_excel 可能绕过 requests timeout 永久阻塞，
+    用 ThreadPoolExecutor + future.result(timeout=) 兜底。
+    超时后返回 None，调用方标记 task=failed。
+
+    关键：这里复用主线程的 db Session，因为 _refresh_discovery_universe 内部会
+    upsert Symbol 表，主线程后续 _resolve_discovery_symbols 需要看到这些数据。
+    timeout 后子线程仍在跑，但主线程会标记 task=failed 并退出，不再访问 db。
+    """
+    import concurrent.futures
+
+    logger.info("refresh universe start (timeout=%ds)", UNIVERSE_REFRESH_TIMEOUT_SECONDS)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_refresh_discovery_universe, db, payload)
+        try:
+            result = future.result(timeout=UNIVERSE_REFRESH_TIMEOUT_SECONDS)
+            logger.info("refresh universe done: %s", result)
+            return result
+        except concurrent.futures.TimeoutError:
+            logger.error(
+                "universe refresh TIMEOUT after %ds, payload scope=%s",
+                UNIVERSE_REFRESH_TIMEOUT_SECONDS, payload.scope,
+            )
+            return None
+
+
 def _run_discovery_task(task_id: str) -> None:
     db = SessionLocal()
+    # 启动 watchdog 心跳线程，防止长时间同步任务被 _expire_stale_tasks 误判
+    watchdog_stop = threading.Event()
+    watchdog_thread = threading.Thread(
+        target=_watchdog_heartbeat,
+        args=(task_id, watchdog_stop),
+        daemon=True,
+        name=f"discovery-watchdog-{task_id}",
+    )
+    watchdog_thread.start()
     try:
         task = db.get(DiscoveryTaskRecord, task_id)
         if task is None:
@@ -670,9 +914,15 @@ def _run_discovery_task(task_id: str) -> None:
         db.commit()
 
         if not processed_ids:
-            universe = _refresh_discovery_universe(db, payload)
-            if universe is not None:
-                db.commit()
+            universe = _refresh_universe_with_timeout(db, payload)
+            if universe is None:
+                # universe 刷新超时（120s），直接中断任务
+                raise RuntimeError("全市场标的列表刷新超时（120s），akshare 接口可能卡死，请稍后重试")
+            # seen=0 说明全市场标的列表拉取失败（akshare 接口异常或网络问题）
+            # 此时继续跑空扫描会让用户困惑，直接中断任务
+            if universe.get("seen", 0) == 0:
+                raise RuntimeError("全市场标的列表拉取失败（akshare 接口异常或网络问题），请稍后重试")
+            db.commit()
 
         symbols = _resolve_discovery_symbols(db, payload)
         task = _set_task(db, task_id, total=len(symbols), message=f"已载入 {len(symbols)} 个标的")
@@ -695,23 +945,45 @@ def _run_discovery_task(task_id: str) -> None:
             task.message = f"正在同步 {symbol.symbol} ({task.processed + 1}/{len(symbols)})"
             db.commit()
 
+            logger.info("discovery %s: sync %s (%d/%d)", task_id, symbol.symbol, index, len(symbols))
             try:
-                result, scored = _sync_one_symbol(db, symbol, payload, portfolio_id)
-                task = db.get(DiscoveryTaskRecord, task_id)
-                if result["status"] == "ok":
-                    task.ok_count += 1
-                    if symbol.id not in synced_symbol_ids:
-                        synced_symbol_ids.append(symbol.id)
-                    if scored:
-                        task.scored_count += 1
-                    adaptive_delay = max(payload.delay_seconds, adaptive_delay * 0.9)
-                elif result["status"] == "empty":
-                    task.empty_count += 1
-                    adaptive_delay = max(payload.delay_seconds, adaptive_delay * 0.95)
-                else:
+                try:
+                    result, scored = _sync_one_symbol_with_timeout(db, symbol, payload, portfolio_id)
+                except TimeoutError as timeout_exc:
+                    # 单 symbol 同步超时（90s），跳过该 symbol，记录 failed_count
+                    # 子线程仍会泄漏（Python 无法强制 kill），但不阻塞主流程
+                    logger.warning(
+                        "sync_one %s TIMEOUT after %ds (discovery %s)",
+                        symbol.symbol, SYNC_ONE_SYMBOL_TIMEOUT_SECONDS, task_id,
+                    )
+                    db.rollback()
+                    task = db.get(DiscoveryTaskRecord, task_id)
                     task.failed_count += 1
+                    _append_error(task, {
+                        "symbol_id": symbol.id,
+                        "symbol": symbol.symbol,
+                        "error": f"同步超时（{SYNC_ONE_SYMBOL_TIMEOUT_SECONDS}s），跳过",
+                    })
                     adaptive_delay = min(5, max(payload.delay_seconds, adaptive_delay * 1.4 + 0.1))
-                db.flush()
+                    # 跳过下面的状态更新，直接进入 processed_ids 更新
+                    result = {"status": "failed"}
+                    scored = False
+                else:
+                    task = db.get(DiscoveryTaskRecord, task_id)
+                    if result["status"] == "ok":
+                        task.ok_count += 1
+                        if symbol.id not in synced_symbol_ids:
+                            synced_symbol_ids.append(symbol.id)
+                        if scored:
+                            task.scored_count += 1
+                        adaptive_delay = max(payload.delay_seconds, adaptive_delay * 0.9)
+                    elif result["status"] == "empty":
+                        task.empty_count += 1
+                        adaptive_delay = max(payload.delay_seconds, adaptive_delay * 0.95)
+                    else:
+                        task.failed_count += 1
+                        adaptive_delay = min(5, max(payload.delay_seconds, adaptive_delay * 1.4 + 0.1))
+                    db.flush()
             except Exception as exc:
                 db.rollback()
                 task = db.get(DiscoveryTaskRecord, task_id)
@@ -735,6 +1007,21 @@ def _run_discovery_task(task_id: str) -> None:
             return
 
         _set_task(db, task_id, stage="scan", percent=TASK_STAGE_PERCENT["scan"], current_symbol=None, message="正在运行候选池扫描")
+        # P0：把当前激活评分预设信息写入 filters_snapshot，便于 run_scan 应用维度阈值并归档
+        scope_cfg = DISCOVERY_SCOPE_CONFIG.get(payload.scope) or {}
+        active_preset_info = {}
+        try:
+            from app.services.scoring_config_engine import get_active_scoring_config
+            active_preset = get_active_scoring_config(db, scope_cfg.get("asset_type", "stock"))
+            if active_preset is not None:
+                active_preset_info = {
+                    "scoring_config_id": active_preset.id,
+                    "scoring_preset_key": active_preset.preset_key,
+                    "scoring_preset_name": active_preset.name,
+                    "scoring_config_version": active_preset.version,
+                }
+        except Exception:
+            active_preset_info = {}
         scan_run = run_scan(
             db=db,
             scope_snapshot={"symbol_ids": synced_symbol_ids},
@@ -744,6 +1031,7 @@ def _run_discovery_task(task_id: str) -> None:
                 "scope": payload.scope,
                 "min_score": payload.min_score,
                 "global_mode": payload.global_mode,
+                **active_preset_info,
             },
             portfolio_id=portfolio_id,
             portfolio_rule_id=portfolio_rule_id,
@@ -814,9 +1102,14 @@ def _run_discovery_task(task_id: str) -> None:
         if task is not None:
             # failed 清理：只保留观察池 + 持仓，没有 executable
             # 传 scope 以清理 prepare 阶段写入的全市场僵尸标的
+            # payload_json 损坏时跳过 scope（避免回退默认 scope 误清其他范围），只清 synced_ids
             try:
                 synced_ids = set(_json_loads(task.synced_symbol_ids_json, []))
-                failed_scope = _payload_from_task(task).scope if task.payload_json else None
+                failed_scope = None
+                try:
+                    failed_scope = _payload_from_task(task).scope
+                except Exception:
+                    _append_error(task, {"scope": "cleanup", "error": "payload_json 解析失败，跳过 scope 清理，仅清理 synced_symbol_ids"})
                 cleanup_cnt = _cleanup_discovery_symbols(
                     db, scoped_symbol_ids=synced_ids, preserve_extra_ids=None, scope=failed_scope,
                 )
@@ -831,14 +1124,21 @@ def _run_discovery_task(task_id: str) -> None:
             _append_error(task, {"scope": "task", "error": str(exc), "traceback": traceback.format_exc(limit=8)})
             db.commit()
     finally:
+        # 停止 watchdog 心跳线程
+        watchdog_stop.set()
         # cancelled 清理：只保留观察池 + 持仓
         # paused 不清理，等续跑或定时任务
         # 传 scope 以清理 prepare 阶段写入的全市场僵尸标的
+        # payload_json 损坏时跳过 scope（避免回退默认 scope 误清其他范围），只清 synced_ids
         try:
             task = db.get(DiscoveryTaskRecord, task_id)
             if task is not None and task.status == "cancelled":
                 synced_ids = set(_json_loads(task.synced_symbol_ids_json, []))
-                cancelled_scope = _payload_from_task(task).scope if task.payload_json else None
+                cancelled_scope = None
+                try:
+                    cancelled_scope = _payload_from_task(task).scope
+                except Exception:
+                    _append_error(task, {"scope": "cleanup", "error": "payload_json 解析失败，跳过 scope 清理，仅清理 synced_symbol_ids"})
                 cleanup_cnt = _cleanup_discovery_symbols(
                     db, scoped_symbol_ids=synced_ids, preserve_extra_ids=None, scope=cancelled_scope,
                 )

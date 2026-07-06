@@ -42,7 +42,18 @@ def _load_config(rule: AlertRule) -> dict:
         return {}
     try:
         return json.loads(rule.config_json)
+    except json.JSONDecodeError:
+        # 风控加固：config_json 损坏时记录告警规则 ID 与原始片段，便于运维定位
+        logger.warning(
+            "AlertRule %s config_json parse failed (json decode error), fallback to empty dict. raw=%r",
+            rule.id, rule.config_json[:200],
+        )
+        return {}
     except Exception:
+        logger.exception(
+            "AlertRule %s config_json parse failed (unexpected error), fallback to empty dict",
+            rule.id,
+        )
         return {}
 
 
@@ -98,8 +109,17 @@ def _eval_score_drop(session: Session, rule: AlertRule) -> list[AlertEvent]:
         stmt = stmt.where(Score.symbol_id.in_(symbol_ids))
 
     rows = session.execute(stmt).all()
+    # 风控加固：批量预加载 Symbol 避免 N+1
+    symbol_ids = [row[0] for row in rows]
+    symbol_map: dict[int, Symbol] = {}
+    if symbol_ids:
+        for sym in session.execute(
+            select(Symbol).where(Symbol.id.in_(symbol_ids))
+        ).scalars().all():
+            symbol_map[sym.id] = sym
+
     for symbol_id, priority_score, trade_date in rows:
-        sym = session.get(Symbol, symbol_id)
+        sym = symbol_map.get(symbol_id)
         label = f"{sym.symbol} {sym.name}" if sym else f"#{symbol_id}"
         events.append(_fire_event(
             session, rule,
@@ -214,7 +234,11 @@ EVALUATORS = {
 
 
 def evaluate_all_rules() -> list[dict]:
-    """评估所有启用的规则，返回新触发的告警事件摘要。"""
+    """评估所有启用的规则，返回新触发的告警事件摘要。
+
+    风控加固：单规则失败已 warning 吞没（可恢复），但顶层异常（DB 连接断开等
+    不可恢复异常）会 re-raise 让路由层返回 5xx，避免静默失败误导调用方。
+    """
     new_events: list[dict] = []
     SessionLocal = get_session_local()
     session = SessionLocal()
@@ -242,6 +266,7 @@ def evaluate_all_rules() -> list[dict]:
                         "symbol_id": event.symbol_id,
                     })
             except Exception as exc:
+                # 单规则失败可恢复，记录 warning 后继续评估其他规则
                 logger.warning("Alert rule %s (%s) evaluation failed: %s", rule.id, rule.alert_type, exc)
 
         if new_events:
@@ -257,11 +282,34 @@ def evaluate_all_rules() -> list[dict]:
                     new_events[i]["id"] = ev.id
                     new_events[i]["created_at"] = ev.created_at.isoformat() if ev.created_at else None
     except Exception:
-        logger.exception("evaluate_all_rules failed")
+        # 顶层异常（DB 连接断开、session 异常等不可恢复异常）必须 re-raise
+        # 让路由层返回 5xx，避免静默吞没导致调用方误以为评估成功
+        logger.exception("evaluate_all_rules failed with unrecoverable error")
+        raise
     finally:
         session.close()
 
     return new_events
+
+
+def _safe_load_data_json(ev: AlertEvent) -> dict:
+    """统一解析 AlertEvent.data_json，损坏时记录日志而非静默吞没。"""
+    if not ev.data_json:
+        return {}
+    try:
+        return json.loads(ev.data_json)
+    except json.JSONDecodeError:
+        logger.warning(
+            "AlertEvent %s data_json parse failed (json decode error), fallback to empty dict. raw=%r",
+            ev.id, ev.data_json[:200],
+        )
+        return {}
+    except Exception:
+        logger.exception(
+            "AlertEvent %s data_json parse failed (unexpected error), fallback to empty dict",
+            ev.id,
+        )
+        return {}
 
 
 def get_active_alerts(limit: int = 50) -> list[dict]:
@@ -276,17 +324,21 @@ def get_active_alerts(limit: int = 50) -> list[dict]:
             .limit(limit)
         ).scalars().all()
 
+        # 风控加固：批量预加载 Symbol 避免 N+1
+        symbol_ids = [ev.symbol_id for ev in rows if ev.symbol_id]
+        symbol_map: dict[int, Symbol] = {}
+        if symbol_ids:
+            for sym in session.execute(
+                select(Symbol).where(Symbol.id.in_(symbol_ids))
+            ).scalars().all():
+                symbol_map[sym.id] = sym
+
         result = []
         for ev in rows:
-            data = {}
-            if ev.data_json:
-                try:
-                    data = json.loads(ev.data_json)
-                except Exception:
-                    pass
+            data = _safe_load_data_json(ev)
             symbol_info = None
             if ev.symbol_id:
-                sym = session.get(Symbol, ev.symbol_id)
+                sym = symbol_map.get(ev.symbol_id)
                 if sym:
                     symbol_info = {"id": sym.id, "symbol": sym.symbol, "name": sym.name}
 

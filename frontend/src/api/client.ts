@@ -181,6 +181,24 @@ export const api = {
   calculateScores: (payload: unknown) =>
     requestJson(`${API}/scores/calculate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 120000 }),
 
+  // Scoring configs (P0: 轻量自定义评分配置)
+  listScoringConfigs: (assetType: "stock" | "etf") =>
+    requestJson<any[]>(`${API}/settings/scoring-configs?asset_type=${assetType}`),
+  getActiveScoringConfig: (assetType: "stock" | "etf") =>
+    requestJson<any>(`${API}/settings/scoring-configs/active?asset_type=${assetType}`),
+  createScoringConfig: (payload: unknown) =>
+    requestJson<any>(`${API}/settings/scoring-configs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  updateScoringConfig: (id: number, payload: unknown) =>
+    requestJson<any>(`${API}/settings/scoring-configs/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  activateScoringConfig: (id: number) =>
+    requestJson<any>(`${API}/settings/scoring-configs/${id}/activate`, { method: "POST" }),
+  duplicateScoringConfig: (id: number, payload: unknown) =>
+    requestJson<any>(`${API}/settings/scoring-configs/${id}/duplicate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  listScoringConfigVersions: (id: number) =>
+    requestJson<any[]>(`${API}/settings/scoring-configs/${id}/versions`),
+  deleteScoringConfig: (id: number) =>
+    requestJson<{ ok: boolean; deleted: number }>(`${API}/settings/scoring-configs/${id}`, { method: "DELETE" }),
+
   // Trade setups
   generateTradeSetup: (payload: unknown) =>
     requestJson(`${API}/trade-setups/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 60000 }),
@@ -247,6 +265,8 @@ export const api = {
     }),
   cleanupDiscoveryResults: () =>
     requestJson<{ deleted: number; skipped_frozen: number }>(`${API}/discovery/results/cleanup`, { method: "POST" }),
+  getLatestDiscoveryCandidates: (minScore = 0, limit = 50) =>
+    requestJson<any[]>(`${API}/discovery/latest-candidates?min_score=${minScore}&limit=${limit}`),
 
   // Market Events
   getMarketEvents: (params: {
@@ -392,6 +412,83 @@ export const api = {
     requestJson<any>(`${API}/alerts/acknowledge-all`, { method: "POST" }),
   evaluateAlerts: () =>
     requestJson<any>(`${API}/alerts/evaluate`, { method: "POST" }),
+
+  // P2: External data sync (fundamental / capital flow / ETF indicators)
+  syncFundamental: (source: "watchlist" | "positions" | "all") =>
+    requestJson<{ total: number; success: number; skipped: number; failed: number; errors: string[] }>(
+      `${API}/external-data/fundamental/sync?source=${source}`,
+      { method: "POST", timeoutMs: 120000 },
+    ),
+  syncCapitalFlow: (source: "watchlist" | "positions" | "all", includeNorthbound: boolean = true) =>
+    requestJson<{ total: number; success: number; skipped: number; failed: number; errors: string[] }>(
+      `${API}/external-data/capital-flow/sync?source=${source}&include_northbound=${includeNorthbound}`,
+      { method: "POST", timeoutMs: 120000 },
+    ),
+  syncEtfIndicators: (source: "watchlist" | "positions" | "all") =>
+    requestJson<{ total: number; success: number; skipped: number; failed: number; errors: string[] }>(
+      `${API}/external-data/etf-indicators/sync?source=${source}`,
+      { method: "POST", timeoutMs: 120000 },
+    ),
+
+  // P2-E: Akshare API management (status / probe / config)
+  listAkshareApis: (locale: string = "zh-CN") =>
+    requestJson<AkshareApiStatus[]>(`${API}/external-data/apis?locale=${locale}`),
+  listAkshareStrategies: (locale: string = "zh-CN") =>
+    requestJson<AkshareStrategyInfo[]>(`${API}/external-data/apis/strategies?locale=${locale}`),
+  probeAkshareApi: (apiKey: string) =>
+    requestJson<{ key: string; success: boolean; latency_ms: number | null; error: string | null }>(
+      `${API}/external-data/apis/${encodeURIComponent(apiKey)}/probe`,
+      { method: "POST", timeoutMs: 30000 },
+    ),
+  updateAkshareApiConfig: (apiKey: string, payload: Partial<AkshareApiConfigUpdate>, locale: string = "zh-CN") =>
+    requestJson<AkshareApiStatus>(
+      `${API}/external-data/apis/${encodeURIComponent(apiKey)}?locale=${locale}`,
+      { method: "PUT", body: JSON.stringify(payload) },
+    ),
 };
+
+// ----------------------------------------------------------------------------
+// P2-E: Akshare API management types
+// ----------------------------------------------------------------------------
+export interface AkshareApiStatus {
+  // 元数据（只读）
+  key: string;
+  name: string;
+  category: string;
+  module: string;
+  description: string;
+  default_strategy: string;
+  // 用户配置（可修改）
+  enabled: boolean;
+  anti_risk_strategy: string;
+  delay_min_ms: number;
+  delay_max_ms: number;
+  // 运行时状态（只读）
+  last_probe_at: string | null;
+  last_probe_success: boolean | null;
+  last_probe_latency_ms: number | null;
+  last_probe_error: string | null;
+  last_call_at: string | null;
+  last_call_success: boolean | null;
+  last_call_error: string | null;
+  total_calls: number;
+  total_failures: number;
+}
+
+export interface AkshareStrategyInfo {
+  key: string;
+  name: string;
+  delay_min_ms: number | null;
+  delay_max_ms: number | null;
+  max_retries: number;
+  desc: string;
+}
+
+export interface AkshareApiConfigUpdate {
+  enabled?: boolean;
+  anti_risk_strategy?: string;
+  delay_min_ms?: number;
+  delay_max_ms?: number;
+}
 
 

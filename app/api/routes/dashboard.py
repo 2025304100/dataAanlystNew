@@ -382,12 +382,29 @@ def get_dashboard_workbench(
         .where(Position.portfolio_id == portfolio_id)
         .order_by(Position.market_value.desc())
     ).all()
+
+    # 风控加固：批量预加载每个 symbol 的最新 bar，避免循环内 N+1 查询
+    position_symbol_ids = [sym.id for _, sym in position_rows]
+    latest_close_map: dict[int, float] = {}
+    if position_symbol_ids:
+        from sqlalchemy import func as sa_func
+        latest_bar_subq = (
+            select(sa_func.max(DailyBar.id))
+            .where(DailyBar.symbol_id.in_(position_symbol_ids))
+            .group_by(DailyBar.symbol_id)
+            .scalar_subquery()
+        )
+        latest_bars = db.execute(
+            select(DailyBar.symbol_id, DailyBar.close)
+            .where(DailyBar.id.in_(latest_bar_subq))
+        ).all()
+        for sym_id, close in latest_bars:
+            latest_close_map[sym_id] = float(close)
+
     positions = []
     for pos, sym in position_rows:
-        latest_bar = db.execute(
-            select(DailyBar).where(DailyBar.symbol_id == sym.id).order_by(desc(DailyBar.trade_date)).limit(1)
-        ).scalars().first()
-        lp = float(latest_bar.close) if latest_bar else (pos.latest_price or pos.avg_cost)
+        lp = latest_close_map.get(sym.id) or pos.latest_price or pos.avg_cost
+        lp = float(lp)
         mv = round(pos.quantity * lp, 2)
         pnl = round((lp - pos.avg_cost) * pos.quantity, 2)
         pnl_pct = round((lp - pos.avg_cost) / pos.avg_cost, 4) if pos.avg_cost else 0.0

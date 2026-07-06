@@ -137,7 +137,9 @@ def _upsert_position(
     if position is None or position.quantity < quantity:
         raise HTTPException(status_code=400, detail="Not enough position to sell")
 
-    realized_pnl = _round_money((fill_price - position.avg_cost) * quantity)
+    # 风控：avg_cost 可能为 NULL（旧数据/手动写入），用 fill_price 兜底避免 TypeError
+    avg_cost = position.avg_cost if position.avg_cost is not None else fill_price
+    realized_pnl = _round_money((fill_price - avg_cost) * quantity)
     remaining_quantity = float(position.quantity) - quantity
     if remaining_quantity <= 0:
         db.delete(position)
@@ -245,10 +247,29 @@ def place_sim_order(
 
 def build_sim_account_summary(db: Session, portfolio: Portfolio) -> dict:
     positions = db.execute(select(Position).where(Position.portfolio_id == portfolio.id)).scalars().all()
+
+    # 风控加固：批量预加载每个 symbol 的最新 bar，避免循环内 N+1 查询
+    position_symbol_ids = [p.symbol_id for p in positions]
+    latest_price_map: dict[int, float] = {}
+    if position_symbol_ids:
+        # 子查询：每个 symbol 的最大 id（即最新一条 bar）
+        latest_bar_subq = (
+            select(func.max(DailyBar.id))
+            .where(DailyBar.symbol_id.in_(position_symbol_ids))
+            .group_by(DailyBar.symbol_id)
+            .scalar_subquery()
+        )
+        latest_bars = db.execute(
+            select(DailyBar.symbol_id, DailyBar.close)
+            .where(DailyBar.id.in_(latest_bar_subq))
+        ).all()
+        for sym_id, close in latest_bars:
+            latest_price_map[sym_id] = float(close)
+
     market_value = 0.0
     unrealized_pnl = 0.0
     for position in positions:
-        latest_price = latest_price_for_symbol(db, position.symbol_id) or position.latest_price or position.avg_cost
+        latest_price = latest_price_map.get(position.symbol_id) or position.latest_price or position.avg_cost
         if latest_price is None:
             # 无法确定价格，跳过该持仓避免计算异常
             continue

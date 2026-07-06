@@ -12,6 +12,8 @@ from app.models.portfolio import Portfolio, PortfolioRule, Position
 from app.models.symbol import Symbol
 from app.services import allocation
 
+pytestmark = pytest.mark.whitebox
+
 
 def _make_portfolio(db_session, total_capital=1_000_000, investable_ratio=0.9, is_default=1):
     p = Portfolio(

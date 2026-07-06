@@ -1468,6 +1468,12 @@ body.detail-modal-open {
   gap: 8px;
 }
 
+.external-factors-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
 .breakdown-item {
   display: grid;
   gap: 4px;
@@ -3358,6 +3364,45 @@ td .symbol-name {
 .discovery-control-bar > .discovery-check,
 .discovery-control-bar > .discovery-actions {
   align-self: end;
+}
+
+/* Plan controls: horizontal label/control layout so label and input stay on one line */
+.discovery-control-bar--plan {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.discovery-control-bar--plan > .discovery-plan-control {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-height: 32px;
+  flex: 0 0 auto;
+}
+
+.discovery-control-bar--plan > .discovery-plan-control > span {
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.discovery-control-bar--plan > .discovery-plan-control .ant-select,
+.discovery-control-bar--plan > .discovery-plan-control .ant-input {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.discovery-control-bar--plan > .discovery-actions {
+  grid-column: auto;
+  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 /* Checkbox inside discovery-check: reduce size to match original */

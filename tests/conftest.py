@@ -21,6 +21,13 @@ from app.db.base import Base
 from app.db.manager import DatabaseManager
 from app.models import *  # noqa: F401,F403 - 确保所有模型被注册
 from app import models  # noqa: F401
+# 显式导入 __init__.py 未导出的模型，确保 Base.metadata 包含全部表
+# （否则外键约束的目标表可能缺失，导致 create_all 报 NoReferencedTableError）
+from app.models import (  # noqa: F401
+    portfolio, symbol, watchlist, daily_bar, score, scan,
+    signal_rule, trade_setup, journal_entry, news_event, alert,
+    macro_data, factor, sim_account, discovery,
+)
 
 
 @pytest.fixture(scope="function")

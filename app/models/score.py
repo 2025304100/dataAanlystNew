@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -34,6 +34,15 @@ class Score(Base):
     overheat_penalty: Mapped[float | None] = mapped_column(Float, nullable=True)
     # 数据可信度（P0-4.3）
     data_credibility: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 评分配置快照（P0：轻量自定义评分配置）
+    scoring_asset_type: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    scoring_config_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    scoring_preset_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scoring_preset_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    scoring_config_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scoring_config_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dimension_scores_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    factor_scores_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     calc_batch_id: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 

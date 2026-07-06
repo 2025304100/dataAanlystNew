@@ -230,9 +230,11 @@ def _extract_fred(spec: MacroSpec) -> tuple[dict, list[dict]]:
 def _extract_latest(spec: MacroSpec) -> tuple[dict, list[dict]]:
     if spec.fetcher.startswith("fred:"):
         return _extract_fred(spec)
+    # 风控加固：用 call_akshare_with_retry 包装，给瞬时风控一次重试机会
+    from app.services.akshare_utils import call_akshare_with_retry
     fetcher = getattr(ak, spec.fetcher)
     with quiet_akshare_output():
-        frame = fetcher()
+        frame = call_akshare_with_retry(fetcher, api_key=spec.fetcher, max_attempts=2)
     if frame is None or frame.empty:
         raise ValueError("empty macro dataframe")
     rows = frame.to_dict("records")

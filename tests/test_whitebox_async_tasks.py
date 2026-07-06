@@ -10,6 +10,8 @@ import pytest
 from app.models.async_task import AsyncTaskRecord
 from app.services import async_tasks
 
+pytestmark = pytest.mark.whitebox
+
 
 def _create_task(db_session, status="queued", task_type="market_data_sync") -> AsyncTaskRecord:
     task = AsyncTaskRecord(
@@ -153,6 +155,75 @@ def test_expire_stale_tasks_marks_running_as_failed(db_session):
     assert task.status == "failed"
     assert task.stage == "failed"
     assert "expired" in task.message.lower()
+
+
+# ============================================================================
+# discovery_tasks 稳定性常量守护（P0 回归：防止超时常量被意外修改）
+# ============================================================================
+
+def test_stale_running_deadline_now_10_minutes():
+    """【P0 稳定性回归】STALE_RUNNING_DEADLINE 应为 10 分钟。
+
+    历史事件：原值 30 分钟太长，卡死任务需 30 分钟才被清理。配合 watchdog 心跳
+    （每 30s 更新 updated_at）+ 单 symbol 90s 超时，10 分钟足够区分卡死与正常运行。
+    """
+    from datetime import timedelta
+    from app.services.discovery_tasks import STALE_RUNNING_DEADLINE
+
+    assert STALE_RUNNING_DEADLINE == timedelta(minutes=10), (
+        f"STALE_RUNNING_DEADLINE 应为 10 分钟, 实际: {STALE_RUNNING_DEADLINE}"
+    )
+
+
+def test_sync_one_symbol_timeout_constant_is_90():
+    """【P0 稳定性回归】SYNC_ONE_SYMBOL_TIMEOUT_SECONDS 应为 90 秒。
+
+    覆盖 _fetch_history 3 次重试（每次最多 20s = 连接 5s + 读取 15s）+ 退避 sleep + 余量。
+    超时后跳过该 symbol，记录 failed_count，继续下一个，避免单 symbol 卡死阻塞整个任务。
+    """
+    from app.services.discovery_tasks import SYNC_ONE_SYMBOL_TIMEOUT_SECONDS
+
+    assert SYNC_ONE_SYMBOL_TIMEOUT_SECONDS == 90, (
+        f"SYNC_ONE_SYMBOL_TIMEOUT_SECONDS 应为 90, 实际: {SYNC_ONE_SYMBOL_TIMEOUT_SECONDS}"
+    )
+
+
+def test_watchdog_heartbeat_constant_is_30():
+    """【P0 稳定性回归】_WATCHDOG_HEARTBEAT_SECONDS 应为 30 秒。
+
+    每 30s 更新 task.updated_at，防止 _expire_stale_tasks 误判正常任务为 stale。
+    真正的卡死由单 symbol 超时（90s）兜底，watchdog 只防止误判。
+    """
+    from app.services.discovery_tasks import _WATCHDOG_HEARTBEAT_SECONDS
+
+    assert _WATCHDOG_HEARTBEAT_SECONDS == 30, (
+        f"_WATCHDOG_HEARTBEAT_SECONDS 应为 30, 实际: {_WATCHDOG_HEARTBEAT_SECONDS}"
+    )
+
+
+def test_resume_deadline_is_1_day():
+    """【P0 稳定性回归】RESUME_DEADLINE 应为 1 天。
+
+    暂停任务 24 小时内可恢复，超时标记 expired。
+    """
+    from datetime import timedelta
+    from app.services.discovery_tasks import RESUME_DEADLINE
+
+    assert RESUME_DEADLINE == timedelta(days=1), (
+        f"RESUME_DEADLINE 应为 1 天, 实际: {RESUME_DEADLINE}"
+    )
+
+
+def test_discovery_terminal_states_constant():
+    """【P0 稳定性回归】_TERMINAL_STATES 应包含 done/failed/cancelled/expired。
+
+    终态保护：已终态的任务不允许被 worker 覆盖状态/阶段（防止取消后 worker 仍标记 done）。
+    """
+    from app.services.discovery_tasks import _TERMINAL_STATES
+
+    assert _TERMINAL_STATES == ("done", "failed", "cancelled", "expired"), (
+        f"_TERMINAL_STATES 应为 (done, failed, cancelled, expired), 实际: {_TERMINAL_STATES}"
+    )
 
 
 def test_expire_stale_tasks_skips_recent_running(db_session):

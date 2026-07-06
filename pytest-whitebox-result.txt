@@ -1,0 +1,341 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0 -- C:\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 281 items / 26 deselected / 255 selected
+
+tests/test_blackbox_api.py::test_health_endpoint PASSED                  [  0%]
+tests/test_blackbox_api.py::test_list_portfolios PASSED                  [  0%]
+tests/test_blackbox_api.py::test_dashboard_overview PASSED               [  1%]
+tests/test_blackbox_api.py::test_dashboard_workbench PASSED              [  1%]
+tests/test_blackbox_api.py::test_list_symbols_pagination PASSED          [  1%]
+tests/test_blackbox_api.py::test_watchlists PASSED                       [  2%]
+tests/test_blackbox_api.py::test_discovery_tasks_list PASSED             [  2%]
+tests/test_blackbox_api.py::test_macro_overview PASSED                   [  3%]
+tests/test_blackbox_api.py::test_news_latest PASSED                      [  3%]
+tests/test_blackbox_api.py::test_invalid_portfolio_id_returns_404 PASSED [  3%]
+tests/test_blackbox_api.py::test_missing_required_param_returns_422 PASSED [  4%]
+tests/test_blackbox_api.py::test_invalid_query_param_returns_422 PASSED  [  4%]
+tests/test_blackbox_api.py::test_symbols_large_page PASSED               [  5%]
+tests/test_blackbox_api.py::test_symbols_zero_page_size PASSED           [  5%]
+tests/test_blackbox_api.py::test_get_async_task_not_found PASSED         [  5%]
+tests/test_blackbox_api.py::test_data_health_endpoint PASSED             [  6%]
+tests/test_blackbox_api.py::test_api_endpoints_return_json PASSED        [  6%]
+tests/test_blackbox_api.py::test_discovery_task_fields_complete PASSED   [  7%]
+tests/test_blackbox_api.py::test_discovery_retry_not_found PASSED        [  7%]
+tests/test_blackbox_api.py::test_discovery_retry_endpoint_exists PASSED  [  7%]
+tests/test_blackbox_api.py::test_discovery_cancel_not_found PASSED       [  8%]
+tests/test_blackbox_api.py::test_discovery_resume_not_found PASSED       [  8%]
+tests/test_blackbox_api.py::test_discovery_pause_not_found PASSED        [  9%]
+tests/test_blackbox_api.py::test_discovery_latest_candidates_endpoint PASSED [  9%]
+tests/test_blackbox_api.py::test_discovery_latest_candidates_min_score_filter PASSED [  9%]
+tests/test_blackbox_api.py::test_discovery_latest_candidates_returns_non_executable PASSED [ 10%]
+tests/test_whitebox_akshare_http.py::test_harden_injects_user_agent PASSED [ 10%]
+tests/test_whitebox_akshare_http.py::test_harden_injects_connection_close PASSED [ 10%]
+tests/test_whitebox_akshare_http.py::test_harden_does_not_inject_referer PASSED [ 11%]
+tests/test_whitebox_akshare_http.py::test_harden_idempotent PASSED       [ 11%]
+tests/test_whitebox_akshare_http.py::test_harden_injects_accept_header PASSED [ 12%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_success PASSED [ 12%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_no_api_key_skips_delay_and_record PASSED [ 12%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_retries_on_remote_disconnected PASSED [ 13%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_no_retry_on_value_error PASSED [ 13%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_no_retry_on_key_error PASSED [ 14%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_retries_on_connection_error PASSED [ 14%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_retries_on_timeout_error PASSED [ 14%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_retries_on_message_match PASSED [ 15%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_all_fail_raises_last PASSED [ 15%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_records_failure PASSED [ 16%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_applies_delay_when_api_key PASSED [ 16%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_max_attempts_from_registry PASSED [ 16%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_max_attempts_default_three PASSED [ 17%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_passes_args_kwargs PASSED [ 17%]
+tests/test_whitebox_akshare_http.py::test_proxy_lock_is_reentrant PASSED [ 18%]
+tests/test_whitebox_akshare_http.py::test_proxy_bypass_nested_context_manager PASSED [ 18%]
+tests/test_whitebox_akshare_http.py::test_harden_injects_default_timeout PASSED [ 18%]
+tests/test_whitebox_akshare_http.py::test_harden_preserves_explicit_timeout PASSED [ 19%]
+tests/test_whitebox_akshare_http.py::test_harden_timeout_env_var_override PASSED [ 19%]
+tests/test_whitebox_akshare_http.py::test_call_akshare_with_retry_no_retry_on_keyerror PASSED [ 20%]
+tests/test_whitebox_allocation.py::test_allocation_empty_portfolio PASSED [ 20%]
+tests/test_whitebox_allocation.py::test_allocation_zero_capital_no_division_error PASSED [ 20%]
+tests/test_whitebox_allocation.py::test_allocation_with_positions PASSED [ 21%]
+tests/test_whitebox_allocation.py::test_allocation_portfolio_not_found_raises PASSED [ 21%]
+tests/test_whitebox_allocation.py::test_budget_no_rule_returns_blocked PASSED [ 21%]
+tests/test_whitebox_allocation.py::test_budget_etf_with_null_max_etf_pct_raises PASSED [ 22%]
+tests/test_whitebox_allocation.py::test_budget_stock_with_full_rule PASSED [ 22%]
+tests/test_whitebox_allocation.py::test_budget_stage_limit_lookup PASSED [ 23%]
+tests/test_whitebox_allocation.py::test_budget_stage_limits_json_null_handled PASSED [ 23%]
+tests/test_whitebox_allocation.py::test_budget_existing_position_excluded_from_open PASSED [ 23%]
+tests/test_whitebox_analysis.py::test_clamp_score_bounds PASSED          [ 24%]
+tests/test_whitebox_analysis.py::test_grade_thresholds PASSED            [ 24%]
+tests/test_whitebox_analysis.py::test_safe_date_handles_multiple_formats PASSED [ 25%]
+tests/test_whitebox_analysis.py::test_calculate_score_with_insufficient_bars_returns_low_credibility XFAIL [ 25%]
+tests/test_whitebox_analysis.py::test_calculate_score_with_zero_bars XPASS [ 25%]
+tests/test_whitebox_analysis.py::test_calculate_score_with_enough_bars_computes_credibility PASSED [ 26%]
+tests/test_whitebox_analysis.py::test_calculate_score_idempotent_same_batch PASSED [ 26%]
+tests/test_whitebox_analysis.py::test_calculate_score_stage_accel PASSED [ 27%]
+tests/test_whitebox_analysis.py::test_calculate_score_overheat_penalty PASSED [ 27%]
+tests/test_whitebox_analysis.py::test_calculate_score_priority_formula PASSED [ 27%]
+tests/test_whitebox_api_mgmt.py::test_resolve_strategy_params_standard PASSED [ 28%]
+tests/test_whitebox_api_mgmt.py::test_resolve_strategy_params_fast PASSED [ 28%]
+tests/test_whitebox_api_mgmt.py::test_resolve_strategy_params_conservative PASSED [ 29%]
+tests/test_whitebox_api_mgmt.py::test_resolve_strategy_params_extreme PASSED [ 29%]
+tests/test_whitebox_api_mgmt.py::test_resolve_strategy_params_custom_valid PASSED [ 29%]
+tests/test_whitebox_api_mgmt.py::test_resolve_strategy_params_custom_min_eq_max PASSED [ 30%]
+tests/test_whitebox_api_mgmt.py::test_resolve_strategy_params_custom_min_gt_max PASSED [ 30%]
+tests/test_whitebox_api_mgmt.py::test_resolve_strategy_params_custom_min_zero PASSED [ 30%]
+tests/test_whitebox_api_mgmt.py::test_resolve_strategy_params_custom_negative_clamped PASSED [ 31%]
+tests/test_whitebox_api_mgmt.py::test_resolve_strategy_params_unknown_strategy PASSED [ 31%]
+tests/test_whitebox_api_mgmt.py::test_load_config_cache_includes_registry_defaults PASSED [ 32%]
+tests/test_whitebox_api_mgmt.py::test_load_config_cache_overrides_with_db_rows PASSED [ 32%]
+tests/test_whitebox_api_mgmt.py::test_load_config_cache_sets_loaded_flag PASSED [ 32%]
+tests/test_whitebox_api_mgmt.py::test_refresh_config_cache_for_existing_row PASSED [ 33%]
+tests/test_whitebox_api_mgmt.py::test_refresh_config_cache_for_missing_row PASSED [ 33%]
+tests/test_whitebox_api_mgmt.py::test_refresh_config_cache_for_unknown_key_noop PASSED [ 34%]
+tests/test_whitebox_api_mgmt.py::test_refresh_config_cache_for_preserves_other_keys ERROR [ 34%]
+tests/test_whitebox_api_mgmt.py::test_get_runtime_config_when_cache_not_loaded PASSED [ 34%]
+tests/test_whitebox_api_mgmt.py::test_get_runtime_config_returns_cached PASSED [ 35%]
+tests/test_whitebox_api_mgmt.py::test_get_runtime_config_unknown_key_returns_default PASSED [ 35%]
+tests/test_whitebox_api_mgmt.py::test_apply_delay_sleeps_within_range PASSED [ 36%]
+tests/test_whitebox_api_mgmt.py::test_apply_delay_skips_when_max_zero PASSED [ 36%]
+tests/test_whitebox_api_mgmt.py::test_apply_delay_no_op_when_cache_not_loaded PASSED [ 36%]
+tests/test_whitebox_api_mgmt.py::test_record_call_result_creates_row_if_missing PASSED [ 37%]
+tests/test_whitebox_api_mgmt.py::test_record_call_result_updates_existing PASSED [ 37%]
+tests/test_whitebox_api_mgmt.py::test_record_call_result_records_failure PASSED [ 38%]
+tests/test_whitebox_api_mgmt.py::test_record_call_result_unknown_key_noop PASSED [ 38%]
+tests/test_whitebox_api_mgmt.py::test_record_probe_result_updates_last_probe PASSED [ 38%]
+tests/test_whitebox_api_mgmt.py::test_record_probe_result_records_error PASSED [ 39%]
+tests/test_whitebox_api_mgmt.py::test_record_probe_result_creates_row_if_missing PASSED [ 39%]
+tests/test_whitebox_api_mgmt.py::test_is_api_enabled_default_true PASSED [ 40%]
+tests/test_whitebox_api_mgmt.py::test_is_api_enabled_false_when_disabled PASSED [ 40%]
+tests/test_whitebox_api_mgmt.py::test_get_max_retries_default_three PASSED [ 40%]
+tests/test_whitebox_api_mgmt.py::test_get_max_retries_from_strategy PASSED [ 41%]
+tests/test_whitebox_api_mgmt.py::test_get_max_retries_fast_strategy PASSED [ 41%]
+tests/test_whitebox_api_mgmt.py::test_get_registry_entry_found PASSED    [ 41%]
+tests/test_whitebox_api_mgmt.py::test_get_registry_entry_not_found PASSED [ 42%]
+tests/test_whitebox_api_mgmt.py::test_registry_contains_17_entries PASSED [ 42%]
+tests/test_whitebox_api_mgmt.py::test_registry_entries_have_required_fields PASSED [ 43%]
+tests/test_whitebox_api_mgmt.py::test_registry_default_strategy_valid PASSED [ 43%]
+tests/test_whitebox_api_mgmt.py::test_anti_risk_strategies_contains_five_levels PASSED [ 43%]
+tests/test_whitebox_api_mgmt.py::test_anti_risk_strategies_custom_has_null_delay PASSED [ 44%]
+tests/test_whitebox_async_tasks.py::test_task_to_dict_handles_null_json PASSED [ 44%]
+tests/test_whitebox_async_tasks.py::test_json_loads_fallback PASSED      [ 45%]
+tests/test_whitebox_async_tasks.py::test_set_task_updates_running_to_done PASSED [ 45%]
+tests/test_whitebox_async_tasks.py::test_set_task_protects_done_from_status_overwrite PASSED [ 45%]
+tests/test_whitebox_async_tasks.py::test_set_task_protects_failed_from_status_overwrite PASSED [ 46%]
+tests/test_whitebox_async_tasks.py::test_set_task_protects_cancelled_from_status_overwrite PASSED [ 46%]
+tests/test_whitebox_async_tasks.py::test_set_task_non_terminal_state_allows_overwrite PASSED [ 47%]
+tests/test_whitebox_async_tasks.py::test_set_task_unknown_task_raises PASSED [ 47%]
+tests/test_whitebox_async_tasks.py::test_append_error_keeps_last_20 PASSED [ 47%]
+tests/test_whitebox_async_tasks.py::test_expire_stale_tasks_marks_running_as_failed PASSED [ 48%]
+tests/test_whitebox_async_tasks.py::test_stale_running_deadline_now_10_minutes PASSED [ 48%]
+tests/test_whitebox_async_tasks.py::test_sync_one_symbol_timeout_constant_is_90 PASSED [ 49%]
+tests/test_whitebox_async_tasks.py::test_watchdog_heartbeat_constant_is_30 PASSED [ 49%]
+tests/test_whitebox_async_tasks.py::test_resume_deadline_is_1_day PASSED [ 49%]
+tests/test_whitebox_async_tasks.py::test_discovery_terminal_states_constant PASSED [ 50%]
+tests/test_whitebox_async_tasks.py::test_expire_stale_tasks_skips_recent_running PASSED [ 50%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_allows_basic_arithmetic PASSED [ 50%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_allows_comparison PASSED [ 51%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_allows_boolean_logic PASSED [ 51%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_rejects_attribute_access PASSED [ 52%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_rejects_subscript PASSED [ 52%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_rejects_lambda_and_comprehension PASSED [ 52%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_zero_division_returns_none PASSED [ 53%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_type_error_returns_none PASSED [ 53%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_pow_basic PASSED   [ 54%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_pow_has_result_limit PASSED [ 54%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_variable_lookup PASSED [ 54%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_function_call PASSED [ 55%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_unknown_function_returns_none PASSED [ 55%]
+tests/test_whitebox_backtest_sandbox.py::test_sandbox_function_exception_returns_none PASSED [ 56%]
+tests/test_whitebox_data_correctness.py::test_probe_result_fields_complete PASSED [ 56%]
+tests/test_whitebox_data_correctness.py::test_probe_latency_ms_is_int_or_null PASSED [ 56%]
+tests/test_whitebox_data_correctness.py::test_sync_one_symbol_returns_ok_dict PASSED [ 57%]
+tests/test_whitebox_data_correctness.py::test_sync_timeout_records_failed_count PASSED [ 57%]
+tests/test_whitebox_data_correctness.py::test_universe_refresh_returns_seen_and_created PASSED [ 58%]
+tests/test_whitebox_data_correctness.py::test_universe_refresh_timeout_returns_none_and_records_error PASSED [ 58%]
+tests/test_whitebox_data_correctness.py::test_watchdog_does_not_overwrite_terminal_status PASSED [ 58%]
+tests/test_whitebox_data_correctness.py::test_fetch_history_retries_only_once_per_source PASSED [ 59%]
+tests/test_whitebox_data_correctness.py::test_sync_one_symbol_uses_independent_db_session PASSED [ 59%]
+tests/test_whitebox_data_correctness.py::test_probe_akshare_api_content_type_header PASSED [ 60%]
+tests/test_whitebox_discovery.py::test_task_to_dict_includes_updated_at PASSED [ 60%]
+tests/test_whitebox_discovery.py::test_task_to_dict_includes_can_retry PASSED [ 60%]
+tests/test_whitebox_discovery.py::test_task_to_dict_can_retry_false_for_done PASSED [ 61%]
+tests/test_whitebox_discovery.py::test_task_to_dict_can_retry_true_for_cancelled PASSED [ 61%]
+tests/test_whitebox_discovery.py::test_task_to_dict_can_retry_true_for_expired PASSED [ 61%]
+tests/test_whitebox_discovery.py::test_task_to_dict_includes_cleanup_count PASSED [ 62%]
+tests/test_whitebox_discovery.py::test_discovery_result_state_removed_from_models PASSED [ 62%]
+tests/test_whitebox_discovery.py::test_discovery_cleanup_no_longer_imports_state PASSED [ 63%]
+tests/test_whitebox_discovery.py::test_retry_failed_task_resets_to_queued PASSED [ 63%]
+tests/test_whitebox_discovery.py::test_retry_cancelled_task PASSED       [ 63%]
+tests/test_whitebox_discovery.py::test_retry_expired_task PASSED         [ 64%]
+tests/test_whitebox_discovery.py::test_retry_running_task_returns_original PASSED [ 64%]
+tests/test_whitebox_discovery.py::test_retry_paused_task_returns_original PASSED [ 65%]
+tests/test_whitebox_discovery.py::test_retry_done_task_returns_original PASSED [ 65%]
+tests/test_whitebox_discovery.py::test_retry_nonexistent_raises PASSED   [ 65%]
+tests/test_whitebox_discovery.py::test_retry_concurrent_protection PASSED [ 66%]
+tests/test_whitebox_discovery.py::test_retry_clears_errors PASSED        [ 66%]
+tests/test_whitebox_discovery.py::test_retry_preserves_processed_ids PASSED [ 67%]
+tests/test_whitebox_discovery.py::test_retry_resets_timestamps PASSED    [ 67%]
+tests/test_whitebox_discovery_timeout.py::test_sync_one_symbol_with_timeout_raises_on_block FAILED [ 67%]
+tests/test_whitebox_discovery_timeout.py::test_sync_one_symbol_with_timeout_returns_on_success FAILED [ 68%]
+tests/test_whitebox_discovery_timeout.py::test_watchdog_heartbeat_exits_on_terminal_state PASSED [ 68%]
+tests/test_whitebox_discovery_timeout.py::test_watchdog_heartbeat_updates_updated_at PASSED [ 69%]
+tests/test_whitebox_discovery_universe.py::test_cn_stock_universe_frame_primary_success PASSED [ 69%]
+tests/test_whitebox_discovery_universe.py::test_cn_stock_universe_frame_fallback_to_secondary PASSED [ 69%]
+tests/test_whitebox_discovery_universe.py::test_cn_stock_universe_frame_both_fail_raises PASSED [ 70%]
+tests/test_whitebox_discovery_universe.py::test_cn_stock_universe_frame_uses_call_akshare_with_retry PASSED [ 70%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_stock_universe_success PASSED [ 70%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_stock_universe_zfills_code PASSED [ 71%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_stock_universe_skips_invalid_rows PASSED [ 71%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_stock_universe_cache_fallback PASSED [ 72%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_stock_universe_no_cache_raises PASSED [ 72%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_stock_universe_supports_chinese_column_names PASSED [ 72%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_stock_universe_idempotent PASSED [ 73%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_etf_universe_primary_success PASSED [ 73%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_etf_universe_fallback_to_sina PASSED [ 74%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_etf_universe_strips_prefix PASSED [ 74%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_etf_universe_both_fail_raises PASSED [ 74%]
+tests/test_whitebox_discovery_universe.py::test_refresh_cn_etf_universe_skips_invalid_code PASSED [ 75%]
+tests/test_whitebox_discovery_universe.py::test_refresh_discovery_universe_routes_cn_stock PASSED [ 75%]
+tests/test_whitebox_discovery_universe.py::test_refresh_discovery_universe_routes_cn_etf PASSED [ 76%]
+tests/test_whitebox_discovery_universe.py::test_refresh_discovery_universe_respects_refresh_flag PASSED [ 76%]
+tests/test_whitebox_discovery_universe.py::test_refresh_discovery_universe_unknown_scope_returns_none PASSED [ 76%]
+tests/test_whitebox_discovery_universe.py::test_first_row_value_finds_first_matching_key PASSED [ 77%]
+tests/test_whitebox_discovery_universe.py::test_first_row_value_falls_back_to_second_key PASSED [ 77%]
+tests/test_whitebox_discovery_universe.py::test_first_row_value_returns_none_when_missing PASSED [ 78%]
+tests/test_whitebox_discovery_universe.py::test_first_row_value_skips_none_values PASSED [ 78%]
+tests/test_whitebox_discovery_universe.py::test_first_row_value_empty_keys_list PASSED [ 78%]
+tests/test_whitebox_discovery_universe.py::test_universe_frame_uses_hardened_session_no_referer PASSED [ 79%]
+tests/test_whitebox_discovery_universe.py::test_universe_failure_with_seen_zero_aborts PASSED [ 79%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_empty_required_returns_empty PASSED [ 80%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_none_required_returns_empty PASSED [ 80%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_stock_pe PASSED [ 80%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_stock_main_inflow PASSED [ 81%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_etf_premium_discount PASSED [ 81%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_combines_multiple PASSED [ 81%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_stock_skips_etf_factors PASSED [ 82%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_etf_skips_stock_factors PASSED [ 82%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_etf_skips_main_inflow PASSED [ 83%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_none_score_not_included PASSED [ 83%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_zero_score_is_valid PASSED [ 83%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_mixed_none_and_valid PASSED [ 84%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_failure_returns_empty PASSED [ 84%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_timeout_returns_empty PASSED [ 85%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_value_error_returns_empty PASSED [ 85%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_partial_failure PASSED [ 85%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_unknown_factor_key PASSED [ 86%]
+tests/test_whitebox_external_factors.py::test_compute_external_factors_mixed_known_and_unknown PASSED [ 86%]
+tests/test_whitebox_external_factors.py::test_resolve_symbols_source_all PASSED [ 87%]
+tests/test_whitebox_external_factors.py::test_resolve_symbols_source_all_with_asset_type_filter PASSED [ 87%]
+tests/test_whitebox_external_factors.py::test_resolve_symbols_source_all_empty PASSED [ 87%]
+tests/test_whitebox_external_factors.py::test_resolve_symbols_source_watchlist_empty PASSED [ 88%]
+tests/test_whitebox_external_factors.py::test_resolve_symbols_source_positions_empty PASSED [ 88%]
+tests/test_whitebox_external_factors.py::test_resolve_symbols_source_watchlist_with_items SKIPPED [ 89%]
+tests/test_whitebox_external_factors.py::test_resolve_symbols_source_positions_with_items SKIPPED [ 89%]
+tests/test_whitebox_external_factors.py::test_resolve_symbols_inactive_excluded PASSED [ 89%]
+tests/test_whitebox_external_factors.py::test_scoring_calls_external_factors_when_required PASSED [ 90%]
+tests/test_whitebox_external_factors.py::test_scoring_skips_external_factors_when_not_required PASSED [ 90%]
+tests/test_whitebox_external_factors.py::test_sync_result_default_values PASSED [ 90%]
+tests/test_whitebox_external_factors.py::test_sync_result_errors_capped_behavior PASSED [ 91%]
+tests/test_whitebox_external_factors.py::test_sync_throttle_seconds_constant PASSED [ 91%]
+tests/test_whitebox_interaction.py::test_batch_probe_disables_all_single_buttons PASSED [ 92%]
+tests/test_whitebox_interaction.py::test_batch_probe_releases_buttons_after_done PASSED [ 92%]
+tests/test_whitebox_interaction.py::test_batch_probe_concurrency_is_3 PASSED [ 92%]
+tests/test_whitebox_interaction.py::test_stale_warning_appears_after_2min PASSED [ 93%]
+tests/test_whitebox_interaction.py::test_stale_warning_disappears_on_cancel PASSED [ 93%]
+tests/test_whitebox_interaction.py::test_probe_all_shows_summary_message PASSED [ 94%]
+tests/test_whitebox_probe_thread_pool.py::test_probe_uses_independent_executor PASSED [ 94%]
+tests/test_whitebox_probe_thread_pool.py::test_probe_executor_max_workers_is_8 PASSED [ 94%]
+tests/test_whitebox_probe_thread_pool.py::test_probe_logs_start_and_done PASSED [ 95%]
+tests/test_whitebox_probe_thread_pool.py::test_probe_logs_timeout PASSED [ 95%]
+tests/test_whitebox_scoring_config.py::test_scoring_config_version_does_not_overwrite_previous_score PASSED [ 96%]
+tests/test_whitebox_scoring_config.py::test_external_factors_are_only_requested_when_enabled PASSED [ 96%]
+tests/test_whitebox_scoring_config.py::test_duplicate_scoring_config_rewrites_config_json_identity PASSED [ 96%]
+tests/test_whitebox_scoring_config.py::test_run_scan_uses_active_scoring_config_snapshot PASSED [ 97%]
+tests/test_whitebox_universe_refresh.py::test_refresh_universe_with_timeout_returns_none_on_block PASSED [ 97%]
+tests/test_whitebox_universe_refresh.py::test_refresh_universe_with_timeout_passes_through_on_success PASSED [ 98%]
+tests/test_whitebox_universe_refresh.py::test_refresh_cn_etf_universe_wraps_fund_etf_spot_em_with_retry PASSED [ 98%]
+tests/test_whitebox_universe_refresh.py::test_refresh_cn_etf_universe_falls_back_to_sina_on_failure PASSED [ 98%]
+tests/test_whitebox_universe_refresh.py::test_watchdog_skips_heartbeat_in_prepare_stage PASSED [ 99%]
+tests/test_whitebox_universe_refresh.py::test_watchdog_updates_heartbeat_in_sync_stage PASSED [ 99%]
+tests/test_whitebox_universe_refresh.py::test_watchdog_logs_failure_instead_of_silent_swallow PASSED [100%]
+
+=================================== ERRORS ====================================
+____ ERROR at setup of test_refresh_config_cache_for_preserves_other_keys _____
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.OperationalError: no such table: main.backtest_runs
+
+The above exception was the direct cause of the following exception:
+tests\conftest.py:56: in db_session
+    Base.metadata.create_all(engine)
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\sql\schema.py:5928: in create_all
+    bind._run_ddl_visitor(
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py:3268: in _run_ddl_visitor
+    conn._run_ddl_visitor(visitorcallable, element, **kwargs)
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py:2467: in _run_ddl_visitor
+    ).traverse_single(element)
+      ^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\sql\visitors.py:661: in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\sql\ddl.py:984: in visit_metadata
+    self.traverse_single(
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\sql\visitors.py:661: in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\sql\ddl.py:1026: in visit_table
+    self.traverse_single(index, create_ok=True)
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\sql\visitors.py:661: in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\sql\ddl.py:1063: in visit_index
+    CreateIndex(index)._invoke_with(self.connection)
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\sql\ddl.py:321: in _invoke_with
+    return bind.execute(self)
+           ^^^^^^^^^^^^^^^^^^
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\sql\ddl.py:187: in _execute_on_connection
+    return connection._execute_ddl(
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py:1530: in _execute_ddl
+    ret = self._execute_context(
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: main.backtest_runs
+E   [SQL: CREATE INDEX ix_backtest_runs_portfolio_id ON backtest_runs (portfolio_id)]
+E   (Background on this error at: https://sqlalche.me/e/20/e3q8)
+================================== FAILURES ===================================
+______________ test_sync_one_symbol_with_timeout_raises_on_block ______________
+tests\test_whitebox_discovery_timeout.py:48: in test_sync_one_symbol_with_timeout_raises_on_block
+    discovery_tasks._sync_one_symbol_with_timeout(
+app\services\discovery_tasks.py:835: in _sync_one_symbol_with_timeout
+    logger.info("sync_one %s start (timeout=%ds)", symbol.symbol, SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
+                                                   ^^^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'symbol'
+____________ test_sync_one_symbol_with_timeout_returns_on_success _____________
+tests\test_whitebox_discovery_timeout.py:68: in test_sync_one_symbol_with_timeout_returns_on_success
+    result = discovery_tasks._sync_one_symbol_with_timeout(
+app\services\discovery_tasks.py:835: in _sync_one_symbol_with_timeout
+    logger.info("sync_one %s start (timeout=%ds)", symbol.symbol, SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
+                                                   ^^^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'symbol'
+=========================== short test summary info ===========================
+FAILED tests/test_whitebox_discovery_timeout.py::test_sync_one_symbol_with_timeout_raises_on_block - AttributeError: 'NoneType' object has no attribute 'symbol'
+FAILED tests/test_whitebox_discovery_timeout.py::test_sync_one_symbol_with_timeout_returns_on_success - AttributeError: 'NoneType' object has no attribute 'symbol'
+ERROR tests/test_whitebox_api_mgmt.py::test_refresh_config_cache_for_preserves_other_keys - sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: main.backtest_runs
+[SQL: CREATE INDEX ix_backtest_runs_portfolio_id ON backtest_runs (portfolio_id)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+= 2 failed, 248 passed, 2 skipped, 26 deselected, 1 xfailed, 1 xpassed, 1 error in 1462.38s (0:24:22) =

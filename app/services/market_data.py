@@ -5,7 +5,7 @@ from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 import json
 import logging
-from threading import Event, Lock
+from threading import Event, Lock, RLock
 import os
 import time
 
@@ -36,8 +36,8 @@ from app.services.async_tasks import _set_task, _start_worker, create_async_task
 
 PROXY_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
 
-# 跨线程保护 os.environ 修改的锁
-_proxy_lock = Lock()
+# 跨线程保护 os.environ 修改的锁（RLock 允许同线程内嵌套调用，避免死锁）
+_proxy_lock = RLock()
 
 
 @contextmanager
@@ -210,43 +210,57 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
         raise ValueError(f"Unsupported asset_type for market sync: {symbol.asset_type}")
     region = region_from_market(symbol.market)
 
+    # P0 稳定性：仅尝试 1 轮（内层已有多数据源回退：cn-stock 3 源 / cn-etf 2 源）
+    # 3 源 × 1 次 × 20s = 60s < SYNC_ONE_SYMBOL_TIMEOUT_SECONDS(90s)，留余量给评分计算
+    # 风控加固：每个源用 call_akshare_with_retry 包装，max_attempts=2 给一次瞬时风控重试机会
+    # 重试间隔由 base_delay*2^0=1s 提供，不会触发更严的风控升级
+    from app.services.akshare_utils import call_akshare_with_retry
     last_error = None
-    for attempt in range(3):
+    for attempt in range(1):
         try:
             with _proxy_bypass():
                 with quiet_akshare_output():
                     if region == "cn" and symbol.asset_type == "stock":
                         try:
                             return _normalize_cn_em_history(
-                                ak.stock_zh_a_hist(
+                                call_akshare_with_retry(
+                                    ak.stock_zh_a_hist,
                                     symbol=symbol.symbol,
                                     period="daily",
                                     start_date=start,
                                     end_date=end,
                                     adjust=adjust,
+                                    api_key="stock_zh_a_hist",
+                                    max_attempts=2,
                                 )
                             )
                         except Exception:
-                            logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
+                            logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                             try:
                                 return _normalize_cn_stock_sina_history(
-                                    ak.stock_zh_a_daily(
+                                    call_akshare_with_retry(
+                                        ak.stock_zh_a_daily,
                                         symbol=_cn_prefixed_symbol(symbol),
                                         start_date=start,
                                         end_date=end,
                                         adjust=adjust,
+                                        api_key="stock_zh_a_daily",
+                                        max_attempts=2,
                                     ),
                                     start_date=start_date,
                                     end_date=end_date,
                                 )
                             except Exception:
-                                logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
+                                logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                                 return _normalize_cn_stock_tx_history(
-                                    ak.stock_zh_a_hist_tx(
+                                    call_akshare_with_retry(
+                                        ak.stock_zh_a_hist_tx,
                                         symbol=_cn_prefixed_symbol(symbol),
                                         start_date=start,
                                         end_date=end,
                                         adjust=adjust,
+                                        api_key="stock_zh_a_hist_tx",
+                                        max_attempts=2,
                                     ),
                                     start_date=start_date,
                                     end_date=end_date,
@@ -254,31 +268,42 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
                     if region == "cn" and symbol.asset_type == "etf":
                         try:
                             return _normalize_cn_em_history(
-                                ak.fund_etf_hist_em(
+                                call_akshare_with_retry(
+                                    ak.fund_etf_hist_em,
                                     symbol=symbol.symbol,
                                     period="daily",
                                     start_date=start,
                                     end_date=end,
                                     adjust=adjust,
+                                    api_key="fund_etf_hist_em",
+                                    max_attempts=2,
                                 )
                             )
                         except Exception:
-                            logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
+                            logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
                             return _normalize_cn_etf_sina_history(
-                                ak.fund_etf_hist_sina(symbol=_cn_prefixed_symbol(symbol)),
+                                call_akshare_with_retry(
+                                    ak.fund_etf_hist_sina,
+                                    symbol=_cn_prefixed_symbol(symbol),
+                                    api_key="fund_etf_hist_sina",
+                                    max_attempts=2,
+                                ),
                                 start_date=start_date,
                                 end_date=end_date,
                             )
                     if region == "us":
                         us_adjust = adjust if adjust in {"", "qfq"} else ""
-                        frame = ak.stock_us_daily(symbol=symbol.symbol, adjust=us_adjust)
+                        frame = call_akshare_with_retry(
+                            ak.stock_us_daily,
+                            symbol=symbol.symbol,
+                            adjust=us_adjust,
+                            api_key="stock_us_daily",
+                            max_attempts=2,
+                        )
                         return _normalize_us_history(frame=frame, start_date=start_date, end_date=end_date)
         except Exception as exc:
             last_error = exc
-            logger.debug("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
-            if attempt < 2:
-                # 指数退避：1s、2s、4s，避免高频重试加剧外部服务压力
-                time.sleep(2 ** attempt)
+            logger.info("AKShare source failed for %s, trying fallback", symbol.symbol, exc_info=True)
             continue
     if last_error is not None:
         logger.warning("All AKShare sources failed for %s", symbol.symbol, exc_info=True)
@@ -642,13 +667,20 @@ def _upsert_history_failure(
     })
 
 def _history_duration_seconds(started_at: str | None, finished_at: str | None = None) -> int | None:
+    # 风控：started_at/finished_at 可能是 aware 或 naive datetime 字符串，
+    # 直接 fromisoformat 后相减会抛 TypeError（aware - naive 不兼容）
+    # 复用 _history_db_datetime 统一 normalize 为 naive UTC
     if not started_at:
         return None
-    try:
-        started_dt = datetime.fromisoformat(started_at)
-        finished_dt = datetime.fromisoformat(finished_at) if finished_at else datetime.now(timezone.utc)
-    except ValueError:
+    started_dt = _history_db_datetime(started_at)
+    if started_dt is None:
         return None
+    if finished_at:
+        finished_dt = _history_db_datetime(finished_at)
+        if finished_dt is None:
+            return None
+    else:
+        finished_dt = datetime.now(timezone.utc).replace(tzinfo=None)
     return max(0, int((finished_dt - started_dt).total_seconds()))
 
 

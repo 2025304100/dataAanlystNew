@@ -5,26 +5,60 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="eae150bd-df2a-4f7e-81a1-1cd4fda7fe59" name="更改" comment="feat(App): 新增投资中心功能模块&#10;A- 新增 InvestmentCenter 组件实现投资中心视图&#10;- 在主应用中添加投资中心导航标签页和路由逻辑&#10;- 修改详情弹窗打开条件以兼容投资中心内联显示&#10;- 扩展 loadSymbolDetail 方法支持 barLimit 参数&#10;- 添加 getBars API 接口用于懒加载更多K线数据&#10;- 更新后端 dashboard API 支持 bar_limit 查询参数&#10;- 添加投资中心相关国际化文案配置&#10;- 实现投资中心响应式布局和搜索功能样式&#10;- 新增试探、确认、扩展等分批标签翻译">
-      <change beforePath="$PROJECT_DIR$/.codex-run/run-backend.err.log" beforeDir="false" afterPath="$PROJECT_DIR$/.codex-run/run-backend.err.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.codex-run/run-backend.out.log" beforeDir="false" afterPath="$PROJECT_DIR$/.codex-run/run-backend.out.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.codex-run/run-frontend.out.log" beforeDir="false" afterPath="$PROJECT_DIR$/.codex-run/run-frontend.out.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/router.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/router.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/routes/alerts.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/routes/alerts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/routes/dashboard.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/routes/dashboard.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/routes/discovery.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/routes/discovery.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/api/routes/market_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/routes/market_data.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/routes/symbols.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/routes/symbols.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/routes/scores.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/routes/scores.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/db/init_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/db/init_db.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/models/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/models/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/models/discovery.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/models/discovery.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/schemas/market_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/schemas/market_data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/models/score.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/models/score.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/schemas/dashboard.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/schemas/dashboard.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/schemas/discovery.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/schemas/discovery.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/schemas/score.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/schemas/score.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/akshare_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/akshare_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/alerts.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/alerts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/analysis.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/backtest.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/backtest.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/discovery_cleanup.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/discovery_cleanup.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/discovery_results.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/discovery_results.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/services/discovery_tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/discovery_tasks.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/macro.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/macro.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/services/market_data.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/market_data.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/market_events.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/market_events.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/migration.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/migration.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/news.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/news.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/scans.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/scans.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/signal_stats.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/signal_stats.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/sim_accounts.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/sim_accounts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/services/symbol_cleanup.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/symbol_cleanup.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/web/dist/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/app/web/dist/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/api/client.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/api/client.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/DetailModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/DetailModal.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/Discovery.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Discovery.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/DiscoveryPlanSettings.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/DiscoveryPlanSettings.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/HistoryInitSection.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/HistoryInitSection.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/Settings.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Settings.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/context/AppContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/context/AppContext.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/i18n/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/i18n/index.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/styles/workbench.css" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/styles/workbench.css" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/types/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/types/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/tsconfig.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/tsconfig.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/tsconfig.tsbuildinfo" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/tsconfig.tsbuildinfo" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pytest.ini" beforeDir="false" afterPath="$PROJECT_DIR$/pytest.ini" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_sim_buy.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_ui_smoke.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/conftest.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/conftest.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_blackbox_api.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_blackbox_api.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_whitebox_allocation.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_whitebox_allocation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_whitebox_analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_whitebox_analysis.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_whitebox_async_tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_whitebox_async_tasks.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_whitebox_backtest_sandbox.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_whitebox_backtest_sandbox.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -117,6 +151,7 @@
       <workItem from="1782832909736" duration="1378000" />
       <workItem from="1782867909020" duration="595000" />
       <workItem from="1783040575597" duration="3673000" />
+      <workItem from="1783299635841" duration="317000" />
     </task>
     <task id="LOCAL-00001" summary="feat(App): 新增投资中心功能模块&#10;&#10;- 新增 InvestmentCenter 组件实现投资中心视图&#10;- 在主应用中添加投资中心导航标签页和路由逻辑&#10;- 修改详情弹窗打开条件以兼容投资中心内联显示&#10;- 扩展 loadSymbolDetail 方法支持 barLimit 参数&#10;- 添加 getBars API 接口用于懒加载更多K线数据&#10;- 更新后端 dashboard API 支持 bar_limit 查询参数&#10;- 添加投资中心相关国际化文案配置&#10;- 实现投资中心响应式布局和搜索功能样式&#10;- 新增试探、确认、扩展等分批标签翻译">
       <option name="closed" value="true" />

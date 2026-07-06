@@ -58,8 +58,19 @@ async def lifespan(_: FastAPI):
     cleanup_task.cancel()
     try:
         await cleanup_task
-    except (asyncio.CancelledError, Exception):
-        pass
+    except asyncio.CancelledError:
+        pass  # 正常取消路径
+    except Exception:
+        # 风控加固：不再静默吞没，记录日志便于定位 lifespan 关闭问题
+        logger.exception("cleanup_task shutdown failed")
+
+    # 风控加固：关闭探测线程池，避免 uvicorn reload 时线程泄漏
+    try:
+        from app.api.routes.akshare_apis import _PROBE_EXECUTOR
+        _PROBE_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+        logger.info("Probe executor shutdown complete")
+    except Exception:
+        logger.exception("Probe executor shutdown failed")
 
     # 关闭数据库连接池
     mgr.dispose()

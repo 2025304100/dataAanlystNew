@@ -207,10 +207,15 @@ def _normalize_event(symbol: Symbol | None, row: dict[str, Any], source: str) ->
 
 def _fetch_symbol_events(symbol: Symbol, days: int) -> list[dict]:
     events: list[dict] = []
+    # 风控加固：所有 akshare 调用用 call_akshare_with_retry 包装，给瞬时风控一次重试机会
+    from app.services.akshare_utils import call_akshare_with_retry
     if symbol.market.lower() in {"sh", "sz", "bj"}:
         try:
             with quiet_akshare_output():
-                frame = ak.stock_news_em(symbol=symbol.symbol)
+                frame = call_akshare_with_retry(
+                    ak.stock_news_em, symbol=symbol.symbol,
+                    api_key="stock_news_em", max_attempts=2,
+                )
             for row in frame.head(30).to_dict("records"):
                 event = _normalize_event(symbol, row, "eastmoney-news")
                 if event is not None:
@@ -222,11 +227,14 @@ def _fetch_symbol_events(symbol: Symbol, days: int) -> list[dict]:
         end_date = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
         try:
             with quiet_akshare_output():
-                frame = ak.stock_zh_a_disclosure_report_cninfo(
+                frame = call_akshare_with_retry(
+                    ak.stock_zh_a_disclosure_report_cninfo,
                     symbol=symbol.symbol,
                     market="沪深京",
                     start_date=start_date,
                     end_date=end_date,
+                    api_key="stock_zh_a_disclosure_report_cninfo",
+                    max_attempts=2,
                 )
             for row in frame.head(30).to_dict("records"):
                 event = _normalize_event(symbol, row, "cninfo")
@@ -370,8 +378,70 @@ def _events_for_symbol(db: Session, symbol_id: int, days: int) -> list[NewsEvent
     )
 
 
+def _build_events_map_for_symbols(
+    db: Session,
+    symbol_ids: list[int],
+    days: int,
+) -> dict[int, list[NewsEvent]]:
+    """风控加固：批量预加载多个 symbol 的 NewsEvent，避免 N+1 查询。
+
+    一次查询拉取所有 symbol 的 NewsEvent（published_at IS NULL OR >= cutoff），
+    按 (symbol_id, published_at desc, created_at desc) 排序，
+    内存分组每个 symbol 取前 5 条。
+    """
+    if not symbol_ids:
+        return {}
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    rows = (
+        db.execute(
+            select(NewsEvent)
+            .where(
+                NewsEvent.symbol_id.in_(symbol_ids),
+                or_(NewsEvent.published_at.is_(None), NewsEvent.published_at >= cutoff),
+            )
+            .order_by(
+                NewsEvent.symbol_id.asc(),
+                desc(NewsEvent.published_at),
+                desc(NewsEvent.created_at),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    events_map: dict[int, list[NewsEvent]] = {}
+    for event in rows:
+        events_map.setdefault(event.symbol_id, []).append(event)
+    # 每个 symbol 取前 5 条（与原 _events_for_symbol limit 5 一致）
+    for sid, event_list in events_map.items():
+        events_map[sid] = event_list[:5]
+    return events_map
+
+
 def _summary_from_snapshot(db: Session, snapshot: NewsSnapshot, symbol: Symbol, days: int) -> NewsSymbolSummary:
     events = _events_for_symbol(db, symbol.id, days)
+    latest = events[0] if events else None
+    return NewsSymbolSummary(
+        symbol_id=symbol.id,
+        symbol=symbol.symbol,
+        name=symbol.name,
+        message_score=snapshot.message_score,
+        sentiment=snapshot.sentiment,
+        risk_level=snapshot.risk_level,
+        confidence=snapshot.confidence,
+        positive_count=snapshot.positive_count,
+        negative_count=snapshot.negative_count,
+        risk_count=snapshot.risk_count,
+        latest_title=latest.title if latest is not None else snapshot.summary,
+        events=[_event_read(event) for event in events],
+    )
+
+
+def _summary_from_snapshot_batched(
+    snapshot: NewsSnapshot,
+    symbol: Symbol,
+    events: list[NewsEvent],
+) -> NewsSymbolSummary:
+    """批量版本：用预加载的 events 构建 summary，不再触发 DB 查询。"""
     latest = events[0] if events else None
     return NewsSymbolSummary(
         symbol_id=symbol.id,
@@ -437,18 +507,50 @@ def get_latest_news(
                 break
 
     summaries: list[NewsSymbolSummary] = []
-    for symbol_id in ordered_ids:
-        stmt = (
+    if not ordered_ids:
+        return {
+            "scope": "latest",
+            "days": days,
+            "symbols_total": 0,
+            "macro": _latest_macro_summary(db, days),
+            "symbols": summaries,
+            "failed": [],
+        }
+
+    # 风控加固：批量预加载 snapshots / symbols / events，避免循环内 3N 次 DB 查询
+    # 1. 批量取每个 symbol 的最新 snapshot（按 created_at desc, id desc）
+    snapshot_rows = (
+        db.execute(
             select(NewsSnapshot)
-            .where(NewsSnapshot.symbol_id == symbol_id, NewsSnapshot.created_at >= cutoff)
-            .order_by(desc(NewsSnapshot.created_at), desc(NewsSnapshot.id))
+            .where(NewsSnapshot.symbol_id.in_(ordered_ids), NewsSnapshot.created_at >= cutoff)
+            .order_by(NewsSnapshot.symbol_id.asc(), desc(NewsSnapshot.created_at), desc(NewsSnapshot.id))
         )
-        if portfolio_id is not None:
-            stmt = stmt.where(NewsSnapshot.portfolio_id == portfolio_id)
-        snapshot = db.execute(stmt).scalars().first()
-        symbol = db.get(Symbol, symbol_id)
+        .scalars()
+        .all()
+    )
+    if portfolio_id is not None:
+        snapshot_rows = [s for s in snapshot_rows if s.portfolio_id == portfolio_id]
+    snapshot_map: dict[int, NewsSnapshot] = {}
+    for snapshot in snapshot_rows:
+        # 按 symbol_id asc + created_at desc + id desc 排序，第一次出现的即最新
+        if snapshot.symbol_id not in snapshot_map:
+            snapshot_map[snapshot.symbol_id] = snapshot
+
+    # 2. 批量取所有 symbols
+    symbol_rows = (
+        db.execute(select(Symbol).where(Symbol.id.in_(ordered_ids))).scalars().all()
+    )
+    symbol_map: dict[int, Symbol] = {s.id: s for s in symbol_rows}
+
+    # 3. 批量取每个 symbol 的 NewsEvent（前 5 条）
+    events_map = _build_events_map_for_symbols(db, ordered_ids, days)
+
+    for symbol_id in ordered_ids:
+        snapshot = snapshot_map.get(symbol_id)
+        symbol = symbol_map.get(symbol_id)
         if snapshot is not None and symbol is not None:
-            summaries.append(_summary_from_snapshot(db, snapshot, symbol, days))
+            events = events_map.get(symbol_id, [])
+            summaries.append(_summary_from_snapshot_batched(snapshot, symbol, events))
 
     return {
         "scope": "latest",

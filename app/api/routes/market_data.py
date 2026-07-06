@@ -181,12 +181,28 @@ def import_daily_bars(payload: DailyBarImportRequest, db: Session = Depends(get_
     if symbol is None:
         raise HTTPException(status_code=404, detail="Symbol not found")
 
+    # 风控加固：批量预加载已存在的 trade_date，避免循环内 N+1 查询
+    trade_dates = [item.trade_date for item in payload.bars]
+    existing_dates: set = set()
+    if trade_dates:
+        existing_dates = set(db.execute(
+            select(DailyBar.trade_date).where(
+                DailyBar.symbol_id == payload.symbol_id,
+                DailyBar.trade_date.in_(trade_dates),
+            )
+        ).scalars().all())
+
     imported = 0
     for item in payload.bars:
-        existing = db.execute(
-            select(DailyBar).where(DailyBar.symbol_id == payload.symbol_id, DailyBar.trade_date == item.trade_date)
-        ).scalars().first()
-        if existing is None:
+        if item.trade_date in existing_dates:
+            # 已存在则更新（需查一次完整对象）— 这种情况只对存量更新场景
+            existing = db.execute(
+                select(DailyBar).where(
+                    DailyBar.symbol_id == payload.symbol_id,
+                    DailyBar.trade_date == item.trade_date,
+                )
+            ).scalars().first()
+        else:
             existing = DailyBar(symbol_id=payload.symbol_id, trade_date=item.trade_date)
             db.add(existing)
             imported += 1

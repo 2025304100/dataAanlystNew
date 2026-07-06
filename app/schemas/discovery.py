@@ -47,6 +47,7 @@ class DiscoveryTaskRead(BaseModel):
     symbol_limit: int | None = None
     scan_run_id: int | None = None
     executable_count: int = 0
+    cleanup_count: int = 0
     news_symbols_total: int = 0
     errors: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
@@ -54,7 +55,9 @@ class DiscoveryTaskRead(BaseModel):
     paused_at: datetime | None = None
     cancelled_at: datetime | None = None
     finished_at: datetime | None = None
+    updated_at: datetime | None = None
     can_resume: bool = False
+    can_retry: bool = False
 
 
 class DiscoveryScopeStatsRead(BaseModel):

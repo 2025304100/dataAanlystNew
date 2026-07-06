@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import alerts, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, journals, macro, market_data, market_events, news, portfolios, scans, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists
+from app.api.routes import alerts, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, journals, macro, market_data, market_events, news, portfolios, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists
 from app.core.config import settings
 
 
@@ -24,5 +24,10 @@ api_router.include_router(system.router, tags=["system"])
 api_router.include_router(db_config.router, tags=["settings"])
 api_router.include_router(custom_indicators.router, tags=["settings"])
 api_router.include_router(discovery_plans.router, tags=["settings"])
+api_router.include_router(scoring_configs.router, tags=["settings"])
+# P2：外部数据同步（估值/资金流/ETF 指标）
+api_router.include_router(external_data.router, tags=["external-data"])
+# P2-E：第三方接口管理（状态查看 + 防风控策略配置）
+api_router.include_router(akshare_apis.router, tags=["external-data"])
 api_router.include_router(backtest.router, tags=["backtest"])
 api_router.include_router(alerts.router, tags=["alerts"])

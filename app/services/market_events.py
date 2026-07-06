@@ -288,9 +288,11 @@ def delete_market_event(db: Session, event_id: int) -> bool:
 
 def _fetch_from_ak(fetcher: Callable[[], Any], source: str, limit: int = 40) -> list[dict]:
     events: list[dict] = []
+    # 风控加固：用 call_akshare_with_retry 包装，给瞬时风控一次重试机会
+    from app.services.akshare_utils import call_akshare_with_retry
     try:
         with quiet_akshare_output():
-            frame = fetcher()
+            frame = call_akshare_with_retry(fetcher, api_key=source, max_attempts=2)
         if frame is None or getattr(frame, "empty", True):
             return events
         for row in frame.head(limit).to_dict("records"):

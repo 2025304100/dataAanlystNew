@@ -18,8 +18,9 @@ from app.services.discovery_tasks import (
     list_discovery_tasks,
     pause_discovery_task,
     resume_discovery_task,
+    retry_discovery_task,
 )
-from app.services.discovery_results import evaluate_discovery_indicators, update_discovery_result, update_discovery_symbol
+from app.services.discovery_results import evaluate_discovery_indicators, get_latest_discovery_candidates, update_discovery_result, update_discovery_symbol
 from app.services.discovery_cleanup import cleanup_expired_discovery_results
 
 
@@ -29,6 +30,20 @@ router = APIRouter()
 @router.post("/discovery/tasks", response_model=DiscoveryTaskRead)
 def create_task(payload: DiscoveryTaskCreate):
     return create_discovery_task(payload)
+
+
+@router.get("/discovery/latest-candidates")
+def get_latest_candidates(
+    min_score: float = Query(default=0.0, ge=0.0, le=100.0),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """获取最新一次挖掘任务的全量候选（不依赖 executable 过滤）。
+
+    挖掘结果展示不依赖 portfolio 交易约束，返回所有扫描到的标的（含 hold/reduce），
+    让用户看到全貌后再决定。每标的 1 条（取 quality 排名记录，去重）。
+    """
+    return get_latest_discovery_candidates(db, min_score=min_score, limit=limit)
 
 
 @router.get("/discovery/tasks", response_model=list[DiscoveryTaskRead])
@@ -74,6 +89,17 @@ def cancel_task(task_id: str):
         return cancel_discovery_task(task_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/discovery/tasks/{task_id}/retry", response_model=DiscoveryTaskRead)
+def retry_task(task_id: str):
+    try:
+        return retry_discovery_task(task_id)
+    except ValueError as exc:
+        # 任务不存在返回 404；并发冲突返回 409
+        if "not found" in str(exc).lower():
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.patch("/discovery/results/{scan_result_id}")

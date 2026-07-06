@@ -3,7 +3,8 @@ import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
 import { OPERATOR_LABELS } from "../constants/conditionFields";
 import { t, template, regionShortLabel, assetTypeLabel, stageLabel, actionLabel, DOT } from "../i18n";
-import { Checkbox, Select, Button, Tag, Space, InputNumber, Switch, Input, Empty, Table } from "antd";
+import { Checkbox, Select, Button, Tag, Space, InputNumber, Switch, Input, Empty, Table, Collapse, Tooltip, Dropdown, Alert, Modal } from "antd";
+import { MoreOutlined, WarningOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { CustomIndicator, DiscoveryIndicatorEvaluation, DiscoveryPlan as StoredDiscoveryPlan, DiscoveryPlanFilter as StoredDiscoveryPlanFilter, WorkbenchCandidate } from "../types";
 import {
@@ -195,9 +196,43 @@ function indicatorExpectedValue(filter: IndicatorFilter, indicator?: CustomIndic
   return indicator?.value_type === "number" ? filter.number_value : filter.boolean_value;
 }
 
+// 后端 errors 字段为 list[dict]（含 scope/symbol/error/traceback 等键），前端类型标注为 string[]，需兼容两种形态。
+function formatErrorItem(err: unknown): { title: string; detail?: string; scope?: string; time?: string } {
+  if (typeof err === "string") return { title: err };
+  if (err && typeof err === "object") {
+    const e = err as Record<string, any>;
+    const title = String(e.error ?? e.message ?? e.detail ?? JSON.stringify(err));
+    const detail = e.traceback ? String(e.traceback) : undefined;
+    const scope = e.scope ? String(e.scope) : e.symbol ? String(e.symbol) : undefined;
+    const time = e.time ? String(e.time) : e.timestamp ? String(e.timestamp) : undefined;
+    return { title, detail, scope, time };
+  }
+  return { title: String(err) };
+}
+
+// P1：解析 candidate 的维度得分 + 配置快照，用于"按维度排序"和"为什么入选"
+function parseDimensionScores(item: WorkbenchCandidate): Array<{ key: string; name: string; score: number }> {
+  if (!item.dimension_scores_json) return [];
+  let dimMap: Record<string, number> = {};
+  let config: { dimensions?: Array<{ key: string; name: string; enabled?: boolean }> } | null = null;
+  try {
+    dimMap = JSON.parse(item.dimension_scores_json);
+    if (item.scoring_config_snapshot_json) config = JSON.parse(item.scoring_config_snapshot_json);
+  } catch { return []; }
+  if (!config || !config.dimensions) return [];
+  return config.dimensions
+    .filter((d) => d.enabled !== false && dimMap[d.key] != null)
+    .map((d) => ({ key: d.key, name: d.name || d.key, score: Number(dimMap[d.key]) || 0 }));
+}
+
+// 维度强项标签：取分数 >=65 的前 2 个维度
+function dimensionStrengthTags(item: WorkbenchCandidate): Array<{ name: string; score: number }> {
+  const dims = parseDimensionScores(item);
+  return dims.filter((d) => d.score >= 65).sort((a, b) => b.score - a.score).slice(0, 2);
+}
+
 export default function Discovery() {
   const ctx = useApp();
-  const workbench = ctx.workbench;
   const task = ctx.discoveryTask;
   const scopeStats = ctx.discoveryScopeStats;
 
@@ -205,15 +240,19 @@ export default function Discovery() {
   const [minScore, setMinScore] = useState(55);
   const [dataMode, setDataMode] = useState("cached");
   const [coverageHint, setCoverageHint] = useState<string | null>(null);
+  // P1：当前 scope 对应的激活评分预设（用于在挖掘面板顶部展示）
+  const [activePreset, setActivePreset] = useState<{ preset_key: string; name: string; version: number; asset_type: string } | null>(null);
   const [batchSize, setBatchSize] = useState(20);
   const [delay, setDelay] = useState(0.25);
   const [warningDays, setWarningDays] = useState(3);
   const [validDays, setValidDays] = useState(5);
   const [includeNews, setIncludeNews] = useState(true);
+  const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [pausing, setPausing] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [rowActionLoading, setRowActionLoading] = useState<Record<number, { watchlist?: boolean; freeze?: boolean; update?: boolean }>>({});
@@ -229,6 +268,59 @@ export default function Discovery() {
   const [selectedPlanId, setSelectedPlanId] = useState<number | undefined>();
   const [planName, setPlanName] = useState("");
   const [filterStateReady, setFilterStateReady] = useState(false);
+  // 挖掘结果独立加载：不依赖 workbench.candidates（executable 过滤），
+  // 直接查 /discovery/latest-candidates 获取全量候选（含 hold/reduce），让用户看到全貌
+  const [discoveryCandidates, setDiscoveryCandidates] = useState<WorkbenchCandidate[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  // 卡死检测：任务 running 但 updated_at 长时间未变化时提示用户
+  const [staleWarning, setStaleWarning] = useState(false);
+
+  // 卡死检测 effect：任务 running 且 updated_at 超 2 分钟未变化时显示警告
+  useEffect(() => {
+    if (!task || task.status !== "running" || !task.updated_at) {
+      setStaleWarning(false);
+      return;
+    }
+    const lastUpdate = new Date(task.updated_at).getTime();
+    const check = () => setStaleWarning(Date.now() - lastUpdate > 120000); // 2 分钟阈值
+    check();
+    // 每 30s 复检一次（与轮询节奏匹配）
+    const timer = setInterval(check, 30000);
+    return () => clearInterval(timer);
+  }, [task?.id, task?.status, task?.updated_at]);
+
+  const reloadDiscoveryCandidates = useCallback(() => {
+    setCandidatesLoading(true);
+    api.getLatestDiscoveryCandidates(minScore, 50)
+      .then((rows) => setDiscoveryCandidates(rows as WorkbenchCandidate[]))
+      .catch(() => setDiscoveryCandidates([]))
+      .finally(() => setCandidatesLoading(false));
+  }, [minScore]);
+
+  // 初次加载 + minScore 变化 + 任务状态变化时刷新
+  useEffect(() => {
+    reloadDiscoveryCandidates();
+  }, [reloadDiscoveryCandidates]);
+
+  // P1：根据当前 scope 加载对应的激活评分预设（scope -> asset_type 映射）
+  useEffect(() => {
+    const assetType = scope.endsWith("etf") ? "etf" : "stock";
+    let cancelled = false;
+    api.getActiveScoringConfig(assetType as "stock" | "etf")
+      .then((cfg) => {
+        if (cancelled) return;
+        setActivePreset(cfg ? { preset_key: cfg.preset_key, name: cfg.name, version: cfg.version, asset_type: cfg.asset_type } : null);
+      })
+      .catch(() => setActivePreset(null));
+    return () => { cancelled = true; };
+  }, [scope]);
+
+  // 任务完成（done）时自动刷新结果
+  useEffect(() => {
+    if (task?.status === "done") {
+      reloadDiscoveryCandidates();
+    }
+  }, [task?.status, reloadDiscoveryCandidates]);
 
   const indicatorMap = useMemo(() => {
     return customIndicators.reduce<Record<string, CustomIndicator>>((acc, item) => {
@@ -272,11 +364,11 @@ export default function Discovery() {
   const canPause = isTaskActive;
   const canResume = task?.status === "paused" && !!task?.can_resume;
   const canCancel = !!task && ["queued", "running", "paused"].includes(task.status);
+  const canRetry = !!task && ["failed", "cancelled", "expired"].includes(task.status) && !!task?.can_retry;
   const canStart = !isTaskActive;
 
   const sortedResults = useMemo(() => {
-    if (!workbench) return [];
-    return workbench.candidates
+    return discoveryCandidates
       .map((item) => withFinalOpportunityScore(item, ctx.newsSnapshot))
       .sort((a, b) => {
         const aFrozen = a.is_frozen ? 1 : 0;
@@ -287,7 +379,7 @@ export default function Discovery() {
         if (bScore !== aScore) return bScore - aScore;
         return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
       });
-  }, [workbench, ctx.newsSnapshot]);
+  }, [discoveryCandidates, ctx.newsSnapshot]);
 
   const candidatePools = useMemo(() => {
     const all = sortedResults;
@@ -378,6 +470,15 @@ export default function Discovery() {
     [activeFilters],
   );
 
+  // 指标求值：依赖 scanResultIds（字符串化）和 indicatorKeys，避免 ctx 变化触发死循环
+  const evaluateDeps = useMemo(() => {
+    const ids = sortedResults
+      .map((item: any) => Number(item.scan_result_id ?? item.id))
+      .filter((id: number) => id > 0)
+      .join(",");
+    return `${ids}|${requiredIndicatorKeys.join(",")}`;
+  }, [sortedResults, requiredIndicatorKeys]);
+
   useEffect(() => {
     if (!requiredIndicatorKeys.length || !sortedResults.length) {
       setIndicatorValues({});
@@ -406,7 +507,9 @@ export default function Discovery() {
     }).finally(() => {
       setIndicatorLoading(false);
     });
-  }, [ctx, requiredIndicatorKeys, sortedResults]);
+    // 用 evaluateDeps 字符串作为依赖，避免 sortedResults/requiredIndicatorKeys 引用变化但内容不变时触发死循环
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evaluateDeps]);
 
   const filteredPool = useMemo(() => {
     if (!activeFilters.length) return currentPool;
@@ -427,7 +530,7 @@ export default function Discovery() {
     ? t("dpHitIndicator")
     : t("freshness");
 
-  const resultMeta = workbench ? `${t("candidates")}: ${filteredPool.length}/${currentPool.length}` : "-";
+  const resultMeta = (discoveryCandidates.length > 0 || !candidatesLoading) ? `${t("candidates")}: ${filteredPool.length}/${currentPool.length}` : "-";
 
   const setRowLoading = (symbolId: number, key: "watchlist" | "freeze" | "update", value: boolean) => {
     setRowActionLoading((prev) => ({
@@ -580,27 +683,40 @@ export default function Discovery() {
     }
   }, [ctx]);
 
+  const handleRetry = useCallback(async () => {
+    setRetrying(true);
+    try {
+      await ctx.sendDiscoveryTaskCommand("retry");
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
+    } finally {
+      setRetrying(false);
+    }
+  }, [ctx]);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await ctx.refreshDiscoveryTasks();
+      reloadDiscoveryCandidates();
     } catch (error: any) {
       ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
     } finally {
       setRefreshing(false);
     }
-  }, [ctx]);
+  }, [ctx, reloadDiscoveryCandidates]);
 
   const handleCleanup = useCallback(async () => {
     setCleaning(true);
     try {
       await ctx.cleanupExpiredDiscoveryResults();
+      reloadDiscoveryCandidates();
     } catch (error: any) {
       ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
     } finally {
       setCleaning(false);
     }
-  }, [ctx]);
+  }, [ctx, reloadDiscoveryCandidates]);
 
   const handleAddToWatchlist = useCallback(async (symbolId: number) => {
     setRowLoading(symbolId, "watchlist", true);
@@ -693,22 +809,57 @@ export default function Discovery() {
     const symbolColumn = {
       title: t("symbol"),
       key: "symbol",
-      render: (_: unknown, item: WorkbenchCandidate) => (
-        <div>
-          <div className="symbol-title">
-            <span className="symbol-code">{item.symbol}</span>
-            <span className="symbol-name">{item.name}</span>
+      render: (_: unknown, item: WorkbenchCandidate) => {
+        // P1："为什么入选"标签 = 维度强项（分数>=65 的前 2 个维度）
+        const strengthTags = dimensionStrengthTags(item);
+        return (
+          <div>
+            <div className="symbol-title">
+              <span className="symbol-code">{item.symbol}</span>
+              <span className="symbol-name">{item.name}</span>
+            </div>
+            <div className="item-subline">{joinParts([regionShortLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
+            {strengthTags.length > 0 && (
+              <div className="item-reason-tags">
+                {strengthTags.map((tag, tagIndex) => (
+                  <Tooltip key={tagIndex} title={`${tag.name}: ${tag.score.toFixed(0)}`}>
+                    <span className="reason-tag" style={{ backgroundColor: "rgba(15, 118, 110, 0.12)", color: "#0f766e", borderColor: "rgba(15, 118, 110, 0.3)" }}>
+                      {tag.name} {tag.score.toFixed(0)}
+                    </span>
+                  </Tooltip>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="item-subline">{joinParts([regionShortLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
-          {(item.reason_tags ?? []).length > 0 && (
-            <div className="item-reason-tags">
-              {(item.reason_tags ?? []).slice(0, 3).map((tag: string, tagIndex: number) => (
-                <span key={tagIndex} className="reason-tag">{tag}</span>
+        );
+      },
+    };
+    // P1：维度得分列 - 展示各维度紧凑视图，支持按最高维度分排序
+    const dimensionColumn = {
+      title: t("scDimensionColumn"),
+      key: "dimension_scores",
+      width: 160,
+      sorter: (a: WorkbenchCandidate, b: WorkbenchCandidate) => {
+        const aMax = Math.max(0, ...parseDimensionScores(a).map((d) => d.score));
+        const bMax = Math.max(0, ...parseDimensionScores(b).map((d) => d.score));
+        return aMax - bMax;
+      },
+      render: (_: unknown, item: WorkbenchCandidate) => {
+        const dims = parseDimensionScores(item).sort((x, y) => y.score - x.score).slice(0, 3);
+        if (dims.length === 0) return <span style={{ color: "#ccc" }}>-</span>;
+        return (
+          <Tooltip title={dims.map((d) => `${d.name}: ${d.score.toFixed(0)}`).join(" / ")}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {dims.map((d) => (
+                <div key={d.key} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                  <span style={{ color: "#666" }}>{d.name}</span>
+                  <span style={{ color: d.score >= 65 ? "#0f766e" : d.score >= 45 ? "#d97706" : "#b42318", fontWeight: 600 }}>{d.score.toFixed(0)}</span>
+                </div>
               ))}
             </div>
-          )}
-        </div>
-      ),
+          </Tooltip>
+        );
+      },
     };
     const indicatorColumn = {
       title: indicatorColumnTitle,
@@ -766,12 +917,12 @@ export default function Discovery() {
     const operationsColumn = {
       title: t("operations"),
       key: "operations",
-      width: 360,
+      width: 180,
       render: (_: unknown, item: WorkbenchCandidate) => {
         const inWatchlist = ctx.primaryWatchlistSymbolIds.has(item.symbol_id);
         const resultId = Number(item.scan_result_id ?? item.id);
         return (
-          <Space size="small" wrap onClick={(e) => e.stopPropagation()}>
+          <Space size="small" onClick={(e) => e.stopPropagation()}>
             <Button
               size="small"
               loading={rowActionLoading[item.symbol_id]?.watchlist}
@@ -781,26 +932,30 @@ export default function Discovery() {
             >
               {inWatchlist ? t("discoveryInWatchlist") : t("discoveryAddWatchlist")}
             </Button>
-            <Button
-              size="small"
-              onClick={() => handleRunBacktest(item.symbol_id)}
+            <Dropdown
+              menu={{
+                items: [
+                  { key: "backtest", label: t("discoveryRunBacktest") },
+                  { key: "journal", label: t("discoveryCreateJournal") },
+                  { type: "divider" as const },
+                  {
+                    key: "freeze",
+                    label: item.is_frozen ? t("unfreeze") : t("freeze"),
+                    disabled: !resultId || !!rowActionLoading[item.symbol_id]?.freeze,
+                  },
+                ],
+                onClick: ({ key }: { key: string }) => {
+                  if (key === "backtest") handleRunBacktest(item.symbol_id);
+                  else if (key === "journal") handleCreateJournal(item.symbol_id, item);
+                  else if (key === "freeze" && resultId) handleToggleFreeze(resultId, !!item.is_frozen, item.symbol_id);
+                },
+              }}
+              trigger={["click"]}
             >
-              {t("discoveryRunBacktest")}
-            </Button>
-            <Button
-              size="small"
-              onClick={() => handleCreateJournal(item.symbol_id, item)}
-            >
-              {t("discoveryCreateJournal")}
-            </Button>
-            <Button
-              size="small"
-              loading={rowActionLoading[item.symbol_id]?.freeze}
-              onClick={() => resultId && handleToggleFreeze(resultId, !!item.is_frozen, item.symbol_id)}
-              aria-label={item.is_frozen ? t("unfreeze") : t("freeze")}
-            >
-              {item.is_frozen ? t("unfreeze") : t("freeze")}
-            </Button>
+              <Button size="small" aria-label={t("discoveryMoreActions")}>
+                {t("discoveryMoreActions")} <MoreOutlined />
+              </Button>
+            </Dropdown>
           </Space>
         );
       },
@@ -848,6 +1003,7 @@ export default function Discovery() {
         render: (v: number) => score(v),
         width: 90,
       },
+      dimensionColumn,
       {
         title: t("stage"),
         dataIndex: "stage",
@@ -901,6 +1057,14 @@ export default function Discovery() {
               ]} />
             </label>
             <label className="inline-control">
+              <span>{t("scDiscoveryPresetLabel")}</span>
+              <Tooltip title={t("scHistActivePresetTip")}>
+                <Tag color={scope.endsWith("etf") ? "purple" : "blue"} style={{ margin: 0 }}>
+                  {activePreset ? `${activePreset.name} v${activePreset.version}` : t("scHistPresetUnknown")}
+                </Tag>
+              </Tooltip>
+            </label>
+            <label className="inline-control">
               <span>{t("minOpportunityScore")}</span>
               <InputNumber min={0} max={100} value={minScore} onChange={(value) => setMinScore(value ?? 0)} />
             </label>
@@ -910,22 +1074,6 @@ export default function Discovery() {
                 { value: "cached", label: t("discoveryModeCached") },
                 { value: "sync", label: t("discoveryModeSync") },
               ]} />
-            </label>
-            <label className="inline-control">
-              <span>{t("discoveryBatchSize")}</span>
-              <InputNumber min={1} value={batchSize} onChange={(value) => setBatchSize(value ?? 1)} />
-            </label>
-            <label className="inline-control">
-              <span>{t("discoveryDelay")}</span>
-              <InputNumber min={0} step={0.05} value={delay} onChange={(value) => setDelay(value ?? 0)} />
-            </label>
-            <label className="inline-control">
-              <span>{t("warningDays")}</span>
-              <InputNumber min={1} value={warningDays} onChange={(value) => setWarningDays(value ?? 1)} />
-            </label>
-            <label className="inline-control">
-              <span>{t("validDays")}</span>
-              <InputNumber min={1} value={validDays} onChange={(value) => setValidDays(value ?? 1)} />
             </label>
             <label className="discovery-check">
               <Checkbox checked={includeNews} onChange={(event) => setIncludeNews(event.target.checked)}>
@@ -937,10 +1085,78 @@ export default function Discovery() {
               <Button loading={pausing} onClick={handlePause} disabled={!canPause}>{t("pauseDiscovery")}</Button>
               <Button loading={resuming} onClick={handleResume} disabled={!canResume}>{t("resumeDiscovery")}</Button>
               <Button danger loading={cancelling} onClick={handleCancel} disabled={!canCancel}>{t("cancelDiscovery")}</Button>
+              {canRetry && (
+                <Button type="primary" loading={retrying} onClick={handleRetry}>{t("retryDiscovery")}</Button>
+              )}
               <Button loading={refreshing} onClick={handleRefresh}>{t("refreshResults")}</Button>
               <Button loading={cleaning} onClick={handleCleanup}>{t("cleanupExpired")}</Button>
             </div>
           </div>
+
+          {dataMode === "sync" && (
+            <Alert
+              type="warning"
+              showIcon
+              icon={<WarningOutlined />}
+              message={t("discoveryModeSyncAlert")}
+              style={{ marginTop: 8 }}
+            />
+          )}
+
+          <Collapse
+            ghost
+            items={[{
+              key: "advanced",
+              label: t("discoveryAdvancedSettings"),
+              children: (
+                <div className="discovery-control-bar">
+                  <Tooltip title={t("discoveryBatchSizeHint")}>
+                    <label className="inline-control">
+                      <span>{t("discoveryBatchSize")}</span>
+                      <InputNumber min={1} value={batchSize} onChange={(value) => setBatchSize(value ?? 1)} />
+                    </label>
+                  </Tooltip>
+                  <Tooltip title={t("discoveryDelayHint")}>
+                    <label className="inline-control">
+                      <span>{t("discoveryDelay")}</span>
+                      <InputNumber min={0} step={0.05} value={delay} onChange={(value) => setDelay(value ?? 0)} />
+                    </label>
+                  </Tooltip>
+                  <Tooltip title={t("warningDaysHint")}>
+                    <label className="inline-control">
+                      <span>{t("warningDays")}</span>
+                      <InputNumber min={1} value={warningDays} onChange={(value) => setWarningDays(value ?? 1)} />
+                    </label>
+                  </Tooltip>
+                  <Tooltip title={t("validDaysHint")}>
+                    <label className="inline-control">
+                      <span>{t("validDays")}</span>
+                      <InputNumber min={1} value={validDays} onChange={(value) => setValidDays(value ?? 1)} />
+                    </label>
+                  </Tooltip>
+                </div>
+              ),
+            }]}
+          />
+
+          {staleWarning && task && (
+            <Alert
+              type="warning"
+              message="任务可能卡死"
+              description="已 2 分钟无进度更新，建议点击「取消」后重新开始任务。系统会在 10 分钟后自动中断。"
+              showIcon
+              style={{ marginBottom: 12 }}
+              action={
+                <Button
+                  size="small"
+                  loading={cancelling}
+                  onClick={handleCancel}
+                >
+                  {t("cancelDiscovery")}
+                </Button>
+              }
+            />
+          )}
 
           <div className="discovery-progress">
             <div className="discovery-progress-head">
@@ -953,6 +1169,13 @@ export default function Discovery() {
                 <span key={step} data-discovery-step={step} className={stepClassName(task, step)}>{t(STEP_LABEL_KEYS[step])}</span>
               ))}
             </div>
+            {task && Array.isArray(task.errors) && task.errors.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <Button size="small" danger type="link" onClick={() => setErrorModalOpen(true)} aria-label={t("discoveryErrorDetails")}>
+                  {t("discoveryErrorDetails")}（{task.errors.length}）
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -962,7 +1185,7 @@ export default function Discovery() {
           <div className="metric-card"><span className="metric-label">{t("discoveryScope")}</span><span className="metric-value">{scopeLabel(scope)}</span><span className="metric-note">{scope}</span></div>
           <div className="metric-card"><span className="metric-label">{t("discoveryUniverseTotal")}</span><span className="metric-value">{scopeStats?.total_symbols ?? "-"}</span><span className="metric-note">{t("items")}</span></div>
           <div className="metric-card"><span className="metric-label">{t("discoveryCachedPool")}</span><span className="metric-value">{scopeStats?.cached_symbols ?? "-"}</span><span className="metric-note">{t("items")}</span></div>
-          <div className="metric-card"><span className="metric-label">{t("candidates")}</span><span className="metric-value">{workbench?.candidates.length ?? 0}</span><span className="metric-note">{t("items")}</span></div>
+          <div className="metric-card"><span className="metric-label">{t("candidates")}</span><span className="metric-value">{discoveryCandidates.length}</span><span className="metric-note">{t("items")}</span></div>
           <div className="metric-card"><span className="metric-label">{t("discoveryCurrentRun")}</span><span className="metric-value">{task ? `${task.processed}/${task.total}` : "0/0"}</span><span className="metric-note">{t("items")}</span></div>
           <div className="metric-card"><span className="metric-label">{t("messageScore")}</span><span className="metric-value">{ctx.newsSnapshot?.symbols_total ?? 0}</span><span className="metric-note">{t("items")}</span></div>
         </div>
@@ -996,24 +1219,34 @@ export default function Discovery() {
             ))}
           </div>
 
-          <div className="discovery-control-bar" style={{ marginTop: 12, alignItems: "flex-end" }}>
-            <label className="inline-control" style={{ minWidth: 220 }}>
-              <span>{t("dpSavedPlans")}</span>
+          <div className="discovery-control-bar discovery-control-bar--plan" style={{ marginTop: 12, alignItems: "flex-end" }}>
+            <label className="inline-control discovery-plan-control" style={{ width: 200 }}>
+              <Tooltip title={t("dpSavedPlansTip")}>
+                <span>{t("dpSavedPlans")} <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} /></span>
+              </Tooltip>
               <Select allowClear placeholder={t("dpSelectPlan")} value={selectedPlanId} onChange={(value) => handleLoadPlan(value)} loading={planLoading} options={savedPlans.map((item) => ({ label: item.name || String(item.id), value: item.id }))} />
             </label>
-            <label className="inline-control" style={{ minWidth: 240 }}>
-              <span>{t("dpPlanName")}</span>
+            <label className="inline-control discovery-plan-control" style={{ width: 320 }}>
+              <Tooltip title={t("dpPlanNameTip")}>
+                <span>{t("dpPlanName")} <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} /></span>
+              </Tooltip>
               <Input value={planName} onChange={(event) => setPlanName(event.target.value)} placeholder={t("dpNamePlaceholder")} />
             </label>
-            <label className="inline-control">
-              <span>{t("dpLogic")}</span>
+            <label className="inline-control discovery-plan-control" style={{ width: 130 }}>
+              <Tooltip title={t("dpLogicTip")}>
+                <span>{t("dpLogic")} <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} /></span>
+              </Tooltip>
               <Select value={filterLogic} onChange={(value) => setFilterLogic(value)} options={[{ label: "AND", value: "AND" }, { label: "OR", value: "OR" }]} />
             </label>
             <div className="discovery-actions">
-              <Button onClick={handleSavePlan}>{t("dpSavePlan")}</Button>
+              <Tooltip title={t("dpSavePlanTip")}>
+                <Button onClick={handleSavePlan}>{t("dpSavePlan")}</Button>
+              </Tooltip>
               <Button onClick={handleDeletePlan} disabled={!selectedPlanId}>{t("dpDeletePlan")}</Button>
               <Button onClick={handleResetFilters}>{t("dpReset")}</Button>
-              <Button onClick={handleAddFilter}>{t("dpAddRule")}</Button>
+              <Tooltip title={t("dpAddRuleTip")}>
+                <Button onClick={handleAddFilter}>{t("dpAddRule")}</Button>
+              </Tooltip>
             </div>
           </div>
 
@@ -1024,16 +1257,22 @@ export default function Discovery() {
               return (
                 <div key={filter.id} className="discovery-control-bar" style={{ alignItems: "flex-end", marginTop: 0 }}>
                   <label className="inline-control" style={{ minWidth: 240 }}>
-                    <span>{template("dpRuleN", { n: index + 1 })}</span>
+                    <Tooltip title={t("dpRuleTip")}>
+                      <span>{template("dpRuleN", { n: index + 1 })} <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} /></span>
+                    </Tooltip>
                     <Select allowClear placeholder={t("dpSelectIndicator")} value={filter.indicator_key} onChange={(value) => handleIndicatorChange(filter.id, value)} options={customIndicators.map((item) => ({ label: item.name, value: item.key }))} />
                   </label>
                   <label className="inline-control">
-                    <span>{t("dpOperator")}</span>
+                    <Tooltip title={t("dpOperatorTip")}>
+                      <span>{t("dpOperator")} <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} /></span>
+                    </Tooltip>
                     <Select value={filter.operator} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, operator: value }))} options={operatorOptions.map((item) => ({ label: OPERATOR_LABELS[item] ?? item, value: item }))} disabled={!indicator} />
                   </label>
                   {indicator?.value_type === "number" ? (
                     <label className="inline-control">
-                      <span>{t("dpThreshold")}</span>
+                      <Tooltip title={t("dpThresholdTip")}>
+                        <span>{t("dpThreshold")} <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} /></span>
+                      </Tooltip>
                       <InputNumber value={filter.number_value} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, number_value: value ?? 0 }))} />
                     </label>
                   ) : (
@@ -1089,6 +1328,43 @@ export default function Discovery() {
           </div>
         </div>
       </section>
+
+      <Modal
+        title={t("discoveryErrorTitle")}
+        open={errorModalOpen}
+        onCancel={() => setErrorModalOpen(false)}
+        footer={<Button onClick={() => setErrorModalOpen(false)}>{t("close")}</Button>}
+        width={720}
+      >
+        {task && Array.isArray(task.errors) && task.errors.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: "60vh", overflow: "auto" }}>
+            {task.errors.map((err: unknown, idx: number) => {
+              const item = formatErrorItem(err);
+              return (
+                <div key={idx} style={{ border: "1px solid #f0f0f0", borderRadius: 6, padding: 12 }}>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
+                    {item.scope && <Tag color="blue">{t("discoveryErrorScope")}: {item.scope}</Tag>}
+                    {item.time && <Tag>{t("discoveryErrorTime")}: {item.time}</Tag>}
+                  </div>
+                  <div style={{ fontWeight: 600, color: "#b42318", wordBreak: "break-word" }}>
+                    {t("discoveryErrorMsg")}: {item.title}
+                  </div>
+                  {item.detail && (
+                    <details style={{ marginTop: 8 }}>
+                      <summary style={{ cursor: "pointer", color: "#6b7280" }}>{t("discoveryErrorTraceback")}</summary>
+                      <pre style={{ marginTop: 8, padding: 8, background: "#f7f7f7", borderRadius: 4, fontSize: 12, overflow: "auto", maxHeight: 240, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                        {item.detail}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <Empty description={t("discoveryErrorEmpty")} />
+        )}
+      </Modal>
     </div>
   );
 }

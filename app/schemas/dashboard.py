@@ -38,6 +38,12 @@ class WorkbenchCandidate(BaseModel):
     warning_days: int | None = None
     valid_days: int | None = None
     is_frozen: bool = False
+    # P1：评分配置快照字段（用于前端按维度排序和"为什么入选"展示）
+    scoring_preset_key: str | None = None
+    scoring_preset_name: str | None = None
+    scoring_config_version: int | None = None
+    dimension_scores_json: str | None = None
+    scoring_config_snapshot_json: str | None = None
 
 
 class WorkbenchScore(BaseModel):

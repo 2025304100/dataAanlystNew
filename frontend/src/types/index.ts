@@ -37,6 +37,15 @@ export interface Score {
   overheat_penalty?: number;
   // Data credibility indicator. Lower values imply weaker underlying coverage.
   data_credibility?: number;
+  // 评分配置快照（P0：轻量自定义评分配置）
+  scoring_asset_type?: string;
+  scoring_config_id?: number;
+  scoring_preset_key?: string;
+  scoring_preset_name?: string;
+  scoring_config_version?: number;
+  scoring_config_snapshot_json?: string;
+  dimension_scores_json?: string;
+  factor_scores_json?: string;
   created_at?: string;
 }
 
@@ -328,6 +337,12 @@ export interface WorkbenchCandidate {
   news_confidence?: number;
   news_multiplier?: number;
   news_adjustment_pct?: number;
+  // P1：评分配置快照（用于按维度排序和"为什么入选"展示）
+  scoring_preset_key?: string;
+  scoring_preset_name?: string;
+  scoring_config_version?: number;
+  dimension_scores_json?: string;
+  scoring_config_snapshot_json?: string;
 }
 
 export interface WorkbenchScore extends WorkbenchCandidate {
@@ -492,8 +507,10 @@ export interface DiscoveryTask {
   current_symbol: string | null;
   scan_run_id: number | null;
   executable_count: number;
+  cleanup_count?: number;
   errors: string[];
   can_resume: boolean;
+  can_retry?: boolean;
   created_at: string;
   updated_at: string;
 }

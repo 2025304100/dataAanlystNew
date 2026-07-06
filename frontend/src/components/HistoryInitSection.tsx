@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Empty, Input, InputNumber, Popconfirm, Progress, Radio, Select, Switch, Tag, Tooltip } from "antd";
-import { CloseOutlined, DeleteOutlined, DownloadOutlined, DownOutlined, HistoryOutlined, ReloadOutlined, SyncOutlined, UpOutlined } from "@ant-design/icons";
+import { CloseOutlined, DeleteOutlined, DownloadOutlined, DownOutlined, HistoryOutlined, QuestionCircleOutlined, ReloadOutlined, SyncOutlined, UpOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { formatDate } from "../utils/format";
@@ -185,6 +185,9 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   const [failedFilterKeyword, setFailedFilterKeyword] = useState("");
   const [failedFilterStage, setFailedFilterStage] = useState<"all" | "sync_bars" | "calc_scores">("all");
   const [failedCompareScope, setFailedCompareScope] = useState<"all" | "new_only">("all");
+  // P1：当前激活评分预设（用于初始化前提示用户）
+  const [activeStockPreset, setActiveStockPreset] = useState<{ preset_key: string; name: string; version: number } | null>(null);
+  const [activeEtfPreset, setActiveEtfPreset] = useState<{ preset_key: string; name: string; version: number } | null>(null);
   const historyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingInFlightRef = useRef(false);
 
@@ -250,6 +253,21 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
   useEffect(() => {
     loadHistoryTask();
   }, [loadHistoryTask]);
+
+  // P1：加载当前激活的股票/ETF 评分预设，供初始化前展示
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([api.getActiveScoringConfig("stock"), api.getActiveScoringConfig("etf")])
+      .then(([stock, etf]) => {
+        if (cancelled) return;
+        setActiveStockPreset(stock ? { preset_key: stock.preset_key, name: stock.name, version: stock.version } : null);
+        setActiveEtfPreset(etf ? { preset_key: etf.preset_key, name: etf.name, version: etf.version } : null);
+      })
+      .catch(() => {
+        // 静默失败：旧后端无此接口时不阻塞 UI
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => () => {
     clearHistoryPolling();
@@ -665,6 +683,34 @@ export default function HistoryInitSection({ focusSignal = 0, context = null, on
         </div>
 
         <Alert type="info" showIcon style={{ marginBottom: 16 }} message={t("histPanelDesc")} />
+
+        {(activeStockPreset || activeEtfPreset) && (
+          <Tooltip title={t("scHistActivePresetTip")}>
+            <Alert
+              type="warning"
+              showIcon
+              icon={<QuestionCircleOutlined />}
+              style={{ marginBottom: 16 }}
+              message={
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+                  <span>
+                    <strong>{t("scHistStockPreset")}：</strong>
+                    <Tag color="blue" style={{ marginInlineStart: 6 }}>
+                      {activeStockPreset ? `${activeStockPreset.name} v${activeStockPreset.version}` : t("scHistPresetUnknown")}
+                    </Tag>
+                  </span>
+                  <span>
+                    <strong>{t("scHistEtfPreset")}：</strong>
+                    <Tag color="purple" style={{ marginInlineStart: 6 }}>
+                      {activeEtfPreset ? `${activeEtfPreset.name} v${activeEtfPreset.version}` : t("scHistPresetUnknown")}
+                    </Tag>
+                  </span>
+                  <span style={{ color: "#888", fontSize: 12 }}>{t("scHistActivePresetTip")}</span>
+                </div>
+              }
+            />
+          </Tooltip>
+        )}
 
         {activeScopedSymbolId && (
           <Alert

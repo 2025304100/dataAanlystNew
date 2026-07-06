@@ -3,7 +3,7 @@ import { useApp } from "../context/AppContext";
 import { t, DOT } from "../i18n";
 import { statPct, pnlClass, clamp } from "../utils/format";
 import { Input, InputNumber, Checkbox, Button, Space, Card, Form } from "antd";
-import { DatabaseOutlined, FunctionOutlined, SettingOutlined, SyncOutlined, MedicineBoxOutlined, UnorderedListOutlined, BellOutlined } from "@ant-design/icons";
+import { DatabaseOutlined, FunctionOutlined, SettingOutlined, SyncOutlined, MedicineBoxOutlined, UnorderedListOutlined, BellOutlined, TrophyOutlined, GlobalOutlined, ApiOutlined } from "@ant-design/icons";
 import DbConfigSection from "./DbConfigSection";
 import CustomIndicatorSettings from "./CustomIndicatorSettings";
 import DiscoveryPlanSettings from "./DiscoveryPlanSettings";
@@ -11,6 +11,9 @@ import HistoryInitSection from "./HistoryInitSection";
 import DataDiagnosticPanel from "./DataDiagnosticPanel";
 import TaskCenter from "./TaskCenter";
 import AlertCenter from "./AlertCenter";
+import ScoringConfigSettings from "./ScoringConfigSettings";
+import ExternalDataSync from "./ExternalDataSync";
+import AkshareApiManager from "./AkshareApiManager";
 
 export default function Settings() {
   const ctx = useApp();
@@ -19,10 +22,10 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "alerts" | "db">(() => {
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "alerts" | "scoring" | "external" | "api-mgmt" | "db">(() => {
     if (typeof window === "undefined") return "rules";
     const stored = window.localStorage.getItem("settings_active_section");
-    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "alerts" || stored === "db" ? stored : "rules";
+    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "alerts" || stored === "scoring" || stored === "external" || stored === "api-mgmt" || stored === "db" ? stored : "rules";
   });
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<"formulas" | "plans">(() => {
     if (typeof window === "undefined") return "formulas";
@@ -209,6 +212,33 @@ export default function Settings() {
           >
             <span className="settings-nav-icon"><BellOutlined /></span>
             <span className="settings-nav-copy">{t("alertCenter")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "scoring" ? "active" : ""}`}
+            aria-current={activeSection === "scoring" ? "page" : undefined}
+            onClick={() => setActiveSection("scoring")}
+          >
+            <span className="settings-nav-icon"><TrophyOutlined /></span>
+            <span className="settings-nav-copy">{t("scTabTitle")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "external" ? "active" : ""}`}
+            aria-current={activeSection === "external" ? "page" : undefined}
+            onClick={() => setActiveSection("external")}
+          >
+            <span className="settings-nav-icon"><GlobalOutlined /></span>
+            <span className="settings-nav-copy">{t("extTabTitle")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "api-mgmt" ? "active" : ""}`}
+            aria-current={activeSection === "api-mgmt" ? "page" : undefined}
+            onClick={() => setActiveSection("api-mgmt")}
+          >
+            <span className="settings-nav-icon"><ApiOutlined /></span>
+            <span className="settings-nav-copy">{t("apiMgmtTabTitle")}</span>
           </button>
           <button
             type="button"
@@ -413,6 +443,27 @@ export default function Settings() {
             <div className="settings-tab-container" data-settings-content="settings-alerts">
               <section className="band">
                 <AlertCenter />
+              </section>
+            </div>
+          )}
+          {activeSection === "scoring" && (
+            <div className="settings-tab-container" data-settings-content="settings-scoring">
+              <section className="band">
+                <ScoringConfigSettings />
+              </section>
+            </div>
+          )}
+          {activeSection === "external" && (
+            <div className="settings-tab-container" data-settings-content="settings-external">
+              <section className="band">
+                <ExternalDataSync />
+              </section>
+            </div>
+          )}
+          {activeSection === "api-mgmt" && (
+            <div className="settings-tab-container" data-settings-content="settings-api-mgmt">
+              <section className="band">
+                <AkshareApiManager />
               </section>
             </div>
           )}

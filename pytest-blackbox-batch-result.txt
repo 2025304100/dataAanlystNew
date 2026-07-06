@@ -1,0 +1,12 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0 -- C:\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 2 items
+
+tests/test_blackbox_api_mgmt.py::test_probe_all_17_apis_complete_within_180s PASSED [ 50%]
+tests/test_blackbox_api_mgmt.py::test_consecutive_probes_do_not_degrade_response_time PASSED [100%]
+
+============================= 2 passed in 50.38s ==============================

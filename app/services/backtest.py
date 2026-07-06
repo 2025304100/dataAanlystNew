@@ -120,6 +120,50 @@ def _history_until(bars_by_symbol: dict[int, list[DailyBar]], bar_index: dict[tu
     return bars_by_symbol.get(symbol_id, [])[:index + 1]
 
 
+# 风控加固：批量预加载 Score 避免 N+1（回测场景下 N 可达数千~数万）
+# 一次性 select(Score).where(symbol_id in (...), trade_date between start, end)
+# 按 symbol_id 分组并按 trade_date 升序，循环内用 bisect 二分查找 <= current_date 的最新 score
+def _build_score_map(
+    db: Session,
+    symbol_ids: list[int],
+    start_date: date,
+    end_date: date,
+) -> dict[int, list[Score]]:
+    """批量预加载 Score，返回 {symbol_id: [Score, ...]}，每个 list 按 trade_date 升序。"""
+    if not symbol_ids:
+        return {}
+    rows = db.execute(
+        select(Score)
+        .where(
+            Score.symbol_id.in_(symbol_ids),
+            Score.trade_date >= start_date,
+            Score.trade_date <= end_date,
+        )
+        .order_by(Score.symbol_id, Score.trade_date)
+    ).scalars().all()
+    score_map: dict[int, list[Score]] = {}
+    for s in rows:
+        score_map.setdefault(s.symbol_id, []).append(s)
+    return score_map
+
+
+def _latest_score_on_or_before(score_map: dict[int, list[Score]], symbol_id: int, target_date: date) -> Score | None:
+    """用 bisect 在 score_map[symbol_id]（按 trade_date 升序）中查找 <= target_date 的最新 Score。
+
+    等价于 select(Score).where(symbol_id=..., trade_date<=target_date).order_by(trade_date.desc()).first()
+    但是 O(log n) 内存查找，无 DB 查询。
+    """
+    import bisect
+    sym_scores = score_map.get(symbol_id)
+    if not sym_scores:
+        return None
+    # bisect_right 返回第一个 > target_date 的索引，-1 即 <= target_date 的最后一个
+    idx = bisect.bisect_right(sym_scores, target_date, key=lambda s: s.trade_date) - 1
+    if idx < 0:
+        return None
+    return sym_scores[idx]
+
+
 def _compute_price_context(bars: list[DailyBar], lookback_days: int) -> dict:
     current = bars[-1] if bars else None
     prior = bars[-lookback_days - 1:-1] if bars else []
@@ -1140,15 +1184,28 @@ def _compute_statistics(
     
     avg_win = sum(t.pnl for t in win_trades) / len(win_trades) if win_trades else 0.0
     avg_loss = abs(sum(t.pnl for t in loss_trades) / len(loss_trades)) if loss_trades else 0.0
-    profit_factor = (avg_win * len(win_trades)) / (avg_loss * len(loss_trades)) if loss_trades else float('inf')
-    
+    # 风控：loss_trades 非空但 avg_loss=0（脏数据/平值成交）时除零 → 兜底 inf
+    gross_loss = avg_loss * len(loss_trades)
+    profit_factor = (avg_win * len(win_trades)) / gross_loss if gross_loss > 0 else float('inf')
+
     # 计算平均持仓天数
     avg_hold_days = sum(t.hold_days or 0 for t in completed_trades) / len(completed_trades) if completed_trades else 0.0
-    
+
     # 计算夏普比率等年化指标
+    # 风控：equity=0/负/NaN 时除零或失真，需逐点保护
     if len(equity_curve) > 1:
-        returns = [(equity_curve[i]["equity"] - equity_curve[i-1]["equity"]) / equity_curve[i-1]["equity"]
-                   for i in range(1, len(equity_curve))]
+        returns = []
+        for i in range(1, len(equity_curve)):
+            prev_eq = equity_curve[i-1]["equity"]
+            curr_eq = equity_curve[i]["equity"]
+            # prev_eq=0 → 除零；NaN/inf → 污染统计；prev_eq<0 → 收益率符号反转
+            if not isinstance(prev_eq, (int, float)) or prev_eq <= 0 or prev_eq != prev_eq:
+                returns.append(0.0)
+                continue
+            if not isinstance(curr_eq, (int, float)) or curr_eq != curr_eq:
+                returns.append(0.0)
+                continue
+            returns.append((curr_eq - prev_eq) / prev_eq)
         mean_return = sum(returns) / len(returns) if returns else 0.0
         variance = sum((r - mean_return) ** 2 for r in returns) / len(returns) if returns else 0.0
         std = variance ** 0.5
@@ -1267,17 +1324,20 @@ def _build_trade_trace_map(
     entry_timing = _execution_timing_mode(rule_config, "entry")
     exit_timing = _execution_timing_mode(rule_config, "exit")
 
+    # 风控加固：批量预加载 Score 避免 N+1（原每笔 trade 查 2 次 Score = 2N 次 DB 查询）
+    trade_symbol_ids = list({t.symbol_id for t in trades})
+    trade_dates = [t.entry_date for t in trades] + [t.exit_date for t in trades if t.exit_date]
+    if trade_dates:
+        score_start = min(trade_dates)
+        score_end = max(trade_dates)
+    else:
+        score_start = score_end = date.today()
+    score_map = _build_score_map(db, trade_symbol_ids, score_start, score_end)
+
     for trade in trades:
         entry_signal_day = _signal_day(trade.symbol_id, trade.entry_date, entry_timing)
         entry_signal_bar, entry_prev_bar, entry_history = _bar_context(trade.symbol_id, entry_signal_day) if entry_signal_day else (None, None, [])
-        score = db.execute(
-            select(Score)
-            .where(
-                Score.symbol_id == trade.symbol_id,
-                Score.trade_date <= (entry_signal_day or trade.entry_date),
-            )
-            .order_by(Score.trade_date.desc())
-        ).scalars().first()
+        score = _latest_score_on_or_before(score_map, trade.symbol_id, (entry_signal_day or trade.entry_date))
         entry_traces = _collect_condition_traces(
             buy_tree,
             score,
@@ -1301,14 +1361,7 @@ def _build_trade_trace_map(
 
         if trade.exit_date:
             exit_signal_day = _signal_day(trade.symbol_id, trade.exit_date, exit_timing)
-            exit_score = db.execute(
-                select(Score)
-                .where(
-                    Score.symbol_id == trade.symbol_id,
-                    Score.trade_date <= (exit_signal_day or trade.exit_date),
-                )
-                .order_by(Score.trade_date.desc())
-            ).scalars().first()
+            exit_score = _latest_score_on_or_before(score_map, trade.symbol_id, (exit_signal_day or trade.exit_date))
             exit_bar, exit_prev_bar, exit_history = _bar_context(trade.symbol_id, exit_signal_day) if exit_signal_day else (None, None, [])
             trade_window = [
                 item for item in _history_with_current(exit_history, exit_bar)
@@ -1394,16 +1447,14 @@ def build_backtest_detail_context(db: Session, run: BacktestRun, trades: list[Ba
 
     trade_annotations = _build_trade_trace_map(db, trades or [], rule_config, bars_by_sym, bar_idx)
 
+    # 风控加固：批量预加载 Score 避免 N+1（原循环内每条 bar 查一次 = O(N) DB 查询）
+    # 改为一次性 select(Score).where(symbol_id in ..., trade_date between start, end)，
+    # 循环内用 bisect 二分查找 O(log n) 内存查找
+    score_map = _build_score_map(db, symbol_ids, run.start_date, run.end_date)
+
     for bar in bars:
         checked_days += 1
-        score = db.execute(
-            select(Score)
-            .where(
-                Score.symbol_id == bar.symbol_id,
-                Score.trade_date <= bar.trade_date,
-            )
-            .order_by(Score.trade_date.desc())
-        ).scalars().first()
+        score = _latest_score_on_or_before(score_map, bar.symbol_id, bar.trade_date)
 
         # history_bars 与 prev_bar 对齐
         sym_bars = bars_by_sym.get(bar.symbol_id, [])
@@ -1745,6 +1796,11 @@ def run_backtest(
             bars_by_symbol.setdefault(b.symbol_id, []).append(b)
             bar_index[(b.symbol_id, b.trade_date)] = len(bars_by_symbol[b.symbol_id]) - 1
 
+        # 风控加固：批量预加载 Score 避免 N+1（原日期×标的循环每组合查一次 = O(交易日×标的数) DB 查询）
+        # 改为一次性 select(Score).where(symbol_id in ..., trade_date between start, end)，
+        # 循环内用 bisect 二分查找 O(log n) 内存查找
+        score_map = _build_score_map(db, symbol_ids, start_date, end_date)
+
         def _get_history(symbol_id: int, trade_date: date, max_history: int = 250) -> tuple[DailyBar | None, DailyBar | None, list[DailyBar]]:
             idx = bar_index.get((symbol_id, trade_date))
             if idx is None:
@@ -1858,14 +1914,7 @@ def run_backtest(
 
                 score = None
                 if rule_config.get("version", 1) >= 2:
-                    score = db.execute(
-                        select(Score)
-                        .where(
-                            Score.symbol_id == symbol_id,
-                            Score.trade_date <= current_date,
-                        )
-                        .order_by(Score.trade_date.desc())
-                    ).scalars().first()
+                    score = _latest_score_on_or_before(score_map, symbol_id, current_date)
 
                 should_sell, exit_reason = _evaluate_sell_signal(
                     trade,
@@ -1926,14 +1975,7 @@ def run_backtest(
                 if bar is None:
                     continue
 
-                score = db.execute(
-                    select(Score)
-                    .where(
-                        Score.symbol_id == symbol_id,
-                        Score.trade_date <= current_date,
-                    )
-                    .order_by(Score.trade_date.desc())
-                ).scalars().first()
+                score = _latest_score_on_or_before(score_map, symbol_id, current_date)
 
                 if not _evaluate_buy_signal(symbol_id, current_date, bar, score, rule_config, history_bars=history, prev_bar=prev_bar):
                     continue
@@ -1987,7 +2029,20 @@ def run_backtest(
         run.profit_factor = stats["profit_factor"]
         run.trade_count = stats["trade_count"]
         run.avg_holding_days = stats["avg_holding_days"]
-        run.equity_curve_json = json.dumps(equity_curve, ensure_ascii=False)
+        # 风控：equity_curve 含 NaN/inf 时 json.dumps 写入非法 JSON，前端 JSON.parse 失败
+        # 用 default 兜底 + allow_nan=False 严格校验
+        try:
+            run.equity_curve_json = json.dumps(equity_curve, ensure_ascii=False, allow_nan=False)
+        except (ValueError, OverflowError):
+            # NaN/inf 存在 → 清洗为 0.0 再写入
+            sanitized = []
+            for point in equity_curve:
+                clean_point = dict(point)
+                for k, v in clean_point.items():
+                    if isinstance(v, float) and (v != v or v in (float('inf'), float('-inf'))):
+                        clean_point[k] = 0.0
+                sanitized.append(clean_point)
+            run.equity_curve_json = json.dumps(sanitized, ensure_ascii=False, allow_nan=False)
 
         db.commit()
         return run

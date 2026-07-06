@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+      - id: pytest-whitebox
+        name: pytest whitebox (fast)
+        entry: pytest -m whitebox --tb=short -q
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [commit]
+
+      - id: npm-test
+        name: frontend vitest
+        entry: bash -c 'cd frontend && npm test'
+        language: system
+        types_or: [javascript, jsx, ts, tsx]
+        pass_filenames: false
+        stages: [commit]

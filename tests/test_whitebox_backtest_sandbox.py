@@ -11,6 +11,8 @@ import pytest
 
 from app.services import backtest
 
+pytestmark = pytest.mark.whitebox
+
 
 def _eval(expr: str, variables=None, functions=None):
     """辅助：解析并求值表达式。"""

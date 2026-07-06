@@ -41,8 +41,13 @@ def cleanup_stale_discovery_symbols(db: Session) -> dict:
 
     for task in stale_paused:
         synced_ids = set(_json_loads(task.synced_symbol_ids_json, []))
+        # payload_json 损坏时跳过 scope（避免回退默认 scope 误清其他范围），只清 synced_ids
+        paused_scope = None
         try:
-            paused_scope = _payload_from_task(task).scope if task.payload_json else None
+            paused_scope = _payload_from_task(task).scope
+        except Exception:
+            logger.warning("payload_json 解析失败，跳过 scope 清理，仅清理 synced_symbol_ids (task=%s)", task.id)
+        try:
             cleaned = _cleanup_discovery_symbols(
                 db, scoped_symbol_ids=synced_ids, preserve_extra_ids=None, scope=paused_scope,
             )
@@ -59,18 +64,27 @@ def cleanup_stale_discovery_symbols(db: Session) -> dict:
         db.commit()
 
     # 2. running 超过 STALE_RUNNING_DEADLINE（30m）僵死
+    # 与 _expire_stale_tasks 保持一致：用 updated_at 判定（最近无进度更新即视为僵死）
     stale_running = db.execute(
         select(DiscoveryTaskRecord).where(
             DiscoveryTaskRecord.status == "running",
-            DiscoveryTaskRecord.started_at.is_not(None),
-            DiscoveryTaskRecord.started_at < now - STALE_RUNNING_DEADLINE,
+            DiscoveryTaskRecord.updated_at.is_not(None),
+            DiscoveryTaskRecord.updated_at < now - STALE_RUNNING_DEADLINE,
         )
     ).scalars().all()
 
     for task in stale_running:
+        # 跳过已被 _expire_stale_tasks 处理的任务（竞态保护）
+        if task.status != "running":
+            continue
         synced_ids = set(_json_loads(task.synced_symbol_ids_json, []))
+        # payload_json 损坏时跳过 scope（避免回退默认 scope 误清其他范围），只清 synced_ids
+        running_scope = None
         try:
-            running_scope = _payload_from_task(task).scope if task.payload_json else None
+            running_scope = _payload_from_task(task).scope
+        except Exception:
+            logger.warning("payload_json 解析失败，跳过 scope 清理，仅清理 synced_symbol_ids (task=%s)", task.id)
+        try:
             cleaned = _cleanup_discovery_symbols(
                 db, scoped_symbol_ids=synced_ids, preserve_extra_ids=None, scope=running_scope,
             )

@@ -14,8 +14,12 @@ from app.db.manager import DatabaseManager
 
 from app.models import (
     alert, backtest, custom_indicator, daily_bar, discovery, discovery_plan, factor, journal_entry, macro_data,
-    market_event, news_event, portfolio, scan, score, signal_rule,
+    market_event, news_event, portfolio, scan, score, scoring_config, signal_rule,
     sim_account, symbol, trade_setup, watchlist,
+    # P2：外部数据因子表
+    stock_valuation, capital_flow, etf_indicator,
+    # P2-E：第三方接口管理配置表
+    akshare_api_config,
 )
 
 
@@ -54,6 +58,15 @@ def _ensure_sqlite_score_columns(engine) -> None:
             "breakout_score": "REAL",
             "pullback_score": "REAL",
             "overheat_penalty": "REAL",
+            # P0：评分配置快照字段
+            "scoring_asset_type": "TEXT",
+            "scoring_config_id": "INTEGER",
+            "scoring_preset_key": "TEXT",
+            "scoring_preset_name": "TEXT",
+            "scoring_config_version": "INTEGER",
+            "scoring_config_snapshot_json": "TEXT",
+            "dimension_scores_json": "TEXT",
+            "factor_scores_json": "TEXT",
         },
     )
 
@@ -147,6 +160,28 @@ def _ensure_mysql_indicator_version_columns(engine) -> None:
                 logger.info("Added cleanup_count column to discovery_tasks")
             except Exception as e:
                 logger.warning("Failed to add cleanup_count column: %s", e)
+        # P0：scores 表评分配置快照字段
+        score_new_cols = [
+            ("scoring_asset_type", "VARCHAR(16)"),
+            ("scoring_config_id", "INTEGER"),
+            ("scoring_preset_key", "VARCHAR(64)"),
+            ("scoring_preset_name", "VARCHAR(128)"),
+            ("scoring_config_version", "INTEGER"),
+            ("scoring_config_snapshot_json", "TEXT"),
+            ("dimension_scores_json", "TEXT"),
+            ("factor_scores_json", "TEXT"),
+        ]
+        for col_name, col_ddl in score_new_cols:
+            result = conn.execute(text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'scores' AND COLUMN_NAME = :col"
+            ), {"db": db_name, "col": col_name})
+            if result.first() is None:
+                try:
+                    conn.execute(text(f"ALTER TABLE scores ADD COLUMN {col_name} {col_ddl}"))
+                    logger.info("Added %s column to scores", col_name)
+                except Exception as e:
+                    logger.warning("Failed to add %s column to scores: %s", col_name, e)
 
 
 def _convert_myisam_to_innodb(engine) -> None:
@@ -200,3 +235,37 @@ def init_db() -> None:
             conn.execute(text("PRAGMA busy_timeout=30000;"))
     else:
         _ensure_mysql_indicator_version_columns(eng)
+
+    # P0：初始化系统评分预设（幂等）
+    _seed_system_scoring_configs()
+
+    # P2-E：加载第三方接口配置缓存到内存（启动时一次）
+    _load_akshare_api_config_cache()
+
+
+def _seed_system_scoring_configs() -> None:
+    """初始化系统内置评分预设（股票/ETF 各 4 套）。"""
+    import logging
+    from app.db.session import SessionLocal
+    from app.services.scoring_config_engine import seed_system_scoring_configs
+    logger = logging.getLogger(__name__)
+    try:
+        with SessionLocal() as db:
+            seed_system_scoring_configs(db)
+            db.commit()
+    except Exception as e:
+        logger.warning("Failed to seed system scoring configs: %s", e)
+
+
+def _load_akshare_api_config_cache() -> None:
+    """启动时加载第三方接口配置到内存缓存。"""
+    import logging
+    from app.db.session import SessionLocal
+    from app.services.akshare_registry import load_config_cache
+    logger = logging.getLogger(__name__)
+    try:
+        with SessionLocal() as db:
+            load_config_cache(db)
+        logger.info("Akshare API config cache loaded")
+    except Exception as e:
+        logger.warning("Failed to load akshare API config cache: %s", e)

@@ -13,6 +13,8 @@ from app.models.daily_bar import DailyBar
 from app.models.symbol import Symbol
 from app.services import analysis
 
+pytestmark = pytest.mark.whitebox
+
 
 def _make_symbol(db_session, symbol="600000", asset_type="stock", theme="银行") -> Symbol:
     sym = Symbol(
