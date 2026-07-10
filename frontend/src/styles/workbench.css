@@ -7077,6 +7077,13 @@ td .symbol-name {
   gap: 4px;
 }
 
+.task-detail-actions {
+  flex-direction: row;
+  justify-content: flex-end;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
 .task-detail-row {
   display: flex;
   align-items: center;

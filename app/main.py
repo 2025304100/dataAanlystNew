@@ -53,6 +53,12 @@ async def lifespan(_: FastAPI):
     # 启动定期清理后台任务
     cleanup_task = asyncio.create_task(_periodic_cleanup())
 
+    # P2：启动定时增量同步后台任务（每日 18:00 自动增量同步 universe K线）
+    incremental_sync_task = asyncio.create_task(_periodic_universe_incremental_sync())
+
+    # 基础数据隔离层：首次启动时检测 universe_symbols 为空 → 自动触发初始化（异步，不阻塞启动）
+    _auto_start_universe_init()
+
     yield
 
     cleanup_task.cancel()
@@ -63,6 +69,14 @@ async def lifespan(_: FastAPI):
     except Exception:
         # 风控加固：不再静默吞没，记录日志便于定位 lifespan 关闭问题
         logger.exception("cleanup_task shutdown failed")
+
+    incremental_sync_task.cancel()
+    try:
+        await incremental_sync_task
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        logger.exception("incremental_sync_task shutdown failed")
 
     # 风控加固：关闭探测线程池，避免 uvicorn reload 时线程泄漏
     try:
@@ -129,6 +143,99 @@ async def _periodic_cleanup() -> None:
                 db.close()
         except Exception:
             logger.exception("Periodic cleanup failed")
+
+
+# P2：定时增量同步配置
+# 每日触发时间（小时，24h 制），A股收盘后数据更新
+UNIVERSE_INCREMENTAL_SYNC_HOUR = 18
+# 检查间隔（秒）：每 10 分钟检查一次是否到达触发时间
+UNIVERSE_INCREMENTAL_CHECK_INTERVAL = 10 * 60
+
+
+async def _periodic_universe_incremental_sync() -> None:
+    """定时增量同步：每日 18:00 自动触发 universe K线增量同步。
+
+    策略：
+    - 每 10 分钟检查一次当前时间是否到达 18:00
+    - 到达触发时间且当日未执行过增量同步则触发
+    - 并发保护：已有运行中的同步任务则跳过
+    - 非阻塞：增量同步在独立线程执行，不影响主事件循环
+    """
+    from app.services import universe_sync_task
+    from app.models.async_task import AsyncTaskRecord
+    from sqlalchemy import select, desc
+    import datetime as _dt
+
+    last_trigger_date: _dt.date | None = None
+    while True:
+        await asyncio.sleep(UNIVERSE_INCREMENTAL_CHECK_INTERVAL)
+        try:
+            now = _dt.datetime.now()
+            # 检查是否到达触发时间（18:00 ± 检查间隔/2）
+            if now.hour < UNIVERSE_INCREMENTAL_SYNC_HOUR:
+                continue
+            today = now.date()
+            # 当日已触发过则跳过
+            if last_trigger_date == today:
+                continue
+
+            # 检查当日是否已有完成的增量同步任务（避免重启后重复触发）
+            SessionLocal = _get_session_local()
+            db = SessionLocal()
+            try:
+                today_start = _dt.datetime.combine(today, _dt.time.min)
+                existing = db.execute(
+                    select(AsyncTaskRecord).where(
+                        AsyncTaskRecord.task_type == "universe_incremental_sync",
+                        AsyncTaskRecord.created_at >= today_start,
+                    ).order_by(desc(AsyncTaskRecord.created_at)).limit(1)
+                ).scalars().first()
+                if existing is not None:
+                    last_trigger_date = today
+                    logger.info(
+                        "Universe incremental sync already triggered today (%s, status=%s), skip",
+                        existing.id, existing.status,
+                    )
+                    continue
+            finally:
+                db.close()
+
+            # 触发增量同步
+            logger.info("Triggering daily universe incremental sync at %s", now.isoformat())
+            try:
+                universe_sync_task.start_universe_incremental_sync(max_workers=5)
+                last_trigger_date = today
+            except Exception:
+                logger.exception("Failed to start universe incremental sync")
+        except Exception:
+            logger.exception("Periodic universe incremental sync check failed")
+
+
+def _auto_start_universe_init() -> None:
+    """首次启动时检测 universe_symbols 表为空 → 自动触发初始化同步。
+
+    异步执行，不阻塞启动。用户也可在前端手动触发。
+    若已有运行中的同步任务则跳过。
+    """
+    try:
+        from app.services import universe_sync, universe_sync_task
+        SessionLocal = _get_session_local()
+        db = SessionLocal()
+        try:
+            stats = universe_sync.get_universe_stats(db)
+            if not stats["is_empty"]:
+                logger.info(
+                    "Universe data already exists (symbols=%d, synced=%d), skip auto init",
+                    stats["total_symbols"], stats["synced_symbols"],
+                )
+                return
+        finally:
+            db.close()
+
+        logger.info("Universe symbols table is empty, auto-starting initialization sync")
+        universe_sync_task.start_universe_sync_init(max_workers=5, history_days=365)
+    except Exception:
+        logger.exception("Auto universe init failed (non-fatal, user can trigger manually)")
 
 
 app = FastAPI(

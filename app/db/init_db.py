@@ -20,6 +20,8 @@ from app.models import (
     stock_valuation, capital_flow, etf_indicator,
     # P2-E：第三方接口管理配置表
     akshare_api_config,
+    # 基础数据隔离层：全市场标的元数据 + K线 + 挖掘结果独立存储
+    universe, discovery_candidate,
 )
 
 

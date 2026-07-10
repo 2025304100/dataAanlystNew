@@ -419,12 +419,17 @@ class TestAkshareRetryWrapper:
     """守护所有 akshare 裸调点都已用 call_akshare_with_retry 包装。"""
 
     def test_fetch_history_uses_retry_wrapper(self):
-        """market_data._fetch_history 应使用 call_akshare_with_retry。"""
+        """akshare source adapters 应使用 call_akshare_with_retry 包装所有 ak 调用。
+
+        重构后 _fetch_history 委托给 SourceChain,实际 akshare 调用点移至
+        market_data_sources/sources/akshare_source.py 的各 adapter。
+        守护所有 adapter 都用 call_akshare_with_retry 包装,避免裸调被风控断连。
+        """
         import inspect
-        from app.services import market_data
-        source = inspect.getsource(market_data._fetch_history)
+        from app.services.market_data_sources.sources import akshare_source
+        source = inspect.getsource(akshare_source)
         assert "call_akshare_with_retry" in source, (
-            "_fetch_history 必须用 call_akshare_with_retry 包装所有 ak 调用，"
+            "akshare source adapters 必须用 call_akshare_with_retry 包装所有 ak 调用，"
             "避免风控触发时单源瞬时失败直接 fallback"
         )
 
@@ -493,14 +498,14 @@ class TestAlertsJsonNoSilentSwallow:
         rule.id = 42
         rule.config_json = "{invalid json"
 
-        with caplog.at_level(logging.WARNING, logger="app.services.alerts"):
+        with caplog.at_level(logging.WARNING, logger="app.core.json_utils"):
             result = alerts._load_config(rule)
 
         assert result == {}
-        # 应有 warning 日志记录 rule.id + 原始片段
-        assert any("AlertRule 42" in r.message and "config_json parse failed" in r.message
+        # 应有 warning 日志记录 context（含 rule.id）+ JSONDecodeError
+        assert any("AlertRule.42" in r.message and "JSONDecodeError" in r.message
                    for r in caplog.records), \
-            "config_json 损坏时应有 warning 日志记录 rule.id + 原因"
+            "config_json 损坏时应有 warning 日志记录 context（含 rule.id）+ 原因"
 
     def test_load_config_returns_dict_on_valid_json(self):
         """正常 config_json 应正确解析。"""
@@ -792,9 +797,13 @@ class TestSignalStatsNPlusOneFix:
         assert result == []
 
     def test_build_similar_signal_stats_does_not_call_load_forward_bars(self):
-        """build_similar_signal_stats 应使用批量预加载，不再调用 _load_forward_bars。"""
+        """build_similar_signal_stats 应使用批量预加载，且 _load_forward_bars 已删除。"""
         from unittest.mock import patch
         from app.services import signal_stats
+
+        # _load_forward_bars 已删除（死代码清理），不应再存在
+        assert not hasattr(signal_stats, "_load_forward_bars"), \
+            "_load_forward_bars 应已删除（被 _build_forward_bars_map 取代）"
 
         # 构造 mock latest_score
         latest_score = MagicMock()
@@ -812,8 +821,7 @@ class TestSignalStatsNPlusOneFix:
         symbol.asset_type = "stock"
 
         mock_db = MagicMock()
-        with patch.object(signal_stats, "_load_forward_bars") as mock_load, \
-             patch.object(signal_stats, "_build_forward_bars_map", return_value={}) as mock_build, \
+        with patch.object(signal_stats, "_build_forward_bars_map", return_value={}) as mock_build, \
              patch.object(signal_stats, "get_active_signal_rule", return_value=None), \
              patch.object(signal_stats, "region_from_market", return_value="cn"), \
              patch.object(signal_stats, "markets_for_region", return_value=["sh", "sz"]):
@@ -821,8 +829,6 @@ class TestSignalStatsNPlusOneFix:
             mock_db.execute.return_value.scalars.return_value.all.return_value = []
             signal_stats.build_similar_signal_stats(mock_db, symbol, latest_score, max_samples=5)
 
-            # _load_forward_bars 不应被调用
-            mock_load.assert_not_called()
             # _build_forward_bars_map 应被调用（即使 similar_rows 为空也会被调用一次以批量预加载）
             # 注：当 similar_rows 为空时 samples_to_load 也为空，_build_forward_bars_map 内部短路
             mock_build.assert_called_once()

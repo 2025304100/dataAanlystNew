@@ -211,7 +211,9 @@ def evaluate_discovery_indicators(db: Session, payload: DiscoveryIndicatorEvalua
     return response
 
 
-def get_latest_discovery_candidates(db: Session, *, min_score: float = 0.0, limit: int = 50) -> list[dict]:
+def get_latest_discovery_candidates(
+    db: Session, *, min_score: float = 0.0, limit: int = 50, scope: str | None = None,
+) -> list[dict]:
     """获取最新一次挖掘任务的全量候选（不依赖 executable 过滤）。
 
     挖掘任务的目的发现机会，结果展示不应依赖 portfolio 交易约束（active_rule → recommended_pct → executable）。
@@ -219,16 +221,24 @@ def get_latest_discovery_candidates(db: Session, *, min_score: float = 0.0, limi
     让用户看到全貌后再决定，而非只看可执行的。
 
     过期且未冻结的结果会被清理（与 workbench 行为一致）。
+
+    scope: 可选，按 scope 过滤最新任务（如 "cn-stock"/"cn-etf"）。
+        传入时只查该 scope 最新完成的任务，避免切换 scope 后丢失之前 scope 的结果。
     """
     from app.models.discovery import DiscoveryTaskRecord
     from app.services.regions import region_from_market
 
-    # 1. 找最新 done 状态的挖掘任务
-    latest_task = db.execute(
+    # 1. 找最新 done 状态的挖掘任务（可选按 scope 过滤）
+    task_stmt = (
         select(DiscoveryTaskRecord)
         .where(DiscoveryTaskRecord.status == "done")
-        .order_by(DiscoveryTaskRecord.finished_at.desc(), DiscoveryTaskRecord.id.desc())
-    ).scalars().first()
+    )
+    if scope:
+        task_stmt = task_stmt.where(DiscoveryTaskRecord.scope == scope)
+    task_stmt = task_stmt.order_by(
+        DiscoveryTaskRecord.finished_at.desc(), DiscoveryTaskRecord.id.desc()
+    )
+    latest_task = db.execute(task_stmt).scalars().first()
     if latest_task is None or latest_task.scan_run_id is None:
         return []
 

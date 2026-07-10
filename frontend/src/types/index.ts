@@ -343,6 +343,10 @@ export interface WorkbenchCandidate {
   scoring_config_version?: number;
   dimension_scores_json?: string;
   scoring_config_snapshot_json?: string;
+  // P1：挖掘候选手动晋升状态（discovery_candidates 表）
+  candidate_id?: number | null;
+  is_promoted?: number | null; // 0=未晋升 1=已加入候选池 null=历史数据无状态
+  is_legacy?: boolean;
 }
 
 export interface WorkbenchScore extends WorkbenchCandidate {

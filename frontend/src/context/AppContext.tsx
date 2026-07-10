@@ -79,13 +79,15 @@ interface AppContextValue extends AppState {
   updateSignalRule: (partial: Partial<SignalRule>) => void;
   saveSignalRule: () => Promise<void>;
   loadSignalRulePreview: () => Promise<void>;
-  fetchDiscoveryTasks: () => Promise<void>;
+  fetchDiscoveryTasks: (scope?: string) => Promise<DiscoveryTask | null>;
+  setDiscoveryScope: (scope: string) => Promise<void>;
   runDiscoveryMining: (config?: {
     scope?: string;
     minScore?: number;
     dataMode?: string;
     batchSize?: number;
     delaySeconds?: number;
+    maxWorkers?: number;
     warningDays?: number;
     validDays?: number;
     includeNews?: boolean;
@@ -161,6 +163,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [signalRulePreview, setSignalRulePreview] = useState<SignalRulePreviewResult | null>(null);
   const [discoveryPolling, setDiscoveryPolling] = useState(false);
   const discoveryPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 当前挖掘 scope 的 ref 镜像：供 fetchDiscoveryTasks/startDiscoveryPolling 读取最新值，
+  // 切换 scope 时通过 setDiscoveryScope 更新此 ref，避免轮询拉取错误 scope 的任务状态。
+  const discoveryScopeRef = useRef<string>("cn-stock");
   const [syncPolling, setSyncPolling] = useState(false);
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const syncTaskIdRef = useRef<string | null>(null);
@@ -433,15 +438,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await loadDiscoveryScopeStatsInternal();
   }, [loadDiscoveryScopeStatsInternal]);
 
-  const fetchDiscoveryTasks = useCallback(async () => {
+  const fetchDiscoveryTasks = useCallback(async (scope?: string): Promise<DiscoveryTask | null> => {
+    const queryScope = scope ?? discoveryScopeRef.current;
     try {
-      const tasks = await api.getDiscoveryTasks();
+      const tasks = await api.getDiscoveryTasks(10, queryScope);
       const active = tasks.find((item) => ["queued", "running"].includes(item.status))
         ?? tasks.find((item) => item.status === "paused" && item.can_resume)
         ?? tasks[0] ?? null;
       update({ discoveryTask: active });
+      return active;
     } catch (error: any) {
       showToast("error", error?.message || t("discoveryCommandFailed"));
+      return null;
     }
   }, [update, showToast]);
 
@@ -450,7 +458,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setDiscoveryPolling(true);
     discoveryPollRef.current = setInterval(async () => {
       try {
-        const tasks = await api.getDiscoveryTasks();
+        const tasks = await api.getDiscoveryTasks(10, discoveryScopeRef.current);
         const current = tasks.find((item) => ["queued", "running"].includes(item.status)) ?? tasks[0] ?? null;
         update({ discoveryTask: current });
         if (!current || ["done", "failed", "cancelled", "expired", "paused"].includes(current.status)) {
@@ -472,25 +480,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, 2000);
   }, [update, showToast, loadWorkbench]);
 
+  // 切换挖掘 scope：更新 ref，停止旧 scope 的轮询，拉取新 scope 的任务，
+  // 若新 scope 有运行中的任务则重启轮询。
+  const setDiscoveryScope = useCallback(async (scope: string) => {
+    if (discoveryScopeRef.current === scope) return;
+    discoveryScopeRef.current = scope;
+    // 停止旧 scope 的轮询（避免继续拉取错误 scope 的任务状态）
+    if (discoveryPollRef.current) {
+      clearInterval(discoveryPollRef.current);
+      discoveryPollRef.current = null;
+    }
+    setDiscoveryPolling(false);
+    // 拉取新 scope 的最新任务
+    const active = await fetchDiscoveryTasks(scope);
+    // 若新 scope 有运行中的任务，重启轮询
+    if (active && ["queued", "running"].includes(active.status)) {
+      startDiscoveryPolling();
+    }
+  }, [fetchDiscoveryTasks, startDiscoveryPolling]);
+
   const runDiscoveryMining = useCallback(async (config?: {
     scope?: string;
     minScore?: number;
     dataMode?: string;
     batchSize?: number;
     delaySeconds?: number;
+    maxWorkers?: number;
     warningDays?: number;
     validDays?: number;
     includeNews?: boolean;
   }) => {
     const isSync = config?.dataMode === "sync";
+    const effectiveScope = config?.scope ?? "cn-stock";
+    // 同步 scope ref，确保后续轮询按正确 scope 拉取任务状态
+    discoveryScopeRef.current = effectiveScope;
     const payload = {
-      scope: config?.scope ?? "cn-stock",
+      scope: effectiveScope,
       min_score: config?.minScore ?? 55,
       include_news: config?.includeNews ?? true,
       portfolio_id: state.portfolioId,
       portfolio_rule_id: state.workbench?.active_rule?.id ?? null,
       batch_size: config?.batchSize ?? 20,
       delay_seconds: config?.delaySeconds ?? 0.25,
+      max_workers: config?.maxWorkers ?? 1,
       warning_days: config?.warningDays ?? 3,
       valid_days: config?.validDays ?? 5,
       news_limit: 30,
@@ -812,9 +844,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setLocale("zh-CN");
       await loadPortfolios();
       await loadSignalRuleConfig();
-      await fetchDiscoveryTasks();
+      const activeTask = await fetchDiscoveryTasks();
       await loadWorkbench();
-      if (state.discoveryTask && ["queued", "running"].includes(state.discoveryTask.status)) {
+      if (activeTask && ["queued", "running"].includes(activeTask.status)) {
         startDiscoveryPolling();
       }
     })().catch((error) => showToast("error", error.message));
@@ -861,6 +893,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     saveSignalRule,
     loadSignalRulePreview,
     fetchDiscoveryTasks,
+    setDiscoveryScope,
     runDiscoveryMining,
     sendDiscoveryTaskCommand,
     refreshDiscoveryTasks,

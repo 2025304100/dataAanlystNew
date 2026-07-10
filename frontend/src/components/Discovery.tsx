@@ -231,22 +231,45 @@ function dimensionStrengthTags(item: WorkbenchCandidate): Array<{ name: string; 
   return dims.filter((d) => d.score >= 65).sort((a, b) => b.score - a.score).slice(0, 2);
 }
 
+// 高级配置 localStorage 持久化 key
+const ADVANCED_CONFIG_KEY = "discovery_advanced_config_v1";
+
+function loadAdvancedConfig() {
+  try {
+    const raw = localStorage.getItem(ADVANCED_CONFIG_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveAdvancedConfig(cfg: Record<string, unknown>) {
+  try {
+    localStorage.setItem(ADVANCED_CONFIG_KEY, JSON.stringify(cfg));
+  } catch {
+    // ignore
+  }
+}
+
 export default function Discovery() {
   const ctx = useApp();
   const task = ctx.discoveryTask;
   const scopeStats = ctx.discoveryScopeStats;
 
-  const [scope, setScope] = useState("cn-stock");
-  const [minScore, setMinScore] = useState(55);
+  const _savedCfg = loadAdvancedConfig();
+  const [scope, setScope] = useState(_savedCfg?.scope ?? "cn-stock");
+  const [minScore, setMinScore] = useState(_savedCfg?.minScore ?? 55);
   const [dataMode, setDataMode] = useState("cached");
   const [coverageHint, setCoverageHint] = useState<string | null>(null);
   // P1：当前 scope 对应的激活评分预设（用于在挖掘面板顶部展示）
   const [activePreset, setActivePreset] = useState<{ preset_key: string; name: string; version: number; asset_type: string } | null>(null);
-  const [batchSize, setBatchSize] = useState(20);
-  const [delay, setDelay] = useState(0.25);
-  const [warningDays, setWarningDays] = useState(3);
-  const [validDays, setValidDays] = useState(5);
-  const [includeNews, setIncludeNews] = useState(true);
+  const [batchSize, setBatchSize] = useState(_savedCfg?.batchSize ?? 20);
+  const [delay, setDelay] = useState(_savedCfg?.delay ?? 0.25);
+  const [maxWorkers, setMaxWorkers] = useState(_savedCfg?.maxWorkers ?? 1);
+  const [warningDays, setWarningDays] = useState(_savedCfg?.warningDays ?? 3);
+  const [validDays, setValidDays] = useState(_savedCfg?.validDays ?? 5);
+  const [includeNews, setIncludeNews] = useState(_savedCfg?.includeNews ?? true);
   const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [pausing, setPausing] = useState(false);
@@ -255,7 +278,7 @@ export default function Discovery() {
   const [retrying, setRetrying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [cleaning, setCleaning] = useState(false);
-  const [rowActionLoading, setRowActionLoading] = useState<Record<number, { watchlist?: boolean; freeze?: boolean; update?: boolean }>>({});
+  const [rowActionLoading, setRowActionLoading] = useState<Record<number, { watchlist?: boolean; freeze?: boolean; update?: boolean; promote?: boolean }>>({});
   const [customIndicators, setCustomIndicators] = useState<CustomIndicator[]>([]);
   const [indicatorsLoaded, setIndicatorsLoaded] = useState(false);
   const [indicatorLoading, setIndicatorLoading] = useState(false);
@@ -275,6 +298,18 @@ export default function Discovery() {
   // 卡死检测：任务 running 但 updated_at 长时间未变化时提示用户
   const [staleWarning, setStaleWarning] = useState(false);
 
+  // 高级配置持久化：任一配置变化时保存到 localStorage
+  useEffect(() => {
+    saveAdvancedConfig({ scope, minScore, batchSize, delay, maxWorkers, warningDays, validDays, includeNews });
+  }, [scope, minScore, batchSize, delay, maxWorkers, warningDays, validDays, includeNews]);
+
+  // scope 切换时同步全局挖掘任务状态：更新 AppContext 的 scope ref，
+  // 停止旧 scope 的轮询，拉取新 scope 的最新任务（避免切换范围后显示错误 scope 的任务状态）。
+  // 首次挂载时也会触发，将保存的 scope 同步到全局 ref（若与默认 cn-stock 不同则重新拉取）。
+  useEffect(() => {
+    ctx.setDiscoveryScope(scope);
+  }, [scope, ctx.setDiscoveryScope]);
+
   // 卡死检测 effect：任务 running 且 updated_at 超 2 分钟未变化时显示警告
   useEffect(() => {
     if (!task || task.status !== "running" || !task.updated_at) {
@@ -291,11 +326,11 @@ export default function Discovery() {
 
   const reloadDiscoveryCandidates = useCallback(() => {
     setCandidatesLoading(true);
-    api.getLatestDiscoveryCandidates(minScore, 50)
+    api.getLatestDiscoveryCandidates(minScore, 50, scope)
       .then((rows) => setDiscoveryCandidates(rows as WorkbenchCandidate[]))
       .catch(() => setDiscoveryCandidates([]))
       .finally(() => setCandidatesLoading(false));
-  }, [minScore]);
+  }, [minScore, scope]);
 
   // 初次加载 + minScore 变化 + 任务状态变化时刷新
   useEffect(() => {
@@ -532,7 +567,7 @@ export default function Discovery() {
 
   const resultMeta = (discoveryCandidates.length > 0 || !candidatesLoading) ? `${t("candidates")}: ${filteredPool.length}/${currentPool.length}` : "-";
 
-  const setRowLoading = (symbolId: number, key: "watchlist" | "freeze" | "update", value: boolean) => {
+  const setRowLoading = (symbolId: number, key: "watchlist" | "freeze" | "update" | "promote", value: boolean) => {
     setRowActionLoading((prev) => ({
       ...prev,
       [symbolId]: { ...prev[symbolId], [key]: value },
@@ -639,6 +674,7 @@ export default function Discovery() {
         dataMode,
         batchSize,
         delaySeconds: delay,
+        maxWorkers,
         warningDays,
         validDays,
         includeNews,
@@ -648,7 +684,7 @@ export default function Discovery() {
     } finally {
       setStarting(false);
     }
-  }, [batchSize, ctx, dataMode, delay, includeNews, minScore, scope, validDays, warningDays]);
+  }, [batchSize, ctx, dataMode, delay, includeNews, maxWorkers, minScore, scope, validDays, warningDays]);
 
   const handlePause = useCallback(async () => {
     setPausing(true);
@@ -764,6 +800,39 @@ export default function Discovery() {
       ctx.showToast("error", error?.message || t("discoveryCommandFailed"));
     } finally {
       setRowLoading(symbolId, "freeze", false);
+    }
+  }, [ctx]);
+
+  // P1：手动晋升候选（加入候选池）
+  const handlePromoteCandidate = useCallback(async (candidateId: number, symbol: string, symbolId: number) => {
+    setRowLoading(symbolId, "promote", true);
+    try {
+      await api.promoteDiscoveryCandidate(candidateId);
+      // 本地更新 is_promoted 状态，避免整表刷新
+      setDiscoveryCandidates((prev) =>
+        prev.map((c) => (c.candidate_id === candidateId ? { ...c, is_promoted: 1 } : c))
+      );
+      ctx.showToast("success", template("candidatePromoteSuccess", { symbol }));
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("candidatePromoteFailed"));
+    } finally {
+      setRowLoading(symbolId, "promote", false);
+    }
+  }, [ctx]);
+
+  // P1：撤销晋升（移出候选池）
+  const handleUnpromoteCandidate = useCallback(async (candidateId: number, symbol: string, symbolId: number) => {
+    setRowLoading(symbolId, "promote", true);
+    try {
+      await api.unpromoteDiscoveryCandidate(candidateId);
+      setDiscoveryCandidates((prev) =>
+        prev.map((c) => (c.candidate_id === candidateId ? { ...c, is_promoted: 0 } : c))
+      );
+      ctx.showToast("success", template("candidateUnpromoteSuccess", { symbol }));
+    } catch (error: any) {
+      ctx.showToast("error", error?.message || t("candidatePromoteFailed"));
+    } finally {
+      setRowLoading(symbolId, "promote", false);
     }
   }, [ctx]);
 
@@ -917,21 +986,43 @@ export default function Discovery() {
     const operationsColumn = {
       title: t("operations"),
       key: "operations",
-      width: 180,
+      width: 240,
       render: (_: unknown, item: WorkbenchCandidate) => {
         const inWatchlist = ctx.primaryWatchlistSymbolIds.has(item.symbol_id);
         const resultId = Number(item.scan_result_id ?? item.id);
+        // P1：候选晋升状态（candidate_id 存在且 is_promoted !== null 才显示按钮）
+        const candidateId = item.candidate_id ?? null;
+        const hasCandidate = candidateId != null;
+        const isPromoted = item.is_promoted === 1;
+        const isLegacy = item.is_legacy === true; // 历史任务无 candidate_id，不显示晋升按钮
         return (
           <Space size="small" onClick={(e) => e.stopPropagation()}>
             <Button
               size="small"
               loading={rowActionLoading[item.symbol_id]?.watchlist}
-              disabled={inWatchlist}
+              disabled={inWatchlist || !!rowActionLoading[item.symbol_id]?.watchlist}
               onClick={() => handleAddToWatchlist(item.symbol_id)}
               aria-label={t("discoveryAddWatchlist")}
             >
               {inWatchlist ? t("discoveryInWatchlist") : t("discoveryAddWatchlist")}
             </Button>
+            {/* P1：手动晋升/撤销晋升按钮（仅 P1 改造后任务有 candidate_id） */}
+            {hasCandidate && !isLegacy && (
+              <Button
+                size="small"
+                type={isPromoted ? "default" : "primary"}
+                loading={!!rowActionLoading[item.symbol_id]?.promote}
+                disabled={!!rowActionLoading[item.symbol_id]?.promote}
+                onClick={() =>
+                  isPromoted
+                    ? handleUnpromoteCandidate(candidateId!, item.symbol, item.symbol_id)
+                    : handlePromoteCandidate(candidateId!, item.symbol, item.symbol_id)
+                }
+                aria-label={isPromoted ? t("candidateUnpromote") : t("candidatePromote")}
+              >
+                {isPromoted ? t("candidatePromoted") : t("candidatePromote")}
+              </Button>
+            )}
             <Dropdown
               menu={{
                 items: [
@@ -1120,6 +1211,12 @@ export default function Discovery() {
                     <label className="inline-control">
                       <span>{t("discoveryDelay")}</span>
                       <InputNumber min={0} step={0.05} value={delay} onChange={(value) => setDelay(value ?? 0)} />
+                    </label>
+                  </Tooltip>
+                  <Tooltip title={t("discoveryMaxWorkersHint")}>
+                    <label className="inline-control">
+                      <span>{t("discoveryMaxWorkers")}</span>
+                      <InputNumber min={1} max={3} value={maxWorkers} onChange={(value) => setMaxWorkers(value ?? 1)} />
                     </label>
                   </Tooltip>
                   <Tooltip title={t("warningDaysHint")}>

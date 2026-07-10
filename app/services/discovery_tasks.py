@@ -154,12 +154,15 @@ def _append_error(task: DiscoveryTaskRecord, error: dict) -> None:
     task.errors_json = json.dumps(errors[-20:], ensure_ascii=False, default=str)
 
 
-def list_discovery_tasks(limit: int = 20) -> list[dict]:
+def list_discovery_tasks(limit: int = 20, scope: str | None = None) -> list[dict]:
     db = SessionLocal()
     try:
         _expire_stale_tasks(db)
+        stmt = select(DiscoveryTaskRecord)
+        if scope:
+            stmt = stmt.where(DiscoveryTaskRecord.scope == scope)
         rows = (
-            db.execute(select(DiscoveryTaskRecord).order_by(desc(DiscoveryTaskRecord.created_at)).limit(limit))
+            db.execute(stmt.order_by(desc(DiscoveryTaskRecord.created_at)).limit(limit))
             .scalars()
             .all()
         )
@@ -499,18 +502,42 @@ def _refresh_cn_etf_universe(db: Session) -> dict:
         records = frame.to_dict("records")
         code_keys = ["代码", "基金代码", "symbol", "code"]
         name_keys = ["名称", "基金简称", "name"]
-    except Exception:
-        with quiet_akshare_output():
-            # 备用源同样用 call_akshare_with_retry 包装
-            frame = call_akshare_with_retry(
-                ak.fund_etf_category_sina,
-                api_key="fund_etf_category_sina",
-                max_attempts=2,
-                db=db,
-            )
-        records = frame.to_dict("records")
-        code_keys = ["代码", "symbol", "code"]
-        name_keys = ["名称", "name"]
+    except Exception as exc:
+        # P0 稳定性：主源（东财 push2）失败时，优先尝试 sina 备用源拉取全量 ETF 列表
+        # 注意顺序：必须先尝试 sina 备用源（能拿到全市场 ~1500 只 ETF），而非直接用 cache 兜底
+        # 因为 DB 中可能只有少量手动添加的 ETF（如 3 只），直接用 cache 会导致任务只处理这几个标的
+        # sina 源不受东财 push2 IP 频次风控影响，通常可成功
+        logger.warning("cn-etf primary source failed, trying sina backup: %s", exc)
+        try:
+            with quiet_akshare_output():
+                # 注意：必须显式传 symbol="ETF基金"，否则默认 "LOF基金" 会返回 LOF 列表
+                frame = call_akshare_with_retry(
+                    ak.fund_etf_category_sina,
+                    symbol="ETF基金",
+                    api_key="fund_etf_category_sina",
+                    max_attempts=2,
+                    db=db,
+                )
+            records = frame.to_dict("records")
+            code_keys = ["代码", "symbol", "code"]
+            name_keys = ["名称", "name"]
+        except Exception as exc2:
+            # sina 备用源也失败，才用 cached ETF 标的兜底（避免任务直接中断）
+            cached_count = db.execute(
+                select(func.count(Symbol.id)).where(
+                    Symbol.is_active == 1,
+                    Symbol.asset_type == "etf",
+                    Symbol.market.in_(markets_for_region("cn")),
+                )
+            ).scalar_one()
+            if cached_count:
+                logger.warning(
+                    "Using cached cn-etf universe after both sources failed: primary=%s | sina=%s",
+                    exc, exc2,
+                )
+                return {"seen": int(cached_count), "created": 0, "source": "cache", "warning": str(exc)}
+            # 两个源都失败且无 cache，抛出最后异常
+            raise
 
     for row in records:
         raw_code = _first_row_value(row, code_keys)
@@ -565,6 +592,86 @@ def _resolve_discovery_symbols(db: Session, payload: DiscoveryTaskCreate) -> lis
     if payload.symbol_limit is not None:
         stmt = stmt.limit(payload.symbol_limit)
     return db.execute(stmt).scalars().all()
+
+
+def _resolve_universe_symbols_for_discovery(
+    db: Session, payload: DiscoveryTaskCreate
+) -> list[tuple[Any, Symbol]]:
+    """从基础表 universe_symbols 读已同步标的（is_synced=1），返回 [(UniverseSymbol, Symbol)]。
+
+    核心改造：挖掘任务不再调 akshare 刷新标的列表，直接读基础表。
+    对每个 universe_symbol，用 symbol code 在 symbols 表中查找；
+    若不存在则创建 Symbol 记录（is_active=1），确保 scores 表外键可用。
+    """
+    from app.models.universe import UniverseSymbol
+
+    if payload.scope not in DISCOVERY_SCOPE_CONFIG:
+        raise ValueError(f"Unsupported discovery scope: {payload.scope}")
+    scope_cfg = DISCOVERY_SCOPE_CONFIG[payload.scope]
+    asset_type = scope_cfg.get("asset_type")
+    region = scope_cfg.get("region")
+
+    # 从 universe_symbols 读已同步标的
+    stmt = (
+        select(UniverseSymbol)
+        .where(
+            UniverseSymbol.is_synced == 1,
+            UniverseSymbol.asset_type == asset_type,
+            UniverseSymbol.region == region,
+        )
+        .order_by(UniverseSymbol.id.asc())
+    )
+    if payload.symbol_limit is not None:
+        stmt = stmt.limit(payload.symbol_limit)
+    universe_symbols = db.execute(stmt).scalars().all()
+
+    if not universe_symbols:
+        logger.warning(
+            "discovery: no synced universe symbols for scope=%s (region=%s, asset_type=%s)",
+            payload.scope, region, asset_type,
+        )
+        return []
+
+    # 批量查 symbols 表，避免 N+1
+    codes = [us.symbol for us in universe_symbols]
+    existing_symbols = db.execute(
+        select(Symbol).where(Symbol.symbol.in_(codes))
+    ).scalars().all()
+    code_to_symbol: dict[str, Symbol] = {s.symbol: s for s in existing_symbols}
+
+    result: list[tuple[Any, Symbol]] = []
+    created_count = 0
+    for us in universe_symbols:
+        sym = code_to_symbol.get(us.symbol)
+        if sym is None:
+            # symbols 表不存在，创建记录（评分需要 Symbol.id 写 scores 表）
+            sym = Symbol(
+                symbol=us.symbol,
+                name=us.name or us.symbol,
+                asset_type=us.asset_type,
+                market=us.market,
+                board=us.board,
+                is_active=1,
+            )
+            db.add(sym)
+            db.flush()  # 获取 sym.id
+            created_count += 1
+            code_to_symbol[us.symbol] = sym
+        elif sym.is_active != 1:
+            sym.is_active = 1
+        result.append((us, sym))
+
+    if created_count > 0:
+        db.commit()
+        logger.info(
+            "discovery: created %d new Symbol records from universe_symbols (scope=%s)",
+            created_count, payload.scope,
+        )
+    logger.info(
+        "discovery: resolved %d universe symbols for scope=%s (%d already in symbols table)",
+        len(result), payload.scope, len(result) - created_count,
+    )
+    return result
 
 
 def get_discovery_scope_stats(scope: str, db: Session) -> dict:
@@ -646,6 +753,9 @@ def _sync_one_symbol(
             },
             True,
         )
+    # 网络请求前释放 DB 连接，避免 refresh_symbol_name / sync_symbol_daily_bars
+    # 长时间网络请求期间连接被 MySQL 关闭（Lost connection during query）
+    db.commit()
     refresh_symbol_name(symbol)
     result = sync_symbol_daily_bars(
         db=db,
@@ -677,6 +787,62 @@ def _sync_progress(processed: int, total: int) -> float:
     if total <= 0:
         return TASK_STAGE_PERCENT["prepare"]
     return round(10 + min(1, processed / total) * 62, 1)
+
+
+def _score_universe_symbol(
+    db: Session,
+    universe_symbol: Any,
+    symbol: Symbol,
+    trade_date: date,
+    portfolio_id: int | None,
+    *,
+    prefetched_bars: list | None = None,
+    existing_score_map: dict[int, Any] | None = None,
+) -> tuple[dict, bool]:
+    """从基础表 universe_daily_bars 读K线评分，不调 akshare，不写 daily_bars 表。
+
+    替代 _sync_one_symbol 的网络同步+评分逻辑：
+    - 数据源：universe_daily_bars（纯 DB 读取，<50ms/标的）
+    - 评分写入：scores 表（关联 symbol.id）
+    - 交易计划：upsert_trade_setup（如有 portfolio_id）
+
+    P1 优化：支持外部预载 K线 和 Score 去重字典，避免 N+1 查询。
+
+    Returns:
+        (result_dict, scored_bool)
+    """
+    from app.services.scoring_config_engine import calculate_universe_symbol_score
+
+    score = calculate_universe_symbol_score(
+        db, universe_symbol, symbol, trade_date,
+        prefetched_bars=prefetched_bars,
+        existing_score_map=existing_score_map,
+    )
+
+    if portfolio_id is not None:
+        try:
+            upsert_trade_setup(db=db, portfolio_id=portfolio_id, symbol=symbol, score=score)
+        except Exception:
+            logger.warning("upsert_trade_setup failed for %s (non-fatal)", symbol.symbol, exc_info=True)
+
+    return (
+        {
+            "symbol_id": symbol.id,
+            "symbol": symbol.symbol,
+            "asset_type": symbol.asset_type,
+            "status": "ok",
+            "source": "universe_daily_bars",
+            "rows": 0,
+            "latest_score": {
+                "trade_date": trade_date.isoformat(),
+                "quality_score": score.quality_score,
+                "timing_score": score.timing_score,
+                "stage": score.stage,
+                "action": score.action,
+            },
+        },
+        True,
+    )
 
 
 def _payload_from_task(task: DiscoveryTaskRecord) -> DiscoveryTaskCreate:
@@ -754,16 +920,21 @@ def _cleanup_discovery_symbols(
 
 
 def _check_stop_state(db: Session, task_id: str) -> str | None:
-    db.expire_all()
-    task = db.get(DiscoveryTaskRecord, task_id)
-    if task is None:
+    # 只查 task 的 status 字段，不调用 db.expire_all()（会过期所有已加载的 Symbol 对象，
+    # 导致后续访问属性触发大量懒加载查询，严重拖慢挖掘速度）
+    row = db.execute(
+        select(DiscoveryTaskRecord.status).where(DiscoveryTaskRecord.id == task_id)
+    ).scalar_one_or_none()
+    if row is None:
         return "cancelled"
-    if task.status == "paused":
+    if row == "paused":
+        task = db.get(DiscoveryTaskRecord, task_id)
         task.message = "任务已暂停，进度已保留"
         task.current_symbol = None
         db.commit()
         return "paused"
-    if task.status == "cancelled":
+    if row == "cancelled":
+        task = db.get(DiscoveryTaskRecord, task_id)
         task.message = "任务已中止"
         task.current_symbol = None
         task.finished_at = task.finished_at or _now()
@@ -793,14 +964,15 @@ def _watchdog_heartbeat(task_id: str, stop_event: threading.Event) -> None:
             db = SessionLocal()
             try:
                 # 风控加固：先用条件 UPDATE 只更新 updated_at 字段，避免整行覆盖
-                # WHERE 限定非终态 + 非 prepare 阶段，rowcount=0 表示任务已终态或仍在 prepare
+                # WHERE 限定非终态，rowcount=0 表示任务已进入终态
+                # 注意：prepare 阶段也心跳，防止 prepare→sync 过渡时卡死被 _expire_stale_tasks 误判
+                # （universe 刷新有自己的 120s 超时保护，不需要靠 stale 检测兜底）
                 now = _now()
                 stmt = (
                     update(DiscoveryTaskRecord.__table__)
                     .where(
                         DiscoveryTaskRecord.id == task_id,
                         DiscoveryTaskRecord.status.notin_(_TERMINAL_STATES),
-                        DiscoveryTaskRecord.stage != "prepare",
                     )
                     .values(updated_at=now)
                 )
@@ -808,8 +980,7 @@ def _watchdog_heartbeat(task_id: str, stop_event: threading.Event) -> None:
                 db.commit()
 
                 if result.rowcount == 0:
-                    # 行未更新：可能是任务已进入终态，或仍在 prepare 阶段
-                    # 再查一次状态判断是否该退出
+                    # 行未更新：任务已进入终态，退出心跳
                     task = db.get(DiscoveryTaskRecord, task_id)
                     if task is None or task.status in _TERMINAL_STATES:
                         logger.info(
@@ -817,8 +988,6 @@ def _watchdog_heartbeat(task_id: str, stop_event: threading.Event) -> None:
                             task_id, task.status if task else "None",
                         )
                         return
-                    # 仍在 prepare 阶段，跳过本次心跳（让 _expire_stale_tasks 兜底）
-                    logger.debug("watchdog %s skip heartbeat in prepare stage", task_id)
                 else:
                     logger.debug("watchdog %s heartbeat (rowcount=%d)", task_id, result.rowcount)
             finally:
@@ -855,6 +1024,50 @@ def _sync_one_symbol_with_timeout(
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_run)
         return future.result(timeout=SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
+
+
+def _sync_one_symbol_concurrent(
+    symbol: Symbol, payload: Any, portfolio_id: int | None
+) -> tuple[dict, bool]:
+    """并发模式下的单 symbol 同步 worker：使用独立 DB Session，无超时包装（由调用方 future.result(timeout) 控制）。
+
+    与 _sync_one_symbol_with_timeout 的区别：
+    - 后者每次创建 1-worker 线程池做超时，适合串行模式
+    - 本函数直接在调用方线程池中执行，避免嵌套线程池，适合并发模式
+
+    含 OperationalError 重试：并发模式下连接可能被 MySQL 关闭，重试一次让 SQLAlchemy 重新获取连接。
+    """
+    from app.db.manager import DatabaseManager
+    from sqlalchemy.exc import OperationalError
+
+    SessionLocal = DatabaseManager.get().session_factory
+
+    last_exc: Exception | None = None
+    for attempt in range(2):  # 最多重试 1 次
+        sub_db = SessionLocal()
+        try:
+            result = _sync_one_symbol(sub_db, symbol, payload, portfolio_id)
+            return result
+        except OperationalError as exc:
+            # 连接被 MySQL 关闭（Lost connection / Connection aborted），回滚后重试
+            last_exc = exc
+            try:
+                sub_db.rollback()
+            except Exception:
+                pass
+            if attempt == 0:
+                logger.warning(
+                    "concurrent sync_one %s OperationalError (attempt 1/2), retrying: %s",
+                    symbol.symbol, exc,
+                )
+                continue
+            raise
+        finally:
+            sub_db.close()
+    # 理论不可达
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("unreachable")
 
 
 def _refresh_universe_with_timeout(db: Session, payload: DiscoveryTaskCreate) -> dict | None:
@@ -914,93 +1127,257 @@ def _run_discovery_task(task_id: str) -> None:
         db.commit()
 
         if not processed_ids:
-            universe = _refresh_universe_with_timeout(db, payload)
-            if universe is None:
-                # universe 刷新超时（120s），直接中断任务
-                raise RuntimeError("全市场标的列表刷新超时（120s），akshare 接口可能卡死，请稍后重试")
-            # seen=0 说明全市场标的列表拉取失败（akshare 接口异常或网络问题）
-            # 此时继续跑空扫描会让用户困惑，直接中断任务
-            if universe.get("seen", 0) == 0:
-                raise RuntimeError("全市场标的列表拉取失败（akshare 接口异常或网络问题），请稍后重试")
+            # P1 改造：从基础表 universe_symbols 读已同步标的，不再调 akshare 刷新
+            universe_pairs = _resolve_universe_symbols_for_discovery(db, payload)
+            if not universe_pairs:
+                _set_task(
+                    db, task_id, status="failed", stage="failed", percent=100,
+                    message="基础表无已同步标的，请先在「设置 → 基础数据」完成初始化同步",
+                    finished_at=_now(),
+                )
+                return
+            task.message = f"已从基础表载入 {len(universe_pairs)} 个标的"
             db.commit()
+        else:
+            # 断点续传：重新从 universe_symbols 载入标的列表
+            universe_pairs = _resolve_universe_symbols_for_discovery(db, payload)
+            if not universe_pairs:
+                _set_task(
+                    db, task_id, status="failed", stage="failed", percent=100,
+                    message="基础表无已同步标的，请先在「设置 → 基础数据」完成初始化同步",
+                    finished_at=_now(),
+                )
+                return
 
-        symbols = _resolve_discovery_symbols(db, payload)
-        task = _set_task(db, task_id, total=len(symbols), message=f"已载入 {len(symbols)} 个标的")
-        if not symbols:
+        total = len(universe_pairs)
+        task = _set_task(db, task_id, total=total, message=f"已载入 {total} 个标的，开始评分")
+        if total == 0:
             _set_task(db, task_id, status="done", stage="done", percent=100, message="当前范围没有可扫描标的", finished_at=_now())
             return
 
-        for index, symbol in enumerate(symbols, start=1):
+        # P3：挖掘前缓存补齐——检测K线过期标的并增量补齐，确保评分用最新数据
+        # P3.1 缺失检测：last_bar_date < today 或为 None 的标的需要补齐
+        # P3.2 自动补齐：并发调 _sync_one_concurrent 增量同步（带分批限速）
+        # P3.3 跳过策略：补齐失败的标的仍参与评分（用已有历史K线），完全无K线的返回中性分
+        from app.services.universe_sync import _sync_one_concurrent, SYNC_FAILED_THRESHOLD
+
+        today = datetime.now().date()
+        stale_pairs = [
+            (us, sym) for us, sym in universe_pairs
+            if us.last_bar_date is None or us.last_bar_date < today
+        ]
+        # pending_pairs 中需要补齐的标的
+        stale_pending = [
+            (us, sym) for us, sym in stale_pairs if sym.id not in processed_ids
+        ]
+
+        if stale_pending:
+            # 过滤掉已熔断标的（sync_failed >= 阈值），这些标的补齐无意义
+            stale_syncable = [
+                (us, sym) for us, sym in stale_pending
+                if us.sync_failed < SYNC_FAILED_THRESHOLD
+            ]
+            stale_broken = len(stale_pending) - len(stale_syncable)
+
+            _set_task(
+                db, task_id, stage="prepare",
+                message=f"缓存补齐：{len(stale_syncable)} 个标的K线过期，正在增量同步"
+                        + (f"（{stale_broken} 个已熔断跳过）" if stale_broken else ""),
+            )
+            logger.info(
+                "discovery %s: P3 cache fill — stale=%d syncable=%d broken=%d",
+                task_id, len(stale_pending), len(stale_syncable), stale_broken,
+            )
+
+            if stale_syncable:
+                from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
+                from app.services.universe_sync import SYNC_ONE_SYMBOL_TIMEOUT_SECONDS, DEFAULT_HISTORY_DAYS
+
+                # P3.2 并发补齐（分批限速，与增量同步一致）
+                P3_BATCH_SIZE = 50
+                P3_BATCH_INTERVAL = 1.0
+                P3_MAX_WORKERS = 5
+                fill_ok = 0
+                fill_failed = 0
+                fill_uptodate = 0
+                fill_total = len(stale_syncable)
+
+                for batch_start in range(0, fill_total, P3_BATCH_SIZE):
+                    if _check_stop_state(db, task_id):
+                        logger.info("discovery %s: P3 cache fill cancelled at %d/%d", task_id, batch_start, fill_total)
+                        break
+                    batch = stale_syncable[batch_start:batch_start + P3_BATCH_SIZE]
+                    with ThreadPoolExecutor(max_workers=P3_MAX_WORKERS, thread_name_prefix="p3-fill") as executor:
+                        futures = {
+                            executor.submit(_sync_one_concurrent, us.id, DEFAULT_HISTORY_DAYS): (us, sym)
+                            for us, sym in batch
+                        }
+                        for future in as_completed(futures):
+                            if _check_stop_state(db, task_id):
+                                for f in futures:
+                                    f.cancel()
+                                break
+                            us, sym = futures[future]
+                            try:
+                                result = future.result(timeout=SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
+                                status = result.get("status")
+                                if status in ("ok", "empty"):
+                                    fill_ok += 1
+                                elif status == "uptodate":
+                                    fill_uptodate += 1
+                                else:
+                                    fill_failed += 1
+                            except (FuturesTimeoutError, Exception) as exc:
+                                logger.warning("discovery %s: P3 fill %s failed: %s", task_id, us.symbol, exc)
+                                fill_failed += 1
+
+                    # 更新进度（每批提交一次）
+                    fill_processed = fill_ok + fill_uptodate + fill_failed
+                    _set_task(
+                        db, task_id,
+                        message=f"缓存补齐中 {fill_processed}/{fill_total}（成功 {fill_ok}，已是最新 {fill_uptodate}，失败 {fill_failed}）",
+                    )
+                    # 批次间隔（最后一批不 sleep）
+                    is_last = batch_start + P3_BATCH_SIZE >= fill_total
+                    if not is_last:
+                        time.sleep(P3_BATCH_INTERVAL)
+
+                logger.info(
+                    "discovery %s: P3 cache fill done — ok=%d uptodate=%d failed=%d (total=%d)",
+                    task_id, fill_ok, fill_uptodate, fill_failed, fill_total,
+                )
+                # 刷新 universe_pairs 中 UniverseSymbol 的 last_bar_date（补齐后已更新）
+                db.expire_all()
+                universe_pairs = _resolve_universe_symbols_for_discovery(db, payload)
+        else:
+            logger.info("discovery %s: P3 cache fill skipped — all symbols up-to-date", task_id)
+
+        # P1 改造：sync 阶段改为纯 DB 读取 + 评分（不调 akshare，不写 daily_bars 表）
+        # 速度从 5-15s/标的 降至 <50ms/标的，5500 标的约 4-8 分钟
+        # 评分日期用今天（calculate_universe_symbol_score 内部查 <= today 的K线）
+        score_date = datetime.now().date()
+        pending_pairs = [(us, sym) for us, sym in universe_pairs if sym.id not in processed_ids]
+
+        logger.info(
+            "discovery %s: universe-based scoring start, total=%d pending=%d",
+            task_id, total, len(pending_pairs),
+        )
+
+        # P1.1 + P1.2：批量预载 K线 + 批量预查 Score 去重（N+1 → 1，大幅减少 DB 往返）
+        # 空间换时间：5500标的 * 80根 ≈ 44万行 K线常驻内存（约 50-100MB），评分完成后释放
+        from itertools import groupby
+        from app.models.universe import UniverseDailyBar
+        from app.models.score import Score as ScoreModel
+        from app.services.scoring_config_engine import get_active_scoring_config
+
+        # P1.1：批量预载 K线（按 universe_symbol_id 分组，每组取最新 80 根，升序排列）
+        bars_map: dict[int, list] = {}
+        if pending_pairs:
+            us_ids = [us.id for us, _ in pending_pairs]
+            all_bars = db.execute(
+                select(UniverseDailyBar)
+                .where(
+                    UniverseDailyBar.universe_symbol_id.in_(us_ids),
+                    UniverseDailyBar.trade_date <= score_date,
+                )
+                .order_by(UniverseDailyBar.universe_symbol_id, UniverseDailyBar.trade_date.desc())
+            ).scalars().all()
+            for us_id, group in groupby(all_bars, key=lambda b: b.universe_symbol_id):
+                # group 已按 trade_date desc 排序，取前 80 根（最新 80 根），再反转为升序
+                bars_map[us_id] = list(reversed(list(group)[:80]))
+            logger.info(
+                "discovery %s: prefetched %d bars for %d symbols",
+                task_id, sum(len(v) for v in bars_map.values()), len(bars_map),
+            )
+
+        # P1.2：批量预查 Score 去重（按 asset_type 分别查，因 calc_batch_id 依赖 config）
+        existing_score_map: dict[int, Any] = {}
+        for asset_type in ("stock", "etf"):
+            type_pairs = [(us, sym) for us, sym in pending_pairs if (sym.asset_type or "stock") == asset_type]
+            if not type_pairs:
+                continue
+            cfg = get_active_scoring_config(db, asset_type)
+            if cfg is None:
+                continue
+            date_key = score_date.isoformat()
+            calc_batch_id = f"sc-{cfg.id}-v{cfg.version}-{date_key}"
+            type_sym_ids = [sym.id for _, sym in type_pairs]
+            existing_scores = db.execute(
+                select(ScoreModel).where(
+                    ScoreModel.symbol_id.in_(type_sym_ids),
+                    ScoreModel.trade_date == score_date,
+                    ScoreModel.calc_batch_id == calc_batch_id,
+                )
+            ).scalars().all()
+            for s in existing_scores:
+                existing_score_map[s.symbol_id] = s
+            logger.info(
+                "discovery %s: prefetched %d existing scores for %s (%d symbols)",
+                task_id, len(existing_scores), asset_type, len(type_sym_ids),
+            )
+
+        # P1.4：进度更新降频——每 20 个标的检查一次停止状态，避免每标的一次 SELECT
+        PROGRESS_FLUSH_INTERVAL = 20
+
+        for index, (universe_symbol, symbol) in enumerate(pending_pairs, start=1):
             if symbol.id in processed_ids:
                 continue
-            stop_state = _check_stop_state(db, task_id)
-            if stop_state:
-                return
+            # P1.4：停止状态检查降频（每 20 个标的查一次）
+            if index % PROGRESS_FLUSH_INTERVAL == 1:
+                stop_state = _check_stop_state(db, task_id)
+                if stop_state:
+                    return
 
+            # P1.4：合并 task 读取，每标只 get 一次（原实现每标 get 3 次）
             task = db.get(DiscoveryTaskRecord, task_id)
             task.stage = "sync"
-            task.percent = _sync_progress(task.processed, len(symbols))
+            task.percent = _sync_progress(task.processed, total)
             task.current_symbol = symbol.symbol
-            task.adaptive_delay_seconds = round(adaptive_delay, 2)
-            task.message = f"正在同步 {symbol.symbol} ({task.processed + 1}/{len(symbols)})"
-            db.commit()
+            task.message = f"正在评分 {symbol.symbol} ({task.processed + 1}/{total})"
+            # P1.4：每标 commit 改为 flush（真正持久化交给下方每 20 个 commit）
+            db.flush()
 
-            logger.info("discovery %s: sync %s (%d/%d)", task_id, symbol.symbol, index, len(symbols))
             try:
-                try:
-                    result, scored = _sync_one_symbol_with_timeout(db, symbol, payload, portfolio_id)
-                except TimeoutError as timeout_exc:
-                    # 单 symbol 同步超时（90s），跳过该 symbol，记录 failed_count
-                    # 子线程仍会泄漏（Python 无法强制 kill），但不阻塞主流程
-                    logger.warning(
-                        "sync_one %s TIMEOUT after %ds (discovery %s)",
-                        symbol.symbol, SYNC_ONE_SYMBOL_TIMEOUT_SECONDS, task_id,
-                    )
-                    db.rollback()
-                    task = db.get(DiscoveryTaskRecord, task_id)
-                    task.failed_count += 1
-                    _append_error(task, {
-                        "symbol_id": symbol.id,
-                        "symbol": symbol.symbol,
-                        "error": f"同步超时（{SYNC_ONE_SYMBOL_TIMEOUT_SECONDS}s），跳过",
-                    })
-                    adaptive_delay = min(5, max(payload.delay_seconds, adaptive_delay * 1.4 + 0.1))
-                    # 跳过下面的状态更新，直接进入 processed_ids 更新
-                    result = {"status": "failed"}
-                    scored = False
+                # P1.1 + P1.2：传入预载的 K线和 Score 去重字典
+                prefetched_bars = bars_map.get(universe_symbol.id, [])
+                result, scored = _score_universe_symbol(
+                    db, universe_symbol, symbol, score_date, portfolio_id,
+                    prefetched_bars=prefetched_bars,
+                    existing_score_map=existing_score_map,
+                )
+                if result["status"] == "ok":
+                    task.ok_count += 1
+                    if symbol.id not in synced_symbol_ids:
+                        synced_symbol_ids.append(symbol.id)
+                    if scored:
+                        task.scored_count += 1
                 else:
-                    task = db.get(DiscoveryTaskRecord, task_id)
-                    if result["status"] == "ok":
-                        task.ok_count += 1
-                        if symbol.id not in synced_symbol_ids:
-                            synced_symbol_ids.append(symbol.id)
-                        if scored:
-                            task.scored_count += 1
-                        adaptive_delay = max(payload.delay_seconds, adaptive_delay * 0.9)
-                    elif result["status"] == "empty":
-                        task.empty_count += 1
-                        adaptive_delay = max(payload.delay_seconds, adaptive_delay * 0.95)
-                    else:
-                        task.failed_count += 1
-                        adaptive_delay = min(5, max(payload.delay_seconds, adaptive_delay * 1.4 + 0.1))
-                    db.flush()
+                    task.failed_count += 1
+                db.flush()
             except Exception as exc:
                 db.rollback()
                 task = db.get(DiscoveryTaskRecord, task_id)
                 task.failed_count += 1
                 _append_error(task, {"symbol_id": symbol.id, "symbol": symbol.symbol, "error": str(exc)})
-                adaptive_delay = min(5, max(payload.delay_seconds, adaptive_delay * 1.6 + 0.2))
 
             processed_ids.add(symbol.id)
-            task = db.get(DiscoveryTaskRecord, task_id)
             task.processed = len(processed_ids)
-            task.percent = _sync_progress(task.processed, len(symbols))
-            task.adaptive_delay_seconds = round(adaptive_delay, 2)
+            task.percent = _sync_progress(task.processed, total)
             task.processed_symbol_ids_json = json.dumps(sorted(processed_ids))
             task.synced_symbol_ids_json = json.dumps(synced_symbol_ids)
-            db.commit()
-            if adaptive_delay > 0:
-                time.sleep(adaptive_delay)
+            # 每 20 个标的提交一次，平衡性能和数据安全
+            if index % PROGRESS_FLUSH_INTERVAL == 0:
+                db.commit()
+                logger.info(
+                    "discovery %s: scoring progress %d/%d (%.1f%%)",
+                    task_id, task.processed, total, task.percent,
+                )
+            else:
+                db.flush()
+        db.commit()
+        # 预载数据用完即释放，降低内存占用
+        bars_map.clear()
+        existing_score_map.clear()
 
         stop_state = _check_stop_state(db, task_id)
         if stop_state:
@@ -1052,6 +1429,25 @@ def _run_discovery_task(task_id: str) -> None:
             row.valid_days = payload.valid_days
             row.is_frozen = 0
         db.commit()
+
+        # P1：把 executable 候选同步写入 discovery_candidates（is_promoted=0）
+        # 用户在前端手动点击"加入候选池"才执行 promote_candidate 标记 is_promoted=1
+        # 幂等：通过 (scan_run_id, universe_symbol_id) 唯一约束去重
+        try:
+            from app.services.candidate_promote import sync_scan_results_to_candidates
+            candidate_count = sync_scan_results_to_candidates(
+                db,
+                scan_run_id=scan_run.id,
+                warning_days=payload.warning_days,
+                valid_days=payload.valid_days,
+            )
+            logger.info(
+                "discovery %s: synced %d candidates to discovery_candidates (scan_run=%d)",
+                task_id, candidate_count, scan_run.id,
+            )
+        except Exception:
+            logger.exception("discovery %s: candidate sync failed (non-fatal)", task_id)
+
         # done 清理：保留 executable 候选 + 观察池 + 持仓，其余 is_active=0
         # 传 scope 以覆盖 prepare 阶段 _refresh_discovery_universe 写入的全市场僵尸标的
         cleanup_count = _cleanup_discovery_symbols(

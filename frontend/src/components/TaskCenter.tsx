@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Collapse, Empty, Progress, Select, Space, Spin, Tag, Timeline } from "antd";
+import { Button, Collapse, Empty, Modal, Progress, Select, Space, Spin, Tag, Timeline } from "antd";
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -7,6 +7,7 @@ import {
   ExceptionOutlined,
   LoadingOutlined,
   PauseCircleOutlined,
+  PoweroffOutlined,
   ReloadOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
@@ -67,6 +68,7 @@ export default function TaskCenter() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<string>("all");
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
+  const [abortingId, setAbortingId] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -85,6 +87,53 @@ export default function TaskCenter() {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  // 判断任务是否可中止:运行中/排队中/已暂停(discovery)均可中止
+  const canAbort = useCallback((task: UnifiedTask): boolean => {
+    if (["running", "queued"].includes(task.status)) return true;
+    // discovery 任务的 paused 状态也允许中止(等同于 cancel)
+    if (task.source === "discovery" && task.status === "paused") return true;
+    return false;
+  }, []);
+
+  const handleAbort = useCallback(
+    (task: UnifiedTask) => {
+      Modal.confirm({
+        title: t("taskAbort"),
+        content: t("taskAbortConfirm"),
+        okText: t("taskAbort"),
+        okButtonProps: { danger: true },
+        cancelText: t("cancel"),
+        onOk: async () => {
+          setAbortingId(task.id);
+          try {
+            if (task.source === "async") {
+              if (task.task_type === "market_data_sync") {
+                await api.cancelMarketDataSyncTask(task.id);
+              } else if (task.task_type === "history_initialization") {
+                await api.cancelHistoryInitialization();
+              } else {
+                throw new Error(`Unsupported async task type: ${task.task_type}`);
+              }
+            } else if (task.source === "discovery") {
+              // discovery task id 是 uuid hex 字符串,client 签名历史遗留为 number,运行时拼接到 URL 无影响
+              await api.sendDiscoveryCommand(task.id as unknown as number, "cancel");
+            } else {
+              throw new Error(`Unsupported task source: ${task.source}`);
+            }
+            showToast("success", t("taskAbortSuccess"));
+            await loadTasks();
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : "";
+            showToast("error", msg || t("taskAbortFailed"));
+          } finally {
+            setAbortingId(null);
+          }
+        },
+      });
+    },
+    [showToast, loadTasks]
+  );
 
   const filteredTasks = useMemo(() => {
     if (filter === "all") return tasks;
@@ -114,9 +163,24 @@ export default function TaskCenter() {
     const progressPct = Math.round(task.percent);
     const hasErrors = task.errors && task.errors.length > 0;
     const duration = task.duration_sec;
+    const abortable = canAbort(task);
+    const isAborting = abortingId === task.id;
 
     return (
       <div className="task-detail-panel">
+        {/* Actions */}
+        {abortable && (
+          <div className="task-detail-section task-detail-actions">
+            <Button
+              danger
+              icon={<PoweroffOutlined />}
+              loading={isAborting}
+              onClick={() => handleAbort(task)}
+            >
+              {isAborting ? t("taskAbortRunning") : t("taskAbort")}
+            </Button>
+          </div>
+        )}
         {/* Progress */}
         <div className="task-detail-section">
           <div className="task-detail-row">

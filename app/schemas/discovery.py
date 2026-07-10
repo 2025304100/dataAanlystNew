@@ -16,6 +16,10 @@ class DiscoveryTaskCreate(BaseModel):
     symbol_limit: int | None = Field(default=None, ge=1, le=10000)
     batch_size: int = Field(default=20, ge=1, le=100)
     delay_seconds: float = Field(default=0.25, ge=0, le=5)
+    # 并发线程数：1=串行（默认，最稳定），>1 时分批并发同步标的，提升挖掘速度
+    # 上限 3：东财 push2 接口有 IP 频次风控，并发过高会触发断连
+    # 并发模式下 adaptive_delay 不生效（并发本身已分摊请求频率）
+    max_workers: int = Field(default=1, ge=1, le=3)
     news_limit: int = Field(default=30, ge=0, le=100)
     global_mode: str = "library"
     refresh_universe: bool = True

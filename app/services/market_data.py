@@ -78,8 +78,17 @@ def _resolve_sync_symbols(
     return db.execute(stmt.order_by(Symbol.id.asc())).scalars().all()
 
 
+def _is_bj_stock_code(code: str) -> bool:
+    """根据代码前缀判断是否为北交所标的（920xxx 新代码 / 4xx 8xx 老代码）。"""
+    return code.startswith(("920", "4", "8"))
+
+
 def _cn_prefixed_symbol(symbol: Symbol) -> str:
     market = (symbol.market or "").lower()
+    # 北交所标的用 "bj" 前缀（akshare 部分接口支持）
+    # 同时检查代码前缀，防止 DB 中 market 字段过时（旧数据可能为 'sh'）
+    if market == "bj" or (market in {"sh", "cn"} and _is_bj_stock_code(symbol.symbol)):
+        return f"bj{symbol.symbol}"
     prefix = "sh" if market in {"sh", "cn"} or symbol.symbol.startswith(("5", "6", "9")) else "sz"
     return f"{prefix}{symbol.symbol}"
 
@@ -135,6 +144,31 @@ def _normalize_us_history(frame: pd.DataFrame, start_date: date, end_date: date)
     normalized["amount"] = None
     normalized["turnover_rate"] = None
     return _standard_history_frame(normalized)
+
+
+def _safe_stock_zh_a_daily(symbol: str, start_date: str, end_date: str, adjust: str) -> pd.DataFrame:
+    """安全调用 stock_zh_a_daily，处理北交所空数据导致的 KeyError。
+
+    新浪 stock_zh_a_daily 对无数据的北交所标的（老代码 430xxx/830xxx）返回空 dict_list，
+    pd.DataFrame([]) 创建空 DataFrame，访问 'date' 列时触发 KeyError。
+    这里在调用前 patch akshare 函数，捕获空数据并返回空 DataFrame。
+    """
+    from app.services.akshare_utils import call_akshare_with_retry
+    try:
+        return call_akshare_with_retry(
+            ak.stock_zh_a_daily,
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            adjust=adjust,
+            api_key="stock_zh_a_daily",
+            max_attempts=2,
+        )
+    except KeyError as e:
+        if "date" in str(e):
+            logger.info("stock_zh_a_daily returned empty data for %s (likely unsupported BJ code)", symbol)
+            return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume", "amount", "turnover"])
+        raise
 
 
 def _normalize_cn_stock_sina_history(frame: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
@@ -221,6 +255,36 @@ def _fetch_history(symbol: Symbol, start_date: date, end_date: date, adjust: str
             with _proxy_bypass():
                 with quiet_akshare_output():
                     if region == "cn" and symbol.asset_type == "stock":
+                        # 北交所标的（market="bj"）：东财 stock_zh_a_hist 不支持，
+                        # 优先用新浪 stock_zh_a_daily（已验证 bj920xxx 前缀可用）
+                        # 注意：新浪对部分北交所标的（老代码 430xxx/830xxx）返回空数据会触发 KeyError，
+                        # 需用 _safe_stock_zh_a_daily 包装处理空 DataFrame
+                        if (symbol.market or "").lower() == "bj" or _is_bj_stock_code(symbol.symbol):
+                            try:
+                                return _normalize_cn_stock_sina_history(
+                                    _safe_stock_zh_a_daily(
+                                        _cn_prefixed_symbol(symbol),
+                                        start, end, adjust,
+                                    ),
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                )
+                            except Exception:
+                                logger.info("AKShare sina source failed for BJ %s, trying tx fallback", symbol.symbol, exc_info=True)
+                                return _normalize_cn_stock_tx_history(
+                                    call_akshare_with_retry(
+                                        ak.stock_zh_a_hist_tx,
+                                        symbol=_cn_prefixed_symbol(symbol),
+                                        start_date=start,
+                                        end_date=end,
+                                        adjust=adjust,
+                                        api_key="stock_zh_a_hist_tx",
+                                        max_attempts=2,
+                                    ),
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                )
+                        # 沪深股票：东财 → 新浪 → 腾讯
                         try:
                             return _normalize_cn_em_history(
                                 call_akshare_with_retry(
@@ -379,6 +443,10 @@ def sync_symbol_daily_bars(
         resolved_start = latest_bar.trade_date - timedelta(days=10)
     else:
         resolved_start = resolved_end - timedelta(days=365)
+
+    # 网络请求前释放 DB 连接，避免 akshare 长时间请求期间连接被 MySQL 关闭
+    # latest_bar 是只读查询，commit 安全；后续 _upsert_bars 会重新从池获取连接（触发 pre_ping）
+    db.commit()
 
     frame = _fetch_history(symbol=symbol, start_date=resolved_start, end_date=resolved_end, adjust=adjust)
     if frame.empty:

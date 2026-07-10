@@ -14,6 +14,7 @@ import AlertCenter from "./AlertCenter";
 import ScoringConfigSettings from "./ScoringConfigSettings";
 import ExternalDataSync from "./ExternalDataSync";
 import AkshareApiManager from "./AkshareApiManager";
+import UniverseDataPanel from "./UniverseDataPanel";
 
 export default function Settings() {
   const ctx = useApp();
@@ -22,10 +23,10 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "alerts" | "scoring" | "external" | "api-mgmt" | "db">(() => {
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "alerts" | "scoring" | "external" | "api-mgmt" | "universe" | "db">(() => {
     if (typeof window === "undefined") return "rules";
     const stored = window.localStorage.getItem("settings_active_section");
-    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "alerts" || stored === "scoring" || stored === "external" || stored === "api-mgmt" || stored === "db" ? stored : "rules";
+    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "alerts" || stored === "scoring" || stored === "external" || stored === "api-mgmt" || stored === "universe" || stored === "db" ? stored : "rules";
   });
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<"formulas" | "plans">(() => {
     if (typeof window === "undefined") return "formulas";
@@ -239,6 +240,15 @@ export default function Settings() {
           >
             <span className="settings-nav-icon"><ApiOutlined /></span>
             <span className="settings-nav-copy">{t("apiMgmtTabTitle")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "universe" ? "active" : ""}`}
+            aria-current={activeSection === "universe" ? "page" : undefined}
+            onClick={() => setActiveSection("universe")}
+          >
+            <span className="settings-nav-icon"><DatabaseOutlined /></span>
+            <span className="settings-nav-copy">{t("universeTabTitle")}</span>
           </button>
           <button
             type="button"
@@ -465,6 +475,11 @@ export default function Settings() {
               <section className="band">
                 <AkshareApiManager />
               </section>
+            </div>
+          )}
+          {activeSection === "universe" && (
+            <div className="settings-tab-container" data-settings-content="settings-universe">
+              <UniverseDataPanel />
             </div>
           )}
           {activeSection === "db" && (

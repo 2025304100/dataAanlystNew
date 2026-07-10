@@ -247,7 +247,12 @@ export const api = {
     requestJson<any[]>(`${API}/macro/indicators/${encodeURIComponent(indicatorKey)}/history?region=${encodeURIComponent(region)}&limit=${limit}`),
 
   // Discovery
-  getDiscoveryTasks: (limit = 10) => requestJson<any[]>(`${API}/discovery/tasks?limit=${limit}`),
+  getDiscoveryTasks: (limit = 10, scope?: string) => {
+    const params = new URLSearchParams();
+    params.set("limit", String(limit));
+    if (scope) params.set("scope", scope);
+    return requestJson<any[]>(`${API}/discovery/tasks?${params.toString()}`);
+  },
   createDiscoveryTask: (payload: unknown) =>
     requestJson<any>(`${API}/discovery/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   sendDiscoveryCommand: (taskId: number, command: string) =>
@@ -265,8 +270,76 @@ export const api = {
     }),
   cleanupDiscoveryResults: () =>
     requestJson<{ deleted: number; skipped_frozen: number }>(`${API}/discovery/results/cleanup`, { method: "POST" }),
-  getLatestDiscoveryCandidates: (minScore = 0, limit = 50) =>
-    requestJson<any[]>(`${API}/discovery/latest-candidates?min_score=${minScore}&limit=${limit}`),
+  getLatestDiscoveryCandidates: (minScore = 0, limit = 50, scope?: string) =>
+    requestJson<any[]>(`${API}/discovery/latest-candidates?min_score=${minScore}&limit=${limit}${scope ? `&scope=${scope}` : ""}`),
+
+  // P1：挖掘候选手动晋升 API
+  listDiscoveryCandidates: (params: { scanRunId?: number; isPromoted?: 0 | 1; limit?: number; offset?: number } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.scanRunId != null) sp.set("scan_run_id", String(params.scanRunId));
+    if (params.isPromoted != null) sp.set("is_promoted", String(params.isPromoted));
+    sp.set("limit", String(params.limit ?? 100));
+    sp.set("offset", String(params.offset ?? 0));
+    return requestJson<any[]>(`${API}/discovery/candidates?${sp.toString()}`);
+  },
+  promoteDiscoveryCandidate: (candidateId: number) =>
+    requestJson<{ ok: boolean; candidate_id: number; symbol: string; already_promoted: boolean }>(
+      `${API}/discovery/candidates/${candidateId}/promote`,
+      { method: "POST" }
+    ),
+  unpromoteDiscoveryCandidate: (candidateId: number) =>
+    requestJson<{ ok: boolean; candidate_id: number; symbol: string }>(
+      `${API}/discovery/candidates/${candidateId}/unpromote`,
+      { method: "POST" }
+    ),
+  promoteDiscoveryCandidatesBatch: (candidateIds: number[]) =>
+    requestJson<{ ok: boolean; promoted_count: number; already_promoted_count: number; not_found_ids: number[] }>(
+      `${API}/discovery/candidates/promote-batch`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_ids: candidateIds }),
+      }
+    ),
+
+  // Universe 基础数据层（全市场标的 + K线初始化同步）
+  // P0.6：scopes 支持分 scope 独立初始化，None=全部
+  startUniverseInit: (maxWorkers = 5, historyDays = 365, scopes: string[] | null = null, syncLimit = 0) =>
+    requestJson<any>(`${API}/universe/initialize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_workers: maxWorkers, history_days: historyDays, scopes, sync_limit: syncLimit }),
+    }),
+  getUniverseInitStatus: () => requestJson<any | null>(`${API}/universe/initialize/status`),
+  cancelUniverseInit: () =>
+    requestJson<any>(`${API}/universe/initialize/cancel`, { method: "POST" }),
+  retryUniverseInit: (maxWorkers = 5, historyDays = 365, scopes: string[] | null = null, syncLimit = 0) =>
+    requestJson<any>(`${API}/universe/initialize/retry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_workers: maxWorkers, history_days: historyDays, scopes, sync_limit: syncLimit }),
+    }),
+  // P2：增量同步（每日定时 + 手动触发）
+  startUniverseIncrementalSync: (maxWorkers = 5) =>
+    requestJson<any>(`${API}/universe/incremental-sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_workers: maxWorkers }),
+    }),
+  getUniverseIncrementalSyncStatus: () => requestJson<any | null>(`${API}/universe/incremental-sync/status`),
+  cancelUniverseIncrementalSync: () =>
+    requestJson<any>(`${API}/universe/incremental-sync/cancel`, { method: "POST" }),
+  // 历史回补（对已同步标的强制按新 history_days 重新拉取K线）
+  startUniverseBackfill: (maxWorkers = 5, historyDays = 365, scopes: string[] | null = null, syncLimit = 0) =>
+    requestJson<any>(`${API}/universe/backfill`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_workers: maxWorkers, history_days: historyDays, scopes, sync_limit: syncLimit }),
+    }),
+  getUniverseBackfillStatus: () => requestJson<any | null>(`${API}/universe/backfill/status`),
+  cancelUniverseBackfill: () =>
+    requestJson<any>(`${API}/universe/backfill/cancel`, { method: "POST" }),
+  getUniverseStats: () => requestJson<any>(`${API}/universe/stats`),
 
   // Market Events
   getMarketEvents: (params: {

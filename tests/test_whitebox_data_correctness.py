@@ -225,11 +225,12 @@ def test_universe_refresh_seen_zero_when_empty_frame(monkeypatch, db_session):
 # ============================================================================
 
 def test_fetch_history_retries_only_once_per_source(monkeypatch):
-    """【P0 数据正确性】_fetch_history 每个数据源只尝试 1 次（range(1)）。
+    """【P0 数据正确性】_fetch_history 每个数据源只尝试 1 次（非重试异常不重试）。
 
-    历史问题：原 range(3) 导致 3 源 × 3 次 = 9 次 × 20s = 180s > 90s 超时。
-    修复：改为 range(1)，3 源 × 1 次 = 60s < 90s。
-    本测试 mock 所有源失败，验证每源只调用 1 次。
+    重构后 _fetch_history 委托给 SourceChain,各 akshare adapter 用
+    call_akshare_with_retry(max_attempts=2) 包装。非重试异常（如通用 Exception）
+    不会被重试,因此每个 akshare 函数只调用 1 次。
+    本测试 mock 所有源失败,验证每源只调用 1 次。
     """
     from app.models.symbol import Symbol
 
@@ -250,16 +251,17 @@ def test_fetch_history_retries_only_once_per_source(monkeypatch):
         call_counts["tx"] += 1
         raise Exception("tx failed")
 
-    # mock akshare 三个源都失败
-    monkeypatch.setattr(market_data.ak, "stock_zh_a_hist", failing_em)
-    monkeypatch.setattr(market_data.ak, "stock_zh_a_daily", failing_sina)
-    monkeypatch.setattr(market_data.ak, "stock_zh_a_hist_tx", failing_tx)
+    # mock akshare 三个源都失败(重构后 akshare 在 akshare_source.py 中调用,patch 模块级属性)
+    monkeypatch.setattr("akshare.stock_zh_a_hist", failing_em)
+    monkeypatch.setattr("akshare.stock_zh_a_daily", failing_sina)
+    monkeypatch.setattr("akshare.stock_zh_a_hist_tx", failing_tx)
 
-    # _fetch_history 内部有 _proxy_bypass 和 quiet_akshare_output 上下文管理器，需确保不报错
+    # _fetch_history 内部有 _proxy_bypass 上下文管理器,chain 内有 quiet_akshare_output,需确保不报错
+    # 所有源失败后 SourceChain 抛 RuntimeError（Exception 子类）
     with pytest.raises(Exception):
         market_data._fetch_history(symbol, date(2024, 1, 1), date(2024, 12, 31), "qfq")
 
-    # 每个源只调用 1 次（range(1)），总调用 3 次
+    # 每个源只调用 1 次（非重试异常不重试），总调用 3 次
     assert call_counts["em"] == 1, f"em 源应只调用 1 次，实际 {call_counts['em']}"
     assert call_counts["sina"] == 1, f"sina 源应只调用 1 次，实际 {call_counts['sina']}"
     assert call_counts["tx"] == 1, f"tx 源应只调用 1 次，实际 {call_counts['tx']}"

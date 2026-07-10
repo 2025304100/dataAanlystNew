@@ -6,6 +6,7 @@ DatabaseManager — 数据库引擎热切换管理器
 """
 from __future__ import annotations
 
+import os
 import threading
 from typing import ClassVar
 
@@ -63,8 +64,16 @@ class DatabaseManager:
             elif db_type == "mysql":
                 engine_kwargs.setdefault("pool_pre_ping", True)
                 engine_kwargs.setdefault("pool_recycle", 3600)
-                engine_kwargs.setdefault("pool_size", 5)
-                engine_kwargs.setdefault("max_overflow", 10)
+                # 连接池大小：支持并发挖掘（3 worker + 主线程 + watchdog + HTTP 请求）
+                # 可通过环境变量 DB_POOL_SIZE / DB_MAX_OVERFLOW 覆盖
+                engine_kwargs.setdefault("pool_size", int(os.environ.get("DB_POOL_SIZE", "10")))
+                engine_kwargs.setdefault("max_overflow", int(os.environ.get("DB_MAX_OVERFLOW", "20")))
+                # pymysql 连接超时：防止 DB 操作永久卡住（Lost connection / 连接被 MySQL 关闭）
+                # connect_timeout=10s（TCP 连接），read_timeout=30s（查询读取）
+                engine_kwargs.setdefault("connect_args", {
+                    "connect_timeout": 10,
+                    "read_timeout": 30,
+                })
 
             self._engine = create_engine(url, **engine_kwargs)
 
