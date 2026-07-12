@@ -134,6 +134,11 @@ describe("Discovery 组件渲染测试", () => {
     expect(screen.getByText("minOpportunityScore")).toBeInTheDocument();
   });
 
+  it("should render cached data mode helper by default", () => {
+    render(<Discovery />);
+    expect(screen.getByText("discoveryModeCachedAlert")).toBeInTheDocument();
+  });
+
   it("should render includeNewsScore checkbox", () => {
     render(<Discovery />);
     expect(screen.getByText("includeNewsScore")).toBeInTheDocument();

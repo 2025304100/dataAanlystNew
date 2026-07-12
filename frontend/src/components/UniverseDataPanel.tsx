@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
-import { Card, Button, Progress, Statistic, Row, Col, InputNumber, Select, Space, Alert, Tag, Tooltip, Checkbox } from "antd";
-import { PlayCircleOutlined, ReloadOutlined, StopOutlined, QuestionCircleOutlined } from "@ant-design/icons";
+﻿import { useState, useEffect, useCallback } from "react";
+import { Card, Button, Progress, Statistic, Row, Col, InputNumber, Select, Space, Alert, Tag, Tooltip, Checkbox, Tabs, message } from "antd";
+import { PlayCircleOutlined, ReloadOutlined, StopOutlined, QuestionCircleOutlined, ThunderboltOutlined, HistoryOutlined, ToolOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
 import { t } from "../i18n";
-import { useApp } from "../context/AppContext";
 
 // P0.6：初始化 scope 选项
 const INIT_SCOPE_OPTIONS = [
@@ -23,6 +22,15 @@ const HISTORY_DAYS_OPTIONS = [
 ];
 
 // 单次同步标的上限（分段同步，避免一口气跑太久）
+// Repair chunk size options for safer mid-history replay
+const REPAIR_CHUNK_OPTIONS = [
+  { label: "30 天/片", value: 30 },
+  { label: "60 天/片", value: 60 },
+  { label: "90 天/片", value: 90 },
+  { label: "180 天/片", value: 180 },
+  { label: "365 天/片", value: 365 },
+];
+
 const SYNC_LIMIT_OPTIONS = [
   { label: "不限（全部）", value: 0 },
   { label: "100 个", value: 100 },
@@ -125,6 +133,89 @@ function statusTag(status: TaskStatus) {
 }
 
 // 配置 localStorage 持久化
+type RepairScopeSummary = {
+  key: string;
+  scope: string;
+  total: number;
+  processed: number;
+  ok: number;
+  skipped: number;
+  failed: number;
+  inserted: number;
+  updated: number;
+  emptyChunks: number;
+};
+
+type SyncTabKey = "daily" | "history" | "advanced";
+type SyncPanelKey = "smart" | "incremental" | "init" | "backfill" | "repair";
+
+const DEFAULT_SYNC_PANEL_SELECTION: Record<SyncTabKey, SyncPanelKey> = {
+  daily: "smart",
+  history: "init",
+  advanced: "repair",
+};
+
+
+function toSafeNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getRangeRepairSummaries(result: Record<string, unknown> | null | undefined): RepairScopeSummary[] {
+  if (!result) {
+    return [];
+  }
+
+  const scopeOrder = ["cn-stock", "cn-etf", "us-stock", "us-etf"];
+  return Object.entries(result)
+    .filter(([key, value]) => key.endsWith("_repair") && typeof value === "object" && value !== null)
+    .map(([key, value]) => {
+      const payload = value as Record<string, unknown>;
+      return {
+        key,
+        scope: key.replace(/_repair$/, ""),
+        total: toSafeNumber(payload.total),
+        processed: toSafeNumber(payload.processed),
+        ok: toSafeNumber(payload.ok),
+        skipped: toSafeNumber(payload.skipped),
+        failed: toSafeNumber(payload.failed),
+        inserted: toSafeNumber(payload.inserted),
+        updated: toSafeNumber(payload.updated),
+        emptyChunks: toSafeNumber(payload.empty_chunks),
+      };
+    })
+    .sort((a, b) => scopeOrder.indexOf(a.scope) - scopeOrder.indexOf(b.scope));
+}
+
+function getBackfillSummaries(result: Record<string, unknown> | null | undefined): RepairScopeSummary[] {
+  if (!result) {
+    return [];
+  }
+
+  const scopeOrder = ["cn-stock", "cn-etf", "us-stock", "us-etf"];
+  return Object.entries(result)
+    .filter(([key, value]) => key.endsWith("_backfill") && typeof value === "object" && value !== null)
+    .map(([key, value]) => {
+      const payload = value as Record<string, unknown>;
+      return {
+        key,
+        scope: key.replace(/_backfill$/, ""),
+        total: toSafeNumber(payload.total),
+        processed: toSafeNumber(payload.processed),
+        ok: toSafeNumber(payload.ok),
+        skipped: toSafeNumber(payload.skipped),
+        failed: toSafeNumber(payload.failed),
+        inserted: 0,
+        updated: 0,
+        emptyChunks: 0,
+      };
+    })
+    .sort((a, b) => scopeOrder.indexOf(a.scope) - scopeOrder.indexOf(b.scope));
+}
+
 const UNIVERSE_CONFIG_KEY = "universe_config_v1";
 
 function loadUniverseConfig() {
@@ -146,19 +237,23 @@ function saveUniverseConfig(cfg: Record<string, unknown>) {
 }
 
 export default function UniverseDataPanel() {
-  const ctx = useApp();
   const _savedCfg = loadUniverseConfig();
   const [stats, setStats] = useState<UniverseStats | null>(null);
   const [task, setTask] = useState<UniverseTask | null>(null);
+  const [smartTask, setSmartTask] = useState<UniverseTask | null>(null);
   const [incrTask, setIncrTask] = useState<UniverseTask | null>(null);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [smartStarting, setSmartStarting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [smartCancelling, setSmartCancelling] = useState(false);
   const [incrStarting, setIncrStarting] = useState(false);
   const [incrCancelling, setIncrCancelling] = useState(false);
   const [maxWorkers, setMaxWorkers] = useState<number>(_savedCfg?.maxWorkers ?? 5);
   const [historyDays, setHistoryDays] = useState<number>(_savedCfg?.historyDays ?? 365);
   const [syncLimit, setSyncLimit] = useState<number>(_savedCfg?.syncLimit ?? 0);
+  const [syncTab, setSyncTab] = useState<SyncTabKey>("daily");
+  const [syncPanelSelection, setSyncPanelSelection] = useState<Record<SyncTabKey, SyncPanelKey>>(DEFAULT_SYNC_PANEL_SELECTION);
   // P0.6：初始化 scope 选择，默认全部4个
   const [initScopes, setInitScopes] = useState<string[]>(_savedCfg?.initScopes ?? ["cn-stock"]);
   // 历史回补
@@ -168,11 +263,53 @@ export default function UniverseDataPanel() {
   const [bfHistoryDays, setBfHistoryDays] = useState<number>(_savedCfg?.bfHistoryDays ?? 1095);
   const [bfScopes, setBfScopes] = useState<string[]>(_savedCfg?.bfScopes ?? ["cn-stock"]);
   const [bfSyncLimit, setBfSyncLimit] = useState<number>(_savedCfg?.bfSyncLimit ?? 0);
+  const [repairTask, setRepairTask] = useState<UniverseTask | null>(null);
+  const [repairStarting, setRepairStarting] = useState(false);
+  const [repairCancelling, setRepairCancelling] = useState(false);
+  const [repairHistoryDays, setRepairHistoryDays] = useState<number>(_savedCfg?.repairHistoryDays ?? 365);
+  const [repairChunkDays, setRepairChunkDays] = useState<number>(_savedCfg?.repairChunkDays ?? 90);
+  const [repairScopes, setRepairScopes] = useState<string[]>(_savedCfg?.repairScopes ?? ["cn-stock"]);
+  const [repairSyncLimit, setRepairSyncLimit] = useState<number>(_savedCfg?.repairSyncLimit ?? 0);
+
+  const showToast = useCallback((type: "success" | "error", text: string) => {
+    if (!text) return;
+    if (type === "success") {
+      message.success(text);
+      return;
+    }
+    message.error(text);
+  }, []);
 
   // 配置变更时持久化到 localStorage
   useEffect(() => {
-    saveUniverseConfig({ maxWorkers, historyDays, syncLimit, initScopes, bfHistoryDays, bfScopes, bfSyncLimit });
-  }, [maxWorkers, historyDays, syncLimit, initScopes, bfHistoryDays, bfScopes, bfSyncLimit]);
+    saveUniverseConfig({
+      maxWorkers,
+      historyDays,
+      syncLimit,
+      syncTab,
+      initScopes,
+      bfHistoryDays,
+      bfScopes,
+      bfSyncLimit,
+      repairHistoryDays,
+      repairChunkDays,
+      repairScopes,
+      repairSyncLimit,
+    });
+  }, [
+    maxWorkers,
+    historyDays,
+    syncLimit,
+    syncTab,
+    initScopes,
+    bfHistoryDays,
+    bfScopes,
+    bfSyncLimit,
+    repairHistoryDays,
+    repairChunkDays,
+    repairScopes,
+    repairSyncLimit,
+  ]);
 
   const refreshStats = useCallback(async () => {
     try {
@@ -187,6 +324,15 @@ export default function UniverseDataPanel() {
     try {
       const data = await api.getUniverseInitStatus();
       setTask(data as UniverseTask | null);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const refreshSmartTask = useCallback(async () => {
+    try {
+      const data = await api.getUniverseSmartSyncStatus();
+      setSmartTask(data as UniverseTask | null);
     } catch {
       // ignore
     }
@@ -210,13 +356,24 @@ export default function UniverseDataPanel() {
     }
   }, []);
 
+  const refreshRepairTask = useCallback(async () => {
+    try {
+      const data = await api.getUniverseRangeRepairStatus();
+      setRepairTask(data as UniverseTask | null);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // 初始加载
   useEffect(() => {
     refreshStats();
     refreshTask();
+    refreshSmartTask();
     refreshIncrTask();
     refreshBfTask();
-  }, [refreshStats, refreshTask, refreshIncrTask, refreshBfTask]);
+    refreshRepairTask();
+  }, [refreshStats, refreshTask, refreshSmartTask, refreshIncrTask, refreshBfTask, refreshRepairTask]);
 
   // 任务运行中时轮询
   useEffect(() => {
@@ -229,6 +386,18 @@ export default function UniverseDataPanel() {
     }, 5000);
     return () => clearInterval(timer);
   }, [task?.status, task?.id, refreshTask, refreshStats]);
+
+  // 智能同步任务轮询
+  useEffect(() => {
+    if (!smartTask || (smartTask.status !== "running" && smartTask.status !== "queued")) {
+      return;
+    }
+    const timer = setInterval(() => {
+      refreshSmartTask();
+      refreshStats();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [smartTask?.status, smartTask?.id, refreshSmartTask, refreshStats]);
 
   // P2：增量同步任务轮询
   useEffect(() => {
@@ -254,9 +423,21 @@ export default function UniverseDataPanel() {
     return () => clearInterval(timer);
   }, [bfTask?.status, bfTask?.id, refreshBfTask, refreshStats]);
 
+  // 区间修复任务轮询
+  useEffect(() => {
+    if (!repairTask || (repairTask.status !== "running" && repairTask.status !== "queued")) {
+      return;
+    }
+    const timer = setInterval(() => {
+      refreshRepairTask();
+      refreshStats();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [repairTask?.status, repairTask?.id, refreshRepairTask, refreshStats]);
+
   const handleStart = async () => {
     if (initScopes.length === 0) {
-      ctx.showToast("error", "请至少选择一个初始化范围");
+      showToast("error", "请至少选择一个初始化范围");
       return;
     }
     setStarting(true);
@@ -265,9 +446,9 @@ export default function UniverseDataPanel() {
       const scopes = initScopes.length === 4 ? null : initScopes;
       await api.startUniverseInit(maxWorkers, historyDays, scopes, syncLimit);
       await refreshTask();
-      ctx.showToast("success", "初始化同步已启动");
+      showToast("success", "初始化同步已启动");
     } catch (e: any) {
-      ctx.showToast("error", e.message || "启动失败");
+      showToast("error", e.message || "启动失败");
     } finally {
       setStarting(false);
     }
@@ -275,7 +456,7 @@ export default function UniverseDataPanel() {
 
   const handleRetry = async () => {
     if (initScopes.length === 0) {
-      ctx.showToast("error", "请至少选择一个初始化范围");
+      showToast("error", "请至少选择一个初始化范围");
       return;
     }
     setStarting(true);
@@ -283,9 +464,9 @@ export default function UniverseDataPanel() {
       const scopes = initScopes.length === 4 ? null : initScopes;
       await api.retryUniverseInit(maxWorkers, historyDays, scopes, syncLimit);
       await refreshTask();
-      ctx.showToast("success", "重试同步已启动（断点续传）");
+      showToast("success", "重试同步已启动（断点续传）");
     } catch (e: any) {
-      ctx.showToast("error", e.message || "重试失败");
+      showToast("error", e.message || "重试失败");
     } finally {
       setStarting(false);
     }
@@ -296,11 +477,42 @@ export default function UniverseDataPanel() {
     try {
       await api.cancelUniverseInit();
       await refreshTask();
-      ctx.showToast("success", "任务已取消，已同步进度已保留");
+      showToast("success", "任务已取消，已同步进度已保留");
     } catch (e: any) {
-      ctx.showToast("error", e.message || "取消失败");
+      showToast("error", e.message || "取消失败");
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleSmartStart = async () => {
+    if (initScopes.length === 0) {
+      showToast("error", t("universeSmartNeedScope"));
+      return;
+    }
+    setSmartStarting(true);
+    try {
+      const scopes = initScopes.length === 4 ? null : initScopes;
+      await api.startUniverseSmartSync(maxWorkers, historyDays, scopes, syncLimit);
+      await refreshSmartTask();
+      showToast("success", t("universeSmartStarted"));
+    } catch (e: any) {
+      showToast("error", e.message || t("universeSmartStartFailed"));
+    } finally {
+      setSmartStarting(false);
+    }
+  };
+
+  const handleSmartCancel = async () => {
+    setSmartCancelling(true);
+    try {
+      await api.cancelUniverseSmartSync();
+      await refreshSmartTask();
+      showToast("success", t("universeSmartCancelled"));
+    } catch (e: any) {
+      showToast("error", e.message || t("universeSmartCancelFailed"));
+    } finally {
+      setSmartCancelling(false);
     }
   };
 
@@ -310,9 +522,9 @@ export default function UniverseDataPanel() {
     try {
       await api.startUniverseIncrementalSync(maxWorkers);
       await refreshIncrTask();
-      ctx.showToast("success", t("universeIncrementalStart"));
+      showToast("success", t("universeIncrementalStart"));
     } catch (e: any) {
-      ctx.showToast("error", e.message || "启动失败");
+      showToast("error", e.message || "启动失败");
     } finally {
       setIncrStarting(false);
     }
@@ -323,14 +535,15 @@ export default function UniverseDataPanel() {
     try {
       await api.cancelUniverseIncrementalSync();
       await refreshIncrTask();
-      ctx.showToast("success", "增量同步已取消");
+      showToast("success", "增量同步已取消");
     } catch (e: any) {
-      ctx.showToast("error", e.message || "取消失败");
+      showToast("error", e.message || "取消失败");
     } finally {
       setIncrCancelling(false);
     }
   };
 
+  const smartIsRunning = smartTask?.status === "running" || smartTask?.status === "queued";
   const isRunning = task?.status === "running" || task?.status === "queued";
   const canRetry = task?.status === "failed" || task?.status === "cancelled" || task?.status === "done";
   const incrIsRunning = incrTask?.status === "running" || incrTask?.status === "queued";
@@ -338,7 +551,7 @@ export default function UniverseDataPanel() {
   // 历史回补处理函数
   const handleBfStart = async () => {
     if (bfScopes.length === 0) {
-      ctx.showToast("error", "请至少选择一个回补范围");
+      showToast("error", "请至少选择一个回补范围");
       return;
     }
     setBfStarting(true);
@@ -346,9 +559,9 @@ export default function UniverseDataPanel() {
       const scopes = bfScopes.length === 4 ? null : bfScopes;
       await api.startUniverseBackfill(maxWorkers, bfHistoryDays, scopes, bfSyncLimit);
       await refreshBfTask();
-      ctx.showToast("success", "历史回补已启动");
+      showToast("success", "历史回补已启动");
     } catch (e: any) {
-      ctx.showToast("error", e.message || "启动失败");
+      showToast("error", e.message || "启动失败");
     } finally {
       setBfStarting(false);
     }
@@ -359,17 +572,192 @@ export default function UniverseDataPanel() {
     try {
       await api.cancelUniverseBackfill();
       await refreshBfTask();
-      ctx.showToast("success", "历史回补已取消");
+      showToast("success", "历史回补已取消");
     } catch (e: any) {
-      ctx.showToast("error", e.message || "取消失败");
+      showToast("error", e.message || "取消失败");
     } finally {
       setBfCancelling(false);
     }
   };
 
+
+  const handleRepairStart = async () => {
+    if (repairScopes.length === 0) {
+      showToast("error", t("universeRangeRepairNeedScope"));
+      return;
+    }
+    setRepairStarting(true);
+    try {
+      const scopes = repairScopes.length === 4 ? null : repairScopes;
+      await api.startUniverseRangeRepair(maxWorkers, repairHistoryDays, repairChunkDays, scopes, repairSyncLimit);
+      await refreshRepairTask();
+      showToast("success", t("universeRangeRepairStarted"));
+    } catch (e: any) {
+      showToast("error", e.message || t("universeRangeRepairStartFailed"));
+    } finally {
+      setRepairStarting(false);
+    }
+  };
+
+  const handleRepairCancel = async () => {
+    setRepairCancelling(true);
+    try {
+      await api.cancelUniverseRangeRepair();
+      await refreshRepairTask();
+      showToast("success", t("universeRangeRepairCancelled"));
+    } catch (e: any) {
+      showToast("error", e.message || t("universeRangeRepairCancelFailed"));
+    } finally {
+      setRepairCancelling(false);
+    }
+  };
   const bfIsRunning = bfTask?.status === "running" || bfTask?.status === "queued";
+  const repairIsRunning = repairTask?.status === "running" || repairTask?.status === "queued";
   // 任意同步任务运行中时，禁用其他启动按钮
-  const anyRunning = isRunning || incrIsRunning || bfIsRunning;
+  const anyRunning = smartIsRunning || isRunning || incrIsRunning || bfIsRunning || repairIsRunning;
+  const backfillScopeSummaries = getBackfillSummaries(bfTask?.result);
+  const backfillSummary = backfillScopeSummaries.reduce(
+    (acc, item) => ({
+      scopes: acc.scopes + 1,
+      processed: acc.processed + (item.processed > 0 ? item.processed : item.total),
+      ok: acc.ok + item.ok,
+      skipped: acc.skipped + item.skipped,
+      failed: acc.failed + item.failed,
+    }),
+    { scopes: 0, processed: 0, ok: 0, skipped: 0, failed: 0 }
+  );
+  const repairScopeSummaries = getRangeRepairSummaries(repairTask?.result);
+  const repairSummary = repairScopeSummaries.reduce(
+    (acc, item) => ({
+      scopes: acc.scopes + 1,
+      inserted: acc.inserted + item.inserted,
+      updated: acc.updated + item.updated,
+      emptyChunks: acc.emptyChunks + item.emptyChunks,
+    }),
+    { scopes: 0, inserted: 0, updated: 0, emptyChunks: 0 }
+  );
+  const syncTabMeta: Record<
+    SyncTabKey,
+    {
+      tipKey: string;
+      guideTitleKey: string;
+      guideDescKey: string;
+      alertType: "info" | "warning";
+    }
+  > = {
+    daily: {
+      tipKey: "universeTabDailyTip",
+      guideTitleKey: "universeTabDailyTitle",
+      guideDescKey: "universeTabDailyGuide",
+      alertType: "info",
+    },
+    history: {
+      tipKey: "universeTabHistoryTip",
+      guideTitleKey: "universeTabHistoryTitle",
+      guideDescKey: "universeTabHistoryGuide",
+      alertType: "info",
+    },
+    advanced: {
+      tipKey: "universeTabAdvancedTip",
+      guideTitleKey: "universeTabAdvancedTitle",
+      guideDescKey: "universeTabAdvancedGuide",
+      alertType: "warning",
+    },
+  };
+  const syncTabItems = [
+    {
+      key: "daily",
+      label: (
+        <Space size={6}>
+          <ThunderboltOutlined />
+          <span>{t("universeTabDaily")}</span>
+          <Tag color="gold">{t("universeSmartRecommended")}</Tag>
+        </Space>
+      ),
+    },
+    {
+      key: "history",
+      label: (
+        <Space size={6}>
+          <HistoryOutlined />
+          <span>{t("universeTabHistory")}</span>
+          <Tag color="blue">{t("universeTabHistoryBadge")}</Tag>
+        </Space>
+      ),
+    },
+    {
+      key: "advanced",
+      label: (
+        <Space size={6}>
+          <ToolOutlined />
+          <span>{t("universeTabAdvanced")}</span>
+          <Tag color="orange">{t("universeTabAdvancedBadge")}</Tag>
+        </Space>
+      ),
+    },
+  ];
+  const syncTabQuickGuides: Record<
+    SyncTabKey,
+    Array<{
+      key: SyncPanelKey;
+      titleKey: string;
+      descKey: string;
+      badgeKey: string;
+      badgeColor: string;
+    }>
+  > = {
+    daily: [
+      {
+        key: "smart",
+        titleKey: "universeQuickSmartTitle",
+        descKey: "universeQuickDailySmart",
+        badgeKey: "universeSmartRecommended",
+        badgeColor: "gold",
+      },
+      {
+        key: "incremental",
+        titleKey: "universeQuickIncrementalTitle",
+        descKey: "universeQuickDailyIncremental",
+        badgeKey: "universeIncrementalBadge",
+        badgeColor: "blue",
+      },
+    ],
+    history: [
+      {
+        key: "init",
+        titleKey: "universeQuickInitTitle",
+        descKey: "universeQuickHistoryInit",
+        badgeKey: "universeInitBadge",
+        badgeColor: "cyan",
+      },
+      {
+        key: "backfill",
+        titleKey: "universeQuickBackfillTitle",
+        descKey: "universeQuickHistoryBackfill",
+        badgeKey: "universeBackfillBadge",
+        badgeColor: "blue",
+      },
+    ],
+    advanced: [
+      {
+        key: "repair",
+        titleKey: "universeQuickRepairTitle",
+        descKey: "universeQuickAdvancedRepair",
+        badgeKey: "universeRangeRepairBadge",
+        badgeColor: "orange",
+      },
+    ],
+  };
+  const activeSyncTab = syncTabMeta[syncTab];
+  const activeSyncGuideItems = syncTabQuickGuides[syncTab];
+  const activeSyncPanel = syncPanelSelection[syncTab];
+
+  const handleSyncPanelSelect = useCallback((panel: SyncPanelKey) => {
+    setSyncPanelSelection((prev) => ({
+      ...prev,
+      [syncTab]: panel,
+    }));
+  }, [syncTab]);
 
   return (
     <div className="settings-tab-container" data-settings-content="settings-universe">
@@ -519,11 +907,362 @@ export default function UniverseDataPanel() {
             ) : null}
           </Card>
 
-          {/* 初始化同步任务 */}
+          {/* 智能同步任务 */}
+          <Tabs
+            size="small"
+            activeKey={syncTab}
+            onChange={(key) => setSyncTab(key as SyncTabKey)}
+            items={syncTabItems}
+            style={{ marginBottom: 12 }}
+          />
+          <Alert
+            message={t(activeSyncTab.guideTitleKey)}
+            description={
+              <div>
+                <div style={{ marginBottom: 4 }}>{t(activeSyncTab.guideDescKey)}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t(activeSyncTab.tipKey)}</div>
+              </div>
+            }
+            type={activeSyncTab.alertType}
+            showIcon
+            style={{ marginBottom: 12 }}
+          />
+          <div style={{ marginBottom: 8, fontSize: 12, color: "var(--text-muted, #888)" }}>
+            {t("universeViewingNow")}<strong style={{ color: "var(--text-primary, #333)", marginLeft: 4 }}>{t(activeSyncGuideItems.find((item) => item.key === activeSyncPanel)?.titleKey || activeSyncGuideItems[0].titleKey)}</strong>
+          </div>
+          <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+            {activeSyncGuideItems.map((item) => {
+              const isActive = activeSyncPanel === item.key;
+              return (
+                <Col key={item.key} xs={24} md={activeSyncGuideItems.length === 1 ? 24 : 12}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isActive}
+                    onClick={() => handleSyncPanelSelect(item.key)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleSyncPanelSelect(item.key);
+                      }
+                    }}
+                    style={{
+                      padding: "12px 14px",
+                      background: isActive ? "rgba(15, 118, 110, 0.08)" : "var(--bg-elevated, #fafafa)",
+                      border: isActive ? "1px solid #0f766e" : "1px solid var(--border-color, #f0f0f0)",
+                      borderRadius: 8,
+                      height: "100%",
+                      cursor: "pointer",
+                      boxShadow: isActive ? "0 0 0 2px rgba(15, 118, 110, 0.12)" : "none",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <Space size={8} wrap style={{ marginBottom: 6 }}>
+                      <strong>{t(item.titleKey)}</strong>
+                      <Tag color={item.badgeColor}>{t(item.badgeKey)}</Tag>
+                      {isActive ? <Tag color="green">{t("universeCurrentSelection")}</Tag> : null}
+                    </Space>
+                    <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t(item.descKey)}</div>
+                  </div>
+                </Col>
+              );
+            })}
+          </Row>
+
+          {syncTab === "daily" && (
+            <>
+          {activeSyncPanel === "smart" && (
+          <Card
+            title={
+              <Space>
+                <span>{t("universeSmartTitle")}</span>
+                <Tag color="gold">{t("universeSmartRecommended")}</Tag>
+                {smartTask ? statusTag(smartTask.status) : null}
+              </Space>
+            }
+            size="small"
+            style={{ marginBottom: 16 }}
+          >
+            {smartTask ? (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <Progress
+                    percent={Math.round(smartTask.percent)}
+                    status={
+                      smartTask.status === "running" ? "active" :
+                      smartTask.status === "done" ? "success" :
+                      smartTask.status === "failed" ? "exception" :
+                      smartTask.status === "cancelled" ? "exception" : "normal"
+                    }
+                  />
+                </div>
+                <p style={{ marginBottom: 8 }}>
+                  <strong>{t("universeSmartStage")}</strong>
+                  {smartTask.message ? ` — ${smartTask.message}` : ""}
+                </p>
+                {smartTask.total > 0 ? (
+                  <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
+                    已处理 {smartTask.processed} / {smartTask.total}，成功 {smartTask.ok_count}，失败 {smartTask.failed_count}
+                  </p>
+                ) : (
+                  smartTask.status === "running" && (
+                    <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
+                      {t("universeSmartPreparing")}
+                    </p>
+                  )
+                )}
+                {smartTask.status === "done" && smartTask.result && (
+                  <div style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
+                    {Object.entries(smartTask.result).map(([key, val]) => {
+                      const v = val as Record<string, number>;
+                      if (typeof v !== "object" || v === null) return null;
+                      if (key.endsWith("_universe")) {
+                        const scope = key.replace(/_universe$/, "");
+                        return (
+                          <div key={key} style={{ marginBottom: 2 }}>
+                            列表 {SCOPE_LABELS[scope] || scope}：见 {v.seen ?? 0}，新建 {v.created ?? 0}
+                          </div>
+                        );
+                      }
+                      if (key.endsWith("_init")) {
+                        const scope = key.replace(/_init$/, "");
+                        return (
+                          <div key={key} style={{ marginBottom: 2 }}>
+                            初始化 {SCOPE_LABELS[scope] || scope}：待同步 {v.total ?? 0}，成功 {v.ok ?? 0}，失败 {v.failed ?? 0}
+                          </div>
+                        );
+                      }
+                      if (key.endsWith("_backfill")) {
+                        const scope = key.replace(/_backfill$/, "");
+                        return (
+                          <div key={key} style={{ marginBottom: 2 }}>
+                            回补 {SCOPE_LABELS[scope] || scope}：待回补 {v.total ?? 0}，成功 {v.ok ?? 0}，失败 {v.failed ?? 0}
+                          </div>
+                        );
+                      }
+                      if (key === "incremental") {
+                        return (
+                          <div key={key} style={{ marginBottom: 2 }}>
+                            增量续刷：待处理 {v.total ?? 0}，更新 {v.ok ?? 0}，已最新 {v.uptodate ?? 0}，失败 {v.failed ?? 0}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
+                )}
+                {smartTask.errors && smartTask.errors.length > 0 && (
+                  <Alert
+                    message={`最近 ${smartTask.errors.length} 条错误`}
+                    description={smartTask.errors.slice(-3).map((e, i) => (
+                      <div key={i} style={{ fontSize: 12, color: "#ff4d4f" }}>
+                        {String(e.stage || "")} {String(e.error || JSON.stringify(e))}
+                      </div>
+                    ))}
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                  />
+                )}
+              </>
+            ) : (
+              <p style={{ color: "var(--text-muted, #888)" }}>{t("universeSmartNoTask")}</p>
+            )}
+
+            <div style={{ marginTop: 16, borderTop: "1px solid var(--border-color, #f0f0f0)", paddingTop: 16 }}>
+              <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                <Space wrap>
+                  <span>{t("universeWorkers")}：</span>
+                  <InputNumber
+                    min={1}
+                    max={8}
+                    value={maxWorkers}
+                    onChange={(v) => setMaxWorkers(v ?? 5)}
+                    disabled={anyRunning}
+                    style={{ width: 80 }}
+                  />
+                  <span>{t("universeHistoryDays")}：</span>
+                  <Select
+                    value={historyDays}
+                    onChange={(v) => setHistoryDays(v)}
+                    options={HISTORY_DAYS_OPTIONS}
+                    disabled={anyRunning}
+                    style={{ width: 120 }}
+                  />
+                </Space>
+                <Space wrap align="center">
+                  <span>
+                    {t("universeSyncLimit")}：
+                    <Tooltip title={t("universeSyncLimitHint")}>
+                      <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #888)" }} />
+                    </Tooltip>
+                  </span>
+                  <Select
+                    value={syncLimit}
+                    onChange={(v) => setSyncLimit(v)}
+                    options={SYNC_LIMIT_OPTIONS}
+                    disabled={anyRunning}
+                    style={{ width: 140 }}
+                  />
+                </Space>
+                <Space wrap align="center">
+                  <span>
+                    {t("universeInitScopes")}：
+                    <Tooltip title={t("universeSmartScopesHint")}>
+                      <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #888)" }} />
+                    </Tooltip>
+                  </span>
+                  <Checkbox.Group
+                    options={INIT_SCOPE_OPTIONS}
+                    value={initScopes}
+                    onChange={(values) => setInitScopes(values as string[])}
+                    disabled={anyRunning}
+                  />
+                </Space>
+                <Space wrap>
+                  {!smartIsRunning && (
+                    <Button
+                      type="primary"
+                      icon={<PlayCircleOutlined />}
+                      onClick={handleSmartStart}
+                      loading={smartStarting}
+                      disabled={anyRunning || initScopes.length === 0}
+                    >
+                      {t("universeSmartStart")}
+                    </Button>
+                  )}
+                  {smartIsRunning && (
+                    <Button
+                      danger
+                      icon={<StopOutlined />}
+                      onClick={handleSmartCancel}
+                      loading={smartCancelling}
+                    >
+                      {smartCancelling ? t("universeCanceling") : t("universeSmartCancel")}
+                    </Button>
+                  )}
+                  <Tooltip title={t("universeSmartTip")}>
+                    <QuestionCircleOutlined style={{ color: "var(--text-muted, #999)" }} />
+                  </Tooltip>
+                </Space>
+              </Space>
+            </div>
+          </Card>
+          )}
+
+          {activeSyncPanel === "incremental" && (
+          <Card
+            title={
+              <Space>
+                <span>{t("universeIncrementalTitle")}</span>
+                <Tag color="blue">{t("universeIncrementalBadge")}</Tag>
+                {incrTask ? statusTag(incrTask.status) : null}
+              </Space>
+            }
+            size="small"
+            style={{ marginBottom: 16 }}
+          >
+            {incrTask ? (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <Progress
+                    percent={Math.round(incrTask.percent)}
+                    status={
+                      incrTask.status === "running" ? "active" :
+                      incrTask.status === "done" ? "success" :
+                      incrTask.status === "failed" ? "exception" :
+                      incrTask.status === "cancelled" ? "exception" : "normal"
+                    }
+                  />
+                </div>
+                <p style={{ marginBottom: 8 }}>
+                  <strong>{t("universeIncrementalStageSync")}</strong>
+                  {incrTask.message ? ` — ${incrTask.message}` : ""}
+                </p>
+                {incrTask.total > 0 && (
+                  <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
+                    已处理 {incrTask.processed} / {incrTask.total}，成功 {incrTask.ok_count}，失败 {incrTask.failed_count}
+                  </p>
+                )}
+                {incrTask.errors && incrTask.errors.length > 0 && (
+                  <Alert
+                    message={`最近 ${incrTask.errors.length} 条错误`}
+                    description={incrTask.errors.slice(-3).map((e, i) => (
+                      <div key={i} style={{ fontSize: 12, color: "#ff4d4f" }}>
+                        {String(e.stage || "")} {String(e.error || JSON.stringify(e))}
+                      </div>
+                    ))}
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                  />
+                )}
+              </>
+            ) : (
+              <p style={{ color: "var(--text-muted, #888)" }}>{t("universeIncrementalNoTask")}</p>
+            )}
+
+            {/* 控制区 */}
+            <div style={{ marginTop: 16, borderTop: "1px solid var(--border-color, #f0f0f0)", paddingTop: 16 }}>
+              <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                <Space wrap>
+                  <span>{t("universeWorkers")}：</span>
+                  <InputNumber
+                    min={1}
+                    max={8}
+                    value={maxWorkers}
+                    onChange={(v) => setMaxWorkers(v ?? 5)}
+                    disabled={anyRunning}
+                    style={{ width: 80 }}
+                  />
+                  {!incrIsRunning && (
+                    <Button
+                      type="default"
+                      icon={<PlayCircleOutlined />}
+                      onClick={handleIncrStart}
+                      loading={incrStarting}
+                      disabled={anyRunning}
+                    >
+                      {t("universeIncrementalStart")}
+                    </Button>
+                  )}
+                  {incrIsRunning && (
+                    <Button
+                      danger
+                      icon={<StopOutlined />}
+                      onClick={handleIncrCancel}
+                      loading={incrCancelling}
+                    >
+                      {incrCancelling ? t("universeCanceling") : t("universeIncrementalCancel")}
+                    </Button>
+                  )}
+                  <Tooltip title={t("universeIncrementalTip")}>
+                    <QuestionCircleOutlined style={{ color: "var(--text-muted, #999)" }} />
+                  </Tooltip>
+                </Space>
+              </Space>
+            </div>
+          </Card>
+          )}
+            </>
+          )}
+
+          {syncTab === "history" && (
+            <>
+          <Alert
+            message={t("universeHistoryFlowTitle")}
+            description={t("universeHistoryFlowTip")}
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          {activeSyncPanel === "init" && (
           <Card
             title={
               <Space>
                 <span>{t("universeTaskTitle")}</span>
+                <Tag color="cyan">{t("universeHistoryPath1Badge")}</Tag>
+                <Tag color="cyan">{t("universeInitBadge")}</Tag>
                 {task ? statusTag(task.status) : null}
               </Space>
             }
@@ -597,7 +1336,7 @@ export default function UniverseDataPanel() {
                     max={8}
                     value={maxWorkers}
                     onChange={(v) => setMaxWorkers(v ?? 5)}
-                    disabled={isRunning}
+                    disabled={anyRunning}
                     style={{ width: 80 }}
                   />
                   <span>{t("universeHistoryDays")}：</span>
@@ -605,7 +1344,7 @@ export default function UniverseDataPanel() {
                     value={historyDays}
                     onChange={(v) => setHistoryDays(v)}
                     options={HISTORY_DAYS_OPTIONS}
-                    disabled={isRunning}
+                    disabled={anyRunning}
                     style={{ width: 120 }}
                   />
                 </Space>
@@ -620,7 +1359,7 @@ export default function UniverseDataPanel() {
                     value={syncLimit}
                     onChange={(v) => setSyncLimit(v)}
                     options={SYNC_LIMIT_OPTIONS}
-                    disabled={isRunning}
+                    disabled={anyRunning}
                     style={{ width: 140 }}
                   />
                 </Space>
@@ -635,7 +1374,7 @@ export default function UniverseDataPanel() {
                     options={INIT_SCOPE_OPTIONS}
                     value={initScopes}
                     onChange={(values) => setInitScopes(values as string[])}
-                    disabled={isRunning}
+                    disabled={anyRunning}
                   />
                 </Space>
                 <Space wrap>
@@ -645,7 +1384,7 @@ export default function UniverseDataPanel() {
                       icon={<PlayCircleOutlined />}
                       onClick={handleStart}
                       loading={starting}
-                      disabled={initScopes.length === 0}
+                      disabled={anyRunning || initScopes.length === 0}
                     >
                       {t("universeStart")}
                     </Button>
@@ -656,7 +1395,7 @@ export default function UniverseDataPanel() {
                       icon={<ReloadOutlined />}
                       onClick={handleRetry}
                       loading={starting}
-                      disabled={initScopes.length === 0}
+                      disabled={anyRunning || initScopes.length === 0}
                     >
                       {t("universeRetry")}
                     </Button>
@@ -675,120 +1414,18 @@ export default function UniverseDataPanel() {
                     <QuestionCircleOutlined style={{ color: "var(--text-muted, #999)" }} />
                   </Tooltip>
                 </Space>
-                <Alert
-                  message={t("universeTip")}
-                  type="info"
-                  showIcon
-                  style={{ fontSize: 12 }}
-                />
               </Space>
             </div>
           </Card>
+          )}
 
-          {/* P2：增量同步任务 */}
-          <Card
-            title={
-              <Space>
-                <span>{t("universeIncrementalTitle")}</span>
-                {incrTask ? statusTag(incrTask.status) : null}
-              </Space>
-            }
-            size="small"
-            style={{ marginBottom: 16 }}
-          >
-            {incrTask ? (
-              <>
-                <div style={{ marginBottom: 12 }}>
-                  <Progress
-                    percent={Math.round(incrTask.percent)}
-                    status={
-                      incrTask.status === "running" ? "active" :
-                      incrTask.status === "done" ? "success" :
-                      incrTask.status === "failed" ? "exception" :
-                      incrTask.status === "cancelled" ? "exception" : "normal"
-                    }
-                  />
-                </div>
-                <p style={{ marginBottom: 8 }}>
-                  <strong>{t("universeIncrementalStageSync")}</strong>
-                  {incrTask.message ? ` — ${incrTask.message}` : ""}
-                </p>
-                {incrTask.total > 0 && (
-                  <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
-                    已处理 {incrTask.processed} / {incrTask.total}，成功 {incrTask.ok_count}，失败 {incrTask.failed_count}
-                  </p>
-                )}
-                {incrTask.errors && incrTask.errors.length > 0 && (
-                  <Alert
-                    message={`最近 ${incrTask.errors.length} 条错误`}
-                    description={incrTask.errors.slice(-3).map((e, i) => (
-                      <div key={i} style={{ fontSize: 12, color: "#ff4d4f" }}>
-                        {String(e.stage || "")} {String(e.error || JSON.stringify(e))}
-                      </div>
-                    ))}
-                    type="warning"
-                    showIcon
-                    style={{ marginBottom: 12 }}
-                  />
-                )}
-              </>
-            ) : (
-              <p style={{ color: "var(--text-muted, #888)" }}>{t("universeIncrementalNoTask")}</p>
-            )}
-
-            {/* 控制区 */}
-            <div style={{ marginTop: 16, borderTop: "1px solid var(--border-color, #f0f0f0)", paddingTop: 16 }}>
-              <Space direction="vertical" style={{ width: "100%" }} size="middle">
-                <Space wrap>
-                  <span>{t("universeWorkers")}：</span>
-                  <InputNumber
-                    min={1}
-                    max={8}
-                    value={maxWorkers}
-                    onChange={(v) => setMaxWorkers(v ?? 5)}
-                    disabled={incrIsRunning}
-                    style={{ width: 80 }}
-                  />
-                  {!incrIsRunning && (
-                    <Button
-                      type="primary"
-                      icon={<PlayCircleOutlined />}
-                      onClick={handleIncrStart}
-                      loading={incrStarting}
-                      disabled={isRunning}
-                    >
-                      {t("universeIncrementalStart")}
-                    </Button>
-                  )}
-                  {incrIsRunning && (
-                    <Button
-                      danger
-                      icon={<StopOutlined />}
-                      onClick={handleIncrCancel}
-                      loading={incrCancelling}
-                    >
-                      {incrCancelling ? t("universeCanceling") : t("universeIncrementalCancel")}
-                    </Button>
-                  )}
-                  <Tooltip title={t("universeIncrementalTip")}>
-                    <QuestionCircleOutlined style={{ color: "var(--text-muted, #999)" }} />
-                  </Tooltip>
-                </Space>
-                <Alert
-                  message={t("universeIncrementalTip")}
-                  type="info"
-                  showIcon
-                  style={{ fontSize: 12 }}
-                />
-              </Space>
-            </div>
-          </Card>
-
-          {/* 历史回补任务 */}
+          {activeSyncPanel === "backfill" && (
           <Card
             title={
               <Space>
                 <span>{t("universeBackfillTitle")}</span>
+                <Tag color="blue">{t("universeHistoryPath2Badge")}</Tag>
+                <Tag color="blue">{t("universeBackfillBadge")}</Tag>
                 {bfTask ? statusTag(bfTask.status) : null}
               </Space>
             }
@@ -823,19 +1460,52 @@ export default function UniverseDataPanel() {
                     </p>
                   )
                 )}
-                {bfTask.status === "done" && bfTask.result && (
-                  <div style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
-                    {Object.entries(bfTask.result).map(([key, val]) => {
-                      const v = val as Record<string, number>;
-                      if (typeof v !== "object" || v === null) return null;
-                      return (
-                        <div key={key} style={{ marginBottom: 2 }}>
-                          回补 {key.replace(/_backfill$/, "")}：
-                          待回补 {v.total ?? 0}，成功 {v.ok ?? 0}，失败 {v.failed ?? 0}
+                {backfillScopeSummaries.length > 0 && (
+                  <>
+                    <Row gutter={[8, 8]} style={{ marginBottom: 12 }}>
+                      <Col xs={12} sm={8} md={4}>
+                        <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t("universeBackfillSummaryScopes")}</div>
+                          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>{backfillSummary.scopes}</div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </Col>
+                      <Col xs={12} sm={8} md={4}>
+                        <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t("universeBackfillSummaryProcessed")}</div>
+                          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>{backfillSummary.processed}</div>
+                        </div>
+                      </Col>
+                      <Col xs={12} sm={8} md={4}>
+                        <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t("universeBackfillSummaryOk")}</div>
+                          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color: "#52c41a" }}>{backfillSummary.ok}</div>
+                        </div>
+                      </Col>
+                      <Col xs={12} sm={8} md={4}>
+                        <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t("universeBackfillSummarySkipped")}</div>
+                          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>{backfillSummary.skipped}</div>
+                        </div>
+                      </Col>
+                      <Col xs={12} sm={8} md={4}>
+                        <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t("universeBackfillSummaryFailed")}</div>
+                          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color: backfillSummary.failed > 0 ? "#ff4d4f" : undefined }}>{backfillSummary.failed}</div>
+                        </div>
+                      </Col>
+                    </Row>
+                    <div style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
+                      {backfillScopeSummaries.map((item) => (
+                        <div key={item.key} style={{ marginBottom: 4 }}>
+                          {SCOPE_LABELS[item.scope] || item.scope}：
+                          {t("universeBackfillSummaryProcessed")} {item.processed > 0 ? item.processed : item.total}，
+                          {t("universeBackfillSummaryOk")} {item.ok}，
+                          {t("universeBackfillSummarySkipped")} {item.skipped}，
+                          {t("universeBackfillSummaryFailed")} {item.failed}
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
                 {bfTask.errors && bfTask.errors.length > 0 && (
                   <Alert
@@ -863,7 +1533,7 @@ export default function UniverseDataPanel() {
                   <Select
                     value={bfHistoryDays}
                     onChange={setBfHistoryDays}
-                    disabled={bfIsRunning}
+                    disabled={anyRunning}
                     style={{ width: 120 }}
                     options={HISTORY_DAYS_OPTIONS}
                   />
@@ -877,7 +1547,7 @@ export default function UniverseDataPanel() {
                     options={INIT_SCOPE_OPTIONS}
                     value={bfScopes}
                     onChange={(vals) => setBfScopes(vals as string[])}
-                    disabled={bfIsRunning}
+                    disabled={anyRunning}
                   />
                   <Tooltip title={t("universeInitScopesHint")}>
                     <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #888)" }} />
@@ -888,7 +1558,7 @@ export default function UniverseDataPanel() {
                   <Select
                     value={bfSyncLimit}
                     onChange={setBfSyncLimit}
-                    disabled={bfIsRunning}
+                    disabled={anyRunning}
                     style={{ width: 140 }}
                     options={SYNC_LIMIT_OPTIONS}
                   />
@@ -903,7 +1573,7 @@ export default function UniverseDataPanel() {
                     max={8}
                     value={maxWorkers}
                     onChange={(v) => setMaxWorkers(v ?? 5)}
-                    disabled={bfIsRunning}
+                    disabled={anyRunning}
                     style={{ width: 80 }}
                   />
                   {!bfIsRunning && (
@@ -931,15 +1601,211 @@ export default function UniverseDataPanel() {
                     <QuestionCircleOutlined style={{ color: "var(--text-muted, #999)" }} />
                   </Tooltip>
                 </Space>
-                <Alert
-                  message={t("universeBackfillTip")}
-                  type="info"
-                  showIcon
-                  style={{ fontSize: 12 }}
-                />
               </Space>
             </div>
           </Card>
+          )}
+            </>
+          )}
+
+          {syncTab === "advanced" && (
+            <>
+          {activeSyncPanel === "repair" && (
+          <Card
+            title={
+              <Space>
+                <span>{t("universeRangeRepairTitle")}</span>
+                <Tag color="orange">{t("universeRangeRepairBadge")}</Tag>
+                {repairTask ? statusTag(repairTask.status) : null}
+              </Space>
+            }
+            size="small"
+            style={{ marginBottom: 16 }}
+          >
+            {repairTask ? (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <Progress
+                    percent={Math.round(repairTask.percent)}
+                    status={
+                      repairTask.status === "running" ? "active" :
+                      repairTask.status === "done" ? "success" :
+                      repairTask.status === "failed" ? "exception" :
+                      repairTask.status === "cancelled" ? "exception" : "normal"
+                    }
+                  />
+                </div>
+                <p style={{ marginBottom: 8 }}>
+                  <strong>{t("universeRangeRepairStageSync")}</strong>
+                  {repairTask.message ? ` - ${repairTask.message}` : ""}
+                </p>
+                {repairTask.total > 0 ? (
+                  <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
+                    已处理 {repairTask.processed} / {repairTask.total}，成功 {repairTask.ok_count}，失败 {repairTask.failed_count}
+                  </p>
+                ) : (
+                  repairTask.status === "running" && (
+                    <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
+                      {t("universeRangeRepairPreparing")}
+                    </p>
+                  )
+                )}
+                {repairScopeSummaries.length > 0 && (
+                  <>
+                    <Row gutter={[8, 8]} style={{ marginBottom: 12 }}>
+                      <Col xs={12} sm={6}>
+                        <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t("universeRangeRepairSummaryScopes")}</div>
+                          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>{repairSummary.scopes}</div>
+                        </div>
+                      </Col>
+                      <Col xs={12} sm={6}>
+                        <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t("universeRangeRepairSummaryInserted")}</div>
+                          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color: "#52c41a" }}>{repairSummary.inserted}</div>
+                        </div>
+                      </Col>
+                      <Col xs={12} sm={6}>
+                        <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t("universeRangeRepairSummaryUpdated")}</div>
+                          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color: "#1890ff" }}>{repairSummary.updated}</div>
+                        </div>
+                      </Col>
+                      <Col xs={12} sm={6}>
+                        <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
+                          <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{t("universeRangeRepairSummaryEmptyChunks")}</div>
+                          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>{repairSummary.emptyChunks}</div>
+                        </div>
+                      </Col>
+                    </Row>
+                    <div style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
+                      {repairScopeSummaries.map((item) => (
+                        <div key={item.key} style={{ marginBottom: 4 }}>
+                          {SCOPE_LABELS[item.scope] || item.scope}：
+                          {t("universeRangeRepairSummaryProcessed")} {item.processed > 0 ? item.processed : item.total}，
+                          {t("universeRangeRepairSummaryOk")} {item.ok}，
+                          {t("universeRangeRepairSummarySkipped")} {item.skipped}，
+                          {t("universeRangeRepairSummaryFailed")} {item.failed}，
+                          {t("universeRangeRepairSummaryInserted")} {item.inserted}，
+                          {t("universeRangeRepairSummaryUpdated")} {item.updated}，
+                          {t("universeRangeRepairSummaryEmptyChunks")} {item.emptyChunks}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {repairTask.errors && repairTask.errors.length > 0 && (
+                  <Alert
+                    message={`最近 ${repairTask.errors.length} 条错误`}
+                    description={repairTask.errors.slice(-3).map((e, i) => (
+                      <div key={i} style={{ fontSize: 12, color: "#ff4d4f" }}>
+                        {String(e.stage || "")} {String(e.error || JSON.stringify(e))}
+                      </div>
+                    ))}
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                  />
+                )}
+              </>
+            ) : (
+              <p style={{ color: "var(--text-muted, #888)" }}>{t("universeRangeRepairNoTask")}</p>
+            )}
+
+            <div style={{ marginTop: 16, borderTop: "1px solid var(--border-color, #f0f0f0)", paddingTop: 16 }}>
+              <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                <Space wrap>
+                  <span>{t("universeHistoryDays")}：</span>
+                  <Select
+                    value={repairHistoryDays}
+                    onChange={setRepairHistoryDays}
+                    disabled={anyRunning}
+                    style={{ width: 120 }}
+                    options={HISTORY_DAYS_OPTIONS}
+                  />
+                  <Tooltip title={t("universeHistoryDaysHint")}>
+                    <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #888)" }} />
+                  </Tooltip>
+                </Space>
+                <Space wrap>
+                  <span>
+                    {t("universeRangeRepairChunkDays")}：
+                    <Tooltip title={t("universeRangeRepairChunkHint")}>
+                      <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #888)" }} />
+                    </Tooltip>
+                  </span>
+                  <Select
+                    value={repairChunkDays}
+                    onChange={setRepairChunkDays}
+                    disabled={anyRunning}
+                    style={{ width: 140 }}
+                    options={REPAIR_CHUNK_OPTIONS}
+                  />
+                </Space>
+                <Space wrap>
+                  <span>{t("universeScopes")}：</span>
+                  <Checkbox.Group
+                    options={INIT_SCOPE_OPTIONS}
+                    value={repairScopes}
+                    onChange={(vals) => setRepairScopes(vals as string[])}
+                    disabled={anyRunning}
+                  />
+                </Space>
+                <Space wrap>
+                  <span>{t("universeSyncLimit")}：</span>
+                  <Select
+                    value={repairSyncLimit}
+                    onChange={setRepairSyncLimit}
+                    disabled={anyRunning}
+                    style={{ width: 140 }}
+                    options={SYNC_LIMIT_OPTIONS}
+                  />
+                  <Tooltip title={t("universeSyncLimitHint")}>
+                    <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #888)" }} />
+                  </Tooltip>
+                </Space>
+                <Space wrap>
+                  <span>{t("universeWorkers")}：</span>
+                  <InputNumber
+                    min={1}
+                    max={8}
+                    value={maxWorkers}
+                    onChange={(v) => setMaxWorkers(v ?? 5)}
+                    disabled={anyRunning}
+                    style={{ width: 80 }}
+                  />
+                  {!repairIsRunning && (
+                    <Button
+                      type="default"
+                      icon={<PlayCircleOutlined />}
+                      onClick={handleRepairStart}
+                      loading={repairStarting}
+                      disabled={anyRunning || repairScopes.length === 0}
+                    >
+                      {t("universeRangeRepairStart")}
+                    </Button>
+                  )}
+                  {repairIsRunning && (
+                    <Button
+                      danger
+                      icon={<StopOutlined />}
+                      onClick={handleRepairCancel}
+                      loading={repairCancelling}
+                    >
+                      {repairCancelling ? t("universeCanceling") : t("universeRangeRepairCancel")}
+                    </Button>
+                  )}
+                  <Tooltip title={t("universeRangeRepairTip")}>
+                    <QuestionCircleOutlined style={{ color: "var(--text-muted, #999)" }} />
+                  </Tooltip>
+                </Space>
+              </Space>
+            </div>
+          </Card>
+          )}
+            </>
+          )}
+
         </div>
       </section>
     </div>

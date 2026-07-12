@@ -497,11 +497,12 @@ export interface SignalRulePreviewResult {
 }
 
 export interface DiscoveryTask {
-  id: number;
+  id: string | number;
   status: string;
   stage: string;
   percent: number;
   message: string;
+  scope: string;
   total: number;
   processed: number;
   ok_count: number;
@@ -512,10 +513,14 @@ export interface DiscoveryTask {
   scan_run_id: number | null;
   executable_count: number;
   cleanup_count?: number;
-  errors: string[];
+  errors: Array<Record<string, unknown>>;
   can_resume: boolean;
   can_retry?: boolean;
   created_at: string;
+  started_at?: string | null;
+  paused_at?: string | null;
+  cancelled_at?: string | null;
+  finished_at?: string | null;
   updated_at: string;
 }
 

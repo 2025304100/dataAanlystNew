@@ -512,26 +512,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }) => {
     const isSync = config?.dataMode === "sync";
     const effectiveScope = config?.scope ?? "cn-stock";
-    // 同步 scope ref，确保后续轮询按正确 scope 拉取任务状态
     discoveryScopeRef.current = effectiveScope;
-    const payload = {
-      scope: effectiveScope,
-      min_score: config?.minScore ?? 55,
-      include_news: config?.includeNews ?? true,
-      portfolio_id: state.portfolioId,
-      portfolio_rule_id: state.workbench?.active_rule?.id ?? null,
-      batch_size: config?.batchSize ?? 20,
-      delay_seconds: config?.delaySeconds ?? 0.25,
-      max_workers: config?.maxWorkers ?? 1,
-      warning_days: config?.warningDays ?? 3,
-      valid_days: config?.validDays ?? 5,
-      news_limit: 30,
-      refresh_universe: isSync,
-      use_cached_bars_first: !isSync,
-      use_cached_symbols_only: !isSync,
-      global_mode: "library",
-    };
+
+    const pausedTask = state.discoveryTask;
+    const shouldResumePaused = pausedTask?.status === "paused"
+      && !!pausedTask?.can_resume
+      && pausedTask.scope === effectiveScope;
+
     try {
+      if (shouldResumePaused && pausedTask?.id) {
+        const resumed = await api.sendDiscoveryCommand(pausedTask.id, "resume");
+        update({ discoveryTask: resumed });
+        startDiscoveryPolling();
+        showToast("success", t("discoveryResumed"));
+        return;
+      }
+
+      const payload = {
+        scope: effectiveScope,
+        min_score: config?.minScore ?? 55,
+        include_news: config?.includeNews ?? true,
+        portfolio_id: state.portfolioId,
+        portfolio_rule_id: state.workbench?.active_rule?.id ?? null,
+        batch_size: config?.batchSize ?? 20,
+        delay_seconds: config?.delaySeconds ?? 0.25,
+        max_workers: config?.maxWorkers ?? 1,
+        warning_days: config?.warningDays ?? 3,
+        valid_days: config?.validDays ?? 5,
+        news_limit: 30,
+        refresh_universe: isSync,
+        use_cached_bars_first: !isSync,
+        use_cached_symbols_only: !isSync,
+        global_mode: "library",
+      };
       const task = await api.createDiscoveryTask(payload);
       update({ discoveryTask: task });
       await loadWorkbench();
@@ -540,7 +553,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       showToast("error", error?.message || t("discoveryCommandFailed"));
     }
-  }, [state.portfolioId, state.workbench, update, showToast, loadWorkbench, startDiscoveryPolling, t]);
+  }, [state.discoveryTask, state.portfolioId, state.workbench, update, showToast, loadWorkbench, startDiscoveryPolling, t]);
 
   const sendDiscoveryTaskCommand = useCallback(async (command: string) => {
     const task = state.discoveryTask;
@@ -549,8 +562,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const result = await api.sendDiscoveryCommand(task.id, command);
       update({ discoveryTask: result });
       if (command === "pause") showToast("success", t("discoveryPaused"));
-      else if (command === "resume") showToast("success", t("discoveryResumed"));
-      else if (command === "cancel") showToast("success", t("discoveryCancelled"));
+      else if (command === "resume") {
+        showToast("success", t("discoveryResumed"));
+        startDiscoveryPolling();
+      } else if (command === "cancel") showToast("success", t("discoveryCancelled"));
       else if (command === "retry") {
         showToast("success", t("discoveryRetried"));
         startDiscoveryPolling();

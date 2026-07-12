@@ -1160,7 +1160,12 @@ export default function Discovery() {
               <InputNumber min={0} max={100} value={minScore} onChange={(value) => setMinScore(value ?? 0)} />
             </label>
             <label className="inline-control">
-              <span>{t("discoveryDataMode")}</span>
+              <span>
+                {t("discoveryDataMode")}
+                <Tooltip title={t("discoveryDataModeTip")}>
+                  <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} />
+                </Tooltip>
+              </span>
               <Select value={dataMode} onChange={(value) => setDataMode(value)} options={[
                 { value: "cached", label: t("discoveryModeCached") },
                 { value: "sync", label: t("discoveryModeSync") },
@@ -1184,15 +1189,15 @@ export default function Discovery() {
             </div>
           </div>
 
-          {dataMode === "sync" && (
-            <Alert
-              type="warning"
-              showIcon
-              icon={<WarningOutlined />}
-              message={t("discoveryModeSyncAlert")}
-              style={{ marginTop: 8 }}
-            />
-          )}
+          <Alert
+            type={dataMode === "sync" ? "warning" : "info"}
+            showIcon
+            icon={dataMode === "sync" ? <WarningOutlined /> : <QuestionCircleOutlined />}
+            message={dataMode === "sync" ? t("discoveryModeSync") : t("discoveryModeCached")}
+            description={dataMode === "sync" ? t("discoveryModeSyncAlert") : t("discoveryModeCachedAlert")}
+            style={{ marginTop: 8 }}
+          />
+
 
           <Collapse
             ghost

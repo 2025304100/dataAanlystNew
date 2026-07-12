@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from datetime import datetime, timezone
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import case, desc, func, select
 from sqlalchemy.orm import Session
@@ -501,14 +504,45 @@ def get_symbol_detail_panel(
     latest_position_price = bar_rows[0].close if bar_rows else None
 
     if latest_score is not None and (latest_setup is None or latest_setup.score_id != latest_score.id):
-        latest_setup = upsert_trade_setup(
-            db=db,
-            portfolio_id=portfolio_id,
-            symbol=symbol,
-            score=latest_score,
-        )
-        db.commit()
-        db.refresh(latest_setup)
+        try:
+            latest_setup = upsert_trade_setup(
+                db=db,
+                portfolio_id=portfolio_id,
+                symbol=symbol,
+                score=latest_score,
+            )
+            db.commit()
+            db.refresh(latest_setup)
+        except ValueError as exc:
+            # 风控加固：机会挖掘候选可能已有评分但 K线尚未同步（无 daily bars），
+            # 此时无法生成交易计划。降级为 latest_setup=None，避免 500 阻塞详情面板。
+            logger.warning(
+                "symbol-detail: upsert_trade_setup failed for symbol_id=%s (bars=%d): %s",
+                symbol_id, len(bar_rows), exc,
+            )
+            latest_setup = None
+            db.rollback()
+
+    # latest_trade_setup 同样依赖 daily bars：无 K线时降级为 None
+    latest_trade_setup_view = None
+    if latest_setup is not None and latest_score is not None and bar_rows:
+        try:
+            latest_trade_setup_view = {
+                **build_trade_setup_view(
+                    db=db,
+                    portfolio_id=portfolio_id,
+                    symbol=symbol,
+                    score=latest_score,
+                    setup=latest_setup,
+                    bars=list(reversed(bar_rows)),
+                ),
+            }
+        except ValueError as exc:
+            logger.warning(
+                "symbol-detail: build_trade_setup_view failed for symbol_id=%s: %s",
+                symbol_id, exc,
+            )
+            latest_trade_setup_view = None
 
     return WorkbenchSymbolDetail(
         symbol={
@@ -542,18 +576,7 @@ def get_symbol_detail_panel(
             "pullback_score": latest_score.pullback_score,
             "overheat_penalty": latest_score.overheat_penalty,
         },
-        latest_trade_setup=None
-        if latest_setup is None
-        else {
-            **build_trade_setup_view(
-                db=db,
-                portfolio_id=portfolio_id,
-                symbol=symbol,
-                score=latest_score,
-                setup=latest_setup,
-                bars=list(reversed(bar_rows)),
-            ),
-        },
+        latest_trade_setup=latest_trade_setup_view,
         signal_stats=build_similar_signal_stats(db, symbol, latest_score, portfolio_id=portfolio_id, sample_limit=sample_limit),
         position=None
         if position is None

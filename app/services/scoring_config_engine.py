@@ -255,6 +255,27 @@ _ACTIVE_CONFIG_CACHE_TTL = 30.0  # 秒
 _ACTIVE_CONFIG_CACHE_LOCK = threading.Lock()
 
 
+def _snapshot_scoring_config(config: ScoringConfig | None) -> ScoringConfig | None:
+    if config is None:
+        return None
+    return ScoringConfig(
+        id=config.id,
+        asset_type=config.asset_type,
+        preset_key=config.preset_key,
+        name=config.name,
+        description=config.description,
+        version=config.version,
+        config_json=config.config_json,
+        preset_source=config.preset_source,
+        is_system=config.is_system,
+        is_active=config.is_active,
+        is_latest=config.is_latest,
+        base_preset_key=config.base_preset_key,
+        created_at=config.created_at,
+        updated_at=config.updated_at,
+    )
+
+
 def get_active_scoring_config(db: Session, asset_type: str, *, use_cache: bool = True) -> ScoringConfig | None:
     """读取指定 asset_type 当前激活的评分预设。
 
@@ -262,14 +283,14 @@ def get_active_scoring_config(db: Session, asset_type: str, *, use_cache: bool =
     配置变更后 30s 内自动生效；如需立即使效，调用 invalidate_active_config_cache()。
     """
     if not use_cache:
-        return _query_active_scoring_config(db, asset_type)
+        return _snapshot_scoring_config(_query_active_scoring_config(db, asset_type))
     now = time.time()
     with _ACTIVE_CONFIG_CACHE_LOCK:
         cached = _ACTIVE_CONFIG_CACHE.get(asset_type)
         if cached is not None and (now - cached[1]) < _ACTIVE_CONFIG_CACHE_TTL:
             return cached[0]
     # 缓存未命中或已过期，查 DB
-    config = _query_active_scoring_config(db, asset_type)
+    config = _snapshot_scoring_config(_query_active_scoring_config(db, asset_type))
     with _ACTIVE_CONFIG_CACHE_LOCK:
         _ACTIVE_CONFIG_CACHE[asset_type] = (config, now)
     return config
@@ -970,4 +991,3 @@ def _legacy_score_write(
     existing.data_credibility = credibility
     db.flush()
     return existing
-

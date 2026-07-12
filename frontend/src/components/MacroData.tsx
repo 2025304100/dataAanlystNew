@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Col, Empty, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Typography, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import ReactECharts from "echarts-for-react";
@@ -51,6 +51,24 @@ const LABELS = {
     credit: "信用/杠杆",
     risk: "风险",
     updated: "更新时间",
+    syncing: "后台更新中...",
+    taskRunning: "宏观数据正在后台更新",
+    taskDone: "宏观数据更新完成",
+    taskCancel: "取消更新",
+    taskProgressTitle: "正在更新宏观数据",
+    taskSummaryProcessed: "已处理",
+    taskSummaryOk: "成功",
+    taskSummaryFailed: "失败",
+    taskSummaryCurrent: "当前",
+    taskPartial: "\u5b8f\u89c2\u6570\u636e\u5df2\u66f4\u65b0\uff0c\u4f46\u90e8\u5206\u6307\u6807\u5931\u8d25",
+    taskFailed: "\u5b8f\u89c2\u6570\u636e\u66f4\u65b0\u5931\u8d25",
+    taskCancelled: "\u5b8f\u89c2\u6570\u636e\u66f4\u65b0\u5df2\u53d6\u6d88",
+    viewFailures: "\u67e5\u770b\u5931\u8d25\u8be6\u60c5",
+    failureDetails: "\u5931\u8d25\u8be6\u60c5",
+    failureItem: "\u5931\u8d25\u9879",
+    failureScope: "\u8303\u56f4",
+    failureDetail: "\u539f\u56e0",
+    failureEmpty: "\u6682\u65e0\u5931\u8d25\u8be6\u60c5",
   },
   "en-US": {
     title: "Macro Data",
@@ -93,6 +111,24 @@ const LABELS = {
     credit: "Credit/Leverage",
     risk: "Risk",
     updated: "Updated",
+    syncing: "Updating in background...",
+    taskRunning: "Macro update is running in the background",
+    taskDone: "Macro update completed",
+    taskCancel: "Cancel Update",
+    taskProgressTitle: "Updating macro data",
+    taskSummaryProcessed: "Processed",
+    taskSummaryOk: "OK",
+    taskSummaryFailed: "Failed",
+    taskSummaryCurrent: "Current",
+    taskPartial: "Macro update completed with partial failures",
+    taskFailed: "Macro update failed",
+    taskCancelled: "Macro update cancelled",
+    viewFailures: "View failure details",
+    failureDetails: "Failure Details",
+    failureItem: "Item",
+    failureScope: "Scope",
+    failureDetail: "Reason",
+    failureEmpty: "No failure details",
   },
 } as const;
 
@@ -269,6 +305,121 @@ function statusColor(status: string) {
   return "default";
 }
 
+type MacroLocale = "zh-CN" | "en-US";
+
+function localizeIndicatorTaskName(value: string | null | undefined, locale: MacroLocale): string {
+  if (!value) return "";
+  const direct = INDICATOR_LABELS[value];
+  if (direct) {
+    return locale === "en-US" ? direct.en : direct.zh;
+  }
+  const matched = Object.values(INDICATOR_LABELS).find((item) => item.en === value || item.zh === value);
+  if (matched) {
+    return locale === "en-US" ? matched.en : matched.zh;
+  }
+  return value;
+}
+
+function formatTaskProgressTitle(
+  task: { processed?: number | null; total?: number | null },
+  labels: typeof LABELS["zh-CN"] | typeof LABELS["en-US"],
+  locale: MacroLocale,
+): string {
+  const processed = task.processed ?? 0;
+  const total = task.total ?? 0;
+  if (total <= 0) return labels.syncing;
+  return locale === "en-US"
+    ? `${labels.taskProgressTitle} (${processed}/${total})`
+    : `${labels.taskProgressTitle}（${processed}/${total}）`;
+}
+
+function formatTaskProgressSummary(
+  task: { processed?: number | null; total?: number | null; ok_count?: number | null; failed_count?: number | null; current_item?: string | null },
+  labels: typeof LABELS["zh-CN"] | typeof LABELS["en-US"],
+  locale: MacroLocale,
+): string {
+  const processed = task.processed ?? 0;
+  const total = task.total ?? 0;
+  const okCount = task.ok_count ?? 0;
+  const failedCount = task.failed_count ?? 0;
+  const currentItem = localizeIndicatorTaskName(task.current_item, locale);
+  const base = locale === "en-US"
+    ? `${labels.taskSummaryProcessed} ${processed} / ${total}, ${labels.taskSummaryOk} ${okCount}, ${labels.taskSummaryFailed} ${failedCount}`
+    : `${labels.taskSummaryProcessed} ${processed} / ${total}，${labels.taskSummaryOk} ${okCount}，${labels.taskSummaryFailed} ${failedCount}`;
+  if (!currentItem) return base;
+  return locale === "en-US"
+    ? `${base}, ${labels.taskSummaryCurrent}: ${currentItem}`
+    : `${base}，${labels.taskSummaryCurrent}：${currentItem}`;
+}
+
+type FailureDetail = {
+  key: string;
+  name: string;
+  scope: string;
+  detail: string;
+};
+
+function toDisplayText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function normalizeFailureDetails(items: unknown, fallbackScope = "macro", fallbackMessage?: string): FailureDetail[] {
+  if (!Array.isArray(items) || items.length === 0) {
+    if (!fallbackMessage) return [];
+    return [{
+      key: `${fallbackScope}-fallback`,
+      name: fallbackScope,
+      scope: fallbackScope,
+      detail: fallbackMessage,
+    }];
+  }
+  return items.map((item, index) => {
+    if (item && typeof item === "object") {
+      const row = item as Record<string, unknown>;
+      const name =
+        toDisplayText(row.name) ||
+        toDisplayText(row.indicator_key) ||
+        toDisplayText(row.scope) ||
+        toDisplayText(row.source) ||
+        `${fallbackScope}-${index + 1}`;
+      const scope =
+        toDisplayText(row.scope) ||
+        toDisplayText(row.source) ||
+        toDisplayText(row.region) ||
+        fallbackScope;
+      const detail =
+        toDisplayText(row.error) ||
+        toDisplayText(row.message) ||
+        toDisplayText(row.reason) ||
+        toDisplayText(row.detail) ||
+        toDisplayText(row.status) ||
+        fallbackMessage ||
+        "-";
+      const key =
+        toDisplayText(row.indicator_key) ||
+        toDisplayText(row.key) ||
+        toDisplayText(row.name) ||
+        `${fallbackScope}-${index}`;
+      return { key: `${key}-${index}`, name, scope, detail };
+    }
+    const text = toDisplayText(item) || fallbackMessage || "-";
+    return { key: `${fallbackScope}-${index}`, name: text, scope: fallbackScope, detail: text };
+  });
+}
+
+function failurePreview(items: FailureDetail[]) {
+  return items.slice(0, 3).map((item) => (
+    item.detail && item.detail !== item.name ? `${item.name}: ${item.detail}` : item.name
+  )).join(" / ");
+}
+
 export default function MacroData() {
   const ctx = useApp();
   const labels = LABELS[ctx.locale as "zh-CN" | "en-US"] ?? LABELS["zh-CN"];
@@ -276,9 +427,32 @@ export default function MacroData() {
   const [overview, setOverview] = useState<MacroOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [updateTask, setUpdateTask] = useState<any | null>(null);
+  const pollRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
   const [selectedIndicator, setSelectedIndicator] = useState<MacroIndicator | null>(null);
   const [history, setHistory] = useState<MacroIndicator[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [taskNotice, setTaskNotice] = useState<string | null>(null);
+  const [taskNoticeType, setTaskNoticeType] = useState<"success" | "info" | "warning" | "error" | null>(null);
+  const [taskFailureDetails, setTaskFailureDetails] = useState<FailureDetail[]>([]);
+  const [failureDetailOpen, setFailureDetailOpen] = useState(false);
+  const terminalNoticeRef = useRef<string | null>(null);
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const notifyTaskOutcome = (taskId: string, status: string, type: "success" | "info" | "warning" | "error", text: string) => {
+    const key = `${taskId}:${status}:${text}`;
+    if (!text || terminalNoticeRef.current === key) return;
+    terminalNoticeRef.current = key;
+    if (type === "success") ctx.showToast("success", text);
+    else if (type === "error") ctx.showToast("error", text);
+    else ctx.showToast("info", text);
+  };
 
   const load = async (nextRegion = region) => {
     setError(null);
@@ -294,16 +468,114 @@ export default function MacroData() {
     load(region);
   }, [region]);
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const task = await api.getLatestMacroUpdateTask();
+        if (!alive || !task || !["queued", "running"].includes(task.status)) return;
+        setUpdateTask(task);
+        setLoading(true);
+      } catch {
+        // ignore resume failure
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!updateTask || !["queued", "running"].includes(updateTask.status)) {
+      stopPolling();
+      return;
+    }
+    pollRef.current = window.setInterval(async () => {
+      try {
+        const next = await api.getMacroUpdateTask(updateTask.id);
+        setUpdateTask(next);
+        if (!["queued", "running"].includes(next.status)) {
+          stopPolling();
+        }
+        if (next.status === "done") {
+          const failures = normalizeFailureDetails(next.result?.failed, next.result?.region ?? "macro");
+          const notice = failures.length ? `${labels.taskPartial} (${failures.length})` : labels.taskDone;
+          setTaskFailureDetails(failures);
+          setTaskNotice(notice);
+          setTaskNoticeType(failures.length ? "warning" : "success");
+          setError(null);
+          notifyTaskOutcome(next.id, next.status, failures.length ? "warning" : "success", notice);
+          await load(region);
+          setLoading(false);
+        } else if (next.status === "failed") {
+          const failures = normalizeFailureDetails(next.errors, "macro", next.message || labels.taskFailed);
+          const notice = next.message || labels.taskFailed;
+          setTaskFailureDetails(failures);
+          setTaskNotice(notice);
+          setTaskNoticeType("error");
+          setError(null);
+          notifyTaskOutcome(next.id, next.status, "error", notice);
+          setLoading(false);
+        } else if (next.status === "cancelled") {
+          setTaskFailureDetails([]);
+          setTaskNotice(labels.taskCancelled);
+          setTaskNoticeType("info");
+          setError(null);
+          notifyTaskOutcome(next.id, next.status, "info", labels.taskCancelled);
+          setLoading(false);
+        }
+      } catch (err: any) {
+        stopPolling();
+        setError(err.message);
+        setLoading(false);
+      }
+    }, 2500);
+    return () => {
+      stopPolling();
+    };
+  }, [labels.taskCancelled, labels.taskDone, labels.taskFailed, labels.taskPartial, region, updateTask?.id, updateTask?.status]);
+
   const refresh = async () => {
     setLoading(true);
     setError(null);
+    setTaskNotice(null);
+    setTaskNoticeType(null);
+    setTaskFailureDetails([]);
+    setFailureDetailOpen(false);
+    terminalNoticeRef.current = null;
     try {
-      const data = await api.updateMacroData({ region });
-      setOverview(data);
+      const task = await api.startMacroUpdateTask({ region });
+      setUpdateTask(task);
+      if (task.status === "done") {
+        const failures = normalizeFailureDetails(task.result?.failed, task.result?.region ?? "macro");
+        const notice = failures.length ? `${labels.taskPartial} (${failures.length})` : labels.taskDone;
+        setTaskFailureDetails(failures);
+        setTaskNotice(notice);
+        setTaskNoticeType(failures.length ? "warning" : "success");
+        notifyTaskOutcome(task.id, task.status, failures.length ? "warning" : "success", notice);
+        await load(region);
+        setLoading(false);
+      }
     } catch (err: any) {
       setError(err.message);
-    } finally {
       setLoading(false);
+    }
+  };
+
+  const cancelRefresh = async () => {
+    if (!updateTask?.id) return;
+    try {
+      const task = await api.cancelMacroUpdateTask(updateTask.id);
+      setUpdateTask(task);
+      stopPolling();
+      setTaskFailureDetails([]);
+      setTaskNotice(labels.taskCancelled);
+      setTaskNoticeType("info");
+      setError(null);
+      notifyTaskOutcome(task.id, task.status, "info", labels.taskCancelled);
+      setLoading(false);
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
@@ -321,6 +593,11 @@ export default function MacroData() {
     }
   };
   const snapshot = overview?.snapshot ?? null;
+  const overviewFailureDetails = useMemo(
+    () => normalizeFailureDetails(overview?.failed, region),
+    [overview?.failed, region],
+  );
+  const activeFailureDetails = taskFailureDetails.length ? taskFailureDetails : overviewFailureDetails;
   const dimensionRows = useMemo(() => {
     if (!snapshot) return [];
     return [
@@ -370,6 +647,15 @@ export default function MacroData() {
     { title: labels.previous, dataIndex: "previous_value", render: (_, row) => fmt(row.previous_value, row.unit, ctx.locale), align: "right" },
     { title: labels.delta, dataIndex: "delta", render: (value) => fmt(value, null, ctx.locale), align: "right" },
     { title: labels.score, dataIndex: "score", render: (value: number) => value.toFixed(1), align: "right" },
+  ];
+  const failureColumns: ColumnsType<FailureDetail> = [
+    { title: labels.failureItem, dataIndex: "name", width: 220 },
+    { title: labels.failureScope, dataIndex: "scope", width: 140 },
+    {
+      title: labels.failureDetail,
+      dataIndex: "detail",
+      render: (value: string) => <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{value || "-"}</span>,
+    },
   ];
   const columns: ColumnsType<MacroIndicator> = [
     {
@@ -489,10 +775,50 @@ export default function MacroData() {
             ]}
           />
           <Button type="primary" icon={<ReloadOutlined />} loading={loading} onClick={refresh}>
-            {loading ? labels.updating : labels.update}
+            {loading ? labels.syncing : labels.update}
           </Button>
+          {updateTask && ["queued", "running"].includes(updateTask.status) ? (
+            <Button onClick={cancelRefresh}>{labels.taskCancel}</Button>
+          ) : null}
         </Space>
       </section>
+
+      {updateTask && ["queued", "running"].includes(updateTask.status) ? (
+        <Alert
+          type="info"
+          showIcon
+          className="macro-alert"
+          message={labels.taskRunning}
+          description={
+            <div>
+              <div style={{ marginBottom: 8 }}>{formatTaskProgressTitle(updateTask, labels, ctx.locale as MacroLocale)}</div>
+              <Progress percent={Math.round(updateTask.percent ?? 0)} status="active" />
+              <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted, #888)" }}>
+                {formatTaskProgressSummary(updateTask, labels, ctx.locale as MacroLocale)}
+              </div>
+            </div>
+          }
+        />
+      ) : null}
+
+      {taskNotice && taskNoticeType ? (
+        <Alert
+          type={taskNoticeType}
+          showIcon
+          className="macro-alert"
+          message={taskNotice}
+          description={
+            taskFailureDetails.length ? (
+              <Space direction="vertical" size={8}>
+                <span>{failurePreview(taskFailureDetails)}</span>
+                <Button size="small" onClick={() => setFailureDetailOpen(true)}>
+                  {labels.viewFailures}
+                </Button>
+              </Space>
+            ) : undefined
+          }
+        />
+      ) : null}
 
       {error && <Alert type="error" message={error} showIcon className="macro-alert" />}
 
@@ -588,12 +914,19 @@ export default function MacroData() {
                     <Paragraph key={index}>{line}</Paragraph>
                   ))}
                 </div>
-                {overview?.failed?.length ? (
+                {activeFailureDetails.length ? (
                   <Alert
                     type="warning"
                     showIcon
-                    message={`${labels.failed}: ${overview.failed.length}`}
-                    description={overview.failed.slice(0, 3).map((item) => item.name || item.indicator_key).join(" / ")}
+                    message={`${labels.failed}: ${activeFailureDetails.length}`}
+                    description={
+                      <Space direction="vertical" size={8}>
+                        <span>{failurePreview(activeFailureDetails)}</span>
+                        <Button size="small" onClick={() => setFailureDetailOpen(true)}>
+                          {labels.viewFailures}
+                        </Button>
+                      </Space>
+                    }
                   />
                 ) : null}
               </Card>
@@ -614,6 +947,27 @@ export default function MacroData() {
           </Card>
         </>
       )}
+      <Modal
+        open={failureDetailOpen}
+        title={labels.failureDetails}
+        onCancel={() => setFailureDetailOpen(false)}
+        footer={null}
+        width={860}
+        destroyOnHidden
+      >
+        {activeFailureDetails.length ? (
+          <Table
+            rowKey="key"
+            columns={failureColumns}
+            dataSource={activeFailureDetails}
+            pagination={{ pageSize: 8, size: "small" }}
+            scroll={{ x: 720 }}
+            size="small"
+          />
+        ) : (
+          <Empty description={labels.failureEmpty} />
+        )}
+      </Modal>
       <Modal
         open={!!selectedIndicator}
         title={selectedIndicator ? indicatorName(selectedIndicator, ctx.locale) : labels.historyTitle}
@@ -643,3 +997,5 @@ export default function MacroData() {
     </div>
   );
 }
+
+

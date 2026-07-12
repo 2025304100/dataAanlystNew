@@ -4,9 +4,10 @@ import json
 import logging
 import math
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 import akshare as ak
 import pandas as pd
@@ -75,6 +76,8 @@ FRED_FALLBACKS = {
     "us_non_farm": {"series": "PAYEMS", "transform": "monthly_change_10k"},
     "us_industrial_production": {"series": "INDPRO", "transform": "yoy"},
 }
+
+MacroProgressCallback = Callable[[dict[str, Any]], None]
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -271,21 +274,69 @@ def _extract_latest(spec: MacroSpec) -> tuple[dict, list[dict]]:
     return payloads[-1], payloads
 
 
-def _upsert_indicator(db: Session, payload: dict) -> MacroIndicatorValue:
-    existing = (
-        db.execute(
-            select(MacroIndicatorValue).where(
-                MacroIndicatorValue.region == payload["region"],
-                MacroIndicatorValue.indicator_key == payload["indicator_key"],
-                MacroIndicatorValue.period == payload["period"],
-            )
-        )
-        .scalars()
-        .first()
-    )
+def _emit_progress(
+    progress_callback: MacroProgressCallback | None,
+    *,
+    stage: str,
+    processed: int,
+    total: int,
+    current_item: str | None,
+    ok_count: int,
+    failed_count: int,
+    message: str,
+) -> None:
+    if progress_callback is None:
+        return
+    progress_callback({
+        "stage": stage,
+        "processed": processed,
+        "total": total,
+        "current_item": current_item,
+        "ok_count": ok_count,
+        "failed_count": failed_count,
+        "message": message,
+    })
+
+
+def _fetch_macro_payloads(spec: MacroSpec) -> tuple[dict, list[dict]]:
+    try:
+        return _extract_latest(spec)
+    except Exception as ak_exc:
+        if spec.indicator_key not in FRED_FALLBACKS:
+            raise
+        logger.debug("AKShare failed for %s, trying FRED fallback", spec.indicator_key, exc_info=True)
+        try:
+            return _extract_fred(spec)
+        except Exception as fred_exc:
+            raise RuntimeError(f"AKShare failed: {ak_exc}; FRED failed: {fred_exc}") from fred_exc
+
+
+def _upsert_indicator(
+    db: Session,
+    payload: dict,
+    existing_cache: dict[tuple[str, str], dict[str, MacroIndicatorValue]] | None = None,
+) -> MacroIndicatorValue:
+    cache_key = (payload["region"], payload["indicator_key"])
+    period = payload["period"]
+    cached_periods = existing_cache.setdefault(cache_key, {}) if existing_cache is not None else None
+    existing = cached_periods.get(period) if cached_periods is not None else None
     if existing is None:
-        existing = MacroIndicatorValue()
-        db.add(existing)
+        existing = (
+            db.execute(
+                select(MacroIndicatorValue).where(
+                    MacroIndicatorValue.region == payload["region"],
+                    MacroIndicatorValue.indicator_key == payload["indicator_key"],
+                    MacroIndicatorValue.period == payload["period"],
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if existing is None:
+            existing = MacroIndicatorValue()
+            db.add(existing)
+        if cached_periods is not None:
+            cached_periods[period] = existing
     for key, value in payload.items():
         setattr(existing, key, value)
     existing.updated_at = datetime.now(timezone.utc)
@@ -434,39 +485,70 @@ def _latest_snapshot(db: Session, region: str) -> MacroSnapshot | None:
     )
 
 
-def update_macro_data(db: Session, region: str = "all") -> MacroOverviewResponse:
+def update_macro_data(
+    db: Session,
+    region: str = "all",
+    progress_callback: MacroProgressCallback | None = None,
+) -> MacroOverviewResponse:
     target_regions = ["cn", "us"] if region == "all" else [region]
+    specs = [item for item in SPECS if item.region in target_regions]
     failed: list[dict] = []
     refreshed: list[MacroIndicatorValue] = []
-    for spec in [item for item in SPECS if item.region in target_regions]:
+    existing_cache: dict[tuple[str, str], dict[str, MacroIndicatorValue]] = defaultdict(dict)
+    total = len(specs)
+
+    _emit_progress(
+        progress_callback,
+        stage="fetch",
+        processed=0,
+        total=total,
+        current_item=None,
+        ok_count=0,
+        failed_count=0,
+        message="Starting macro update",
+    )
+
+    for index, spec in enumerate(specs, start=1):
         try:
-            try:
-                payload, history = _extract_latest(spec)
-            except Exception as ak_exc:
-                if spec.indicator_key not in FRED_FALLBACKS:
-                    raise
-                logger.debug("AKShare failed for %s, trying FRED fallback", spec.indicator_key, exc_info=True)
-                try:
-                    payload, history = _extract_fred(spec)
-                except Exception as fred_exc:
-                    raise RuntimeError(f"AKShare failed: {ak_exc}; FRED failed: {fred_exc}") from fred_exc
+            payload, history = _fetch_macro_payloads(spec)
             for item in history:
-                _upsert_indicator(db, item)
-            refreshed.append(_upsert_indicator(db, payload))
+                _upsert_indicator(db, item, existing_cache)
+            refreshed.append(_upsert_indicator(db, payload, existing_cache))
         except Exception as exc:
             logger.debug("Failed to fetch macro indicator %s", spec.indicator_key, exc_info=True)
             failed.append({"indicator_key": spec.indicator_key, "name": spec.name, "error": str(exc)})
 
-    snapshots: list[MacroSnapshot] = []
+        _emit_progress(
+            progress_callback,
+            stage="fetch",
+            processed=index,
+            total=total,
+            current_item=spec.name,
+            ok_count=index - len(failed),
+            failed_count=len(failed),
+            message=f"Updating macro data ({index}/{total})",
+        )
+
     for item_region in target_regions:
         rows = [row for row in _latest_indicators(db, item_region) if row.region == item_region]
-        snapshots.append(_create_snapshot(db, item_region, rows, len([f for f in failed if f["indicator_key"].startswith(f"{item_region}_")])))
+        _create_snapshot(db, item_region, rows, len([f for f in failed if f["indicator_key"].startswith(f"{item_region}_")]))
     if region == "all":
         rows = _latest_indicators(db, "all")
-        snapshots.append(_create_snapshot(db, "all", rows, len(failed)))
+        _create_snapshot(db, "all", rows, len(failed))
 
     db.commit()
-    return get_macro_overview(db, region=region, failed=failed)
+    overview = get_macro_overview(db, region=region, failed=failed)
+    _emit_progress(
+        progress_callback,
+        stage="done",
+        processed=total,
+        total=total,
+        current_item=None,
+        ok_count=total - len(failed),
+        failed_count=len(failed),
+        message="Macro update completed",
+    )
+    return overview
 
 
 def get_macro_overview(db: Session, region: str = "all", failed: list[dict] | None = None) -> MacroOverviewResponse:

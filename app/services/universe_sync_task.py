@@ -26,6 +26,18 @@ logger = logging.getLogger(__name__)
 _STALE_DEADLINE_SECONDS = 60 * 60
 
 UNIVERSE_SYNC_TASK_TYPE = "universe_sync"
+UNIVERSE_INCREMENTAL_TASK_TYPE = "universe_incremental_sync"
+UNIVERSE_BACKFILL_TASK_TYPE = "universe_backfill"
+UNIVERSE_SMART_TASK_TYPE = "universe_smart_sync"
+UNIVERSE_RANGE_REPAIR_TASK_TYPE = "universe_range_repair"
+
+_ALL_UNIVERSE_SCOPES = ["cn-stock", "cn-etf", "us-stock", "us-etf"]
+_UNIVERSE_SCOPE_LABELS = {
+    "cn-stock": "A股股票",
+    "cn-etf": "A股ETF",
+    "us-stock": "美股股票",
+    "us-etf": "美股ETF",
+}
 
 # 进度阶段百分比分配（6 个 sync 阶段 + 4 个 refresh 阶段）
 # A股股票数量最多（~5500），给最大比例区间
@@ -159,13 +171,19 @@ def start_universe_sync_init(
     若已有 running/queued 任务则拒绝重复创建。
     """
     if scopes is None:
-        scopes = ["cn-stock", "cn-etf", "us-stock", "us-etf"]
+        scopes = list(_ALL_UNIVERSE_SCOPES)
     db = SessionLocal()
     try:
         # 并发保护：已有运行中任务则拒绝
         existing = db.execute(
             select(AsyncTaskRecord).where(
-                AsyncTaskRecord.task_type == UNIVERSE_SYNC_TASK_TYPE,
+                AsyncTaskRecord.task_type.in_((
+                    UNIVERSE_SYNC_TASK_TYPE,
+                    UNIVERSE_INCREMENTAL_TASK_TYPE,
+                    UNIVERSE_BACKFILL_TASK_TYPE,
+                    UNIVERSE_SMART_TASK_TYPE,
+                    UNIVERSE_RANGE_REPAIR_TASK_TYPE,
+                )),
                 AsyncTaskRecord.status.in_(("queued", "running")),
             ).order_by(desc(AsyncTaskRecord.created_at))
         ).scalars().first()
@@ -574,20 +592,28 @@ def _run_universe_sync_init(
 
 # ── P2：定时增量同步任务封装 ─────────────────────────────────────
 
-UNIVERSE_INCREMENTAL_TASK_TYPE = "universe_incremental_sync"
-
-
-def start_universe_incremental_sync(max_workers: int = 5) -> AsyncTaskRead:
+def start_universe_incremental_sync(
+    max_workers: int = 5,
+    scopes: list[str] | None = None,
+) -> AsyncTaskRead:
     """启动增量同步任务（只同步 last_bar_date < today 的标的）。
 
-    并发保护：已有 running/queued 的 universe_sync 或 universe_incremental_sync 任务则拒绝。
+    并发保护：已有 running/queued 的 universe 同步任务则拒绝。
     """
+    if scopes is None:
+        scopes = list(_ALL_UNIVERSE_SCOPES)
     db = SessionLocal()
     try:
-        # 并发保护：已有运行中的 universe 同步任务则拒绝（init 或 incremental）
+        # 并发保护：已有运行中的 universe 同步任务则拒绝
         existing = db.execute(
             select(AsyncTaskRecord).where(
-                AsyncTaskRecord.task_type.in_((UNIVERSE_SYNC_TASK_TYPE, UNIVERSE_INCREMENTAL_TASK_TYPE)),
+                AsyncTaskRecord.task_type.in_((
+                    UNIVERSE_SYNC_TASK_TYPE,
+                    UNIVERSE_INCREMENTAL_TASK_TYPE,
+                    UNIVERSE_BACKFILL_TASK_TYPE,
+                    UNIVERSE_SMART_TASK_TYPE,
+                    UNIVERSE_RANGE_REPAIR_TASK_TYPE,
+                )),
                 AsyncTaskRecord.status.in_(("queued", "running")),
             ).order_by(desc(AsyncTaskRecord.created_at))
         ).scalars().first()
@@ -595,15 +621,16 @@ def start_universe_incremental_sync(max_workers: int = 5) -> AsyncTaskRead:
             return _task_to_read(existing)
 
         task_id = uuid4().hex
+        scope_label = "+".join(scopes) if len(scopes) < len(_ALL_UNIVERSE_SCOPES) else "全部"
         task = AsyncTaskRecord(
             id=task_id,
             task_type=UNIVERSE_INCREMENTAL_TASK_TYPE,
             status="queued",
             stage="queued",
             percent=0,
-            message="增量同步任务已创建",
+            message=f"增量同步任务已创建（范围：{scope_label}）",
             payload_json=json.dumps(
-                {"max_workers": max_workers, "mode": "incremental"},
+                {"max_workers": max_workers, "mode": "incremental", "scopes": scopes},
                 ensure_ascii=False,
             ),
         )
@@ -616,7 +643,7 @@ def start_universe_incremental_sync(max_workers: int = 5) -> AsyncTaskRead:
 
     worker = threading.Thread(
         target=_run_universe_incremental_sync,
-        args=(task_id, max_workers),
+        args=(task_id, max_workers, scopes),
         daemon=True,
     )
     worker.start()
@@ -658,7 +685,11 @@ def cancel_universe_incremental_task(task_id: str) -> AsyncTaskRead | None:
         db.close()
 
 
-def _run_universe_incremental_sync(task_id: str, max_workers: int) -> None:
+def _run_universe_incremental_sync(
+    task_id: str,
+    max_workers: int,
+    scopes: list[str] | None = None,
+) -> None:
     """worker 线程主函数：执行增量同步。"""
     SessionFactory = get_session_local()
     result_summary: dict[str, Any] = {}
@@ -708,6 +739,7 @@ def _run_universe_incremental_sync(task_id: str, max_workers: int) -> None:
                 max_workers=max_workers,
                 progress_callback=progress_cb,
                 is_cancelled=lambda: _is_cancelled(task_id),
+                scopes=scopes,
             )
             result_summary = sync_result
         except Exception as exc:
@@ -763,11 +795,594 @@ def _run_universe_incremental_sync(task_id: str, max_workers: int) -> None:
             logger.exception("Failed to mark incremental sync task %s as failed", task_id)
 
 
+# ── 智能同步任务 ─────────────────────────────────────────
+
+_SMART_PHASE_RANGES = {
+    "refresh": (0, 10),
+    "init": (10, 55),
+    "backfill": (55, 85),
+    "incremental": (85, 100),
+}
+
+
+def _smart_stage_scope_range(scopes: list[str], scope: str, phase: str) -> tuple[float, float]:
+    phase_start, phase_end = _SMART_PHASE_RANGES[phase]
+    if not scopes:
+        return phase_start, phase_end
+    index = scopes.index(scope)
+    width = (phase_end - phase_start) / max(len(scopes), 1)
+    return phase_start + index * width, phase_start + (index + 1) * width
+
+
+def start_universe_smart_sync(
+    max_workers: int = 5,
+    history_days: int = 365,
+    scopes: list[str] | None = None,
+    sync_limit: int = 0,
+) -> AsyncTaskRead:
+    """启动智能同步任务。
+
+    自动按当前覆盖情况处理：
+    1. 刷新标的列表
+    2. 初始化未同步标的
+    3. 仅向左侧补历史缺口
+    4. 仅向右侧补近期增量
+    """
+    if scopes is None:
+        scopes = list(_ALL_UNIVERSE_SCOPES)
+    db = SessionLocal()
+    try:
+        existing = db.execute(
+            select(AsyncTaskRecord).where(
+                AsyncTaskRecord.task_type.in_((
+                    UNIVERSE_SYNC_TASK_TYPE,
+                    UNIVERSE_INCREMENTAL_TASK_TYPE,
+                    UNIVERSE_BACKFILL_TASK_TYPE,
+                    UNIVERSE_SMART_TASK_TYPE,
+                    UNIVERSE_RANGE_REPAIR_TASK_TYPE,
+                )),
+                AsyncTaskRecord.status.in_(("queued", "running")),
+            ).order_by(desc(AsyncTaskRecord.created_at))
+        ).scalars().first()
+        if existing is not None:
+            return _task_to_read(existing)
+
+        task_id = uuid4().hex
+        scope_label = "+".join(scopes) if len(scopes) < len(_ALL_UNIVERSE_SCOPES) else "全部"
+        task = AsyncTaskRecord(
+            id=task_id,
+            task_type=UNIVERSE_SMART_TASK_TYPE,
+            status="queued",
+            stage="queued",
+            percent=0,
+            message=f"智能同步任务已创建（范围：{scope_label}，历史 {history_days} 天）",
+            payload_json=json.dumps(
+                {
+                    "max_workers": max_workers,
+                    "history_days": history_days,
+                    "mode": "smart",
+                    "scopes": scopes,
+                    "sync_limit": sync_limit,
+                },
+                ensure_ascii=False,
+            ),
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        result = _task_to_read(task)
+    finally:
+        db.close()
+
+    worker = threading.Thread(
+        target=_run_universe_smart_sync,
+        args=(task_id, max_workers, history_days, scopes, sync_limit),
+        daemon=True,
+    )
+    worker.start()
+    return result
+
+
+def get_latest_universe_smart_task() -> AsyncTaskRead | None:
+    db = SessionLocal()
+    try:
+        task = db.execute(
+            select(AsyncTaskRecord)
+            .where(AsyncTaskRecord.task_type == UNIVERSE_SMART_TASK_TYPE)
+            .order_by(desc(AsyncTaskRecord.created_at))
+            .limit(1)
+        ).scalars().first()
+        return _task_to_read(task) if task is not None else None
+    finally:
+        db.close()
+
+
+def cancel_universe_smart_task(task_id: str) -> AsyncTaskRead | None:
+    db = SessionLocal()
+    try:
+        task = db.get(AsyncTaskRecord, task_id)
+        if task is None:
+            return None
+        if task.status in ("done", "failed", "cancelled"):
+            return _task_to_read(task)
+        task.status = "cancelled"
+        task.stage = "cancelled"
+        task.message = "智能同步任务已取消"
+        task.finished_at = _now()
+        task.updated_at = _now()
+        db.commit()
+        db.refresh(task)
+        return _task_to_read(task)
+    finally:
+        db.close()
+
+
+def _run_universe_smart_sync(
+    task_id: str,
+    max_workers: int,
+    history_days: int,
+    scopes: list[str] | None = None,
+    sync_limit: int = 0,
+) -> None:
+    """worker 线程主函数：按 scope 智能串联 refresh/init/backfill/incremental。"""
+    if scopes is None:
+        scopes = list(_ALL_UNIVERSE_SCOPES)
+    SessionFactory = get_session_local()
+    errors: list[dict] = []
+    result_summary: dict[str, Any] = {}
+
+    def _set_stage(stage: str, percent: float, message: str) -> None:
+        db = SessionFactory()
+        try:
+            _set_task(db, task_id, stage=stage, percent=percent, message=message)
+        finally:
+            db.close()
+
+    def _record_error(stage: str, exc: Exception) -> None:
+        db = SessionFactory()
+        try:
+            _append_error(db, task_id, {"stage": stage, "error": str(exc)})
+        finally:
+            db.close()
+
+    try:
+        db = SessionFactory()
+        try:
+            _set_task(
+                db, task_id,
+                status="running",
+                stage="smart_refresh",
+                percent=0,
+                message=f"开始智能同步（目标历史 {history_days} 天）",
+                started_at=_now(),
+            )
+        finally:
+            db.close()
+
+        if _is_cancelled(task_id):
+            return
+
+        for scope in scopes:
+            if _is_cancelled(task_id):
+                break
+            scope_label = _UNIVERSE_SCOPE_LABELS.get(scope, scope)
+            stage = f"smart_refresh_{scope}"
+            stage_range = _smart_stage_scope_range(scopes, scope, "refresh")
+            _set_stage(stage, stage_range[0], f"智能同步：刷新{scope_label}标的列表")
+            phase_ok = False
+            db = SessionFactory()
+            try:
+                result_summary[f"{scope}_universe"] = universe_sync.refresh_universe_symbols(scope, db)
+                phase_ok = True
+            except Exception as exc:
+                logger.exception("smart sync refresh %s failed", scope)
+                errors.append({"stage": stage, "error": str(exc)})
+                _record_error(stage, exc)
+            finally:
+                db.close()
+            _set_stage(
+                stage,
+                stage_range[1],
+                f"智能同步：{scope_label}标的列表已刷新" if phase_ok else f"智能同步：{scope_label}标的列表刷新失败，继续后续阶段",
+            )
+
+        if _is_cancelled(task_id):
+            return
+
+        for scope in scopes:
+            if _is_cancelled(task_id):
+                break
+            scope_label = _UNIVERSE_SCOPE_LABELS.get(scope, scope)
+            stage = f"smart_init_{scope}"
+            stage_range = _smart_stage_scope_range(scopes, scope, "init")
+            _set_stage(stage, stage_range[0], f"智能同步：初始化{scope_label}未同步K线")
+            progress_cb = _make_progress_callback(
+                SessionFactory,
+                task_id,
+                stage,
+                stage_range[0],
+                stage_range[1],
+                f"智能同步：初始化{scope_label}未同步K线",
+            )
+            phase_ok = False
+            try:
+                result_summary[f"{scope}_init"] = universe_sync.sync_universe_bars_batch(
+                    scope,
+                    max_workers=max_workers,
+                    history_days=history_days,
+                    progress_callback=progress_cb,
+                    is_cancelled=lambda: _is_cancelled(task_id),
+                    sync_limit=sync_limit,
+                )
+                phase_ok = True
+            except Exception as exc:
+                logger.exception("smart sync init %s failed", scope)
+                errors.append({"stage": stage, "error": str(exc)})
+                _record_error(stage, exc)
+            _set_stage(
+                stage,
+                stage_range[1],
+                f"智能同步：{scope_label}初始化已完成" if phase_ok else f"智能同步：{scope_label}初始化失败，继续后续阶段",
+            )
+
+        if _is_cancelled(task_id):
+            return
+
+        for scope in scopes:
+            if _is_cancelled(task_id):
+                break
+            scope_label = _UNIVERSE_SCOPE_LABELS.get(scope, scope)
+            stage = f"smart_backfill_{scope}"
+            stage_range = _smart_stage_scope_range(scopes, scope, "backfill")
+            _set_stage(stage, stage_range[0], f"智能同步：回补{scope_label}历史缺口")
+            progress_cb = _make_progress_callback(
+                SessionFactory,
+                task_id,
+                stage,
+                stage_range[0],
+                stage_range[1],
+                f"智能同步：回补{scope_label}历史缺口",
+            )
+            phase_ok = False
+            try:
+                result_summary[f"{scope}_backfill"] = universe_sync.backfill_universe_bars_batch(
+                    scope,
+                    max_workers=max_workers,
+                    history_days=history_days,
+                    progress_callback=progress_cb,
+                    is_cancelled=lambda: _is_cancelled(task_id),
+                    sync_limit=sync_limit,
+                )
+                phase_ok = True
+            except Exception as exc:
+                logger.exception("smart sync backfill %s failed", scope)
+                errors.append({"stage": stage, "error": str(exc)})
+                _record_error(stage, exc)
+            _set_stage(
+                stage,
+                stage_range[1],
+                f"智能同步：{scope_label}历史缺口已处理" if phase_ok else f"智能同步：{scope_label}历史回补失败，继续后续阶段",
+            )
+
+        if _is_cancelled(task_id):
+            return
+
+        incr_stage = "smart_incremental"
+        incr_range = _SMART_PHASE_RANGES["incremental"]
+        _set_stage(incr_stage, incr_range[0], "智能同步：补齐近期增量K线")
+
+        def incremental_progress_cb(processed: int, total: int, ok: int, failed: int) -> None:
+            pct = incr_range[1] if total <= 0 else incr_range[0] + (incr_range[1] - incr_range[0]) * processed / total
+            db = SessionFactory()
+            try:
+                _set_task(
+                    db,
+                    task_id,
+                    stage=incr_stage,
+                    percent=min(pct, incr_range[1]),
+                    total=total,
+                    processed=processed,
+                    ok_count=ok,
+                    failed_count=failed,
+                    message=f"智能同步：补齐近期增量K线（{processed}/{total}）",
+                )
+            finally:
+                db.close()
+
+        try:
+            result_summary["incremental"] = universe_sync.incremental_sync(
+                max_workers=max_workers,
+                progress_callback=incremental_progress_cb,
+                is_cancelled=lambda: _is_cancelled(task_id),
+                scopes=scopes,
+            )
+        except Exception as exc:
+            logger.exception("smart sync incremental failed")
+            errors.append({"stage": incr_stage, "error": str(exc)})
+            _record_error(incr_stage, exc)
+            result_summary["incremental"] = {"error": str(exc)}
+
+        incremental_result = result_summary.get("incremental", {})
+        incremental_message = "智能同步：近期增量K线已补齐"
+        if isinstance(incremental_result, dict) and incremental_result.get("total") == 0:
+            incremental_message = "智能同步：近期增量已是最新"
+        _set_stage(incr_stage, incr_range[1], incremental_message)
+
+        db = SessionFactory()
+        try:
+            final_status = "cancelled" if _is_cancelled(task_id) else "done"
+            final_stage = "cancelled" if final_status == "cancelled" else "done"
+            incremental_result = result_summary.get("incremental", {})
+            final_message = (
+                f"智能同步完成：增量更新 {incremental_result.get('ok', 0)} 个，已最新 {incremental_result.get('uptodate', 0)} 个，失败 {incremental_result.get('failed', 0)} 个"
+                if final_status == "done"
+                else "智能同步任务已取消"
+            )
+            final_updates: dict[str, Any] = {
+                "status": final_status,
+                "stage": final_stage,
+                "message": final_message,
+                "result_json": json.dumps(result_summary, ensure_ascii=False, default=str),
+                "finished_at": _now(),
+            }
+            if final_status == "done":
+                final_updates["percent"] = 100
+            _set_task(db, task_id, **final_updates)
+        finally:
+            db.close()
+
+    except Exception:
+        logger.exception("universe smart sync worker crashed: %s", task_id)
+        try:
+            db = SessionFactory()
+            try:
+                _set_task(
+                    db, task_id,
+                    status="failed",
+                    stage="failed",
+                    message="智能同步任务异常崩溃",
+                    finished_at=_now(),
+                )
+            finally:
+                db.close()
+        except Exception:
+            logger.exception("Failed to mark smart sync task %s as failed", task_id)
+
+
 # ── 历史回补任务 ─────────────────────────────────────────
 
-UNIVERSE_BACKFILL_TASK_TYPE = "universe_backfill"
-
 # 回补阶段百分比（支持 4 个 scope，均分 0-100）
+
+_REPAIR_STAGE_RANGES = {
+    "cn-stock": (0, 45),
+    "cn-etf": (45, 70),
+    "us-stock": (70, 95),
+    "us-etf": (95, 100),
+}
+
+
+
+def start_universe_range_repair(
+    max_workers: int = 5,
+    history_days: int = 365,
+    chunk_days: int = 90,
+    scopes: list[str] | None = None,
+    sync_limit: int = 0,
+) -> AsyncTaskRead:
+    """Start a chunked range-repair task for already-synced symbols."""
+    if scopes is None:
+        scopes = list(_ALL_UNIVERSE_SCOPES)
+    db = SessionLocal()
+    try:
+        existing = db.execute(
+            select(AsyncTaskRecord).where(
+                AsyncTaskRecord.task_type.in_((
+                    UNIVERSE_SYNC_TASK_TYPE,
+                    UNIVERSE_INCREMENTAL_TASK_TYPE,
+                    UNIVERSE_BACKFILL_TASK_TYPE,
+                    UNIVERSE_SMART_TASK_TYPE,
+                    UNIVERSE_RANGE_REPAIR_TASK_TYPE,
+                )),
+                AsyncTaskRecord.status.in_(("queued", "running")),
+            ).order_by(desc(AsyncTaskRecord.created_at))
+        ).scalars().first()
+        if existing is not None:
+            return _task_to_read(existing)
+
+        task_id = uuid4().hex
+        scope_label = "+".join(scopes) if len(scopes) < len(_ALL_UNIVERSE_SCOPES) else "all"
+        task = AsyncTaskRecord(
+            id=task_id,
+            task_type=UNIVERSE_RANGE_REPAIR_TASK_TYPE,
+            status="queued",
+            stage="queued",
+            percent=0,
+            message=f"Range repair queued (scope={scope_label}, days={history_days}, chunk={chunk_days})",
+            payload_json=json.dumps(
+                {
+                    "max_workers": max_workers,
+                    "history_days": history_days,
+                    "chunk_days": chunk_days,
+                    "mode": "range_repair",
+                    "scopes": scopes,
+                    "sync_limit": sync_limit,
+                },
+                ensure_ascii=False,
+            ),
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        result = _task_to_read(task)
+    finally:
+        db.close()
+
+    worker = threading.Thread(
+        target=_run_universe_range_repair,
+        args=(task_id, max_workers, history_days, chunk_days, scopes, sync_limit),
+        daemon=True,
+    )
+    worker.start()
+    return result
+
+
+
+def get_latest_universe_range_repair_task() -> AsyncTaskRead | None:
+    db = SessionLocal()
+    try:
+        task = db.execute(
+            select(AsyncTaskRecord)
+            .where(AsyncTaskRecord.task_type == UNIVERSE_RANGE_REPAIR_TASK_TYPE)
+            .order_by(desc(AsyncTaskRecord.created_at))
+            .limit(1)
+        ).scalars().first()
+        return _task_to_read(task) if task is not None else None
+    finally:
+        db.close()
+
+
+
+def cancel_universe_range_repair_task(task_id: str) -> AsyncTaskRead | None:
+    db = SessionLocal()
+    try:
+        task = db.get(AsyncTaskRecord, task_id)
+        if task is None:
+            return None
+        if task.status in ("done", "failed", "cancelled"):
+            return _task_to_read(task)
+        task.status = "cancelled"
+        task.stage = "cancelled"
+        task.message = "Range repair task cancelled"
+        task.finished_at = _now()
+        task.updated_at = _now()
+        db.commit()
+        db.refresh(task)
+        return _task_to_read(task)
+    finally:
+        db.close()
+
+
+
+def _run_universe_range_repair(
+    task_id: str,
+    max_workers: int,
+    history_days: int,
+    chunk_days: int,
+    scopes: list[str] | None = None,
+    sync_limit: int = 0,
+) -> None:
+    """Worker thread for chunked recent-range repair."""
+    if scopes is None:
+        scopes = list(_ALL_UNIVERSE_SCOPES)
+    SessionFactory = get_session_local()
+    errors: list[dict] = []
+    result_summary: dict[str, Any] = {}
+
+    try:
+        db = SessionFactory()
+        try:
+            _set_task(
+                db,
+                task_id,
+                status="running",
+                stage="range_repair",
+                percent=0,
+                message=f"Starting range repair (days={history_days}, chunk={chunk_days})",
+                started_at=_now(),
+            )
+        finally:
+            db.close()
+
+        if _is_cancelled(task_id):
+            return
+
+        for scope in scopes:
+            if _is_cancelled(task_id):
+                break
+
+            stage_range = _REPAIR_STAGE_RANGES.get(scope, (0, 100))
+            scope_label = _UNIVERSE_SCOPE_LABELS.get(scope, scope)
+            stage = f"range_repair_{scope}"
+
+            db = SessionFactory()
+            try:
+                _set_task(
+                    db,
+                    task_id,
+                    stage=stage,
+                    percent=stage_range[0],
+                    message=f"Repairing {scope_label} recent range in chunks",
+                )
+            finally:
+                db.close()
+
+            progress_cb = _make_progress_callback(
+                SessionFactory,
+                task_id,
+                stage,
+                stage_range[0],
+                stage_range[1],
+                f"Repairing {scope_label} recent range",
+            )
+            try:
+                sync_result = universe_sync.repair_universe_bars_batch(
+                    scope,
+                    max_workers=max_workers,
+                    history_days=history_days,
+                    chunk_days=chunk_days,
+                    progress_callback=progress_cb,
+                    is_cancelled=lambda: _is_cancelled(task_id),
+                    sync_limit=sync_limit,
+                )
+                result_summary[f"{scope}_repair"] = sync_result
+            except Exception as exc:
+                logger.exception("range repair %s failed", scope)
+                errors.append({"stage": stage, "error": str(exc)})
+                db = SessionFactory()
+                try:
+                    _append_error(db, task_id, {"stage": stage, "error": str(exc)})
+                finally:
+                    db.close()
+
+        db = SessionFactory()
+        try:
+            final_status = "cancelled" if _is_cancelled(task_id) else "done"
+            final_stage = "cancelled" if final_status == "cancelled" else "done"
+            final_message = (
+                "Range repair completed" if final_status == "done"
+                else "Range repair task cancelled"
+            )
+            final_updates: dict[str, Any] = {
+                "status": final_status,
+                "stage": final_stage,
+                "message": final_message,
+                "result_json": json.dumps(result_summary, ensure_ascii=False, default=str),
+                "finished_at": _now(),
+            }
+            if final_status == "done":
+                final_updates["percent"] = 100
+            _set_task(db, task_id, **final_updates)
+        finally:
+            db.close()
+
+    except Exception:
+        logger.exception("universe range repair worker crashed: %s", task_id)
+        try:
+            db = SessionFactory()
+            try:
+                _set_task(
+                    db,
+                    task_id,
+                    status="failed",
+                    stage="failed",
+                    message="Range repair task crashed",
+                    finished_at=_now(),
+                )
+            finally:
+                db.close()
+        except Exception:
+            logger.exception("Failed to mark range repair task %s as failed", task_id)
+
 _BACKFILL_STAGE_RANGES = {
     "cn-stock": (0, 25),
     "cn-etf": (25, 50),
@@ -787,7 +1402,7 @@ def start_universe_backfill(
     并发保护：已有 running/queued 的 universe 任何同步任务则拒绝。
     """
     if scopes is None:
-        scopes = ["cn-stock", "cn-etf", "us-stock", "us-etf"]
+        scopes = list(_ALL_UNIVERSE_SCOPES)
     db = SessionLocal()
     try:
         # 并发保护：已有运行中的 universe 任何同步任务则拒绝
@@ -797,6 +1412,8 @@ def start_universe_backfill(
                     UNIVERSE_SYNC_TASK_TYPE,
                     UNIVERSE_INCREMENTAL_TASK_TYPE,
                     UNIVERSE_BACKFILL_TASK_TYPE,
+                    UNIVERSE_SMART_TASK_TYPE,
+                    UNIVERSE_RANGE_REPAIR_TASK_TYPE,
                 )),
                 AsyncTaskRecord.status.in_(("queued", "running")),
             ).order_by(desc(AsyncTaskRecord.created_at))

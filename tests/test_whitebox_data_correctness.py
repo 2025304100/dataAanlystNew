@@ -512,3 +512,263 @@ def test_probe_akshare_api_content_type_header():
         ApiConfigUpdate(delay_min_ms=-1)  # ge=0
     with pytest.raises(Exception):
         ApiConfigUpdate(delay_min_ms=70000)  # le=60000
+
+
+def test_score_universe_symbol_reuses_fresh_score_without_recalculation(monkeypatch):
+    """【P1 优化】当天已存在且不早于最近同步时间的分数应直接复用。"""
+    from app.models.score import Score
+    from app.models.symbol import Symbol
+    from app.models.universe import UniverseSymbol
+
+    score = Score(
+        symbol_id=1,
+        trade_date=date.today(),
+        quality_score=81,
+        quality_grade="A",
+        timing_score=73,
+        stage="start",
+        action="open",
+        priority_score=78,
+        calc_batch_id="test-batch",
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    universe_symbol = UniverseSymbol(
+        symbol="TEST-U1",
+        name="Universe Test",
+        asset_type="stock",
+        market="sh",
+        region="cn",
+        board="main",
+        is_synced=1,
+        last_synced_at=score.created_at - timedelta(minutes=5),
+    )
+    symbol = Symbol(id=1, symbol="TEST001", name="Test", asset_type="stock", market="sh", board="main", is_active=1)
+
+    def _should_not_recalculate(*args, **kwargs):
+        raise AssertionError("fresh score should have been reused")
+
+    monkeypatch.setattr("app.services.scoring_config_engine.calculate_universe_symbol_score", _should_not_recalculate)
+    monkeypatch.setattr(discovery_tasks, "upsert_trade_setup", lambda **kwargs: (_ for _ in ()).throw(AssertionError("trade setup should be deferred")))
+
+    result, scored = discovery_tasks._score_universe_symbol(
+        MagicMock(),
+        universe_symbol,
+        symbol,
+        date.today(),
+        portfolio_id=1,
+        prefetched_bars=[],
+        existing_score_map={1: score},
+    )
+
+    assert scored is True
+    assert result["status"] == "ok"
+    assert result["source"] == "reused_score"
+    assert result["score_reused"] is True
+    assert result["latest_score"]["quality_score"] == 81
+
+
+def test_score_universe_symbol_recalculates_when_data_is_newer(monkeypatch):
+    """【P1 优化】基础数据比当天已有分数更新时，应重新计算。"""
+    from app.models.score import Score
+    from app.models.symbol import Symbol
+    from app.models.universe import UniverseSymbol
+
+    existing = Score(
+        symbol_id=1,
+        trade_date=date.today(),
+        quality_score=60,
+        quality_grade="C",
+        timing_score=55,
+        stage="cooldown",
+        action="hold",
+        priority_score=58,
+        calc_batch_id="test-batch",
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=30),
+    )
+    refreshed = MagicMock()
+    refreshed.quality_score = 88
+    refreshed.timing_score = 79
+    refreshed.stage = "accel"
+    refreshed.action = "buy_dip"
+    refreshed.priority_score = 84
+
+    universe_symbol = UniverseSymbol(
+        symbol="TEST-U2",
+        name="Universe Test 2",
+        asset_type="stock",
+        market="sh",
+        region="cn",
+        board="main",
+        is_synced=1,
+        last_synced_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    symbol = Symbol(id=1, symbol="TEST002", name="Test2", asset_type="stock", market="sh", board="main", is_active=1)
+    score_map = {1: existing}
+
+    monkeypatch.setattr("app.services.scoring_config_engine.calculate_universe_symbol_score", lambda *args, **kwargs: refreshed)
+    monkeypatch.setattr(discovery_tasks, "upsert_trade_setup", lambda **kwargs: (_ for _ in ()).throw(AssertionError("trade setup should be deferred")))
+
+    result, scored = discovery_tasks._score_universe_symbol(
+        MagicMock(),
+        universe_symbol,
+        symbol,
+        date.today(),
+        portfolio_id=1,
+        prefetched_bars=[],
+        existing_score_map=score_map,
+    )
+
+    assert scored is True
+    assert result["status"] == "ok"
+    assert result["source"] == "universe_daily_bars"
+    assert result["score_reused"] is False
+    assert result["latest_score"]["quality_score"] == 88
+    assert score_map[1] is refreshed
+
+
+# ============================================================================
+# 7. symbol-detail 详情面板：机会挖掘候选已有评分但 K线未同步时不报 500
+# ============================================================================
+# 回归场景：用户在「机会挖掘」点击候选（symbol_id=5880 等），
+# 该标的已被 universe 打分但 daily_bars 尚未同步，
+# upsert_trade_setup / build_trade_setup_view 会抛 ValueError("Daily bars not found")，
+# 导致 /api/v1/dashboard/symbol-detail 返回 Internal Server Error（500）。
+# 期望：latest_trade_setup 降级为 None，详情面板正常返回 200。
+
+def test_symbol_detail_returns_200_when_scored_but_no_bars(db_session):
+    """【P0 回归】机会挖掘候选有评分但无 K线时，symbol-detail 不应 500。
+
+    重现：http://127.0.0.1:5173/api/v1/dashboard/symbol-detail?portfolio_id=2&symbol_id=5880
+    报 Internal Server Error。
+    """
+    from app.api.routes.dashboard import get_symbol_detail_panel
+    from app.models.portfolio import Portfolio
+    from app.models.score import Score
+    from app.models.symbol import Symbol
+
+    db = db_session
+    portfolio = Portfolio(
+        name="Test PF",
+        account_type="stock",
+        total_capital=100000.0,
+        investable_ratio=0.8,
+        cash_reserve_ratio=0.2,
+        currency="CNY",
+    )
+    db.add(portfolio)
+    db.flush()
+
+    symbol = Symbol(
+        symbol="588200",
+        name="科创芯片ETF嘉实",
+        asset_type="etf",
+        market="sh",
+        is_active=1,
+    )
+    db.add(symbol)
+    db.flush()
+
+    # 有评分、无 daily_bars —— 复现「机会挖掘」候选已打分但 K线未同步
+    score = Score(
+        symbol_id=symbol.id,
+        trade_date=date.today(),
+        quality_score=72.0,
+        quality_grade="B",
+        timing_score=68.0,
+        stage="start",
+        action="open",
+        priority_score=70.0,
+        calc_batch_id="test-batch",
+    )
+    db.add(score)
+    db.commit()
+
+    # 关键断言：不再抛 ValueError，而是优雅降级
+    result = get_symbol_detail_panel(
+        symbol_id=symbol.id,
+        portfolio_id=portfolio.id,
+        db=db,
+        sample_limit=None,
+        bar_limit=60,
+    )
+
+    assert result.symbol["symbol"] == "588200"
+    assert result.latest_score is not None
+    assert result.latest_score["quality_score"] == 72.0
+    # 无 K线时交易计划应降级为 None，而非抛异常
+    assert result.latest_trade_setup is None
+    assert result.bars == []
+    assert len(result.score_history) == 1
+
+
+def test_symbol_detail_works_when_bars_present(db_session):
+    """【P0 回归·对照】标的 K线齐全时，symbol-detail 正常生成交易计划。
+
+    与上一用例对照：避免降级逻辑误伤正常路径。
+    """
+    from app.api.routes.dashboard import get_symbol_detail_panel
+    from app.models.daily_bar import DailyBar
+    from app.models.portfolio import Portfolio
+    from app.models.score import Score
+    from app.models.symbol import Symbol
+
+    db = db_session
+    portfolio = Portfolio(
+        name="Test PF2",
+        account_type="stock",
+        total_capital=100000.0,
+        investable_ratio=0.8,
+        cash_reserve_ratio=0.2,
+        currency="CNY",
+    )
+    db.add(portfolio)
+    db.flush()
+
+    symbol = Symbol(
+        symbol="600000",
+        name="测试股票",
+        asset_type="stock",
+        market="sh",
+        is_active=1,
+    )
+    db.add(symbol)
+    db.flush()
+
+    # 灌入 30 根 K线
+    for i in range(30):
+        db.add(DailyBar(
+            symbol_id=symbol.id,
+            trade_date=date.today() - timedelta(days=29 - i),
+            open=10.0 + i * 0.1,
+            high=10.5 + i * 0.1,
+            low=9.8 + i * 0.1,
+            close=10.2 + i * 0.1,
+            volume=1000000.0,
+        ))
+    score = Score(
+        symbol_id=symbol.id,
+        trade_date=date.today(),
+        quality_score=72.0,
+        quality_grade="B",
+        timing_score=68.0,
+        stage="start",
+        action="open",
+        priority_score=70.0,
+        calc_batch_id="test-batch",
+    )
+    db.add(score)
+    db.commit()
+
+    result = get_symbol_detail_panel(
+        symbol_id=symbol.id,
+        portfolio_id=portfolio.id,
+        db=db,
+        sample_limit=None,
+        bar_limit=60,
+    )
+
+    assert result.latest_score is not None
+    # 正常路径：K线齐全时应生成交易计划
+    assert result.latest_trade_setup is not None
+    assert len(result.bars) == 30
+

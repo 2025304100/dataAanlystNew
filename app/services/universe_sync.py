@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 import akshare as ak
 import pandas as pd
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -379,15 +379,26 @@ def _normalize_trade_date(value) -> date:
     return pd.to_datetime(value).date()
 
 
+def _dedupe_history_rows(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    """按 trade_date 去重，保留同日最后一条记录。"""
+    deduped: dict[date, dict[str, Any]] = {}
+    for raw_row in frame.to_dict(orient="records"):
+        trade_date = _normalize_trade_date(raw_row["trade_date"])
+        row = dict(raw_row)
+        row["trade_date"] = trade_date
+        deduped[trade_date] = row
+    return list(deduped.values())
+
+
 def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFrame) -> tuple[int, int]:
     """批量 upsert K线到 universe_daily_bars，返回 (inserted, updated)。"""
     inserted = 0
     updated = 0
-    rows = frame.to_dict(orient="records")
+    rows = _dedupe_history_rows(frame)
     if not rows:
         return inserted, updated
 
-    trade_dates = [_normalize_trade_date(r["trade_date"]) for r in rows]
+    trade_dates = [r["trade_date"] for r in rows]
     existing_bars = db.execute(
         select(UniverseDailyBar).where(
             UniverseDailyBar.universe_symbol_id == universe_symbol_id,
@@ -397,13 +408,14 @@ def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFr
     existing_map = {bar.trade_date: bar for bar in existing_bars}
 
     for row in rows:
-        trade_date = _normalize_trade_date(row["trade_date"])
+        trade_date = row["trade_date"]
         existing = existing_map.get(trade_date)
         if existing is None:
             existing = UniverseDailyBar(
                 universe_symbol_id=universe_symbol_id, trade_date=trade_date
             )
             db.add(existing)
+            existing_map[trade_date] = existing
             inserted += 1
         else:
             updated += 1
@@ -925,17 +937,37 @@ def backfill_universe_bars_batch(
     db = SessionLocal()
     try:
         config = _scope_config(scope)
-        query = select(UniverseSymbol).where(
-            UniverseSymbol.region == config["region"],
-            UniverseSymbol.asset_type == config["asset_type"],
-            UniverseSymbol.is_synced == 1,
-            UniverseSymbol.sync_failed < SYNC_FAILED_THRESHOLD,
-        ).order_by(UniverseSymbol.id.asc())
+        target_start = date.today() - timedelta(days=history_days)
+        earliest_bar_subquery = (
+            select(
+                UniverseDailyBar.universe_symbol_id.label("universe_symbol_id"),
+                func.min(UniverseDailyBar.trade_date).label("earliest_trade_date"),
+            )
+            .group_by(UniverseDailyBar.universe_symbol_id)
+            .subquery()
+        )
+        query = (
+            select(UniverseSymbol.id)
+            .outerjoin(
+                earliest_bar_subquery,
+                earliest_bar_subquery.c.universe_symbol_id == UniverseSymbol.id,
+            )
+            .where(
+                UniverseSymbol.region == config["region"],
+                UniverseSymbol.asset_type == config["asset_type"],
+                UniverseSymbol.is_synced == 1,
+                UniverseSymbol.sync_failed < SYNC_FAILED_THRESHOLD,
+                or_(
+                    earliest_bar_subquery.c.earliest_trade_date.is_(None),
+                    earliest_bar_subquery.c.earliest_trade_date > target_start,
+                ),
+            )
+            .order_by(UniverseSymbol.id.asc())
+        )
         if sync_limit > 0:
             query = query.limit(sync_limit)
         logger.info("backfill query: scope=%s sync_limit=%d", scope, sync_limit)
-        pending = db.execute(query).scalars().all()
-        pending_ids = [us.id for us in pending]
+        pending_ids = db.execute(query).scalars().all()
         total = len(pending_ids)
     finally:
         db.close()
@@ -1128,6 +1160,357 @@ def _scope_config(scope: str) -> dict:
 
 # ── 健康度统计 ─────────────────────────────────────────────────────
 
+
+def repair_one_universe_symbol(
+    db: Session,
+    universe_symbol: UniverseSymbol,
+    start_date: date,
+    end_date: date,
+    chunk_days: int = 90,
+    is_cancelled: Callable[[], bool] | None = None,
+) -> dict:
+    """Repair a recent history range in chunks for already-synced symbols."""
+    if universe_symbol.sync_failed >= SYNC_FAILED_THRESHOLD:
+        return {"symbol": universe_symbol.symbol, "status": "skipped", "reason": "sync_failed threshold reached"}
+    if end_date < start_date:
+        return {"symbol": universe_symbol.symbol, "status": "skipped", "reason": "invalid range"}
+
+    existing_start = db.execute(
+        select(func.min(UniverseDailyBar.trade_date)).where(
+            UniverseDailyBar.universe_symbol_id == universe_symbol.id
+        )
+    ).scalar_one_or_none()
+    existing_end = db.execute(
+        select(func.max(UniverseDailyBar.trade_date)).where(
+            UniverseDailyBar.universe_symbol_id == universe_symbol.id
+        )
+    ).scalar_one_or_none()
+
+    if existing_start is None or existing_end is None:
+        return {"symbol": universe_symbol.symbol, "status": "skipped", "reason": "no existing history"}
+
+    repair_start = max(start_date, existing_start)
+    if universe_symbol.listed_at is not None:
+        repair_start = max(repair_start, universe_symbol.listed_at)
+    repair_end = min(end_date, existing_end)
+    if repair_start > repair_end:
+        return {"symbol": universe_symbol.symbol, "status": "skipped", "reason": "no overlap in requested range"}
+
+    chunk_span = max(chunk_days, 1)
+    inserted_total = 0
+    updated_total = 0
+    chunk_count = 0
+    empty_chunks = 0
+
+    current_start = repair_start
+    while current_start <= repair_end:
+        if is_cancelled and is_cancelled():
+            return {
+                "symbol": universe_symbol.symbol,
+                "status": "skipped",
+                "reason": "cancelled",
+                "inserted": inserted_total,
+                "updated": updated_total,
+                "chunks": chunk_count,
+                "empty_chunks": empty_chunks,
+            }
+        current_end = min(current_start + timedelta(days=chunk_span - 1), repair_end)
+
+        db.commit()
+        try:
+            frame = _fetch_universe_history(universe_symbol, current_start, current_end)
+        except Exception as exc:
+            logger.warning("range repair fetch failed: %s %s~%s: %s", universe_symbol.symbol, current_start, current_end, exc)
+            universe_symbol.sync_failed += 1
+            db.commit()
+            return {
+                "symbol": universe_symbol.symbol,
+                "status": "failed",
+                "error": str(exc),
+                "inserted": inserted_total,
+                "updated": updated_total,
+                "chunks": chunk_count,
+                "empty_chunks": empty_chunks,
+            }
+
+        chunk_count += 1
+        if frame.empty:
+            empty_chunks += 1
+        else:
+            inserted, updated = _upsert_universe_bars(db, universe_symbol.id, frame)
+            inserted_total += inserted
+            updated_total += updated
+            db.commit()
+
+        current_start = current_end + timedelta(days=1)
+
+    universe_symbol.is_synced = 1
+    universe_symbol.sync_failed = 0
+    universe_symbol.last_synced_at = _now()
+    latest_trade_date = db.execute(
+        select(func.max(UniverseDailyBar.trade_date)).where(
+            UniverseDailyBar.universe_symbol_id == universe_symbol.id
+        )
+    ).scalar_one_or_none()
+    if latest_trade_date is not None:
+        universe_symbol.last_bar_date = latest_trade_date
+    universe_symbol.bar_count = db.execute(
+        select(func.count(UniverseDailyBar.id)).where(
+            UniverseDailyBar.universe_symbol_id == universe_symbol.id
+        )
+    ).scalar_one()
+    db.commit()
+    return {
+        "symbol": universe_symbol.symbol,
+        "status": "ok",
+        "inserted": inserted_total,
+        "updated": updated_total,
+        "chunks": chunk_count,
+        "empty_chunks": empty_chunks,
+        "range_start": repair_start.isoformat(),
+        "range_end": repair_end.isoformat(),
+    }
+
+
+
+def _repair_one_concurrent(
+    universe_symbol_id: int,
+    start_date: date,
+    end_date: date,
+    chunk_days: int,
+    is_cancelled: Callable[[], bool] | None = None,
+) -> dict:
+    """Concurrent worker for chunked range repair."""
+    from sqlalchemy.exc import OperationalError
+
+    sub_db = SessionLocal()
+    try:
+        us = sub_db.get(UniverseSymbol, universe_symbol_id)
+        if us is None:
+            return {"symbol": str(universe_symbol_id), "status": "failed", "error": "not found"}
+        return repair_one_universe_symbol(
+            sub_db,
+            us,
+            start_date=start_date,
+            end_date=end_date,
+            chunk_days=chunk_days,
+            is_cancelled=is_cancelled,
+        )
+    except OperationalError as exc:
+        logger.warning("concurrent range repair %s OperationalError, retrying: %s", universe_symbol_id, exc)
+        try:
+            sub_db.rollback()
+            us = sub_db.get(UniverseSymbol, universe_symbol_id)
+            if us is None:
+                return {"symbol": str(universe_symbol_id), "status": "failed", "error": "not found"}
+            return repair_one_universe_symbol(
+                sub_db,
+                us,
+                start_date=start_date,
+                end_date=end_date,
+                chunk_days=chunk_days,
+                is_cancelled=is_cancelled,
+            )
+        except Exception as exc2:
+            logger.error("concurrent range repair %s retry failed: %s", universe_symbol_id, exc2)
+            return {"symbol": str(universe_symbol_id), "status": "failed", "error": str(exc2)}
+    except Exception as exc:
+        logger.error("concurrent range repair %s error: %s", universe_symbol_id, exc)
+        return {"symbol": str(universe_symbol_id), "status": "failed", "error": str(exc)}
+    finally:
+        sub_db.close()
+
+
+
+def repair_universe_bars_batch(
+    scope: str,
+    max_workers: int = 5,
+    history_days: int = DEFAULT_HISTORY_DAYS,
+    chunk_days: int = 90,
+    progress_callback: Callable[[int, int, int, int], None] | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+    sync_limit: int = 0,
+) -> dict:
+    """Repair a recent date range by chunked re-fetch and upsert."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
+
+    BATCH_SIZE = 25
+    BATCH_INTERVAL_SECONDS = 1.0
+
+    target_end = date.today()
+    target_start = target_end - timedelta(days=history_days)
+
+    db = SessionLocal()
+    try:
+        config = _scope_config(scope)
+        existing_range_subquery = (
+            select(
+                UniverseDailyBar.universe_symbol_id.label("universe_symbol_id"),
+                func.min(UniverseDailyBar.trade_date).label("earliest_trade_date"),
+                func.max(UniverseDailyBar.trade_date).label("latest_trade_date"),
+            )
+            .group_by(UniverseDailyBar.universe_symbol_id)
+            .subquery()
+        )
+        query = (
+            select(UniverseSymbol.id)
+            .join(
+                existing_range_subquery,
+                existing_range_subquery.c.universe_symbol_id == UniverseSymbol.id,
+            )
+            .where(
+                UniverseSymbol.region == config["region"],
+                UniverseSymbol.asset_type == config["asset_type"],
+                UniverseSymbol.is_synced == 1,
+                UniverseSymbol.sync_failed < SYNC_FAILED_THRESHOLD,
+                existing_range_subquery.c.earliest_trade_date <= target_end,
+                existing_range_subquery.c.latest_trade_date >= target_start,
+            )
+            .order_by(UniverseSymbol.id.asc())
+        )
+        if sync_limit > 0:
+            query = query.limit(sync_limit)
+        pending_ids = db.execute(query).scalars().all()
+        total = len(pending_ids)
+    finally:
+        db.close()
+
+    if total == 0:
+        logger.info("universe range repair: no overlapping symbols for scope=%s", scope)
+        if progress_callback:
+            progress_callback(0, 0, 0, 0)
+        return {
+            "total": 0,
+            "processed": 0,
+            "ok": 0,
+            "failed": 0,
+            "skipped": 0,
+            "inserted": 0,
+            "updated": 0,
+            "empty_chunks": 0,
+        }
+
+    logger.info(
+        "universe range repair start: scope=%s total=%d workers=%d history_days=%d chunk_days=%d",
+        scope,
+        total,
+        max_workers,
+        history_days,
+        chunk_days,
+    )
+    if progress_callback:
+        progress_callback(0, total, 0, 0)
+
+    processed = 0
+    ok_count = 0
+    failed_count = 0
+    skipped_count = 0
+    inserted_total = 0
+    updated_total = 0
+    empty_chunks_total = 0
+    failed_ids: list[int] = []
+    consecutive_failures = 0
+    circuit_broken = False
+    CIRCUIT_BREAKER_CONSECUTIVE_FAILS = 50
+
+    def _handle_result(result: dict, uid: int) -> None:
+        nonlocal processed, ok_count, failed_count, skipped_count
+        nonlocal inserted_total, updated_total, empty_chunks_total, consecutive_failures
+        processed += 1
+        status = result.get("status")
+        if status == "ok":
+            ok_count += 1
+            consecutive_failures = 0
+            inserted_total += int(result.get("inserted", 0) or 0)
+            updated_total += int(result.get("updated", 0) or 0)
+            empty_chunks_total += int(result.get("empty_chunks", 0) or 0)
+        elif status == "skipped":
+            skipped_count += 1
+            consecutive_failures = 0
+            inserted_total += int(result.get("inserted", 0) or 0)
+            updated_total += int(result.get("updated", 0) or 0)
+            empty_chunks_total += int(result.get("empty_chunks", 0) or 0)
+        else:
+            failed_count += 1
+            consecutive_failures += 1
+            failed_ids.append(uid)
+        if progress_callback:
+            progress_callback(processed, total, ok_count, failed_count)
+
+    def _process_batch(batch_ids: list[int]) -> None:
+        nonlocal failed_count, consecutive_failures, circuit_broken
+        if not batch_ids:
+            return
+
+        if max_workers <= 1:
+            for uid in batch_ids:
+                if is_cancelled and is_cancelled():
+                    return
+                if consecutive_failures >= CIRCUIT_BREAKER_CONSECUTIVE_FAILS:
+                    logger.error("universe range repair CIRCUIT BREAK: scope=%s %d consecutive failures", scope, consecutive_failures)
+                    circuit_broken = True
+                    return
+                result = _repair_one_concurrent(uid, target_start, target_end, chunk_days, is_cancelled)
+                _handle_result(result, uid)
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(_repair_one_concurrent, uid, target_start, target_end, chunk_days, is_cancelled): uid
+                    for uid in batch_ids
+                }
+                for future in as_completed(futures):
+                    if is_cancelled and is_cancelled():
+                        for f in futures:
+                            f.cancel()
+                        return
+                    uid = futures[future]
+                    try:
+                        result = future.result(timeout=SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
+                        _handle_result(result, uid)
+                    except FuturesTimeoutError:
+                        logger.warning("universe range repair timeout: symbol_id=%s", uid)
+                        _handle_result({"status": "failed", "error": "timeout"}, uid)
+                    except Exception as exc:
+                        logger.warning("universe range repair error: symbol_id=%s: %s", uid, exc)
+                        _handle_result({"status": "failed", "error": str(exc)}, uid)
+                    if consecutive_failures >= CIRCUIT_BREAKER_CONSECUTIVE_FAILS:
+                        logger.error("universe range repair CIRCUIT BREAK: scope=%s %d consecutive failures", scope, consecutive_failures)
+                        circuit_broken = True
+                        for f in futures:
+                            f.cancel()
+                        return
+
+    for batch_start in range(0, len(pending_ids), BATCH_SIZE):
+        if (is_cancelled and is_cancelled()) or circuit_broken:
+            break
+        batch = pending_ids[batch_start:batch_start + BATCH_SIZE]
+        is_last_batch = batch_start + BATCH_SIZE >= len(pending_ids)
+        _process_batch(batch)
+        if not is_last_batch and not (is_cancelled and is_cancelled()) and not circuit_broken:
+            time.sleep(BATCH_INTERVAL_SECONDS)
+
+    logger.info(
+        "universe range repair done: scope=%s total=%d processed=%d ok=%d failed=%d skipped=%d inserted=%d updated=%d",
+        scope,
+        total,
+        processed,
+        ok_count,
+        failed_count,
+        skipped_count,
+        inserted_total,
+        updated_total,
+    )
+    return {
+        "total": total,
+        "processed": processed,
+        "ok": ok_count,
+        "failed": failed_count,
+        "skipped": skipped_count,
+        "inserted": inserted_total,
+        "updated": updated_total,
+        "empty_chunks": empty_chunks_total,
+    }
+
 def get_universe_stats(db: Session) -> dict:
     """基础数据健康度统计。
 
@@ -1241,6 +1624,7 @@ def incremental_sync(
     max_workers: int = 5,
     progress_callback: Callable[[int, int, int, int], None] | None = None,
     is_cancelled: Callable[[], bool] | None = None,
+    scopes: list[str] | None = None,
 ) -> dict:
     """增量同步：只同步 last_bar_date < today 且未熔断的标的。
 
@@ -1254,6 +1638,7 @@ def incremental_sync(
         max_workers: 并发线程数（1-8，默认 5）
         progress_callback: 进度回调 (processed, total, ok_count, failed_count)
         is_cancelled: 取消检查函数，返回 True 时停止
+        scopes: 可选 scope 过滤，仅同步指定范围
 
     优化点：
     - 分批限速：每 BATCH_SIZE 个标的一批，批次间隔 BATCH_INTERVAL_SECONDS 秒（与初始化同步一致）
@@ -1272,12 +1657,20 @@ def incremental_sync(
     try:
         # 查询需要增量同步的标的：已同步但 last_bar_date < today 且未熔断
         # last_bar_date 为 NULL 的情况（is_synced=1 但无数据，如退市/停牌）也包含
-        pending = db.execute(
-            select(UniverseSymbol).where(
-                UniverseSymbol.is_synced == 1,
-                UniverseSymbol.sync_failed < SYNC_FAILED_THRESHOLD,
-            ).order_by(UniverseSymbol.id.asc())
-        ).scalars().all()
+        query = select(UniverseSymbol).where(
+            UniverseSymbol.is_synced == 1,
+            UniverseSymbol.sync_failed < SYNC_FAILED_THRESHOLD,
+        )
+        if scopes:
+            scope_filters = []
+            for scope in scopes:
+                config = _scope_config(scope)
+                scope_filters.append(
+                    (UniverseSymbol.region == config["region"])
+                    & (UniverseSymbol.asset_type == config["asset_type"])
+                )
+            query = query.where(or_(*scope_filters))
+        pending = db.execute(query.order_by(UniverseSymbol.id.asc())).scalars().all()
         # 过滤：last_bar_date < today 或 last_bar_date 为 None
         pending = [
             us for us in pending
@@ -1289,10 +1682,20 @@ def incremental_sync(
         db.close()
 
     if total == 0:
-        logger.info("incremental_sync: no stale symbols (all up-to-date as of %s)", today)
+        logger.info(
+            "incremental_sync: no stale symbols (all up-to-date as of %s, scopes=%s)",
+            today,
+            scopes or "all",
+        )
         return {"total": 0, "processed": 0, "ok": 0, "failed": 0, "skipped": 0, "uptodate": 0}
 
-    logger.info("incremental_sync start: total=%d workers=%d (date=%s)", total, max_workers, today)
+    logger.info(
+        "incremental_sync start: total=%d workers=%d scopes=%s (date=%s)",
+        total,
+        max_workers,
+        scopes or "all",
+        today,
+    )
     processed = 0
     ok_count = 0
     failed_count = 0

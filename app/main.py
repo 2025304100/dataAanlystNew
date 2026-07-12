@@ -1,10 +1,14 @@
 from contextlib import asynccontextmanager
 import asyncio
 import logging
+import socket
+import time
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as UrlRequest, urlopen
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
@@ -245,15 +249,84 @@ app = FastAPI(
 )
 
 app.include_router(api_router)
+
+FRONTEND_DEV_ORIGIN = "http://127.0.0.1:5173"
+FRONTEND_DEV_HOST = "127.0.0.1"
+FRONTEND_DEV_PORT = 5173
+FRONTEND_DEV_PROBE_TTL_SECONDS = 1.0
+
 web_root = Path(__file__).resolve().parent / "web"
 dist_root = web_root / "dist"
+_frontend_dev_probe: dict[str, float | bool] = {"checked_at": 0.0, "available": False}
 
-# 提供 React 构建产物的静态服务（JS/CSS 分片）
-if dist_root.exists():
-    app.mount("/assets", StaticFiles(directory=dist_root / "assets"), name="assets")
 
-# 保留旧版静态文件挂载
+def _frontend_dev_available(force: bool = False) -> bool:
+    now = time.monotonic()
+    if not force and now - float(_frontend_dev_probe["checked_at"]) < FRONTEND_DEV_PROBE_TTL_SECONDS:
+        return bool(_frontend_dev_probe["available"])
+
+    available = False
+    try:
+        with socket.create_connection((FRONTEND_DEV_HOST, FRONTEND_DEV_PORT), timeout=0.2):
+            available = True
+    except OSError:
+        available = False
+
+    _frontend_dev_probe["checked_at"] = now
+    _frontend_dev_probe["available"] = available
+    return available
+
+
+def _frontend_dev_url(request: Request) -> str:
+    query = f"?{request.url.query}" if request.url.query else ""
+    return f"{FRONTEND_DEV_ORIGIN}{request.url.path}{query}"
+
+
+def _proxy_frontend_dev(request: Request) -> Response | None:
+    if not _frontend_dev_available():
+        return None
+
+    upstream_request = UrlRequest(
+        _frontend_dev_url(request),
+        headers={"User-Agent": "personal-quant-workbench-dev-proxy"},
+    )
+
+    try:
+        with urlopen(upstream_request, timeout=2.0) as upstream:
+            body = upstream.read()
+            headers: dict[str, str] = {}
+            content_type = upstream.headers.get("Content-Type")
+            cache_control = upstream.headers.get("Cache-Control")
+            if content_type:
+                headers["content-type"] = content_type
+            if cache_control:
+                headers["cache-control"] = cache_control
+            return Response(content=body, status_code=upstream.status, headers=headers)
+    except HTTPError as exc:
+        body = exc.read()
+        headers: dict[str, str] = {}
+        content_type = exc.headers.get("Content-Type") if exc.headers else None
+        if content_type:
+            headers["content-type"] = content_type
+        return Response(content=body, status_code=exc.code, headers=headers)
+    except URLError:
+        _frontend_dev_available(force=True)
+        return None
+
+
 app.mount("/static", StaticFiles(directory=web_root / "static"), name="static")
+
+
+@app.get("/assets/{asset_path:path}", include_in_schema=False)
+def frontend_assets(asset_path: str, request: Request) -> Response:
+    proxied = _proxy_frontend_dev(request)
+    if proxied is not None:
+        return proxied
+
+    asset_file = dist_root / "assets" / asset_path
+    if asset_file.exists():
+        return FileResponse(asset_file)
+    raise HTTPException(status_code=404, detail="Not found")
 
 
 @app.get("/health")
@@ -263,16 +336,23 @@ def health() -> dict[str, str]:
 
 @app.get("/", include_in_schema=False)
 @app.get("/workbench", include_in_schema=False)
-def workbench() -> FileResponse:
+def workbench(request: Request) -> Response:
+    proxied = _proxy_frontend_dev(request)
+    if proxied is not None:
+        return proxied
+
     index_path = dist_root / "index.html" if dist_root.exists() else web_root / "index.html"
     return FileResponse(index_path)
 
 
-# 前端路由兜底（组合、挖掘、设置等标签页）
 @app.get("/{full_path:path}", include_in_schema=False)
-def spa_fallback(full_path: str) -> FileResponse:
-    # 不拦截 API 或静态资源请求
-    if full_path.startswith(("api/", "static/", "assets/", "health")):
+def spa_fallback(full_path: str, request: Request) -> Response:
+    if full_path.startswith(("api/", "static/", "health")):
         raise HTTPException(status_code=404, detail="Not found")
+
+    proxied = _proxy_frontend_dev(request)
+    if proxied is not None:
+        return proxied
+
     index_path = dist_root / "index.html" if dist_root.exists() else web_root / "index.html"
     return FileResponse(index_path)

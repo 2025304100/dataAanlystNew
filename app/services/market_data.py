@@ -381,16 +381,26 @@ def _normalize_trade_date(value) -> date:
     return pd.to_datetime(value).date()
 
 
+def _dedupe_history_rows(frame: pd.DataFrame) -> list[dict]:
+    """按 trade_date 去重，保留同日最后一条记录。"""
+    deduped: dict[date, dict] = {}
+    for raw_row in frame.to_dict(orient="records"):
+        trade_date = _normalize_trade_date(raw_row["trade_date"])
+        row = dict(raw_row)
+        row["trade_date"] = trade_date
+        deduped[trade_date] = row
+    return list(deduped.values())
+
 def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int, int]:
     inserted = 0
     updated = 0
 
-    rows = frame.to_dict(orient="records")
+    rows = _dedupe_history_rows(frame)
     if not rows:
         return inserted, updated
 
     # 批量查询已存在的日期，避免行级 N+1
-    trade_dates = [_normalize_trade_date(r["trade_date"]) for r in rows]
+    trade_dates = [r["trade_date"] for r in rows]
     existing_bars = db.execute(
         select(DailyBar).where(
             DailyBar.symbol_id == symbol.id,
@@ -400,11 +410,12 @@ def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int,
     existing_map = {bar.trade_date: bar for bar in existing_bars}
 
     for row in rows:
-        trade_date = _normalize_trade_date(row["trade_date"])
+        trade_date = row["trade_date"]
         existing = existing_map.get(trade_date)
         if existing is None:
             existing = DailyBar(symbol_id=symbol.id, trade_date=trade_date)
             db.add(existing)
+            existing_map[trade_date] = existing
             inserted += 1
         else:
             updated += 1
@@ -1657,6 +1668,3 @@ def cleanup_history_records(keep: int = 5) -> dict:
         return {"deleted_count": len(ids_to_delete), "kept": keep, "total": len(all_ids)}
     finally:
         db.close()
-
-
-

@@ -410,6 +410,35 @@ class TestScoringConfigCache:
         assert c1 is not None
         assert c2 is not None
 
+    def test_cached_config_survives_session_recycle(self, db_session):
+        """缓存命中的 active config 在原 Session 关闭后仍可安全读取。"""
+        from app.db.manager import DatabaseManager
+        from app.services.scoring_config_engine import (
+            get_active_scoring_config,
+            invalidate_active_config_cache,
+            parse_config_json,
+            seed_system_scoring_configs,
+        )
+
+        invalidate_active_config_cache()
+        seed_system_scoring_configs(db_session)
+        db_session.commit()
+
+        cached = get_active_scoring_config(db_session, "stock")
+        assert cached is not None
+
+        db_session.close()
+        SessionLocal = DatabaseManager.get().session_factory
+        recycled = SessionLocal()
+        try:
+            cached_again = get_active_scoring_config(recycled, "stock")
+            assert cached_again is cached
+            assert cached_again.id is not None
+            assert cached_again.name
+            assert isinstance(parse_config_json(cached_again), dict)
+        finally:
+            recycled.close()
+
 
 # ============================================================================
 # 8. akshare 调用点 call_akshare_with_retry 包装完整性（风控核心）

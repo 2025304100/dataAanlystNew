@@ -36,3 +36,7 @@ test_*.png
 tmp/*.db-journal
 tmp/*.txt
 .pip_packages/
+
+# Dev service runtime
+tmp/dev-services/
+

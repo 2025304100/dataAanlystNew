@@ -16,6 +16,18 @@ router = APIRouter()
 _ALL_INIT_SCOPES = ["cn-stock", "cn-etf", "us-stock", "us-etf"]
 
 
+def _normalize_scopes(scopes: list[str] | None) -> list[str]:
+    if not scopes:
+        return list(_ALL_INIT_SCOPES)
+    invalid = [s for s in scopes if s not in _ALL_INIT_SCOPES]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的 scope: {invalid}，可选: {_ALL_INIT_SCOPES}",
+        )
+    return scopes
+
+
 class UniverseInitRequest(BaseModel):
     """基础数据初始化同步请求。"""
 
@@ -33,6 +45,18 @@ class UniverseIncrementalRequest(BaseModel):
 
     max_workers: int = Field(default=5, ge=1, le=8, description="并发线程数（1-8）")
 
+
+class UniverseRangeRepairRequest(BaseModel):
+    """Chunked range-repair request for already-synced symbols."""
+
+    max_workers: int = Field(default=5, ge=1, le=8, description="worker count (1-8)")
+    history_days: int = Field(default=365, ge=30, le=3650, description="recent range size in days")
+    chunk_days: int = Field(default=90, ge=7, le=365, description="chunk size for each re-fetch window")
+    scopes: list[str] | None = Field(
+        default=None,
+        description="target scopes (cn-stock/cn-etf/us-stock/us-etf), None means all",
+    )
+    sync_limit: int = Field(default=0, ge=0, le=10000, description="max symbols to process in one repair run")
 
 class UniverseStatsRead(BaseModel):
     """基础数据健康度。"""
@@ -55,17 +79,7 @@ def start_initialize(payload: UniverseInitRequest):
 
     若已有运行中任务则返回该任务，避免重复创建。
     """
-    scopes = payload.scopes
-    if not scopes:
-        scopes = list(_ALL_INIT_SCOPES)
-    else:
-        # 校验 scope 合法性
-        invalid = [s for s in scopes if s not in _ALL_INIT_SCOPES]
-        if invalid:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的 scope: {invalid}，可选: {_ALL_INIT_SCOPES}",
-            )
+    scopes = _normalize_scopes(payload.scopes)
     return universe_sync_task.start_universe_sync_init(
         max_workers=payload.max_workers,
         history_days=payload.history_days,
@@ -100,16 +114,7 @@ def cancel_initialize():
 @router.post("/universe/initialize/retry", response_model=AsyncTaskRead)
 def retry_initialize(payload: UniverseInitRequest):
     """重试初始化同步（跳过已同步标的，断点续传）。"""
-    scopes = payload.scopes
-    if not scopes:
-        scopes = list(_ALL_INIT_SCOPES)
-    else:
-        invalid = [s for s in scopes if s not in _ALL_INIT_SCOPES]
-        if invalid:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的 scope: {invalid}，可选: {_ALL_INIT_SCOPES}",
-            )
+    scopes = _normalize_scopes(payload.scopes)
     return universe_sync_task.retry_universe_sync_init(
         max_workers=payload.max_workers,
         history_days=payload.history_days,
@@ -159,8 +164,85 @@ def cancel_incremental_sync():
     return result
 
 
+# ── 智能同步 API ──
+
+
+@router.post("/universe/smart-sync", response_model=AsyncTaskRead)
+def start_smart_sync(payload: UniverseInitRequest):
+    """触发智能同步。
+
+    自动按当前数据覆盖情况完成：
+    - 刷新标的列表
+    - 初始化未同步标的
+    - 历史左侧补缺
+    - 近期右侧增量续刷
+    """
+    scopes = _normalize_scopes(payload.scopes)
+    return universe_sync_task.start_universe_smart_sync(
+        max_workers=payload.max_workers,
+        history_days=payload.history_days,
+        scopes=scopes,
+        sync_limit=payload.sync_limit,
+    )
+
+
+@router.get("/universe/smart-sync/status", response_model=AsyncTaskRead | None)
+def get_smart_sync_status():
+    """查询最新的智能同步任务进度。"""
+    return universe_sync_task.get_latest_universe_smart_task()
+
+
+@router.post("/universe/smart-sync/cancel", response_model=AsyncTaskRead | None)
+def cancel_smart_sync():
+    """取消最新的运行中智能同步任务。"""
+    latest = universe_sync_task.get_latest_universe_smart_task()
+    if latest is None:
+        raise HTTPException(status_code=404, detail="无智能同步任务")
+    if latest.status not in ("queued", "running"):
+        raise HTTPException(status_code=400, detail=f"任务已处于终态：{latest.status}")
+    result = universe_sync_task.cancel_universe_smart_task(latest.id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return result
+
+
 # ── 历史回补 API ──
 
+
+# —— Range Repair API ——
+
+
+@router.post("/universe/range-repair", response_model=AsyncTaskRead)
+def start_range_repair(payload: UniverseRangeRepairRequest):
+    """Trigger chunked range repair for mid-history gaps within a recent window."""
+    scopes = _normalize_scopes(payload.scopes)
+    return universe_sync_task.start_universe_range_repair(
+        max_workers=payload.max_workers,
+        history_days=payload.history_days,
+        chunk_days=payload.chunk_days,
+        scopes=scopes,
+        sync_limit=payload.sync_limit,
+    )
+
+
+@router.get("/universe/range-repair/status", response_model=AsyncTaskRead | None)
+def get_range_repair_status():
+    """Query the latest range-repair task."""
+    return universe_sync_task.get_latest_universe_range_repair_task()
+
+
+@router.post("/universe/range-repair/cancel", response_model=AsyncTaskRead | None)
+def cancel_range_repair():
+    """Cancel the latest running range-repair task."""
+    latest = universe_sync_task.get_latest_universe_range_repair_task()
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No range repair task")
+    if latest.status not in ("queued", "running"):
+        raise HTTPException(status_code=400, detail=f"Task already ended: {latest.status}")
+    result = universe_sync_task.cancel_universe_range_repair_task(latest.id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return result
 
 @router.post("/universe/backfill", response_model=AsyncTaskRead)
 def start_backfill(payload: UniverseInitRequest):
@@ -171,16 +253,7 @@ def start_backfill(payload: UniverseInitRequest):
 
     若已有运行中的同步任务（init/incremental/backfill）则返回该任务。
     """
-    scopes = payload.scopes
-    if not scopes:
-        scopes = list(_ALL_INIT_SCOPES)
-    else:
-        invalid = [s for s in scopes if s not in _ALL_INIT_SCOPES]
-        if invalid:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的 scope: {invalid}，可选: {_ALL_INIT_SCOPES}",
-            )
+    scopes = _normalize_scopes(payload.scopes)
     return universe_sync_task.start_universe_backfill(
         max_workers=payload.max_workers,
         history_days=payload.history_days,

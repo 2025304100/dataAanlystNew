@@ -281,3 +281,87 @@ def test_retry_resets_timestamps(db_session, monkeypatch):
     assert db_task.paused_at is None
     assert db_task.cancelled_at is None
     assert db_task.finished_at is None
+
+
+def test_create_task_resumes_matching_paused_task(db_session, monkeypatch):
+    """同 scope/portfolio 的 paused 任务在 1 天内点开始应续跑原进度。"""
+    from app.schemas.discovery import DiscoveryTaskCreate
+
+    started = []
+    monkeypatch.setattr(discovery_tasks, "_start_worker", lambda tid: started.append(tid))
+
+    payload = DiscoveryTaskCreate(scope="cn-stock", portfolio_id=7, refresh_universe=False)
+    processed = [101, 102, 103]
+    task = _create_task(
+        db_session,
+        status="paused",
+        stage="paused",
+        percent=60.0,
+        processed_ids=processed,
+        payload_json=payload.model_dump_json(),
+    )
+    task.paused_at = _now() - timedelta(hours=2)
+    db_session.commit()
+
+    result = discovery_tasks.create_discovery_task(payload)
+
+    assert result["id"] == task.id
+    assert result["status"] == "queued"
+    assert result["processed"] == len(processed)
+    assert result["percent"] >= 60.0
+    assert started == [task.id]
+
+    db_session.expire_all()
+    db_task = db_session.get(DiscoveryTaskRecord, task.id)
+    assert db_task.paused_at is None
+    assert json.loads(db_task.processed_symbol_ids_json) == sorted(processed)
+
+
+
+def test_create_task_restarts_when_paused_task_expired(db_session, monkeypatch):
+    """paused 超过 1 天后再次点开始，应将旧任务标记 expired 并新建任务。"""
+    from app.schemas.discovery import DiscoveryTaskCreate
+
+    started = []
+    monkeypatch.setattr(discovery_tasks, "_start_worker", lambda tid: started.append(tid))
+
+    payload = DiscoveryTaskCreate(scope="cn-stock", portfolio_id=9, refresh_universe=False)
+    task = _create_task(
+        db_session,
+        status="paused",
+        stage="paused",
+        percent=72.0,
+        processed_ids=[201, 202],
+        payload_json=payload.model_dump_json(),
+    )
+    task.paused_at = _now() - discovery_tasks.RESUME_DEADLINE - timedelta(minutes=1)
+    db_session.commit()
+
+    result = discovery_tasks.create_discovery_task(payload)
+
+    assert result["id"] != task.id
+    assert result["status"] == "queued"
+    assert result["processed"] == 0
+    assert started == [result["id"]]
+
+    db_session.expire_all()
+    old_task = db_session.get(DiscoveryTaskRecord, task.id)
+    assert old_task.status == "expired"
+    assert old_task.finished_at is not None
+
+
+
+def test_discovery_cached_mode_skips_stale_bar_refresh():
+    """cached 模式应直接复用基础数据评分，不先补过期 K 线。"""
+    from app.schemas.discovery import DiscoveryTaskCreate
+
+    payload = DiscoveryTaskCreate(scope="cn-stock", refresh_universe=False)
+    assert discovery_tasks._should_refresh_discovery_stale_bars(payload) is False
+
+
+def test_discovery_sync_mode_refreshes_stale_bars():
+    """sync 模式应先补过期 K 线，再评分与扫描。"""
+    from app.schemas.discovery import DiscoveryTaskCreate
+
+    payload = DiscoveryTaskCreate(scope="cn-stock", refresh_universe=True)
+    assert discovery_tasks._should_refresh_discovery_stale_bars(payload) is True

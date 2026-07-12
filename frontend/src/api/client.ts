@@ -242,7 +242,15 @@ export const api = {
   getMacroOverview: (region = "all") =>
     requestJson<any>(`${API}/macro/overview?region=${encodeURIComponent(region)}`),
   updateMacroData: (payload: unknown) =>
-    requestJson<any>(`${API}/macro/update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 60000 }),
+    requestJson<any>(`${API}/macro/update`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 180000 }),
+  startMacroUpdateTask: (payload: unknown) =>
+    requestJson<any>(`${API}/macro/update-tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  getLatestMacroUpdateTask: () =>
+    requestJson<any | null>(`${API}/macro/update-tasks/latest`),
+  getMacroUpdateTask: (taskId: string) =>
+    requestJson<any>(`${API}/macro/update-tasks/${taskId}`),
+  cancelMacroUpdateTask: (taskId: string) =>
+    requestJson<any>(`${API}/macro/update-tasks/${taskId}/cancel`, { method: "POST" }),
   getMacroIndicatorHistory: (region: string, indicatorKey: string, limit = 60) =>
     requestJson<any[]>(`${API}/macro/indicators/${encodeURIComponent(indicatorKey)}/history?region=${encodeURIComponent(region)}&limit=${limit}`),
 
@@ -255,7 +263,7 @@ export const api = {
   },
   createDiscoveryTask: (payload: unknown) =>
     requestJson<any>(`${API}/discovery/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
-  sendDiscoveryCommand: (taskId: number, command: string) =>
+  sendDiscoveryCommand: (taskId: string | number, command: string) =>
     requestJson<any>(`${API}/discovery/tasks/${taskId}/${command}`, { method: "POST" }),
   getDiscoveryScopeStats: (scope: string) => requestJson<any>(`${API}/discovery/scopes/${encodeURIComponent(scope)}/stats`),
   updateDiscoveryResult: (resultId: number, payload: unknown) =>
@@ -319,7 +327,27 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ max_workers: maxWorkers, history_days: historyDays, scopes, sync_limit: syncLimit }),
     }),
+  // 智能同步：自动处理初始化 + 历史补缺 + 近期增量
+  startUniverseSmartSync: (maxWorkers = 5, historyDays = 365, scopes: string[] | null = null, syncLimit = 0) =>
+    requestJson<any>(`${API}/universe/smart-sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_workers: maxWorkers, history_days: historyDays, scopes, sync_limit: syncLimit }),
+    }),
+  getUniverseSmartSyncStatus: () => requestJson<any | null>(`${API}/universe/smart-sync/status`),
+  cancelUniverseSmartSync: () =>
+    requestJson<any>(`${API}/universe/smart-sync/cancel`, { method: "POST" }),
   // P2：增量同步（每日定时 + 手动触发）
+  // 区间修复：按 chunk 分片重拉近期范围，适合修复中间缺口
+  startUniverseRangeRepair: (maxWorkers = 5, historyDays = 365, chunkDays = 90, scopes: string[] | null = null, syncLimit = 0) =>
+    requestJson<any>(`${API}/universe/range-repair`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_workers: maxWorkers, history_days: historyDays, chunk_days: chunkDays, scopes, sync_limit: syncLimit }),
+    }),
+  getUniverseRangeRepairStatus: () => requestJson<any | null>(`${API}/universe/range-repair/status`),
+  cancelUniverseRangeRepair: () =>
+    requestJson<any>(`${API}/universe/range-repair/cancel`, { method: "POST" }),
   startUniverseIncrementalSync: (maxWorkers = 5) =>
     requestJson<any>(`${API}/universe/incremental-sync`, {
       method: "POST",
@@ -563,5 +591,3 @@ export interface AkshareApiConfigUpdate {
   delay_min_ms?: number;
   delay_max_ms?: number;
 }
-
-
