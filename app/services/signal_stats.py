@@ -10,6 +10,7 @@ from app.models.daily_bar import DailyBar
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.schemas.signal_rule import SignalRuleUpsert
+from app.services.bar_queries import MarketBar, load_forward_bars_map
 from app.services.regions import markets_for_region, region_from_market
 from app.services.signal_rules import get_active_signal_rule
 
@@ -39,7 +40,7 @@ def _build_forward_bars_map(
     db: Session,
     samples: list[tuple[Score, Symbol]],
     horizon: int = 20,
-) -> dict[int, list[DailyBar]]:
+) -> dict[int, list[MarketBar]]:
     """风控加固：批量预加载 forward bars，避免循环内 N+1 查询。
 
     一次查询拉取所有 sample 涉及 symbol 的 DailyBar（trade_date >= 该 symbol 最早 sample trade_date），
@@ -56,42 +57,15 @@ def _build_forward_bars_map(
         if sid not in earliest_by_symbol or row.trade_date < earliest_by_symbol[sid]:
             earliest_by_symbol[sid] = row.trade_date
 
-    symbol_ids = list(earliest_by_symbol.keys())
-    bars_map: dict[int, list[DailyBar]] = {sid: [] for sid in symbol_ids}
-
-    # 一次查询拉全部；按 (symbol_id, trade_date) 升序，便于内存分组与 bisect
-    rows = (
-        db.execute(
-            select(DailyBar)
-            .where(DailyBar.symbol_id.in_(symbol_ids))
-            .order_by(DailyBar.symbol_id.asc(), asc(DailyBar.trade_date))
-        )
-        .scalars()
-        .all()
-    )
-    for bar in rows:
-        bars_map.setdefault(bar.symbol_id, []).append(bar)
-
-    # 过滤掉早于 earliest 的 bar（按 symbol 单独裁剪），避免 bisect 误命中
-    for sid, bar_list in bars_map.items():
-        if not bar_list:
-            continue
-        earliest = earliest_by_symbol.get(sid)
-        if earliest is None:
-            continue
-        # bar_list 已按 trade_date 升序，用 bisect 找起点
-        idx = bisect.bisect_left(bar_list, earliest, key=lambda b: b.trade_date)
-        bars_map[sid] = bar_list[idx:]
-
-    return bars_map
+    return load_forward_bars_map(db, earliest_by_symbol)
 
 
 def _forward_bars_for_sample(
-    bars_map: dict[int, list[DailyBar]],
+    bars_map: dict[int, list[MarketBar]],
     symbol_id: int,
     trade_date,
     horizon: int = 20,
-) -> list[DailyBar]:
+) -> list[MarketBar]:
     """从预加载的 bars_map 中切片取 (symbol_id, trade_date) 起 horizon+1 条 bar。"""
     bar_list = bars_map.get(symbol_id)
     if not bar_list:

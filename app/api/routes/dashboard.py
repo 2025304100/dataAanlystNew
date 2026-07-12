@@ -36,7 +36,7 @@ from app.services.allocation import compute_allocation, get_active_rule
 from app.services.regions import markets_for_region, region_from_market
 from app.services.signal_stats import build_similar_signal_stats
 from app.services.sim_accounts import build_sim_account_summary, recent_sim_trades
-from app.services.trade_plans import build_trade_setup_view, upsert_trade_setup
+from app.services.trade_plans import build_trade_setup_view, load_recent_bars, upsert_trade_setup
 
 
 router = APIRouter()
@@ -488,9 +488,9 @@ def get_symbol_detail_panel(
     score_rows = db.execute(
         select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id)).limit(20)
     ).scalars().all()
-    bar_rows = db.execute(
-        select(DailyBar).where(DailyBar.symbol_id == symbol_id).order_by(desc(DailyBar.trade_date)).limit(bar_limit)
-    ).scalars().all()
+    # Discovery scores use universe_daily_bars, while tracked symbols may use daily_bars.
+    # Keep this local list in descending order for the existing response assembly below.
+    bar_rows = list(reversed(load_recent_bars(db, symbol_id, limit=bar_limit)))
     journal_rows = db.execute(
         select(JournalEntry)
         .where(JournalEntry.symbol_id == symbol_id, JournalEntry.portfolio_id == portfolio_id)
@@ -503,7 +503,7 @@ def get_symbol_detail_panel(
     recent_trades = [WorkbenchTrade(**item) for item in recent_sim_trades(db, portfolio_id, limit=6, symbol_id=symbol_id)]
     latest_position_price = bar_rows[0].close if bar_rows else None
 
-    if latest_score is not None and (latest_setup is None or latest_setup.score_id != latest_score.id):
+    if bar_rows and latest_score is not None and (latest_setup is None or latest_setup.score_id != latest_score.id):
         try:
             latest_setup = upsert_trade_setup(
                 db=db,

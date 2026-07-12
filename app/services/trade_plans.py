@@ -7,10 +7,10 @@ from statistics import mean
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models.daily_bar import DailyBar
 from app.models.portfolio import Portfolio
 from app.models.score import Score
 from app.models.symbol import Symbol
+from app.services.bar_queries import MarketBar, load_recent_bars as _load_recent_bars
 from app.models.trade_setup import TradeSetup
 from app.services.allocation import compute_position_budget, get_active_rule
 
@@ -137,11 +137,8 @@ def get_latest_score(db: Session, symbol_id: int) -> Score | None:
     ).scalars().first()
 
 
-def load_recent_bars(db: Session, symbol_id: int, limit: int = 60) -> list[DailyBar]:
-    bars = db.execute(
-        select(DailyBar).where(DailyBar.symbol_id == symbol_id).order_by(desc(DailyBar.trade_date)).limit(limit)
-    ).scalars().all()
-    return list(reversed(bars))
+def load_recent_bars(db: Session, symbol_id: int, limit: int = 60) -> list[MarketBar]:
+    return _load_recent_bars(db, symbol_id, limit=limit)
 
 
 def _build_tranches(
@@ -477,7 +474,7 @@ def build_trade_setup_view(
     symbol: Symbol,
     score: Score,
     setup: TradeSetup,
-    bars: list[DailyBar] | None = None,
+    bars: list[MarketBar] | None = None,
 ) -> dict:
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
