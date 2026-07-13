@@ -17,6 +17,7 @@ STATE_FILE = RUNTIME_DIR / "state.json"
 BACKEND_PORT = 8000
 FRONTEND_PORT = 5173
 HOST = "127.0.0.1"
+MAX_LOG_BYTES = 20 * 1024 * 1024
 
 
 def now_text() -> str:
@@ -51,6 +52,15 @@ def is_pid_running(pid: int | None) -> bool:
         return False
     try:
         os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # The process exists, but the current token cannot query it.
+        return True
+    except SystemError:
+        # Python 3.12 on Windows can surface ERROR_ACCESS_DENIED from
+        # os.kill(pid, 0) as SystemError instead of PermissionError.
+        return os.name == "nt"
     except OSError:
         return False
     return True
@@ -87,6 +97,13 @@ def wait_for_port_closed(port: int, timeout: float) -> bool:
 def append_log_banner(label: str, out_log: Path, err_log: Path) -> None:
     stamp = f"[{now_text()}] {label}"
     for path in (out_log, err_log):
+        try:
+            if path.exists() and path.stat().st_size > MAX_LOG_BYTES:
+                path.write_text("", encoding="utf-8")
+        except OSError:
+            # A stale elevated process may still own the file. Startup will
+            # report the process error; log maintenance must not hide it.
+            pass
         with path.open("a", encoding="utf-8") as handle:
             handle.write(f"\n=== {stamp} ===\n")
 
@@ -135,7 +152,12 @@ def prune_state(state: dict[str, Any]) -> dict[str, Any]:
     for name in list(state.keys()):
         record = state.get(name)
         pid = record.get("pid") if isinstance(record, dict) else None
-        if not isinstance(pid, int) or not is_pid_running(pid):
+        port = {"backend": BACKEND_PORT, "frontend": FRONTEND_PORT}.get(name)
+        if (
+            not isinstance(pid, int)
+            or not is_pid_running(pid)
+            or (port is not None and not is_port_open(port))
+        ):
             state.pop(name, None)
             changed = True
     if changed:
@@ -250,10 +272,14 @@ def stop_services(state: dict[str, Any]) -> bool:
     for name, port in (("frontend", FRONTEND_PORT), ("backend", BACKEND_PORT)):
         record = state.get(name)
         pid = record.get("pid") if isinstance(record, dict) else None
+        port_open = is_port_open(port)
+        if not port_open:
+            print(f"{name} is not running")
+            continue
         if isinstance(pid, int) and is_pid_running(pid):
             requested = stop_pid(pid)
-            closed = wait_for_port_closed(port, timeout=15.0) if requested else False
-            if requested and closed:
+            closed = wait_for_port_closed(port, timeout=15.0)
+            if closed:
                 print(f"stopped {name} (pid={pid})")
             else:
                 details: list[str] = []
@@ -265,7 +291,7 @@ def stop_services(state: dict[str, Any]) -> bool:
                 success = False
                 if isinstance(record, dict):
                     next_state[name] = record
-        elif is_port_open(port):
+        elif port_open:
             print(f"{name} is busy on port {port}, but it is not managed by this script")
             success = False
         else:
@@ -278,7 +304,11 @@ def print_status(state: dict[str, Any]) -> None:
     state = prune_state(state)
     for name, port in (("backend", BACKEND_PORT), ("frontend", FRONTEND_PORT)):
         record = state.get(name)
-        if isinstance(record, dict) and is_pid_running(record.get("pid")):
+        if (
+            isinstance(record, dict)
+            and is_pid_running(record.get("pid"))
+            and is_port_open(port)
+        ):
             print(f"{name:8} running  pid={record['pid']} port={port} mode={record.get('mode', '-')}")
             print(f"         logs: {record.get('stdout_log')} | {record.get('stderr_log')}")
         elif is_port_open(port):

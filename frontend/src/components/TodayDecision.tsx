@@ -302,7 +302,7 @@ export default function TodayDecision() {
   const openSymbol = async (item: WorkbenchCandidate) => {
     setOpeningSymbolId(item.symbol_id);
     try {
-      await ctx.loadSymbolDetail(item.symbol_id, { focus: true });
+      await ctx.loadSymbolDetail(item.symbol_id);
       ctx.setActiveTab("investment");
     } catch (err: any) {
       ctx.showToast("error", err.message || labels.loadDetailFailed);

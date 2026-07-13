@@ -411,6 +411,27 @@ describe("Discovery 交互测试", () => {
     });
   });
 
+  it("should not mark fresh legacy candidates low solely because credibility is missing", async () => {
+    mockApi.getLatestDiscoveryCandidates.mockImplementation(async () => [
+      makeCandidate({ symbol_id: 103, symbol: "561980", created_at: todayIso, data_credibility: null }),
+    ]);
+    render(<Discovery />);
+    await waitFor(() => {
+      expect(screen.getByText("561980")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/^lowCredibility/)).not.toBeInTheDocument();
+  });
+
+  it("should show the actual credibility percentage when below threshold", async () => {
+    mockApi.getLatestDiscoveryCandidates.mockImplementation(async () => [
+      makeCandidate({ symbol_id: 104, symbol: "561981", data_credibility: 0.4 }),
+    ]);
+    render(<Discovery />);
+    await waitFor(() => {
+      expect(screen.getByText("lowCredibility 40%")).toBeInTheDocument();
+    });
+  });
+
   it("should call loadSymbolDetail when candidate row clicked", async () => {
     mockApi.getLatestDiscoveryCandidates.mockImplementation(async () => [
       makeCandidate({ symbol_id: 101, symbol: "600001", name: "测试股票A" }),
@@ -425,6 +446,23 @@ describe("Discovery 交互测试", () => {
     fireEvent.click(rows[0]);
     await waitFor(() => {
       expect(mockContext.loadSymbolDetail).toHaveBeenCalledWith(101, { focus: true });
+    });
+  });
+
+  it("should expose an explicit view-detail action", async () => {
+    const user = userEvent.setup();
+    mockApi.getLatestDiscoveryCandidates.mockImplementation(async () => [
+      makeCandidate({ symbol_id: 105, symbol: "588290", name: "科创芯片ETF" }),
+    ]);
+    render(<Discovery />);
+    await waitFor(() => {
+      expect(screen.getByText("588290")).toBeInTheDocument();
+    });
+    const detailButton = screen.getByText("viewDetail").closest("button");
+    expect(detailButton).not.toBeNull();
+    await user.click(detailButton!);
+    await waitFor(() => {
+      expect(mockContext.loadSymbolDetail).toHaveBeenCalledWith(105, { focus: true });
     });
   });
 });

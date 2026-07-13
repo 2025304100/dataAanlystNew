@@ -22,12 +22,17 @@ export default function App() {
   const [metricModalType, setMetricModalType] = useState<string | null>(null);
   const symbolCodeRef = useRef<InputRef>(null);
 
-  // Open detail modal when activeSymbolId changes (only in portfolio tab, not in investment center where detail is inline)
+  // Portfolio and discovery use the modal; investment center renders detail inline.
   useEffect(() => {
-    if (ctx.activeSymbolId && ctx.detail && ctx.activeTab === "portfolio") {
+    if (
+      ctx.activeSymbolId
+      && ctx.detail
+      && ctx.detailFocusRequest > 0
+      && ["portfolio", "discovery"].includes(ctx.activeTab)
+    ) {
       setDetailModalOpen(true);
     }
-  }, [ctx.activeSymbolId, ctx.detail, ctx.activeTab]);
+  }, [ctx.activeSymbolId, ctx.detail, ctx.detailFocusRequest, ctx.activeTab]);
 
   const handleAddSymbol = useCallback(async () => {
     if (!symbolCode.trim()) return;

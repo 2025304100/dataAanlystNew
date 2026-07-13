@@ -753,7 +753,7 @@ class TestSignalStatsNPlusOneFix:
     """守护 signal_stats.build_similar_signal_stats 不再循环内查 DailyBar。
 
     修复前：max_samples=60 个样本 → 60 次 _load_forward_bars DB 查询
-    修复后：1 次 _build_forward_bars_map 批量查询 + 内存 bisect 切片
+    修复后：固定最多 3 次双源批量查询 + 内存合并和 bisect 切片
     """
 
     def test_build_forward_bars_map_returns_empty_for_empty_samples(self):
@@ -765,8 +765,8 @@ class TestSignalStatsNPlusOneFix:
         assert result == {}
         mock_db.execute.assert_not_called()
 
-    def test_build_forward_bars_map_batches_into_single_query(self):
-        """多 symbol 多 sample 应仅 1 次 DB 查询（按 symbol_id+trade_date 升序）。"""
+    def test_build_forward_bars_map_uses_bounded_batch_queries(self):
+        """多 symbol 多 sample 应保持常数次批量查询，不随样本数增长。"""
         from app.services.signal_stats import _build_forward_bars_map
 
         # 构造 3 个 sample，涉及 2 个 symbol
@@ -795,8 +795,8 @@ class TestSignalStatsNPlusOneFix:
 
         result = _build_forward_bars_map(mock_db, samples, horizon=20)
 
-        # 仅 1 次 DB 查询（批量）
-        assert mock_db.execute.call_count == 1
+        # 业务K线、symbol映射、基础K线最多各一次；当前 mock 无映射时为 2 次。
+        assert mock_db.execute.call_count <= 3
         # 返回 dict 按 symbol_id 分组
         assert 1 in result and 2 in result
         # sym1 最早是 1/5，1/5 之前的 bar 应被裁剪（这里没有更早的）

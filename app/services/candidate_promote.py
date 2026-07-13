@@ -410,6 +410,7 @@ def _fallback_legacy_candidates(
             "liquidity_score": score.liquidity_score if score else None,
             "breadth_score": score.breadth_score if score else None,
             "event_score": score.event_score if score else None,
+            "data_credibility": score.data_credibility if score else None,
             "scoring_preset_key": score.scoring_preset_key if score else None,
             "scoring_preset_name": score.scoring_preset_name if score else None,
             "scoring_config_version": score.scoring_config_version if score else None,
@@ -421,6 +422,7 @@ def _fallback_legacy_candidates(
             "valid_days": scan_result.valid_days,
             "is_promoted": None,  # 历史数据无晋升状态
             "is_legacy": True,
+            "created_at": scan_result.created_at.isoformat() if scan_result.created_at else None,
         })
     return result
 
@@ -479,6 +481,7 @@ def _candidate_to_dict(
         "liquidity_score": score.liquidity_score if score else None,
         "breadth_score": score.breadth_score if score else None,
         "event_score": score.event_score if score else None,
+        "data_credibility": score.data_credibility if score else None,
         # 评分配置快照（sync 时从 Score 表快照，用于前端"为什么入选"展示）
         "scoring_preset_key": score.scoring_preset_key if score else None,
         "scoring_preset_name": score.scoring_preset_name if score else None,

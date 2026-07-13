@@ -3,10 +3,9 @@ from __future__ import annotations
 import bisect
 from statistics import mean
 
-from sqlalchemy import asc, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.daily_bar import DailyBar
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.schemas.signal_rule import SignalRuleUpsert
@@ -21,19 +20,6 @@ def _avg(values: list[float]) -> float | None:
 
 def _rate(values: list[bool]) -> float | None:
     return round(sum(1 for item in values if item) / len(values), 4) if values else None
-
-
-def _load_forward_bars(db: Session, symbol_id: int, trade_date, horizon: int = 20) -> list[DailyBar]:
-    return (
-        db.execute(
-            select(DailyBar)
-            .where(DailyBar.symbol_id == symbol_id, DailyBar.trade_date >= trade_date)
-            .order_by(asc(DailyBar.trade_date))
-            .limit(horizon + 1)
-        )
-        .scalars()
-        .all()
-    )
 
 
 def _build_forward_bars_map(
@@ -103,7 +89,10 @@ def build_similar_signal_stats(
         max_samples = max(5, min(240, sample_limit))
     min_sample_count = rule.min_sample_count if rule is not None else 3
 
-    stmt = select(Score, Symbol).join(Symbol, Symbol.id == Score.symbol_id).where(Score.id != latest_score.id)
+    stmt = select(Score, Symbol).join(Symbol, Symbol.id == Score.symbol_id).where(
+        Score.id != latest_score.id,
+        Score.trade_date < latest_score.trade_date,
+    )
     if rule is None or rule.same_stage:
         stmt = stmt.where(Score.stage == latest_score.stage)
     if rule is None or rule.same_action:

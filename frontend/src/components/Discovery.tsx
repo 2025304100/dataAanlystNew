@@ -46,6 +46,103 @@ const NUMBER_OPERATORS: IndicatorOperator[] = ["gt", "gte", "lt", "lte", "eq", "
 const BOOLEAN_OPERATORS: IndicatorOperator[] = ["eq", "neq"];
 const POOL_TABS: PoolTab[] = ["all", "highQuality", "highTiming", "actionable", "overheatRisk", "lowCredibility"];
 
+type TipCopy = { zh: string; en: string };
+
+const STAGE_TIPS: Record<string, TipCopy> = {
+  start: {
+    zh: "启动确认：趋势刚开始形成，重点观察突破是否站稳以及回踩是否有效。",
+    en: "Start: the trend is forming; confirm that the breakout holds and the retest is valid.",
+  },
+  accel: {
+    zh: "趋势加速：动量较强，但追高风险同步增加，更适合等待回踩或已有仓位持有。",
+    en: "Acceleration: momentum is strong, but chase risk is rising; prefer pullbacks or managing an existing position.",
+  },
+  cooldown: {
+    zh: "降温观察：上涨动能减弱，先观察支撑和趋势修复，不急于新增仓位。",
+    en: "Cooldown: momentum is fading; wait for support and trend repair before adding exposure.",
+  },
+  overheat: {
+    zh: "高位过热：价格或动量偏离正常区间，回撤风险较高，优先控制仓位。",
+    en: "Overheat: price or momentum is stretched, so pullback risk is elevated and position control comes first.",
+  },
+};
+
+const ACTION_TIPS: Record<string, TipCopy> = {
+  open: {
+    zh: "试探建仓：条件基本满足，但建议先用小仓位验证，不代表立即重仓买入。",
+    en: "Open: conditions are broadly met, but start small to validate rather than buying a full position immediately.",
+  },
+  hold: {
+    zh: "持有观察：已有仓位可继续跟踪，暂无明确加仓或减仓信号。",
+    en: "Hold: keep monitoring an existing position; there is no clear add or reduce signal yet.",
+  },
+  buy_dip: {
+    zh: "回落低吸：只在价格回到计划区间且支撑确认后考虑买入，避免追涨。",
+    en: "Buy dip: consider entry only after price returns to the planned zone and support is confirmed.",
+  },
+  reduce: {
+    zh: "减仓保护：风险高于收益预期，优先降低敞口并保护已有利润。",
+    en: "Reduce: risk now outweighs expected reward; lower exposure and protect accumulated gains.",
+  },
+  exit: {
+    zh: "退出观望：当前结构不适合继续持有，等待新的有效信号。",
+    en: "Exit: the current structure no longer supports holding; wait for a new valid signal.",
+  },
+};
+
+function localTip(copy: TipCopy | undefined, locale: string, fallback: string): string {
+  if (!copy) return fallback;
+  return locale === "zh-CN" ? copy.zh : copy.en;
+}
+
+function candidateCredibility(item: WorkbenchCandidate, locale: string) {
+  const rawValue = item.data_credibility;
+  const value = rawValue == null ? null : Number(rawValue);
+  if (value != null && Number.isFinite(value)) {
+    const normalized = Math.max(0, Math.min(1, value));
+    const percent = Math.round(normalized * 100);
+    return {
+      isLow: normalized < 0.5,
+      percent,
+      tip: locale === "zh-CN"
+        ? "K线数据可信度 " + percent + "%。由可用K线数量和评分日期新鲜度共同计算，低于50%标记为低可信度。"
+        : "K-line data credibility is " + percent + "%. It combines available bar count and score freshness; below 50% is marked low credibility.",
+    };
+  }
+
+  const resultAge = item.created_at ? ageDays(item.created_at) : null;
+  const isLow = resultAge != null && resultAge > 7;
+  return {
+    isLow,
+    percent: null,
+    tip: locale === "zh-CN"
+      ? isLow
+        ? "该历史候选未保存K线可信度；由于结果已生成 " + resultAge + " 天，暂按低可信度处理。"
+        : "该历史候选未保存K线可信度，不会仅因字段缺失就判定为低可信度。"
+      : isLow
+        ? "This legacy candidate has no stored K-line credibility; it is treated as low credibility because it is " + resultAge + " days old."
+        : "This legacy candidate has no stored K-line credibility and is not marked low solely because the field is missing.",
+  };
+}
+
+function freshnessTip(item: WorkbenchCandidate, locale: string): string {
+  if (!item.created_at) {
+    return locale === "zh-CN"
+      ? "历史候选未记录生成时间，时效标签仅供参考。"
+      : "This legacy candidate has no recorded creation time, so freshness is for reference only.";
+  }
+  const days = ageDays(item.created_at);
+  const warningDays = Number(item.warning_days ?? 3);
+  if (item.is_frozen) {
+    return locale === "zh-CN"
+      ? "结果生成于 " + days + " 天前，已冻结，不参与自动过期清理。"
+      : "Generated " + days + " days ago and frozen, so it is excluded from automatic expiry cleanup.";
+  }
+  return locale === "zh-CN"
+    ? "结果生成于" + (days === 0 ? "今天" : days + " 天前") + "；达到 " + warningDays + " 天会显示时效预警。"
+    : "Generated " + (days === 0 ? "today" : days + " days ago") + "; a freshness warning appears at " + warningDays + " days.";
+}
+
 function scopeLabel(scope: string): string {
   switch (scope) {
     case "cn-stock":
@@ -260,7 +357,7 @@ export default function Discovery() {
   const _savedCfg = loadAdvancedConfig();
   const [scope, setScope] = useState(_savedCfg?.scope ?? "cn-stock");
   const [minScore, setMinScore] = useState(_savedCfg?.minScore ?? 55);
-  const [dataMode, setDataMode] = useState("cached");
+  const [dataMode, setDataMode] = useState("sync");
   const [coverageHint, setCoverageHint] = useState<string | null>(null);
   // P1：当前 scope 对应的激活评分预设（用于在挖掘面板顶部展示）
   const [activePreset, setActivePreset] = useState<{ preset_key: string; name: string; version: number; asset_type: string } | null>(null);
@@ -278,7 +375,7 @@ export default function Discovery() {
   const [retrying, setRetrying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [cleaning, setCleaning] = useState(false);
-  const [rowActionLoading, setRowActionLoading] = useState<Record<number, { watchlist?: boolean; freeze?: boolean; update?: boolean; promote?: boolean }>>({});
+  const [rowActionLoading, setRowActionLoading] = useState<Record<number, { detail?: boolean; watchlist?: boolean; freeze?: boolean; update?: boolean; promote?: boolean }>>({});
   const [customIndicators, setCustomIndicators] = useState<CustomIndicator[]>([]);
   const [indicatorsLoaded, setIndicatorsLoaded] = useState(false);
   const [indicatorLoading, setIndicatorLoading] = useState(false);
@@ -434,26 +531,17 @@ export default function Discovery() {
       const action = item.action ?? item.latest_score?.action ?? "";
       return stage === "overheat" && action === "reduce";
     });
-    const lowCredibility = all.filter((item: any) => {
-      const createdAt = item.created_at ?? item.latest_score?.created_at ?? "";
-      if (!createdAt) return true;
-      try {
-        const age = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
-        return age > 7;
-      } catch {
-        return true;
-      }
-    });
+    const lowCredibility = all.filter((item) => candidateCredibility(item, ctx.locale).isLow);
     return { all, highQuality, highTiming, actionable, overheatRisk, lowCredibility };
-  }, [sortedResults]);
+  }, [ctx.locale, sortedResults]);
 
-  const poolLabels: Record<PoolTab, { zh: string; en: string; color: string }> = {
-    all: { zh: "全部候选", en: "All Candidates", color: "#6b7280" },
-    highQuality: { zh: "高股质", en: "High Quality", color: "#0f766e" },
-    highTiming: { zh: "高时点", en: "High Timing", color: "#2563eb" },
-    actionable: { zh: "可执行", en: "Actionable", color: "#d97706" },
-    overheatRisk: { zh: "过热风险", en: "Overheat Risk", color: "#b42318" },
-    lowCredibility: { zh: "低可信度", en: "Low Credibility", color: "#9ca3af" },
+  const poolLabels: Record<PoolTab, { zh: string; en: string; tipZh: string; tipEn: string; color: string }> = {
+    all: { zh: "全部候选", en: "All Candidates", tipZh: "显示当前范围内满足最低机会分的全部候选。", tipEn: "All candidates in the current scope that meet the minimum opportunity score.", color: "#6b7280" },
+    highQuality: { zh: "高股质", en: "High Quality", tipZh: "股质分不低于70，代表趋势、流动性等综合质量较强。", tipEn: "Quality score at least 70, indicating stronger overall trend and liquidity quality.", color: "#0f766e" },
+    highTiming: { zh: "高时点", en: "High Timing", tipZh: "时点分不低于65，且处于启动或加速阶段。", tipEn: "Timing score at least 65 while in the start or acceleration stage.", color: "#2563eb" },
+    actionable: { zh: "可执行", en: "Actionable", tipZh: "优先分不低于60且动作为试探建仓，仍需结合仓位和交易计划执行。", tipEn: "Priority score at least 60 with an open action; position limits and the trade plan still apply.", color: "#d97706" },
+    overheatRisk: { zh: "过热风险", en: "Overheat Risk", tipZh: "阶段为高位过热且动作为减仓保护，重点关注回撤风险。", tipEn: "Overheat stage with a reduce action, highlighting elevated pullback risk.", color: "#b42318" },
+    lowCredibility: { zh: "低可信度", en: "Low Credibility", tipZh: "K线可信度低于50%，或未保存可信度且结果已超过7天。", tipEn: "K-line credibility below 50%, or no stored credibility and the result is older than seven days.", color: "#9ca3af" },
   };
 
   useEffect(() => {
@@ -849,8 +937,19 @@ export default function Discovery() {
     }
   }, [ctx]);
 
-  const handleRowClick = useCallback((symbolId: number) => {
-    ctx.loadSymbolDetail(symbolId, { focus: true });
+  const handleRowClick = useCallback(async (symbolId: number) => {
+    setRowActionLoading((prev) => ({
+      ...prev,
+      [symbolId]: { ...prev[symbolId], detail: true },
+    }));
+    try {
+      await ctx.loadSymbolDetail(symbolId, { focus: true });
+    } finally {
+      setRowActionLoading((prev) => ({
+        ...prev,
+        [symbolId]: { ...prev[symbolId], detail: false },
+      }));
+    }
   }, [ctx]);
 
   const percentValue = task?.percent ?? 0;
@@ -891,8 +990,13 @@ export default function Discovery() {
             {strengthTags.length > 0 && (
               <div className="item-reason-tags">
                 {strengthTags.map((tag, tagIndex) => (
-                  <Tooltip key={tagIndex} title={`${tag.name}: ${tag.score.toFixed(0)}`}>
-                    <span className="reason-tag" style={{ backgroundColor: "rgba(15, 118, 110, 0.12)", color: "#0f766e", borderColor: "rgba(15, 118, 110, 0.3)" }}>
+                  <Tooltip
+                    key={tagIndex}
+                    title={ctx.locale === "zh-CN"
+                      ? "入选强项：" + tag.name + "维度得分 " + tag.score.toFixed(0) + "，65分以上表示该维度相对突出。"
+                      : "Selection strength: " + tag.name + " scored " + tag.score.toFixed(0) + "; 65+ indicates a relative strength."}
+                  >
+                    <span className="reason-tag" style={{ backgroundColor: "rgba(15, 118, 110, 0.12)", color: "#0f766e", borderColor: "rgba(15, 118, 110, 0.3)", cursor: "help" }}>
                       {tag.name} {tag.score.toFixed(0)}
                     </span>
                   </Tooltip>
@@ -936,13 +1040,20 @@ export default function Discovery() {
       render: (_: unknown, item: WorkbenchCandidate) => {
         const resultId = Number(item.scan_result_id ?? item.id);
         const freshness = discoveryFreshness(item);
-        const rowAgeDays = ageDays(item.created_at);
-        const isLowCredibility = rowAgeDays > 7 || !item.created_at;
+        const credibility = candidateCredibility(item, ctx.locale);
         if (!activeFilters.length) {
           return (
             <>
-              <span className={`freshness-chip ${freshness.className}`}>{freshness.label}</span>
-              {isLowCredibility && <span className="credibility-badge credibility-low">{t("lowCredibility")}</span>}
+              <Tooltip title={freshnessTip(item, ctx.locale)}>
+                <span className={`freshness-chip ${freshness.className}`} style={{ cursor: "help" }}>{freshness.label}</span>
+              </Tooltip>
+              {credibility.isLow && (
+                <Tooltip title={credibility.tip}>
+                  <span className="credibility-badge credibility-low" style={{ cursor: "help" }}>
+                    {t("lowCredibility")}{credibility.percent == null ? "" : " " + credibility.percent + "%"}
+                  </span>
+                </Tooltip>
+              )}
             </>
           );
         }
@@ -986,7 +1097,7 @@ export default function Discovery() {
     const operationsColumn = {
       title: t("operations"),
       key: "operations",
-      width: 240,
+      width: 320,
       render: (_: unknown, item: WorkbenchCandidate) => {
         const inWatchlist = ctx.primaryWatchlistSymbolIds.has(item.symbol_id);
         const resultId = Number(item.scan_result_id ?? item.id);
@@ -997,6 +1108,15 @@ export default function Discovery() {
         const isLegacy = item.is_legacy === true; // 历史任务无 candidate_id，不显示晋升按钮
         return (
           <Space size="small" onClick={(e) => e.stopPropagation()}>
+            <Tooltip title={template("viewSymbolDetail", { symbol: item.symbol })}>
+              <Button
+                size="small"
+                loading={!!rowActionLoading[item.symbol_id]?.detail}
+                onClick={() => handleRowClick(item.symbol_id)}
+              >
+                {t("viewDetail")}
+              </Button>
+            </Tooltip>
             <Button
               size="small"
               loading={rowActionLoading[item.symbol_id]?.watchlist}
@@ -1099,14 +1219,22 @@ export default function Discovery() {
         title: t("stage"),
         dataIndex: "stage",
         key: "stage",
-        render: (v: string) => <Tag className={badgeClass(v)}>{stageLabel(v)}</Tag>,
+        render: (v: string) => (
+          <Tooltip title={localTip(STAGE_TIPS[v], ctx.locale, stageLabel(v))}>
+            <Tag className={badgeClass(v)} style={{ cursor: "help" }}>{stageLabel(v)}</Tag>
+          </Tooltip>
+        ),
         width: 90,
       },
       {
         title: t("action"),
         dataIndex: "action",
         key: "action",
-        render: (v: string) => <Tag className={badgeClass(v)}>{actionLabel(v)}</Tag>,
+        render: (v: string) => (
+          <Tooltip title={localTip(ACTION_TIPS[v], ctx.locale, actionLabel(v))}>
+            <Tag className={badgeClass(v)} style={{ cursor: "help" }}>{actionLabel(v)}</Tag>
+          </Tooltip>
+        ),
         width: 90,
       },
       {
@@ -1182,7 +1310,9 @@ export default function Discovery() {
               <Button loading={resuming} onClick={handleResume} disabled={!canResume}>{t("resumeDiscovery")}</Button>
               <Button danger loading={cancelling} onClick={handleCancel} disabled={!canCancel}>{t("cancelDiscovery")}</Button>
               {canRetry && (
-                <Button type="primary" loading={retrying} onClick={handleRetry}>{t("retryDiscovery")}</Button>
+                <Tooltip title={t("retryDiscoveryTip")}>
+                  <Button type="primary" loading={retrying} onClick={handleRetry}>{t("retryDiscovery")}</Button>
+                </Tooltip>
               )}
               <Button loading={refreshing} onClick={handleRefresh}>{t("refreshResults")}</Button>
               <Button loading={cleaning} onClick={handleCleanup}>{t("cleanupExpired")}</Button>
@@ -1307,17 +1437,18 @@ export default function Discovery() {
 
           <div className="pool-tabs">
             {Object.entries(poolLabels).map(([key, cfg]) => (
-              <button
-                key={key}
-                className={`pool-tab ${poolTab === key ? "pool-tab--active" : ""}`}
-                style={{ borderColor: poolTab === key ? cfg.color : "transparent" }}
-                onClick={() => setPoolTab(key as PoolTab)}
-                aria-pressed={poolTab === key}
-                aria-label={template("poolTabLabel", { label: ctx.locale === "zh-CN" ? cfg.zh : cfg.en })}
-              >
-                <span className="pool-tab-label">{ctx.locale === "zh-CN" ? cfg.zh : cfg.en}</span>
-                <span className="pool-tab-count" style={{ backgroundColor: cfg.color }}>{(candidatePools as Record<string, any[]>)[key]?.length ?? 0}</span>
-              </button>
+              <Tooltip key={key} title={ctx.locale === "zh-CN" ? cfg.tipZh : cfg.tipEn}>
+                <button
+                  className={`pool-tab ${poolTab === key ? "pool-tab--active" : ""}`}
+                  style={{ borderColor: poolTab === key ? cfg.color : "transparent" }}
+                  onClick={() => setPoolTab(key as PoolTab)}
+                  aria-pressed={poolTab === key}
+                  aria-label={template("poolTabLabel", { label: ctx.locale === "zh-CN" ? cfg.zh : cfg.en })}
+                >
+                  <span className="pool-tab-label">{ctx.locale === "zh-CN" ? cfg.zh : cfg.en}</span>
+                  <span className="pool-tab-count" style={{ backgroundColor: cfg.color }}>{(candidatePools as Record<string, any[]>)[key]?.length ?? 0}</span>
+                </button>
+              </Tooltip>
             ))}
           </div>
 
@@ -1423,7 +1554,7 @@ export default function Discovery() {
                     const f = discoveryFreshness(record);
                     return f.className === "warning" ? "discovery-row-warning" : "";
                   })(),
-                  ageDays(record.created_at) > 7 || !record.created_at ? "discovery-row-low-credibility" : "",
+                  candidateCredibility(record, ctx.locale).isLow ? "discovery-row-low-credibility" : "",
                 ].filter(Boolean).join(" "),
               })}
             />

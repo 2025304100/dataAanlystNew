@@ -30,6 +30,7 @@ interface AppState {
   activeSymbolId: number | null;
   workbench: DashboardWorkbench | null;
   detail: SymbolDetail | null;
+  detailFocusRequest: number;
   detailCache: Record<number, SymbolDetail>;
   detailOrder: number[];
   activeWatchlistId: number | null;
@@ -135,6 +136,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     activeSymbolId: null,
     workbench: null,
     detail: null,
+    detailFocusRequest: 0,
     detailCache: {},
     detailOrder: [],
     activeWatchlistId: null,
@@ -174,6 +176,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const portfolioIdRef = useRef<number | null>(null);
   // detailCache 的 ref 镜像：供 useCallback 读取最新值而不必进入依赖数组
   const detailCacheRef = useRef<Record<number, SymbolDetail>>({});
+  const detailFocusRequestRef = useRef(0);
 
   const update = useCallback((partial: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...partial }));
@@ -302,11 +305,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const loadSymbolDetail = useCallback(async (symbolId: number, options?: { force?: boolean; focus?: boolean; barLimit?: number }): Promise<SymbolDetail | undefined> => {
     const initialUpdates: Partial<AppState> = { chartRange: null, chartWindowSize: DEFAULT_CHART_WINDOW };
-    if (state.activeSymbolId !== symbolId) initialUpdates.activeSymbolId = symbolId;
+    if (state.activeSymbolId !== symbolId) {
+      initialUpdates.activeSymbolId = symbolId;
+      initialUpdates.detail = null;
+    }
     update(initialUpdates);
     const cached = detailCacheRef.current[symbolId];
     if (cached && !options?.force) {
-      update({ detail: cached });
+      const cachedUpdates: Partial<AppState> = { detail: cached };
+      if (options?.focus) {
+        detailFocusRequestRef.current += 1;
+        cachedUpdates.detailFocusRequest = detailFocusRequestRef.current;
+      }
+      update(cachedUpdates);
       scheduleSignalRulePreviewInternal();
       return cached;
     }
@@ -317,7 +328,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Remember detail
       const newCache = { ...detailCacheRef.current, [symbolId]: detail };
       const newOrder = [symbolId, ...state.detailOrder.filter((item) => item !== symbolId)].slice(0, 4);
-      update({ detail: detail, detailCache: newCache, detailOrder: newOrder });
+      const detailUpdates: Partial<AppState> = { detail, detailCache: newCache, detailOrder: newOrder };
+      if (options?.focus) {
+        detailFocusRequestRef.current += 1;
+        detailUpdates.detailFocusRequest = detailFocusRequestRef.current;
+      }
+      update(detailUpdates);
       syncOrderForm(detail);
       scheduleSignalRulePreviewInternal();
       return detail;

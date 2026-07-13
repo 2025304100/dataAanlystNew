@@ -319,6 +319,7 @@ export interface WorkbenchCandidate {
   liquidity_score?: number;
   breadth_score?: number;
   event_score?: number;
+  data_credibility?: number | null;
   stage: string;
   action: string;
   recommended_position_pct: number;

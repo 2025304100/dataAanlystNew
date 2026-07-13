@@ -22,9 +22,11 @@ from app.models.portfolio import Position
 from app.models.scan import ScanResult
 from app.models.score import Score
 from app.models.symbol import Symbol
+from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.models.watchlist import WatchlistItem
 from app.services.allocation import get_active_rule, get_default_portfolio
 from app.services.analysis import calculate_symbol_score
+from app.services.scoring_config_engine import calculate_universe_symbol_score
 from app.services.regions import markets_for_region, region_from_market
 from app.services.scans import run_scan
 from app.services.symbol_names import refresh_symbol_name
@@ -951,6 +953,38 @@ def get_history_initialization_status() -> dict:
     return _clone_history_task()
 
 
+def _load_local_score_dates(
+    db: Session,
+    symbol: Symbol,
+    universe_symbol: UniverseSymbol | None,
+    start_date: date,
+    end_date: date,
+) -> tuple[list[date], set[date]]:
+    """Return merged local bar dates and the dates backed by business DailyBar rows."""
+    daily_dates = set(
+        db.execute(
+            select(DailyBar.trade_date).where(
+                DailyBar.symbol_id == symbol.id,
+                DailyBar.trade_date >= start_date,
+                DailyBar.trade_date <= end_date,
+            )
+        ).scalars().all()
+    )
+    universe_dates: set[date] = set()
+    if universe_symbol is not None:
+        universe_dates = set(
+            db.execute(
+                select(UniverseDailyBar.trade_date).where(
+                    UniverseDailyBar.universe_symbol_id == universe_symbol.id,
+                    UniverseDailyBar.trade_date >= start_date,
+                    UniverseDailyBar.trade_date <= end_date,
+                    UniverseDailyBar.close.is_not(None),
+                )
+            ).scalars().all()
+        )
+    return sorted(daily_dates | universe_dates), daily_dates
+
+
 def _resolve_symbols_by_source(
     db: Session,
     *,
@@ -1394,8 +1428,12 @@ def run_history_initialization_task(task_id: str) -> None:
             )
         else:
             symbol_id_list = [symbol.id for symbol in symbols]
+            universe_symbols = db.execute(
+                select(UniverseSymbol).where(UniverseSymbol.symbol.in_([symbol.symbol for symbol in symbols]))
+            ).scalars().all() if symbols else []
+            universe_by_code = {item.symbol: item for item in universe_symbols}
             if symbol_id_list:
-                bar_counts = {
+                daily_bar_counts = {
                     int(symbol_id): int(total)
                     for symbol_id, total in db.execute(
                         select(DailyBar.symbol_id, func.count(DailyBar.id))
@@ -1406,6 +1444,27 @@ def run_history_initialization_task(task_id: str) -> None:
                         )
                         .group_by(DailyBar.symbol_id)
                     ).all()
+                }
+                universe_bar_counts_by_id = {
+                    int(universe_id): int(total)
+                    for universe_id, total in db.execute(
+                        select(UniverseDailyBar.universe_symbol_id, func.count(UniverseDailyBar.id))
+                        .where(
+                            UniverseDailyBar.trade_date >= start_date,
+                            UniverseDailyBar.trade_date <= end_date,
+                            UniverseDailyBar.universe_symbol_id.in_([item.id for item in universe_symbols]),
+                            UniverseDailyBar.close.is_not(None),
+                        )
+                        .group_by(UniverseDailyBar.universe_symbol_id)
+                    ).all()
+                } if universe_symbols else {}
+                bar_counts = {
+                    symbol.id: max(
+                        daily_bar_counts.get(symbol.id, 0),
+                        universe_bar_counts_by_id.get(universe_by_code[symbol.symbol].id, 0)
+                        if symbol.symbol in universe_by_code else 0,
+                    )
+                    for symbol in symbols
                 }
             else:
                 bar_counts = {}
@@ -1429,15 +1488,14 @@ def run_history_initialization_task(task_id: str) -> None:
                 if _HISTORY_INIT_CANCEL_EVENT.is_set():
                     cancel_history_initialization_task(force_task_id=task_id, from_worker=True)
                     return
-                trade_dates = db.execute(
-                    select(DailyBar.trade_date)
-                    .where(
-                        DailyBar.symbol_id == symbol.id,
-                        DailyBar.trade_date >= start_date,
-                        DailyBar.trade_date <= end_date,
-                    )
-                    .order_by(DailyBar.trade_date.asc())
-                ).scalars().all()
+                universe_symbol = universe_by_code.get(symbol.symbol)
+                trade_dates, daily_dates = _load_local_score_dates(
+                    db,
+                    symbol,
+                    universe_symbol,
+                    start_date,
+                    end_date,
+                )
                 if not trade_dates:
                     continue
                 symbol_failed = False
@@ -1446,7 +1504,15 @@ def run_history_initialization_task(task_id: str) -> None:
                 last_score_error = None
                 for trade_date in trade_dates:
                     try:
-                        calculate_symbol_score(db=db, symbol=symbol, trade_date=trade_date)
+                        if trade_date in daily_dates:
+                            calculate_symbol_score(db=db, symbol=symbol, trade_date=trade_date)
+                        elif universe_symbol is not None:
+                            calculate_universe_symbol_score(
+                                db,
+                                universe_symbol,
+                                symbol,
+                                trade_date,
+                            )
                         score_done += 1
                     except Exception as exc:
                         db.rollback()

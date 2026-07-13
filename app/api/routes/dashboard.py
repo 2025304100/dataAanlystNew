@@ -16,6 +16,7 @@ from app.models.scan import ScanResult, ScanRun
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.models.trade_setup import TradeSetup
+from app.models.universe import UniverseSymbol
 from app.models.watchlist import Watchlist, WatchlistItem
 from app.schemas.dashboard import (
     WorkbenchActiveRule,
@@ -35,6 +36,7 @@ from app.schemas.dashboard import (
 from app.services.allocation import compute_allocation, get_active_rule
 from app.services.regions import markets_for_region, region_from_market
 from app.services.signal_stats import build_similar_signal_stats
+from app.services.scoring_config_engine import calculate_universe_symbol_score
 from app.services.sim_accounts import build_sim_account_summary, recent_sim_trades
 from app.services.trade_plans import build_trade_setup_view, load_recent_bars, upsert_trade_setup
 
@@ -59,6 +61,17 @@ def _safe_datetime(value):
                 return datetime.strptime(value, fmt)
             except ValueError:
                 continue
+    return None
+
+
+def _safe_iso_date(value) -> str | None:
+    """Serialize SQL Date/DateTime/string values without dropping plain date objects."""
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if isinstance(value, str):
+        return value
     return None
 
 
@@ -477,20 +490,61 @@ def get_symbol_detail_panel(
     if symbol is None:
         raise HTTPException(status_code=404, detail="Symbol not found")
 
-    latest_score = db.execute(
+    # Merge tracked and universe bars first so stale business rows cannot hide fresher market data.
+    # Scores dated after the latest available bar are invalid for forward-return statistics.
+    bar_rows = list(reversed(load_recent_bars(db, symbol_id, limit=bar_limit)))
+    latest_bar_date = bar_rows[0].trade_date if bar_rows else None
+    raw_latest_score = db.execute(
         select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id))
     ).scalars().first()
+    score_stmt = select(Score).where(Score.symbol_id == symbol_id)
+    if latest_bar_date is not None:
+        score_stmt = score_stmt.where(Score.trade_date <= latest_bar_date)
+    latest_score = db.execute(
+        score_stmt.order_by(desc(Score.trade_date), desc(Score.id))
+    ).scalars().first()
+    needs_market_date_score = (
+        latest_bar_date is not None
+        and raw_latest_score is not None
+        and raw_latest_score.trade_date > latest_bar_date
+        and (latest_score is None or latest_score.trade_date < latest_bar_date)
+    )
+    if needs_market_date_score:
+        universe_symbol = db.execute(
+            select(UniverseSymbol).where(UniverseSymbol.symbol == symbol.symbol)
+        ).scalars().first()
+        if universe_symbol is not None:
+            try:
+                latest_score = calculate_universe_symbol_score(
+                    db,
+                    universe_symbol,
+                    symbol,
+                    latest_bar_date,
+                )
+                db.commit()
+            except Exception:
+                logger.warning(
+                    "symbol-detail: failed to repair future-dated score for symbol_id=%s, market_date=%s",
+                    symbol_id,
+                    latest_bar_date,
+                    exc_info=True,
+                )
+                db.rollback()
+                latest_score = db.execute(
+                    score_stmt.order_by(desc(Score.trade_date), desc(Score.id))
+                ).scalars().first()
+    if latest_score is None:
+        latest_score = raw_latest_score
     latest_setup = db.execute(
         select(TradeSetup)
         .where(TradeSetup.symbol_id == symbol_id, TradeSetup.portfolio_id == portfolio_id)
         .order_by(desc(TradeSetup.created_at), desc(TradeSetup.id))
     ).scalars().first()
     score_rows = db.execute(
-        select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id)).limit(20)
+        score_stmt.order_by(desc(Score.trade_date), desc(Score.id)).limit(20)
     ).scalars().all()
-    # Discovery scores use universe_daily_bars, while tracked symbols may use daily_bars.
-    # Keep this local list in descending order for the existing response assembly below.
-    bar_rows = list(reversed(load_recent_bars(db, symbol_id, limit=bar_limit)))
+    if not score_rows and latest_score is not None:
+        score_rows = [latest_score]
     journal_rows = db.execute(
         select(JournalEntry)
         .where(JournalEntry.symbol_id == symbol_id, JournalEntry.portfolio_id == portfolio_id)
@@ -559,7 +613,7 @@ def get_symbol_detail_panel(
         if latest_score is None
         else {
             "id": latest_score.id,
-            "trade_date": _safe_datetime(latest_score.trade_date).isoformat() if _safe_datetime(latest_score.trade_date) else None,
+            "trade_date": _safe_iso_date(latest_score.trade_date),
             "quality_score": latest_score.quality_score,
             "quality_grade": latest_score.quality_grade,
             "timing_score": latest_score.timing_score,
@@ -593,7 +647,7 @@ def get_symbol_detail_panel(
         score_history=[
             {
                 "id": row.id,
-                "trade_date": _safe_datetime(row.trade_date).isoformat() if _safe_datetime(row.trade_date) else None,
+                "trade_date": _safe_iso_date(row.trade_date),
                 "quality_score": row.quality_score,
                 "timing_score": row.timing_score,
                 "stage": row.stage,

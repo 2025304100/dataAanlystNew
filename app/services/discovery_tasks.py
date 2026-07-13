@@ -840,8 +840,14 @@ def _normalize_task_time(value: datetime | None) -> datetime | None:
     return value
 
 
-def _can_reuse_discovery_score(existing_score: Any | None, universe_symbol: Any) -> bool:
+def _can_reuse_discovery_score(
+    existing_score: Any | None,
+    universe_symbol: Any,
+    expected_trade_date: date | None = None,
+) -> bool:
     if existing_score is None:
+        return False
+    if expected_trade_date is not None and getattr(existing_score, "trade_date", None) != expected_trade_date:
         return False
     score_created_at = _normalize_task_time(getattr(existing_score, "created_at", None))
     last_synced_at = _normalize_task_time(getattr(universe_symbol, "last_synced_at", None))
@@ -880,13 +886,14 @@ def _score_universe_symbol(
     """
     from app.services.scoring_config_engine import calculate_universe_symbol_score
 
+    effective_trade_date = prefetched_bars[-1].trade_date if prefetched_bars else trade_date
     existing_score = existing_score_map.get(symbol.id) if existing_score_map is not None else None
-    score_reused = _can_reuse_discovery_score(existing_score, universe_symbol)
+    score_reused = _can_reuse_discovery_score(existing_score, universe_symbol, effective_trade_date)
     if score_reused:
         score = existing_score
     else:
         score = calculate_universe_symbol_score(
-            db, universe_symbol, symbol, trade_date,
+            db, universe_symbol, symbol, effective_trade_date,
             prefetched_bars=prefetched_bars,
             existing_score_map=existing_score_map,
         )
@@ -903,7 +910,7 @@ def _score_universe_symbol(
             "score_reused": score_reused,
             "rows": 0,
             "latest_score": {
-                "trade_date": trade_date.isoformat(),
+                "trade_date": effective_trade_date.isoformat(),
                 "quality_score": score.quality_score,
                 "timing_score": score.timing_score,
                 "stage": score.stage,
@@ -1364,7 +1371,7 @@ def _run_discovery_task(task_id: str) -> None:
                 task_id, sum(len(v) for v in bars_map.values()), len(bars_map),
             )
 
-        # P1.2：批量预查 Score（覆盖当前 scope 全量标的，便于断点续扫复用当天评分）
+        # P1.2：按每只标的的实际最新K线日期预查 Score，避免把扫描日误当成信号日。
         existing_score_map: dict[int, Any] = {}
         symbol_map = {sym.id: sym for _, sym in universe_pairs}
         for asset_type in ("stock", "etf"):
@@ -1374,18 +1381,25 @@ def _run_discovery_task(task_id: str) -> None:
             cfg = get_active_scoring_config(db, asset_type)
             if cfg is None:
                 continue
-            date_key = score_date.isoformat()
-            calc_batch_id = f"sc-{cfg.id}-v{cfg.version}-{date_key}"
             type_sym_ids = [sym.id for _, sym in type_pairs]
+            effective_dates = {
+                sym.id: bars_map[us.id][-1].trade_date if bars_map.get(us.id) else score_date
+                for us, sym in type_pairs
+            }
+            score_dates = list(set(effective_dates.values()))
             existing_scores = db.execute(
                 select(ScoreModel).where(
                     ScoreModel.symbol_id.in_(type_sym_ids),
-                    ScoreModel.trade_date == score_date,
-                    ScoreModel.calc_batch_id == calc_batch_id,
+                    ScoreModel.trade_date.in_(score_dates),
+                    ScoreModel.scoring_config_id == cfg.id,
+                    ScoreModel.scoring_config_version == cfg.version,
                 )
             ).scalars().all()
             for s in existing_scores:
-                existing_score_map[s.symbol_id] = s
+                expected_date = effective_dates.get(s.symbol_id)
+                expected_batch = f"sc-{cfg.id}-v{cfg.version}-{expected_date.isoformat()}" if expected_date else None
+                if s.trade_date == expected_date and s.calc_batch_id == expected_batch:
+                    existing_score_map[s.symbol_id] = s
             logger.info(
                 "discovery %s: prefetched %d existing scores for %s (%d symbols)",
                 task_id, len(existing_scores), asset_type, len(type_sym_ids),

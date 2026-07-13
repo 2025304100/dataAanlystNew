@@ -626,6 +626,57 @@ def test_score_universe_symbol_recalculates_when_data_is_newer(monkeypatch):
     assert score_map[1] is refreshed
 
 
+def test_score_universe_symbol_uses_latest_prefetched_bar_date(monkeypatch):
+    """扫描日期晚于K线时，评分记录应使用实际最新K线日期。"""
+    from types import SimpleNamespace
+
+    from app.models.symbol import Symbol
+    from app.models.universe import UniverseSymbol
+
+    bar_date = date.today() - timedelta(days=3)
+    captured: dict[str, object] = {}
+    refreshed = SimpleNamespace(
+        quality_score=82,
+        timing_score=76,
+        stage="accel",
+        action="buy_dip",
+        priority_score=79,
+        trade_date=bar_date,
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+
+    def _calculate(_db, _universe_symbol, _symbol, trade_date, **_kwargs):
+        captured["trade_date"] = trade_date
+        return refreshed
+
+    monkeypatch.setattr("app.services.scoring_config_engine.calculate_universe_symbol_score", _calculate)
+    universe_symbol = UniverseSymbol(
+        symbol="TEST-U3",
+        name="Universe Test 3",
+        asset_type="etf",
+        market="sh",
+        region="cn",
+        board="main",
+        is_synced=1,
+        last_synced_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    symbol = Symbol(id=3, symbol="TEST003", name="Test3", asset_type="etf", market="sh", board="main", is_active=1)
+
+    result, scored = discovery_tasks._score_universe_symbol(
+        MagicMock(),
+        universe_symbol,
+        symbol,
+        date.today(),
+        portfolio_id=1,
+        prefetched_bars=[SimpleNamespace(trade_date=bar_date)],
+        existing_score_map={},
+    )
+
+    assert scored is True
+    assert captured["trade_date"] == bar_date
+    assert result["latest_score"]["trade_date"] == bar_date.isoformat()
+
+
 # ============================================================================
 # 7. symbol-detail 详情面板：机会挖掘候选已有评分但 K线未同步时不报 500
 # ============================================================================

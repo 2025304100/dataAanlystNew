@@ -1384,6 +1384,187 @@ body.detail-modal-open {
   background: rgba(255, 255, 255, 0.5);
 }
 
+.detail-overview-card,
+.score-analysis-card,
+.timing-analysis-card {
+  padding: 18px;
+  border-color: rgba(15, 118, 110, 0.14);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 247, 0.74));
+}
+
+.detail-overview-card > h3,
+.score-analysis-card > h3,
+.timing-analysis-card > h3 {
+  margin: 0 0 14px;
+}
+
+.assessment-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.assessment-stat {
+  min-width: 0;
+  min-height: 70px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 13px;
+  border: 1px solid rgba(31, 41, 51, 0.07);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.assessment-stat span,
+.signal-stats-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.assessment-stat strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assessment-stat--score strong {
+  color: var(--accent);
+  font-size: 20px;
+}
+
+.assessment-stat--action {
+  border-color: rgba(15, 118, 110, 0.18);
+  background: rgba(15, 118, 110, 0.08);
+}
+
+.assessment-stat--action strong {
+  color: var(--accent);
+}
+
+.overview-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.signal-stats-card,
+.position-summary-card {
+  padding: 13px 14px;
+  border: 1px solid rgba(31, 41, 51, 0.07);
+  border-radius: 9px;
+  background: rgba(247, 249, 246, 0.74);
+}
+
+.signal-stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.signal-stats-head .panel-kicker,
+.position-summary-card .panel-kicker {
+  margin: 0;
+}
+
+.sample-limit-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sample-limit-input {
+  width: 78px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid rgba(31, 41, 51, 0.14);
+  border-radius: 7px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.sample-limit-input:focus {
+  border-color: rgba(15, 118, 110, 0.58);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.09);
+}
+
+.signal-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(31, 41, 51, 0.06);
+  border-radius: 7px;
+  background: rgba(31, 41, 51, 0.06);
+}
+
+.signal-stats-grid > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.signal-stats-grid strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signal-stats-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 7px;
+  background: rgba(15, 118, 110, 0.055);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.signal-stats-empty > span {
+  flex: 1;
+}
+
+.signal-stats-empty .ant-btn {
+  flex: 0 0 auto;
+}
+
+.signal-stats-empty strong {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.signal-stats-empty--warning {
+  border-color: rgba(217, 119, 6, 0.18);
+  background: rgba(217, 119, 6, 0.06);
+}
+
+.signal-stats-empty--warning strong {
+  color: #b45309;
+}
+
 .radar-canvas {
   width: 100%;
   min-height: 260px;
@@ -1393,9 +1574,7 @@ body.detail-modal-open {
   background: #fffaf0;
 }
 
-/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
-   Score Radar + Breakdown Grid Layout
-   鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */
+/* Score radar and factor breakdown. */
 
 .credibility-warning {
   display: flex;
@@ -1417,16 +1596,19 @@ body.detail-modal-open {
 
 .score-radar-breakdown-grid {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.2fr);
-  gap: 16px;
-  align-items: stretch;
+  grid-template-columns: minmax(320px, 0.82fr) minmax(560px, 1.58fr);
+  gap: 14px;
+  align-items: start;
 }
 
 .radar-panel {
   border: 1px solid rgba(31, 41, 51, 0.08);
   border-radius: 8px;
-  background: #fffaf0;
-  padding: 12px;
+  min-height: 360px;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(15, 118, 110, 0.08), transparent 58%),
+    rgba(255, 253, 247, 0.92);
+  padding: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1463,8 +1645,8 @@ body.detail-modal-open {
 }
 
 .breakdown-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1555,8 +1737,8 @@ body.detail-modal-open {
 }
 
 .breakdown-summary {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding-top: 8px;
   border-top: 1px solid rgba(31, 41, 51, 0.06);
@@ -1574,8 +1756,46 @@ body.detail-modal-open {
   color: #b42318;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 960px) {
+  .assessment-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .signal-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .score-radar-breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .radar-panel {
+    min-height: 320px;
+  }
+}
+
+@media (max-width: 640px) {
+  .detail-overview-card,
+  .score-analysis-card,
+  .timing-analysis-card {
+    padding: 13px;
+  }
+
+  .assessment-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .signal-stats-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .signal-stats-empty {
+    flex-direction: column;
+  }
+
+  .breakdown-list,
+  .breakdown-summary {
     grid-template-columns: 1fr;
   }
 }
@@ -3545,10 +3765,28 @@ td .symbol-name {
   overflow: visible;
 }
 
-/* Ensure antd Modal body inside detail view scrolls properly */
+/* Keep business dialogs consistent; confirmation dialogs intentionally stay compact. */
+.ant-modal:not(.ant-modal-confirm),
+.detail-dashboard-modal,
+.modal-panel,
+.ic__modal-content {
+  width: 76vw !important;
+  max-width: 1680px;
+}
+
 .ant-modal-body {
   overflow-y: auto !important;
   overflow-x: hidden !important;
+}
+
+@media (max-width: 1100px) {
+  .ant-modal:not(.ant-modal-confirm),
+  .detail-dashboard-modal,
+  .modal-panel,
+  .ic__modal-content {
+    width: calc(100vw - 24px) !important;
+    max-width: none;
+  }
 }
 
 /* ============================================================

@@ -115,7 +115,10 @@ const universeHtml = `<!DOCTYPE html>
 </html>`;
 
 function send(res, status, body, headers = {}) {
-  res.writeHead(status, headers);
+  res.writeHead(status, {
+    "cache-control": "no-store, no-cache, must-revalidate",
+    ...headers,
+  });
   res.end(body);
 }
 

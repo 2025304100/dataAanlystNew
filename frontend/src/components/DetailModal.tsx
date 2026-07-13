@@ -345,6 +345,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
   const ctxRef = useRef(ctx);
   ctxRef.current = ctx;
   const [sampleLimitInput, setSampleLimitInput] = useState("");
+  const [scoreBackfillStarting, setScoreBackfillStarting] = useState(false);
   const sampleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── P3: Review management state ──
@@ -411,6 +412,36 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sampleLimitInput]);
+
+  const handleLocalScoreBackfill = async () => {
+    const symbolId = ctx.activeSymbolId;
+    if (!symbolId || scoreBackfillStarting) return;
+    setScoreBackfillStarting(true);
+    try {
+      await api.startHistoryInitialization({
+        preset: "3y",
+        adjust: "qfq",
+        symbol_ids: [symbolId],
+        repair_mode: "scores",
+        symbol_source: "all",
+        auto_scan: false,
+        portfolio_id: ctx.portfolioId,
+      });
+      ctx.showToast(
+        "success",
+        ctx.locale === "zh-CN"
+          ? "已启动本地评分回补：只读取现有K线，不会重新拉取行情。"
+          : "Local score backfill started. Existing bars will be used without refetching market data."
+      );
+    } catch (error: any) {
+      ctx.showToast(
+        "error",
+        error?.message || (ctx.locale === "zh-CN" ? "评分回补启动失败" : "Failed to start score backfill")
+      );
+    } finally {
+      setScoreBackfillStarting(false);
+    }
+  };
 
   // Chart wheel handler (native listener to allow preventDefault)
   useEffect(() => {
@@ -661,7 +692,15 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
       clamp(Number(s.event_score ?? 0), 0, 100),
     ];
     return {
+      tooltip: {
+        trigger: "item",
+        valueFormatter: (value: number) => score(value),
+      },
+      animationDuration: 500,
       radar: {
+        center: ["50%", "52%"],
+        radius: "68%",
+        splitNumber: 4,
         indicator: [
           { name: t("trendScore"), max: 100 },
           { name: t("momentumScore"), max: 100 },
@@ -670,13 +709,20 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
           { name: t("breadthScore"), max: 100 },
           { name: t("eventScore"), max: 100 },
         ],
+        axisName: { color: "#7b8490", fontSize: 12 },
+        axisLine: { lineStyle: { color: "rgba(15, 118, 110, 0.20)" } },
+        splitLine: { lineStyle: { color: "rgba(15, 118, 110, 0.16)" } },
+        splitArea: {
+          areaStyle: { color: ["rgba(255,255,255,0.74)", "rgba(15,118,110,0.035)"] },
+        },
       },
       series: [
         {
           type: "radar",
           data: [{ value: values }],
-          areaStyle: { color: "rgba(15, 118, 110, 0.25)" },
-          lineStyle: { color: "#0f766e" },
+          symbolSize: 7,
+          areaStyle: { color: "rgba(15, 118, 110, 0.20)" },
+          lineStyle: { color: "#0f766e", width: 2.5 },
           itemStyle: { color: "#0f766e" },
         },
       ],
@@ -1251,7 +1297,8 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     <Modal
       open={open}
       onCancel={onClose}
-      width="100vw"
+      width="76vw"
+      className="detail-dashboard-modal"
       title={
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontWeight: 700, fontSize: 16 }}>{title}</span>
@@ -1326,76 +1373,90 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
 
           <div className="detail-grid">
             {/* Latest Assessment */}
-            <div className="detail-card">
+            <div className="detail-card detail-overview-card wide">
               <h3>{t("latestAssessment")}</h3>
-              <div className="list">
-                {latestScore && (
-                  <>
-                    <div className="item-subline">
-                      {joinParts([
-                        `${t("date")}: ${latestScore.trade_date}`,
-                        `${t("quality")}: ${score(latestScore.quality_score)}`,
-                        `${t("timing")}: ${score(latestScore.timing_score)}`,
-                      ])}
-                    </div>
-                    <div className="item-subline">
-                      {joinParts([
-                        `${t("stage")}: ${stageLabel(latestScore.stage)}`,
-                        `${t("action")}: ${actionLabel(latestScore.action)}`,
-                      ])}
-                    </div>
-                  </>
-                )}
+              {latestScore && (
+                <div className="assessment-metrics">
+                  <div className="assessment-stat">
+                    <span>{t("date")}</span>
+                    <strong>{latestScore.trade_date || "-"}</strong>
+                  </div>
+                  <div className="assessment-stat assessment-stat--score">
+                    <span>{t("quality")}</span>
+                    <strong>{score(latestScore.quality_score)}</strong>
+                  </div>
+                  <div className="assessment-stat assessment-stat--score">
+                    <span>{t("timing")}</span>
+                    <strong>{score(latestScore.timing_score)}</strong>
+                  </div>
+                  <div className="assessment-stat">
+                    <span>{t("stage")}</span>
+                    <strong>{stageLabel(latestScore.stage)}</strong>
+                  </div>
+                  <div className="assessment-stat assessment-stat--action">
+                    <span>{t("action")}</span>
+                    <strong>{actionLabel(latestScore.action)}</strong>
+                  </div>
+                </div>
+              )}
+              <div className="overview-secondary-grid">
                 {signalStats && (
-                  <div className="detail-card" style={{ marginTop: 10 }}>
-                    <p className="panel-kicker">{t("similarSignalStats")}</p>
-                    <div className="item-subline">
-                      {joinParts([
-                        `${t("similarSamples")}: ${signalStats.sample_count}`,
-                        `${t("matchedSignals")}: ${signalStats.matched_count}`,
-                      ])}
+                  <div className="signal-stats-card">
+                    <div className="signal-stats-head">
+                      <p className="panel-kicker">{t("similarSignalStats")}</p>
+                      <label className="sample-limit-control" title={t("sampleLimitTip")}>
+                        <span>{t("sampleLimit")}</span>
+                        <input
+                          className="sample-limit-input"
+                          type="number"
+                          min={1}
+                          value={sampleLimitInput}
+                          onChange={(e) => setSampleLimitInput(e.target.value)}
+                          placeholder={t("sampleLimitTip")}
+                        />
+                      </label>
                     </div>
-                    <div className="item-subline">
-                      {joinParts([
-                        `${t("win5d")}: ${statPct(signalStats.win_rate_5d)}`,
-                        `${t("win20d")}: ${statPct(signalStats.win_rate_20d)}`,
-                        `${t("avgReturn20d")}: ${statPct(signalStats.avg_return_20d)}`,
-                      ])}
+                    <div className="signal-stats-grid">
+                      <div><span>{t("similarSamples")}</span><strong>{signalStats.sample_count}</strong></div>
+                      <div><span>{t("matchedSignals")}</span><strong>{signalStats.matched_count}</strong></div>
+                      <div><span>{t("win5d")}</span><strong>{statPct(signalStats.win_rate_5d)}</strong></div>
+                      <div><span>{t("win20d")}</span><strong>{statPct(signalStats.win_rate_20d)}</strong></div>
+                      <div><span>{t("avgReturn20d")}</span><strong>{statPct(signalStats.avg_return_20d)}</strong></div>
+                      <div><span>{t("maxGain20d")}</span><strong>{statPct(signalStats.avg_max_gain_20d)}</strong></div>
+                      <div><span>{t("maxDrawdown20d")}</span><strong>{statPct(signalStats.avg_max_drawdown_20d)}</strong></div>
+                      <div><span>{t("best20d")} / {t("worst20d")}</span><strong>{statPct(signalStats.best_return_20d)} / {statPct(signalStats.worst_return_20d)}</strong></div>
                     </div>
-                    <div className="item-subline">
-                      {joinParts([
-                        `${t("maxGain20d")}: ${statPct(signalStats.avg_max_gain_20d)}`,
-                        `${t("maxDrawdown20d")}: ${statPct(signalStats.avg_max_drawdown_20d)}`,
-                      ])}
-                    </div>
-                    <div className="item-subline">
-                      {joinParts([
-                        `${t("best20d")}: ${statPct(signalStats.best_return_20d)}`,
-                        `${t("worst20d")}: ${statPct(signalStats.worst_return_20d)}`,
-                      ])}
-                    </div>
-                    <label
-                      style={{
-                        display: "grid",
-                        gap: 4,
-                        marginTop: 8,
-                        fontSize: 12,
-                        color: "var(--muted)",
-                      }}
-                    >
-                      <span>{t("sampleLimit")}</span>
-                      <input
-                        type="number"
-                        min={1}
-                        value={sampleLimitInput}
-                        onChange={(e) => setSampleLimitInput(e.target.value)}
-                        placeholder={t("sampleLimitTip")}
-                      />
-                    </label>
+                    {signalStats.sample_count === 0 && (
+                      <div className="signal-stats-empty">
+                        <strong>{ctx.locale === "zh-CN" ? "暂无可回测样本" : "No backtestable samples yet"}</strong>
+                        <span>
+                          {ctx.locale === "zh-CN"
+                            ? signalStats.matched_count > 0
+                              ? `已匹配 ${signalStats.matched_count} 条历史评分，但缺少可用于回测的逐日评分。现有K线无需重拉，可直接生成历史评分。`
+                              : "当前规则下没有足够相似的历史评分。现有K线无需重拉，可先生成逐日历史评分。"
+                            : signalStats.matched_count > 0
+                              ? `${signalStats.matched_count} matching scores were found, but daily historical scores are missing. Existing bars can be reused without refetching.`
+                              : "No sufficiently similar historical scores. Generate daily scores from the existing local bars first."}
+                        </span>
+                        <Button size="small" type="primary" loading={scoreBackfillStarting} onClick={handleLocalScoreBackfill}>
+                          {ctx.locale === "zh-CN" ? "基于现有K线生成评分" : "Generate Scores from Local Bars"}
+                        </Button>
+                      </div>
+                    )}
+                    {signalStats.sample_count > 0 && signalStats.sample_count < signalStats.min_sample_count && (
+                      <div className="signal-stats-empty signal-stats-empty--warning">
+                        <strong>{ctx.locale === "zh-CN" ? "样本量不足" : "Insufficient sample size"}</strong>
+                        <span>
+                          {ctx.locale === "zh-CN"
+                            ? `当前仅 ${signalStats.sample_count} 个可回测样本，低于建议的 ${signalStats.min_sample_count} 个，统计结果仅供参考。`
+                            : `${signalStats.sample_count} samples are available, below the recommended ${signalStats.min_sample_count}; treat the statistics as indicative only.`}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
                 {position && (
-                  <div className="detail-card" style={{ marginTop: 10 }}>
+                  <div className="position-summary-card">
                     <p className="panel-kicker">{t("currentPosition")}</p>
                     <div className="item-subline">
                       {joinParts([
@@ -1418,7 +1479,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
             </div>
 
             {/* Score Radar + Breakdown (ECharts) */}
-            <div className="detail-card">
+            <div className="detail-card score-analysis-card wide">
               <h3>{t("scoreRadar")}</h3>
               {detail?.latest_score?.data_credibility != null && detail.latest_score.data_credibility < 0.5 && (
                 <div className="credibility-warning">
@@ -1431,7 +1492,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
               <div className="score-radar-breakdown-grid">
                 <div className="radar-panel">
                   {radarOption && (
-                    <ReactECharts option={radarOption} style={{ height: "240px", width: "100%" }} />
+                    <ReactECharts option={radarOption} style={{ height: "320px", width: "100%" }} />
                   )}
                 </div>
                 {scoreBreakdown && (
@@ -1495,7 +1556,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
 
             {/* Timing Score Breakdown */}
             {timingBreakdown && (
-              <div className="detail-card">
+              <div className="detail-card timing-analysis-card wide">
                 <h3>{ctx.locale === "zh-CN" ? "时点评分解析" : "Timing Score Breakdown"}</h3>
                 <div className="timing-breakdown-grid">
                   <div className="timing-scores-panel">

@@ -886,7 +886,12 @@ def calculate_universe_symbol_score(
             )
         ).scalars().first()
     else:
-        existing = existing_score_map.get(symbol.id)
+        candidate = existing_score_map.get(symbol.id)
+        existing = candidate if (
+            candidate is not None
+            and candidate.trade_date == trade_date
+            and candidate.calc_batch_id == calc_batch_id
+        ) else None
 
     if existing is None:
         existing = Score(
@@ -895,6 +900,9 @@ def calculate_universe_symbol_score(
             calc_batch_id=calc_batch_id,
         )
         db.add(existing)
+
+    existing.trade_date = trade_date
+    existing.calc_batch_id = calc_batch_id
 
     existing.quality_score = quality
     existing.quality_grade = _grade(quality)
