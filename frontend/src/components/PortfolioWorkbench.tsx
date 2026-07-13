@@ -240,7 +240,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
     : t("noScanYet");
 
   const handleSymbolClick = (symbolId: number) => {
-    ctx.loadSymbolDetail(symbolId, { focus: true });
+    ctx.loadSymbolDetail(symbolId, { focus: true, barLimit: 500 });
   };
 
   // ── P2: 持仓录入 / 删除 / 规则保存 ──

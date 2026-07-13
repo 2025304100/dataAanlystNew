@@ -14,6 +14,7 @@ from typing import Any, Callable
 import akshare as ak
 import pandas as pd
 from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -390,47 +391,96 @@ def _dedupe_history_rows(frame: pd.DataFrame) -> list[dict[str, Any]]:
     return list(deduped.values())
 
 
+def _to_float(value: Any) -> float | None:
+    """安全转 float，None/NaN → None。"""
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
+
+
 def _upsert_universe_bars(db: Session, universe_symbol_id: int, frame: pd.DataFrame) -> tuple[int, int]:
-    """批量 upsert K线到 universe_daily_bars，返回 (inserted, updated)。"""
-    inserted = 0
-    updated = 0
+    """批量 upsert K线到 universe_daily_bars，返回 (inserted, updated)。
+
+    MySQL 使用 INSERT ... ON DUPLICATE KEY UPDATE 批量语句（单条 SQL 完成全部插入/更新）；
+    其他方言（如 SQLite 测试环境）回退到逐行 ORM upsert。
+    """
     rows = _dedupe_history_rows(frame)
     if not rows:
-        return inserted, updated
+        return 0, 0
 
     trade_dates = [r["trade_date"] for r in rows]
-    existing_bars = db.execute(
-        select(UniverseDailyBar).where(
-            UniverseDailyBar.universe_symbol_id == universe_symbol_id,
-            UniverseDailyBar.trade_date.in_(trade_dates),
-        )
-    ).scalars().all()
-    existing_map = {bar.trade_date: bar for bar in existing_bars}
 
-    for row in rows:
-        trade_date = row["trade_date"]
-        existing = existing_map.get(trade_date)
-        if existing is None:
-            existing = UniverseDailyBar(
-                universe_symbol_id=universe_symbol_id, trade_date=trade_date
+    # 前置查询已有记录的日期（用于精确计数 inserted/updated）
+    existing_dates = set(
+        db.execute(
+            select(UniverseDailyBar.trade_date).where(
+                UniverseDailyBar.universe_symbol_id == universe_symbol_id,
+                UniverseDailyBar.trade_date.in_(trade_dates),
             )
-            db.add(existing)
-            existing_map[trade_date] = existing
-            inserted += 1
-        else:
-            updated += 1
-        existing.open = float(row["open"]) if row.get("open") is not None and not pd.isna(row.get("open")) else None
-        existing.high = float(row["high"]) if row.get("high") is not None and not pd.isna(row.get("high")) else None
-        existing.low = float(row["low"]) if row.get("low") is not None and not pd.isna(row.get("low")) else None
-        existing.close = float(row["close"]) if row.get("close") is not None and not pd.isna(row.get("close")) else None
-        existing.volume = float(row["volume"]) if row.get("volume") is not None and not pd.isna(row.get("volume")) else None
-        existing.amount = float(row["amount"]) if row.get("amount") is not None and not pd.isna(row.get("amount")) else None
-        existing.turnover_rate = (
-            float(row["turnover_rate"])
-            if row.get("turnover_rate") is not None and not pd.isna(row.get("turnover_rate"))
-            else None
+        ).scalars().all()
+    )
+    inserted = sum(1 for r in rows if r["trade_date"] not in existing_dates)
+    updated = len(rows) - inserted
+
+    # 构造批量数据
+    values = [
+        {
+            "universe_symbol_id": universe_symbol_id,
+            "trade_date": row["trade_date"],
+            "open": _to_float(row.get("open")),
+            "high": _to_float(row.get("high")),
+            "low": _to_float(row.get("low")),
+            "close": _to_float(row.get("close")),
+            "volume": _to_float(row.get("volume")),
+            "amount": _to_float(row.get("amount")),
+            "turnover_rate": _to_float(row.get("turnover_rate")),
+            "source": "akshare",
+        }
+        for row in rows
+    ]
+
+    dialect_name = db.get_bind().dialect.name if db.get_bind() else ""
+    if dialect_name == "mysql":
+        # MySQL：单条 INSERT ... ON DUPLICATE KEY UPDATE 完成批量 upsert
+        stmt = mysql_insert(UniverseDailyBar).values(values)
+        stmt = stmt.on_duplicate_key_update(
+            open=stmt.inserted.open,
+            high=stmt.inserted.high,
+            low=stmt.inserted.low,
+            close=stmt.inserted.close,
+            volume=stmt.inserted.volume,
+            amount=stmt.inserted.amount,
+            turnover_rate=stmt.inserted.turnover_rate,
+            source=stmt.inserted.source,
         )
-        existing.source = "akshare"
+        db.execute(stmt)
+    else:
+        # SQLite/其他：逐行 ORM upsert（测试环境兼容）
+        existing_bars = db.execute(
+            select(UniverseDailyBar).where(
+                UniverseDailyBar.universe_symbol_id == universe_symbol_id,
+                UniverseDailyBar.trade_date.in_(trade_dates),
+            )
+        ).scalars().all()
+        existing_map = {bar.trade_date: bar for bar in existing_bars}
+        for row in values:
+            trade_date = row["trade_date"]
+            existing = existing_map.get(trade_date)
+            if existing is None:
+                existing = UniverseDailyBar(
+                    universe_symbol_id=universe_symbol_id, trade_date=trade_date
+                )
+                db.add(existing)
+                existing_map[trade_date] = existing
+            existing.open = row["open"]
+            existing.high = row["high"]
+            existing.low = row["low"]
+            existing.close = row["close"]
+            existing.volume = row["volume"]
+            existing.amount = row["amount"]
+            existing.turnover_rate = row["turnover_rate"]
+            existing.source = row["source"]
+
     return inserted, updated
 
 

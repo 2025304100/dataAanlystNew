@@ -21,6 +21,8 @@ export default function App() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [metricModalType, setMetricModalType] = useState<string | null>(null);
   const symbolCodeRef = useRef<InputRef>(null);
+  // 记录已处理过的 detailFocusRequest 编号，避免切换标签回来时重复弹窗
+  const lastHandledFocusRef = useRef(0);
 
   // Portfolio and discovery use the modal; investment center renders detail inline.
   useEffect(() => {
@@ -28,8 +30,10 @@ export default function App() {
       ctx.activeSymbolId
       && ctx.detail
       && ctx.detailFocusRequest > 0
+      && ctx.detailFocusRequest !== lastHandledFocusRef.current
       && ["portfolio", "discovery"].includes(ctx.activeTab)
     ) {
+      lastHandledFocusRef.current = ctx.detailFocusRequest;
       setDetailModalOpen(true);
     }
   }, [ctx.activeSymbolId, ctx.detail, ctx.detailFocusRequest, ctx.activeTab]);

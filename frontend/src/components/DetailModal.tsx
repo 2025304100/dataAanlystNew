@@ -453,7 +453,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
       if (e.deltaY < 0) {
         c.setChartWindowSize(Math.max(20, c.chartWindowSize - 10));
       } else {
-        c.setChartWindowSize(Math.min(250, c.chartWindowSize + 10));
+        c.setChartWindowSize(Math.min(500, c.chartWindowSize + 10));
       }
     };
     el.addEventListener("wheel", handleWheel, { passive: false });
@@ -1981,7 +1981,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                     <Button
                       size="small"
                       onClick={() =>
-                        ctx.setChartWindowSize(Math.min(250, ctx.chartWindowSize + 20))
+                        ctx.setChartWindowSize(Math.min(500, ctx.chartWindowSize + 20))
                       }
                     >
                       {t("zoomOut")}

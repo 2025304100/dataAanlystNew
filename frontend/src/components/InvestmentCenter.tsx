@@ -356,7 +356,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     if (loadingBarsRef.current.has(symbolId)) return;
     loadingBarsRef.current.add(symbolId);
 
-    api.getBars(symbolId, Math.max(neededBars + 60, 250))
+    api.getBars(symbolId, Math.max(neededBars + 60, 500))
       .then((fetched: WorkbenchBar[]) => {
         if (!fetched || !fetched.length) return;
         const existingDates = new Set(detail.bars.map((b: WorkbenchBar) => b.trade_date));
@@ -398,7 +398,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   }, [workbench]);
 
   const handleSelectSymbol = useCallback((symbolId: number, symbolInfo?: Pick<SymbolInfo, "symbol" | "name">) => {
-    ctx.loadSymbolDetail(symbolId, { focus: true, barLimit: 180 });
+    ctx.loadSymbolDetail(symbolId, { focus: true, barLimit: 500 });
     setSearchQuery("");
     setSearchResults([]);
     // 记录搜索历史（最近5个）
@@ -470,7 +470,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   // 自动加载第一个快捷标的
   useEffect(() => {
     if (quickSymbols.length > 0 && !ctx.activeSymbolId && !ctx.detail) {
-      ctx.loadSymbolDetail(quickSymbols[0].symbol_id, { focus: true, barLimit: 180 });
+      ctx.loadSymbolDetail(quickSymbols[0].symbol_id, { focus: true, barLimit: 500 });
     }
   }, [quickSymbols.length]); // eslint-disable-line
 
@@ -1535,7 +1535,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
               </div>
               <span className="chart-window-pill">{ctx.chartWindowSize}{t("barsUnit")}</span>
               <Button size="small" onClick={() => ctx.setChartWindowSize(Math.max(20, ctx.chartWindowSize - 20))}>{t("zoomIn")}</Button>
-              <Button size="small" onClick={() => ctx.setChartWindowSize(Math.min(250, ctx.chartWindowSize + 20))}>{t("zoomOut")}</Button>
+              <Button size="small" onClick={() => ctx.setChartWindowSize(Math.min(500, ctx.chartWindowSize + 20))}>{t("zoomOut")}</Button>
               <Button size="small" onClick={() => { ctx.setChartWindowSize(60); ctx.setChartRange(null); }}>{t("resetZoom")}</Button>
             </div>
           </div>

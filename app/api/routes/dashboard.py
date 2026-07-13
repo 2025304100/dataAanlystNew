@@ -479,7 +479,7 @@ def get_symbol_detail_panel(
     symbol_id: int = Query(...),
     portfolio_id: int = Query(...),
     sample_limit: int | None = Query(default=None, ge=5, le=240),
-    bar_limit: int = Query(default=60, ge=20, le=500),
+    bar_limit: int = Query(default=120, ge=20, le=1000),
     db: Session = Depends(get_db),
 ):
     portfolio = db.get(Portfolio, portfolio_id)

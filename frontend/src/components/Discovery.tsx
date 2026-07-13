@@ -943,7 +943,7 @@ export default function Discovery() {
       [symbolId]: { ...prev[symbolId], detail: true },
     }));
     try {
-      await ctx.loadSymbolDetail(symbolId, { focus: true });
+      await ctx.loadSymbolDetail(symbolId, { focus: true, barLimit: 500 });
     } finally {
       setRowActionLoading((prev) => ({
         ...prev,
