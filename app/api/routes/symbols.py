@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.score import Score
 from app.models.symbol import Symbol
+from app.services.factors.score_scope import apply_active_score_scope
 from app.schemas.symbol import SymbolCreate, SymbolRead
 from app.services.regions import region_from_market
 from app.services.symbol_cleanup import cleanup_stale_discovery_symbols
@@ -66,7 +67,10 @@ def get_symbol_detail(symbol_id: int, db: Session = Depends(get_db)):
     if symbol is None:
         raise HTTPException(status_code=404, detail="Symbol not found")
     latest_score = db.execute(
-        select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id))
+        apply_active_score_scope(
+            select(Score).where(Score.symbol_id == symbol_id),
+            db,
+        ).order_by(desc(Score.trade_date), desc(Score.id))
     ).scalars().first()
     return {
         "symbol": _serialize_symbol(symbol),
@@ -93,6 +97,15 @@ def get_symbol_detail(symbol_id: int, db: Session = Depends(get_db)):
             "overheat_penalty": latest_score.overheat_penalty,
             # 数据可信度（P0-4.3）
             "data_credibility": latest_score.data_credibility,
+            "weight_mode": latest_score.weight_mode,
+            "factor_model_run_id": latest_score.factor_model_run_id,
+            "factor_data_cutoff_at": latest_score.factor_data_cutoff_at,
+            "factor_quality_score": latest_score.factor_quality_score,
+            "factor_timing_score": latest_score.factor_timing_score,
+            "model_alpha_score": latest_score.model_alpha_score,
+            "macro_regime": latest_score.macro_regime,
+            "macro_position_multiplier": latest_score.macro_position_multiplier,
+            "factor_scores_json": latest_score.factor_scores_json,
         },
     }
 

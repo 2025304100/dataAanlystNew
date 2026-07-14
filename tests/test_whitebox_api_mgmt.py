@@ -491,6 +491,22 @@ def test_registry_contains_17_entries():
     )
 
 
+def test_registry_contains_factor_pipeline_interfaces():
+    expected = {
+        "stock_value_em",
+        "stock_financial_analysis_indicator_em",
+        "stock_lrb_em",
+        "stock_individual_fund_flow",
+        "stock_lhb_detail_em",
+        "stock_hot_rank_em",
+        "bond_zh_us_rate",
+        "macro_china_market_margin_sh",
+        "macro_china_market_margin_sz",
+    }
+
+    assert expected <= {entry["key"] for entry in AKSHARE_API_REGISTRY}
+
+
 def test_registry_entries_have_required_fields():
     """每个 registry entry 应含必填字段。"""
     required_fields = {"key", "name_zh", "name_en", "category_zh", "category_en",

@@ -9,6 +9,7 @@ from app.models.score import Score
 from app.models.symbol import Symbol
 from app.schemas.score import ScoreCalculationRequest, ScoreRead
 from app.services.analysis import calculate_symbol_score
+from app.services.factors.score_scope import apply_active_score_scope
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,10 @@ def calculate_scores(payload: ScoreCalculationRequest, db: Session = Depends(get
 @router.get("/scores/latest/{symbol_id}", response_model=ScoreRead)
 def get_latest_score(symbol_id: int, db: Session = Depends(get_db)):
     score = db.execute(
-        select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id))
+        apply_active_score_scope(
+            select(Score).where(Score.symbol_id == symbol_id),
+            db,
+        ).order_by(desc(Score.trade_date), desc(Score.id))
     ).scalars().first()
     if score is None:
         raise HTTPException(status_code=404, detail="Score not found")
@@ -68,8 +72,10 @@ def get_latest_score(symbol_id: int, db: Session = Depends(get_db)):
 @router.get("/scores/history/{symbol_id}", response_model=list[ScoreRead])
 def get_score_history(symbol_id: int, limit: int = 60, db: Session = Depends(get_db)):
     return db.execute(
-        select(Score)
-        .where(Score.symbol_id == symbol_id)
+        apply_active_score_scope(
+            select(Score).where(Score.symbol_id == symbol_id),
+            db,
+        )
         .order_by(desc(Score.trade_date), desc(Score.id))
         .limit(limit)
     ).scalars().all()

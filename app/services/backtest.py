@@ -14,9 +14,11 @@ from sqlalchemy.orm import Session
 from app.models.backtest import BacktestRun, BacktestTrade
 from app.models.custom_indicator import CustomIndicator
 from app.models.daily_bar import DailyBar
+from app.models.factor_model import FactorModelRun
 from app.models.portfolio import Portfolio
 from app.models.score import Score
 from app.models.symbol import Symbol
+from app.services.factors.runtime import get_factor_runtime_snapshot
 
 
 EXECUTION_PRICE_FIELDS = {"open", "close"}
@@ -128,18 +130,25 @@ def _build_score_map(
     symbol_ids: list[int],
     start_date: date,
     end_date: date,
+    *,
+    score_weight_mode: str = 'manual',
+    factor_model_run_id: str | None = None,
 ) -> dict[int, list[Score]]:
     """批量预加载 Score，返回 {symbol_id: [Score, ...]}，每个 list 按 trade_date 升序。"""
     if not symbol_ids:
         return {}
-    rows = db.execute(
-        select(Score)
-        .where(
+    stmt = select(Score).where(
             Score.symbol_id.in_(symbol_ids),
             Score.trade_date >= start_date,
             Score.trade_date <= end_date,
+            Score.weight_mode == score_weight_mode,
         )
-        .order_by(Score.symbol_id, Score.trade_date)
+    if score_weight_mode == 'ridge':
+        stmt = stmt.where(
+            Score.factor_model_run_id == factor_model_run_id
+        )
+    rows = db.execute(
+        stmt.order_by(Score.symbol_id, Score.trade_date, Score.id)
     ).scalars().all()
     score_map: dict[int, list[Score]] = {}
     for s in rows:
@@ -1294,6 +1303,9 @@ def _build_trade_trace_map(
     rule_config: dict,
     bars_by_sym: dict[int, list[DailyBar]],
     bar_idx: dict[tuple[int, date], int],
+    *,
+    score_weight_mode: str = 'manual',
+    factor_model_run_id: str | None = None,
 ) -> dict[int, dict]:
     if not trades:
         return {}
@@ -1332,7 +1344,14 @@ def _build_trade_trace_map(
         score_end = max(trade_dates)
     else:
         score_start = score_end = date.today()
-    score_map = _build_score_map(db, trade_symbol_ids, score_start, score_end)
+    score_map = _build_score_map(
+        db,
+        trade_symbol_ids,
+        score_start,
+        score_end,
+        score_weight_mode=score_weight_mode,
+        factor_model_run_id=factor_model_run_id,
+    )
 
     for trade in trades:
         entry_signal_day = _signal_day(trade.symbol_id, trade.entry_date, entry_timing)
@@ -1445,12 +1464,27 @@ def build_backtest_detail_context(db: Session, run: BacktestRun, trades: list[Ba
         bars_by_sym.setdefault(b.symbol_id, []).append(b)
         bar_idx[(b.symbol_id, b.trade_date)] = len(bars_by_sym[b.symbol_id]) - 1
 
-    trade_annotations = _build_trade_trace_map(db, trades or [], rule_config, bars_by_sym, bar_idx)
+    trade_annotations = _build_trade_trace_map(
+        db,
+        trades or [],
+        rule_config,
+        bars_by_sym,
+        bar_idx,
+        score_weight_mode=run.score_weight_mode,
+        factor_model_run_id=run.factor_model_run_id,
+    )
 
     # 风控加固：批量预加载 Score 避免 N+1（原循环内每条 bar 查一次 = O(N) DB 查询）
     # 改为一次性 select(Score).where(symbol_id in ..., trade_date between start, end)，
     # 循环内用 bisect 二分查找 O(log n) 内存查找
-    score_map = _build_score_map(db, symbol_ids, run.start_date, run.end_date)
+    score_map = _build_score_map(
+        db,
+        symbol_ids,
+        run.start_date,
+        run.end_date,
+        score_weight_mode=run.score_weight_mode,
+        factor_model_run_id=run.factor_model_run_id,
+    )
 
     for bar in bars:
         checked_days += 1
@@ -1618,6 +1652,9 @@ def assess_backtest_score_coverage(
     symbol_ids: list[int],
     start_date: date,
     end_date: date,
+    *,
+    score_weight_mode: str = 'manual',
+    factor_model_run_id: str | None = None,
 ) -> dict:
     if not symbol_ids:
         return {
@@ -1649,6 +1686,22 @@ def assess_backtest_score_coverage(
             .group_by(DailyBar.symbol_id)
         ).all()
     }
+    score_stats_stmt = select(
+        Score.symbol_id,
+        func.count(func.distinct(Score.trade_date)),
+        func.min(Score.trade_date),
+        func.max(Score.trade_date),
+    ).where(
+        Score.symbol_id.in_(symbol_ids),
+        Score.trade_date >= start_date,
+        Score.trade_date <= end_date,
+        Score.weight_mode == score_weight_mode,
+    )
+    if score_weight_mode == 'ridge':
+        score_stats_stmt = score_stats_stmt.where(
+            Score.factor_model_run_id == factor_model_run_id
+        )
+    score_stats_stmt = score_stats_stmt.group_by(Score.symbol_id)
     score_stats = {
         int(symbol_id): {
             "score_days": int(score_days),
@@ -1656,18 +1709,7 @@ def assess_backtest_score_coverage(
             "score_end": score_end.isoformat() if hasattr(score_end, "isoformat") else str(score_end),
         }
         for symbol_id, score_days, score_start, score_end in db.execute(
-            select(
-                Score.symbol_id,
-                func.count(func.distinct(Score.trade_date)),
-                func.min(Score.trade_date),
-                func.max(Score.trade_date),
-            )
-            .where(
-                Score.symbol_id.in_(symbol_ids),
-                Score.trade_date >= start_date,
-                Score.trade_date <= end_date,
-            )
-            .group_by(Score.symbol_id)
+            score_stats_stmt
         ).all()
     }
 
@@ -1711,12 +1753,31 @@ def run_backtest(
     rule_config: dict,
     cost_config: dict | None = None,
     run_name: str | None = None,
+    score_weight_mode: str | None = None,
+    factor_model_run_id: str | None = None,
 ) -> BacktestRun:
     """Doc."""
     # Execute a backtest run for the selected portfolio and symbols.
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
         raise ValueError("Portfolio not found")
+    runtime = get_factor_runtime_snapshot(db)
+    effective_score_mode = score_weight_mode or runtime.score_weight_mode
+    if effective_score_mode not in {'manual', 'ridge'}:
+        raise ValueError('score_weight_mode must be manual or ridge')
+    effective_model_id = (
+        factor_model_run_id or runtime.active_model_run_id
+        if effective_score_mode == 'ridge'
+        else None
+    )
+    factor_data_cutoff_at = None
+    if effective_score_mode == 'ridge':
+        if not effective_model_id:
+            raise ValueError('factor_model_run_id is required for Ridge backtest')
+        factor_model = db.get(FactorModelRun, effective_model_id)
+        if factor_model is None or factor_model.status != 'validated':
+            raise ValueError('Ridge backtest requires a validated factor model')
+        factor_data_cutoff_at = factor_model.data_cutoff_at
     rule_config = _prepare_rule_config(db, rule_config)
 
     cost_config = cost_config or DEFAULT_COST_CONFIG
@@ -1729,6 +1790,9 @@ def run_backtest(
         symbols_json=json.dumps(symbol_ids),
         rule_config_json=json.dumps(rule_config, ensure_ascii=False),
         cost_config_json=json.dumps(cost_config, ensure_ascii=False),
+        score_weight_mode=effective_score_mode,
+        factor_model_run_id=effective_model_id,
+        factor_data_cutoff_at=factor_data_cutoff_at,
         start_date=start_date,
         end_date=end_date,
         initial_capital=initial_capital,
@@ -1799,7 +1863,14 @@ def run_backtest(
         # 风控加固：批量预加载 Score 避免 N+1（原日期×标的循环每组合查一次 = O(交易日×标的数) DB 查询）
         # 改为一次性 select(Score).where(symbol_id in ..., trade_date between start, end)，
         # 循环内用 bisect 二分查找 O(log n) 内存查找
-        score_map = _build_score_map(db, symbol_ids, start_date, end_date)
+        score_map = _build_score_map(
+            db,
+            symbol_ids,
+            start_date,
+            end_date,
+            score_weight_mode=effective_score_mode,
+            factor_model_run_id=effective_model_id,
+        )
 
         def _get_history(symbol_id: int, trade_date: date, max_history: int = 250) -> tuple[DailyBar | None, DailyBar | None, list[DailyBar]]:
             idx = bar_index.get((symbol_id, trade_date))

@@ -40,6 +40,9 @@ const TASK_TYPE_LABELS: Record<string, string> = {
   market_data_sync: "taskTypeSync",
   history_initialization: "taskTypeHistory",
   discovery_mining: "taskTypeDiscovery",
+  universe_incremental_sync: "taskTypeUniverseIncremental",
+  macro_update: "taskTypeMacro",
+  factor_pipeline: "taskTypeFactorPipeline",
 };
 
 function formatDuration(sec?: number): string {
@@ -112,6 +115,12 @@ export default function TaskCenter() {
                 await api.cancelMarketDataSyncTask(task.id);
               } else if (task.task_type === "history_initialization") {
                 await api.cancelHistoryInitialization();
+              } else if (task.task_type === "universe_incremental_sync") {
+                await api.cancelUniverseIncrementalSync();
+              } else if (task.task_type === "macro_update") {
+                await api.cancelMacroUpdateTask(task.id);
+              } else if (task.task_type === "factor_pipeline") {
+                await api.cancelFactorPipelineTask(task.id);
               } else {
                 throw new Error(`Unsupported async task type: ${task.task_type}`);
               }
@@ -291,6 +300,9 @@ export default function TaskCenter() {
               { value: "market_data_sync", label: t("taskTypeSync") },
               { value: "history_initialization", label: t("taskTypeHistory") },
               { value: "discovery_mining", label: t("taskTypeDiscovery") },
+              { value: "universe_incremental_sync", label: t("taskTypeUniverseIncremental") },
+              { value: "macro_update", label: t("taskTypeMacro") },
+              { value: "factor_pipeline", label: t("taskTypeFactorPipeline") },
             ]}
           />
           <Button icon={<ReloadOutlined />} onClick={loadTasks} loading={loading}>

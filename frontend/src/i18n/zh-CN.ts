@@ -855,6 +855,7 @@ const zhCN: Record<string, string> = {
     loading: "加载中...",
     // 评分配置（P0：轻量自定义评分配置）
     scTabTitle: "评分配置",
+    factorModelTabTitle: "因子模型",
     scStockTab: "股票",
     scEtfTab: "ETF",
     scPresetList: "预设列表",
@@ -1504,6 +1505,7 @@ const zhCN: Record<string, string> = {
     btCoverageInsufficient: "历史评分覆盖不足，请先去设置里执行初始化补数",
     // Task Center
     taskCenter: "任务中心",
+    scheduledTaskManager: "定时任务",
     taskActive: "进行中",
     taskFilterAll: "全部任务",
     taskFilterActive: "进行中",
@@ -1511,6 +1513,9 @@ const zhCN: Record<string, string> = {
     taskTypeSync: "行情同步",
     taskTypeHistory: "历史初始化",
     taskTypeDiscovery: "机会挖掘",
+    taskTypeUniverseIncremental: "行情增量同步",
+    taskTypeMacro: "宏观更新",
+    taskTypeFactorPipeline: "因子流水线",
     taskStatus_done: "已完成",
     taskStatus_failed: "失败",
     taskStatus_cancelled: "已取消",

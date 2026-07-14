@@ -3,7 +3,7 @@ import { useApp } from "../context/AppContext";
 import { t, DOT } from "../i18n";
 import { statPct, pnlClass, clamp } from "../utils/format";
 import { Input, InputNumber, Checkbox, Button, Space, Card, Form } from "antd";
-import { DatabaseOutlined, FunctionOutlined, SettingOutlined, SyncOutlined, MedicineBoxOutlined, UnorderedListOutlined, BellOutlined, TrophyOutlined, GlobalOutlined, ApiOutlined } from "@ant-design/icons";
+import { CalendarOutlined, DatabaseOutlined, ExperimentOutlined, FunctionOutlined, SettingOutlined, SyncOutlined, MedicineBoxOutlined, UnorderedListOutlined, BellOutlined, TrophyOutlined, GlobalOutlined, ApiOutlined } from "@ant-design/icons";
 import DbConfigSection from "./DbConfigSection";
 import CustomIndicatorSettings from "./CustomIndicatorSettings";
 import DiscoveryPlanSettings from "./DiscoveryPlanSettings";
@@ -15,6 +15,8 @@ import ScoringConfigSettings from "./ScoringConfigSettings";
 import ExternalDataSync from "./ExternalDataSync";
 import AkshareApiManager from "./AkshareApiManager";
 import UniverseDataPanel from "./UniverseDataPanel";
+import FactorModelSettings from "./FactorModelSettings";
+import ScheduledTaskManager from "./ScheduledTaskManager";
 
 export default function Settings() {
   const ctx = useApp();
@@ -23,10 +25,10 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "alerts" | "scoring" | "external" | "api-mgmt" | "universe" | "db">(() => {
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "alerts" | "scoring" | "factor-model" | "external" | "api-mgmt" | "universe" | "db">(() => {
     if (typeof window === "undefined") return "rules";
     const stored = window.localStorage.getItem("settings_active_section");
-    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "alerts" || stored === "scoring" || stored === "external" || stored === "api-mgmt" || stored === "universe" || stored === "db" ? stored : "rules";
+    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "alerts" || stored === "scoring" || stored === "factor-model" || stored === "external" || stored === "api-mgmt" || stored === "universe" || stored === "db" ? stored : "rules";
   });
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<"formulas" | "plans">(() => {
     if (typeof window === "undefined") return "formulas";
@@ -207,6 +209,15 @@ export default function Settings() {
           </button>
           <button
             type="button"
+            className={`settings-nav-item ${activeSection === "schedules" ? "active" : ""}`}
+            aria-current={activeSection === "schedules" ? "page" : undefined}
+            onClick={() => setActiveSection("schedules")}
+          >
+            <span className="settings-nav-icon"><CalendarOutlined /></span>
+            <span className="settings-nav-copy">{t("scheduledTaskManager")}</span>
+          </button>
+          <button
+            type="button"
             className={`settings-nav-item ${activeSection === "alerts" ? "active" : ""}`}
             aria-current={activeSection === "alerts" ? "page" : undefined}
             onClick={() => setActiveSection("alerts")}
@@ -222,6 +233,15 @@ export default function Settings() {
           >
             <span className="settings-nav-icon"><TrophyOutlined /></span>
             <span className="settings-nav-copy">{t("scTabTitle")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "factor-model" ? "active" : ""}`}
+            aria-current={activeSection === "factor-model" ? "page" : undefined}
+            onClick={() => setActiveSection("factor-model")}
+          >
+            <span className="settings-nav-icon"><ExperimentOutlined /></span>
+            <span className="settings-nav-copy">{t("factorModelTabTitle")}</span>
           </button>
           <button
             type="button"
@@ -460,6 +480,20 @@ export default function Settings() {
             <div className="settings-tab-container" data-settings-content="settings-scoring">
               <section className="band">
                 <ScoringConfigSettings />
+              </section>
+            </div>
+          )}
+          {activeSection === "schedules" && (
+            <div className="settings-tab-container" data-settings-content="settings-schedules">
+              <section className="band">
+                <ScheduledTaskManager />
+              </section>
+            </div>
+          )}
+          {activeSection === "factor-model" && (
+            <div className="settings-tab-container" data-settings-content="settings-factor-model">
+              <section className="band">
+                <FactorModelSettings />
               </section>
             </div>
           )}

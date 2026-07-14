@@ -552,14 +552,28 @@ def _refresh_cn_etf_universe(db: Session) -> dict:
         # sina 源不受东财 push2 IP 频次风控影响，通常可成功
         logger.warning("cn-etf primary source failed, trying sina backup: %s", exc)
         try:
+            # AkShare releases have exposed this endpoint with slightly different
+            # signatures. Pass the category only when the installed callable
+            # accepts it so older versions and test doubles remain compatible.
+            import inspect
+
+            try:
+                sina_params = inspect.signature(ak.fund_etf_category_sina).parameters
+                accepts_symbol = "symbol" in sina_params or any(
+                    param.kind == inspect.Parameter.VAR_KEYWORD
+                    for param in sina_params.values()
+                )
+            except (TypeError, ValueError):
+                accepts_symbol = True
+            sina_kwargs = {"symbol": "ETF基金"} if accepts_symbol else {}
             with quiet_akshare_output():
                 # 注意：必须显式传 symbol="ETF基金"，否则默认 "LOF基金" 会返回 LOF 列表
                 frame = call_akshare_with_retry(
                     ak.fund_etf_category_sina,
-                    symbol="ETF基金",
                     api_key="fund_etf_category_sina",
                     max_attempts=2,
                     db=db,
+                    **sina_kwargs,
                 )
             records = frame.to_dict("records")
             code_keys = ["代码", "symbol", "code"]
@@ -1037,16 +1051,23 @@ def _watchdog_heartbeat(task_id: str, stop_event: threading.Event) -> None:
         try:
             db = SessionLocal()
             try:
+                task_snapshot = db.get(DiscoveryTaskRecord, task_id)
+                if task_snapshot is None or task_snapshot.status in _TERMINAL_STATES:
+                    return
+                if task_snapshot.stage == "prepare":
+                    # prepare 有独立的 universe 超时保护；跳过心跳可以让 stale
+                    # 检测在外部调用永久卡死时继续发挥最后一道兜底作用。
+                    continue
+
                 # 风控加固：先用条件 UPDATE 只更新 updated_at 字段，避免整行覆盖
                 # WHERE 限定非终态，rowcount=0 表示任务已进入终态
-                # 注意：prepare 阶段也心跳，防止 prepare→sync 过渡时卡死被 _expire_stale_tasks 误判
-                # （universe 刷新有自己的 120s 超时保护，不需要靠 stale 检测兜底）
                 now = _now()
                 stmt = (
                     update(DiscoveryTaskRecord.__table__)
                     .where(
                         DiscoveryTaskRecord.id == task_id,
                         DiscoveryTaskRecord.status.notin_(_TERMINAL_STATES),
+                        DiscoveryTaskRecord.stage != "prepare",
                     )
                     .values(updated_at=now)
                 )
@@ -1063,6 +1084,10 @@ def _watchdog_heartbeat(task_id: str, stop_event: threading.Event) -> None:
                         )
                         return
                 else:
+                    # Keep the already-loaded identity-map object coherent. This
+                    # is not committed again; the conditional UPDATE above is the
+                    # only persisted write and remains protected against races.
+                    task_snapshot.updated_at = now
                     logger.debug("watchdog %s heartbeat (rowcount=%d)", task_id, result.rowcount)
             finally:
                 db.close()

@@ -44,6 +44,11 @@ class WorkbenchCandidate(BaseModel):
     scoring_config_version: int | None = None
     dimension_scores_json: str | None = None
     scoring_config_snapshot_json: str | None = None
+    weight_mode: str = 'manual'
+    factor_model_run_id: str | None = None
+    factor_data_cutoff_at: datetime | None = None
+    macro_regime: str | None = None
+    macro_position_multiplier: float | None = None
 
 
 class WorkbenchScore(BaseModel):
@@ -65,6 +70,14 @@ class WorkbenchScore(BaseModel):
     liquidity_score: float | None = None
     breadth_score: float | None = None
     event_score: float | None = None
+    weight_mode: str = 'manual'
+    factor_model_run_id: str | None = None
+    factor_data_cutoff_at: datetime | None = None
+    factor_quality_score: float | None = None
+    factor_timing_score: float | None = None
+    model_alpha_score: float | None = None
+    macro_regime: str | None = None
+    macro_position_multiplier: float | None = None
     created_at: datetime | None = None
     warning_days: int | None = None
     valid_days: int | None = None

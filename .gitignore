@@ -13,6 +13,9 @@ build/
 # Database files
 *.db
 *.db-journal
+*.duckdb
+*.duckdb.wal
+*.parquet
 
 # Environment
 .env

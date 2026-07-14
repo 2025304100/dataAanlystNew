@@ -212,22 +212,15 @@ def _make_discovery_task(db_session, task_id="test-seen-zero"):
     return task
 
 
-def test_run_discovery_task_aborts_when_universe_seen_zero(monkeypatch, db_session):
-    """【P0 数据正确性】universe 刷新返回 seen=0 时，_run_discovery_task 应标记 task=failed。
+def test_run_discovery_task_aborts_when_local_universe_is_empty(monkeypatch, db_session):
+    """【P0 数据正确性】本地基础股票池为空时，扫描任务应明确失败。
 
-    历史问题：seen=0 时继续跑空扫描，让用户困惑（"为什么扫描 0 个标的？"）。
-    修复：seen=0 抛 RuntimeError，外层 except 捕获后标记 task.status=failed。
-    本测试验证 task 最终状态为 failed，且 message 包含错误信息。
+    扫描任务只读 universe_symbols，不负责调用 AkShare 刷新股票池；用户应先在
+    设置页完成基础数据同步。本测试守护这一读写分离契约。
     """
     from app.models.discovery import DiscoveryTaskRecord
     _make_discovery_task(db_session, task_id="test-seen-zero")
 
-    # mock _refresh_universe_with_timeout 返回 seen=0
-    monkeypatch.setattr(
-        discovery_tasks,
-        "_refresh_universe_with_timeout",
-        lambda db, payload: {"seen": 0, "created": 0},
-    )
     # 缩短 watchdog 心跳间隔加速测试
     monkeypatch.setattr(discovery_tasks, "_WATCHDOG_HEARTBEAT_SECONDS", 0.1)
 
@@ -242,26 +235,18 @@ def test_run_discovery_task_aborts_when_universe_seen_zero(monkeypatch, db_sessi
     assert task.status == "failed", f"seen=0 应标记 task=failed，实际 status={task.status}"
     assert task.stage == "failed"
     assert task.percent == 100
-    assert "全市场标的列表拉取失败" in task.message, (
+    assert "基础表无已同步标的" in task.message, (
         f"message 应包含错误信息，实际：{task.message}"
     )
 
 
-def test_run_discovery_task_aborts_when_universe_timeout(monkeypatch, db_session):
-    """【P0 数据正确性】universe 刷新超时（返回 None）时，_run_discovery_task 应标记 task=failed。
-
-    历史问题：超时后任务继续跑空扫描，浪费用户时间。
-    修复：超时返回 None 时抛 RuntimeError，外层 except 捕获后标记 task=failed。
-    """
+def test_run_discovery_task_resume_aborts_when_local_universe_is_empty(monkeypatch, db_session):
+    """【P0 数据正确性】断点续跑时基础股票池为空也应明确失败。"""
     from app.models.discovery import DiscoveryTaskRecord
-    _make_discovery_task(db_session, task_id="test-universe-timeout")
+    task = _make_discovery_task(db_session, task_id="test-universe-timeout")
+    task.processed_symbol_ids_json = "[1]"
+    db_session.commit()
 
-    # mock _refresh_universe_with_timeout 返回 None（超时）
-    monkeypatch.setattr(
-        discovery_tasks,
-        "_refresh_universe_with_timeout",
-        lambda db, payload: None,
-    )
     monkeypatch.setattr(discovery_tasks, "_WATCHDOG_HEARTBEAT_SECONDS", 0.1)
 
     discovery_tasks._run_discovery_task("test-universe-timeout")
@@ -272,7 +257,7 @@ def test_run_discovery_task_aborts_when_universe_timeout(monkeypatch, db_session
     assert task.status == "failed", f"超时应标记 task=failed，实际 status={task.status}"
     assert task.stage == "failed"
     assert task.percent == 100
-    assert "全市场标的列表刷新超时" in task.message, (
+    assert "基础表无已同步标的" in task.message, (
         f"message 应包含超时信息，实际：{task.message}"
     )
 

@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.models.custom_indicator import CustomIndicator, CustomIndicatorVersion
 from app.models.daily_bar import DailyBar
 from app.models.score import Score
+from app.services.factors.score_scope import apply_active_score_scope
 from app.models.symbol import Symbol
 from app.schemas.custom_indicator import (
     CustomIndicatorCreate,
@@ -310,8 +311,13 @@ def preview_custom_indicator(payload: CustomIndicatorPreviewRequest, db: Session
 
     score_rows = (
         db.execute(
-            select(Score)
-            .where(Score.symbol_id == payload.symbol_id, Score.trade_date <= preview_bar.trade_date)
+            apply_active_score_scope(
+                select(Score).where(
+                    Score.symbol_id == payload.symbol_id,
+                    Score.trade_date <= preview_bar.trade_date,
+                ),
+                db,
+            )
             .order_by(Score.trade_date.desc())
             .limit(251)
         )

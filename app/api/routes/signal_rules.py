@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.portfolio import Portfolio
 from app.models.score import Score
+from app.services.factors.score_scope import apply_active_score_scope
 from app.models.symbol import Symbol
 from app.schemas.signal_rule import SignalRulePreset, SignalRulePreviewRead, SignalRulePreviewRequest, SignalRuleRead, SignalRuleUpsert
 from app.services.signal_stats import build_similar_signal_stats
@@ -27,7 +28,10 @@ def get_signal_stats(symbol_id: int, portfolio_id: int = Query(default=1), db: S
         raise HTTPException(status_code=404, detail="Symbol not found")
     latest_score = (
         db.execute(
-            select(Score).where(Score.symbol_id == symbol.id).order_by(desc(Score.trade_date), desc(Score.id))
+            apply_active_score_scope(
+                select(Score).where(Score.symbol_id == symbol.id),
+                db,
+            ).order_by(desc(Score.trade_date), desc(Score.id))
         )
         .scalars()
         .first()
@@ -64,7 +68,10 @@ def preview_signal_rule(portfolio_id: int, payload: SignalRulePreviewRequest, db
         raise HTTPException(status_code=404, detail="Symbol not found")
     latest_score = (
         db.execute(
-            select(Score).where(Score.symbol_id == symbol.id).order_by(desc(Score.trade_date), desc(Score.id))
+            apply_active_score_scope(
+                select(Score).where(Score.symbol_id == symbol.id),
+                db,
+            ).order_by(desc(Score.trade_date), desc(Score.id))
         )
         .scalars()
         .first()

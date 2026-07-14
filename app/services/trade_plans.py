@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.portfolio import Portfolio
 from app.models.score import Score
+from app.services.factors.score_scope import apply_active_score_scope
 from app.models.symbol import Symbol
 from app.services.bar_queries import MarketBar, load_recent_bars as _load_recent_bars
 from app.models.trade_setup import TradeSetup
@@ -133,7 +134,10 @@ def _build_return_scenarios(
 
 def get_latest_score(db: Session, symbol_id: int) -> Score | None:
     return db.execute(
-        select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id))
+        apply_active_score_scope(
+            select(Score).where(Score.symbol_id == symbol_id),
+            db,
+        ).order_by(desc(Score.trade_date), desc(Score.id))
     ).scalars().first()
 
 

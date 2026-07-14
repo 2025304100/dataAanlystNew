@@ -39,3 +39,14 @@ class MarketDataSyncCreate(BaseModel):
     auto_scan: bool = True
     portfolio_id: int | None = None
     portfolio_rule_id: int | None = None
+
+
+class FactorPipelineCreate(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+    data_cutoff_date: date | None = None
+    full_refresh: bool = False
+    train_model: bool = True
+    materialize_scores: bool = True
+    window_days: int = Field(default=250, ge=60, le=1000)
+    validation_days: int = Field(default=50, ge=20, le=250)

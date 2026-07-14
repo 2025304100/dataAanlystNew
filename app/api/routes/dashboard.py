@@ -34,6 +34,7 @@ from app.schemas.dashboard import (
     WorkbenchWatchlist,
 )
 from app.services.allocation import compute_allocation, get_active_rule
+from app.services.factors.score_scope import apply_active_score_scope
 from app.services.regions import markets_for_region, region_from_market
 from app.services.signal_stats import build_similar_signal_stats
 from app.services.scoring_config_engine import calculate_universe_symbol_score
@@ -98,21 +99,20 @@ def _delete_expired_scan_results(db: Session, rows: list[tuple[ScanResult, Symbo
 def _latest_score_map(db: Session, symbol_ids: list[int]) -> dict[int, Score]:
     if not symbol_ids:
         return {}
-    rows = (
-        db.execute(
-            select(Score).where(
-                Score.symbol_id.in_(symbol_ids),
-                Score.id.in_(
-                    select(func.max(Score.id))
-                    .where(Score.symbol_id.in_(symbol_ids))
-                    .group_by(Score.symbol_id)
-                ),
-            )
+    rows = db.execute(
+        apply_active_score_scope(
+            select(Score).where(Score.symbol_id.in_(symbol_ids)),
+            db,
+        ).order_by(
+            Score.symbol_id.asc(),
+            Score.trade_date.desc(),
+            Score.id.desc(),
         )
-        .scalars()
-        .all()
-    )
-    return {row.symbol_id: row for row in rows}
+    ).scalars().all()
+    latest: dict[int, Score] = {}
+    for row in rows:
+        latest.setdefault(row.symbol_id, row)
+    return latest
 
 
 @router.get("/dashboard/overview", response_model=DashboardOverview)
@@ -238,6 +238,31 @@ def get_dashboard_workbench(
                 warning_days=result.warning_days,
                 valid_days=result.valid_days,
                 is_frozen=bool(result.is_frozen),
+                weight_mode=(
+                    candidate_score_map[symbol.id].weight_mode
+                    if symbol.id in candidate_score_map
+                    else 'manual'
+                ),
+                factor_model_run_id=(
+                    candidate_score_map[symbol.id].factor_model_run_id
+                    if symbol.id in candidate_score_map
+                    else None
+                ),
+                factor_data_cutoff_at=(
+                    candidate_score_map[symbol.id].factor_data_cutoff_at
+                    if symbol.id in candidate_score_map
+                    else None
+                ),
+                macro_regime=(
+                    candidate_score_map[symbol.id].macro_regime
+                    if symbol.id in candidate_score_map
+                    else None
+                ),
+                macro_position_multiplier=(
+                    candidate_score_map[symbol.id].macro_position_multiplier
+                    if symbol.id in candidate_score_map
+                    else None
+                ),
             )
             for result, symbol in candidate_rows
         ]
@@ -272,14 +297,14 @@ def get_dashboard_workbench(
             auto_scan=latest_run.run_name == "post-sync-auto-scan",
         )
 
+    latest_score_ids = apply_active_score_scope(
+        select(func.max(Score.id).label('id')).group_by(Score.symbol_id),
+        db,
+    ).subquery()
     score_stmt = (
         select(Score, Symbol)
         .join(Symbol, Symbol.id == Score.symbol_id)
-        .where(
-            Score.id.in_(
-                select(func.max(Score.id)).group_by(Score.symbol_id)
-            )
-        )
+        .where(Score.id.in_(select(latest_score_ids.c.id)))
         .order_by(Score.priority_score.desc())
         .limit(score_limit)
     )
@@ -306,6 +331,14 @@ def get_dashboard_workbench(
             liquidity_score=score.liquidity_score,
             breadth_score=score.breadth_score,
             event_score=score.event_score,
+            weight_mode=score.weight_mode,
+            factor_model_run_id=score.factor_model_run_id,
+            factor_data_cutoff_at=score.factor_data_cutoff_at,
+            factor_quality_score=score.factor_quality_score,
+            factor_timing_score=score.factor_timing_score,
+            model_alpha_score=score.model_alpha_score,
+            macro_regime=score.macro_regime,
+            macro_position_multiplier=score.macro_position_multiplier,
             created_at=score.created_at,
             warning_days=3,
             valid_days=5,
@@ -495,9 +528,15 @@ def get_symbol_detail_panel(
     bar_rows = list(reversed(load_recent_bars(db, symbol_id, limit=bar_limit)))
     latest_bar_date = bar_rows[0].trade_date if bar_rows else None
     raw_latest_score = db.execute(
-        select(Score).where(Score.symbol_id == symbol_id).order_by(desc(Score.trade_date), desc(Score.id))
+        apply_active_score_scope(
+            select(Score).where(Score.symbol_id == symbol_id),
+            db,
+        ).order_by(desc(Score.trade_date), desc(Score.id))
     ).scalars().first()
-    score_stmt = select(Score).where(Score.symbol_id == symbol_id)
+    score_stmt = apply_active_score_scope(
+        select(Score).where(Score.symbol_id == symbol_id),
+        db,
+    )
     if latest_bar_date is not None:
         score_stmt = score_stmt.where(Score.trade_date <= latest_bar_date)
     latest_score = db.execute(
@@ -629,6 +668,15 @@ def get_symbol_detail_panel(
             "breakout_score": latest_score.breakout_score,
             "pullback_score": latest_score.pullback_score,
             "overheat_penalty": latest_score.overheat_penalty,
+            "weight_mode": latest_score.weight_mode,
+            "factor_model_run_id": latest_score.factor_model_run_id,
+            "factor_data_cutoff_at": latest_score.factor_data_cutoff_at,
+            "factor_quality_score": latest_score.factor_quality_score,
+            "factor_timing_score": latest_score.factor_timing_score,
+            "model_alpha_score": latest_score.model_alpha_score,
+            "macro_regime": latest_score.macro_regime,
+            "macro_position_multiplier": latest_score.macro_position_multiplier,
+            "factor_scores_json": latest_score.factor_scores_json,
         },
         latest_trade_setup=latest_trade_setup_view,
         signal_stats=build_similar_signal_stats(db, symbol, latest_score, portfolio_id=portfolio_id, sample_limit=sample_limit),

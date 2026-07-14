@@ -15,6 +15,7 @@ from app.models.daily_bar import DailyBar
 from app.models.discovery import DiscoveryTaskRecord
 from app.models.score import Score
 from app.models.symbol import Symbol
+from app.services.factors.score_scope import get_active_score_scope
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ def _load_config(rule: AlertRule) -> dict:
     except json.JSONDecodeError:
         # 风控加固：config_json 损坏时记录告警规则 ID 与原始片段，便于运维定位
         logger.warning(
-            "AlertRule %s config_json parse failed (json decode error), fallback to empty dict. raw=%r",
+            "AlertRule.%s config_json parse failed (JSONDecodeError), fallback to empty dict. raw=%r",
             rule.id, rule.config_json[:200],
         )
         return {}
@@ -89,10 +90,17 @@ def _eval_score_drop(session: Session, rule: AlertRule) -> list[AlertEvent]:
     threshold = float(cfg.get("threshold", 40))
     symbol_ids = cfg.get("symbol_ids")  # None = 全部
     events = []
+    scope = get_active_score_scope(session)
 
     # 找每个标的最新评分
     latest_score_subq = (
         select(Score.symbol_id, func.max(Score.trade_date).label("max_date"))
+        .where(Score.weight_mode == scope.weight_mode)
+        .where(
+            Score.factor_model_run_id == scope.model_run_id
+            if scope.weight_mode == 'ridge'
+            else True
+        )
         .group_by(Score.symbol_id)
         .subquery()
     )
@@ -103,8 +111,13 @@ def _eval_score_drop(session: Session, rule: AlertRule) -> list[AlertEvent]:
             (Score.symbol_id == latest_score_subq.c.symbol_id)
             & (Score.trade_date == latest_score_subq.c.max_date),
         )
-        .where(Score.priority_score < threshold)
+        .where(
+            Score.priority_score < threshold,
+            Score.weight_mode == scope.weight_mode,
+        )
     )
+    if scope.weight_mode == 'ridge':
+        stmt = stmt.where(Score.factor_model_run_id == scope.model_run_id)
     if symbol_ids:
         stmt = stmt.where(Score.symbol_id.in_(symbol_ids))
 

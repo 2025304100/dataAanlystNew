@@ -22,6 +22,7 @@ from app.services.backtest import (
     build_backtest_detail_context,
     run_backtest,
 )
+from app.services.factors.runtime import get_factor_runtime_snapshot
 
 
 router = APIRouter()
@@ -30,11 +31,22 @@ router = APIRouter()
 @router.post("/backtest/run", response_model=BacktestRunRead)
 def create_backtest_run(payload: BacktestRunRequest, db: Session = Depends(get_db)):
     try:
+        runtime = get_factor_runtime_snapshot(db)
+        score_weight_mode = (
+            payload.score_weight_mode or runtime.score_weight_mode
+        )
+        factor_model_run_id = (
+            payload.factor_model_run_id or runtime.active_model_run_id
+            if score_weight_mode == 'ridge'
+            else None
+        )
         coverage = assess_backtest_score_coverage(
             db=db,
             symbol_ids=payload.symbol_ids,
             start_date=payload.start_date,
             end_date=payload.end_date,
+            score_weight_mode=score_weight_mode,
+            factor_model_run_id=factor_model_run_id,
         )
         if coverage["issues"]:
             symbol_rows = db.execute(select(Symbol).where(Symbol.id.in_(payload.symbol_ids))).scalars().all()
@@ -71,6 +83,8 @@ def create_backtest_run(payload: BacktestRunRequest, db: Session = Depends(get_d
             rule_config=payload.rule_config.model_dump(),
             cost_config=payload.cost_config.model_dump() if payload.cost_config else None,
             run_name=payload.run_name,
+            score_weight_mode=score_weight_mode,
+            factor_model_run_id=factor_model_run_id,
         )
         return result
     except HTTPException:

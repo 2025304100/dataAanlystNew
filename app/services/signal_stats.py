@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.score import Score
+from app.services.factors.score_scope import apply_active_score_scope
 from app.models.symbol import Symbol
 from app.schemas.signal_rule import SignalRuleUpsert
 from app.services.bar_queries import MarketBar, load_forward_bars_map
@@ -89,9 +90,14 @@ def build_similar_signal_stats(
         max_samples = max(5, min(240, sample_limit))
     min_sample_count = rule.min_sample_count if rule is not None else 3
 
-    stmt = select(Score, Symbol).join(Symbol, Symbol.id == Score.symbol_id).where(
-        Score.id != latest_score.id,
-        Score.trade_date < latest_score.trade_date,
+    stmt = apply_active_score_scope(
+        select(Score, Symbol).join(
+            Symbol, Symbol.id == Score.symbol_id
+        ).where(
+            Score.id != latest_score.id,
+            Score.trade_date < latest_score.trade_date,
+        ),
+        db,
     )
     if rule is None or rule.same_stage:
         stmt = stmt.where(Score.stage == latest_score.stage)

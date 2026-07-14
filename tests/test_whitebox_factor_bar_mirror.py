@@ -1,0 +1,158 @@
+from __future__ import annotations
+
+from datetime import date
+
+import pytest
+
+pytest.importorskip("duckdb")
+
+from app.models.daily_bar import DailyBar
+from app.models.symbol import Symbol
+from app.models.universe import UniverseDailyBar, UniverseSymbol
+from app.services.factors.bar_mirror import mirror_daily_bars
+from app.services.factors.store import FactorWarehouse
+
+pytestmark = pytest.mark.whitebox
+
+
+def test_mirror_combines_business_and_universe_ids_idempotently(
+    db_session, tmp_path
+):
+    business_symbol = Symbol(
+        symbol="600519",
+        name="贵州茅台",
+        asset_type="stock",
+        market="sh",
+    )
+    universe_symbol = UniverseSymbol(
+        symbol="600519",
+        name="贵州茅台",
+        asset_type="stock",
+        market="sh",
+        region="cn",
+    )
+    db_session.add_all([business_symbol, universe_symbol])
+    db_session.flush()
+    db_session.add_all(
+        [
+            DailyBar(
+                symbol_id=business_symbol.id,
+                trade_date=date(2026, 7, 10),
+                open=1400,
+                high=1420,
+                low=1390,
+                close=1411,
+                volume=100,
+                amount=141100,
+                turnover_rate=0.5,
+                source="business-test",
+            ),
+            UniverseDailyBar(
+                universe_symbol_id=universe_symbol.id,
+                trade_date=date(2026, 7, 10),
+                open=1400,
+                high=1420,
+                low=1390,
+                close=1410,
+                volume=100,
+                amount=141000,
+                turnover_rate=0.5,
+                source="universe-test",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
+    first = mirror_daily_bars(db_session, warehouse=warehouse, batch_size=1)
+    second = mirror_daily_bars(db_session, warehouse=warehouse, batch_size=1)
+
+    assert first.rows_written == 2
+    assert second.rows_written == 0
+    assert warehouse.health().raw_daily_bars == 1
+
+    with warehouse.connection(read_only=True) as conn:
+        row = conn.execute(
+            "SELECT business_symbol_id, universe_symbol_id, close, "
+            "source_origin FROM raw_daily_bars WHERE symbol = '600519'"
+        ).fetchone()
+
+    assert row[0] == business_symbol.id
+    assert row[1] == universe_symbol.id
+    assert row[2] == 1411
+    assert row[3] == "daily_bars"
+
+
+def test_mirror_validates_arguments(db_session, tmp_path):
+    warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
+
+    with pytest.raises(ValueError, match="batch_size"):
+        mirror_daily_bars(db_session, warehouse=warehouse, batch_size=0)
+    with pytest.raises(ValueError, match="one source"):
+        mirror_daily_bars(
+            db_session,
+            warehouse=warehouse,
+            include_business=False,
+            include_universe=False,
+        )
+    with pytest.raises(ValueError, match="start_date"):
+        mirror_daily_bars(
+            db_session,
+            warehouse=warehouse,
+            start_date=date(2026, 7, 2),
+            end_date=date(2026, 7, 1),
+        )
+
+
+def test_date_range_watermark_does_not_skip_full_incremental_sync(
+    db_session, tmp_path
+):
+    symbol = Symbol(
+        symbol="000001",
+        name="平安银行",
+        asset_type="stock",
+        market="sz",
+    )
+    db_session.add(symbol)
+    db_session.flush()
+    db_session.add_all(
+        [
+            DailyBar(
+                symbol_id=symbol.id,
+                trade_date=date(2026, 7, 9),
+                open=10,
+                high=11,
+                low=9,
+                close=10,
+                source="test",
+            ),
+            DailyBar(
+                symbol_id=symbol.id,
+                trade_date=date(2026, 7, 10),
+                open=11,
+                high=12,
+                low=10,
+                close=11,
+                source="test",
+            ),
+        ]
+    )
+    db_session.commit()
+    warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
+
+    ranged = mirror_daily_bars(
+        db_session,
+        warehouse=warehouse,
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 10),
+        include_universe=False,
+    )
+    full = mirror_daily_bars(
+        db_session,
+        warehouse=warehouse,
+        include_universe=False,
+    )
+
+    assert ranged.rows_written == 1
+    assert full.rows_written == 2
+    assert warehouse.health().raw_daily_bars == 2

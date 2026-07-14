@@ -12,6 +12,7 @@ from app.models.score import Score
 from app.models.symbol import Symbol
 from app.models.watchlist import WatchlistItem
 from app.services.allocation import compute_recommended_position_pct
+from app.services.factors.runtime import get_factor_runtime_snapshot
 
 
 def _apply_filters_to_score(score: Score, filters_snapshot: dict) -> tuple[bool, list[str]]:
@@ -95,6 +96,24 @@ def _apply_filters_to_score(score: Score, filters_snapshot: dict) -> tuple[bool,
 def _with_active_scoring_snapshot(db: Session, scope_snapshot: dict, filters_snapshot: dict | None) -> dict:
     """Attach active scoring preset info when the scan scope has one clear asset type."""
     filters = dict(filters_snapshot or {})
+    runtime = get_factor_runtime_snapshot(db)
+    requested_mode = filters.get('factor_weight_mode', runtime.weight_mode)
+    if requested_mode not in {'manual', 'shadow', 'ridge'}:
+        requested_mode = 'manual'
+    model_run_id = filters.get(
+        'factor_model_run_id', runtime.active_model_run_id
+    )
+    if requested_mode == 'ridge' and not model_run_id:
+        requested_mode = 'manual'
+    filters['factor_weight_mode'] = requested_mode
+    filters['score_weight_mode'] = (
+        'ridge' if requested_mode == 'ridge' else 'manual'
+    )
+    filters['factor_model_run_id'] = (
+        model_run_id
+        if requested_mode in {'shadow', 'ridge'}
+        else None
+    )
     if filters.get("scoring_config_id") is not None:
         return filters
 
@@ -168,6 +187,14 @@ def run_scan(
     latest_scores: list[tuple[Symbol, Score]] = []
     if symbol_ids:
         score_stmt = select(Score).where(Score.symbol_id.in_(symbol_ids))
+        score_stmt = score_stmt.where(
+            Score.weight_mode == filters_dict['score_weight_mode']
+        )
+        if filters_dict['score_weight_mode'] == 'ridge':
+            score_stmt = score_stmt.where(
+                Score.factor_model_run_id
+                == filters_dict['factor_model_run_id']
+            )
         scoring_config_id = filters_dict.get("scoring_config_id")
         scoring_config_version = filters_dict.get("scoring_config_version")
         if scoring_config_id is not None:
@@ -247,6 +274,11 @@ def run_scan(
             )
             is_sector_overweight = int(sector_flag)
             is_asset_overweight = int(asset_flag)
+            if recommended_pct is not None and score.macro_position_multiplier is not None:
+                macro_multiplier = max(
+                    0.0, min(1.0, float(score.macro_position_multiplier))
+                )
+                recommended_pct = round(recommended_pct * macro_multiplier, 4)
 
         if score.action in {"open", "buy_dip", "hold"} and (recommended_pct is None or recommended_pct > 0):
             executable_rank += 1

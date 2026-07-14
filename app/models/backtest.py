@@ -17,6 +17,15 @@ class BacktestRun(Base):
     symbols_json: Mapped[str] = mapped_column(Text)
     rule_config_json: Mapped[str] = mapped_column(Text)
     cost_config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    score_weight_mode: Mapped[str] = mapped_column(
+        String(16), default='manual', index=True
+    )
+    factor_model_run_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    factor_data_cutoff_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
     initial_capital: Mapped[float] = mapped_column(Float)

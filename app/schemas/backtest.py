@@ -89,6 +89,8 @@ class BacktestRunRequest(BaseModel):
     rule_config: Union[BacktestRuleConfigV2, BacktestRuleConfig]
     cost_config: BacktestCostConfig | None = None
     run_name: str | None = None
+    score_weight_mode: Literal['manual', 'ridge'] | None = None
+    factor_model_run_id: str | None = None
 
 
 class BacktestConditionTrace(BaseModel):
@@ -134,6 +136,9 @@ class BacktestRunRead(BaseModel):
     symbols_json: str
     rule_config_json: str
     cost_config_json: str | None = None
+    score_weight_mode: str = 'manual'
+    factor_model_run_id: str | None = None
+    factor_data_cutoff_at: datetime | None = None
     start_date: date
     end_date: date
     initial_capital: float

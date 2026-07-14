@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ReactECharts from "echarts-for-react";
-import { Button, Input, InputNumber, Progress, Switch, Tabs } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
+import { Button, Input, InputNumber, Progress, Switch, Tabs, Tag } from "antd";
+import { ExperimentOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useApp } from "../context/AppContext";
 import BacktestConfig from "./BacktestConfig";
 import BacktestResult from "./BacktestResult";
@@ -33,7 +33,7 @@ import {
   signalLabel,
 } from "../utils/format";
 import type { BacktestRun, FutureBuyPlan, FuturePlanTuning, ReturnScenarios, Symbol as SymbolInfo, TradeSetup, TradeSetupOverrides, TradeSetupTranche, WorkbenchBar } from "../types";
-import { api } from "../api/client";
+import { api, type SymbolFactorExplanation } from "../api/client";
 
 // ─── 共享工具库导入 ───
 import {
@@ -329,6 +329,10 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   const [alertSettings, setAlertSettings] = useState<AlertSettings>(() => readStoredObject("ic_alert_settings", DEFAULT_ALERT_SETTINGS));
   const [futurePlanTunings, setFuturePlanTunings] = useState<FuturePlanTunings>(() => readStoredObject("ic_future_plan_tunings", DEFAULT_FUTURE_TUNINGS));
   const [backtestResult, setBacktestResult] = useState<BacktestRun | null>(null);
+  const [factorExplanation, setFactorExplanation] = useState<SymbolFactorExplanation | null>(null);
+  const [factorExplanationLoading, setFactorExplanationLoading] = useState(false);
+  const [factorExplanationError, setFactorExplanationError] = useState<string | null>(null);
+  const factorExplanationRequestRef = useRef(0);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 1024);
@@ -336,6 +340,40 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  const loadFactorExplanation = useCallback(async () => {
+    const requestId = factorExplanationRequestRef.current + 1;
+    factorExplanationRequestRef.current = requestId;
+    if (!ctx.activeSymbolId) {
+      setFactorExplanation(null);
+      setFactorExplanationError(null);
+      setFactorExplanationLoading(false);
+      return;
+    }
+    setFactorExplanationLoading(true);
+    setFactorExplanationError(null);
+    try {
+      const result = await api.getSymbolFactorExplanation(ctx.activeSymbolId);
+      if (requestId === factorExplanationRequestRef.current) {
+        setFactorExplanation(result);
+      }
+    } catch (err: any) {
+      if (requestId !== factorExplanationRequestRef.current) return;
+      setFactorExplanation(null);
+      const message = String(err?.message || "");
+      if (!message.toLowerCase().includes("not found")) {
+        setFactorExplanationError(message);
+      }
+    } finally {
+      if (requestId === factorExplanationRequestRef.current) {
+        setFactorExplanationLoading(false);
+      }
+    }
+  }, [ctx.activeSymbolId]);
+
+  useEffect(() => {
+    loadFactorExplanation();
+  }, [loadFactorExplanation]);
 
   // 投资中心默认显示180根K线（只执行一次）
   useEffect(() => {
@@ -1156,6 +1194,134 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     );
   }
 
+  const renderFactorExplanation = () => {
+    if (!ctx.activeSymbolId) return null;
+    const labels = ctx.locale === "en-US" ? {
+      title: "Dynamic Factor Explanation",
+      mode: "Mode",
+      model: "Model",
+      tradeDate: "Trade Date",
+      cutoff: "Data Cutoff",
+      quality: "Factor Quality",
+      timing: "Factor Timing",
+      alpha: "Model Alpha",
+      macro: "Macro Regime",
+      multiplier: "Position Multiplier",
+      factor: "Factor",
+      raw: "Raw",
+      normalized: "Normalized",
+      coefficient: "Coefficient",
+      contribution: "Contribution",
+      imputed: "Imputed",
+      unavailable: "No dynamic factor snapshot for this symbol.",
+      refresh: "Refresh factor explanation",
+    } : {
+      title: "动态因子解释",
+      mode: "模式",
+      model: "模型",
+      tradeDate: "交易日",
+      cutoff: "数据截止",
+      quality: "因子质量分",
+      timing: "因子择时分",
+      alpha: "模型 Alpha",
+      macro: "宏观状态",
+      multiplier: "仓位乘数",
+      factor: "因子",
+      raw: "原值",
+      normalized: "标准化",
+      coefficient: "系数",
+      contribution: "贡献",
+      imputed: "已填充",
+      unavailable: "该标的暂无动态因子快照。",
+      refresh: "刷新因子解释",
+    };
+    const factorNames: Record<string, [string, string]> = {
+      ep_ttm: ["盈利收益率 E/P", "Earnings Yield E/P"],
+      roe_growth: ["ROE 同比增速", "ROE Growth"],
+      pb: ["市净率 PB", "Price-to-Book"],
+      negative_pb: ["市净率 PB（反向）", "Negative Price-to-Book"],
+      fund_flow_5d_ratio: ["5日主力净流入比", "5D Main Fund Flow"],
+      main_inflow_5d_ratio: ["5日主力净流入比", "5D Main Fund Flow"],
+      turnover_zscore_20d: ["换手率 Z-Score", "Turnover Z-Score"],
+      turnover_z20: ["换手率 Z-Score", "Turnover Z-Score"],
+      hot_rank_percentile: ["人气榜分位", "Popularity Percentile"],
+      cn_10y_change: ["中国10年国债变化", "CN 10Y Yield Change"],
+      us_10y_change: ["美国10年国债变化", "US 10Y Yield Change"],
+      margin_balance_change: ["两融余额变化", "Margin Balance Change"],
+    };
+    const factors = Object.entries(factorExplanation?.explanation.factors ?? {})
+      .sort(([, left], [, right]) => Math.abs(Number(right.contribution ?? 0)) - Math.abs(Number(left.contribution ?? 0)));
+    const factorLabel = (code: string) => factorNames[code]?.[ctx.locale === "en-US" ? 1 : 0] ?? code;
+    const macroRegime = factorExplanation?.macro_regime
+      ?? factorExplanation?.explanation.macro?.regime
+      ?? "-";
+    const multiplier = factorExplanation?.macro_position_multiplier
+      ?? factorExplanation?.explanation.macro?.position_multiplier;
+
+    return (
+      <section className="ic__section ic__factor-section">
+        <div className="panel">
+          <div className="detail-card-head">
+            <h3><ExperimentOutlined /> {labels.title}</h3>
+            <div className="detail-actions">
+              {factorExplanation && (
+                <>
+                  <Tag color={factorExplanation.weight_mode === "ridge" ? "green" : "blue"}>{factorExplanation.weight_mode}</Tag>
+                  <Tag>{factorExplanation.trade_date}</Tag>
+                </>
+              )}
+              <Button
+                size="small"
+                aria-label={labels.refresh}
+                title={labels.refresh}
+                icon={<ReloadOutlined />}
+                loading={factorExplanationLoading}
+                onClick={loadFactorExplanation}
+              />
+            </div>
+          </div>
+          {factorExplanationLoading && !factorExplanation ? (
+            <div className="empty">{labels.refresh}...</div>
+          ) : !factorExplanation ? (
+            <div className="empty">{factorExplanationError || labels.unavailable}</div>
+          ) : (
+            <>
+              <div className="ic__factor-summary">
+                <div><span>{labels.mode}</span><strong>{factorExplanation.weight_mode}</strong></div>
+                <div title={factorExplanation.model_run_id}><span>{labels.model}</span><strong>{factorExplanation.model_run_id.slice(0, 18)}</strong></div>
+                <div><span>{labels.tradeDate}</span><strong>{factorExplanation.trade_date}</strong></div>
+                <div><span>{labels.cutoff}</span><strong>{factorExplanation.factor_data_cutoff_at?.replace("T", " ").slice(0, 19) ?? "-"}</strong></div>
+                <div><span>{labels.quality}</span><strong>{score(factorExplanation.factor_quality_score, 1)}</strong></div>
+                <div><span>{labels.timing}</span><strong>{score(factorExplanation.factor_timing_score, 1)}</strong></div>
+                <div><span>{labels.alpha}</span><strong>{score(factorExplanation.model_alpha_score, 1)}</strong></div>
+                <div><span>{labels.macro}</span><strong>{macroRegime}</strong></div>
+                <div><span>{labels.multiplier}</span><strong>{multiplier == null ? "-" : `${score(multiplier, 2)}x`}</strong></div>
+              </div>
+              <div className="ic__factor-table" role="table">
+                <div className="ic__factor-row ic__factor-row--head" role="row">
+                  <span>{labels.factor}</span>
+                  <span>{labels.raw}</span>
+                  <span>{labels.normalized}</span>
+                  <span>{labels.coefficient}</span>
+                  <span>{labels.contribution}</span>
+                </div>
+                {factors.map(([code, item]) => (
+                  <div key={code} className="ic__factor-row" role="row">
+                    <span><strong>{factorLabel(code)}</strong><small>{code}{item.is_imputed ? ` · ${labels.imputed}` : ""}</small></span>
+                    <span>{score(item.raw_value, 4)}</span>
+                    <span>{score(item.normalized_value, 3)}</span>
+                    <span className={pnlClass(item.coefficient)}>{score(item.coefficient, 4)}</span>
+                    <span className={pnlClass(item.contribution)}>{score(item.contribution, 4)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+    );
+  };
+
   const renderPriceAlertSection = () => {
     if (!detail) return null;
     return (
@@ -1694,6 +1860,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             ))}
           </div>
         )}
+        {renderFactorExplanation()}
         {renderPriceAlertSection()}
         {renderRiskDashboard()}
         {renderTradePlan()}
@@ -1787,6 +1954,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             )}
           </div>
         )}
+        {renderFactorExplanation()}
         {renderPriceAlertSection()}
         {renderRiskDashboard()}
         {renderTradePlan()}

@@ -43,8 +43,30 @@ class Score(Base):
     scoring_config_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     dimension_scores_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     factor_scores_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 动态因子模型快照；默认 manual，不影响现有评分链路
+    weight_mode: Mapped[str] = mapped_column(
+        String(16), default="manual", index=True
+    )
+    factor_model_run_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    factor_data_cutoff_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    factor_quality_score: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    factor_timing_score: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    model_alpha_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    macro_regime: Mapped[str | None] = mapped_column(
+        String(24), nullable=True
+    )
+    macro_position_multiplier: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
     calc_batch_id: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     symbol_ref = relationship("Symbol", back_populates="scores")
-

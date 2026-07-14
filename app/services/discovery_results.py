@@ -14,6 +14,7 @@ from app.schemas.discovery import DiscoveryIndicatorEvaluateRequest
 from app.services.backtest import _resolve_formula_expr
 from app.schemas.discovery import DiscoveryResultUpdate
 from app.services.analysis import calculate_symbol_score
+from app.services.factors.score_scope import get_active_score_scope
 from app.services.market_data import sync_symbol_daily_bars
 from app.services.symbol_names import refresh_symbol_name
 
@@ -275,9 +276,16 @@ def get_latest_discovery_candidates(
     score_map: dict[int, Score] = {}
     if symbol_ids:
         from sqlalchemy import func
+        scope = get_active_score_scope(db)
         latest_score_subq = (
             select(Score.symbol_id, func.max(Score.trade_date).label("max_date"))
             .where(Score.symbol_id.in_(symbol_ids))
+            .where(Score.weight_mode == scope.weight_mode)
+            .where(
+                Score.factor_model_run_id == scope.model_run_id
+                if scope.weight_mode == 'ridge'
+                else True
+            )
             .group_by(Score.symbol_id)
             .subquery()
         )
@@ -286,6 +294,12 @@ def get_latest_discovery_candidates(
                 latest_score_subq,
                 (Score.symbol_id == latest_score_subq.c.symbol_id)
                 & (Score.trade_date == latest_score_subq.c.max_date),
+            )
+            .where(Score.weight_mode == scope.weight_mode)
+            .where(
+                Score.factor_model_run_id == scope.model_run_id
+                if scope.weight_mode == 'ridge'
+                else True
             )
         ).scalars().all()
         score_map = {s.symbol_id: s for s in score_rows}

@@ -856,6 +856,7 @@ const enUS: Record<string, string> = {
     loading: "Loading...",
     // Scoring config (P0: lightweight custom scoring config)
     scTabTitle: "Scoring Config",
+    factorModelTabTitle: "Factor Models",
     scStockTab: "Stock",
     scEtfTab: "ETF",
     scPresetList: "Presets",
@@ -1505,6 +1506,7 @@ const enUS: Record<string, string> = {
     btCoverageInsufficient: "Insufficient historical score coverage; please run history initialization in Settings first",
     // Task Center
     taskCenter: "Task Center",
+    scheduledTaskManager: "Scheduled Tasks",
     taskActive: "active",
     taskFilterAll: "All Tasks",
     taskFilterActive: "Active",
@@ -1512,6 +1514,9 @@ const enUS: Record<string, string> = {
     taskTypeSync: "Market Sync",
     taskTypeHistory: "History Init",
     taskTypeDiscovery: "Discovery Mining",
+    taskTypeUniverseIncremental: "Incremental Market Sync",
+    taskTypeMacro: "Macro Update",
+    taskTypeFactorPipeline: "Factor Pipeline",
     taskStatus_done: "Done",
     taskStatus_failed: "Failed",
     taskStatus_cancelled: "Cancelled",

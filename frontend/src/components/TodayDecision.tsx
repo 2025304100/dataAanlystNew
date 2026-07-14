@@ -6,13 +6,14 @@ import {
   BarChartOutlined,
   CheckCircleOutlined,
   DatabaseOutlined,
+  ExperimentOutlined,
   FireOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
   ReloadOutlined,
   SafetyOutlined,
 } from "@ant-design/icons";
-import { api } from "../api/client";
+import { api, type FactorOverview } from "../api/client";
 import { actionLabel, stageLabel } from "../i18n";
 import { useApp } from "../context/AppContext";
 import { baseOpportunityScoreValue, formatRelativeTime, opportunityScoreValue, score, withFinalOpportunityScore } from "../utils/format";
@@ -85,6 +86,14 @@ const LABELS = {
     reasons: "\u89e6\u53d1\u539f\u56e0",
     freshness: "\u7ed3\u679c\u65f6\u6548",
     close: "\u5173\u95ed",
+    factorTitle: "\u56e0\u5b50\u5f15\u64ce",
+    factorMode: "\u8fd0\u884c\u6a21\u5f0f",
+    factorScoreSource: "\u51b3\u7b56\u8bc4\u5206",
+    factorModel: "\u6d3b\u52a8\u6a21\u578b",
+    factorLatest: "\u6700\u65b0\u672c\u5730\u6570\u636e\u65e5",
+    factorCoverage: "\u5e73\u5747\u8986\u76d6",
+    factorManage: "\u7ba1\u7406\u56e0\u5b50\u6a21\u578b",
+    factorUnavailable: "\u56e0\u5b50\u4ed3\u5e93\u4e0d\u53ef\u7528",
   },
   "en-US": {
     title: "Today Decision",
@@ -150,6 +159,14 @@ const LABELS = {
     reasons: "Reason Tags",
     freshness: "Freshness",
     close: "Close",
+    factorTitle: "Factor Engine",
+    factorMode: "Runtime Mode",
+    factorScoreSource: "Decision Scores",
+    factorModel: "Active Model",
+    factorLatest: "Latest Local Data",
+    factorCoverage: "Average Coverage",
+    factorManage: "Manage Factor Models",
+    factorUnavailable: "Factor warehouse unavailable",
   },
 } as const;
 
@@ -229,6 +246,7 @@ export default function TodayDecision() {
   const [macro, setMacro] = useState<MacroOverview | null>(null);
   const [events, setEvents] = useState<MarketEvent[]>([]);
   const [health, setHealth] = useState<DataHealth | null>(null);
+  const [factorOverview, setFactorOverview] = useState<FactorOverview | null>(null);
   const [selectedExplain, setSelectedExplain] = useState<WorkbenchCandidate | null>(null);
   const [repairingSymbolId, setRepairingSymbolId] = useState<number | null>(null);
   const [openingSymbolId, setOpeningSymbolId] = useState<number | null>(null);
@@ -239,14 +257,16 @@ export default function TodayDecision() {
     setLoading(true);
     setError(null);
     try {
-      const [macroData, newsData, healthData] = await Promise.all([
+      const [macroData, newsData, healthData, factorData] = await Promise.all([
         api.getMacroOverview("all"),
         api.getMarketEvents({ importance_level_min: 3, limit: 8, sort_by: "importance_level" }),
         api.getDataHealth(),
+        api.getFactorOverview().catch(() => null),
       ]);
       setMacro(macroData);
       setEvents(newsData.events ?? []);
       setHealth(healthData);
+      setFactorOverview(factorData);
       await ctx.loadWorkbench();
     } catch (err: any) {
       setError(err.message || "Failed to load decision desk");
@@ -279,6 +299,12 @@ export default function TodayDecision() {
     const stale = (health?.bars.stale_samples ?? []).map((item) => ({ ...item, repairKind: labels.outdatedBars, tagColor: "orange" }));
     return [...missing, ...stale].slice(0, 6);
   }, [health, labels.missingBars, labels.outdatedBars]);
+
+  const factorCoverage = useMemo(() => {
+    const rows = factorOverview?.factor_coverage ?? [];
+    if (!rows.length) return null;
+    return rows.reduce((sum, item) => sum + Number(item.coverage || 0), 0) / rows.length;
+  }, [factorOverview]);
 
   const repairSymbol = async (item: DataHealthBarIssue) => {
     setRepairingSymbolId(item.symbol_id);
@@ -329,6 +355,11 @@ export default function TodayDecision() {
     [labels.reasons, reasonText(selectedExplain, labels)],
     [labels.freshness, selectedExplain.created_at ? formatRelativeTime(selectedExplain.created_at) : "-"],
   ] : [];
+
+  const openFactorSettings = () => {
+    window.localStorage.setItem("settings_active_section", "factor-model");
+    ctx.setActiveTab("settings");
+  };
 
   return (
     <div className="decision-page">
@@ -392,6 +423,27 @@ export default function TodayDecision() {
             </div>
           </div>
         )}
+      </Card>
+
+      <Card
+        className="decision-factor-card"
+        title={<Space><ExperimentOutlined />{labels.factorTitle}</Space>}
+        extra={
+          <Space>
+            <Tag color={factorOverview?.health.warehouse_available ? (factorOverview.health.status === "healthy" ? "green" : "orange") : "red"}>
+              {factorOverview?.health.warehouse_available ? factorOverview.health.status : labels.factorUnavailable}
+            </Tag>
+            <Button type="link" onClick={openFactorSettings}>{labels.factorManage}</Button>
+          </Space>
+        }
+      >
+        <div className="decision-factor-grid">
+          <span><b>{labels.factorMode}</b><Tag color={factorOverview?.runtime.weight_mode === "ridge" ? "green" : factorOverview?.runtime.weight_mode === "shadow" ? "blue" : "default"}>{factorOverview?.runtime.weight_mode ?? "manual"}</Tag></span>
+          <span><b>{labels.factorScoreSource}</b><strong>{factorOverview?.runtime.score_weight_mode ?? "manual"}</strong></span>
+          <span title={factorOverview?.runtime.active_model_run_id ?? undefined}><b>{labels.factorModel}</b><strong>{factorOverview?.runtime.active_model_run_id ? factorOverview.runtime.active_model_run_id.slice(0, 16) : "-"}</strong></span>
+          <span><b>{labels.factorLatest}</b><strong>{factorOverview?.latest_trade_date ?? "-"}</strong></span>
+          <span><b>{labels.factorCoverage}</b><strong>{factorCoverage == null ? "-" : `${(factorCoverage * 100).toFixed(1)}%`}</strong></span>
+        </div>
       </Card>
 
       <Row gutter={[12, 12]}>

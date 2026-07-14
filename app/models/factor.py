@@ -17,6 +17,12 @@ class Factor(Base):
     category: Mapped[str] = mapped_column(String(64))
     direction: Mapped[str] = mapped_column(String(16))
     status: Mapped[str] = mapped_column(String(16))
+    source_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    frequency: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    default_missing_policy: Mapped[str] = mapped_column(
+        String(32), default="exclude"
+    )
+    is_active: Mapped[int] = mapped_column(Integer, default=1, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     formula_expr: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -37,4 +43,3 @@ class FactorValue(Base):
     normalized_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     calc_batch_id: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-

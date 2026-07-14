@@ -1,10 +1,14 @@
 from fastapi import APIRouter
 
-from app.api.routes import alerts, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, journals, macro, market_data, market_events, news, portfolios, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe
+from app.api.routes import alerts, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, factor_models, factor_pipeline, factors, journals, macro, market_data, market_events, news, portfolios, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe
 from app.core.config import settings
 
 
 api_router = APIRouter(prefix=settings.api_prefix)
+api_router.include_router(factors.router, tags=['factors'])
+api_router.include_router(factor_models.router, tags=['factor-models'])
+api_router.include_router(factor_pipeline.router, tags=['factor-pipeline'])
+api_router.include_router(scheduled_tasks.router, tags=["scheduled-tasks"])
 api_router.include_router(symbols.router, tags=["symbols"])
 api_router.include_router(watchlists.router, tags=["watchlists"])
 api_router.include_router(market_data.router, tags=["market-data"])

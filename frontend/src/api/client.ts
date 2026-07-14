@@ -72,6 +72,48 @@ export const api = {
   getDataHealth: () => requestJson<any>(SYSTEM_HEALTH_URL),
   getSymbolDataHealth: (symbolId: number) => requestJson<any>(`${API}/system/data-health/symbols/${symbolId}`),
 
+  // Dynamic factor engine
+  getFactorOverview: () =>
+    requestJson<FactorOverview>(`${API}/factors/overview`),
+  getFactorModels: (status?: string, limit: number = 20) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status) params.set("status", status);
+    return requestJson<FactorModelList>(`${API}/factor-models?${params.toString()}`);
+  },
+  getFactorModel: (modelRunId: string) =>
+    requestJson<FactorModelRun>(`${API}/factor-models/${encodeURIComponent(modelRunId)}`),
+  activateFactorModel: (modelRunId: string, mode: "shadow" | "ridge", note?: string) =>
+    requestJson<FactorRuntime>(`${API}/factor-models/${encodeURIComponent(modelRunId)}/activate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, actor: "local_user", note }),
+    }),
+  fallbackFactorModel: (reason: string) =>
+    requestJson<FactorRuntime>(`${API}/factor-models/fallback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor: "local_user", reason }),
+    }),
+  createFactorPipelineTask: (payload: FactorPipelineCreate) =>
+    requestJson<FactorPipelineTask>(`${API}/factor-pipeline/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  listFactorPipelineTasks: (limit: number = 20) =>
+    requestJson<FactorPipelineTask[]>(`${API}/factor-pipeline/tasks?limit=${limit}`),
+  getFactorPipelineTask: (taskId: string) =>
+    requestJson<FactorPipelineTask>(`${API}/factor-pipeline/tasks/${encodeURIComponent(taskId)}`),
+  cancelFactorPipelineTask: (taskId: string) =>
+    requestJson<FactorPipelineTask>(`${API}/factor-pipeline/tasks/${encodeURIComponent(taskId)}/cancel`, { method: "POST" }),
+  getSymbolFactorExplanation: (symbolId: number, options: { tradeDate?: string; modelRunId?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (options.tradeDate) params.set("trade_date", options.tradeDate);
+    if (options.modelRunId) params.set("model_run_id", options.modelRunId);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return requestJson<SymbolFactorExplanation>(`${API}/factors/symbols/${symbolId}/explanation${suffix}`);
+  },
+
   // Portfolios
   getPortfolios: () => requestJson<any[]>(`${API}/portfolios`),
   getWorkbench: (portfolioId: number, marketGroup: string) =>
@@ -494,6 +536,30 @@ export const api = {
   getTaskHistory: (taskType?: string, limit: number = 30) =>
     requestJson<{ tasks: any[] }>(`${API}/system/tasks?limit=${limit}${taskType ? `&task_type=${encodeURIComponent(taskType)}` : ""}`),
 
+  // Cross-platform scheduled tasks
+  getScheduledTaskDefinitions: () =>
+    requestJson<ScheduledTaskDefinition[]>(`${API}/scheduled-tasks/definitions`),
+  getScheduledTasks: () =>
+    requestJson<ScheduledTask[]>(`${API}/scheduled-tasks`),
+  getScheduledTaskRuns: (limit: number = 100) =>
+    requestJson<ScheduledTaskRun[]>(`${API}/scheduled-tasks/runs?limit=${limit}`),
+  createScheduledTask: (payload: ScheduledTaskPayload) =>
+    requestJson<ScheduledTask>(`${API}/scheduled-tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  updateScheduledTask: (scheduleId: number, payload: Partial<ScheduledTaskPayload>) =>
+    requestJson<ScheduledTask>(`${API}/scheduled-tasks/${scheduleId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  deleteScheduledTask: (scheduleId: number) =>
+    requestJson<{ status: string; id: number }>(`${API}/scheduled-tasks/${scheduleId}`, { method: "DELETE" }),
+  runScheduledTask: (scheduleId: number) =>
+    requestJson<ScheduledTaskRun>(`${API}/scheduled-tasks/${scheduleId}/run`, { method: "POST" }),
+
   // Alerts
   getAlertRules: () =>
     requestJson<any[]>(`${API}/alerts/rules`),
@@ -590,4 +656,217 @@ export interface AkshareApiConfigUpdate {
   anti_risk_strategy?: string;
   delay_min_ms?: number;
   delay_max_ms?: number;
+}
+
+// ----------------------------------------------------------------------------
+// Dynamic factor engine types
+// ----------------------------------------------------------------------------
+export type FactorWeightMode = "manual" | "shadow" | "ridge";
+
+export interface FactorRuntime {
+  weight_mode: FactorWeightMode;
+  score_weight_mode: "manual" | "ridge";
+  active_model_run_id: string | null;
+  updated_by: string;
+  fallback_reason: string | null;
+  version: number;
+  updated_at: string | null;
+}
+
+export interface FactorCoverage {
+  factor_code: string;
+  latest_trade_date: string | null;
+  universe_symbols: number;
+  eligible_symbols: number;
+  imputed_symbols: number;
+  coverage: number;
+}
+
+export interface FactorOverview {
+  runtime: FactorRuntime;
+  health: {
+    status: "healthy" | "warning" | "degraded" | "failed" | string;
+    warehouse_available: boolean;
+    warehouse_path: string;
+    schema_version: string | null;
+    calc_batch_id: string | null;
+    latest_bar_date: string | null;
+    raw_tables: Array<{ table: string; row_count: number; latest_date: string | null }>;
+    factors: FactorCoverage[];
+    reasons: string[];
+  };
+  latest_trade_date: string | null;
+  factor_coverage: FactorCoverage[];
+}
+
+export interface FactorModelWeight {
+  factor_code: string;
+  factor_version: number;
+  coefficient: number;
+  normalized_weight: number;
+  train_ic: number | null;
+  validation_ic: number | null;
+}
+
+export interface FactorModelRun {
+  id: string;
+  model_type: string;
+  asset_type: string;
+  target_code: string;
+  train_start_date: string | null;
+  train_end_date: string | null;
+  validation_start_date: string | null;
+  validation_end_date: string | null;
+  data_cutoff_at: string | null;
+  feature_versions: Record<string, number>;
+  hyperparameters: Record<string, unknown>;
+  metrics: Record<string, number | string | boolean | null>;
+  sample_count: number;
+  symbol_count: number;
+  trade_date_count: number;
+  status: "validated" | "rejected" | string;
+  rejection_reason: string | null;
+  artifact_path: string | null;
+  created_at: string | null;
+  activated_at: string | null;
+  weights: FactorModelWeight[];
+  audit?: Array<Record<string, unknown>>;
+}
+
+export interface FactorModelList {
+  runtime: FactorRuntime;
+  items: FactorModelRun[];
+}
+
+export interface FactorPipelineCreate {
+  start_date?: string | null;
+  end_date?: string | null;
+  data_cutoff_date?: string | null;
+  full_refresh?: boolean;
+  train_model?: boolean;
+  materialize_scores?: boolean;
+  window_days?: number;
+  validation_days?: number;
+}
+
+export interface FactorPipelineTask {
+  id: string;
+  task_type: string;
+  status: "queued" | "running" | "done" | "completed" | "failed" | "cancelled" | string;
+  stage: string;
+  percent: number;
+  message: string;
+  total: number;
+  processed: number;
+  ok_count: number;
+  failed_count: number;
+  current_item: string | null;
+  result: Record<string, unknown> | null;
+  errors: Array<Record<string, unknown>>;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface FactorContribution {
+  factor_version?: number;
+  category?: string;
+  raw_value?: number | null;
+  winsorized_value?: number | null;
+  normalized_value?: number | null;
+  coefficient?: number | null;
+  normalized_weight?: number | null;
+  contribution?: number | null;
+  is_imputed?: boolean;
+  imputation_method?: string | null;
+}
+
+export interface SymbolFactorExplanation {
+  symbol_id: number;
+  symbol: string;
+  name: string;
+  trade_date: string;
+  weight_mode: "shadow" | "ridge";
+  model_run_id: string;
+  factor_data_cutoff_at: string | null;
+  factor_quality_score: number | null;
+  factor_timing_score: number | null;
+  model_alpha_score: number | null;
+  macro_regime: string | null;
+  macro_position_multiplier: number | null;
+  explanation: {
+    mode?: string;
+    model_run_id?: string;
+    factor_calc_batch_id?: string;
+    factor_data_cutoff_at?: string | null;
+    factors?: Record<string, FactorContribution>;
+    factor_quality_raw?: number;
+    factor_timing_raw?: number;
+    model_alpha_raw?: number;
+    factor_quality_score?: number;
+    factor_timing_score?: number;
+    model_alpha_score?: number;
+    blend?: Record<string, number>;
+    macro?: {
+      as_of?: string | null;
+      regime?: string;
+      position_multiplier?: number;
+      available?: boolean;
+      cn_10y_change?: number | null;
+      us_10y_change?: number | null;
+      margin_change_ratio?: number | null;
+      missing_indicators?: string[];
+    };
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Cross-platform scheduled task types
+// ----------------------------------------------------------------------------
+export type ScheduledTaskFrequency = "daily" | "weekly" | "interval";
+
+export interface ScheduledTaskDefinition {
+  task_type: string;
+  name: string;
+  description: string;
+  default_payload: Record<string, unknown>;
+}
+
+export interface ScheduledTaskPayload {
+  name: string;
+  task_type: string;
+  frequency: ScheduledTaskFrequency;
+  time_of_day: string | null;
+  weekdays: number[];
+  interval_minutes: number | null;
+  timezone: string;
+  payload: Record<string, unknown>;
+  enabled: boolean;
+}
+
+export interface ScheduledTask extends ScheduledTaskPayload {
+  id: number;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_task_id: string | null;
+  last_task_status: string | null;
+  last_message: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduledTaskRun {
+  id: number;
+  schedule_id: number;
+  schedule_name: string | null;
+  task_type: string | null;
+  trigger_source: "manual" | "scheduled" | string;
+  task_source: "async" | "discovery" | null;
+  task_id: string | null;
+  status: string;
+  message: string | null;
+  created_at: string;
+  finished_at: string | null;
 }

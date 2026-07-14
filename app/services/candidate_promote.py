@@ -27,6 +27,7 @@ from app.models.scan import ScanResult, ScanRun
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.models.universe import UniverseSymbol
+from app.services.factors.score_scope import get_active_score_scope
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,17 @@ def _batch_latest_scores(db: Session, symbol_ids: list[int]) -> dict[int, Score]
     if not symbol_ids:
         return {}
     from sqlalchemy import func
+    scope = get_active_score_scope(db)
 
     latest_score_subq = (
         select(Score.symbol_id, func.max(Score.trade_date).label("max_date"))
         .where(Score.symbol_id.in_(symbol_ids))
+        .where(Score.weight_mode == scope.weight_mode)
+        .where(
+            Score.factor_model_run_id == scope.model_run_id
+            if scope.weight_mode == 'ridge'
+            else True
+        )
         .group_by(Score.symbol_id)
         .subquery()
     )
@@ -51,6 +59,12 @@ def _batch_latest_scores(db: Session, symbol_ids: list[int]) -> dict[int, Score]
             latest_score_subq,
             (Score.symbol_id == latest_score_subq.c.symbol_id)
             & (Score.trade_date == latest_score_subq.c.max_date),
+        )
+        .where(Score.weight_mode == scope.weight_mode)
+        .where(
+            Score.factor_model_run_id == scope.model_run_id
+            if scope.weight_mode == 'ridge'
+            else True
         )
     ).scalars().all()
     return {s.symbol_id: s for s in score_rows}

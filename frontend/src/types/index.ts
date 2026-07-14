@@ -46,6 +46,14 @@ export interface Score {
   scoring_config_snapshot_json?: string;
   dimension_scores_json?: string;
   factor_scores_json?: string;
+  weight_mode?: 'manual' | 'shadow' | 'ridge';
+  factor_model_run_id?: string;
+  factor_data_cutoff_at?: string;
+  factor_quality_score?: number;
+  factor_timing_score?: number;
+  model_alpha_score?: number;
+  macro_regime?: 'risk_on' | 'neutral' | 'cautious' | 'defensive';
+  macro_position_multiplier?: number;
   created_at?: string;
 }
 
@@ -344,6 +352,14 @@ export interface WorkbenchCandidate {
   scoring_config_version?: number;
   dimension_scores_json?: string;
   scoring_config_snapshot_json?: string;
+  weight_mode?: 'manual' | 'shadow' | 'ridge';
+  factor_model_run_id?: string;
+  factor_data_cutoff_at?: string;
+  factor_quality_score?: number;
+  factor_timing_score?: number;
+  model_alpha_score?: number;
+  macro_regime?: 'risk_on' | 'neutral' | 'cautious' | 'defensive';
+  macro_position_multiplier?: number;
   // P1：挖掘候选手动晋升状态（discovery_candidates 表）
   candidate_id?: number | null;
   is_promoted?: number | null; // 0=未晋升 1=已加入候选池 null=历史数据无状态

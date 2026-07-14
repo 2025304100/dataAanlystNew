@@ -13,7 +13,7 @@ from app.db.base import Base
 from app.db.manager import DatabaseManager
 
 from app.models import (
-    alert, backtest, custom_indicator, daily_bar, discovery, discovery_plan, factor, journal_entry, macro_data,
+    alert, backtest, custom_indicator, daily_bar, discovery, discovery_plan, factor, factor_model, factor_runtime, journal_entry, macro_data, scheduled_task,
     market_event, news_event, portfolio, scan, score, scoring_config, signal_rule,
     sim_account, symbol, trade_setup, watchlist,
     # P2：外部数据因子表
@@ -69,6 +69,40 @@ def _ensure_sqlite_score_columns(engine) -> None:
             "scoring_config_snapshot_json": "TEXT",
             "dimension_scores_json": "TEXT",
             "factor_scores_json": "TEXT",
+            # 动态因子模型字段
+            "weight_mode": "TEXT DEFAULT 'manual'",
+            "factor_model_run_id": "TEXT",
+            "factor_data_cutoff_at": "DATETIME",
+            "factor_quality_score": "REAL",
+            "factor_timing_score": "REAL",
+            "model_alpha_score": "REAL",
+            "macro_regime": "TEXT",
+            "macro_position_multiplier": "REAL",
+        },
+    )
+
+
+def _ensure_sqlite_factor_columns(engine) -> None:
+    _ensure_sqlite_columns(
+        engine,
+        "factors",
+        {
+            "source_type": "TEXT",
+            "frequency": "TEXT",
+            "default_missing_policy": "TEXT DEFAULT 'exclude'",
+            "is_active": "INTEGER DEFAULT 1",
+        },
+    )
+
+
+def _ensure_sqlite_backtest_columns(engine) -> None:
+    _ensure_sqlite_columns(
+        engine,
+        'backtest_runs',
+        {
+            'score_weight_mode': "TEXT DEFAULT 'manual'",
+            'factor_model_run_id': 'TEXT',
+            'factor_data_cutoff_at': 'DATETIME',
         },
     )
 
@@ -172,6 +206,14 @@ def _ensure_mysql_indicator_version_columns(engine) -> None:
             ("scoring_config_snapshot_json", "TEXT"),
             ("dimension_scores_json", "TEXT"),
             ("factor_scores_json", "TEXT"),
+            ("weight_mode", "VARCHAR(16) DEFAULT 'manual'"),
+            ("factor_model_run_id", "VARCHAR(64)"),
+            ("factor_data_cutoff_at", "DATETIME"),
+            ("factor_quality_score", "DOUBLE"),
+            ("factor_timing_score", "DOUBLE"),
+            ("model_alpha_score", "DOUBLE"),
+            ("macro_regime", "VARCHAR(24)"),
+            ("macro_position_multiplier", "DOUBLE"),
         ]
         for col_name, col_ddl in score_new_cols:
             result = conn.execute(text(
@@ -184,6 +226,51 @@ def _ensure_mysql_indicator_version_columns(engine) -> None:
                     logger.info("Added %s column to scores", col_name)
                 except Exception as e:
                     logger.warning("Failed to add %s column to scores: %s", col_name, e)
+
+        backtest_new_cols = [
+            ('score_weight_mode', "VARCHAR(16) DEFAULT 'manual'"),
+            ('factor_model_run_id', 'VARCHAR(64)'),
+            ('factor_data_cutoff_at', 'DATETIME'),
+        ]
+        for col_name, col_ddl in backtest_new_cols:
+            result = conn.execute(text(
+                'SELECT COLUMN_NAME FROM information_schema.COLUMNS '
+                "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'backtest_runs' "
+                'AND COLUMN_NAME = :col'
+            ), {'db': db_name, 'col': col_name})
+            if result.first() is None:
+                try:
+                    conn.execute(text(
+                        f'ALTER TABLE backtest_runs ADD COLUMN '
+                        f'{col_name} {col_ddl}'
+                    ))
+                    logger.info(
+                        'Added backtest_runs.%s column', col_name
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        'Failed to add backtest_runs.%s: %s',
+                        col_name,
+                        exc,
+                    )
+
+        factor_new_cols = [
+            ("source_type", "VARCHAR(32)"),
+            ("frequency", "VARCHAR(16)"),
+            ("default_missing_policy", "VARCHAR(32) DEFAULT 'exclude'"),
+            ("is_active", "INTEGER DEFAULT 1"),
+        ]
+        for col_name, col_ddl in factor_new_cols:
+            result = conn.execute(text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'factors' AND COLUMN_NAME = :col"
+            ), {"db": db_name, "col": col_name})
+            if result.first() is None:
+                try:
+                    conn.execute(text(f"ALTER TABLE factors ADD COLUMN {col_name} {col_ddl}"))
+                    logger.info("Added %s column to factors", col_name)
+                except Exception as e:
+                    logger.warning("Failed to add %s column to factors: %s", col_name, e)
 
 
 def _convert_myisam_to_innodb(engine) -> None:
@@ -228,6 +315,8 @@ def init_db() -> None:
     if mgr.is_sqlite:
         _ensure_sqlite_scan_result_columns(eng)
         _ensure_sqlite_score_columns(eng)
+        _ensure_sqlite_factor_columns(eng)
+        _ensure_sqlite_backtest_columns(eng)
         _ensure_sqlite_trade_setup_columns(eng)
         _ensure_sqlite_indicator_version_columns(eng)
         _ensure_sqlite_journal_columns(eng)
@@ -240,6 +329,11 @@ def init_db() -> None:
 
     # P0：初始化系统评分预设（幂等）
     _seed_system_scoring_configs()
+
+    # 免费 AkShare 多因子：初始化稳定定义与 V1 公式（幂等）
+    _seed_factor_definitions()
+    _seed_factor_runtime_state()
+    _seed_scheduled_tasks()
 
     # P2-E：加载第三方接口配置缓存到内存（启动时一次）
     _load_akshare_api_config_cache()
@@ -257,6 +351,51 @@ def _seed_system_scoring_configs() -> None:
             db.commit()
     except Exception as e:
         logger.warning("Failed to seed system scoring configs: %s", e)
+
+
+def _seed_factor_definitions() -> None:
+    """初始化系统因子定义及其不可变版本。"""
+    import logging
+    from app.db.session import SessionLocal
+    from app.services.factors.definitions import seed_factor_definitions
+
+    logger = logging.getLogger(__name__)
+    try:
+        with SessionLocal() as db:
+            seed_factor_definitions(db)
+            db.commit()
+    except Exception as e:
+        logger.warning("Failed to seed factor definitions: %s", e)
+
+
+def _seed_factor_runtime_state() -> None:
+    '''Initialize factor runtime state without activating a model.'''
+    import logging
+    from app.db.session import SessionLocal
+    from app.services.factors.runtime import ensure_factor_runtime_state
+
+    logger = logging.getLogger(__name__)
+    try:
+        with SessionLocal() as db:
+            ensure_factor_runtime_state(db)
+            db.commit()
+    except Exception as exc:
+        logger.warning('Failed to seed factor runtime state: %s', exc)
+
+
+def _seed_scheduled_tasks() -> None:
+    """Seed cross-platform schedules without duplicating existing rows."""
+    import logging
+    from app.db.session import SessionLocal
+    from app.services.scheduled_tasks import seed_default_schedules
+
+    logger = logging.getLogger(__name__)
+    try:
+        with SessionLocal() as db:
+            seed_default_schedules(db)
+            db.commit()
+    except Exception as exc:
+        logger.warning("Failed to seed scheduled tasks: %s", exc)
 
 
 def _load_akshare_api_config_cache() -> None:

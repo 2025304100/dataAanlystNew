@@ -8,10 +8,23 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_choice(name: str, *, choices: set[str], default: str) -> str:
+    value = os.getenv(name, default).strip().lower()
+    return value if value in choices else default
+
+
 class Settings:
     def __init__(self) -> None:
         base_dir = Path(__file__).resolve().parents[2]
         default_db_path = Path(tempfile.gettempdir()) / "quant_workbench.db"
+        default_factor_warehouse_path = base_dir / "tmp" / "factor_warehouse.duckdb"
         self.app_name = "Personal Quant Workbench API"
         self.api_prefix = "/api/v1"
         self.base_dir = base_dir
@@ -19,6 +32,22 @@ class Settings:
             "DATABASE_URL",
             f"sqlite:///{default_db_path.as_posix()}",
         )
+        self.factor_feature_enabled = _env_bool("FACTOR_FEATURE_ENABLED", False)
+        self.factor_weight_mode = _env_choice(
+            "FACTOR_WEIGHT_MODE",
+            choices={"manual", "shadow", "ridge"},
+            default="manual",
+        )
+        self.factor_warehouse_path = Path(
+            os.getenv("FACTOR_WAREHOUSE_PATH", str(default_factor_warehouse_path))
+        ).expanduser()
+        self.wxpusher_enabled = _env_bool("WXPUSHER_ENABLED", False)
+        self.wxpusher_endpoint = os.getenv(
+            "WXPUSHER_ENDPOINT",
+            "https://wxpusher.zjiecode.com/api/send/message",
+        )
+        self.wxpusher_app_token = os.getenv("WXPUSHER_APP_TOKEN", "")
+        self.wxpusher_uid = os.getenv("WXPUSHER_UID", "")
 
 
 settings = Settings()
