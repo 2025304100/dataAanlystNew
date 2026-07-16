@@ -4,7 +4,15 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 const { mockApi, showToast } = vi.hoisted(() => ({
   showToast: vi.fn(),
   mockApi: {
-    getFactorOverview: vi.fn(async () => ({
+    getFactorOverview: vi.fn(async (): Promise<any> => ({
+      config: {
+        feature_enabled: true,
+        warehouse_path: "factor.duckdb",
+        updated_by: "test",
+        updated_at: null,
+      },
+      feature_enabled: true,
+      warehouse_error: null,
       runtime: {
         weight_mode: "manual",
         score_weight_mode: "manual",
@@ -94,6 +102,8 @@ const { mockApi, showToast } = vi.hoisted(() => ({
       finished_at: null,
     })),
     cancelFactorPipelineTask: vi.fn(),
+    updateFactorSystemConfig: vi.fn(async () => ({})),
+    initializeFactorWarehouse: vi.fn(async () => ({})),
     activateFactorModel: vi.fn(async () => ({})),
     fallbackFactorModel: vi.fn(async () => ({})),
   },
@@ -139,6 +149,91 @@ describe("FactorModelSettings", () => {
           validation_days: 50,
         }),
       );
+    });
+  });
+
+  it("blocks pipeline while disabled and can enable the feature", async () => {
+    mockApi.getFactorOverview.mockResolvedValueOnce({
+      config: {
+        feature_enabled: false,
+        warehouse_path: "factor.duckdb",
+        updated_by: "environment",
+        updated_at: null,
+      },
+      feature_enabled: false,
+      warehouse_error: "warehouse_not_initialized",
+      runtime: {
+        weight_mode: "manual",
+        score_weight_mode: "manual",
+        active_model_run_id: null,
+        updated_by: "environment",
+        fallback_reason: null,
+        version: 1,
+        updated_at: null,
+      },
+      health: {
+        status: "failed",
+        warehouse_available: false,
+        warehouse_path: "factor.duckdb",
+        schema_version: null,
+        calc_batch_id: null,
+        latest_bar_date: null,
+        raw_tables: [],
+        factors: [],
+        reasons: ["warehouse_not_initialized"],
+      },
+      latest_trade_date: null,
+      factor_coverage: [],
+    });
+
+    render(<FactorModelSettings />);
+
+    const runButton = await screen.findByRole("button", { name: /运行流水线/ });
+    expect(runButton).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "启用因子功能" }));
+    await waitFor(() => {
+      expect(mockApi.updateFactorSystemConfig).toHaveBeenCalledWith(true);
+    });
+  });
+
+  it("offers warehouse initialization when enabled but unavailable", async () => {
+    mockApi.getFactorOverview.mockResolvedValueOnce({
+      config: {
+        feature_enabled: true,
+        warehouse_path: "factor.duckdb",
+        updated_by: "test",
+        updated_at: null,
+      },
+      feature_enabled: true,
+      warehouse_error: "warehouse_not_initialized",
+      runtime: {
+        weight_mode: "manual",
+        score_weight_mode: "manual",
+        active_model_run_id: null,
+        updated_by: "environment",
+        fallback_reason: null,
+        version: 1,
+        updated_at: null,
+      },
+      health: {
+        status: "failed",
+        warehouse_available: false,
+        warehouse_path: "factor.duckdb",
+        schema_version: null,
+        calc_batch_id: null,
+        latest_bar_date: null,
+        raw_tables: [],
+        factors: [],
+        reasons: ["warehouse_not_initialized"],
+      },
+      latest_trade_date: null,
+      factor_coverage: [],
+    });
+
+    render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: "初始化仓库" }));
+    await waitFor(() => {
+      expect(mockApi.initializeFactorWarehouse).toHaveBeenCalledTimes(1);
     });
   });
 });

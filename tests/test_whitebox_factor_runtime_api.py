@@ -18,7 +18,11 @@ from app.api.routes.factor_models import (
 )
 from app.api.routes.factors import get_symbol_factor_explanation
 from app.models.factor_model import FactorModelRun, FactorWeightSnapshot
-from app.models.factor_runtime import FactorModelAuditLog, FactorRuntimeState
+from app.models.factor_runtime import (
+    FactorModelAuditLog,
+    FactorRuntimeState,
+    FactorSystemConfig,
+)
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.services.factors.ridge_model import FEATURE_CODES
@@ -210,10 +214,15 @@ def test_factor_routes_are_registered():
     assert '/api/v1/factor-pipeline/tasks' in paths
 
 
-def test_factor_pipeline_respects_feature_flag(monkeypatch):
-    monkeypatch.setattr(
-        'app.services.factors.pipeline_task.settings.factor_feature_enabled',
-        False,
+def test_factor_pipeline_respects_feature_flag(db_session):
+    db_session.add(
+        FactorSystemConfig(
+            id=1,
+            feature_enabled=0,
+            warehouse_path='factor.duckdb',
+            updated_by='test',
+        )
     )
+    db_session.commit()
     with pytest.raises(ValueError, match='disabled'):
         create_factor_pipeline_task(FactorPipelineCreate())

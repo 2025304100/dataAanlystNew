@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import alerts, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, factor_models, factor_pipeline, factors, journals, macro, market_data, market_events, news, portfolios, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe
+from app.api.routes import alerts, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, factor_models, factor_pipeline, factors, journals, macro, market_data, market_events, news, portfolios, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config
 from app.core.config import settings
 
 
@@ -37,3 +37,5 @@ api_router.include_router(backtest.router, tags=["backtest"])
 api_router.include_router(alerts.router, tags=["alerts"])
 # 基础数据隔离层：全市场标的 + K线初始化同步
 api_router.include_router(universe.router, tags=["universe"])
+# AI 接口配置与对话代理
+api_router.include_router(ai_config.router, tags=["settings"])

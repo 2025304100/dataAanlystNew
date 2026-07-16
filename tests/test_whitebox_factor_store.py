@@ -44,8 +44,24 @@ def test_initialize_and_health(tmp_path):
     health = warehouse.health()
 
     assert health.available is True
-    assert health.schema_version == "1"
+    assert health.schema_version == "3"
     assert health.raw_daily_bars == 0
+
+
+def test_health_remains_readable_during_same_process_write_connection(
+    tmp_path,
+):
+    warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
+    warehouse.initialize()
+
+    with warehouse.connection() as writer:
+        writer.execute("BEGIN TRANSACTION")
+        try:
+            health = warehouse.health()
+            assert health.available is True
+            assert health.schema_version == "3"
+        finally:
+            writer.execute("ROLLBACK")
 
 
 def test_daily_bar_upsert_is_idempotent_and_preserves_source_ids(tmp_path):
@@ -94,3 +110,34 @@ def test_failed_batch_does_not_advance_watermark(tmp_path):
     assert warehouse.get_watermark("business") == 0
     assert warehouse.health().raw_daily_bars == 0
 
+
+def test_store_bulk_frame_upsert_is_idempotent(tmp_path):
+    import pandas as pd
+
+    warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
+    frame = pd.DataFrame(
+        [
+            {
+                "symbol": "000001",
+                "trade_date": date(2026, 7, 10),
+                "factor_code": "test",
+                "factor_version": 1,
+                "raw_value": 1.0,
+                "winsorized_value": 1.0,
+                "normalized_value": 0.0,
+                "is_imputed": False,
+                "imputation_method": None,
+                "eligible": True,
+                "data_cutoff_at": datetime(2026, 7, 10),
+                "calc_batch_id": "bulk-test",
+                "created_at": datetime(2026, 7, 10),
+            }
+        ]
+    )
+
+    assert warehouse.upsert_frame("factor_values", frame) == 1
+    assert warehouse.upsert_frame("factor_values", frame) == 1
+    with warehouse.connection(read_only=True) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM factor_values"
+        ).fetchone()[0] == 1

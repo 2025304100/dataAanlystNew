@@ -22,7 +22,9 @@ from app.services.factors.store import FactorWarehouse
 from app.services.factors.target_engine import TARGET_CODE
 
 
-FEATURE_CODES = tuple(item.code for item in FACTOR_DEFINITIONS)
+FEATURE_CODES = tuple(
+    item.code for item in FACTOR_DEFINITIONS if item.model_enabled
+)
 
 
 @dataclass(frozen=True)
@@ -111,9 +113,10 @@ def _load_samples(
     target_calc_batch_id: str,
     data_cutoff_date: date,
 ) -> pd.DataFrame:
+    placeholders = ", ".join("?" for _ in FEATURE_CODES)
     with warehouse.connection(read_only=True) as conn:
         factors = conn.execute(
-            """
+            f"""
             SELECT
                 symbol,
                 trade_date,
@@ -123,7 +126,7 @@ def _load_samples(
             FROM factor_values
             WHERE calc_batch_id = ?
               AND eligible
-              AND factor_code IN (?, ?, ?, ?)
+              AND factor_code IN ({placeholders})
               AND trade_date <= ?
             """,
             [
@@ -354,6 +357,7 @@ def train_rolling_ridge(
     feature_versions = {
         definition.code: definition.version
         for definition in FACTOR_DEFINITIONS
+        if definition.code in FEATURE_CODES
     }
     model = FactorModelRun(
         id=run_id,

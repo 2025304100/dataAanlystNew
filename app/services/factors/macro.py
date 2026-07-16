@@ -107,7 +107,14 @@ class MacroRegime:
     cn_10y_change: float | None = None
     us_10y_change: float | None = None
     margin_change_ratio: float | None = None
+    market_amount_change_ratio: float | None = None
+    market_amount_z20: float | None = None
+    advancing_ratio: float | None = None
+    margin_amount_divergence: float | None = None
+    liquidity_score: float | None = None
+    liquidity_available: bool = False
     missing_indicators: tuple[str, ...] = ()
+    missing_liquidity_indicators: tuple[str, ...] = ()
 
 
 def _series_change(
@@ -154,11 +161,123 @@ def _series_change_ratio(
     return current / baseline - 1.0
 
 
+def _load_market_liquidity(
+    warehouse,
+    *,
+    as_of: date | None,
+    adjust: str,
+) -> pd.DataFrame:
+    with warehouse.connection(read_only=True) as conn:
+        frame = conn.execute(
+            """
+            WITH stock_bars AS (
+                SELECT
+                    b.symbol,
+                    b.trade_date,
+                    b.close,
+                    b.amount,
+                    LAG(b.close) OVER (
+                        PARTITION BY b.symbol ORDER BY b.trade_date
+                    ) AS previous_close
+                FROM raw_daily_bars b
+                INNER JOIN raw_asset_universe u
+                    ON u.symbol = b.symbol
+                WHERE b.adjust = ?
+                  AND LOWER(u.asset_type) = 'stock'
+                  AND LOWER(COALESCE(u.region, '')) = 'cn'
+                  AND (? IS NULL OR b.trade_date <= ?)
+            )
+            SELECT
+                trade_date,
+                SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END)
+                    AS market_amount,
+                AVG(
+                    CASE
+                        WHEN previous_close IS NULL OR close IS NULL THEN NULL
+                        WHEN close > previous_close THEN 1.0
+                        ELSE 0.0
+                    END
+                ) AS advancing_ratio,
+                COUNT(*) AS symbol_count
+            FROM stock_bars
+            GROUP BY trade_date
+            ORDER BY trade_date
+            """,
+            [adjust, as_of, as_of],
+        ).fetchdf()
+    if not frame.empty:
+        frame["trade_date"] = pd.to_datetime(
+            frame["trade_date"], errors="coerce"
+        ).dt.date
+    return frame
+
+
+def _market_change_ratio(frame: pd.DataFrame, lookback: int) -> float | None:
+    if frame.empty:
+        return None
+    values = pd.to_numeric(frame["market_amount"], errors="coerce").dropna()
+    if len(values) < 2:
+        return None
+    baseline = values.iloc[-lookback - 1] if len(values) > lookback else values.iloc[0]
+    if abs(float(baseline)) <= 1e-8:
+        return None
+    return float(values.iloc[-1]) / float(baseline) - 1.0
+
+
+def _market_amount_zscore(
+    frame: pd.DataFrame,
+    *,
+    window: int = 20,
+    minimum_history: int = 5,
+) -> float | None:
+    if frame.empty:
+        return None
+    values = pd.to_numeric(frame["market_amount"], errors="coerce").dropna()
+    if len(values) <= minimum_history:
+        return None
+    current = float(values.iloc[-1])
+    history = values.iloc[max(0, len(values) - window - 1):-1]
+    if len(history) < minimum_history:
+        return None
+    std = float(history.std(ddof=0))
+    if not pd.notna(std) or std <= 1e-8:
+        return 0.0
+    return (current - float(history.mean())) / std
+
+
+def _calculate_liquidity_score(
+    *,
+    margin_change: float | None,
+    amount_change: float | None,
+    amount_z20: float | None,
+    advancing_ratio: float | None,
+    divergence: float | None,
+) -> float | None:
+    components: list[tuple[float, float]] = []
+    if amount_z20 is not None:
+        components.append((max(0.0, min(100.0, 50 + amount_z20 * 15)), 0.30))
+    if advancing_ratio is not None:
+        components.append((max(0.0, min(100.0, advancing_ratio * 100)), 0.35))
+    if margin_change is not None:
+        components.append((max(0.0, min(100.0, 50 + margin_change * 500)), 0.25))
+    if amount_change is not None:
+        components.append((max(0.0, min(100.0, 50 + amount_change * 250)), 0.10))
+    if not components:
+        return None
+    weighted = sum(value * weight for value, weight in components)
+    total_weight = sum(weight for _, weight in components)
+    score = weighted / total_weight
+    if divergence is not None and divergence > 0.08:
+        score -= min(15.0, (divergence - 0.08) * 100)
+    return round(max(0.0, min(100.0, score)), 2)
+
+
 def calculate_macro_regime(
     warehouse,
     *,
     as_of: date | None = None,
     lookback: int = 5,
+    adjust: str = "qfq",
 ) -> MacroRegime:
     """Calculate a market regime without creating a stock cross-section."""
     if lookback < 1:
@@ -189,7 +308,12 @@ def calculate_macro_regime(
             """,
             [as_of, as_of],
         ).fetchdf()
-    if frame.empty:
+    liquidity_frame = _load_market_liquidity(
+        warehouse,
+        as_of=as_of,
+        adjust=adjust,
+    )
+    if frame.empty and liquidity_frame.empty:
         return MacroRegime(
             as_of=as_of,
             regime="neutral",
@@ -202,10 +326,16 @@ def calculate_macro_regime(
                 "cn_margin_sz",
             ),
         )
-    frame["period"] = pd.to_datetime(
-        frame["period"], errors="coerce"
-    ).dt.date
-    effective_as_of = as_of or frame["period"].max()
+    if not frame.empty:
+        frame["period"] = pd.to_datetime(
+            frame["period"], errors="coerce"
+        ).dt.date
+    effective_dates = []
+    if not frame.empty:
+        effective_dates.append(frame["period"].max())
+    if not liquidity_frame.empty:
+        effective_dates.append(liquidity_frame["trade_date"].max())
+    effective_as_of = as_of or max(effective_dates)
     cn_change = _series_change(frame, "cn_10y_yield", lookback)
     us_change = _series_change(frame, "us_10y_yield", lookback)
     margin_changes = [
@@ -221,6 +351,35 @@ def calculate_macro_regime(
         if margin_changes
         else None
     )
+    amount_change = _market_change_ratio(liquidity_frame, lookback)
+    amount_z20 = _market_amount_zscore(liquidity_frame)
+    advancing_ratio = (
+        float(liquidity_frame.iloc[-1]["advancing_ratio"])
+        if not liquidity_frame.empty
+        and pd.notna(liquidity_frame.iloc[-1]["advancing_ratio"])
+        else None
+    )
+    divergence = (
+        margin_change - amount_change
+        if margin_change is not None and amount_change is not None
+        else None
+    )
+    liquidity_values = {
+        "market_amount_change": amount_change,
+        "market_amount_z20": amount_z20,
+        "advancing_ratio": advancing_ratio,
+    }
+    missing_liquidity = tuple(
+        key for key, value in liquidity_values.items() if value is None
+    )
+    liquidity_available = not missing_liquidity
+    liquidity_score = _calculate_liquidity_score(
+        margin_change=margin_change,
+        amount_change=amount_change,
+        amount_z20=amount_z20,
+        advancing_ratio=advancing_ratio,
+        divergence=divergence,
+    )
     values = {
         "cn_10y_yield": cn_change,
         "us_10y_yield": us_change,
@@ -229,10 +388,23 @@ def calculate_macro_regime(
     missing = tuple(key for key, value in values.items() if value is None)
     available = not missing
 
+    liquidity_defensive = (
+        liquidity_score is not None and liquidity_score <= 30
+    ) or (
+        amount_z20 is not None
+        and amount_z20 <= -1.5
+        and advancing_ratio is not None
+        and advancing_ratio <= 0.35
+    )
+    liquidity_cautious = (
+        liquidity_score is not None and liquidity_score < 45
+    ) or (divergence is not None and divergence > 0.08)
+
     if (
         (cn_change is not None and cn_change >= 0.15)
         or (us_change is not None and us_change >= 0.25)
         or (margin_change is not None and margin_change <= -0.05)
+        or liquidity_defensive
     ):
         regime, multiplier = "defensive", 0.70
     elif (
@@ -242,12 +414,14 @@ def calculate_macro_regime(
         and us_change <= -0.15
         and margin_change is not None
         and margin_change >= 0.03
+        and (liquidity_score is None or liquidity_score >= 60)
     ):
         regime, multiplier = "risk_on", 1.0
     elif (
         (cn_change is not None and cn_change > 0.05)
         or (us_change is not None and us_change > 0.10)
         or (margin_change is not None and margin_change < -0.02)
+        or liquidity_cautious
         or not available
     ):
         regime, multiplier = "cautious", 0.85
@@ -261,5 +435,12 @@ def calculate_macro_regime(
         cn_10y_change=cn_change,
         us_10y_change=us_change,
         margin_change_ratio=margin_change,
+        market_amount_change_ratio=amount_change,
+        market_amount_z20=amount_z20,
+        advancing_ratio=advancing_ratio,
+        margin_amount_divergence=divergence,
+        liquidity_score=liquidity_score,
+        liquidity_available=liquidity_available,
         missing_indicators=missing,
+        missing_liquidity_indicators=missing_liquidity,
     )

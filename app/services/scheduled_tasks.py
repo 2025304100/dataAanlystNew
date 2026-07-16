@@ -13,12 +13,17 @@ from sqlalchemy.orm import Session
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
 from app.models.discovery import DiscoveryTaskRecord
-from app.models.scheduled_task import ScheduledTask, ScheduledTaskRun
+from app.models.scheduled_task import (
+    ScheduledTask,
+    ScheduledTaskRun,
+    ScheduledTaskSeedState,
+)
 from app.schemas.scheduled_task import ScheduledTaskCreate, ScheduledTaskUpdate
 
 
 logger = logging.getLogger(__name__)
 SCHEDULER_CHECK_INTERVAL_SECONDS = 30
+DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v4"
 
 TASK_DEFINITIONS: dict[str, dict] = {
     "universe_incremental_sync": {
@@ -45,6 +50,26 @@ TASK_DEFINITIONS: dict[str, dict] = {
             "validation_days": 50,
         },
     },
+    "hot_rank_snapshot": {
+        "name": "东方财富人气榜快照",
+        "description": "保存当前前100名人气榜，免费接口不支持历史回填",
+        "default_payload": {},
+    },
+    "tail_proxy_snapshot": {
+        "name": "候选池尾盘量价代理",
+        "description": "抓取最新候选前20只的1分钟量价并计算尾盘代理",
+        "default_payload": {"source": "candidates", "limit": 20},
+    },
+    "lhb_institution_sync": {
+        "name": "龙虎榜机构席位同步",
+        "description": "同步最近3日市场级机构席位买入、卖出和净额",
+        "default_payload": {"lookback_days": 3},
+    },
+    "financial_report_sync": {
+        "name": "财报历史同步",
+        "description": "按公告日同步自选股财务分析历史，默认限制20只",
+        "default_payload": {"source": "watchlist", "limit": 20},
+    },
     "discovery_mining": {
         "name": "机会挖掘",
         "description": "使用本地股票池运行机会扫描和候选生成",
@@ -69,6 +94,42 @@ DEFAULT_SCHEDULES = (
         "weekdays": [],
         "payload": TASK_DEFINITIONS["universe_incremental_sync"]["default_payload"],
         "enabled": True,
+    },
+    {
+        "name": "每日人气榜快照",
+        "task_type": "hot_rank_snapshot",
+        "frequency": "daily",
+        "time_of_day": "16:20",
+        "weekdays": [],
+        "payload": TASK_DEFINITIONS["hot_rank_snapshot"]["default_payload"],
+        "enabled": False,
+    },
+    {
+        "name": "每日候选尾盘代理",
+        "task_type": "tail_proxy_snapshot",
+        "frequency": "daily",
+        "time_of_day": "15:10",
+        "weekdays": [],
+        "payload": TASK_DEFINITIONS["tail_proxy_snapshot"]["default_payload"],
+        "enabled": False,
+    },
+    {
+        "name": "每日龙虎榜机构同步",
+        "task_type": "lhb_institution_sync",
+        "frequency": "daily",
+        "time_of_day": "16:30",
+        "weekdays": [],
+        "payload": TASK_DEFINITIONS["lhb_institution_sync"]["default_payload"],
+        "enabled": False,
+    },
+    {
+        "name": "每周财报历史同步",
+        "task_type": "financial_report_sync",
+        "frequency": "weekly",
+        "time_of_day": "10:00",
+        "weekdays": [5],
+        "payload": TASK_DEFINITIONS["financial_report_sync"]["default_payload"],
+        "enabled": False,
     },
     {
         "name": "每日宏观数据更新",
@@ -194,6 +255,8 @@ def _next_for_model(item: ScheduledTask, *, after: datetime | None = None) -> da
 
 
 def seed_default_schedules(db: Session) -> int:
+    if db.get(ScheduledTaskSeedState, DEFAULT_SCHEDULE_SEED_KEY) is not None:
+        return 0
     created = 0
     existing_names = set(db.execute(select(ScheduledTask.name)).scalars().all())
     for data in DEFAULT_SCHEDULES:
@@ -218,6 +281,7 @@ def seed_default_schedules(db: Session) -> int:
             item.next_run_at = _next_for_model(item)
         db.add(item)
         created += 1
+    db.add(ScheduledTaskSeedState(key=DEFAULT_SCHEDULE_SEED_KEY))
     db.flush()
     return created
 
@@ -245,6 +309,33 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
         from app.schemas.macro import MacroUpdateRequest
 
         return MacroUpdateRequest.model_validate(payload).model_dump(mode="json")
+    if task_type == "hot_rank_snapshot":
+        if payload:
+            raise ValueError("hot_rank_snapshot payload must be empty")
+        return {}
+    if task_type == "tail_proxy_snapshot":
+        source = str(payload.get("source") or "candidates")
+        if source not in {"candidates", "watchlist", "positions"}:
+            raise ValueError("unsupported tail proxy source")
+        limit = int(payload.get("limit", 20))
+        if not 1 <= limit <= 50:
+            raise ValueError("limit must be between 1 and 50")
+        return {"source": source, "limit": limit}
+    if task_type == "lhb_institution_sync":
+        lookback_days = int(payload.get("lookback_days", 3))
+        if not 1 <= lookback_days <= 31:
+            raise ValueError(
+                "lookback_days must be between 1 and 31"
+            )
+        return {"lookback_days": lookback_days}
+    if task_type == "financial_report_sync":
+        source = str(payload.get("source") or "watchlist")
+        if source not in {"watchlist", "positions", "all"}:
+            raise ValueError("unsupported financial report source")
+        limit = int(payload.get("limit", 20))
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        return {"source": source, "limit": limit}
     if task_type == "factor_pipeline":
         from app.schemas.async_task import FactorPipelineCreate
 
@@ -350,6 +441,34 @@ def _dispatch_task(item: ScheduledTask):
 
         task = create_macro_update_task(MacroUpdateRequest.model_validate(payload))
         return "async", task
+    if item.task_type == "hot_rank_snapshot":
+        from app.services.hot_rank_task import create_hot_rank_task
+
+        return "async", create_hot_rank_task()
+    if item.task_type == "tail_proxy_snapshot":
+        from app.services.tail_proxy_task import create_tail_proxy_task
+
+        return "async", create_tail_proxy_task(
+            source=str(payload.get("source") or "candidates"),
+            limit=int(payload.get("limit") or 20),
+        )
+    if item.task_type == "lhb_institution_sync":
+        from app.services.lhb_institution_task import (
+            create_lhb_institution_task,
+        )
+
+        return "async", create_lhb_institution_task(
+            lookback_days=int(payload.get("lookback_days") or 3)
+        )
+    if item.task_type == "financial_report_sync":
+        from app.services.financial_report_task import (
+            create_financial_report_task,
+        )
+
+        return "async", create_financial_report_task(
+            source=str(payload.get("source") or "watchlist"),
+            limit=int(payload.get("limit") or 20),
+        )
     if item.task_type == "factor_pipeline":
         from app.schemas.async_task import FactorPipelineCreate
         from app.services.factors.pipeline_task import create_factor_pipeline_task

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Card, Checkbox, DatePicker, Empty, Form, Input, InputNumber, Popconfirm, Radio, Select, Space, Table, Tag, message } from "antd";
-import { DeleteOutlined, EyeOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EyeOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, RobotOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { t, template, DOT } from "../i18n";
+import AiChatDrawer from "./AiChatDrawer";
 import type {
   BacktestRuleConfigV2,
   CustomIndicator,
@@ -221,6 +222,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [changeNote, setChangeNote] = useState("");
   const [expandedVersionId, setExpandedVersionId] = useState<number | null>(null);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
 
   const categoryOptions = useMemo(() => [
     { label: t("ciCatTrend"), value: "trend" },
@@ -579,6 +581,12 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
     }
   };
 
+  const insertFormulaFromAi = (newFormula: string) => {
+    setForm((prev) => ({ ...prev, formula: newFormula }));
+    setAiChatOpen(false);
+    message.success(t("aiFormulaInserted"));
+  };
+
   return (
     <div className="indicator-settings-grid indicator-settings-grid--formula">
       <Card
@@ -691,6 +699,9 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                     <Tag color="blue">{(clauseSummary.clauses.length || (form.formula.trim() ? 1 : 0)) + " " + t("ciFormulaStatClauses")}</Tag>
                     <Tag color="geekblue">{selectedFunctionDocs.length + " " + t("ciFormulaStatFunctions")}</Tag>
                     <Tag color="purple">{selectedReferenceDocs.length + " " + t("ciFormulaStatReferences")}</Tag>
+                    <Button size="small" type="primary" ghost icon={<RobotOutlined />} onClick={() => setAiChatOpen(true)} style={{ marginLeft: "auto" }}>
+                      {t("aiAskButton")}
+                    </Button>
                   </Space>
                   <Form.Item label={t("ciFormula")} style={{ marginBottom: 0 }}><Input.TextArea rows={10} value={form.formula} onChange={(event) => setForm((prev) => ({ ...prev, formula: event.target.value }))} placeholder="sma(20) > sma(60) and rsi(14) < 70" /></Form.Item>
                   <div className="indicator-form-grid compact">
@@ -941,6 +952,13 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
           </div>
         </Form>
       </Card>
+
+      <AiChatDrawer
+        open={aiChatOpen}
+        formula={form.formula}
+        onClose={() => setAiChatOpen(false)}
+        onInsertFormula={insertFormulaFromAi}
+      />
     </div>
   );
 }

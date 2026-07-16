@@ -17,7 +17,7 @@ from typing import Any, Iterable, Iterator, Mapping
 from app.core.config import settings
 
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "3"
 
 _PATH_LOCKS: dict[str, threading.RLock] = {}
 _PATH_LOCKS_GUARD = threading.Lock()
@@ -93,6 +93,19 @@ SCHEMA_STATEMENTS = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS raw_asset_universe (
+        symbol VARCHAR PRIMARY KEY,
+        name VARCHAR,
+        asset_type VARCHAR NOT NULL,
+        market VARCHAR,
+        region VARCHAR,
+        is_active BOOLEAN NOT NULL,
+        source VARCHAR NOT NULL,
+        source_row_id BIGINT NOT NULL,
+        updated_at TIMESTAMP NOT NULL
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS raw_valuation_snapshots (
         symbol VARCHAR NOT NULL,
         trade_date DATE NOT NULL,
@@ -153,6 +166,25 @@ SCHEMA_STATEMENTS = (
         hot_rank_pct DOUBLE,
         has_lhb BOOLEAN,
         lhb_institution_net DOUBLE,
+        source VARCHAR NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        batch_id VARCHAR NOT NULL,
+        PRIMARY KEY (symbol, trade_date, source)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS raw_tail_proxy (
+        symbol VARCHAR NOT NULL,
+        trade_date DATE NOT NULL,
+        minute_count INTEGER NOT NULL,
+        tail_minute_count INTEGER NOT NULL,
+        day_amount DOUBLE NOT NULL,
+        tail_amount DOUBLE NOT NULL,
+        tail_amount_share DOUBLE NOT NULL,
+        tail_activity_ratio DOUBLE NOT NULL,
+        tail_return DOUBLE NOT NULL,
+        close_location DOUBLE NOT NULL,
+        proxy_score DOUBLE NOT NULL,
         source VARCHAR NOT NULL,
         ingested_at TIMESTAMP NOT NULL,
         batch_id VARCHAR NOT NULL,
@@ -258,6 +290,17 @@ _UPSERT_DAILY_BAR_SQL = """
 """
 
 _UPSERT_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+    "raw_asset_universe": (
+        "symbol",
+        "name",
+        "asset_type",
+        "market",
+        "region",
+        "is_active",
+        "source",
+        "source_row_id",
+        "updated_at",
+    ),
     "raw_valuation_snapshots": (
         "symbol",
         "trade_date",
@@ -311,6 +354,22 @@ _UPSERT_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
         "ingested_at",
         "batch_id",
     ),
+    "raw_tail_proxy": (
+        "symbol",
+        "trade_date",
+        "minute_count",
+        "tail_minute_count",
+        "day_amount",
+        "tail_amount",
+        "tail_amount_share",
+        "tail_activity_ratio",
+        "tail_return",
+        "close_location",
+        "proxy_score",
+        "source",
+        "ingested_at",
+        "batch_id",
+    ),
     "raw_macro": (
         "indicator_key",
         "period",
@@ -350,6 +409,7 @@ _UPSERT_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 _UPSERT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
+    "raw_asset_universe": ("symbol",),
     "raw_valuation_snapshots": ("symbol", "trade_date", "source"),
     "raw_financial_reports": (
         "symbol",
@@ -360,6 +420,7 @@ _UPSERT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
     ),
     "raw_fund_flows": ("symbol", "trade_date", "source"),
     "raw_sentiment": ("symbol", "trade_date", "source"),
+    "raw_tail_proxy": ("symbol", "trade_date", "source"),
     "raw_macro": ("indicator_key", "period", "source"),
     "factor_values": (
         "symbol",
@@ -419,9 +480,25 @@ class FactorWarehouse:
         try:
             conn = duckdb.connect(str(self.path), read_only=read_only)
         except Exception as exc:
-            raise FactorWarehouseUnavailable(
-                f"Cannot open factor warehouse: {self.path}"
-            ) from exc
+            # DuckDB rejects a read-only connection when the same process
+            # already has a read-write connection for this file. Health and
+            # explanation endpoints are read-only by convention, so reuse the
+            # process-wide read-write configuration while a pipeline batch is
+            # active. Cross-process file-lock errors still fail normally.
+            configuration_conflict = (
+                read_only
+                and "different configuration" in str(exc).lower()
+            )
+            if not configuration_conflict:
+                raise FactorWarehouseUnavailable(
+                    f"Cannot open factor warehouse: {self.path}"
+                ) from exc
+            try:
+                conn = duckdb.connect(str(self.path))
+            except Exception as fallback_exc:
+                raise FactorWarehouseUnavailable(
+                    f"Cannot open factor warehouse: {self.path}"
+                ) from fallback_exc
         try:
             yield conn
         finally:
@@ -595,3 +672,43 @@ class FactorWarehouse:
                 conn.execute("ROLLBACK")
                 raise
         return len(records)
+
+    def upsert_frame(self, table: str, frame: Any) -> int:
+        """Bulk upsert a pandas-compatible frame through DuckDB registration."""
+        columns = _UPSERT_TABLE_COLUMNS.get(table)
+        keys = _UPSERT_TABLE_KEYS.get(table)
+        if columns is None or keys is None:
+            raise ValueError(f"unsupported warehouse table: {table}")
+        if frame is None or frame.empty:
+            return 0
+        missing = [column for column in columns if column not in frame.columns]
+        if missing:
+            raise ValueError(
+                f"{table} frame missing columns: {', '.join(missing)}"
+            )
+        update_columns = [column for column in columns if column not in keys]
+        assignments = ", ".join(
+            f"{column} = excluded.{column}" for column in update_columns
+        )
+        selected = frame.loc[:, list(columns)]
+        sql = (
+            f"INSERT INTO {table} ({', '.join(columns)}) "
+            f"SELECT {', '.join(columns)} FROM incoming_frame "
+            f"ON CONFLICT ({', '.join(keys)}) DO UPDATE SET {assignments}"
+        )
+        self.initialize()
+        with self._write_lock, self.connection() as conn:
+            conn.execute("BEGIN TRANSACTION")
+            try:
+                conn.register("incoming_frame", selected)
+                conn.execute(sql)
+                conn.unregister("incoming_frame")
+                conn.execute("COMMIT")
+            except Exception:
+                try:
+                    conn.unregister("incoming_frame")
+                except Exception:
+                    pass
+                conn.execute("ROLLBACK")
+                raise
+        return len(selected)

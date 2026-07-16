@@ -20,13 +20,17 @@ def _seed_factor_panel(warehouse: FactorWarehouse):
     bars = []
     valuations = []
     flows = []
+    financials = []
+    sentiments = []
+    hot_ranks = []
+    tail_proxies = []
     row_id = 0
-    for symbol, pe, pb, inflow in (
+    for rank, (symbol, pe, pb, inflow) in enumerate((
         ("000001", 10, 1, 10),
         ("000002", 20, 2, 20),
         ("600000", 40, 4, 30),
         ("600519", 100, 20, 100),
-    ):
+    ), start=1):
         valuations.append(
             {
                 "symbol": symbol,
@@ -35,6 +39,72 @@ def _seed_factor_panel(warehouse: FactorWarehouse):
                 "pb": pb,
                 "source": "test",
                 "source_hash": symbol,
+                "ingested_at": datetime(2026, 7, 1),
+                "batch_id": "health-source",
+            }
+        )
+        financials.extend(
+            [
+                {
+                    "symbol": symbol,
+                    "report_period": date(2024, 12, 31),
+                    "announcement_date": date(2025, 3, 30),
+                    "report_type": "financial_analysis",
+                    "roe_ttm": float(pe),
+                    "source": "test",
+                    "ingested_at": datetime(2026, 7, 1),
+                    "batch_id": "health-source",
+                },
+                {
+                    "symbol": symbol,
+                    "report_period": date(2025, 12, 31),
+                    "announcement_date": date(2026, 3, 30),
+                    "report_type": "financial_analysis",
+                    "roe_ttm": float(pe + inflow),
+                    "source": "test",
+                    "ingested_at": datetime(2026, 7, 1),
+                    "batch_id": "health-source",
+                },
+            ]
+        )
+        sentiments.append(
+            {
+                "symbol": symbol,
+                "trade_date": dates[-1],
+                "has_lhb": True,
+                "lhb_institution_net": float(inflow * 10),
+                "source": "test",
+                "ingested_at": datetime(2026, 7, 1),
+                "batch_id": "health-source",
+            }
+        )
+        hot_ranks.append(
+            {
+                "symbol": symbol,
+                "trade_date": dates[-1],
+                "hot_rank": rank,
+                "hot_rank_total": 100,
+                "hot_rank_pct": float(rank),
+                "has_lhb": False,
+                "source": "hot-rank-test",
+                "ingested_at": datetime(2026, 7, 1),
+                "batch_id": "health-source",
+            }
+        )
+        tail_proxies.append(
+            {
+                "symbol": symbol,
+                "trade_date": dates[-1],
+                "minute_count": 241,
+                "tail_minute_count": 31,
+                "day_amount": 10_000,
+                "tail_amount": 2_000,
+                "tail_amount_share": 0.2,
+                "tail_activity_ratio": 1.5,
+                "tail_return": 0.01,
+                "close_location": 0.8,
+                "proxy_score": rank / 10,
+                "source": "tail-test",
                 "ingested_at": datetime(2026, 7, 1),
                 "batch_id": "health-source",
             }
@@ -76,6 +146,10 @@ def _seed_factor_panel(warehouse: FactorWarehouse):
     )
     warehouse.upsert_records("raw_valuation_snapshots", valuations)
     warehouse.upsert_records("raw_fund_flows", flows)
+    warehouse.upsert_records("raw_financial_reports", financials)
+    warehouse.upsert_records("raw_sentiment", sentiments)
+    warehouse.upsert_records("raw_sentiment", hot_ranks)
+    warehouse.upsert_records("raw_tail_proxy", tail_proxies)
     return dates
 
 
@@ -98,13 +172,18 @@ def test_factor_health_reports_raw_tables_and_coverage(tmp_path):
     assert {item.table for item in report.raw_tables} >= {
         "raw_daily_bars",
         "raw_valuation_snapshots",
+        "raw_financial_reports",
         "raw_fund_flows",
         "factor_values",
     }
     assert {item.factor_code for item in report.factors} == {
         "ep_ttm",
         "negative_pb",
+        "roe_yoy_growth",
         "main_inflow_5d_ratio",
+        "lhb_institution_net_ratio",
+        "hot_rank_attention",
+        "tail_accumulation_proxy",
         "turnover_z20",
     }
     assert {item.coverage for item in report.factors} == {1.0}

@@ -8,6 +8,7 @@ import pytest
 from app.services.factors.capital_flow import (
     normalize_fund_flow_frame,
     normalize_lhb_detail_frame,
+    normalize_lhb_institution_frame,
 )
 from app.services.factors.contracts import DataContractError
 from app.services.factors.fundamental import (
@@ -132,6 +133,34 @@ def test_fund_flow_and_lhb_contracts_do_not_mix_institution_net():
     assert flow.iloc[0]["main_net_inflow_pct"] == 2.5
     assert lhb.iloc[0]["lhb_net_buy"] == 500
     assert "lhb_institution_net" not in lhb.columns
+
+
+def test_lhb_institution_contract_uses_institution_seat_fields():
+    result = normalize_lhb_institution_frame(
+        pd.DataFrame(
+            [
+                {
+                    "代码": "600519",
+                    "上榜日期": "2026-07-14",
+                    "买方机构数": 3,
+                    "卖方机构数": 2,
+                    "机构买入总额": 900,
+                    "机构卖出总额": 400,
+                    "机构买入净额": 500,
+                    "市场总成交额": 10_000,
+                    "机构净买额占总成交额比": 5,
+                    "上榜原因": "日涨幅偏离",
+                }
+            ]
+        )
+    )
+
+    assert result.iloc[0]["symbol"] == "600519"
+    assert result.iloc[0]["institution_buy"] == 900
+    assert result.iloc[0]["institution_sell"] == 400
+    assert result.iloc[0]["institution_net"] == 500
+    assert result.iloc[0]["institution_net_pct"] == pytest.approx(5)
+    assert result.iloc[0]["has_lhb"] == True
 
 
 def test_hot_rank_contract_calculates_rank_percentile():

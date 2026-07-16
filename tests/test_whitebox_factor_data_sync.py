@@ -7,9 +7,15 @@ import pytest
 pytest.importorskip("duckdb")
 
 from app.models.capital_flow import CapitalFlow
+from app.models.financial_report import StockFinancialReport
+from app.models.hot_rank_snapshot import StockHotRankSnapshot
+from app.models.lhb_institution_trade import LhbInstitutionTrade
 from app.models.macro_data import MacroIndicatorValue
 from app.models.stock_valuation import StockValuation
 from app.models.symbol import Symbol
+from app.models.tail_accumulation_snapshot import (
+    TailAccumulationSnapshot,
+)
 from app.services.factors.data_sync import (
     _period_date,
     mirror_factor_inputs,
@@ -51,6 +57,54 @@ def test_mirror_factor_inputs_is_local_incremental_and_idempotent(
                 large_net_inflow=40_000,
                 source="akshare",
             ),
+            StockFinancialReport(
+                symbol_id=symbol.id,
+                report_period=date(2024, 12, 31),
+                announcement_date=date(2025, 3, 30),
+                report_type="financial_analysis",
+                roe_ttm=18.0,
+                source="akshare:stock_financial_analysis_indicator_em",
+            ),
+            LhbInstitutionTrade(
+                symbol="600519",
+                trade_date=date(2026, 7, 10),
+                buyer_institution_count=3,
+                seller_institution_count=2,
+                institution_buy=900_000,
+                institution_sell=400_000,
+                institution_net=500_000,
+                source="akshare:stock_lhb_jgmmtj_em",
+            ),
+            StockHotRankSnapshot(
+                symbol="600519",
+                trade_date=date(2026, 7, 10),
+                hot_rank=1,
+                hot_rank_total=100,
+                hot_rank_pct=1.0,
+                source="akshare:stock_hot_rank_em",
+            ),
+            TailAccumulationSnapshot(
+                symbol="600519",
+                trade_date=date(2026, 7, 10),
+                minute_count=241,
+                tail_minute_count=31,
+                day_amount=10_000,
+                tail_amount=2_000,
+                tail_amount_share=0.2,
+                tail_activity_ratio=1.5,
+                tail_return=0.01,
+                close_location=0.8,
+                proxy_score=0.9,
+                source="akshare:stock_zh_a_hist_min_em:1m",
+            ),
+            StockFinancialReport(
+                symbol_id=symbol.id,
+                report_period=date(2025, 12, 31),
+                announcement_date=date(2026, 3, 30),
+                report_type="financial_analysis",
+                roe_ttm=20.0,
+                source="akshare:stock_financial_analysis_indicator_em",
+            ),
             MacroIndicatorValue(
                 region="cn",
                 category="risk",
@@ -75,9 +129,13 @@ def test_mirror_factor_inputs_is_local_incremental_and_idempotent(
         db_session, warehouse=warehouse, batch_size=1
     )
 
-    assert first.rows_written == 3
+    assert first.rows_written == 8
     assert second.rows_written == 0
     assert first.valuation_watermark > 0
+    assert first.financial_report_watermark > 0
+    assert first.lhb_institution_watermark > 0
+    assert first.hot_rank_watermark > 0
+    assert first.tail_proxy_watermark > 0
     assert first.fund_flow_watermark > 0
     assert first.macro_watermark > 0
 
@@ -89,6 +147,22 @@ def test_mirror_factor_inputs_is_local_incremental_and_idempotent(
         flow = conn.execute(
             "SELECT symbol, main_net_inflow FROM raw_fund_flows"
         ).fetchone()
+        financial = conn.execute(
+            "SELECT symbol, COUNT(*), MAX(roe_ttm) "
+            "FROM raw_financial_reports GROUP BY symbol"
+        ).fetchone()
+        sentiment = conn.execute(
+            "SELECT symbol, has_lhb, lhb_institution_net "
+            "FROM raw_sentiment WHERE lhb_institution_net IS NOT NULL"
+        ).fetchone()
+        hot_rank = conn.execute(
+            "SELECT symbol, hot_rank, hot_rank_pct "
+            "FROM raw_sentiment WHERE hot_rank IS NOT NULL"
+        ).fetchone()
+        tail_proxy = conn.execute(
+            "SELECT symbol, minute_count, proxy_score "
+            "FROM raw_tail_proxy"
+        ).fetchone()
         macro = conn.execute(
             "SELECT indicator_key, period, value FROM raw_macro"
         ).fetchone()
@@ -96,6 +170,10 @@ def test_mirror_factor_inputs_is_local_incremental_and_idempotent(
     assert valuation[:3] == ("600519", 20.0, 6.0)
     assert len(valuation[3]) == 64
     assert flow == ("600519", 100_000.0)
+    assert financial == ("600519", 2, 20.0)
+    assert sentiment == ("600519", True, 500_000.0)
+    assert hot_rank == ("600519", 1.0, 1.0)
+    assert tail_proxy == ("600519", 241, 0.9)
     assert macro == ("cn_10y_yield", date(2026, 7, 10), 1.65)
 
 
@@ -171,7 +249,10 @@ def test_mirror_factor_inputs_validates_arguments(db_session, tmp_path):
             db_session,
             warehouse=warehouse,
             include_valuations=False,
+            include_financial_reports=False,
             include_fund_flows=False,
+            include_sentiment=False,
+            include_tail_proxy=False,
             include_macro=False,
         )
     with pytest.raises(ValueError, match="start_date"):
@@ -187,3 +268,59 @@ def test_store_rejects_unregistered_table(tmp_path):
     warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
     with pytest.raises(ValueError, match="unsupported"):
         warehouse.upsert_records("unsafe_table", [])
+
+
+def test_factor_input_cancel_stops_between_batches_and_releases_duckdb(
+    db_session, tmp_path, monkeypatch
+):
+    symbol = Symbol(
+        symbol="000001",
+        name="平安银行",
+        asset_type="stock",
+        market="sz",
+    )
+    db_session.add(symbol)
+    db_session.flush()
+    db_session.add_all(
+        [
+            StockValuation(
+                symbol_id=symbol.id,
+                trade_date=date(2026, 7, day),
+                pe_ttm=5 + day,
+                pb=0.6,
+            )
+            for day in (9, 10)
+        ]
+    )
+    db_session.commit()
+    warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
+    cancelled = False
+    original_upsert = warehouse.upsert_records
+
+    def cancel_after_first_batch(*args, **kwargs):
+        nonlocal cancelled
+        written = original_upsert(*args, **kwargs)
+        cancelled = True
+        return written
+
+    monkeypatch.setattr(
+        warehouse, "upsert_records", cancel_after_first_batch
+    )
+
+    result = mirror_factor_inputs(
+        db_session,
+        warehouse=warehouse,
+        batch_size=1,
+        include_financial_reports=False,
+        include_fund_flows=False,
+        include_sentiment=False,
+        include_tail_proxy=False,
+        include_macro=False,
+        should_cancel=lambda: cancelled,
+    )
+
+    assert result.valuation_rows == 1
+    with warehouse.connection(read_only=True) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM raw_valuation_snapshots"
+        ).fetchone()[0] == 1

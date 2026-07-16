@@ -298,6 +298,18 @@ AKSHARE_API_REGISTRY: list[dict[str, Any]] = [
         "probe_args": {"start_date": "20250303", "end_date": "20250307"},
     },
     {
+        "key": "stock_lhb_jgmmtj_em",
+        "name_zh": "龙虎榜机构买卖统计（东财）",
+        "name_en": "Dragon-Tiger Institution Trades (EastMoney)",
+        "category_zh": "资金流",
+        "category_en": "Capital Flow",
+        "module": "lhb_data",
+        "desc_zh": "机构席位买入、卖出和净买额；与龙虎榜总净额严格区分",
+        "desc_en": "Institution-seat buy, sell and net amounts; distinct from total list net",
+        "default_strategy": "conservative",
+        "probe_args": {"start_date": "20250303", "end_date": "20250307"},
+    },
+    {
         "key": "stock_hot_rank_em",
         "name_zh": "个股人气榜（东财）",
         "name_en": "Stock Popularity Ranking (EastMoney)",
@@ -308,6 +320,22 @@ AKSHARE_API_REGISTRY: list[dict[str, Any]] = [
         "desc_en": "Market popularity snapshot; free endpoint returns top 100",
         "default_strategy": "conservative",
         "probe_args": {},
+    },
+    {
+        "key": "stock_zh_a_hist_min_em",
+        "name_zh": "A股分钟行情（东财）",
+        "name_en": "A-share Minute Bars (EastMoney)",
+        "category_zh": "资金流",
+        "category_en": "Capital Flow",
+        "module": "tail_proxy_data",
+        "desc_zh": "候选池尾盘量价代理；不是Level-2逐笔或大单主买数据",
+        "desc_en": "Candidate tail-session price-volume proxy; not Level-2 order flow",
+        "default_strategy": "conservative",
+        "probe_args": {
+            "symbol": "600519",
+            "period": "1",
+            "adjust": ""
+        },
     },
     {
         "key": "stock_hsgt_north_net_flow_in",

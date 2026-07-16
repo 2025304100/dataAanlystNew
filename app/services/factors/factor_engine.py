@@ -98,6 +98,48 @@ def _load_raw_factor_panel(
                    ) AS row_num
             FROM raw_fund_flows
         ),
+        financial_dedup AS (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY
+                           symbol,
+                           report_period,
+                           announcement_date,
+                           report_type,
+                           source
+                       ORDER BY ingested_at DESC
+                   ) AS row_num
+            FROM raw_financial_reports
+            WHERE report_type = 'financial_analysis'
+        ),
+        sentiment_dedup AS (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY symbol, trade_date
+                       ORDER BY ingested_at DESC, source
+                   ) AS row_num
+            FROM raw_sentiment
+            WHERE has_lhb
+              AND lhb_institution_net IS NOT NULL
+        ),
+        hot_rank_dedup AS (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY symbol, trade_date
+                       ORDER BY ingested_at DESC, source
+                   ) AS row_num
+            FROM raw_sentiment
+            WHERE hot_rank_pct IS NOT NULL
+        ),
+        tail_proxy_dedup AS (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY symbol, trade_date
+                       ORDER BY ingested_at DESC, source
+                   ) AS row_num
+            FROM raw_tail_proxy
+            WHERE proxy_score IS NOT NULL
+        ),
         panel AS (
             SELECT
                 b.symbol,
@@ -107,7 +149,12 @@ def _load_raw_factor_panel(
                 v.trade_date AS valuation_date,
                 v.pe_ttm,
                 v.pb,
-                f.main_net_inflow
+                f.main_net_inflow,
+                s.lhb_institution_net,
+                h.hot_rank_pct,
+                tail.proxy_score AS tail_proxy_score,
+                current_fin.roe_ttm AS current_roe_ttm,
+                prior_fin.roe_ttm AS prior_year_roe_ttm
             FROM raw_daily_bars b
             LEFT JOIN LATERAL (
                 SELECT trade_date, pe_ttm, pb
@@ -122,7 +169,68 @@ def _load_raw_factor_panel(
               ON f.row_num = 1
              AND f.symbol = b.symbol
              AND f.trade_date = b.trade_date
+            LEFT JOIN sentiment_dedup s
+              ON s.row_num = 1
+             AND s.symbol = b.symbol
+             AND s.trade_date = b.trade_date
+            LEFT JOIN hot_rank_dedup h
+              ON h.row_num = 1
+             AND h.symbol = b.symbol
+             AND h.trade_date = b.trade_date
+            LEFT JOIN tail_proxy_dedup tail
+              ON tail.row_num = 1
+             AND tail.symbol = b.symbol
+             AND tail.trade_date = b.trade_date
+            LEFT JOIN LATERAL (
+                SELECT
+                    report_period,
+                    announcement_date,
+                    roe_ttm
+                FROM financial_dedup current_fin
+                WHERE current_fin.row_num = 1
+                  AND current_fin.symbol = b.symbol
+                  AND current_fin.announcement_date <= b.trade_date
+                  AND current_fin.roe_ttm IS NOT NULL
+                ORDER BY
+                    current_fin.report_period DESC,
+                    current_fin.announcement_date DESC,
+                    current_fin.ingested_at DESC,
+                    current_fin.source
+                LIMIT 1
+            ) current_fin ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT roe_ttm
+                FROM financial_dedup prior_fin
+                WHERE prior_fin.row_num = 1
+                  AND prior_fin.symbol = b.symbol
+                  AND prior_fin.announcement_date <= b.trade_date
+                  AND prior_fin.roe_ttm IS NOT NULL
+                  AND EXTRACT(YEAR FROM prior_fin.report_period)
+                      = EXTRACT(YEAR FROM current_fin.report_period) - 1
+                  AND EXTRACT(MONTH FROM prior_fin.report_period)
+                      = EXTRACT(MONTH FROM current_fin.report_period)
+                  AND EXTRACT(DAY FROM prior_fin.report_period)
+                      = EXTRACT(DAY FROM current_fin.report_period)
+                ORDER BY
+                    prior_fin.announcement_date DESC,
+                    prior_fin.ingested_at DESC,
+                    prior_fin.source
+                LIMIT 1
+            ) prior_fin ON TRUE
             WHERE b.adjust = ?
+              AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM raw_asset_universe
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM raw_asset_universe universe
+                        WHERE universe.symbol = b.symbol
+                          AND universe.asset_type = 'stock'
+                          AND universe.region = 'cn'
+                          AND universe.is_active
+                    )
+              )
         ),
         rolling AS (
             SELECT
@@ -164,6 +272,12 @@ def _load_raw_factor_panel(
                 ELSE NULL
             END AS negative_pb,
             CASE
+                WHEN current_roe_ttm IS NOT NULL
+                 AND prior_year_roe_ttm IS NOT NULL
+                THEN current_roe_ttm - prior_year_roe_ttm
+                ELSE NULL
+            END AS roe_yoy_growth,
+            CASE
                 WHEN bar_count_5 = 5
                  AND amount_count_5 = 5
                  AND flow_count_5 = 5
@@ -172,13 +286,26 @@ def _load_raw_factor_panel(
                 ELSE NULL
             END AS main_inflow_5d_ratio,
             CASE
+                WHEN lhb_institution_net IS NOT NULL
+                 AND ABS(amount) > 1e-8
+                THEN lhb_institution_net / amount
+                ELSE NULL
+            END AS lhb_institution_net_ratio,
+            CASE
                 WHEN turnover_count_20 = 20
                  AND turnover_std_20 > 1e-8
                 THEN (turnover_rate - turnover_mean_20) / turnover_std_20
                 WHEN turnover_count_20 = 20
                 THEN 0.0
                 ELSE NULL
-            END AS turnover_z20
+            END AS turnover_z20,
+            CASE
+                WHEN hot_rank_pct >= 0
+                 AND hot_rank_pct <= 100
+                THEN 1.0 - hot_rank_pct / 100.0
+                ELSE NULL
+            END AS hot_rank_attention,
+            tail_proxy_score AS tail_accumulation_proxy
         FROM rolling
         ORDER BY trade_date, symbol
     """
@@ -231,7 +358,7 @@ def calculate_stock_factors(
     adjust: str = "qfq",
     valuation_max_age_days: int = 7,
 ) -> FactorCalculationResult:
-    """Calculate and persist the first four stock factors from local data."""
+    """Calculate and persist stock factors from point-in-time local data."""
     if start_date and end_date and start_date > end_date:
         raise ValueError("start_date must not be after end_date")
     if valuation_max_age_days < 0:
@@ -257,33 +384,14 @@ def calculate_stock_factors(
         definition.code: definition.version
         for definition in FACTOR_DEFINITIONS
     }
-    records = []
-    for row in long_frame.to_dict("records"):
-        eligible = bool(row["eligible"])
-        records.append(
-            {
-                "symbol": row["symbol"],
-                "trade_date": row["trade_date"],
-                "factor_code": row["factor_code"],
-                "factor_version": versions[row["factor_code"]],
-                "raw_value": (
-                    float(row["raw_value"]) if eligible else None
-                ),
-                "winsorized_value": (
-                    float(row["winsorized_value"]) if eligible else None
-                ),
-                "normalized_value": (
-                    float(row["normalized_value"]) if eligible else None
-                ),
-                "is_imputed": False,
-                "imputation_method": None,
-                "eligible": eligible,
-                "data_cutoff_at": cutoff,
-                "calc_batch_id": batch_id,
-                "created_at": cutoff,
-            }
-        )
-    rows_written = warehouse.upsert_records("factor_values", records)
+    output = long_frame.copy()
+    output["factor_version"] = output["factor_code"].map(versions)
+    output["is_imputed"] = False
+    output["imputation_method"] = None
+    output["data_cutoff_at"] = cutoff
+    output["calc_batch_id"] = batch_id
+    output["created_at"] = cutoff
+    rows_written = warehouse.upsert_frame("factor_values", output)
     total_by_factor = (
         long_frame.groupby("factor_code").size().to_dict()
         if not long_frame.empty

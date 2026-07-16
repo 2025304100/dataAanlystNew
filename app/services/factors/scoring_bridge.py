@@ -14,7 +14,10 @@ from sqlalchemy.orm import Session
 from app.models.factor_model import FactorModelRun
 from app.models.score import Score
 from app.models.symbol import Symbol
-from app.services.factors.definitions import FACTOR_BY_CODE
+from app.services.factors.definitions import (
+    FACTOR_BY_CODE,
+    FACTOR_DEFINITIONS,
+)
 from app.services.factors.macro import MacroRegime, calculate_macro_regime
 from app.services.factors.ridge_model import FEATURE_CODES
 from app.services.factors.runtime import get_factor_runtime_snapshot
@@ -25,6 +28,9 @@ _VALID_MODES = {'manual', 'shadow', 'ridge'}
 _QUALITY_CATEGORIES = {'fundamental'}
 _TIMING_CATEGORIES = {'capital_flow', 'sentiment'}
 _DYNAMIC_DETAIL_KEY = '_dynamic_model'
+_EXPLANATION_FACTOR_CODES = tuple(
+    item.code for item in FACTOR_DEFINITIONS
+)
 _COPY_EXCLUDED_COLUMNS = {
     'id',
     'calc_batch_id',
@@ -174,7 +180,7 @@ def _load_factor_rows(
     trade_date: date,
     factor_calc_batch_id: str,
 ) -> tuple[dict[str, dict[str, dict[str, Any]]], datetime | None]:
-    placeholders = ', '.join('?' for _ in FEATURE_CODES)
+    placeholders = ', '.join('?' for _ in _EXPLANATION_FACTOR_CODES)
     with warehouse.connection(read_only=True) as conn:
         rows = conn.execute(
             f'''
@@ -189,7 +195,11 @@ def _load_factor_rows(
               AND factor_code IN ({placeholders})
             ORDER BY symbol, factor_code
             ''',
-            [trade_date, factor_calc_batch_id, *FEATURE_CODES],
+            [
+                trade_date,
+                factor_calc_batch_id,
+                *_EXPLANATION_FACTOR_CODES,
+            ],
         ).fetchall()
     grouped: dict[str, dict[str, dict[str, Any]]] = {}
     cutoffs: list[datetime] = []
@@ -257,7 +267,16 @@ def _macro_detail(state: MacroRegime) -> dict[str, Any]:
         'cn_10y_change': state.cn_10y_change,
         'us_10y_change': state.us_10y_change,
         'margin_change_ratio': state.margin_change_ratio,
+        'market_amount_change_ratio': state.market_amount_change_ratio,
+        'market_amount_z20': state.market_amount_z20,
+        'advancing_ratio': state.advancing_ratio,
+        'margin_amount_divergence': state.margin_amount_divergence,
+        'liquidity_score': state.liquidity_score,
+        'liquidity_available': state.liquidity_available,
         'missing_indicators': list(state.missing_indicators),
+        'missing_liquidity_indicators': list(
+            state.missing_liquidity_indicators
+        ),
     }
 
 
@@ -404,7 +423,7 @@ def materialize_factor_scores(
     complete: dict[str, dict[str, dict[str, Any]]] = {
         symbol: values
         for symbol, values in factor_rows.items()
-        if set(values) == set(FEATURE_CODES)
+        if set(FEATURE_CODES).issubset(values)
         and symbol in symbols_by_code
         and symbols_by_code[symbol].id in manual_by_symbol_id
     }
@@ -472,6 +491,18 @@ def materialize_factor_scores(
                     'contribution': contributions[symbol_code][code],
                 }
                 for code in FEATURE_CODES
+            },
+            'event_factors': {
+                code: {
+                    **factor_rows[symbol_code][code],
+                    'category': FACTOR_BY_CODE[code].category,
+                    'coefficient': None,
+                    'normalized_weight': None,
+                    'contribution': None,
+                }
+                for code in sorted(
+                    set(factor_rows[symbol_code]) - set(FEATURE_CODES)
+                )
             },
             'factor_quality_raw': quality_raw[symbol_code],
             'factor_timing_raw': timing_raw[symbol_code],

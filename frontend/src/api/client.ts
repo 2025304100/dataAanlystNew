@@ -75,6 +75,14 @@ export const api = {
   // Dynamic factor engine
   getFactorOverview: () =>
     requestJson<FactorOverview>(`${API}/factors/overview`),
+  updateFactorSystemConfig: (featureEnabled: boolean) =>
+    requestJson<FactorSystemConfig>(`${API}/factors/config`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feature_enabled: featureEnabled, actor: "local_user" }),
+    }),
+  initializeFactorWarehouse: () =>
+    requestJson<FactorOverview>(`${API}/factors/warehouse/initialize`, { method: "POST" }),
   getFactorModels: (status?: string, limit: number = 20) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (status) params.set("status", status);
@@ -580,11 +588,31 @@ export const api = {
   evaluateAlerts: () =>
     requestJson<any>(`${API}/alerts/evaluate`, { method: "POST" }),
 
-  // P2: External data sync (fundamental / capital flow / ETF indicators)
+  // P2: External data sync (valuation / financial reports / flow / ETF)
   syncFundamental: (source: "watchlist" | "positions" | "all") =>
     requestJson<{ total: number; success: number; skipped: number; failed: number; errors: string[] }>(
       `${API}/external-data/fundamental/sync?source=${source}`,
       { method: "POST", timeoutMs: 120000 },
+    ),
+  syncFinancialReports: (source: "watchlist" | "positions" | "all") =>
+    requestJson<{ total: number; success: number; skipped: number; failed: number; records: number; errors: string[] }>(
+      API + "/external-data/financial-reports/sync?source=" + source,
+      { method: "POST", timeoutMs: 300000 },
+    ),
+  syncLhbInstitution: (lookbackDays: number = 30) =>
+    requestJson<{ total: number; success: number; skipped: number; failed: number; records: number; errors: string[] }>(
+      API + "/external-data/lhb-institution/sync?lookback_days=" + lookbackDays,
+      { method: "POST", timeoutMs: 120000 },
+    ),
+  syncHotRank: () =>
+    requestJson<{ total: number; success: number; skipped: number; failed: number; records: number; errors: string[] }>(
+      API + "/external-data/hot-rank/sync",
+      { method: "POST", timeoutMs: 60000 },
+    ),
+  syncTailProxy: (limit: number = 20) =>
+    requestJson<{ total: number; success: number; skipped: number; failed: number; records: number; errors: string[] }>(
+      API + "/external-data/tail-proxy/sync?source=candidates&limit=" + limit,
+      { method: "POST", timeoutMs: 300000 },
     ),
   syncCapitalFlow: (source: "watchlist" | "positions" | "all", includeNorthbound: boolean = true) =>
     requestJson<{ total: number; success: number; skipped: number; failed: number; errors: string[] }>(
@@ -611,6 +639,30 @@ export const api = {
     requestJson<AkshareApiStatus>(
       `${API}/external-data/apis/${encodeURIComponent(apiKey)}?locale=${locale}`,
       { method: "PUT", body: JSON.stringify(payload) },
+    ),
+
+  // AI 接口配置
+  getAiConfig: () =>
+    requestJson<AiConfig>(`${API}/settings/ai-config`),
+  updateAiConfig: (payload: AiConfigUpdate) =>
+    requestJson<{ status: string; message: string }>(
+      `${API}/settings/ai-config`,
+      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+    ),
+  testAiConnection: (params: { service_url: string; api_key: string; model?: string }) =>
+    requestJson<{ success: boolean; message: string }>(
+      `${API}/settings/ai-config/test`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), timeoutMs: 20000 },
+    ),
+  listAiModels: (params: { service_url: string; api_key: string }) =>
+    requestJson<{ models: AiModelInfo[]; error?: string }>(
+      `${API}/settings/ai-config/models?service_url=${encodeURIComponent(params.service_url)}&api_key=${encodeURIComponent(params.api_key)}`,
+      { timeoutMs: 20000 },
+    ),
+  aiChat: (payload: AiChatPayload) =>
+    requestJson<AiChatResult>(
+      `${API}/settings/ai-chat`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 35000 },
     ),
 };
 
@@ -673,6 +725,13 @@ export interface FactorRuntime {
   updated_at: string | null;
 }
 
+export interface FactorSystemConfig {
+  feature_enabled: boolean;
+  warehouse_path: string;
+  updated_by: string;
+  updated_at: string | null;
+}
+
 export interface FactorCoverage {
   factor_code: string;
   latest_trade_date: string | null;
@@ -684,6 +743,9 @@ export interface FactorCoverage {
 
 export interface FactorOverview {
   runtime: FactorRuntime;
+  config: FactorSystemConfig;
+  feature_enabled: boolean;
+  warehouse_error: string | null;
   health: {
     status: "healthy" | "warning" | "degraded" | "failed" | string;
     warehouse_available: boolean;
@@ -800,6 +862,7 @@ export interface SymbolFactorExplanation {
     factor_calc_batch_id?: string;
     factor_data_cutoff_at?: string | null;
     factors?: Record<string, FactorContribution>;
+    event_factors?: Record<string, FactorContribution>;
     factor_quality_raw?: number;
     factor_timing_raw?: number;
     model_alpha_raw?: number;
@@ -815,7 +878,14 @@ export interface SymbolFactorExplanation {
       cn_10y_change?: number | null;
       us_10y_change?: number | null;
       margin_change_ratio?: number | null;
+      market_amount_change_ratio?: number | null;
+      market_amount_z20?: number | null;
+      advancing_ratio?: number | null;
+      margin_amount_divergence?: number | null;
+      liquidity_score?: number | null;
+      liquidity_available?: boolean;
       missing_indicators?: string[];
+      missing_liquidity_indicators?: string[];
     };
   };
 }
@@ -869,4 +939,39 @@ export interface ScheduledTaskRun {
   message: string | null;
   created_at: string;
   finished_at: string | null;
+}
+
+// ----------------------------------------------------------------------------
+// AI 接口配置类型
+// ----------------------------------------------------------------------------
+export interface AiConfig {
+  service_url: string;
+  api_key: string;
+  model: string;
+  enabled: boolean;
+}
+
+export interface AiModelInfo {
+  id: string;
+  owned_by: string;
+  created: number;
+}
+
+export interface AiConfigUpdate {
+  service_url?: string;
+  api_key?: string;
+  model?: string;
+  enabled?: boolean;
+}
+
+export interface AiChatPayload {
+  message: string;
+  formula?: string;
+  history?: Array<{ role: string; content: string }>;
+}
+
+export interface AiChatResult {
+  ok: boolean;
+  reply: string;
+  error: string;
 }

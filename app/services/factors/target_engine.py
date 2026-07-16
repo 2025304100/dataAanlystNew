@@ -205,7 +205,9 @@ def calculate_targets(
                 "created_at": created_at,
             }
         )
-    rows_written = warehouse.upsert_records("factor_targets", records)
+    rows_written = warehouse.upsert_frame(
+        "factor_targets", pd.DataFrame.from_records(records)
+    )
     return TargetCalculationResult(
         calc_batch_id=batch_id,
         rows_written=rows_written,

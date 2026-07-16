@@ -2,9 +2,9 @@
 
 | 项目 | 内容 |
 |---|---|
-| 文档版本 | V1.3 |
-| 编制日期 | 2026-07-14 |
-| 实施状态 | Week 1～Week 4 核心功能及跨平台定时任务已落地；待生产影子观察、WxPusher 与 UAT |
+| 文档版本 | V1.10 |
+| 编制日期 | 2026-07-15 |
+| 实施状态 | Week 1～Week 4 及五项 V1.1 扩展均已落地；待生产影子观察、WxPusher 与 UAT |
 | 适用项目 | Personal Quant Workbench / dataAanlystNew |
 | 核心目标 | 在不破坏现有决策闭环的前提下，接入免费 AkShare 四类因子、DuckDB 因子仓库和滚动 Ridge 动态赋权 |
 | 第一版资产范围 | A股股票优先；ETF 保持现有评分链路，后续单独扩展 |
@@ -36,7 +36,7 @@
 - Week 2：ep_ttm、negative_pb、main_inflow_5d_ratio、turnover_z20；
 - Week 2：MAD 去极值、分位回退、每日截面 Z-Score、因子覆盖率；
 - Week 2：中美 10 年期收益率与沪深两融的宏观状态/仓位折扣；
-- Week 2：四项系统因子及 V1 公式的 SQL 元数据幂等初始化。
+- Week 2：首批四项系统因子及 V1 公式的 SQL 元数据幂等初始化；V1.1 阶段二已扩展为五个核心 Ridge 截面因子，阶段三另增一个稀疏事件因子。
 - Week 3：T+1 开盘至 T+5 收盘标签、停牌/涨跌停/未来窗口校验；
 - Week 3：250 日滚动 Ridge、50 日时间验证、alpha 选择、signed beta；
 - Week 3：模型样本/交易日/股票数/IC/系数门禁及 validated/rejected 状态；
@@ -46,22 +46,32 @@
 - Week 4：持久化活动模式、活动模型和激活/回退审计记录；
 - Week 4：可取消、可轮询、只读本地数据的因子流水线任务；
 - Week 4：设置页模型管理、流水线进度、手工回退和因子健康；
+- Week 4：设置页持久化启用因子功能、初始化 DuckDB，并在未就绪时阻止流水线误提交；
 - Week 4：跨平台持久化定时任务、默认计划、启停/增删改/立即执行和调度审计；
 - Week 4：今日决策展示活动评分范围、模型版本和平均因子覆盖率；
 - Week 4：投资中心展示单股原值、标准化值、系数、贡献及宏观仓位乘数；
-- Week 4：生产前端打包完成，Vite 共转换 3679 个模块。
+- Week 4：生产前端打包完成，Vite 共转换 3682 个模块。
+- V1.1 阶段一：DuckDB Schema V2 资产元数据、全市场成交额变化/Z20、上涨家数占比、两融/成交额背离和市场流动性分已完成；仅用于宏观状态、仓位折扣和解释，不作为个股截面特征。
+- V1.1 阶段二：公告日对齐 ROE 同比增速已完成；新增财报版本化业务表、AkShare 逐股同步入口、DuckDB 增量镜像、公告日 point-in-time 计算、Ridge/Quality 接入和手工同步界面。
+- V1.1 阶段三：龙虎榜机构净买额已完成；使用 stock_lhb_jgmmtj_em 的真实机构席位买卖口径，保存机构买入、卖出、净额、机构数和原始响应，并生成 lhb_institution_net_ratio 稀疏事件因子。
+- V1.1 阶段四：东方财富人气榜每日快照已完成；保存当前前100名及原始响应，生成 hot_rank_attention 稀疏情绪因子，并新增默认关闭、可立即执行的每日 16:20 定时计划。
+- V1.1 阶段五：候选池尾盘量价代理已完成；DuckDB Schema 升级 V3，按候选范围抓取1分钟行情，使用尾盘活跃度、尾盘收益和收盘位置生成 tail_accumulation_proxy，并新增每日 15:10 定时计划。
+- V1.1 自动化补齐：新增每日 16:30 龙虎榜机构同步和每周六 10:00 财报历史同步；财报默认仅同步自选股前20只，所有新增计划默认关闭并支持立即执行。
+- 2026-07-15 生产初始化：MySQL gpfx 已完成幂等建表，因子功能已启用，DuckDB V3 已初始化，评分模式保持 manual；已写入约16.3万条 A 股日线、260万级因子历史批次和16.3万条目标标签。
+- 真实数据预热：3个关注标的写入336条财报历史和6条公告日对齐估值，龙虎榜机构写入144条，人气榜写入100条；资金流接口及尾盘分钟接口当前受远端主动断开影响，健康状态保持 degraded。
+- 当前环境已启用行情、宏观、每日因子、人气榜、龙虎榜和每周财报六项计划；尾盘计划、每周 Ridge 训练和机会挖掘保持关闭。
 
 当前边界：
 
-- 功能仍默认关闭，评分模式仍默认 manual；
+- 功能仍默认关闭，评分模式仍默认 manual；可在“设置 → 因子模型”持久化启用并初始化仓库；
 - 因子计算、宏观状态和健康检查均只读取本地 DuckDB；
-- 龙虎榜免费明细只标记总净买额，不冒充机构净买额；
+- stock_lhb_detail_em 的龙虎榜总净额不用于机构因子；机构因子只读取 stock_lhb_jgmmtj_em 的机构席位统计；
 - 新模型只会进入 validated/rejected，必须人工切换 shadow/ridge；
 - 生产决策仍需先运行 shadow 观察，不允许因代码完成直接切 ridge；
 - 每日/每周自动触发已可在“设置 → 定时任务”启用，也可随时手工立即执行；
 - 自动触发依赖 FastAPI 后端持续运行，Linux/Windows 生产环境需配置后端随系统启动；
 - WxPusher 仍是待完成的部署接线项；
-- ROE 增速、人气榜和可验证机构龙虎榜净额保留为 V1.1 数据扩展，不阻塞首批四因子上线。
+- 龙虎榜、人气榜和尾盘代理均为稀疏辅助信号，当前不进入 Ridge 核心特征，也不会因缺失阻断核心健康门禁。
 
 ### 0.1 当前项目基础
 
@@ -83,7 +93,6 @@
 当前剩余上线项：
 
 - 首批因子历史覆盖回填与 shadow 稳定观察；
-- ROE 增速、人气榜、龙虎榜机构口径等扩展因子；
 - Linux/Windows 后端常驻服务的生产部署与重启演练；
 - WxPusher 通知实现和 token 配置；
 - 正式 UAT、回滚演练和人工 ridge 激活。
@@ -453,9 +462,12 @@ AkShare 1.18.30 中：
 
 规则：
 
-- 第二批启用；
+- V1.1 阶段二已启用，因子代码 roe_yoy_growth，单位为百分点；
 - 使用公告日作为可见时间；
-- 同一报告期多版本时保留最新公告版本和原始版本链。
+- 同一报告期多版本时保留原始版本链，只有新公告日起才使用修订值；
+- 当前报告期按年/月/日匹配去年同期，缺少去年同期时标记为不可用；
+- 业务库唯一键为标的、报告期、公告日、报告类型和来源，DuckDB 使用同一版本键；
+- 因子归入 fundamental/Quality，并作为第五个 Ridge 特征参与动态赋权。
 
 ### 7.2 资金面 F2
 
@@ -478,9 +490,31 @@ AkShare 1.18.30 中：
 
 规则：
 
-- 第二批启用；
+- V1.1 阶段三已启用，使用 stock_lhb_jgmmtj_em，不使用 stock_lhb_detail_em 的总净额；
 - 非上榜股票为0还是缺失必须由因子定义明确；
-- 第一版推荐记为缺失并增加 has_lhb 事件标记，避免把“未上榜”误当成中性精确值。
+- 当前实现记为缺失并增加 has_lhb 事件标记，避免把“未上榜”误当成机构净额为0；
+- 截面原值使用机构净买额除以当日个股成交额，降低大市值规模偏差；
+- 该因子是稀疏事件因子，进入因子仓库、覆盖率和解释链，但暂不进入 Ridge 核心特征，也不参与核心健康门禁；
+- 手工同步单次最多 31 个自然日，默认同步近 30 日，历史回填按月分段执行。
+
+#### 候选池尾盘量价抢筹代理
+
+    tail_accumulation_proxy =
+        log(tail_avg_amount / pre_tail_avg_amount)
+        + 20 * tail_return
+        + close_location
+        - 0.5
+
+规则：
+
+- V1.1 阶段五已启用，数据源为 stock_zh_a_hist_min_em 的1分钟量价，不是 Level-2 逐笔、大单方向或主买数据；
+- 默认只处理最新候选池前20只，单次上限50只，避免逐股分钟接口触发限流；
+- 尾盘窗口为14:30至15:00，至少需要180根全天分钟线、20根尾盘分钟线且最后时间不早于14:59，否则记为缺失；
+- tail_avg_amount / pre_tail_avg_amount 衡量尾盘每分钟成交额是否放大，tail_return 衡量尾盘价格方向，close_location 衡量收盘是否靠近全天高位；
+- 原始分钟响应、各组成项和最终代理分全部版本化保存，便于复核；
+- 当前作为候选稀疏辅助信号进入仓库和投资中心解释，不进入 Ridge 核心特征或核心健康门禁；
+- 连续3个标的网络失败时自动打开本批次熔断，不再继续请求剩余候选；
+- 可在“设置 → 外部数据同步”手工执行，也可启用“每日候选尾盘代理”计划。
 
 ### 7.3 情绪面 F3
 
@@ -515,14 +549,16 @@ AkShare 1.18.30 中：
 
 #### 人气排名百分位
 
-    hot_rank_pct = 1 - rank / max(total_count, 1)
+    hot_rank_attention = 1 - rank / max(total_count, 1)
 
 规则：
 
-- 第二批启用；
+- V1.1 阶段四已启用；免费接口只返回调用时刻的前100名，从启用日起逐日积累，不能回填历史；
 - 极高人气不是永久正向；
 - 与换手、突破和过热组合使用；
-- 接口失败时不阻断主评分。
+- 接口失败时不阻断主评分；
+- 当前作为非线性稀疏情绪信号进入仓库和解释链，暂不进入 Ridge 核心特征或核心健康门禁；
+- 可在“设置 → 外部数据同步”手工保存，也可启用“每日人气榜快照”定时计划。
 
 ### 7.4 宏观面 F4
 
@@ -535,6 +571,29 @@ AkShare 1.18.30 中：
 
     margin_change_5d =
         margin_balance_today / margin_balance_5d_ago - 1
+
+#### 增强版全市场流动性（V1.1 阶段一已完成）
+
+    market_amount_change_5d =
+        market_amount_today / market_amount_5d_ago - 1
+
+    market_amount_z20 =
+        (market_amount_today - mean(previous_20d_market_amount))
+        / max(std(previous_20d_market_amount), 1e-8)
+
+    advancing_ratio = advancing_stock_count / comparable_stock_count
+
+    margin_amount_divergence =
+        margin_change_5d - market_amount_change_5d
+
+实现约束：
+
+- 全市场口径只使用 `region=cn`、`asset_type=stock` 的基础股票池，排除 ETF 和美股；
+- 资产类型通过 DuckDB `raw_asset_universe` 本地元数据表过滤，不新增网络请求；
+- 市场流动性分由成交额 Z20、上涨家数占比、两融变化和成交额变化加权形成；
+- 杠杆上升但成交额萎缩时，使用正背离惩罚流动性分；
+- 市场级指标只调整 `risk_on/neutral/cautious/defensive` 和仓位乘数，不进入股票截面 Z-Score；
+- 所有结果写入动态评分的宏观解释快照，投资中心可查看。
 
 关键设计：
 
@@ -1684,6 +1743,7 @@ WxPusher 配置放入现有预警中心：
     tests/test_whitebox_factor_scoring_bridge.py
     tests/test_whitebox_factor_pipeline.py
     tests/test_whitebox_factor_health.py
+    tests/test_whitebox_scheduled_tasks.py
     tests/test_whitebox_wxpusher.py
 
 必须覆盖：
@@ -1706,6 +1766,9 @@ WxPusher 配置放入现有预警中心：
 - 模型门禁；
 - 影子模式不影响正式扫描；
 - 激活和回退；
+- 默认计划只初始化一次，删除或改名后重启不恢复；
+- 每天/每周/间隔的时区换算与到期原子抢占；
+- 计划 CRUD、禁用计划立即执行和调度审计；
 - 通知失败不影响评分发布。
 
 ### 19.2 黑盒测试
@@ -1730,6 +1793,7 @@ WxPusher 配置放入现有预警中心：
 新增：
 
     frontend/src/components/__tests__/FactorModelSettings.test.tsx
+    frontend/src/components/__tests__/ScheduledTaskManager.test.tsx
     frontend/src/components/__tests__/FactorHealthPanel.test.tsx
     frontend/src/components/__tests__/FactorExplanationPanel.test.tsx
 
@@ -1773,7 +1837,7 @@ WxPusher 配置放入现有预警中心：
 
 说明：
 
-本环境下 Vite/esbuild 在受限沙箱内会出现 spawn EPERM；允许子进程后，2026-07-14 已完成生产打包，3679 个模块转换成功。后端全量收集 638 项，551 passed、85 skipped、1 xfailed、1 xpassed，零真实失败。新增 FactorModelSettings 单项 Vitest 通过。npx tsc -b --pretty false 当前仍被既有测试类型问题阻断，错误集中在 never[] 推断、测试 Mock 返回类型、HTMLElement.disabled 和未导出的 AppContextValue，本轮新增因子组件无新增 TypeScript 错误。前端全量 Vitest 实际运行 224 项，195 项通过；既有 Discovery 测试夹具、MacroData 超时和 PortfolioWorkbench 旧参数断言仍需单独修复。
+本环境下 Vite/esbuild 在受限沙箱内会出现 spawn EPERM；允许子进程后，2026-07-15 已完成生产打包，3682 个模块转换成功。后端最近一次全量收集 647 项，560 passed、85 skipped、1 xfailed、1 xpassed，零真实失败；本轮因子与调度相关回归 66 项全部通过，因子设置白盒 14 项、真实 HTTP 黑盒 3 项全部通过。FactorModelSettings 定向 Vitest 3 项通过，覆盖正常、未启用和仓库未初始化状态。`npx tsc -b --pretty false` 当前仍被既有测试类型问题阻断，错误集中在 `never[]` 推断、旧测试 Mock 返回类型、`HTMLElement.disabled` 和未导出的 `AppContextValue`，本轮新增组件无 TypeScript 错误。前端全量 Vitest 的既有 Discovery 测试夹具、MacroData 超时和 PortfolioWorkbench 旧参数断言仍需单独修复。
 
 ---
 
@@ -1827,9 +1891,9 @@ WxPusher 配置放入现有预警中心：
 2. 创建 DuckDB 目录并验证写权限。
 3. 安装新增依赖。
 4. 执行 Alembic 迁移。
-5. 保持 FACTOR_FEATURE_ENABLED=false 启动。
-6. 初始化 DuckDB schema。
-7. 开启功能但保持 manual。
+5. 保持因子功能关闭、manual 模式启动。
+6. 在“设置 → 因子模型”启用功能并初始化 DuckDB schema。
+7. 确认功能已启用但决策模式仍为 manual。
 8. 运行 K线镜像和第一批数据同步。
 9. 运行因子回填。
 10. 切换 shadow。
@@ -2057,9 +2121,9 @@ WxPusher 配置放入现有预警中心：
 
 ### 28.2 环境配置
 
-PowerShell 启动前配置：
+PowerShell 启动前配置（环境变量仅作为首次建库默认值，功能开关后续由设置页持久化管理）：
 
-    $env:FACTOR_FEATURE_ENABLED="true"
+    $env:FACTOR_FEATURE_ENABLED="false"
     $env:FACTOR_WEIGHT_MODE="manual"
     $env:FACTOR_WAREHOUSE_PATH="D:\quant-data\factor_warehouse.duckdb"
     $env:WXPUSHER_ENABLED="false"
@@ -2080,6 +2144,8 @@ PowerShell 启动前配置：
 注意：
 
 - FACTOR_WEIGHT_MODE 只决定尚无持久化状态时的初始值；
+- FACTOR_FEATURE_ENABLED 只决定 factor_system_config 尚不存在时的初始值；
+- 后续启用状态以“设置 → 因子模型”和 SQL 中 factor_system_config 为准；
 - 一旦通过界面激活或回退，后续以 SQL 中 factor_runtime_state 为准；
 - DuckDB 文件不得放在 Git 工作区的跟踪目录；
 - WXPusher 当前仅有配置位，通知服务未完成前必须保持 false。
@@ -2087,28 +2153,30 @@ PowerShell 启动前配置：
 ### 28.3 首次初始化
 
 1. 打开“设置 → 基础数据”，完成 A 股股票池和日线初始化。
-2. 完成估值、主力资金和宏观数据同步。
+2. 在“设置 → 外部数据同步”完成估值、财报历史、近30日龙虎榜机构、今日人气榜、候选尾盘代理、主力资金和宏观数据同步；首次优先选择自选股或持仓，尾盘代理固定限制候选前20只。
 3. 打开“设置 → 因子模型”。
-4. 保持“训练 Ridge”和“生成评分快照”开启，运行一次本地因子流水线。
-5. 等待任务进入 done，检查：
+4. 点击“启用因子功能”，确认功能状态变为“已启用”。
+5. 点击“初始化仓库”，确认因子仓库变为“正常”；仓库未就绪时“运行流水线”保持禁用。
+6. 保持“训练 Ridge”和“生成评分快照”开启，运行一次本地因子流水线。
+7. 等待任务进入 done，检查：
 
    - 因子仓库为可用；
    - 最新交易日与本地 K 线一致；
-   - 四个首批因子均产生覆盖率；
+   - 五个核心股票截面因子均产生覆盖率；龙虎榜稀疏因子只在真实机构上榜事件日产生有效值；
    - 新模型状态只能是 validated 或 rejected；
    - 当前决策模式仍为 manual。
 
-6. 若模型为 rejected，记录拒绝原因，不得绕过门禁。
-7. 若模型为 validated，点击“影子运行”。
-8. 关闭“训练 Ridge”，再次运行流水线，为活动模型生成 shadow Score。
-9. 在“今日决策”核对模式、模型、因子日期和平均覆盖率。
-10. 在“投资中心”抽查至少 10 只股票的因子原值、Z-Score、系数、贡献、宏观状态和数据截止时间。
+8. 若模型为 rejected，记录拒绝原因，不得绕过门禁。
+9. 若模型为 validated，点击“影子运行”。
+10. 关闭“训练 Ridge”，再次运行流水线，为活动模型生成 shadow Score。
+11. 在“今日决策”核对模式、模型、因子日期和平均覆盖率。
+12. 在“投资中心”抽查至少 10 只股票的因子原值、Z-Score、系数、贡献、宏观状态和数据截止时间。
 
 ### 28.4 日常运行
 
 交易日建议顺序：
 
-1. 16:30 后完成行情、估值、资金流和宏观源同步。
+1. 16:30 后完成行情、估值、资金流和宏观源同步；公告季或首次回填时先同步财报历史。
 2. 18:10 后运行因子流水线。
 3. 日常任务关闭“训练 Ridge”，只做镜像、因子、标签和活动模型评分快照。
 4. 任务完成后检查：
@@ -2232,7 +2300,7 @@ API 回退示例：
 当前版本不再为每个业务任务分别维护 Linux crontab 或 Windows 任务计划。全部业务计划保存在 SQL 业务库中，并通过同一设置页管理：
 
 1. 打开“设置 → 定时任务”。
-2. 查看系统初始化的 5 个默认计划；只有“每日行情增量同步”默认启用，其余默认关闭。
+2. 查看系统初始化的 9 个默认计划；只有“每日行情增量同步”默认启用，其余默认关闭。
 3. 使用开关启停计划；禁用计划不会删除配置和历史业务任务。
 4. 点击“立即执行”可手工提交任何计划，包括当前已禁用的计划。
 5. 点击编辑可修改每天/每周/间隔、时区、执行时间和任务参数；参数在保存时由后端业务 Schema 校验。
@@ -2243,6 +2311,10 @@ API 回退示例：
 | 计划 | 默认时间 | 默认状态 |
 |---|---:|---|
 | 每日行情增量同步 | 18:00 Asia/Shanghai | 启用 |
+| 每日候选尾盘代理 | 15:10 Asia/Shanghai | 关闭 |
+| 每日人气榜快照 | 16:20 Asia/Shanghai | 关闭 |
+| 每日龙虎榜机构同步 | 16:30 Asia/Shanghai | 关闭 |
+| 每周财报历史同步 | 周六 10:00 Asia/Shanghai | 关闭 |
 | 每日宏观数据更新 | 17:30 Asia/Shanghai | 关闭 |
 | 每日因子评分 | 18:10 Asia/Shanghai | 关闭 |
 | 每周因子训练 | 周五 18:30 Asia/Shanghai | 关闭 |

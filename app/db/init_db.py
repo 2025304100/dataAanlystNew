@@ -17,7 +17,9 @@ from app.models import (
     market_event, news_event, portfolio, scan, score, scoring_config, signal_rule,
     sim_account, symbol, trade_setup, watchlist,
     # P2：外部数据因子表
-    stock_valuation, capital_flow, etf_indicator,
+    stock_valuation, capital_flow, etf_indicator, financial_report,
+    hot_rank_snapshot, lhb_institution_trade,
+    tail_accumulation_snapshot,
     # P2-E：第三方接口管理配置表
     akshare_api_config,
     # 基础数据隔离层：全市场标的元数据 + K线 + 挖掘结果独立存储
@@ -372,12 +374,14 @@ def _seed_factor_runtime_state() -> None:
     '''Initialize factor runtime state without activating a model.'''
     import logging
     from app.db.session import SessionLocal
+    from app.services.factors.config import ensure_factor_system_config
     from app.services.factors.runtime import ensure_factor_runtime_state
 
     logger = logging.getLogger(__name__)
     try:
         with SessionLocal() as db:
             ensure_factor_runtime_state(db)
+            ensure_factor_system_config(db)
             db.commit()
     except Exception as exc:
         logger.warning('Failed to seed factor runtime state: %s', exc)

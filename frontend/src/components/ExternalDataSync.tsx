@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button, Card, Checkbox, Select, Space, Tooltip, message, Alert, Collapse } from "antd";
-import { QuestionCircleOutlined, SyncOutlined, DatabaseOutlined, FundOutlined, RiseOutlined } from "@ant-design/icons";
+import { BankOutlined, ClockCircleOutlined, FireOutlined, QuestionCircleOutlined, SyncOutlined, DatabaseOutlined, FileTextOutlined, FundOutlined, RiseOutlined } from "@ant-design/icons";
 import { t, template } from "../i18n";
 import { api } from "../api/client";
 
@@ -22,6 +22,10 @@ export default function ExternalDataSync() {
   const [source, setSource] = useState<SyncSource>("watchlist");
   const [includeNorthbound, setIncludeNorthbound] = useState(true);
   const [syncingFund, setSyncingFund] = useState(false);
+  const [syncingFinancial, setSyncingFinancial] = useState(false);
+  const [syncingLhb, setSyncingLhb] = useState(false);
+  const [syncingHotRank, setSyncingHotRank] = useState(false);
+  const [syncingTailProxy, setSyncingTailProxy] = useState(false);
   const [syncingFlow, setSyncingFlow] = useState(false);
   const [syncingEtf, setSyncingEtf] = useState(false);
   const [lastResult, setLastResult] = useState<{ label: string; result: SyncResult } | null>(null);
@@ -59,6 +63,78 @@ export default function ExternalDataSync() {
       message.error(template("extSyncFailed", { message: e?.message || String(e) }));
     } finally {
       setSyncingFlow(false);
+    }
+  };
+
+  const handleSyncFinancial = async () => {
+    setSyncingFinancial(true);
+    setLastResult(null);
+    try {
+      const result = await api.syncFinancialReports(source);
+      setLastResult({ label: t("extSyncFinancial"), result });
+      if (result.failed === 0) {
+        message.success(template("extSyncResult", resultParams(result)));
+      } else {
+        message.warning(template("extSyncResult", resultParams(result)));
+      }
+    } catch (e: any) {
+      message.error(template("extSyncFailed", { message: e?.message || String(e) }));
+    } finally {
+      setSyncingFinancial(false);
+    }
+  };
+
+  const handleSyncLhb = async () => {
+    setSyncingLhb(true);
+    setLastResult(null);
+    try {
+      const result = await api.syncLhbInstitution(30);
+      setLastResult({ label: t("extSyncLhb"), result });
+      if (result.failed === 0) {
+        message.success(template("extSyncResult", resultParams(result)));
+      } else {
+        message.warning(template("extSyncResult", resultParams(result)));
+      }
+    } catch (e: any) {
+      message.error(template("extSyncFailed", { message: e?.message || String(e) }));
+    } finally {
+      setSyncingLhb(false);
+    }
+  };
+
+  const handleSyncHotRank = async () => {
+    setSyncingHotRank(true);
+    setLastResult(null);
+    try {
+      const result = await api.syncHotRank();
+      setLastResult({ label: t("extSyncHotRank"), result });
+      if (result.failed === 0) {
+        message.success(template("extSyncResult", resultParams(result)));
+      } else {
+        message.warning(template("extSyncResult", resultParams(result)));
+      }
+    } catch (e: any) {
+      message.error(template("extSyncFailed", { message: e?.message || String(e) }));
+    } finally {
+      setSyncingHotRank(false);
+    }
+  };
+
+  const handleSyncTailProxy = async () => {
+    setSyncingTailProxy(true);
+    setLastResult(null);
+    try {
+      const result = await api.syncTailProxy(20);
+      setLastResult({ label: t("extSyncTailProxy"), result });
+      if (result.failed === 0) {
+        message.success(template("extSyncResult", resultParams(result)));
+      } else {
+        message.warning(template("extSyncResult", resultParams(result)));
+      }
+    } catch (e: any) {
+      message.error(template("extSyncFailed", { message: e?.message || String(e) }));
+    } finally {
+      setSyncingTailProxy(false);
     }
   };
 
@@ -136,6 +212,90 @@ export default function ExternalDataSync() {
               onClick={handleSyncFundamental}
             >
               {syncingFund ? t("extSyncing") : t("extSyncFundamental")}
+            </Button>
+          </Card>
+
+          <Card
+            size="small"
+            style={{ flex: "1 1 240px", minWidth: 240 }}
+            title={
+              <Space>
+                <BankOutlined />
+                <span>{t("extSyncLhb")}</span>
+              </Space>
+            }
+          >
+            <div style={{ marginBottom: 12, color: "#888", fontSize: 12 }}>{t("extSyncLhbDesc")}</div>
+            <Button
+              type="primary"
+              icon={<SyncOutlined spin={syncingLhb} />}
+              loading={syncingLhb}
+              onClick={handleSyncLhb}
+            >
+              {syncingLhb ? t("extSyncing") : t("extSyncLhb")}
+            </Button>
+          </Card>
+
+          <Card
+            size="small"
+            style={{ flex: "1 1 240px", minWidth: 240 }}
+            title={
+              <Space>
+                <FireOutlined />
+                <span>{t("extSyncHotRank")}</span>
+              </Space>
+            }
+          >
+            <div style={{ marginBottom: 12, color: "#888", fontSize: 12 }}>{t("extSyncHotRankDesc")}</div>
+            <Button
+              type="primary"
+              icon={<SyncOutlined spin={syncingHotRank} />}
+              loading={syncingHotRank}
+              onClick={handleSyncHotRank}
+            >
+              {syncingHotRank ? t("extSyncing") : t("extSyncHotRank")}
+            </Button>
+          </Card>
+
+          <Card
+            size="small"
+            style={{ flex: "1 1 240px", minWidth: 240 }}
+            title={
+              <Space>
+                <ClockCircleOutlined />
+                <span>{t("extSyncTailProxy")}</span>
+              </Space>
+            }
+          >
+            <div style={{ marginBottom: 12, color: "#888", fontSize: 12 }}>{t("extSyncTailProxyDesc")}</div>
+            <Button
+              type="primary"
+              icon={<SyncOutlined spin={syncingTailProxy} />}
+              loading={syncingTailProxy}
+              onClick={handleSyncTailProxy}
+            >
+              {syncingTailProxy ? t("extSyncing") : t("extSyncTailProxy")}
+            </Button>
+          </Card>
+
+          <Card
+            size="small"
+            style={{ flex: "1 1 240px", minWidth: 240 }}
+            title={
+              <Space>
+                <FileTextOutlined />
+                <span>{t("extSyncFinancial")}</span>
+              </Space>
+            }
+          >
+            <div style={{ marginBottom: 12, color: "#888", fontSize: 12 }}>{t("extSyncFinancialDesc")}</div>
+            <Button
+              type="primary"
+              icon={<SyncOutlined spin={syncingFinancial} />}
+              loading={syncingFinancial}
+              onClick={handleSyncFinancial}
+            >
+              {syncingFinancial ? t("extSyncing") : t("extSyncFinancial")}
             </Button>
           </Card>
 

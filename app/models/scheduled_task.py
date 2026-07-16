@@ -59,3 +59,12 @@ class ScheduledTaskRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
 
     schedule: Mapped[ScheduledTask] = relationship(back_populates="runs")
+
+
+class ScheduledTaskSeedState(Base):
+    """Persistent marker so deleted or renamed defaults stay user-controlled."""
+
+    __tablename__ = "scheduled_task_seed_state"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

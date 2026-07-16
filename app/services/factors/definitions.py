@@ -17,6 +17,9 @@ class FactorDefinition:
     formula: str
     version: int = 1
     missing_policy: str = "exclude"
+    frequency: str = "daily"
+    model_enabled: bool = True
+    health_required: bool = True
 
 
 FACTOR_DEFINITIONS: tuple[FactorDefinition, ...] = (
@@ -35,11 +38,31 @@ FACTOR_DEFINITIONS: tuple[FactorDefinition, ...] = (
         formula="-pb, pb > 0",
     ),
     FactorDefinition(
+        code="roe_yoy_growth",
+        name="ROE YoY Growth (ppt)",
+        category="fundamental",
+        direction="higher_better",
+        formula=(
+            "latest announced roe_ttm - same-period prior-year roe_ttm"
+        ),
+        frequency="quarterly",
+    ),
+    FactorDefinition(
         code="main_inflow_5d_ratio",
         name="5-day Main Inflow / Turnover",
         category="capital_flow",
         direction="higher_better",
         formula="sum(main_net_inflow, 5d) / sum(amount, 5d)",
+    ),
+    FactorDefinition(
+        code="lhb_institution_net_ratio",
+        name="LHB Institution Net / Turnover",
+        category="capital_flow",
+        direction="higher_better",
+        formula="lhb_institution_net / amount on listed event day",
+        missing_policy="exclude",
+        model_enabled=False,
+        health_required=False,
     ),
     FactorDefinition(
         code="turnover_z20",
@@ -48,6 +71,29 @@ FACTOR_DEFINITIONS: tuple[FactorDefinition, ...] = (
         direction="nonlinear",
         formula="(turnover - mean_20d) / stddev_pop_20d",
     ),
+    FactorDefinition(
+        code="hot_rank_attention",
+        name="EastMoney Hot-Rank Attention",
+        category="sentiment",
+        direction="nonlinear",
+        formula="1 - hot_rank_pct / 100 for current top-100 snapshot",
+        missing_policy="exclude",
+        model_enabled=False,
+        health_required=False,
+    ),
+    FactorDefinition(
+        code="tail_accumulation_proxy",
+        name="Tail-session Accumulation Proxy",
+        category="capital_flow",
+        direction="higher_better",
+        formula=(
+            "log(tail_avg_amount/pre_tail_avg_amount) "
+            "+ 20*tail_return + close_location - 0.5"
+        ),
+        missing_policy="exclude",
+        model_enabled=False,
+        health_required=False,
+    ),
 )
 
 FACTOR_BY_CODE = {definition.code: definition for definition in FACTOR_DEFINITIONS}
@@ -55,21 +101,73 @@ FACTOR_BY_CODE = {definition.code: definition for definition in FACTOR_DEFINITIO
 _SOURCE_MAPPINGS = {
     "ep_ttm": {"table": "raw_valuation_snapshots", "field": "pe_ttm"},
     "negative_pb": {"table": "raw_valuation_snapshots", "field": "pb"},
+    "roe_yoy_growth": {
+        "table": "raw_financial_reports",
+        "fields": [
+            "report_period",
+            "announcement_date",
+            "roe_ttm",
+        ],
+        "point_in_time": True,
+    },
     "main_inflow_5d_ratio": {
         "tables": ["raw_fund_flows", "raw_daily_bars"],
         "fields": ["main_net_inflow", "amount"],
     },
+    "lhb_institution_net_ratio": {
+        "tables": ["raw_sentiment", "raw_daily_bars"],
+        "fields": ["has_lhb", "lhb_institution_net", "amount"],
+        "provider_scope": "institution_seats_only",
+    },
     "turnover_z20": {
         "table": "raw_daily_bars",
         "field": "turnover_rate",
+    },
+    "hot_rank_attention": {
+        "table": "raw_sentiment",
+        "fields": ["hot_rank", "hot_rank_total", "hot_rank_pct"],
+        "provider_scope": "current_top_100_only",
+    },
+    "tail_accumulation_proxy": {
+        "table": "raw_tail_proxy",
+        "fields": [
+            "tail_activity_ratio",
+            "tail_return",
+            "close_location",
+            "proxy_score",
+        ],
+        "provider_scope": "candidate_pool_only",
     },
 }
 
 _PARAMS = {
     "ep_ttm": {"valuation_max_age_days": 7, "positive_pe_only": True},
     "negative_pb": {"valuation_max_age_days": 7, "positive_pb_only": True},
+    "roe_yoy_growth": {
+        "same_period_years": 1,
+        "announcement_date_cutoff": True,
+        "unit": "percentage_point",
+    },
     "main_inflow_5d_ratio": {"window": 5, "minimum_periods": 5},
+    "lhb_institution_net_ratio": {
+        "event_only": True,
+        "non_event_policy": "missing",
+        "model_enabled": False,
+    },
     "turnover_z20": {"window": 20, "minimum_periods": 20},
+    "hot_rank_attention": {
+        "snapshot_only": True,
+        "historical_backfill": False,
+        "model_enabled": False,
+    },
+    "tail_accumulation_proxy": {
+        "minute_period": "1",
+        "tail_start": "14:30",
+        "minimum_day_minutes": 180,
+        "minimum_tail_minutes": 20,
+        "level2": False,
+        "model_enabled": False,
+    },
 }
 
 
@@ -91,7 +189,7 @@ def seed_factor_definitions(db: Session) -> int:
                 direction=definition.direction,
                 status="active",
                 source_type="local_akshare",
-                frequency="daily",
+                frequency=definition.frequency,
                 default_missing_policy=definition.missing_policy,
                 is_active=1,
                 description=definition.name,

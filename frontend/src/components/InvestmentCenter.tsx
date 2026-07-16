@@ -1207,6 +1207,11 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       alpha: "Model Alpha",
       macro: "Macro Regime",
       multiplier: "Position Multiplier",
+      marketLiquidity: "Market Liquidity Score",
+      marketAmountChange: "Market Turnover Change",
+      marketAmountZ: "Turnover Z20",
+      advancingRatio: "Advancing Ratio",
+      leverageDivergence: "Leverage/Turnover Divergence",
       factor: "Factor",
       raw: "Raw",
       normalized: "Normalized",
@@ -1226,6 +1231,11 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       alpha: "模型 Alpha",
       macro: "宏观状态",
       multiplier: "仓位乘数",
+      marketLiquidity: "市场流动性分",
+      marketAmountChange: "全市场成交额变化",
+      marketAmountZ: "成交额 Z20",
+      advancingRatio: "上涨家数占比",
+      leverageDivergence: "杠杆/成交额背离",
       factor: "因子",
       raw: "原值",
       normalized: "标准化",
@@ -1242,14 +1252,20 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       negative_pb: ["市净率 PB（反向）", "Negative Price-to-Book"],
       fund_flow_5d_ratio: ["5日主力净流入比", "5D Main Fund Flow"],
       main_inflow_5d_ratio: ["5日主力净流入比", "5D Main Fund Flow"],
+      lhb_institution_net_ratio: ["龙虎榜机构净买额比", "Institution LHB Net Ratio"],
       turnover_zscore_20d: ["换手率 Z-Score", "Turnover Z-Score"],
       turnover_z20: ["换手率 Z-Score", "Turnover Z-Score"],
       hot_rank_percentile: ["人气榜分位", "Popularity Percentile"],
+      hot_rank_attention: ["人气榜关注度", "Hot-Rank Attention"],
+      tail_accumulation_proxy: ["尾盘量价抢筹代理", "Tail Accumulation Proxy"],
       cn_10y_change: ["中国10年国债变化", "CN 10Y Yield Change"],
       us_10y_change: ["美国10年国债变化", "US 10Y Yield Change"],
       margin_balance_change: ["两融余额变化", "Margin Balance Change"],
     };
-    const factors = Object.entries(factorExplanation?.explanation.factors ?? {})
+    const factors = [
+      ...Object.entries(factorExplanation?.explanation.factors ?? {}),
+      ...Object.entries(factorExplanation?.explanation.event_factors ?? {}),
+    ]
       .sort(([, left], [, right]) => Math.abs(Number(right.contribution ?? 0)) - Math.abs(Number(left.contribution ?? 0)));
     const factorLabel = (code: string) => factorNames[code]?.[ctx.locale === "en-US" ? 1 : 0] ?? code;
     const macroRegime = factorExplanation?.macro_regime
@@ -1257,6 +1273,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       ?? "-";
     const multiplier = factorExplanation?.macro_position_multiplier
       ?? factorExplanation?.explanation.macro?.position_multiplier;
+    const macroDetail = factorExplanation?.explanation.macro;
 
     return (
       <section className="ic__section ic__factor-section">
@@ -1296,6 +1313,11 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
                 <div><span>{labels.alpha}</span><strong>{score(factorExplanation.model_alpha_score, 1)}</strong></div>
                 <div><span>{labels.macro}</span><strong>{macroRegime}</strong></div>
                 <div><span>{labels.multiplier}</span><strong>{multiplier == null ? "-" : `${score(multiplier, 2)}x`}</strong></div>
+                <div><span>{labels.marketLiquidity}</span><strong>{score(macroDetail?.liquidity_score, 1)}</strong></div>
+                <div><span>{labels.marketAmountChange}</span><strong>{macroDetail?.market_amount_change_ratio == null ? "-" : `${score(macroDetail.market_amount_change_ratio * 100, 2)}%`}</strong></div>
+                <div><span>{labels.marketAmountZ}</span><strong>{score(macroDetail?.market_amount_z20, 2)}</strong></div>
+                <div><span>{labels.advancingRatio}</span><strong>{macroDetail?.advancing_ratio == null ? "-" : `${score(macroDetail.advancing_ratio * 100, 1)}%`}</strong></div>
+                <div><span>{labels.leverageDivergence}</span><strong>{macroDetail?.margin_amount_divergence == null ? "-" : `${score(macroDetail.margin_amount_divergence * 100, 2)}%`}</strong></div>
               </div>
               <div className="ic__factor-table" role="table">
                 <div className="ic__factor-row ic__factor-row--head" role="row">

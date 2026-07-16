@@ -43,13 +43,13 @@ def client():
 # 1. GET /external-data/apis 列表接口
 # ============================================================================
 
-def test_list_apis_zh_returns_all_17(client):
-    """GET /external-data/apis?locale=zh-CN → 18 项（registry 全量，含 fund_name_em）。"""
+def test_list_apis_zh_keeps_original_registry_entries(client):
+    """接口扩展后仍应完整保留最初注册的 18 项。"""
     r = client.get("/api/v1/external-data/apis?locale=zh-CN")
     assert r.status_code == 200
     data = r.json()
     assert isinstance(data, list)
-    assert len(data) == 18, f"应有 18 个接口, 实际 {len(data)}"
+    assert len(data) >= 18, f"接口注册表不应少于 18 项, 实际 {len(data)}"
 
 
 def test_list_apis_en_returns_english_names(client):
@@ -80,10 +80,15 @@ def test_list_apis_contains_required_fields(client):
 
 def test_list_apis_locale_fallback(client):
     """locale=invalid → 回退 zh-CN（不报错）。"""
+    expected = client.get(
+        "/api/v1/external-data/apis?locale=zh-CN"
+    ).json()
     r = client.get("/api/v1/external-data/apis?locale=invalid_locale")
     assert r.status_code == 200
     data = r.json()
-    assert len(data) == 18
+    assert [item["key"] for item in data] == [
+        item["key"] for item in expected
+    ]
 
 
 # ============================================================================

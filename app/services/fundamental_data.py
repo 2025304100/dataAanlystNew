@@ -22,12 +22,14 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 import akshare as ak
+import pandas as pd
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.models.stock_valuation import StockValuation
 from app.models.symbol import Symbol
 from app.services.akshare_utils import call_akshare_with_retry, quiet_akshare_output
+from app.services.factors.fundamental import normalize_stock_value_frame
 from app.services.market_data import _proxy_bypass
 from app.services.regions import region_from_market
 
@@ -112,6 +114,44 @@ def _fetch_individual_info(db: Session, symbol: Symbol) -> dict[str, Any]:
         return {}
 
 
+def _fetch_value_history(
+    db: Session, symbol: Symbol, trade_date: date
+) -> dict[str, Any]:
+    """Fallback to the stable per-stock historical valuation interface."""
+    code = _market_code_for_akshare(symbol)
+    try:
+        with _proxy_bypass(), quiet_akshare_output():
+            frame = call_akshare_with_retry(
+                ak.stock_value_em,
+                symbol=code,
+                api_key="stock_value_em",
+                db=db,
+            )
+        normalized = normalize_stock_value_frame(frame, symbol=code)
+        if normalized.empty:
+            return {}
+        eligible = normalized[
+            normalized["trade_date"] <= trade_date
+        ].sort_values("trade_date")
+        if eligible.empty:
+            return {}
+        row = eligible.iloc[-1]
+        return {
+            "trade_date": row["trade_date"],
+            "pe_ttm": _safe_float(row["pe_ttm"]),
+            "pb": _safe_float(row["pb"]),
+            "total_market_cap": _safe_float(row["total_market_cap"]),
+            "circulating_market_cap": _safe_float(
+                row["circulating_market_cap"]
+            ),
+        }
+    except Exception as exc:
+        logger.debug(
+            "stock_value_em failed for %s: %s", symbol.symbol, exc
+        )
+        return {}
+
+
 def calc_pe_score(
     pe_ttm: float | None,
     pe_history_percentile: float | None,
@@ -174,6 +214,14 @@ def sync_symbol_valuation(db: Session, symbol: Symbol, trade_date: date | None =
 
     # 1. 拉取数据
     spot_data = _fetch_spot_valuation(db, symbol)
+    fallback_data = {}
+    if (
+        spot_data.get("pe_ttm") is None
+        and spot_data.get("pb") is None
+        and spot_data.get("total_market_cap") is None
+    ):
+        fallback_data = _fetch_value_history(db, symbol, target_date)
+        spot_data = fallback_data
     info_data = _fetch_individual_info(db, symbol)
 
     pe_ttm = spot_data.get("pe_ttm")
@@ -191,7 +239,7 @@ def sync_symbol_valuation(db: Session, symbol: Symbol, trade_date: date | None =
         return None
 
     pe_score = calc_pe_score(pe_ttm, pe_history_percentile, industry_pe_percentile)
-    actual_date = target_date
+    actual_date = fallback_data.get("trade_date") or target_date
 
     # 2. 写库（upsert）
     existing = db.execute(
@@ -202,7 +250,11 @@ def sync_symbol_valuation(db: Session, symbol: Symbol, trade_date: date | None =
     ).scalars().first()
 
     raw_json = json.dumps(
-        {"spot": spot_data, "info": info_data},
+        {
+            "spot": spot_data,
+            "historical_fallback": bool(fallback_data),
+            "info": info_data,
+        },
         ensure_ascii=False,
         default=str,
     )
@@ -222,7 +274,11 @@ def sync_symbol_valuation(db: Session, symbol: Symbol, trade_date: date | None =
     existing.industry = industry
     existing.pe_history_percentile = pe_history_percentile
     existing.pe_score = pe_score
-    existing.source = "akshare"
+    existing.source = (
+        "akshare:stock_value_em"
+        if fallback_data
+        else "akshare:stock_zh_a_spot_em"
+    )
     existing.raw_json = raw_json
     db.flush()
     return existing

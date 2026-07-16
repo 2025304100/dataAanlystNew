@@ -33,14 +33,24 @@ def test_calculate_next_daily_and_weekly_run_in_configured_timezone():
 
 
 def test_seed_default_schedules_is_idempotent(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 5
+    assert scheduled_tasks.seed_default_schedules(db_session) == 9
     db_session.commit()
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     rows = db_session.query(ScheduledTask).all()
-    assert len(rows) == 5
+    assert len(rows) == 9
     enabled = [item for item in rows if item.enabled]
     assert [item.task_type for item in enabled] == ["universe_incremental_sync"]
     assert enabled[0].next_run_at is not None
+
+
+def test_deleted_or_renamed_defaults_are_not_reseeded(db_session):
+    assert scheduled_tasks.seed_default_schedules(db_session) == 9
+    db_session.commit()
+    item = db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").one()
+    scheduled_tasks.delete_schedule(db_session, item.id)
+
+    assert scheduled_tasks.seed_default_schedules(db_session) == 0
+    assert db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").count() == 0
 
 
 def test_schedule_create_update_and_delete(db_session):
@@ -218,6 +228,10 @@ def test_scheduled_task_api_crud_and_manual_run(db_session, monkeypatch):
             "universe_incremental_sync",
             "macro_update",
             "factor_pipeline",
+            "hot_rank_snapshot",
+            "tail_proxy_snapshot",
+            "lhb_institution_sync",
+            "financial_report_sync",
             "discovery_mining",
         }
 

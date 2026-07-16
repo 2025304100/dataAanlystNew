@@ -4,11 +4,8 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict
-from datetime import date
+from datetime import date, timedelta
 
-from sqlalchemy.orm import Session
-
-from app.core.config import settings
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
 from app.schemas.async_task import FactorPipelineCreate
@@ -20,6 +17,10 @@ from app.services.async_tasks import (
     list_async_tasks,
 )
 from app.services.factors.bar_mirror import mirror_daily_bars
+from app.services.factors.config import (
+    get_current_factor_system_config,
+    get_factor_system_config,
+)
 from app.services.factors.data_sync import mirror_factor_inputs
 from app.services.factors.factor_engine import calculate_stock_factors
 from app.services.factors.ridge_model import train_rolling_ridge
@@ -33,9 +34,46 @@ logger = logging.getLogger(__name__)
 TASK_TYPE = 'factor_pipeline'
 
 
-def _cancelled(db: Session, task_id: str) -> bool:
-    task = db.get(AsyncTaskRecord, task_id)
-    return task is not None and task.status == 'cancelled'
+def resolve_pipeline_dates(
+    payload: FactorPipelineCreate,
+    *,
+    latest_bar_date: date | None,
+    today: date | None = None,
+) -> tuple[date, date]:
+    end_date = payload.end_date or today or date.today()
+    if payload.start_date is not None:
+        return payload.start_date, end_date
+    anchor = latest_bar_date or end_date
+    lookback_days = 550 if payload.train_model else 45
+    return anchor - timedelta(days=lookback_days), end_date
+
+
+def resolve_calculation_start(
+    payload: FactorPipelineCreate,
+    *,
+    mirror_start_date: date,
+    latest_bar_date: date | None,
+) -> date:
+    if payload.start_date is not None or payload.train_model:
+        return mirror_start_date
+    anchor = latest_bar_date or mirror_start_date
+    return max(mirror_start_date, anchor - timedelta(days=10))
+
+
+def _cancelled(task_id: str) -> bool:
+    """Read cancellation in a fresh transaction.
+
+    The pipeline's main SQLAlchemy session can remain inside a long-running
+    mirror transaction. Reusing its identity map would hide a cancellation
+    committed by the API session until the whole mirror phase completes.
+    """
+    SessionLocal = get_session_local()
+    cancel_db = SessionLocal()
+    try:
+        task = cancel_db.get(AsyncTaskRecord, task_id)
+        return task is not None and task.status == 'cancelled'
+    finally:
+        cancel_db.close()
 
 
 def _latest_factor_date(
@@ -55,9 +93,10 @@ def _latest_factor_date(
 
 
 def create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
-    if not settings.factor_feature_enabled:
+    factor_config = get_current_factor_system_config()
+    if not factor_config.feature_enabled:
         raise ValueError(
-            'Factor pipeline is disabled; set FACTOR_FEATURE_ENABLED=true'
+            'Factor pipeline is disabled; enable it in Settings > Factor Models'
         )
     existing = list_async_tasks(task_type=TASK_TYPE, limit=1)
     if existing and existing[0].status in {'queued', 'running'}:
@@ -74,13 +113,42 @@ def _run_factor_pipeline(task_id: str) -> None:
         task = db.get(AsyncTaskRecord, task_id)
         if task is None:
             return
+        if task.status == 'cancelled':
+            return
         payload = FactorPipelineCreate.model_validate(
             json.loads(task.payload_json or '{}')
         )
         if payload.validation_days >= payload.window_days:
             raise ValueError('validation_days must be less than window_days')
-        warehouse = FactorWarehouse()
+        factor_config = get_factor_system_config(db)
+        if not factor_config.feature_enabled:
+            raise ValueError('Factor pipeline was disabled before execution')
+        should_cancel = lambda: _cancelled(task_id)
+        if should_cancel():
+            return
+        warehouse = FactorWarehouse(factor_config.warehouse_path)
+        warehouse_health = warehouse.health()
+        latest_bar_date = (
+            date.fromisoformat(warehouse_health.latest_trade_date)
+            if warehouse_health.latest_trade_date
+            else None
+        )
+        effective_start_date, effective_end_date = (
+            resolve_pipeline_dates(
+                payload, latest_bar_date=latest_bar_date
+            )
+        )
+        calculation_start_date = resolve_calculation_start(
+            payload,
+            mirror_start_date=effective_start_date,
+            latest_bar_date=latest_bar_date,
+        )
         results: dict = {}
+        results['effective_range'] = {
+            'mirror_start_date': effective_start_date,
+            'calculation_start_date': calculation_start_date,
+            'end_date': effective_end_date,
+        }
 
         _set_task(
             db,
@@ -94,23 +162,27 @@ def _run_factor_pipeline(task_id: str) -> None:
         bars = mirror_daily_bars(
             db,
             warehouse=warehouse,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
+            start_date=effective_start_date,
+            end_date=effective_end_date,
             full_refresh=payload.full_refresh,
+            should_cancel=should_cancel,
         )
+        if should_cancel():
+            return
         inputs = mirror_factor_inputs(
             db,
             warehouse=warehouse,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
+            start_date=effective_start_date,
+            end_date=effective_end_date,
             full_refresh=payload.full_refresh,
+            should_cancel=should_cancel,
         )
         results['bar_mirror'] = bars.to_dict()
         results['input_mirror'] = {
             **asdict(inputs),
             'rows_written': inputs.rows_written,
         }
-        if _cancelled(db, task_id):
+        if should_cancel():
             return
 
         _set_task(
@@ -122,11 +194,11 @@ def _run_factor_pipeline(task_id: str) -> None:
         )
         factors = calculate_stock_factors(
             warehouse,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
+            start_date=calculation_start_date,
+            end_date=effective_end_date,
         )
         results['factors'] = asdict(factors)
-        if _cancelled(db, task_id):
+        if should_cancel():
             return
 
         _set_task(
@@ -138,11 +210,11 @@ def _run_factor_pipeline(task_id: str) -> None:
         )
         targets = calculate_targets(
             warehouse,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
+            start_date=calculation_start_date,
+            end_date=effective_end_date,
         )
         results['targets'] = asdict(targets)
-        if _cancelled(db, task_id):
+        if should_cancel():
             return
 
         model_result = None
@@ -161,7 +233,7 @@ def _run_factor_pipeline(task_id: str) -> None:
                 target_calc_batch_id=targets.calc_batch_id,
                 data_cutoff_date=(
                     payload.data_cutoff_date
-                    or payload.end_date
+                    or effective_end_date
                     or date.today()
                 ),
                 window_days=payload.window_days,
@@ -169,7 +241,7 @@ def _run_factor_pipeline(task_id: str) -> None:
             )
             db.commit()
             results['model'] = asdict(model_result)
-        if _cancelled(db, task_id):
+        if should_cancel():
             return
 
         runtime = get_factor_runtime_snapshot(db)
@@ -237,4 +309,9 @@ def _run_factor_pipeline(task_id: str) -> None:
         db.close()
 
 
-__all__ = ['TASK_TYPE', 'create_factor_pipeline_task']
+__all__ = [
+    'TASK_TYPE',
+    'create_factor_pipeline_task',
+    'resolve_calculation_start',
+    'resolve_pipeline_dates',
+]

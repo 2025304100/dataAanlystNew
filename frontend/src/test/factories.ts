@@ -102,6 +102,10 @@ export function makeMockApi(overrides: Record<string, ReturnType<typeof vi.fn>> 
   const updateAkshareApiConfig = vi.fn(async (_key: string, payload: any) => payload);
 
   const syncFundamental = vi.fn(async () => ({ total: 5, success: 4, skipped: 1, failed: 0, errors: [] }));
+  const syncFinancialReports = vi.fn(async () => ({ total: 5, success: 5, skipped: 0, failed: 0, records: 100, errors: [] }));
+  const syncLhbInstitution = vi.fn(async () => ({ total: 8, success: 8, skipped: 0, failed: 0, records: 8, errors: [] }));
+  const syncHotRank = vi.fn(async () => ({ total: 100, success: 100, skipped: 0, failed: 0, records: 100, errors: [] }));
+  const syncTailProxy = vi.fn(async () => ({ total: 20, success: 18, skipped: 2, failed: 0, records: 18, errors: [] }));
   const syncCapitalFlow = vi.fn(async () => ({ total: 5, success: 4, skipped: 1, failed: 0, errors: [] }));
   const syncEtfIndicators = vi.fn(async () => ({ total: 3, success: 3, skipped: 0, failed: 0, errors: [] }));
 
@@ -143,6 +147,10 @@ export function makeMockApi(overrides: Record<string, ReturnType<typeof vi.fn>> 
     probeAkshareApi,
     updateAkshareApiConfig,
     syncFundamental,
+    syncFinancialReports,
+    syncLhbInstitution,
+    syncHotRank,
+    syncTailProxy,
     syncCapitalFlow,
     syncEtfIndicators,
     listScoringConfigs,

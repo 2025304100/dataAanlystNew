@@ -10,6 +10,7 @@ pytest.importorskip("sklearn")
 
 from app.models.factor_model import FactorModelRun
 from app.services.factors.ridge_model import (
+    FEATURE_CODES,
     ModelGate,
     evaluate_model_gate,
     train_rolling_ridge,
@@ -37,15 +38,18 @@ def _seed_training_data(
             pb = ((symbol_index * 2 + day) % 9 - 4) / 2
             flow = ((symbol_index + day * 3) % 11 - 5) / 3
             turnover = ((symbol_index * 3 + day) % 7 - 3) / 2
+            roe = ((symbol_index * 5 + day * 2) % 13 - 6) / 4
             features = {
                 "ep_ttm": ep,
                 "negative_pb": pb,
+                "roe_yoy_growth": roe,
                 "main_inflow_5d_ratio": flow,
                 "turnover_z20": turnover,
             }
             target = (
                 0.04 * ep
                 - 0.025 * pb
+                + 0.02 * roe
                 + 0.015 * flow
                 - 0.005 * turnover
                 + symbol_index * 1e-5
@@ -127,6 +131,7 @@ def test_ridge_uses_time_split_signed_weights_and_is_idempotent(
     assert first.validation_ic > 0.9
     assert first.coefficients["ep_ttm"] > 0
     assert first.coefficients["negative_pb"] < 0
+    assert first.coefficients["roe_yoy_growth"] > 0
     assert first.coefficients["main_inflow_5d_ratio"] > 0
     assert first.coefficients["turnover_z20"] < 0
     assert sum(abs(v) for v in first.normalized_weights.values()) == pytest.approx(1)
@@ -136,7 +141,7 @@ def test_ridge_uses_time_split_signed_weights_and_is_idempotent(
     model = db_session.get(FactorModelRun, first.model_run_id)
     assert model is not None
     assert model.train_end_date < model.validation_start_date
-    assert len(model.weights) == 4
+    assert len(model.weights) == len(FEATURE_CODES)
 
 
 def test_ridge_excludes_targets_after_cutoff(db_session, tmp_path):
@@ -204,7 +209,7 @@ def test_model_gate_rejects_non_finite_or_zero_coefficients():
         trade_date_count=1,
         validation_date_count=1,
         validation_ic=0.1,
-        coefficients=[1, np.nan, 1, 1],
+        coefficients=[1, np.nan, *([1] * (len(FEATURE_CODES) - 2))],
         gate=gate,
     )
     zero = evaluate_model_gate(
@@ -213,7 +218,7 @@ def test_model_gate_rejects_non_finite_or_zero_coefficients():
         trade_date_count=1,
         validation_date_count=1,
         validation_ic=0.1,
-        coefficients=[0, 0, 0, 0],
+        coefficients=[0] * len(FEATURE_CODES),
         gate=gate,
     )
 

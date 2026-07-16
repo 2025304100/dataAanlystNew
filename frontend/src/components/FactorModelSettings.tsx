@@ -40,6 +40,17 @@ const LABELS = {
     scoreMode: "实际评分来源",
     activeModel: "活动模型",
     warehouse: "因子仓库",
+    warehousePath: "仓库路径",
+    featureStatus: "功能状态",
+    featureEnabled: "已启用",
+    featureDisabled: "未启用",
+    enableFeature: "启用因子功能",
+    disableFeature: "停用因子功能",
+    initializeWarehouse: "初始化仓库",
+    featureDisabledTitle: "因子功能尚未启用",
+    featureDisabledDescription: "启用后才能初始化本地 DuckDB 仓库并运行因子流水线。",
+    warehouseUnavailableTitle: "因子仓库尚未就绪",
+    invalidWindows: "验证窗口必须小于训练窗口",
     latestDate: "最新交易日",
     coverage: "平均覆盖率",
     healthy: "正常",
@@ -85,6 +96,17 @@ const LABELS = {
     scoreMode: "Score Source",
     activeModel: "Active Model",
     warehouse: "Factor Warehouse",
+    warehousePath: "Warehouse Path",
+    featureStatus: "Feature Status",
+    featureEnabled: "Enabled",
+    featureDisabled: "Disabled",
+    enableFeature: "Enable Factor Feature",
+    disableFeature: "Disable Factor Feature",
+    initializeWarehouse: "Initialize Warehouse",
+    featureDisabledTitle: "Factor feature is disabled",
+    featureDisabledDescription: "Enable it before initializing DuckDB and running the factor pipeline.",
+    warehouseUnavailableTitle: "Factor warehouse is not ready",
+    invalidWindows: "Validation window must be smaller than training window",
     latestDate: "Latest Trade Date",
     coverage: "Average Coverage",
     healthy: "Healthy",
@@ -223,6 +245,34 @@ export default function FactorModelSettings() {
     }
   };
 
+  const toggleFeature = async (enabled: boolean) => {
+    setActing("feature");
+    setError(null);
+    try {
+      await api.updateFactorSystemConfig(enabled);
+      ctx.showToast("success", enabled ? labels.enableFeature : labels.disableFeature);
+      await loadAll(false);
+    } catch (err: any) {
+      setError(err.message || labels.actionFailed);
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const initializeWarehouse = async () => {
+    setActing("initialize");
+    setError(null);
+    try {
+      await api.initializeFactorWarehouse();
+      ctx.showToast("success", labels.initializeWarehouse);
+      await loadAll(false);
+    } catch (err: any) {
+      setError(err.message || labels.actionFailed);
+    } finally {
+      setActing(null);
+    }
+  };
+
   const cancelPipeline = async () => {
     if (!activeTask) return;
     setActing("cancel");
@@ -270,6 +320,9 @@ export default function FactorModelSettings() {
 
   const runtime = overview?.runtime;
   const taskRunning = !!activeTask && !TERMINAL_TASK_STATES.has(activeTask.status);
+  const featureEnabled = overview?.feature_enabled ?? overview?.config?.feature_enabled ?? false;
+  const warehouseAvailable = overview?.health.warehouse_available ?? false;
+  const invalidWindows = validationDays >= windowDays;
 
   const columns = [
     {
@@ -376,13 +429,45 @@ export default function FactorModelSettings() {
 
       {error && <Alert type="error" showIcon closable message={error} onClose={() => setError(null)} />}
 
+      {overview && !featureEnabled && (
+        <Alert
+          type="warning"
+          showIcon
+          message={labels.featureDisabledTitle}
+          description={labels.featureDisabledDescription}
+          action={(
+            <Button type="primary" loading={acting === "feature"} onClick={() => toggleFeature(true)}>
+              {labels.enableFeature}
+            </Button>
+          )}
+        />
+      )}
+
+      {overview && featureEnabled && !warehouseAvailable && (
+        <Alert
+          type="warning"
+          showIcon
+          message={labels.warehouseUnavailableTitle}
+          description={`${overview.warehouse_error || overview.health.reasons?.join(", ") || labels.unavailable} · ${overview.config.warehouse_path}`}
+          action={(
+            <Button loading={acting === "initialize"} onClick={initializeWarehouse}>
+              {labels.initializeWarehouse}
+            </Button>
+          )}
+        />
+      )}
+
+      {invalidWindows && <Alert type="error" showIcon message={labels.invalidWindows} />}
+
       <div className="factor-runtime-grid">
+        <div><span>{labels.featureStatus}</span><strong><Tag color={featureEnabled ? "green" : "default"}>{featureEnabled ? labels.featureEnabled : labels.featureDisabled}</Tag></strong></div>
         <div><span>{labels.runtime}</span><strong><Tag color={modeColor(runtime?.weight_mode ?? "manual")}>{runtime?.weight_mode ?? "manual"}</Tag></strong></div>
         <div><span>{labels.scoreMode}</span><strong>{runtime?.score_weight_mode ?? "manual"}</strong></div>
         <div><span>{labels.activeModel}</span><Tooltip title={runtime?.active_model_run_id || undefined}><strong>{runtime?.active_model_run_id ? shortId(runtime.active_model_run_id) : labels.noModel}</strong></Tooltip></div>
         <div><span>{labels.warehouse}</span><strong>{overview?.health.warehouse_available ? labels.healthy : labels.unavailable}</strong></div>
         <div><span>{labels.latestDate}</span><strong>{overview?.latest_trade_date ?? "-"}</strong></div>
         <div><span>{labels.coverage}</span><strong>{averageCoverage == null ? "-" : `${(averageCoverage * 100).toFixed(1)}%`}</strong></div>
+        <div><span>{labels.warehousePath}</span><Tooltip title={overview?.config.warehouse_path}><strong>{shortId(overview?.config.warehouse_path)}</strong></Tooltip></div>
       </div>
 
       <section className="factor-pipeline-section">
@@ -402,7 +487,7 @@ export default function FactorModelSettings() {
             <Button
               type="primary"
               icon={<PlayCircleOutlined />}
-              disabled={taskRunning}
+              disabled={taskRunning || !featureEnabled || !warehouseAvailable || invalidWindows}
               loading={acting === "pipeline"}
               onClick={startPipeline}
             >
@@ -411,6 +496,7 @@ export default function FactorModelSettings() {
           </Space>
         </div>
         <div className="factor-pipeline-controls">
+          <label><span>{labels.featureStatus}</span><Switch checked={featureEnabled} loading={acting === "feature"} onChange={toggleFeature} /></label>
           <label><span>{labels.fullRefresh}</span><Switch checked={fullRefresh} onChange={setFullRefresh} /></label>
           <label><span>{labels.trainModel}</span><Switch checked={trainModel} onChange={setTrainModel} /></label>
           <label><span>{labels.materialize}</span><Switch checked={materializeScores} onChange={setMaterializeScores} /></label>

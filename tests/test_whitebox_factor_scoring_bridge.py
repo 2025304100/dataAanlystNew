@@ -23,8 +23,9 @@ pytestmark = pytest.mark.whitebox
 _TRADE_DATE = date(2026, 1, 5)
 _CUTOFF = datetime(2026, 1, 5, 16, 0)
 _COEFFICIENTS = {
-    'ep_ttm': 0.4,
-    'negative_pb': 0.2,
+    'ep_ttm': 0.3,
+    'negative_pb': 0.15,
+    'roe_yoy_growth': 0.15,
     'main_inflow_5d_ratio': 0.3,
     'turnover_z20': -0.1,
 }
@@ -34,9 +35,9 @@ def _seed_bridge_inputs(db_session, warehouse: FactorWarehouse):
     symbols = []
     manual_scores = []
     values_by_symbol = {
-        '000001': (-1.0, -1.0, -1.0, 1.0),
-        '000002': (0.0, 0.0, 0.0, 0.0),
-        '000003': (1.0, 1.0, 1.0, -1.0),
+        '000001': (-1.0, -1.0, -1.0, -1.0, 1.0),
+        '000002': (0.0, 0.0, 0.0, 0.0, 0.0),
+        '000003': (1.0, 1.0, 1.0, 1.0, -1.0),
     }
     for index, symbol_code in enumerate(values_by_symbol, start=1):
         symbol = Symbol(
@@ -129,6 +130,23 @@ def _seed_bridge_inputs(db_session, warehouse: FactorWarehouse):
                     'created_at': _CUTOFF,
                 }
             )
+    factor_rows.append(
+        {
+            'symbol': '000003',
+            'trade_date': _TRADE_DATE,
+            'factor_code': 'lhb_institution_net_ratio',
+            'factor_version': 1,
+            'raw_value': 0.08,
+            'winsorized_value': 0.08,
+            'normalized_value': 1.2,
+            'is_imputed': False,
+            'imputation_method': None,
+            'eligible': True,
+            'data_cutoff_at': _CUTOFF,
+            'calc_batch_id': 'factor-score-test',
+            'created_at': _CUTOFF,
+        }
+    )
     warehouse.upsert_records('factor_values', factor_rows)
     return symbols, manual_scores, model
 
@@ -199,6 +217,13 @@ def test_shadow_clones_manual_scores_and_records_full_explanation(
         assert detail['factors']['turnover_z20']['coefficient'] == -0.1
         assert detail['macro']['regime'] == 'neutral'
         assert shadow.factor_data_cutoff_at == _CUTOFF
+    last_detail = json.loads(
+        shadow_scores[-1].factor_scores_json
+    )['_dynamic_model']
+    event = last_detail['event_factors']['lhb_institution_net_ratio']
+    assert event['raw_value'] == 0.08
+    assert event['coefficient'] is None
+    assert event['contribution'] is None
 
 
 def test_ridge_blends_independent_score_batch(db_session, tmp_path):

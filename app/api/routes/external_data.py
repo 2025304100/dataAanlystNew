@@ -1,9 +1,13 @@
 """P2：外部数据同步 API。
 
-提供三类外部数据的手动批量同步端点：
+提供七类外部数据的手动批量同步端点：
 1. /api/external-data/fundamental/sync - 股票估值（PE/PB/市值/行业分位）
-2. /api/external-data/capital-flow/sync - 资金流（主力/超大单/北向）
-3. /api/external-data/etf-indicators/sync - ETF 特有指标（溢价折价/规模/份额）
+2. /api/external-data/financial-reports/sync - 财报与公告日历史
+3. /api/external-data/lhb-institution/sync - 龙虎榜机构席位净买额
+4. /api/external-data/hot-rank/sync - 东方财富当前人气榜前100名
+5. /api/external-data/tail-proxy/sync - 候选池尾盘分钟量价代理
+6. /api/external-data/capital-flow/sync - 资金流（主力/超大单/北向）
+7. /api/external-data/etf-indicators/sync - ETF 特有指标（溢价折价/规模/份额）
 
 同步为同步阻塞操作（适合 watchlist/positions 等小批量场景）；
 全市场同步建议通过 opportunity discovery 任务的按需拉取机制完成。
@@ -12,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import date, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -36,6 +41,7 @@ class SyncResult(BaseModel):
     success: int = 0  # 成功数
     skipped: int = 0  # 跳过数（数据源无数据或非目标资产）
     failed: int = 0  # 失败数
+    records: int = 0  # 写入或更新的底层记录数
     errors: list[str] = []  # 前 N 条错误信息
 
 
@@ -101,6 +107,147 @@ def sync_fundamental(
         if i < len(symbols) - 1:
             time.sleep(_SYNC_THROTTLE_SECONDS)
     return result
+
+
+@router.post(
+    "/external-data/financial-reports/sync",
+    response_model=SyncResult,
+)
+def sync_financial_reports(
+    source: Literal["watchlist", "positions", "all"] = Query("watchlist"),
+    db: Session = Depends(get_db),
+):
+    """同步 A 股财务分析历史并保留同报告期的不同公告版本。"""
+    from app.services.financial_data import sync_symbol_financial_reports
+
+    symbols = _resolve_symbols(db, source, asset_type="stock")
+    result = SyncResult(total=len(symbols))
+    for i, sym in enumerate(symbols):
+        try:
+            count = sync_symbol_financial_reports(db, sym)
+            if count == 0:
+                result.skipped += 1
+            else:
+                result.success += 1
+                result.records += count
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            result.failed += 1
+            if len(result.errors) < 5:
+                result.errors.append(f"{sym.symbol}: {exc}")
+            logger.warning(
+                "financial report sync failed for %s: %s",
+                sym.symbol,
+                exc,
+            )
+        if i < len(symbols) - 1:
+            time.sleep(_SYNC_THROTTLE_SECONDS)
+    return result
+
+
+@router.post(
+    "/external-data/lhb-institution/sync",
+    response_model=SyncResult,
+)
+def sync_lhb_institution(
+    lookback_days: int = Query(30, ge=1, le=31),
+    end_date: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """同步一个不超过 31 日的全市场机构席位龙虎榜区间。"""
+    from app.services.lhb_data import sync_lhb_institution_trades
+
+    effective_end = end_date or date.today()
+    effective_start = effective_end - timedelta(days=lookback_days - 1)
+    try:
+        summary = sync_lhb_institution_trades(
+            db,
+            start_date=effective_start,
+            end_date=effective_end,
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        logger.warning("LHB institution sync failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"LHB institution sync failed: {exc}",
+        ) from exc
+    return SyncResult(
+        total=summary.received,
+        success=summary.written,
+        skipped=summary.unmatched,
+        records=summary.written,
+    )
+
+
+@router.post(
+    "/external-data/hot-rank/sync",
+    response_model=SyncResult,
+)
+def sync_hot_rank(db: Session = Depends(get_db)):
+    """保存当前人气榜前 100 名；接口不支持历史回填。"""
+    from app.services.hot_rank_data import sync_hot_rank_snapshot
+
+    try:
+        summary = sync_hot_rank_snapshot(db)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Hot-rank sync failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hot-rank sync failed: {exc}",
+        ) from exc
+    return SyncResult(
+        total=summary.received,
+        success=summary.written,
+        skipped=summary.unmatched,
+        records=summary.written,
+    )
+
+
+@router.post(
+    "/external-data/tail-proxy/sync",
+    response_model=SyncResult,
+)
+def sync_tail_proxy(
+    source: Literal["candidates", "watchlist", "positions"] = Query(
+        "candidates"
+    ),
+    limit: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """同步候选范围的分钟量价代理，不代表 Level-2 大单主买。"""
+    from app.services.tail_proxy_data import sync_tail_proxy_snapshots
+
+    try:
+        summary = sync_tail_proxy_snapshots(
+            db, source=source, limit=limit
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Tail proxy sync failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Tail proxy sync failed: {exc}",
+        ) from exc
+    return SyncResult(
+        total=summary.total,
+        success=summary.written,
+        skipped=summary.skipped,
+        failed=summary.failed,
+        records=summary.written,
+        errors=list(summary.errors),
+    )
 
 
 @router.post("/external-data/capital-flow/sync", response_model=SyncResult)

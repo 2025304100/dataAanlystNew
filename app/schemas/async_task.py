@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AsyncTaskRead(BaseModel):
@@ -50,3 +50,9 @@ class FactorPipelineCreate(BaseModel):
     materialize_scores: bool = True
     window_days: int = Field(default=250, ge=60, le=1000)
     validation_days: int = Field(default=50, ge=20, le=250)
+
+    @model_validator(mode='after')
+    def validate_training_windows(self):
+        if self.validation_days >= self.window_days:
+            raise ValueError('validation_days must be less than window_days')
+        return self

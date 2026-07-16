@@ -4,6 +4,7 @@ import json
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,10 @@ from app.models.factor_model import FactorVersion
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.services.factors.health import get_factor_health
+from app.services.factors.config import (
+    get_factor_system_config,
+    update_factor_system_config,
+)
 from app.services.factors.runtime import get_factor_runtime_snapshot
 from app.services.factors.store import FactorWarehouse
 
@@ -20,16 +25,69 @@ from app.services.factors.store import FactorWarehouse
 router = APIRouter()
 
 
-@router.get('/factors/overview')
-def get_factors_overview(db: Session = Depends(get_db)):
-    runtime = get_factor_runtime_snapshot(db)
-    health = get_factor_health(FactorWarehouse()).to_dict()
+class FactorSystemConfigUpdate(BaseModel):
+    feature_enabled: bool
+    actor: str = Field(default='local_user', min_length=1, max_length=128)
+
+
+def _factor_overview(db: Session) -> dict:
+    config = get_factor_system_config(db)
+    health = get_factor_health(
+        FactorWarehouse(config.warehouse_path)
+    ).to_dict()
+    reasons = health.get('reasons') or []
     return {
-        'runtime': runtime.to_dict(),
+        'runtime': get_factor_runtime_snapshot(db).to_dict(),
+        'config': config.to_dict(),
+        'feature_enabled': config.feature_enabled,
+        'warehouse_error': reasons[0] if reasons else None,
         'health': health,
         'latest_trade_date': health.get('latest_bar_date'),
         'factor_coverage': health.get('factors', []),
     }
+
+
+@router.get('/factors/overview')
+def get_factors_overview(db: Session = Depends(get_db)):
+    return _factor_overview(db)
+
+
+@router.get('/factors/config')
+def get_factor_config(db: Session = Depends(get_db)):
+    return get_factor_system_config(db).to_dict()
+
+
+@router.patch('/factors/config')
+def patch_factor_config(
+    payload: FactorSystemConfigUpdate,
+    db: Session = Depends(get_db),
+):
+    try:
+        snapshot = update_factor_system_config(
+            db,
+            feature_enabled=payload.feature_enabled,
+            actor=payload.actor,
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return snapshot.to_dict()
+
+
+@router.post('/factors/warehouse/initialize')
+def initialize_factor_warehouse(db: Session = Depends(get_db)):
+    config = get_factor_system_config(db)
+    if not config.feature_enabled:
+        raise HTTPException(
+            status_code=409,
+            detail='Enable the factor feature before initializing the warehouse',
+        )
+    try:
+        FactorWarehouse(config.warehouse_path).initialize()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return _factor_overview(db)
 
 
 @router.get('/factors')

@@ -34,6 +34,20 @@ class FactorRuntimeState(Base):
     )
 
 
+class FactorSystemConfig(Base):
+    '''Persistent feature readiness settings managed from the settings page.'''
+
+    __tablename__ = 'factor_system_config'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    feature_enabled: Mapped[int] = mapped_column(Integer, default=0)
+    warehouse_path: Mapped[str] = mapped_column(String(1024))
+    updated_by: Mapped[str] = mapped_column(String(128), default='environment')
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow_naive, onupdate=_utcnow_naive
+    )
+
+
 class FactorModelAuditLog(Base):
     '''Append-only audit trail for activation and fallback operations.'''
 

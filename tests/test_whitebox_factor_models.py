@@ -89,17 +89,21 @@ def test_seed_factor_definitions_is_idempotent(db_session):
     second = seed_factor_definitions(db_session)
     db_session.commit()
 
-    assert first == 8
+    assert first == 16
     assert second == 0
     factors = db_session.query(Factor).all()
     versions = db_session.query(FactorVersion).all()
     assert {factor.code for factor in factors} == {
         "ep_ttm",
         "negative_pb",
+        "roe_yoy_growth",
         "main_inflow_5d_ratio",
+        "lhb_institution_net_ratio",
+        "hot_rank_attention",
+        "tail_accumulation_proxy",
         "turnover_z20",
     }
-    assert len(versions) == 4
+    assert len(versions) == 8
     assert {version.direction for version in versions} == {
         "higher_better",
         "nonlinear",

@@ -68,7 +68,9 @@ def test_mirror_combines_business_and_universe_ids_idempotently(
     second = mirror_daily_bars(db_session, warehouse=warehouse, batch_size=1)
 
     assert first.rows_written == 2
+    assert first.metadata_rows == 1
     assert second.rows_written == 0
+    assert second.metadata_rows == 0
     assert warehouse.health().raw_daily_bars == 1
 
     with warehouse.connection(read_only=True) as conn:
@@ -81,6 +83,12 @@ def test_mirror_combines_business_and_universe_ids_idempotently(
     assert row[1] == universe_symbol.id
     assert row[2] == 1411
     assert row[3] == "daily_bars"
+    with warehouse.connection(read_only=True) as conn:
+        metadata = conn.execute(
+            "SELECT asset_type, market, region FROM raw_asset_universe "
+            "WHERE symbol = '600519'"
+        ).fetchone()
+    assert metadata == ("stock", "sh", "cn")
 
 
 def test_mirror_validates_arguments(db_session, tmp_path):
@@ -102,6 +110,66 @@ def test_mirror_validates_arguments(db_session, tmp_path):
             start_date=date(2026, 7, 2),
             end_date=date(2026, 7, 1),
         )
+
+
+def test_mirror_excludes_non_cn_stock_assets(db_session, tmp_path):
+    cn_stock = UniverseSymbol(
+        symbol="600519",
+        name="贵州茅台",
+        asset_type="stock",
+        market="sh",
+        region="cn",
+    )
+    cn_etf = UniverseSymbol(
+        symbol="510300",
+        name="沪深300ETF",
+        asset_type="etf",
+        market="sh",
+        region="cn",
+    )
+    us_stock = UniverseSymbol(
+        symbol="AAPL",
+        name="Apple",
+        asset_type="stock",
+        market="us",
+        region="us",
+    )
+    db_session.add_all([cn_stock, cn_etf, us_stock])
+    db_session.flush()
+    db_session.add_all(
+        [
+            UniverseDailyBar(
+                universe_symbol_id=item.id,
+                trade_date=date(2026, 7, 10),
+                close=10,
+            )
+            for item in (cn_stock, cn_etf, us_stock)
+        ]
+    )
+    db_session.commit()
+    warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
+
+    result = mirror_daily_bars(
+        db_session,
+        warehouse=warehouse,
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 10),
+        include_business=False,
+    )
+    repeated = mirror_daily_bars(
+        db_session,
+        warehouse=warehouse,
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 10),
+        include_business=False,
+    )
+
+    assert result.universe_rows == 1
+    assert repeated.universe_rows == 1
+    with warehouse.connection(read_only=True) as conn:
+        assert conn.execute(
+            "SELECT symbol FROM raw_daily_bars"
+        ).fetchall() == [("600519",)]
 
 
 def test_date_range_watermark_does_not_skip_full_incremental_sync(
@@ -156,3 +224,73 @@ def test_date_range_watermark_does_not_skip_full_incremental_sync(
     assert ranged.rows_written == 1
     assert full.rows_written == 2
     assert warehouse.health().raw_daily_bars == 2
+
+
+def test_mirror_cancel_stops_between_batches_and_releases_duckdb(
+    db_session, tmp_path, monkeypatch
+):
+    symbol = Symbol(
+        symbol="000001",
+        name="平安银行",
+        asset_type="stock",
+        market="sz",
+    )
+    db_session.add(symbol)
+    db_session.flush()
+    db_session.add_all(
+        [
+            DailyBar(
+                symbol_id=symbol.id,
+                trade_date=date(2026, 7, day),
+                open=10 + day,
+                high=11 + day,
+                low=9 + day,
+                close=10 + day,
+                source="test",
+            )
+            for day in (9, 10)
+        ]
+    )
+    db_session.commit()
+    warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
+    cancelled = False
+    original_upsert = warehouse.upsert_daily_bars
+
+    def cancel_after_first_batch(*args, **kwargs):
+        nonlocal cancelled
+        written = original_upsert(*args, **kwargs)
+        cancelled = True
+        return written
+
+    monkeypatch.setattr(
+        warehouse, "upsert_daily_bars", cancel_after_first_batch
+    )
+
+    result = mirror_daily_bars(
+        db_session,
+        warehouse=warehouse,
+        batch_size=1,
+        include_universe=False,
+        should_cancel=lambda: cancelled,
+    )
+
+    assert result.business_rows == 1
+    assert warehouse.health().available is True
+    with warehouse.connection(read_only=True) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM raw_daily_bars"
+        ).fetchone()[0] == 1
+
+
+def test_mirror_pre_cancel_does_not_open_warehouse(db_session, tmp_path):
+    path = tmp_path / "cancelled.duckdb"
+
+    result = mirror_daily_bars(
+        db_session,
+        warehouse=FactorWarehouse(path),
+        include_universe=False,
+        should_cancel=lambda: True,
+    )
+
+    assert result.rows_written == 0
+    assert path.exists() is False
