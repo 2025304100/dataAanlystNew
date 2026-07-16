@@ -29,123 +29,9 @@ import {
   type FactorWeightMode,
 } from "../api/client";
 import { useApp } from "../context/AppContext";
+import { t, template } from "../i18n";
 
 const TERMINAL_TASK_STATES = new Set(["done", "completed", "failed", "cancelled"]);
-
-const LABELS = {
-  "zh-CN": {
-    title: "动态因子与模型",
-    refresh: "刷新",
-    runtime: "当前决策模式",
-    scoreMode: "实际评分来源",
-    activeModel: "活动模型",
-    warehouse: "因子仓库",
-    warehousePath: "仓库路径",
-    featureStatus: "功能状态",
-    featureEnabled: "已启用",
-    featureDisabled: "未启用",
-    enableFeature: "启用因子功能",
-    disableFeature: "停用因子功能",
-    initializeWarehouse: "初始化仓库",
-    featureDisabledTitle: "因子功能尚未启用",
-    featureDisabledDescription: "启用后才能初始化本地 DuckDB 仓库并运行因子流水线。",
-    warehouseUnavailableTitle: "因子仓库尚未就绪",
-    invalidWindows: "验证窗口必须小于训练窗口",
-    latestDate: "最新交易日",
-    coverage: "平均覆盖率",
-    healthy: "正常",
-    unavailable: "不可用",
-    noModel: "手工权重",
-    pipeline: "本地因子流水线",
-    fullRefresh: "全量重算",
-    trainModel: "训练 Ridge",
-    materialize: "生成评分快照",
-    window: "训练窗口",
-    validation: "验证窗口",
-    days: "日",
-    run: "运行流水线",
-    cancel: "取消任务",
-    recentTask: "最近任务",
-    models: "模型版本",
-    modelId: "模型 ID",
-    status: "状态",
-    validationIc: "验证 IC",
-    samples: "样本",
-    cutoff: "数据截止",
-    actions: "操作",
-    shadow: "影子运行",
-    ridge: "正式启用",
-    fallback: "回退手工",
-    fallbackTitle: "回退到手工权重",
-    fallbackReason: "回退原因",
-    confirmFallback: "确认回退",
-    reasonRequired: "请输入回退原因",
-    loadFailed: "加载因子运行状态失败",
-    actionFailed: "操作失败",
-    started: "因子流水线已启动",
-    activated: "模型运行模式已更新",
-    fallbackDone: "已回退到手工权重",
-    rejected: "已拒绝",
-    validated: "已验证",
-    noModels: "暂无训练模型",
-  },
-  "en-US": {
-    title: "Dynamic Factors & Models",
-    refresh: "Refresh",
-    runtime: "Decision Mode",
-    scoreMode: "Score Source",
-    activeModel: "Active Model",
-    warehouse: "Factor Warehouse",
-    warehousePath: "Warehouse Path",
-    featureStatus: "Feature Status",
-    featureEnabled: "Enabled",
-    featureDisabled: "Disabled",
-    enableFeature: "Enable Factor Feature",
-    disableFeature: "Disable Factor Feature",
-    initializeWarehouse: "Initialize Warehouse",
-    featureDisabledTitle: "Factor feature is disabled",
-    featureDisabledDescription: "Enable it before initializing DuckDB and running the factor pipeline.",
-    warehouseUnavailableTitle: "Factor warehouse is not ready",
-    invalidWindows: "Validation window must be smaller than training window",
-    latestDate: "Latest Trade Date",
-    coverage: "Average Coverage",
-    healthy: "Healthy",
-    unavailable: "Unavailable",
-    noModel: "Manual Weights",
-    pipeline: "Local Factor Pipeline",
-    fullRefresh: "Full Refresh",
-    trainModel: "Train Ridge",
-    materialize: "Materialize Scores",
-    window: "Training Window",
-    validation: "Validation Window",
-    days: "days",
-    run: "Run Pipeline",
-    cancel: "Cancel Task",
-    recentTask: "Latest Task",
-    models: "Model Versions",
-    modelId: "Model ID",
-    status: "Status",
-    validationIc: "Validation IC",
-    samples: "Samples",
-    cutoff: "Data Cutoff",
-    actions: "Actions",
-    shadow: "Run Shadow",
-    ridge: "Activate Live",
-    fallback: "Fallback Manual",
-    fallbackTitle: "Fallback to Manual Weights",
-    fallbackReason: "Fallback reason",
-    confirmFallback: "Confirm Fallback",
-    reasonRequired: "Fallback reason is required",
-    loadFailed: "Failed to load factor runtime",
-    actionFailed: "Action failed",
-    started: "Factor pipeline started",
-    activated: "Model runtime updated",
-    fallbackDone: "Fallback to manual weights completed",
-    rejected: "Rejected",
-    validated: "Validated",
-    noModels: "No trained models",
-  },
-};
 
 function shortId(value: string | null | undefined) {
   if (!value) return "-";
@@ -165,7 +51,6 @@ function modeColor(mode: FactorWeightMode | string) {
 
 export default function FactorModelSettings() {
   const ctx = useApp();
-  const labels = LABELS[ctx.locale as keyof typeof LABELS] ?? LABELS["zh-CN"];
   const [overview, setOverview] = useState<FactorOverview | null>(null);
   const [models, setModels] = useState<FactorModelRun[]>([]);
   const [activeTask, setActiveTask] = useState<FactorPipelineTask | null>(null);
@@ -193,11 +78,11 @@ export default function FactorModelSettings() {
       setModels(modelData.items);
       setActiveTask(tasks[0] ?? null);
     } catch (err: any) {
-      setError(err.message || labels.loadFailed);
+      setError(err.message || t("factorModelLoadFailed"));
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [labels.loadFailed]);
+  }, []);
 
   useEffect(() => {
     loadAll();
@@ -213,11 +98,11 @@ export default function FactorModelSettings() {
           await loadAll(false);
         }
       } catch (err: any) {
-        setError(err.message || labels.loadFailed);
+        setError(err.message || t("factorModelLoadFailed"));
       }
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [activeTask?.id, activeTask?.status, labels.loadFailed, loadAll]);
+  }, [activeTask?.id, activeTask?.status, loadAll]);
 
   const averageCoverage = useMemo(() => {
     const rows = overview?.factor_coverage ?? [];
@@ -237,9 +122,9 @@ export default function FactorModelSettings() {
         validation_days: validationDays,
       });
       setActiveTask(task);
-      ctx.showToast("success", labels.started);
+      ctx.showToast("success", t("factorModelStarted"));
     } catch (err: any) {
-      setError(err.message || labels.actionFailed);
+      setError(err.message || t("factorModelActionFailed"));
     } finally {
       setActing(null);
     }
@@ -250,10 +135,10 @@ export default function FactorModelSettings() {
     setError(null);
     try {
       await api.updateFactorSystemConfig(enabled);
-      ctx.showToast("success", enabled ? labels.enableFeature : labels.disableFeature);
+      ctx.showToast("success", enabled ? t("factorModelEnableFeature") : t("factorModelDisableFeature"));
       await loadAll(false);
     } catch (err: any) {
-      setError(err.message || labels.actionFailed);
+      setError(err.message || t("factorModelActionFailed"));
     } finally {
       setActing(null);
     }
@@ -264,10 +149,10 @@ export default function FactorModelSettings() {
     setError(null);
     try {
       await api.initializeFactorWarehouse();
-      ctx.showToast("success", labels.initializeWarehouse);
+      ctx.showToast("success", t("factorModelInitializeWarehouse"));
       await loadAll(false);
     } catch (err: any) {
-      setError(err.message || labels.actionFailed);
+      setError(err.message || t("factorModelActionFailed"));
     } finally {
       setActing(null);
     }
@@ -279,7 +164,7 @@ export default function FactorModelSettings() {
     try {
       setActiveTask(await api.cancelFactorPipelineTask(activeTask.id));
     } catch (err: any) {
-      setError(err.message || labels.actionFailed);
+      setError(err.message || t("factorModelActionFailed"));
     } finally {
       setActing(null);
     }
@@ -290,10 +175,10 @@ export default function FactorModelSettings() {
     setError(null);
     try {
       await api.activateFactorModel(model.id, mode, `settings:${mode}`);
-      ctx.showToast("success", labels.activated);
+      ctx.showToast("success", t("factorModelActivated"));
       await loadAll(false);
     } catch (err: any) {
-      setError(err.message || labels.actionFailed);
+      setError(err.message || t("factorModelActionFailed"));
     } finally {
       setActing(null);
     }
@@ -301,7 +186,7 @@ export default function FactorModelSettings() {
 
   const fallback = async () => {
     if (!fallbackReason.trim()) {
-      setError(labels.reasonRequired);
+      setError(t("factorModelReasonRequired"));
       return;
     }
     setActing("fallback");
@@ -309,10 +194,10 @@ export default function FactorModelSettings() {
       await api.fallbackFactorModel(fallbackReason.trim());
       setFallbackOpen(false);
       setFallbackReason("");
-      ctx.showToast("success", labels.fallbackDone);
+      ctx.showToast("success", t("factorModelFallbackDone"));
       await loadAll(false);
     } catch (err: any) {
-      setError(err.message || labels.actionFailed);
+      setError(err.message || t("factorModelActionFailed"));
     } finally {
       setActing(null);
     }
@@ -326,7 +211,7 @@ export default function FactorModelSettings() {
 
   const columns = [
     {
-      title: labels.modelId,
+      title: t("factorModelModelId"),
       dataIndex: "id",
       key: "id",
       render: (value: string, record: FactorModelRun) => (
@@ -339,19 +224,19 @@ export default function FactorModelSettings() {
       ),
     },
     {
-      title: labels.status,
+      title: t("factorModelStatus"),
       dataIndex: "status",
       key: "status",
       render: (value: string, record: FactorModelRun) => (
         <Tooltip title={record.rejection_reason || undefined}>
           <Tag color={value === "validated" ? "green" : "red"}>
-            {value === "validated" ? labels.validated : value === "rejected" ? labels.rejected : value}
+            {value === "validated" ? t("factorModelValidated") : value === "rejected" ? t("factorModelRejected") : value}
           </Tag>
         </Tooltip>
       ),
     },
     {
-      title: labels.validationIc,
+      title: t("factorModelValidationIc"),
       key: "validation_ic",
       render: (_: unknown, record: FactorModelRun) => {
         const value = Number(record.metrics.validation_ic);
@@ -359,18 +244,18 @@ export default function FactorModelSettings() {
       },
     },
     {
-      title: labels.samples,
+      title: t("factorModelSamples"),
       dataIndex: "sample_count",
       key: "sample_count",
     },
     {
-      title: labels.cutoff,
+      title: t("factorModelCutoff"),
       dataIndex: "data_cutoff_at",
       key: "data_cutoff_at",
       render: (value: string | null) => formatDateTime(value),
     },
     {
-      title: labels.actions,
+      title: t("factorModelActions"),
       key: "actions",
       render: (_: unknown, record: FactorModelRun) => (
         <Space size={4} wrap>
@@ -381,7 +266,7 @@ export default function FactorModelSettings() {
             loading={acting === `shadow:${record.id}`}
             onClick={() => activate(record, "shadow")}
           >
-            {labels.shadow}
+            {t("factorModelShadow")}
           </Button>
           <Button
             size="small"
@@ -391,7 +276,7 @@ export default function FactorModelSettings() {
             loading={acting === `ridge:${record.id}`}
             onClick={() => activate(record, "ridge")}
           >
-            {labels.ridge}
+            {t("factorModelRidge")}
           </Button>
         </Space>
       ),
@@ -402,8 +287,8 @@ export default function FactorModelSettings() {
     <div className="factor-model-settings">
       <div className="factor-settings-head">
         <div>
-          <p className="panel-kicker">{labels.title}</p>
-          <h3>{labels.runtime}</h3>
+          <p className="panel-kicker">{t("factorModelTitle")}</p>
+          <h3>{t("factorModelRuntime")}</h3>
         </div>
         <Space>
           {runtime?.weight_mode !== "manual" && (
@@ -413,12 +298,12 @@ export default function FactorModelSettings() {
               loading={acting === "fallback"}
               onClick={() => setFallbackOpen(true)}
             >
-              {labels.fallback}
+              {t("factorModelFallback")}
             </Button>
           )}
-          <Tooltip title={labels.refresh}>
+          <Tooltip title={t("factorModelRefresh")}>
             <Button
-              aria-label={labels.refresh}
+              aria-label={t("factorModelRefresh")}
               icon={<ReloadOutlined />}
               loading={loading}
               onClick={() => loadAll()}
@@ -433,11 +318,11 @@ export default function FactorModelSettings() {
         <Alert
           type="warning"
           showIcon
-          message={labels.featureDisabledTitle}
-          description={labels.featureDisabledDescription}
+          message={t("factorModelFeatureDisabledTitle")}
+          description={t("factorModelFeatureDisabledDescription")}
           action={(
             <Button type="primary" loading={acting === "feature"} onClick={() => toggleFeature(true)}>
-              {labels.enableFeature}
+              {t("factorModelEnableFeature")}
             </Button>
           )}
         />
@@ -447,32 +332,35 @@ export default function FactorModelSettings() {
         <Alert
           type="warning"
           showIcon
-          message={labels.warehouseUnavailableTitle}
-          description={`${overview.warehouse_error || overview.health.reasons?.join(", ") || labels.unavailable} · ${overview.config.warehouse_path}`}
+          message={t("factorModelWarehouseUnavailableTitle")}
+          description={template("factorModelWarehouseUnavailableDesc", {
+            reason: overview.warehouse_error || overview.health.reasons?.join(", ") || t("factorModelUnavailable"),
+            path: overview.config.warehouse_path,
+          })}
           action={(
             <Button loading={acting === "initialize"} onClick={initializeWarehouse}>
-              {labels.initializeWarehouse}
+              {t("factorModelInitializeWarehouse")}
             </Button>
           )}
         />
       )}
 
-      {invalidWindows && <Alert type="error" showIcon message={labels.invalidWindows} />}
+      {invalidWindows && <Alert type="error" showIcon message={t("factorModelInvalidWindows")} />}
 
       <div className="factor-runtime-grid">
-        <div><span>{labels.featureStatus}</span><strong><Tag color={featureEnabled ? "green" : "default"}>{featureEnabled ? labels.featureEnabled : labels.featureDisabled}</Tag></strong></div>
-        <div><span>{labels.runtime}</span><strong><Tag color={modeColor(runtime?.weight_mode ?? "manual")}>{runtime?.weight_mode ?? "manual"}</Tag></strong></div>
-        <div><span>{labels.scoreMode}</span><strong>{runtime?.score_weight_mode ?? "manual"}</strong></div>
-        <div><span>{labels.activeModel}</span><Tooltip title={runtime?.active_model_run_id || undefined}><strong>{runtime?.active_model_run_id ? shortId(runtime.active_model_run_id) : labels.noModel}</strong></Tooltip></div>
-        <div><span>{labels.warehouse}</span><strong>{overview?.health.warehouse_available ? labels.healthy : labels.unavailable}</strong></div>
-        <div><span>{labels.latestDate}</span><strong>{overview?.latest_trade_date ?? "-"}</strong></div>
-        <div><span>{labels.coverage}</span><strong>{averageCoverage == null ? "-" : `${(averageCoverage * 100).toFixed(1)}%`}</strong></div>
-        <div><span>{labels.warehousePath}</span><Tooltip title={overview?.config.warehouse_path}><strong>{shortId(overview?.config.warehouse_path)}</strong></Tooltip></div>
+        <div><span>{t("factorModelFeatureStatus")}</span><strong><Tag color={featureEnabled ? "green" : "default"}>{featureEnabled ? t("factorModelFeatureEnabled") : t("factorModelFeatureDisabled")}</Tag></strong></div>
+        <div><span>{t("factorModelRuntime")}</span><strong><Tag color={modeColor(runtime?.weight_mode ?? "manual")}>{runtime?.weight_mode ?? "manual"}</Tag></strong></div>
+        <div><span>{t("factorModelScoreMode")}</span><strong>{runtime?.score_weight_mode ?? "manual"}</strong></div>
+        <div><span>{t("factorModelActiveModel")}</span><Tooltip title={runtime?.active_model_run_id || undefined}><strong>{runtime?.active_model_run_id ? shortId(runtime.active_model_run_id) : t("factorModelNoModel")}</strong></Tooltip></div>
+        <div><span>{t("factorModelWarehouse")}</span><strong>{overview?.health.warehouse_available ? t("factorModelHealthy") : t("factorModelUnavailable")}</strong></div>
+        <div><span>{t("factorModelLatestDate")}</span><strong>{overview?.latest_trade_date ?? "-"}</strong></div>
+        <div><span>{t("factorModelCoverage")}</span><strong>{averageCoverage == null ? "-" : `${(averageCoverage * 100).toFixed(1)}%`}</strong></div>
+        <div><span>{t("factorModelWarehousePath")}</span><Tooltip title={overview?.config.warehouse_path}><strong>{shortId(overview?.config.warehouse_path)}</strong></Tooltip></div>
       </div>
 
       <section className="factor-pipeline-section">
         <div className="factor-section-title">
-          <h3>{labels.pipeline}</h3>
+          <h3>{t("factorModelPipeline")}</h3>
           <Space>
             {taskRunning && (
               <Button
@@ -481,7 +369,7 @@ export default function FactorModelSettings() {
                 loading={acting === "cancel"}
                 onClick={cancelPipeline}
               >
-                {labels.cancel}
+                {t("factorModelCancel")}
               </Button>
             )}
             <Button
@@ -491,22 +379,22 @@ export default function FactorModelSettings() {
               loading={acting === "pipeline"}
               onClick={startPipeline}
             >
-              {labels.run}
+              {t("factorModelRun")}
             </Button>
           </Space>
         </div>
         <div className="factor-pipeline-controls">
-          <label><span>{labels.featureStatus}</span><Switch checked={featureEnabled} loading={acting === "feature"} onChange={toggleFeature} /></label>
-          <label><span>{labels.fullRefresh}</span><Switch checked={fullRefresh} onChange={setFullRefresh} /></label>
-          <label><span>{labels.trainModel}</span><Switch checked={trainModel} onChange={setTrainModel} /></label>
-          <label><span>{labels.materialize}</span><Switch checked={materializeScores} onChange={setMaterializeScores} /></label>
-          <label><span>{labels.window} ({labels.days})</span><InputNumber min={60} max={1000} value={windowDays} onChange={(value) => setWindowDays(Number(value ?? 250))} /></label>
-          <label><span>{labels.validation} ({labels.days})</span><InputNumber min={20} max={250} value={validationDays} onChange={(value) => setValidationDays(Number(value ?? 50))} /></label>
+          <label><span>{t("factorModelFeatureStatus")}</span><Switch checked={featureEnabled} loading={acting === "feature"} onChange={toggleFeature} /></label>
+          <label><span>{t("factorModelFullRefresh")}</span><Switch checked={fullRefresh} onChange={setFullRefresh} /></label>
+          <label><span>{t("factorModelTrainModel")}</span><Switch checked={trainModel} onChange={setTrainModel} /></label>
+          <label><span>{t("factorModelMaterialize")}</span><Switch checked={materializeScores} onChange={setMaterializeScores} /></label>
+          <label><span>{t("factorModelWindow")} ({t("factorModelDays")})</span><InputNumber min={60} max={1000} value={windowDays} onChange={(value) => setWindowDays(Number(value ?? 250))} /></label>
+          <label><span>{t("factorModelValidation")} ({t("factorModelDays")})</span><InputNumber min={20} max={250} value={validationDays} onChange={(value) => setValidationDays(Number(value ?? 50))} /></label>
         </div>
         {activeTask && (
           <div className="factor-task-strip">
             <div>
-              <strong>{labels.recentTask}: {activeTask.stage}</strong>
+              <strong>{t("factorModelRecentTask")}: {activeTask.stage}</strong>
               <span>{activeTask.message}</span>
             </div>
             <Tag color={activeTask.status === "done" || activeTask.status === "completed" ? "green" : activeTask.status === "failed" ? "red" : activeTask.status === "cancelled" ? "default" : "blue"}>
@@ -519,7 +407,7 @@ export default function FactorModelSettings() {
 
       <section className="factor-model-list">
         <div className="factor-section-title">
-          <h3>{labels.models}</h3>
+          <h3>{t("factorModelModels")}</h3>
           <Tag>{models.length}</Tag>
         </div>
         <Table<FactorModelRun>
@@ -529,15 +417,15 @@ export default function FactorModelSettings() {
           columns={columns}
           dataSource={models}
           pagination={{ pageSize: 8, hideOnSinglePage: true }}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={labels.noModels} /> }}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("factorModelNoModels")} /> }}
           scroll={{ x: 860 }}
         />
       </section>
 
       <Modal
         open={fallbackOpen}
-        title={labels.fallbackTitle}
-        okText={labels.confirmFallback}
+        title={t("factorModelFallbackTitle")}
+        okText={t("factorModelConfirmFallback")}
         okButtonProps={{ danger: true, loading: acting === "fallback" }}
         onOk={fallback}
         onCancel={() => setFallbackOpen(false)}
@@ -545,7 +433,7 @@ export default function FactorModelSettings() {
         <Input.TextArea
           rows={3}
           value={fallbackReason}
-          placeholder={labels.fallbackReason}
+          placeholder={t("factorModelFallbackReason")}
           onChange={(event) => setFallbackReason(event.target.value)}
         />
       </Modal>

@@ -79,7 +79,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--quality-exit", type=float, default=45.0)
     parser.add_argument("--timing-exit", type=float, default=40.0)
     parser.add_argument("--position-pct", type=float, default=0.1)
-    parser.add_argument("--max-positions", type=int, default=10)
+    parser.add_argument(
+        "--max-positions",
+        type=int,
+        default=10,
+        help="daily Top-N entry candidates in score_trend mode",
+    )
     parser.add_argument("--commission-rate", type=float, default=0.0003)
     parser.add_argument("--min-commission", type=float, default=5.0)
     parser.add_argument("--stamp-tax-rate", type=float, default=0.001)

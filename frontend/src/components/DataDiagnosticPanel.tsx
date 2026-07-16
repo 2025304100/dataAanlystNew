@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Progress, Select, Space, Spin, Tag, message } from "antd";
 import { ReloadOutlined, ToolOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
@@ -32,19 +32,19 @@ type DataDiagnosticPanelProps = {
   onOpenHistoryInit?: (context?: { symbolId?: number | null; symbolLabel?: string | null; repairMode?: "both" | "bars" | "scores" }) => void;
 };
 
-const PERIOD_LABELS: Record<string, { zh: string; en: string }> = {
-  "1m": { zh: "近1个月", en: "1 Month" },
-  "1q": { zh: "近1季度", en: "1 Quarter" },
-  "1y": { zh: "近1年", en: "1 Year" },
-  "3y": { zh: "近3年", en: "3 Years" },
+const PERIOD_KEYS: Record<string, string> = {
+  "1m": "diagPeriod1m",
+  "1q": "diagPeriod1q",
+  "1y": "diagPeriod1y",
+  "3y": "diagPeriod3y",
 };
 
-const ISSUE_TYPE_LABELS: Record<string, { zh: string; en: string; color: string }> = {
-  missing_bars: { zh: "K线缺失", en: "Missing Bars", color: "red" },
-  stale_bars: { zh: "K线过旧", en: "Stale Bars", color: "orange" },
-  low_coverage: { zh: "覆盖率偏低", en: "Low Coverage", color: "orange" },
-  missing_scores: { zh: "评分缺失", en: "Missing Scores", color: "gold" },
-  low_score_coverage: { zh: "评分覆盖率偏低", en: "Low Score Coverage", color: "gold" },
+const ISSUE_TYPE_KEYS: Record<string, { key: string; color: string }> = {
+  missing_bars: { key: "diagMissingBars", color: "red" },
+  stale_bars: { key: "diagStaleBars", color: "orange" },
+  low_coverage: { key: "diagLowCoverage", color: "orange" },
+  missing_scores: { key: "diagMissingScores", color: "gold" },
+  low_score_coverage: { key: "diagLowScoreCoverage", color: "gold" },
 };
 
 function coverageColor(pct: number): string {
@@ -55,7 +55,6 @@ function coverageColor(pct: number): string {
 
 export default function DataDiagnosticPanel({ symbolId: propSymbolId = null, onOpenHistoryInit }: DataDiagnosticPanelProps) {
   const ctx = useApp();
-  const isZh = (ctx.locale ?? "").toLowerCase().startsWith("zh");
   const [symbolId, setSymbolId] = useState<number | null>(propSymbolId ?? ctx.activeSymbolId);
   const [symbolOptions, setSymbolOptions] = useState<Symbol[]>([]);
   const [data, setData] = useState<DiagnosticData | null>(null);
@@ -104,16 +103,6 @@ export default function DataDiagnosticPanel({ symbolId: propSymbolId = null, onO
       loadDiagnostic(symbolId);
     }
   }, [symbolId]);
-
-  const periodLabels = useMemo(() => {
-    const lang = isZh ? "zh" : "en";
-    return Object.fromEntries(Object.entries(PERIOD_LABELS).map(([k, v]) => [k, v[lang]]));
-  }, [isZh]);
-
-  const issueLabels = useMemo(() => {
-    const lang = isZh ? "zh" : "en";
-    return Object.fromEntries(Object.entries(ISSUE_TYPE_LABELS).map(([k, v]) => [k, { label: v[lang], color: v.color }]));
-  }, [isZh]);
 
   const handleOpenRepair = (mode: "bars" | "scores" | "both") => {
     if (!symbolId || !onOpenHistoryInit) return;
@@ -183,7 +172,7 @@ export default function DataDiagnosticPanel({ symbolId: propSymbolId = null, onO
                   if (!cov) return null;
                   return (
                     <div key={period} style={{ border: "1px solid #f0f0f0", borderRadius: 8, padding: 12 }}>
-                      <div style={{ fontWeight: 600, marginBottom: 8 }}>{periodLabels[period]}</div>
+                      <div style={{ fontWeight: 600, marginBottom: 8 }}>{t(PERIOD_KEYS[period] || period)}</div>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                         <span className="metric-label">{t("diagBarCount")}</span>
                         <span>{cov.bar_count} / {cov.expected_bars}</span>
@@ -209,13 +198,15 @@ export default function DataDiagnosticPanel({ symbolId: propSymbolId = null, onO
               {data.issues.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {data.issues.map((issue, idx) => {
-                    const meta = issueLabels[issue.type] || { label: issue.type, color: "default" };
+                    const meta = ISSUE_TYPE_KEYS[issue.type];
+                    const issueLabel = meta ? t(meta.key) : issue.type;
+                    const issueColor = meta?.color || "default";
                     return (
                       <Alert
                         key={idx}
                         type={issue.severity === "error" ? "error" : "warning"}
                         showIcon
-                        message={<Space><Tag color={meta.color}>{meta.label}</Tag><span>{issue.message}</span></Space>}
+                        message={<Space><Tag color={issueColor}>{issueLabel}</Tag><span>{issue.message}</span></Space>}
                       />
                     );
                   })}

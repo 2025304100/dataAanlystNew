@@ -2,9 +2,9 @@
 
 | 项目 | 内容 |
 |---|---|
-| 文档版本 | V1.10 |
-| 编制日期 | 2026-07-15 |
-| 实施状态 | Week 1～Week 4 及五项 V1.1 扩展均已落地；待生产影子观察、WxPusher 与 UAT |
+| 文档版本 | V1.11 |
+| 编制日期 | 2026-07-16 |
+| 实施状态 | Week 1～Week 4、五项 V1.1 扩展及 VectorBT 研究回测均已落地；待生产影子观察、WxPusher 与 UAT |
 | 适用项目 | Personal Quant Workbench / dataAanlystNew |
 | 核心目标 | 在不破坏现有决策闭环的前提下，接入免费 AkShare 四类因子、DuckDB 因子仓库和滚动 Ridge 动态赋权 |
 | 第一版资产范围 | A股股票优先；ETF 保持现有评分链路，后续单独扩展 |
@@ -23,7 +23,7 @@
 3. 复用现有 AkShare 接口管理、随机延时、重试、数据源回退和异步任务能力。
 4. 新增因子流水线，将 DuckDB 的因子与模型结果转换为现有 Score，后续扫描和交易计划无需理解 DuckDB 或 Ridge。
 5. 第一版先运行影子模式，同时保留当前手工评分；通过数据覆盖和回测验收后再切换正式动态评分。
-6. 第一版继续使用现有回测引擎，不强制引入 VectorBT。
+6. 现有事件驱动回测继续作为 A 股交易成本权威口径；另提供 VectorBT 专用研究脚本，用于多标的矩阵回测、快速参数比较和 Ridge/manual 评分对照，不替换现有回测 API。
 7. 第一版使用数据库持久化的应用内调度器，不引入 APScheduler；Linux/Windows 共用设置页管理，操作系统只负责保证后端常驻。
 8. WxPusher 只承担结果通知，不承担自动下单。
 
@@ -51,6 +51,7 @@
 - Week 4：今日决策展示活动评分范围、模型版本和平均因子覆盖率；
 - Week 4：投资中心展示单股原值、标准化值、系数、贡献及宏观仓位乘数；
 - Week 4：生产前端打包完成，Vite 共转换 3682 个模块。
+- Week 4 补充：VectorBT 0.28.5 专用研究回测已完成；支持 ma_cross/score_trend、manual/ridge 固定评分版本、每日截面 Top-N 入场筛选、多标的共享现金、执行滞后、止损止盈、成本近似、等权基准、权益曲线和交易明细 JSON 输出。
 - V1.1 阶段一：DuckDB Schema V2 资产元数据、全市场成交额变化/Z20、上涨家数占比、两融/成交额背离和市场流动性分已完成；仅用于宏观状态、仓位折扣和解释，不作为个股截面特征。
 - V1.1 阶段二：公告日对齐 ROE 同比增速已完成；新增财报版本化业务表、AkShare 逐股同步入口、DuckDB 增量镜像、公告日 point-in-time 计算、Ridge/Quality 接入和手工同步界面。
 - V1.1 阶段三：龙虎榜机构净买额已完成；使用 stock_lhb_jgmmtj_em 的真实机构席位买卖口径，保存机构买入、卖出、净额、机构数和原始响应，并生成 lhb_institution_net_ratio 稀疏事件因子。
@@ -70,6 +71,7 @@
 - 生产决策仍需先运行 shadow 观察，不允许因代码完成直接切 ridge；
 - 每日/每周自动触发已可在“设置 → 定时任务”启用，也可随时手工立即执行；
 - 自动触发依赖 FastAPI 后端持续运行，Linux/Windows 生产环境需配置后端随系统启动；
+- VectorBT 当前为本地 CLI 研究工具，不进入设置页定时任务，也不替代现有回测页面和事件驱动引擎；
 - WxPusher 仍是待完成的部署接线项；
 - 龙虎榜、人气榜和尾盘代理均为稀疏辅助信号，当前不进入 Ridge 核心特征，也不会因缺失阻断核心健康门禁。
 
@@ -88,6 +90,7 @@
 - 评分配置版本和评分快照；
 - 机会挖掘、组合过滤、交易计划；
 - 自研事件驱动回测，含佣金、印花税、滑点、夏普、最大回撤；
+- VectorBT 多标的研究回测脚本，支持读取现有日线及 manual/ridge Score；
 - 异步任务、任务中心、数据诊断和每日 18:00 增量同步。
 
 当前剩余上线项：
@@ -108,6 +111,8 @@
 - Python 3.12.2；
 - AkShare 1.18.30；
 - Pandas 2.3.3；
+- NumPy 2.4.6；
+- VectorBT 0.28.5；
 - SQLAlchemy 2.0.48；
 - FastAPI 0.135.1。
 
@@ -119,7 +124,6 @@
 
 第一版暂不新增：
 
-    vectorbt
     apscheduler
 
 ---
@@ -174,7 +178,7 @@
 6. 用绝对值 beta 直接生成权重。
 7. 未经过影子运行和回测验收就自动激活动态模型。
 8. 对历史退市数据覆盖不足的问题做虚假的“完全消除”承诺。
-9. 第一版同时重构现有回测为 VectorBT。
+9. 用 VectorBT 替换现有事件驱动回测、现有回测 API 或回测页面。
 10. 第一版同时为 ETF 构建股票式基本面模型。
 
 ---
@@ -1350,6 +1354,31 @@ Priority Score 继续由现有 scoring_config 的 final_weights 聚合，不另�
 - 手工 vs 动态对比入口。
 
 回测创建后不得自动切换到后续模型。
+
+#### 14.7.1 VectorBT 专用研究脚本
+
+入口：
+
+    C:\Python312\python.exe -m scripts.backtest_vectorbt --portfolio-id 2 --symbols 000001 000048 600519 --start-date 2025-07-01 --end-date 2026-07-09 --signal-mode score_trend --score-weight-mode manual --fast-window 10 --slow-window 20 --quality-min 55 --timing-min 50 --position-pct 0.2 --max-positions 3 --stop-loss-pct 0.08 --take-profit-pct 0.15 --output tmp/vectorbt_sample_result.json
+
+运行约束：
+
+- 只读取本地 SQL 业务库中的 DailyBar 和 Score，运行期间不调用 AkShare 或其他网络接口；
+- signal_mode 支持 score_trend 和 ma_cross；
+- score_weight_mode=manual 读取手工评分；使用 ridge 时必须同时传入固定的 --factor-model-run-id；
+- 默认 execution_lag=1，将收盘后生成的信号延后一行执行，避免同一收盘价前视；
+- score_trend 每日先过滤质量、时机和趋势门槛，再选 Top-N 入场候选；manual 按 priority_score 排序，ridge 按 model_alpha_score 排序，同分按股票代码稳定处理；
+- 多标的使用共享现金，单次入场比例取 position_pct 和 1/max_positions 的较小值；当前阶段不因跌出 Top-N 强制卖出，严格持仓槽位和定期换仓在下一阶段实现；
+- Windows 默认关闭 Numba JIT，避免首次导入长时间编译；Linux 或已完成缓存预热的环境可增加 --enable-numba；
+- 生产依赖固定 vectorbt==0.28.5，并保持 pandas==2.3.3，避免 VectorBT 1.1 对 Pandas 3 的强制升级冲突。
+
+JSON 输出包括引擎及依赖版本、实际回测区间和标的、完整配置、信号数量、总收益、最大回撤、252 日夏普、胜率、盈亏比、交易数、等权基准收益、超额收益、每日权益曲线和 VectorBT 交易记录。
+
+成本口径：
+
+- VectorBT 0.28.5 的 from_signals 对买卖两侧使用同一费率，因此脚本将卖出印花税的一半分摊到买卖两侧，保持比例型往返成本总量一致；
+- 最低 5 元佣金不能被 VectorBT 的比例费率精确表达；
+- VectorBT 结果用于研究、参数筛选和并行校验；需要精确处理 A 股 100 股整手、最低佣金和卖出印花税时，以现有事件驱动回测结果为准。
 
 ### 14.8 预警中心
 

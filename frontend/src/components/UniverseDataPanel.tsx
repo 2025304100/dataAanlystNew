@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, Button, Progress, Statistic, Row, Col, InputNumber, Select, Space, Alert, Tag, Tooltip, Checkbox, Tabs, message } from "antd";
 import { PlayCircleOutlined, ReloadOutlined, StopOutlined, QuestionCircleOutlined, ThunderboltOutlined, HistoryOutlined, ToolOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
@@ -6,38 +6,38 @@ import { t } from "../i18n";
 
 // P0.6：初始化 scope 选项
 const INIT_SCOPE_OPTIONS = [
-  { label: "A股股票", value: "cn-stock" },
-  { label: "A股ETF", value: "cn-etf" },
-  { label: "美股股票", value: "us-stock" },
-  { label: "美股ETF", value: "us-etf" },
+  { labelKey: "universeScopeCnStock", value: "cn-stock" },
+  { labelKey: "universeScopeCnEtf", value: "cn-etf" },
+  { labelKey: "universeScopeUsStock", value: "us-stock" },
+  { labelKey: "universeScopeUsEtf", value: "us-etf" },
 ];
 
 // 历史K线天数下拉选项
 const HISTORY_DAYS_OPTIONS = [
-  { label: "近1月", value: 30 },
-  { label: "近1年", value: 365 },
-  { label: "近3年", value: 1095 },
-  { label: "近5年", value: 1825 },
-  { label: "近10年", value: 3650 },
+  { labelKey: "universeHistory1m", value: 30 },
+  { labelKey: "universeHistory1y", value: 365 },
+  { labelKey: "universeHistory3y", value: 1095 },
+  { labelKey: "universeHistory5y", value: 1825 },
+  { labelKey: "universeHistory10y", value: 3650 },
 ];
 
 // 单次同步标的上限（分段同步，避免一口气跑太久）
 // Repair chunk size options for safer mid-history replay
 const REPAIR_CHUNK_OPTIONS = [
-  { label: "30 天/片", value: 30 },
-  { label: "60 天/片", value: 60 },
-  { label: "90 天/片", value: 90 },
-  { label: "180 天/片", value: 180 },
-  { label: "365 天/片", value: 365 },
+  { labelKey: "universeRepairChunk30", value: 30 },
+  { labelKey: "universeRepairChunk60", value: 60 },
+  { labelKey: "universeRepairChunk90", value: 90 },
+  { labelKey: "universeRepairChunk180", value: 180 },
+  { labelKey: "universeRepairChunk365", value: 365 },
 ];
 
 const SYNC_LIMIT_OPTIONS = [
-  { label: "不限（全部）", value: 0 },
-  { label: "100 个", value: 100 },
-  { label: "300 个", value: 300 },
-  { label: "500 个", value: 500 },
-  { label: "1000 个", value: 1000 },
-  { label: "2000 个", value: 2000 },
+  { labelKey: "universeSyncLimitAll", value: 0 },
+  { label: "100" , value: 100 },
+  { label: "300" , value: 300 },
+  { label: "500" , value: 500 },
+  { label: "1000", value: 1000 },
+  { label: "2000", value: 2000 },
 ];
 
 type TaskStatus = "queued" | "running" | "done" | "failed" | "cancelled";
@@ -85,21 +85,29 @@ interface UniverseStats {
   is_empty: boolean;
 }
 
-// scope 中文映射
-const SCOPE_LABELS: Record<string, string> = {
-  "cn-stock": "A股股票",
-  "cn-etf": "A股ETF",
-  "us-stock": "美股股票",
-  "us-etf": "美股ETF",
+// scope 映射（i18n key）
+const SCOPE_LABEL_KEYS: Record<string, string> = {
+  "cn-stock": "universeScopeCnStock",
+  "cn-etf": "universeScopeCnEtf",
+  "us-stock": "universeScopeUsStock",
+  "us-etf": "universeScopeUsEtf",
 };
 
-// 板块中文映射
-const BOARD_LABELS: Record<string, string> = {
-  main: "主板",
-  gem: "创业板",
-  star: "科创板",
-  bj: "北交所",
+function scopeLabel(scope: string): string {
+  return t(SCOPE_LABEL_KEYS[scope] || "universeNoTask");
+}
+
+// 板块映射（i18n key）
+const BOARD_LABEL_KEYS: Record<string, string> = {
+  main: "universeBoardMain",
+  gem: "universeBoardGem",
+  star: "universeBoardStar",
+  bj: "universeBoardBj",
 };
+
+function boardLabel(board: string): string {
+  return t(BOARD_LABEL_KEYS[board] || board);
+}
 
 const STAGE_LABEL_KEY: Record<string, string> = {
   queued: "universeNoTask",
@@ -121,15 +129,15 @@ function stageLabel(stage: string): string {
 }
 
 function statusTag(status: TaskStatus) {
-  const map: Record<TaskStatus, { color: string; text: string }> = {
-    queued: { color: "default", text: "排队中" },
-    running: { color: "processing", text: "运行中" },
-    done: { color: "success", text: "已完成" },
-    failed: { color: "error", text: "失败" },
-    cancelled: { color: "warning", text: "已取消" },
+  const map: Record<TaskStatus, { color: string; key: string }> = {
+    queued: { color: "default", key: "universeStatusQueued" },
+    running: { color: "processing", key: "universeStatusRunning" },
+    done: { color: "success", key: "universeStatusDone" },
+    failed: { color: "error", key: "universeStatusFailed" },
+    cancelled: { color: "warning", key: "universeStatusCancelled" },
   };
   const cfg = map[status] || map.queued;
-  return <Tag color={cfg.color}>{cfg.text}</Tag>;
+  return <Tag color={cfg.color}>{t(cfg.key)}</Tag>;
 }
 
 // 配置 localStorage 持久化
@@ -279,6 +287,12 @@ export default function UniverseDataPanel() {
     }
     message.error(text);
   }, []);
+
+  // 将 labelKey 形式的 options 翻译为带 label 的 options（语言切换时自动更新）
+  const i18nInitScopeOptions = useMemo(() => INIT_SCOPE_OPTIONS.map((o) => ({ label: t(o.labelKey), value: o.value })), []);
+  const i18nHistoryDaysOptions = useMemo(() => HISTORY_DAYS_OPTIONS.map((o) => ({ label: t(o.labelKey), value: o.value })), []);
+  const i18nRepairChunkOptions = useMemo(() => REPAIR_CHUNK_OPTIONS.map((o) => ({ label: t(o.labelKey), value: o.value })), []);
+  const i18nSyncLimitOptions = useMemo(() => SYNC_LIMIT_OPTIONS.map((o) => ("labelKey" in o ? { label: o.labelKey === "universeSyncLimitAll" ? t("universeSyncLimitAll") : o.label!, value: o.value } : { label: o.label! + t("universeSyncLimitN"), value: o.value })), []);
 
   // 配置变更时持久化到 localStorage
   useEffect(() => {
@@ -437,7 +451,7 @@ export default function UniverseDataPanel() {
 
   const handleStart = async () => {
     if (initScopes.length === 0) {
-      showToast("error", "请至少选择一个初始化范围");
+      showToast("error", t("universeNeedInitScope"));
       return;
     }
     setStarting(true);
@@ -446,9 +460,9 @@ export default function UniverseDataPanel() {
       const scopes = initScopes.length === 4 ? null : initScopes;
       await api.startUniverseInit(maxWorkers, historyDays, scopes, syncLimit);
       await refreshTask();
-      showToast("success", "初始化同步已启动");
+      showToast("success", t("universeInitStarted"));
     } catch (e: any) {
-      showToast("error", e.message || "启动失败");
+      showToast("error", e.message || t("universeStartFailed"));
     } finally {
       setStarting(false);
     }
@@ -456,7 +470,7 @@ export default function UniverseDataPanel() {
 
   const handleRetry = async () => {
     if (initScopes.length === 0) {
-      showToast("error", "请至少选择一个初始化范围");
+      showToast("error", t("universeNeedInitScope"));
       return;
     }
     setStarting(true);
@@ -464,9 +478,9 @@ export default function UniverseDataPanel() {
       const scopes = initScopes.length === 4 ? null : initScopes;
       await api.retryUniverseInit(maxWorkers, historyDays, scopes, syncLimit);
       await refreshTask();
-      showToast("success", "重试同步已启动（断点续传）");
+      showToast("success", t("universeRetryStarted"));
     } catch (e: any) {
-      showToast("error", e.message || "重试失败");
+      showToast("error", e.message || t("universeRetryFailed"));
     } finally {
       setStarting(false);
     }
@@ -477,9 +491,9 @@ export default function UniverseDataPanel() {
     try {
       await api.cancelUniverseInit();
       await refreshTask();
-      showToast("success", "任务已取消，已同步进度已保留");
+      showToast("success", t("universeCancelOk"));
     } catch (e: any) {
-      showToast("error", e.message || "取消失败");
+      showToast("error", e.message || t("universeCancelFailed"));
     } finally {
       setCancelling(false);
     }
@@ -524,7 +538,7 @@ export default function UniverseDataPanel() {
       await refreshIncrTask();
       showToast("success", t("universeIncrementalStart"));
     } catch (e: any) {
-      showToast("error", e.message || "启动失败");
+      showToast("error", e.message || t("universeStartFailed"));
     } finally {
       setIncrStarting(false);
     }
@@ -535,9 +549,9 @@ export default function UniverseDataPanel() {
     try {
       await api.cancelUniverseIncrementalSync();
       await refreshIncrTask();
-      showToast("success", "增量同步已取消");
+      showToast("success", t("universeIncrCancelled"));
     } catch (e: any) {
-      showToast("error", e.message || "取消失败");
+      showToast("error", e.message || t("universeCancelFailed"));
     } finally {
       setIncrCancelling(false);
     }
@@ -551,7 +565,7 @@ export default function UniverseDataPanel() {
   // 历史回补处理函数
   const handleBfStart = async () => {
     if (bfScopes.length === 0) {
-      showToast("error", "请至少选择一个回补范围");
+      showToast("error", t("universeNeedBfScope"));
       return;
     }
     setBfStarting(true);
@@ -559,9 +573,9 @@ export default function UniverseDataPanel() {
       const scopes = bfScopes.length === 4 ? null : bfScopes;
       await api.startUniverseBackfill(maxWorkers, bfHistoryDays, scopes, bfSyncLimit);
       await refreshBfTask();
-      showToast("success", "历史回补已启动");
+      showToast("success", t("universeBfStarted"));
     } catch (e: any) {
-      showToast("error", e.message || "启动失败");
+      showToast("error", e.message || t("universeStartFailed"));
     } finally {
       setBfStarting(false);
     }
@@ -572,9 +586,9 @@ export default function UniverseDataPanel() {
     try {
       await api.cancelUniverseBackfill();
       await refreshBfTask();
-      showToast("success", "历史回补已取消");
+      showToast("success", t("universeBfCancelled"));
     } catch (e: any) {
-      showToast("error", e.message || "取消失败");
+      showToast("error", e.message || t("universeCancelFailed"));
     } finally {
       setBfCancelling(false);
     }
@@ -808,7 +822,7 @@ export default function UniverseDataPanel() {
                       {Object.entries(stats.by_scope).map(([scope, data]) => (
                         <Col key={scope} xs={12} sm={6}>
                           <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{SCOPE_LABELS[scope] || scope}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{scopeLabel(scope)}</div>
                             <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>
                               {data.synced}<span style={{ fontSize: 12, color: "var(--text-muted, #888)", fontWeight: 400 }}> / {data.total}</span>
                             </div>
@@ -867,7 +881,7 @@ export default function UniverseDataPanel() {
                       {Object.entries(stats.by_board).map(([board, data]) => (
                         <Col key={board} xs={12} sm={6}>
                           <div style={{ padding: "8px 12px", background: "var(--bg-elevated, #fafafa)", borderRadius: 6, border: "1px solid var(--border-color, #f0f0f0)" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{BOARD_LABELS[board] || board}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>{boardLabel(board)}</div>
                             <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>
                               {data.synced}<span style={{ fontSize: 12, color: "var(--text-muted, #888)", fontWeight: 400 }}> / {data.total}</span>
                             </div>
@@ -890,7 +904,7 @@ export default function UniverseDataPanel() {
                     {Object.entries(stats.by_type).map(([type, data]) => (
                       <Col key={type} span={8}>
                         <Statistic
-                          title={type === "stock" ? "股票" : type === "etf" ? "ETF" : type}
+                          title={type === "stock" ? t("universeTypeStock") : type === "etf" ? t("universeTypeEtf") : type}
                           value={data.synced}
                           suffix={`/ ${data.total}`}
                         />
@@ -1002,7 +1016,7 @@ export default function UniverseDataPanel() {
                 </p>
                 {smartTask.total > 0 ? (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
-                    已处理 {smartTask.processed} / {smartTask.total}，成功 {smartTask.ok_count}，失败 {smartTask.failed_count}
+                    {t("universeProcessed")} {smartTask.processed} / {smartTask.total}，{t("universeSuccess")} {smartTask.ok_count}，{t("universeFail")} {smartTask.failed_count}
                   </p>
                 ) : (
                   smartTask.status === "running" && (
@@ -1020,7 +1034,7 @@ export default function UniverseDataPanel() {
                         const scope = key.replace(/_universe$/, "");
                         return (
                           <div key={key} style={{ marginBottom: 2 }}>
-                            列表 {SCOPE_LABELS[scope] || scope}：见 {v.seen ?? 0}，新建 {v.created ?? 0}
+                            {t("universeResultList")} {scopeLabel(scope)}：{t("universeResultSeen")} {v.seen ?? 0}，{t("universeResultCreated")} {v.created ?? 0}
                           </div>
                         );
                       }
@@ -1028,7 +1042,7 @@ export default function UniverseDataPanel() {
                         const scope = key.replace(/_init$/, "");
                         return (
                           <div key={key} style={{ marginBottom: 2 }}>
-                            初始化 {SCOPE_LABELS[scope] || scope}：待同步 {v.total ?? 0}，成功 {v.ok ?? 0}，失败 {v.failed ?? 0}
+                            {t("universeResultInit")} {scopeLabel(scope)}：{t("universeResultToSync")} {v.total ?? 0}，{t("universeSuccess")} {v.ok ?? 0}，{t("universeFail")} {v.failed ?? 0}
                           </div>
                         );
                       }
@@ -1036,14 +1050,14 @@ export default function UniverseDataPanel() {
                         const scope = key.replace(/_backfill$/, "");
                         return (
                           <div key={key} style={{ marginBottom: 2 }}>
-                            回补 {SCOPE_LABELS[scope] || scope}：待回补 {v.total ?? 0}，成功 {v.ok ?? 0}，失败 {v.failed ?? 0}
+                            {t("universeResultBackfill")} {scopeLabel(scope)}：{t("universeResultToBackfill")} {v.total ?? 0}，{t("universeSuccess")} {v.ok ?? 0}，{t("universeFail")} {v.failed ?? 0}
                           </div>
                         );
                       }
                       if (key === "incremental") {
                         return (
                           <div key={key} style={{ marginBottom: 2 }}>
-                            增量续刷：待处理 {v.total ?? 0}，更新 {v.ok ?? 0}，已最新 {v.uptodate ?? 0}，失败 {v.failed ?? 0}
+                            {t("universeResultIncr")}：{t("universeResultToProcess")} {v.total ?? 0}，{t("universeResultUpdated")} {v.ok ?? 0}，{t("universeResultUptodate")} {v.uptodate ?? 0}，{t("universeFail")} {v.failed ?? 0}
                           </div>
                         );
                       }
@@ -1053,7 +1067,7 @@ export default function UniverseDataPanel() {
                 )}
                 {smartTask.errors && smartTask.errors.length > 0 && (
                   <Alert
-                    message={`最近 ${smartTask.errors.length} 条错误`}
+                    message={t("universeRecentErrors").replace("{n}", String(smartTask.errors.length))}
                     description={smartTask.errors.slice(-3).map((e, i) => (
                       <div key={i} style={{ fontSize: 12, color: "#ff4d4f" }}>
                         {String(e.stage || "")} {String(e.error || JSON.stringify(e))}
@@ -1085,7 +1099,7 @@ export default function UniverseDataPanel() {
                   <Select
                     value={historyDays}
                     onChange={(v) => setHistoryDays(v)}
-                    options={HISTORY_DAYS_OPTIONS}
+                    options={i18nHistoryDaysOptions}
                     disabled={anyRunning}
                     style={{ width: 120 }}
                   />
@@ -1100,7 +1114,7 @@ export default function UniverseDataPanel() {
                   <Select
                     value={syncLimit}
                     onChange={(v) => setSyncLimit(v)}
-                    options={SYNC_LIMIT_OPTIONS}
+                    options={i18nSyncLimitOptions}
                     disabled={anyRunning}
                     style={{ width: 140 }}
                   />
@@ -1113,7 +1127,7 @@ export default function UniverseDataPanel() {
                     </Tooltip>
                   </span>
                   <Checkbox.Group
-                    options={INIT_SCOPE_OPTIONS}
+                    options={i18nInitScopeOptions}
                     value={initScopes}
                     onChange={(values) => setInitScopes(values as string[])}
                     disabled={anyRunning}
@@ -1181,12 +1195,12 @@ export default function UniverseDataPanel() {
                 </p>
                 {incrTask.total > 0 && (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
-                    已处理 {incrTask.processed} / {incrTask.total}，成功 {incrTask.ok_count}，失败 {incrTask.failed_count}
+                    {t("universeProcessed")} {incrTask.processed} / {incrTask.total}，{t("universeSuccess")} {incrTask.ok_count}，{t("universeFail")} {incrTask.failed_count}
                   </p>
                 )}
                 {incrTask.errors && incrTask.errors.length > 0 && (
                   <Alert
-                    message={`最近 ${incrTask.errors.length} 条错误`}
+                    message={t("universeRecentErrors").replace("{n}", String(incrTask.errors.length))}
                     description={incrTask.errors.slice(-3).map((e, i) => (
                       <div key={i} style={{ fontSize: 12, color: "#ff4d4f" }}>
                         {String(e.stage || "")} {String(e.error || JSON.stringify(e))}
@@ -1288,7 +1302,7 @@ export default function UniverseDataPanel() {
                 </p>
                 {task.total > 0 && (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
-                    已处理 {task.processed} / {task.total}，成功 {task.ok_count}，失败 {task.failed_count}
+                    {t("universeProcessed")} {task.processed} / {task.total}，{t("universeSuccess")} {task.ok_count}，{t("universeFail")} {task.failed_count}
                   </p>
                 )}
                 {task.status === "done" && task.result && (
@@ -1299,10 +1313,10 @@ export default function UniverseDataPanel() {
                       const isBars = key.endsWith("_bars");
                       return (
                         <div key={key} style={{ marginBottom: 2 }}>
-                          {isBars ? "K线同步" : "列表拉取"} {key.replace(/_(universe|bars)$/, "")}：
+                          {isBars ? t("universeResultBarsSync") : t("universeResultListPull")} {key.replace(/_(universe|bars)$/, "")}：
                           {isBars
-                            ? `待同步 ${v.total ?? 0}，成功 ${v.ok ?? 0}，失败 ${v.failed ?? 0}`
-                            : `见 ${v.seen ?? 0}，新建 ${v.created ?? 0}，跳过停牌 ${v.skipped_suspended ?? 0}`}
+                            ? `${t("universeResultToSync")} ${v.total ?? 0}，${t("universeSuccess")} ${v.ok ?? 0}，${t("universeFail")} ${v.failed ?? 0}`
+                            : `${t("universeResultSeen")} ${v.seen ?? 0}，${t("universeResultCreated")} ${v.created ?? 0}，${t("universeResultSkippedSuspended")} ${v.skipped_suspended ?? 0}`}
                         </div>
                       );
                     })}
@@ -1310,7 +1324,7 @@ export default function UniverseDataPanel() {
                 )}
                 {task.errors && task.errors.length > 0 && (
                   <Alert
-                    message={`最近 ${task.errors.length} 条错误`}
+                    message={t("universeRecentErrors").replace("{n}", String(task.errors.length))}
                     description={task.errors.slice(-3).map((e, i) => (
                       <div key={i} style={{ fontSize: 12, color: "#ff4d4f" }}>
                         {String(e.stage || "")} {String(e.error || JSON.stringify(e))}
@@ -1343,7 +1357,7 @@ export default function UniverseDataPanel() {
                   <Select
                     value={historyDays}
                     onChange={(v) => setHistoryDays(v)}
-                    options={HISTORY_DAYS_OPTIONS}
+                    options={i18nHistoryDaysOptions}
                     disabled={anyRunning}
                     style={{ width: 120 }}
                   />
@@ -1358,7 +1372,7 @@ export default function UniverseDataPanel() {
                   <Select
                     value={syncLimit}
                     onChange={(v) => setSyncLimit(v)}
-                    options={SYNC_LIMIT_OPTIONS}
+                    options={i18nSyncLimitOptions}
                     disabled={anyRunning}
                     style={{ width: 140 }}
                   />
@@ -1371,7 +1385,7 @@ export default function UniverseDataPanel() {
                     </Tooltip>
                   </span>
                   <Checkbox.Group
-                    options={INIT_SCOPE_OPTIONS}
+                    options={i18nInitScopeOptions}
                     value={initScopes}
                     onChange={(values) => setInitScopes(values as string[])}
                     disabled={anyRunning}
@@ -1451,7 +1465,7 @@ export default function UniverseDataPanel() {
                 </p>
                 {bfTask.total > 0 ? (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
-                    已处理 {bfTask.processed} / {bfTask.total}，成功 {bfTask.ok_count}，失败 {bfTask.failed_count}
+                    {t("universeProcessed")} {bfTask.processed} / {bfTask.total}，{t("universeSuccess")} {bfTask.ok_count}，{t("universeFail")} {bfTask.failed_count}
                   </p>
                 ) : (
                   bfTask.status === "running" && (
@@ -1497,7 +1511,7 @@ export default function UniverseDataPanel() {
                     <div style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
                       {backfillScopeSummaries.map((item) => (
                         <div key={item.key} style={{ marginBottom: 4 }}>
-                          {SCOPE_LABELS[item.scope] || item.scope}：
+                          {scopeLabel(item.scope)}：
                           {t("universeBackfillSummaryProcessed")} {item.processed > 0 ? item.processed : item.total}，
                           {t("universeBackfillSummaryOk")} {item.ok}，
                           {t("universeBackfillSummarySkipped")} {item.skipped}，
@@ -1509,7 +1523,7 @@ export default function UniverseDataPanel() {
                 )}
                 {bfTask.errors && bfTask.errors.length > 0 && (
                   <Alert
-                    message={`最近 ${bfTask.errors.length} 条错误`}
+                    message={t("universeRecentErrors").replace("{n}", String(bfTask.errors.length))}
                     description={bfTask.errors.slice(-3).map((e, i) => (
                       <div key={i} style={{ fontSize: 12, color: "#ff4d4f" }}>
                         {String(e.stage || "")} {String(e.error || JSON.stringify(e))}
@@ -1535,7 +1549,7 @@ export default function UniverseDataPanel() {
                     onChange={setBfHistoryDays}
                     disabled={anyRunning}
                     style={{ width: 120 }}
-                    options={HISTORY_DAYS_OPTIONS}
+                    options={i18nHistoryDaysOptions}
                   />
                   <Tooltip title={t("universeHistoryDaysHint")}>
                     <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #888)" }} />
@@ -1544,7 +1558,7 @@ export default function UniverseDataPanel() {
                 <Space wrap>
                   <span>{t("universeScopes")}：</span>
                   <Checkbox.Group
-                    options={INIT_SCOPE_OPTIONS}
+                    options={i18nInitScopeOptions}
                     value={bfScopes}
                     onChange={(vals) => setBfScopes(vals as string[])}
                     disabled={anyRunning}
@@ -1560,7 +1574,7 @@ export default function UniverseDataPanel() {
                     onChange={setBfSyncLimit}
                     disabled={anyRunning}
                     style={{ width: 140 }}
-                    options={SYNC_LIMIT_OPTIONS}
+                    options={i18nSyncLimitOptions}
                   />
                   <Tooltip title={t("universeSyncLimitHint")}>
                     <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #888)" }} />
@@ -1641,7 +1655,7 @@ export default function UniverseDataPanel() {
                 </p>
                 {repairTask.total > 0 ? (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
-                    已处理 {repairTask.processed} / {repairTask.total}，成功 {repairTask.ok_count}，失败 {repairTask.failed_count}
+                    {t("universeProcessed")} {repairTask.processed} / {repairTask.total}，{t("universeSuccess")} {repairTask.ok_count}，{t("universeFail")} {repairTask.failed_count}
                   </p>
                 ) : (
                   repairTask.status === "running" && (
@@ -1681,7 +1695,7 @@ export default function UniverseDataPanel() {
                     <div style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
                       {repairScopeSummaries.map((item) => (
                         <div key={item.key} style={{ marginBottom: 4 }}>
-                          {SCOPE_LABELS[item.scope] || item.scope}：
+                          {scopeLabel(item.scope)}：
                           {t("universeRangeRepairSummaryProcessed")} {item.processed > 0 ? item.processed : item.total}，
                           {t("universeRangeRepairSummaryOk")} {item.ok}，
                           {t("universeRangeRepairSummarySkipped")} {item.skipped}，
@@ -1696,7 +1710,7 @@ export default function UniverseDataPanel() {
                 )}
                 {repairTask.errors && repairTask.errors.length > 0 && (
                   <Alert
-                    message={`最近 ${repairTask.errors.length} 条错误`}
+                    message={t("universeRecentErrors").replace("{n}", String(repairTask.errors.length))}
                     description={repairTask.errors.slice(-3).map((e, i) => (
                       <div key={i} style={{ fontSize: 12, color: "#ff4d4f" }}>
                         {String(e.stage || "")} {String(e.error || JSON.stringify(e))}
@@ -1721,7 +1735,7 @@ export default function UniverseDataPanel() {
                     onChange={setRepairHistoryDays}
                     disabled={anyRunning}
                     style={{ width: 120 }}
-                    options={HISTORY_DAYS_OPTIONS}
+                    options={i18nHistoryDaysOptions}
                   />
                   <Tooltip title={t("universeHistoryDaysHint")}>
                     <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #888)" }} />
@@ -1739,13 +1753,13 @@ export default function UniverseDataPanel() {
                     onChange={setRepairChunkDays}
                     disabled={anyRunning}
                     style={{ width: 140 }}
-                    options={REPAIR_CHUNK_OPTIONS}
+                    options={i18nRepairChunkOptions}
                   />
                 </Space>
                 <Space wrap>
                   <span>{t("universeScopes")}：</span>
                   <Checkbox.Group
-                    options={INIT_SCOPE_OPTIONS}
+                    options={i18nInitScopeOptions}
                     value={repairScopes}
                     onChange={(vals) => setRepairScopes(vals as string[])}
                     disabled={anyRunning}
@@ -1758,7 +1772,7 @@ export default function UniverseDataPanel() {
                     onChange={setRepairSyncLimit}
                     disabled={anyRunning}
                     style={{ width: 140 }}
-                    options={SYNC_LIMIT_OPTIONS}
+                    options={i18nSyncLimitOptions}
                   />
                   <Tooltip title={t("universeSyncLimitHint")}>
                     <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #888)" }} />

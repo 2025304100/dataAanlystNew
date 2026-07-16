@@ -263,9 +263,9 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
   const referenceFieldDocs = useMemo<ReferenceFieldDoc[]>(() => [
     { key: "open", label: t("ciOpen"), descriptionZh: "当前预览K线的开盘价。", descriptionEn: "Open price of the preview bar.", sourceZh: "来源：当前K线", sourceEn: "Source: preview bar", getValue: (result) => result.latest_bar.open },
     { key: "close", label: t("ciClose"), descriptionZh: "当前预览K线的收盘价。", descriptionEn: "Close price of the preview bar.", sourceZh: "来源：当前K线", sourceEn: "Source: preview bar", getValue: (result) => result.latest_bar.close },
-    { key: "high", label: isZh ? "最高" : "High", descriptionZh: "当前预览K线的最高价。", descriptionEn: "High price of the preview bar.", sourceZh: "来源：当前K线", sourceEn: "Source: preview bar", getValue: (result) => result.latest_bar.high },
-    { key: "low", label: isZh ? "最低" : "Low", descriptionZh: "当前预览K线的最低价。", descriptionEn: "Low price of the preview bar.", sourceZh: "来源：当前K线", sourceEn: "Source: preview bar", getValue: (result) => result.latest_bar.low },
-    { key: "volume", label: isZh ? "成交量" : "Volume", descriptionZh: "当前预览K线的成交量。", descriptionEn: "Volume of the preview bar.", sourceZh: "来源：当前K线", sourceEn: "Source: preview bar", getValue: (result) => result.latest_bar.volume ?? null },
+    { key: "high", label: t("ciHigh"), descriptionZh: "当前预览K线的最高价。", descriptionEn: "High price of the preview bar.", sourceZh: "来源：当前K线", sourceEn: "Source: preview bar", getValue: (result) => result.latest_bar.high },
+    { key: "low", label: t("ciLow"), descriptionZh: "当前预览K线的最低价。", descriptionEn: "Low price of the preview bar.", sourceZh: "来源：当前K线", sourceEn: "Source: preview bar", getValue: (result) => result.latest_bar.low },
+    { key: "volume", label: t("ciVolume"), descriptionZh: "当前预览K线的成交量。", descriptionEn: "Volume of the preview bar.", sourceZh: "来源：当前K线", sourceEn: "Source: preview bar", getValue: (result) => result.latest_bar.volume ?? null },
     { key: "quality_score", label: t("ciQualityScore"), descriptionZh: "系统股质评分，偏向基本面与稳定性。", descriptionEn: "Workbench quality score, focused on fundamentals and stability.", sourceZh: "来源：评分快照", sourceEn: "Source: score snapshot", getValue: (result) => result.score_snapshot?.quality_score ?? null },
     { key: "timing_score", label: t("ciTimingScore"), descriptionZh: "系统时点评分，偏向当前买卖节奏。", descriptionEn: "Timing score focused on the current trading setup.", sourceZh: "来源：评分快照", sourceEn: "Source: score snapshot", getValue: (result) => result.score_snapshot?.timing_score ?? null },
     { key: "trend_score", label: t("ciTrendScore"), descriptionZh: "系统趋势评分，反映趋势方向与持续性。", descriptionEn: "Trend score representing direction and persistence.", sourceZh: "来源：评分快照", sourceEn: "Source: score snapshot", getValue: (result) => result.score_snapshot?.trend_score ?? null },
@@ -496,7 +496,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
       description: prev.description || (isZh ? item.descriptionZh : item.descriptionEn),
       key: prev.key || keyFromName(isZh ? item.nameZh : item.nameEn),
     }));
-    message.success(isZh ? "已套用模板：" + item.nameZh : "Template applied: " + item.nameEn);
+    message.success(template("ciTemplateApplied", { name: ctx.locale === "zh-CN" ? item.nameZh : item.nameEn }));
   };
 
   const previewFormula = async () => {
@@ -603,21 +603,21 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
               className="indicator-library-search"
               value={libraryKeyword}
               onChange={(event) => setLibraryKeyword(event.target.value)}
-              placeholder={isZh ? "搜索名称 / 标识 / 公式" : "Search name / key / formula"}
+              placeholder={t("ciSearchNameKeyFormula")}
             />
             <Select
               size="small"
               className="indicator-library-filter"
               value={libraryCategoryFilter}
               onChange={setLibraryCategoryFilter}
-              options={[{ label: isZh ? "全部分类" : "All categories", value: "all" }, ...categoryOptions]}
+              options={[{ label: t("ciAllCategories"), value: "all" }, ...categoryOptions]}
             />
             <Select
               size="small"
               className="indicator-library-filter"
               value={libraryValueTypeFilter}
               onChange={setLibraryValueTypeFilter}
-              options={[{ label: isZh ? "全部类型" : "All types", value: "all" }, { label: t("ciBoolean"), value: "boolean" }, { label: t("ciNumber"), value: "number" }]}
+              options={[{ label: t("ciAllTypes"), value: "all" }, { label: t("ciBoolean"), value: "boolean" }, { label: t("ciNumber"), value: "number" }]}
             />
             <Select
               size="small"
@@ -625,9 +625,9 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
               value={libraryStatusFilter}
               onChange={setLibraryStatusFilter}
               options={[
-                { label: isZh ? "全部状态" : "All status", value: "all" },
-                { label: isZh ? "启用中" : "Enabled", value: "enabled" },
-                { label: isZh ? "已停用" : "Disabled", value: "disabled" },
+                { label: t("ciAllStatus"), value: "all" },
+                { label: t("ciStatusEnabled"), value: "enabled" },
+                { label: t("ciDisabled"), value: "disabled" },
               ]}
             />
             <Select
@@ -635,13 +635,13 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
               className="indicator-library-filter"
               value={libraryScopeFilter}
               onChange={setLibraryScopeFilter}
-              options={[{ label: isZh ? "全部范围" : "All scopes", value: "all" }, ...scopeOptions]}
+              options={[{ label: t("ciAllScopes"), value: "all" }, ...scopeOptions]}
             />
           </div>
           <div className="indicator-library-summary">
-            <Tag color="blue">{isZh ? "启用 " + rows.filter((row) => row.enabled).length : "Enabled " + rows.filter((row) => row.enabled).length}</Tag>
-            <Tag color="gold">{isZh ? "数值型 " + rows.filter((row) => row.value_type === "number").length : "Numeric " + rows.filter((row) => row.value_type === "number").length}</Tag>
-            <Tag color="green">{isZh ? "布尔型 " + rows.filter((row) => row.value_type === "boolean").length : "Boolean " + rows.filter((row) => row.value_type === "boolean").length}</Tag>
+            <Tag color="blue">{template("ciEnabledCount", { count: rows.filter((row) => row.enabled).length })}</Tag>
+            <Tag color="gold">{template("ciNumericCount", { count: rows.filter((row) => row.value_type === "number").length })}</Tag>
+            <Tag color="green">{template("ciBooleanCount", { count: rows.filter((row) => row.value_type === "boolean").length })}</Tag>
           </div>
           <div className="indicator-library-table-wrap">
             <Table<CustomIndicator>
@@ -652,7 +652,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
               dataSource={filteredRows}
               pagination={{ pageSize: 8, showSizeChanger: false }}
               scroll={{ x: 760 }}
-              locale={{ emptyText: isZh ? "当前筛选下没有公式" : "No formulas match the current filter" }}
+              locale={{ emptyText: t("ciNoFormulaMatchFilter") }}
               onRow={(record) => ({ onClick: () => loadIndicator(record) })}
               rowClassName={(record) => record.id === selectedId ? "selected-row" : ""}
               columns={[
@@ -706,7 +706,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                   <Form.Item label={t("ciFormula")} style={{ marginBottom: 0 }}><Input.TextArea rows={10} value={form.formula} onChange={(event) => setForm((prev) => ({ ...prev, formula: event.target.value }))} placeholder="sma(20) > sma(60) and rsi(14) < 70" /></Form.Item>
                   <div className="indicator-form-grid compact">
                     <Form.Item label={t("ciScope")}><Checkbox.Group options={scopeOptions} value={form.scope} onChange={(value) => setForm((prev) => ({ ...prev, scope: value as string[] }))} /></Form.Item>
-                    <Form.Item label={t("ciEnabled")}><Checkbox checked={form.enabled} onChange={(event) => setForm((prev) => ({ ...prev, enabled: event.target.checked }))}>{form.enabled ? (isZh ? "保存后生效" : "Active after save") : (isZh ? "保存为停用" : "Save as disabled")}</Checkbox></Form.Item>
+                    <Form.Item label={t("ciEnabled")}><Checkbox checked={form.enabled} onChange={(event) => setForm((prev) => ({ ...prev, enabled: event.target.checked }))}>{form.enabled ? t("ciActiveAfterSave") : t("ciSaveAsDisabled")}</Checkbox></Form.Item>
                   </div>
                   {selectedId && <Form.Item label={t("ciChangeNote")}><Input value={changeNote} onChange={(event) => setChangeNote(event.target.value)} placeholder={t("ciChangeNotePlaceholder")} /></Form.Item>}
                   <Space wrap className="indicator-action-row"><Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>{t("ciSaveIndicator")}</Button>{selectedId && <Popconfirm title={t("ciConfirmDeleteIndicator")} onConfirm={() => remove(selectedId)}><Button danger icon={<DeleteOutlined />}>{t("ciDelete")}</Button></Popconfirm>}</Space>
@@ -723,21 +723,21 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                       size="small"
                       value={resourceKeyword}
                       onChange={(event) => setResourceKeyword(event.target.value)}
-                      placeholder={isZh ? "搜索模板 / 函数 / 用法" : "Search templates / functions / usage"}
+                      placeholder={t("ciSearchTemplateFunctionUsage")}
                     />
                     <div className="formula-resource-toolbar__filters">
                       <Select
                         size="small"
                         value={resourceCategoryFilter}
                         onChange={setResourceCategoryFilter}
-                        options={[{ label: isZh ? "全部分类" : "All categories", value: "all" }, ...categoryOptions]}
+                        options={[{ label: t("ciAllCategories"), value: "all" }, ...categoryOptions]}
                         style={{ width: 128 }}
                       />
                       <Select
                         size="small"
                         value={resourceScopeFilter}
                         onChange={setResourceScopeFilter}
-                        options={[{ label: isZh ? "全部范围" : "All scopes", value: "all" }, ...scopeOptions]}
+                        options={[{ label: t("ciAllScopes"), value: "all" }, ...scopeOptions]}
                         style={{ width: 132 }}
                       />
                     </div>
@@ -746,9 +746,9 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                   <div>
                     <div className="formula-resource-section-head">
                       <div>
-                        <div className="metric-label formula-section-label">{isZh ? "模板" : "Templates"}</div>
+                        <div className="metric-label formula-section-label">{t("ciTemplates")}</div>
                         <div className="item-subline formula-section-note">
-                          {isZh ? "先选模板搭骨架，再按你的规则细调。" : "Start from a template, then tune the rule details."}
+                          {t("ciTemplateHint")}
                         </div>
                       </div>
                       <Tag>{filteredFormulaTemplates.length}</Tag>
@@ -762,7 +762,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                               <div className="item-subline">{isZh ? item.descriptionZh : item.descriptionEn}</div>
                             </div>
                             <Button size="small" type="primary" onClick={() => applyTemplate(item)}>
-                              {isZh ? "套用" : "Apply"}
+                              {t("ciApply")}
                             </Button>
                           </div>
                           <Space wrap size={6}>
@@ -774,16 +774,16 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                           </Space>
                           <code className="formula-inline-code">{item.formula}</code>
                         </div>
-                      )) : <div className="item-subline">{isZh ? "当前筛选下没有可用模板。" : "No templates match the current filter."}</div>}
+                      )) : <div className="item-subline">{t("ciNoTemplateMatchFilter")}</div>}
                     </div>
                   </div>
 
                   <div>
                     <div className="formula-resource-section-head">
                       <div>
-                        <div className="metric-label formula-section-label">{isZh ? "函数插入" : "Function insert"}</div>
+                        <div className="metric-label formula-section-label">{t("ciFunctionInsert")}</div>
                         <div className="item-subline formula-section-note">
-                          {isZh ? "点一下直接插进公式；切到“仅当前用到”能更快看懂现有写法。" : "Click to insert directly. Switch to used-only to understand the current formula faster."}
+                          {t("ciFunctionInsertHint")}
                         </div>
                       </div>
                       <Radio.Group
@@ -793,8 +793,8 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                         value={functionViewMode}
                         onChange={(event) => setFunctionViewMode(event.target.value)}
                       >
-                        <Radio.Button value="all">{isZh ? "全部函数" : "All"}</Radio.Button>
-                        <Radio.Button value="used">{isZh ? "仅当前用到" : "Used"}</Radio.Button>
+                        <Radio.Button value="all">{t("ciAllFunctions")}</Radio.Button>
+                        <Radio.Button value="used">{t("ciUsedOnly")}</Radio.Button>
                       </Radio.Group>
                     </div>
                     <div className="formula-resource-list">
@@ -806,14 +806,14 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                               <Tag>{item.snippet}</Tag>
                             </Space>
                             <Button size="small" onClick={() => insertFormulaSnippet(item.snippet)}>
-                              {isZh ? "插入" : "Insert"}
+                              {t("ciInsert")}
                             </Button>
                           </div>
                           <div className="item-subline">{isZh ? item.descriptionZh : item.descriptionEn}</div>
                           <div className="item-subline">{isZh ? item.referenceZh : item.referenceEn}</div>
-                          <div className="item-subline">{isZh ? "示例：" + item.example : "Example: " + item.example}</div>
+                          <div className="item-subline">{t("ciExampleLabel") + item.example}</div>
                         </div>
-                      )) : <div className="item-subline">{functionViewMode === "used" ? (isZh ? "当前公式还没有识别到函数。" : "No functions detected in the current formula yet.") : (isZh ? "当前筛选下没有函数。" : "No functions match the current filter.")}</div>}
+                      )) : <div className="item-subline">{functionViewMode === "used" ? t("ciNoFunctionDetected") : t("ciNoFunctionMatchFilter")}</div>}
                     </div>
                   </div>
                 </div>
@@ -822,32 +822,30 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
               <Card className="indicator-usage-card formula-section-card" size="small" title={t("ciFormulaGuideTitle")}>
                 <div className="formula-section-stack">
                   <div>
-                    <div className="metric-label formula-section-label">{isZh ? "这条公式在做什么" : "What this formula is doing"}</div>
-                    <div className="item-subline">{form.value_type === "boolean" ? (isZh ? "当前是布尔公式，通常用来做筛选或买卖条件。共 " + (clauseSummary.clauses.length || 1) + " 段条件，连接方式：" + (clauseSummary.connectors.join(" / ") || "单条件") + "。" : "This is a boolean formula, usually used for filters or buy/sell conditions. It has " + (clauseSummary.clauses.length || 1) + " condition block(s) connected by " + (clauseSummary.connectors.join(" / ") || "single condition") + ".") : (isZh ? "当前是数值公式，通常用来输出评分、排序值或强弱程度。" : "This is a numeric formula, usually used for scores, ranking values, or strength outputs.")}</div>
+                    <div className="metric-label formula-section-label">{t("ciFormulaWhatDoing")}</div>
+                    <div className="item-subline">{form.value_type === "boolean" ? template("ciBooleanFormulaDesc", { count: String(clauseSummary.clauses.length || 1), connectors: clauseSummary.connectors.join(" / ") || t("ciSingleCondition") }) : t("ciNumericFormulaDesc")}</div>
                     <div className="formula-guide-usage">
                       <div className="formula-guide-usage__card">
-                        <div className="metric-label">{isZh ? "适用模块" : "Use in"}</div>
+                        <div className="metric-label">{t("ciUseIn")}</div>
                         <Space wrap size={6}>
                           {formulaUseCaseLabels.length > 0 ? formulaUseCaseLabels.map((label) => <Tag key={label}>{label}</Tag>) : <span className="item-subline">-</span>}
                         </Space>
                       </div>
                       <div className="formula-guide-usage__card">
-                        <div className="metric-label">{isZh ? "当前结构" : "Current structure"}</div>
+                        <div className="metric-label">{t("ciCurrentStructure")}</div>
                         <div className="item-subline">
-                          {isZh
-                            ? `条件段 ${clauseSummary.clauses.length || 1} 个，函数 ${selectedFunctionDocs.length} 个，参考值 ${selectedReferenceDocs.length} 个。`
-                            : `${clauseSummary.clauses.length || 1} clause(s), ${selectedFunctionDocs.length} function(s), ${selectedReferenceDocs.length} reference value(s).`}
+                          {template("ciStructureSummary", { clauses: String(clauseSummary.clauses.length || 1), functions: String(selectedFunctionDocs.length), references: String(selectedReferenceDocs.length) })}
                         </div>
                       </div>
                     </div>
                   </div>
                   <div>
-                    <div className="metric-label formula-section-label">{isZh ? "当前用到的函数" : "Functions used"}</div>
-                    {selectedFunctionDocs.length > 0 ? <div className="formula-doc-list">{selectedFunctionDocs.map((item) => <div key={item.key} className="formula-doc-item"><div className="formula-doc-item__head"><strong>{item.key}</strong><Tag>{item.snippet}</Tag></div><div className="item-subline">{isZh ? item.descriptionZh : item.descriptionEn}</div><div className="item-subline">{isZh ? item.referenceZh : item.referenceEn}</div><div className="item-subline">{isZh ? "示例：" + item.example : "Example: " + item.example}</div></div>)}</div> : <div className="item-subline">{isZh ? "还没识别到函数，可以先点上面的函数按钮插入。" : "No functions detected yet. You can insert one from the buttons above."}</div>}
+                    <div className="metric-label formula-section-label">{t("ciFunctionsUsed")}</div>
+                    {selectedFunctionDocs.length > 0 ? <div className="formula-doc-list">{selectedFunctionDocs.map((item) => <div key={item.key} className="formula-doc-item"><div className="formula-doc-item__head"><strong>{item.key}</strong><Tag>{item.snippet}</Tag></div><div className="item-subline">{isZh ? item.descriptionZh : item.descriptionEn}</div><div className="item-subline">{isZh ? item.referenceZh : item.referenceEn}</div><div className="item-subline">{t("ciExampleLabel") + item.example}</div></div>)}</div> : <div className="item-subline">{t("ciNoFunctionDetectedHint")}</div>}
                   </div>
                   <div>
-                    <div className="metric-label formula-section-label">{isZh ? "当前用到的参考值" : "Referenced values"}</div>
-                    {selectedReferenceDocs.length > 0 ? <div className="formula-doc-list">{selectedReferenceDocs.map((item) => <div key={item.key} className="formula-doc-item"><div className="formula-doc-item__head"><strong>{item.label}</strong><Tag>{item.key}</Tag></div><div className="item-subline">{isZh ? item.descriptionZh : item.descriptionEn}</div><div className="item-subline">{isZh ? item.sourceZh : item.sourceEn}</div></div>)}</div> : <div className="item-subline">{isZh ? "当前公式还没有直接引用 open / close / 评分等可见参考值。" : "The current formula does not directly reference visible fields such as open / close / scores yet."}</div>}
+                    <div className="metric-label formula-section-label">{t("ciReferencedValues")}</div>
+                    {selectedReferenceDocs.length > 0 ? <div className="formula-doc-list">{selectedReferenceDocs.map((item) => <div key={item.key} className="formula-doc-item"><div className="formula-doc-item__head"><strong>{item.label}</strong><Tag>{item.key}</Tag></div><div className="item-subline">{isZh ? item.descriptionZh : item.descriptionEn}</div><div className="item-subline">{isZh ? item.sourceZh : item.sourceEn}</div></div>)}</div> : <div className="item-subline">{t("ciNoReferenceDetected")}</div>}
                   </div>
                 </div>
               </Card>
@@ -861,7 +859,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                   <div className="item-subline">{previewSymbol ? t("ciPreviewCurrentLabel") + previewSymbol.symbol + " | " + previewSymbol.name + (previewTradeDate ? t("ciPreviewDateLabel") + previewTradeDate.format("YYYY-MM-DD") : t("ciPreviewLatestBar")) : t("ciPreviewHint")}</div>
                   <div className="indicator-preview-config">
                     <div className="indicator-preview-count">
-                      <span className="metric-label">{isZh ? "最近N日" : "Recent N"}</span>
+                      <span className="metric-label">{t("ciRecentN")}</span>
                       <InputNumber min={1} max={30} value={previewRecentCount} onChange={(value) => setPreviewRecentCount(value ?? 7)} size="small" style={{ width: 96 }} />
                     </div>
                   </div>
@@ -872,12 +870,12 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                     {previewResult && <Tag color={previewResult.value_type === "number" ? "gold" : "green"}>{previewResult.value_type === "number" ? t("ciNumber") : t("ciBoolean")}</Tag>}
                   </Space>
                   {previewFeedback && <Alert showIcon type={previewFeedback.type} message={previewFeedback.message} description={renderPreviewFeedbackDescription(previewFeedback)} style={{ marginTop: 12 }} />}
-                  {previewResult ? <><div className="indicator-preview-grid"><div><div className="metric-label">{t("ciPreviewResult")}</div><strong>{previewValue(previewResult)}</strong></div><div><div className="metric-label">{t("ciClose")}</div><strong>{scoreValue(previewResult.latest_bar.close)}</strong></div><div><div className="metric-label">{t("ciOpen")}</div><strong>{scoreValue(previewResult.latest_bar.open)}</strong></div><div><div className="metric-label">{t("ciQualityScore")}</div><strong>{scoreValue(previewResult.score_snapshot?.quality_score)}</strong></div><div><div className="metric-label">{t("ciTimingScore")}</div><strong>{scoreValue(previewResult.score_snapshot?.timing_score)}</strong></div><div><div className="metric-label">{t("ciTrendScore")}</div><strong>{scoreValue(previewResult.score_snapshot?.trend_score)}</strong></div><div><div className="metric-label">{t("ciMomentumScore")}</div><strong>{scoreValue(previewResult.score_snapshot?.momentum_score)}</strong></div></div><Card size="small" title={isZh ? "预览解释" : "Preview explanation"} style={{ marginTop: 16 }}><div style={{ display: "grid", gap: 14 }}><div className="item-subline">{form.value_type === "boolean" ? (isZh ? "当前结果是 " + previewValue(previewResult) + "。共识别 " + (clauseSummary.clauses.length || 1) + " 段条件，其中 " + previewClauseStats.explainable + " 段可以直接用当前返回值解释。涉及技术函数但接口未返回中间序列的部分，会先展示引用函数与参考值。" : "Current result is " + previewValue(previewResult) + ". " + (clauseSummary.clauses.length || 1) + " condition block(s) detected, and " + previewClauseStats.explainable + " can be explained directly with current returned values. Function-based clauses without intermediate series are explained through references and function docs.") : (isZh ? "当前结果是 " + previewValue(previewResult) + "。这是数值型公式，下面会展示当前参考值和使用到的函数，方便判断这个数值主要由哪些维度驱动。" : "Current result is " + previewValue(previewResult) + ". This is a numeric formula, so the reference values and used functions below help explain what drives the output.")}</div><div className="formula-guide-usage"><div className="formula-guide-usage__card"><div className="metric-label">{isZh ? "已解释条件" : "Explained clauses"}</div><strong>{previewClauseStats.explainable}</strong></div><div className="formula-guide-usage__card"><div className="metric-label">{isZh ? "当前通过" : "Passing now"}</div><strong>{previewClauseStats.passed}</strong></div><div className="formula-guide-usage__card"><div className="metric-label">{isZh ? "当前未通过" : "Failing now"}</div><strong>{previewClauseStats.failed}</strong></div></div><div><div className="metric-label formula-section-label">{isZh ? "条件拆解" : "Clause breakdown"}</div><div className="formula-doc-list">{clauseExplanations.length > 0 ? clauseExplanations.map((item, index) => <div key={item.text + '-' + index} className="formula-doc-item"><div className="formula-doc-item__head"><Tag color={item.status === "passed" ? "green" : item.status === "failed" ? "red" : "default"}>{item.status === "passed" ? (isZh ? "通过" : "Pass") : item.status === "failed" ? (isZh ? "未通过" : "Fail") : (isZh ? "待人工判断" : "Needs manual check")}</Tag><strong>{item.text}</strong>{clauseSummary.connectors[index - 1] && <Tag>{clauseSummary.connectors[index - 1]}</Tag>}</div>{(item.leftText || item.rightText) && <div className="item-subline">{(item.leftText || "-") + " " + (item.operator || "") + " " + (item.rightText || "-") + ((item.leftValue != null || item.rightValue != null) ? (" ≈ " + (item.leftValue ?? "?") + " " + (item.operator || "") + " " + (item.rightValue ?? "?")) : "")}</div>}</div>) : <div className="item-subline">{isZh ? "当前公式还没有可拆解的条件。" : "No clause breakdown available yet."}</div>}</div></div><div><div className="metric-label formula-section-label">{isZh ? "当前参考值" : "Current reference values"}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>{previewReferenceValues.map((item) => <div key={item.key} className="formula-reference-card"><div className="metric-label">{item.label}</div><strong>{item.value}</strong><div className="item-subline">{item.source}</div></div>)}</div></div></div></Card>
+                  {previewResult ? <><div className="indicator-preview-grid"><div><div className="metric-label">{t("ciPreviewResult")}</div><strong>{previewValue(previewResult)}</strong></div><div><div className="metric-label">{t("ciClose")}</div><strong>{scoreValue(previewResult.latest_bar.close)}</strong></div><div><div className="metric-label">{t("ciOpen")}</div><strong>{scoreValue(previewResult.latest_bar.open)}</strong></div><div><div className="metric-label">{t("ciQualityScore")}</div><strong>{scoreValue(previewResult.score_snapshot?.quality_score)}</strong></div><div><div className="metric-label">{t("ciTimingScore")}</div><strong>{scoreValue(previewResult.score_snapshot?.timing_score)}</strong></div><div><div className="metric-label">{t("ciTrendScore")}</div><strong>{scoreValue(previewResult.score_snapshot?.trend_score)}</strong></div><div><div className="metric-label">{t("ciMomentumScore")}</div><strong>{scoreValue(previewResult.score_snapshot?.momentum_score)}</strong></div></div><Card size="small" title={t("ciPreviewExplanationTitle")} style={{ marginTop: 16 }}><div style={{ display: "grid", gap: 14 }}><div className="item-subline">{form.value_type === "boolean" ? template("ciBooleanResultExplain", { result: previewValue(previewResult), total: String(clauseSummary.clauses.length || 1), explainable: String(previewClauseStats.explainable) }) : template("ciNumericResultExplain", { result: previewValue(previewResult) })}</div><div className="formula-guide-usage"><div className="formula-guide-usage__card"><div className="metric-label">{t("ciExplainedClauses")}</div><strong>{previewClauseStats.explainable}</strong></div><div className="formula-guide-usage__card"><div className="metric-label">{t("ciPassingNow")}</div><strong>{previewClauseStats.passed}</strong></div><div className="formula-guide-usage__card"><div className="metric-label">{t("ciFailingNow")}</div><strong>{previewClauseStats.failed}</strong></div></div><div><div className="metric-label formula-section-label">{t("ciClauseBreakdown")}</div><div className="formula-doc-list">{clauseExplanations.length > 0 ? clauseExplanations.map((item, index) => <div key={item.text + '-' + index} className="formula-doc-item"><div className="formula-doc-item__head"><Tag color={item.status === "passed" ? "green" : item.status === "failed" ? "red" : "default"}>{item.status === "passed" ? t("ciPass") : item.status === "failed" ? t("ciFail") : t("ciNeedsManualCheck")}</Tag><strong>{item.text}</strong>{clauseSummary.connectors[index - 1] && <Tag>{clauseSummary.connectors[index - 1]}</Tag>}</div>{(item.leftText || item.rightText) && <div className="item-subline">{(item.leftText || "-") + " " + (item.operator || "") + " " + (item.rightText || "-") + ((item.leftValue != null || item.rightValue != null) ? (" ≈ " + (item.leftValue ?? "?") + " " + (item.operator || "") + " " + (item.rightValue ?? "?")) : "")}</div>}</div>) : <div className="item-subline">{t("ciNoClauseBreakdown")}</div>}</div></div><div><div className="metric-label formula-section-label">{t("ciCurrentReferenceValues")}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>{previewReferenceValues.map((item) => <div key={item.key} className="formula-reference-card"><div className="metric-label">{item.label}</div><strong>{item.value}</strong><div className="item-subline">{item.source}</div></div>)}</div></div></div></Card>
                     <div className="indicator-preview-series">
                       <div className="formula-resource-section-head">
                         <div>
-                          <div className="metric-label formula-section-label">{isZh ? "最近结果" : "Recent results"}</div>
-                          <div className="item-subline">{isZh ? "按交易日倒序展示最近结果，方便看连续性。" : "Recent results are shown in reverse trade-date order for continuity checks."}</div>
+                          <div className="metric-label formula-section-label">{t("ciRecentResults")}</div>
+                          <div className="item-subline">{t("ciRecentResultsHint")}</div>
                         </div>
                         <Tag>{previewRecentResults.length}</Tag>
                       </div>
@@ -898,10 +896,10 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                             { title: t("ciTrendScore"), dataIndex: ["score_snapshot", "trend_score"], width: 96, render: (_value, record) => scoreValue(record.score_snapshot?.trend_score) },
                           ]}
                           rowClassName={(_, index) => index === 0 ? "preview-series-latest-row" : ""}
-                          locale={{ emptyText: isZh ? "暂无最近结果" : "No recent results" }}
+                          locale={{ emptyText: t("ciNoRecentResults") }}
                         />
                       ) : (
-                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={isZh ? "暂无最近结果" : "No recent results"} />
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("ciNoRecentResults")} />
                       )}
                     </div>
                   </> : <div className="item-subline">{t("ciPreviewExplanation")}</div>}
@@ -910,7 +908,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
 
               {selected && <Card className="indicator-usage-card formula-section-card" size="small" title={t("ciUsage")}><div className="indicator-usage-grid"><div><div className="metric-label">{t("ciDiscoveryPlan")}</div><Space wrap className="indicator-preview-actions">{usageSummary.discovery.length > 0 ? usageSummary.discovery.map((plan) => <Tag key={'plan_' + plan.id}>{plan.name}</Tag>) : <span className="item-subline">{t("ciNoReferences")}</span>}</Space></div><div><div className="metric-label">{t("ciBacktestTemplate")}</div><Space wrap className="indicator-preview-actions">{usageSummary.backtest.length > 0 ? usageSummary.backtest.map((tpl) => <Tag key={'tpl_' + tpl.id} color="blue">{tpl.name}</Tag>) : <span className="item-subline">{t("ciNoReferences")}</span>}</Space></div></div></Card>}
 
-              {selected && <Card className="indicator-version-card formula-section-card" size="small" title={<Space>{t("ciVersionHistory")}<Tag>{versions.length}</Tag></Space>} extra={versionsLoading ? <Tag>{isZh ? "加载中…" : "Loading…"}</Tag> : <Button size="small" icon={<ReloadOutlined />} onClick={() => loadVersions(selected.id)}>{t("refresh")}</Button>}>
+              {selected && <Card className="indicator-version-card formula-section-card" size="small" title={<Space>{t("ciVersionHistory")}<Tag>{versions.length}</Tag></Space>} extra={versionsLoading ? <Tag>{t("ciLoading")}</Tag> : <Button size="small" icon={<ReloadOutlined />} onClick={() => loadVersions(selected.id)}>{t("refresh")}</Button>}>
                 {versions.length > 0 ? (
                   <div className="formula-version-list">
                     {versions.map((ver) => {

@@ -93,6 +93,7 @@ class VectorBTInputFrames:
     low: pd.DataFrame
     quality: pd.DataFrame
     timing: pd.DataFrame
+    ranking: pd.DataFrame
     symbol_ids: dict[str, int]
     score_weight_mode: str
     factor_model_run_id: str | None
@@ -214,6 +215,7 @@ def load_project_frames(
     if not scores:
         quality = _empty_score_frame(close)
         timing = _empty_score_frame(close)
+        ranking = _empty_score_frame(close)
     else:
         score_rows = []
         for item in scores:
@@ -229,12 +231,18 @@ def load_project_frames(
                 and item.factor_timing_score is not None
                 else item.timing_score
             )
+            ranking_value = (
+                item.model_alpha_score
+                if score_weight_mode == "ridge"
+                else item.priority_score
+            )
             score_rows.append(
                 {
                     "symbol": symbol_map[item.symbol_id],
                     "trade_date": item.trade_date,
                     "quality": quality_value,
                     "timing": timing_value,
+                    "ranking": ranking_value,
                     "id": item.id,
                 }
             )
@@ -249,6 +257,9 @@ def load_project_frames(
         timing = _pivot_prices(
             score_frame, "timing", columns=ordered_codes
         ).reindex(close.index).ffill()
+        ranking = _pivot_prices(
+            score_frame, "ranking", columns=ordered_codes
+        ).reindex(close.index).ffill()
 
     return VectorBTInputFrames(
         close=close,
@@ -257,10 +268,32 @@ def load_project_frames(
         low=low,
         quality=quality,
         timing=timing,
+        ranking=ranking,
         symbol_ids={code: symbol_id for symbol_id, code in symbol_map.items()},
         score_weight_mode=score_weight_mode,
         factor_model_run_id=factor_model_run_id,
     )
+
+
+def _select_daily_top_n(
+    eligible: pd.DataFrame,
+    ranking: pd.DataFrame,
+    limit: int,
+) -> pd.DataFrame:
+    """Select deterministic daily Top-N candidates by descending score."""
+    ordered_columns = sorted(eligible.columns)
+    eligible_scores = ranking.reindex(
+        index=eligible.index,
+        columns=ordered_columns,
+    ).where(eligible.reindex(columns=ordered_columns))
+    ranks = eligible_scores.rank(
+        axis=1,
+        method="first",
+        ascending=False,
+        na_option="bottom",
+    )
+    selected = ranks.le(limit) & eligible_scores.notna()
+    return selected.reindex(columns=eligible.columns).fillna(False)
 
 
 def build_vectorbt_signals(
@@ -283,10 +316,19 @@ def build_vectorbt_signals(
             raise ValueError(
                 "score_trend mode requires historical Score coverage"
             )
-        entry_state = (
+        if frames.ranking.notna().sum().sum() == 0:
+            raise ValueError(
+                "score_trend mode requires ranking Score coverage"
+            )
+        eligible_entry_state = (
             (frames.quality >= config.quality_min)
             & (frames.timing >= config.timing_min)
             & trend_up
+        )
+        entry_state = _select_daily_top_n(
+            eligible_entry_state,
+            frames.ranking,
+            config.max_positions,
         )
         exit_state = (
             (frames.quality < config.quality_exit)
@@ -396,6 +438,7 @@ def run_vectorbt_backtest(
         low=frames.low.loc[:, active_columns],
         quality=frames.quality.loc[:, active_columns],
         timing=frames.timing.loc[:, active_columns],
+        ranking=frames.ranking.loc[:, active_columns],
         symbol_ids={
             code: frames.symbol_ids[code] for code in active_columns
         },
@@ -491,6 +534,19 @@ def run_vectorbt_backtest(
         "signals": {
             "entries": int(entries.to_numpy(dtype=bool).sum()),
             "exits": int(exits.to_numpy(dtype=bool).sum()),
+        },
+        "selection": {
+            "mode": (
+                "daily_top_n"
+                if config.signal_mode == "score_trend"
+                else "none"
+            ),
+            "ranking_field": (
+                "model_alpha_score"
+                if frames.score_weight_mode == "ridge"
+                else "priority_score"
+            ),
+            "top_n": config.max_positions,
         },
         "metrics": {
             "initial_cash": round(config.initial_cash, 2),

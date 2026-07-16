@@ -1196,78 +1196,11 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
 
   const renderFactorExplanation = () => {
     if (!ctx.activeSymbolId) return null;
-    const labels = ctx.locale === "en-US" ? {
-      title: "Dynamic Factor Explanation",
-      mode: "Mode",
-      model: "Model",
-      tradeDate: "Trade Date",
-      cutoff: "Data Cutoff",
-      quality: "Factor Quality",
-      timing: "Factor Timing",
-      alpha: "Model Alpha",
-      macro: "Macro Regime",
-      multiplier: "Position Multiplier",
-      marketLiquidity: "Market Liquidity Score",
-      marketAmountChange: "Market Turnover Change",
-      marketAmountZ: "Turnover Z20",
-      advancingRatio: "Advancing Ratio",
-      leverageDivergence: "Leverage/Turnover Divergence",
-      factor: "Factor",
-      raw: "Raw",
-      normalized: "Normalized",
-      coefficient: "Coefficient",
-      contribution: "Contribution",
-      imputed: "Imputed",
-      unavailable: "No dynamic factor snapshot for this symbol.",
-      refresh: "Refresh factor explanation",
-    } : {
-      title: "动态因子解释",
-      mode: "模式",
-      model: "模型",
-      tradeDate: "交易日",
-      cutoff: "数据截止",
-      quality: "因子质量分",
-      timing: "因子择时分",
-      alpha: "模型 Alpha",
-      macro: "宏观状态",
-      multiplier: "仓位乘数",
-      marketLiquidity: "市场流动性分",
-      marketAmountChange: "全市场成交额变化",
-      marketAmountZ: "成交额 Z20",
-      advancingRatio: "上涨家数占比",
-      leverageDivergence: "杠杆/成交额背离",
-      factor: "因子",
-      raw: "原值",
-      normalized: "标准化",
-      coefficient: "系数",
-      contribution: "贡献",
-      imputed: "已填充",
-      unavailable: "该标的暂无动态因子快照。",
-      refresh: "刷新因子解释",
-    };
-    const factorNames: Record<string, [string, string]> = {
-      ep_ttm: ["盈利收益率 E/P", "Earnings Yield E/P"],
-      roe_growth: ["ROE 同比增速", "ROE Growth"],
-      pb: ["市净率 PB", "Price-to-Book"],
-      negative_pb: ["市净率 PB（反向）", "Negative Price-to-Book"],
-      fund_flow_5d_ratio: ["5日主力净流入比", "5D Main Fund Flow"],
-      main_inflow_5d_ratio: ["5日主力净流入比", "5D Main Fund Flow"],
-      lhb_institution_net_ratio: ["龙虎榜机构净买额比", "Institution LHB Net Ratio"],
-      turnover_zscore_20d: ["换手率 Z-Score", "Turnover Z-Score"],
-      turnover_z20: ["换手率 Z-Score", "Turnover Z-Score"],
-      hot_rank_percentile: ["人气榜分位", "Popularity Percentile"],
-      hot_rank_attention: ["人气榜关注度", "Hot-Rank Attention"],
-      tail_accumulation_proxy: ["尾盘量价抢筹代理", "Tail Accumulation Proxy"],
-      cn_10y_change: ["中国10年国债变化", "CN 10Y Yield Change"],
-      us_10y_change: ["美国10年国债变化", "US 10Y Yield Change"],
-      margin_balance_change: ["两融余额变化", "Margin Balance Change"],
-    };
     const factors = [
       ...Object.entries(factorExplanation?.explanation.factors ?? {}),
       ...Object.entries(factorExplanation?.explanation.event_factors ?? {}),
     ]
       .sort(([, left], [, right]) => Math.abs(Number(right.contribution ?? 0)) - Math.abs(Number(left.contribution ?? 0)));
-    const factorLabel = (code: string) => factorNames[code]?.[ctx.locale === "en-US" ? 1 : 0] ?? code;
     const macroRegime = factorExplanation?.macro_regime
       ?? factorExplanation?.explanation.macro?.regime
       ?? "-";
@@ -1279,7 +1212,7 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       <section className="ic__section ic__factor-section">
         <div className="panel">
           <div className="detail-card-head">
-            <h3><ExperimentOutlined /> {labels.title}</h3>
+            <h3><ExperimentOutlined /> {t("icFactorTitle")}</h3>
             <div className="detail-actions">
               {factorExplanation && (
                 <>
@@ -1289,8 +1222,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
               )}
               <Button
                 size="small"
-                aria-label={labels.refresh}
-                title={labels.refresh}
+                aria-label={t("icFactorRefresh")}
+                title={t("icFactorRefresh")}
                 icon={<ReloadOutlined />}
                 loading={factorExplanationLoading}
                 onClick={loadFactorExplanation}
@@ -1298,38 +1231,38 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
             </div>
           </div>
           {factorExplanationLoading && !factorExplanation ? (
-            <div className="empty">{labels.refresh}...</div>
+            <div className="empty">{t("icFactorRefresh")}...</div>
           ) : !factorExplanation ? (
-            <div className="empty">{factorExplanationError || labels.unavailable}</div>
+            <div className="empty">{factorExplanationError || t("icFactorUnavailable")}</div>
           ) : (
             <>
               <div className="ic__factor-summary">
-                <div><span>{labels.mode}</span><strong>{factorExplanation.weight_mode}</strong></div>
-                <div title={factorExplanation.model_run_id}><span>{labels.model}</span><strong>{factorExplanation.model_run_id.slice(0, 18)}</strong></div>
-                <div><span>{labels.tradeDate}</span><strong>{factorExplanation.trade_date}</strong></div>
-                <div><span>{labels.cutoff}</span><strong>{factorExplanation.factor_data_cutoff_at?.replace("T", " ").slice(0, 19) ?? "-"}</strong></div>
-                <div><span>{labels.quality}</span><strong>{score(factorExplanation.factor_quality_score, 1)}</strong></div>
-                <div><span>{labels.timing}</span><strong>{score(factorExplanation.factor_timing_score, 1)}</strong></div>
-                <div><span>{labels.alpha}</span><strong>{score(factorExplanation.model_alpha_score, 1)}</strong></div>
-                <div><span>{labels.macro}</span><strong>{macroRegime}</strong></div>
-                <div><span>{labels.multiplier}</span><strong>{multiplier == null ? "-" : `${score(multiplier, 2)}x`}</strong></div>
-                <div><span>{labels.marketLiquidity}</span><strong>{score(macroDetail?.liquidity_score, 1)}</strong></div>
-                <div><span>{labels.marketAmountChange}</span><strong>{macroDetail?.market_amount_change_ratio == null ? "-" : `${score(macroDetail.market_amount_change_ratio * 100, 2)}%`}</strong></div>
-                <div><span>{labels.marketAmountZ}</span><strong>{score(macroDetail?.market_amount_z20, 2)}</strong></div>
-                <div><span>{labels.advancingRatio}</span><strong>{macroDetail?.advancing_ratio == null ? "-" : `${score(macroDetail.advancing_ratio * 100, 1)}%`}</strong></div>
-                <div><span>{labels.leverageDivergence}</span><strong>{macroDetail?.margin_amount_divergence == null ? "-" : `${score(macroDetail.margin_amount_divergence * 100, 2)}%`}</strong></div>
+                <div><span>{t("icFactorMode")}</span><strong>{factorExplanation.weight_mode}</strong></div>
+                <div title={factorExplanation.model_run_id}><span>{t("icFactorModel")}</span><strong>{factorExplanation.model_run_id.slice(0, 18)}</strong></div>
+                <div><span>{t("icFactorTradeDate")}</span><strong>{factorExplanation.trade_date}</strong></div>
+                <div><span>{t("icFactorCutoff")}</span><strong>{factorExplanation.factor_data_cutoff_at?.replace("T", " ").slice(0, 19) ?? "-"}</strong></div>
+                <div><span>{t("icFactorQuality")}</span><strong>{score(factorExplanation.factor_quality_score, 1)}</strong></div>
+                <div><span>{t("icFactorTiming")}</span><strong>{score(factorExplanation.factor_timing_score, 1)}</strong></div>
+                <div><span>{t("icFactorAlpha")}</span><strong>{score(factorExplanation.model_alpha_score, 1)}</strong></div>
+                <div><span>{t("icFactorMacro")}</span><strong>{macroRegime}</strong></div>
+                <div><span>{t("icFactorMultiplier")}</span><strong>{multiplier == null ? "-" : `${score(multiplier, 2)}x`}</strong></div>
+                <div><span>{t("icFactorMarketLiquidity")}</span><strong>{score(macroDetail?.liquidity_score, 1)}</strong></div>
+                <div><span>{t("icFactorMarketAmountChange")}</span><strong>{macroDetail?.market_amount_change_ratio == null ? "-" : `${score(macroDetail.market_amount_change_ratio * 100, 2)}%`}</strong></div>
+                <div><span>{t("icFactorMarketAmountZ")}</span><strong>{score(macroDetail?.market_amount_z20, 2)}</strong></div>
+                <div><span>{t("icFactorAdvancingRatio")}</span><strong>{macroDetail?.advancing_ratio == null ? "-" : `${score(macroDetail.advancing_ratio * 100, 1)}%`}</strong></div>
+                <div><span>{t("icFactorLeverageDivergence")}</span><strong>{macroDetail?.margin_amount_divergence == null ? "-" : `${score(macroDetail.margin_amount_divergence * 100, 2)}%`}</strong></div>
               </div>
               <div className="ic__factor-table" role="table">
                 <div className="ic__factor-row ic__factor-row--head" role="row">
-                  <span>{labels.factor}</span>
-                  <span>{labels.raw}</span>
-                  <span>{labels.normalized}</span>
-                  <span>{labels.coefficient}</span>
-                  <span>{labels.contribution}</span>
+                  <span>{t("icFactorFactor")}</span>
+                  <span>{t("icFactorRaw")}</span>
+                  <span>{t("icFactorNormalized")}</span>
+                  <span>{t("icFactorCoefficient")}</span>
+                  <span>{t("icFactorContribution")}</span>
                 </div>
                 {factors.map(([code, item]) => (
                   <div key={code} className="ic__factor-row" role="row">
-                    <span><strong>{factorLabel(code)}</strong><small>{code}{item.is_imputed ? ` · ${labels.imputed}` : ""}</small></span>
+                    <span><strong>{t("icFactorName_" + code)}</strong><small>{code}{item.is_imputed ? ` · ${t("icFactorImputed")}` : ""}</small></span>
                     <span>{score(item.raw_value, 4)}</span>
                     <span>{score(item.normalized_value, 3)}</span>
                     <span className={pnlClass(item.coefficient)}>{score(item.coefficient, 4)}</span>

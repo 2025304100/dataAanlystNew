@@ -210,7 +210,7 @@ export default function App() {
                       value={ctx.locale}
                       onChange={(v) => ctx.setLocaleValue(v)}
                       style={{ width: 120 }}
-                      options={[{label:"简体中文",value:"zh-CN"},{label:"English",value:"en-US"}]}
+                      options={[{label:t("langZhCN"),value:"zh-CN"},{label:t("langEnUS"),value:"en-US"}]}
                     />
                   </label>
                   <label className="portfolio-picker">

@@ -37,31 +37,58 @@ def _lot_size(symbol: Symbol) -> int:
     return 100 if symbol.market in {"SH", "SZ", "BJ"} else 1
 
 
+def _load_json_map(value: str | None) -> dict:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def _load_json_list(value: str | None) -> list:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else []
+    except (TypeError, ValueError):
+        return []
+
+
 def _build_return_scenarios(
     symbol: Symbol,
     score: Score,
-    setup: TradeSetup,
+    levels: dict,
+    recommended_position_amount: float,
     last_close: float,
     high20: float | None,
 ) -> dict | None:
     if last_close <= 0:
         return None
 
-    if setup.entry_min is not None and setup.entry_max is not None:
-        reference_price = _round_price((setup.entry_min + setup.entry_max) / 2)
+    entry_min = levels.get("entry_min")
+    entry_max = levels.get("entry_max")
+    stop_loss = levels.get("stop_loss")
+    target_price = levels.get("target_price")
+    risk_reward_ratio = levels.get("risk_reward_ratio")
+
+    if entry_min is not None and entry_max is not None:
+        reference_price = _round_price((entry_min + entry_max) / 2)
     else:
-        reference_price = _round_price(setup.entry_max or setup.entry_min or last_close)
+        reference_price = _round_price(entry_max or entry_min or last_close)
     if reference_price is None or reference_price <= 0:
         return None
 
     risk_unit = max(reference_price * 0.015, 0.01)
-    if setup.stop_loss is not None:
-        risk_unit = max(risk_unit, reference_price - setup.stop_loss)
-    pessimistic_price = _round_price(setup.stop_loss or (reference_price - risk_unit))
+    if stop_loss is not None:
+        risk_unit = max(risk_unit, reference_price - stop_loss)
+    pessimistic_price = _round_price(stop_loss or (reference_price - risk_unit))
 
     baseline_price = _round_price(
-        setup.target_price
-        or (reference_price + risk_unit * max(setup.risk_reward_ratio or 1.6, 1.0))
+        target_price
+        or (reference_price + risk_unit * max(risk_reward_ratio or 1.6, 1.0))
     )
     optimistic_anchor = (baseline_price or reference_price) + max(risk_unit * 0.8, reference_price * 0.03)
     if high20 is not None:
@@ -94,8 +121,8 @@ def _build_return_scenarios(
 
     lot_size = _lot_size(symbol)
     planned_quantity = 0
-    if setup.recommended_position_amount > 0:
-        planned_quantity = floor(setup.recommended_position_amount / reference_price / lot_size) * lot_size
+    if recommended_position_amount > 0:
+        planned_quantity = floor(recommended_position_amount / reference_price / lot_size) * lot_size
     planned_amount = round(planned_quantity * reference_price, 2)
 
     def build_case(name: str, exit_price: float | None) -> dict:
@@ -319,27 +346,22 @@ def _build_future_buy_plan(
     return plan
 
 
-def upsert_trade_setup(
-    db: Session,
-    portfolio_id: int,
-    symbol: Symbol,
+def _compute_setup_levels(
+    bars: list[MarketBar],
     score: Score,
-    scan_run_id: int | None = None,
-    overrides: dict | None = None,
-) -> TradeSetup:
-    portfolio = db.get(Portfolio, portfolio_id)
-    if portfolio is None:
-        raise ValueError("Portfolio not found")
+    manual_overrides: dict[str, float] | None = None,
+) -> dict:
+    """根据最新 K 线实时计算 entry_min/entry_max/stop_loss/target_price。
 
-    bars = load_recent_bars(db, symbol.id, limit=60)
-    if not bars:
-        raise ValueError("Daily bars not found")
-
+    manual_overrides 中的字段会覆盖系统计算值（视为用户手动指定），
+    未覆盖的字段保持系统计算结果。返回值同时包含 ma10/ma20/high20/low20/last_close
+    便于调用方复用，避免重复计算。
+    """
+    manual_overrides = manual_overrides or {}
     closes = [bar.close for bar in bars]
     highs = [bar.high for bar in bars]
     lows = [bar.low for bar in bars]
-    last_bar = bars[-1]
-    last_close = last_bar.close
+    last_close = closes[-1]
     ma10 = _rolling_mean(closes, 10) or last_close
     ma20 = _rolling_mean(closes, 20) or last_close
     high20 = max(highs[-20:]) if len(highs) >= 20 else max(highs)
@@ -367,6 +389,39 @@ def upsert_trade_setup(
     risk_unit = max((entry_min or last_close) - (stop_loss or last_close * 0.96), last_close * 0.015)
     target_price = _round_price((entry_max or last_close) + risk_unit * stage_rr)
 
+    # 应用 manual overrides：手动指定的字段保留，其余用系统实时计算
+    entry_min = manual_overrides.get("entry_min", entry_min)
+    entry_max = manual_overrides.get("entry_max", entry_max)
+    stop_loss = manual_overrides.get("stop_loss", stop_loss)
+    target_price = manual_overrides.get("target_price", target_price)
+    if entry_min is not None and entry_max is not None and entry_min > entry_max:
+        # 互换以保证 entry_min <= entry_max；若用户手动指定了任一字段，同步回 manual_overrides
+        # 以便调用方持久化时与返回值保持一致
+        entry_min, entry_max = entry_max, entry_min
+        if "entry_min" in manual_overrides or "entry_max" in manual_overrides:
+            manual_overrides["entry_min"] = entry_min
+            manual_overrides["entry_max"] = entry_max
+
+    risk_reward_ratio = None
+    if entry_max and stop_loss and target_price and entry_max > stop_loss:
+        risk_reward_ratio = round((target_price - entry_max) / (entry_max - stop_loss), 2)
+
+    return {
+        "entry_min": entry_min,
+        "entry_max": entry_max,
+        "stop_loss": stop_loss,
+        "target_price": target_price,
+        "risk_reward_ratio": risk_reward_ratio,
+        "ma10": ma10,
+        "ma20": ma20,
+        "high20": _round_price(high20),
+        "low20": _round_price(low20),
+        "last_close": last_close,
+    }
+
+
+def _parse_manual_overrides(overrides: dict | None) -> dict[str, float]:
+    """将前端传入的 overrides 解析为强类型的 manual_overrides dict。"""
     manual_overrides: dict[str, float] = {}
     raw_overrides = overrides or {}
     for field in (
@@ -386,20 +441,37 @@ def upsert_trade_setup(
             manual_overrides[field] = round(max(0.0, value), 2)
         else:
             manual_overrides[field] = _round_price(max(0.0, value)) or 0.0
+    return manual_overrides
 
-    entry_min = manual_overrides.get("entry_min", entry_min)
-    entry_max = manual_overrides.get("entry_max", entry_max)
-    stop_loss = manual_overrides.get("stop_loss", stop_loss)
-    target_price = manual_overrides.get("target_price", target_price)
-    if entry_min is not None and entry_max is not None and entry_min > entry_max:
-        entry_min, entry_max = entry_max, entry_min
-        if "entry_min" in manual_overrides or "entry_max" in manual_overrides:
-            manual_overrides["entry_min"] = entry_min
-            manual_overrides["entry_max"] = entry_max
 
-    risk_reward_ratio = None
-    if entry_max and stop_loss and target_price and entry_max > stop_loss:
-        risk_reward_ratio = round((target_price - entry_max) / (entry_max - stop_loss), 2)
+def upsert_trade_setup(
+    db: Session,
+    portfolio_id: int,
+    symbol: Symbol,
+    score: Score,
+    scan_run_id: int | None = None,
+    overrides: dict | None = None,
+) -> TradeSetup:
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise ValueError("Portfolio not found")
+
+    bars = load_recent_bars(db, symbol.id, limit=60)
+    if not bars:
+        raise ValueError("Daily bars not found")
+
+    manual_overrides = _parse_manual_overrides(overrides)
+    levels = _compute_setup_levels(bars, score, manual_overrides)
+    entry_min = levels["entry_min"]
+    entry_max = levels["entry_max"]
+    stop_loss = levels["stop_loss"]
+    target_price = levels["target_price"]
+    risk_reward_ratio = levels["risk_reward_ratio"]
+    ma10 = levels["ma10"]
+    ma20 = levels["ma20"]
+    high20 = levels["high20"]
+    low20 = levels["low20"]
+    last_close = levels["last_close"]
 
     position_budget = compute_position_budget(
         db=db,
@@ -488,14 +560,21 @@ def build_trade_setup_view(
     if not bars:
         raise ValueError("Daily bars not found")
 
-    closes = [bar.close for bar in bars]
-    highs = [bar.high for bar in bars]
-    lows = [bar.low for bar in bars]
+    # 实时重算 levels：用最新 K 线 + setup 中持久化的 manual_overrides
+    # 这样 view 返回的 entry_min/max/stop_loss/target_price 始终跟随最新行情，
+    # 同时用户手动覆盖的值仍然生效（在 manual_overrides 中的字段保持不变）
+    persisted_overrides = _load_json_map(getattr(setup, "manual_overrides_json", None))
+    levels = _compute_setup_levels(bars, score, persisted_overrides)
+    entry_min = levels["entry_min"]
+    entry_max = levels["entry_max"]
+    stop_loss = levels["stop_loss"]
+    target_price = levels["target_price"]
+    risk_reward_ratio = levels["risk_reward_ratio"]
+    ma10 = levels["ma10"]
+    ma20 = levels["ma20"]
+    high20 = levels["high20"]
+    low20 = levels["low20"]
     last_bar = bars[-1]
-    ma10 = _rolling_mean(closes, 10)
-    ma20 = _rolling_mean(closes, 20)
-    high20 = _round_price(max(highs[-20:]) if len(highs) >= 20 else max(highs))
-    low20 = _round_price(min(lows[-20:]) if len(lows) >= 20 else min(lows))
 
     rule = get_active_rule(db, portfolio_id)
     stage_cap_pct = 0.0
@@ -516,8 +595,8 @@ def build_trade_setup_view(
         symbol=symbol,
         stage=score.stage,
         action=score.action,
-        entry_price=setup.entry_max or setup.entry_min or last_bar.close,
-        stop_loss=setup.stop_loss,
+        entry_price=entry_max or entry_min or last_bar.close,
+        stop_loss=stop_loss,
     )
     stage_cap_pct = float(position_budget.get("stage_limit_pct", stage_cap_pct))
     stage_cap_amount = round(portfolio.total_capital * stage_cap_pct, 2)
@@ -537,8 +616,8 @@ def build_trade_setup_view(
         action=score.action,
         recommended_pct=setup.recommended_position_pct,
         recommended_amount=setup.recommended_position_amount,
-        entry_min=setup.entry_min,
-        entry_max=setup.entry_max,
+        entry_min=entry_min,
+        entry_max=entry_max,
         ma10=ma10,
         ma20=ma20,
         high20=high20,
@@ -549,9 +628,9 @@ def build_trade_setup_view(
         last_close=last_bar.close,
         recommended_pct=setup.recommended_position_pct,
         recommended_amount=setup.recommended_position_amount,
-        entry_min=setup.entry_min,
-        entry_max=setup.entry_max,
-        stop_loss=setup.stop_loss,
+        entry_min=entry_min,
+        entry_max=entry_max,
+        stop_loss=stop_loss,
         ma10=ma10,
         ma20=ma20,
         high20=high20,
@@ -566,23 +645,23 @@ def build_trade_setup_view(
             else f"Break above {high20} with follow-through"
         )
 
-    stop_trigger = f"Any daily close below {setup.stop_loss}" if setup.stop_loss is not None else None
-    trim_trigger = f"Trim into {setup.target_price} or if price stretches too far above MA20 {ma20}" if setup.target_price else None
+    stop_trigger = f"Any daily close below {stop_loss}" if stop_loss is not None else None
+    trim_trigger = f"Trim into {target_price} or if price stretches too far above MA20 {ma20}" if target_price else None
     opening_trigger = (
-        f"Open only inside {setup.entry_min} - {setup.entry_max}"
-        if setup.entry_min is not None and setup.entry_max is not None
+        f"Open only inside {entry_min} - {entry_max}"
+        if entry_min is not None and entry_max is not None
         else None
     )
 
     chart_signals = []
-    if setup.entry_min is not None:
-        chart_signals.append({"kind": "buy-zone", "label": "Buy min", "price": setup.entry_min})
-    if setup.entry_max is not None:
-        chart_signals.append({"kind": "buy-zone", "label": "Buy max", "price": setup.entry_max})
-    if setup.stop_loss is not None:
-        chart_signals.append({"kind": "stop", "label": "Stop", "price": setup.stop_loss})
-    if setup.target_price is not None:
-        chart_signals.append({"kind": "target", "label": "Target", "price": setup.target_price})
+    if entry_min is not None:
+        chart_signals.append({"kind": "buy-zone", "label": "Buy min", "price": entry_min})
+    if entry_max is not None:
+        chart_signals.append({"kind": "buy-zone", "label": "Buy max", "price": entry_max})
+    if stop_loss is not None:
+        chart_signals.append({"kind": "stop", "label": "Stop", "price": stop_loss})
+    if target_price is not None:
+        chart_signals.append({"kind": "target", "label": "Target", "price": target_price})
     if ma10 is not None:
         chart_signals.append({"kind": "moving-average", "label": "MA10", "price": ma10})
     if ma20 is not None:
@@ -602,28 +681,11 @@ def build_trade_setup_view(
     return_scenarios = _build_return_scenarios(
         symbol=symbol,
         score=score,
-        setup=setup,
+        levels=levels,
+        recommended_position_amount=setup.recommended_position_amount,
         last_close=last_bar.close,
         high20=high20,
     )
-
-    def _load_json_map(value: str | None) -> dict:
-        if not value:
-            return {}
-        try:
-            parsed = json.loads(value)
-            return parsed if isinstance(parsed, dict) else {}
-        except (TypeError, ValueError):
-            return {}
-
-    def _load_json_list(value: str | None) -> list:
-        if not value:
-            return []
-        try:
-            parsed = json.loads(value)
-            return parsed if isinstance(parsed, list) else []
-        except (TypeError, ValueError):
-            return []
 
     manual_overrides = _load_json_map(getattr(setup, "manual_overrides_json", None))
     field_sources = _load_json_map(getattr(setup, "field_sources_json", None))
@@ -633,15 +695,20 @@ def build_trade_setup_view(
 
     return {
         "id": setup.id,
-        "entry_min": setup.entry_min,
-        "entry_max": setup.entry_max,
-        "stop_loss": setup.stop_loss,
-        "target_price": setup.target_price,
+        # 实时重算的 levels（跟随最新 K 线）；同时保留 setup 表中的快照以便审计
+        "entry_min": entry_min,
+        "entry_max": entry_max,
+        "stop_loss": stop_loss,
+        "target_price": target_price,
+        "stored_entry_min": setup.entry_min,
+        "stored_entry_max": setup.entry_max,
+        "stored_stop_loss": setup.stop_loss,
+        "stored_target_price": setup.target_price,
         "recommended_position_pct": setup.recommended_position_pct,
         "recommended_position_amount": setup.recommended_position_amount,
         "suggested_buy_pct": position_budget.get("recommended_pct", setup.recommended_position_pct),
         "suggested_buy_amount": position_budget.get("recommended_amount", setup.recommended_position_amount),
-        "risk_reward_ratio": setup.risk_reward_ratio,
+        "risk_reward_ratio": risk_reward_ratio,
         "allow_add_position": setup.allow_add_position,
         "is_sector_overweight": setup.is_sector_overweight,
         "is_asset_overweight": setup.is_asset_overweight,

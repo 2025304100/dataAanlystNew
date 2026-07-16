@@ -429,14 +429,12 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
       });
       ctx.showToast(
         "success",
-        ctx.locale === "zh-CN"
-          ? "已启动本地评分回补：只读取现有K线，不会重新拉取行情。"
-          : "Local score backfill started. Existing bars will be used without refetching market data."
+        t("localScoreBackfillStarted")
       );
     } catch (error: any) {
       ctx.showToast(
         "error",
-        error?.message || (ctx.locale === "zh-CN" ? "评分回补启动失败" : "Failed to start score backfill")
+        error?.message || t("localScoreBackfillFailed")
       );
     } finally {
       setScoreBackfillStarting(false);
@@ -613,41 +611,33 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
   const formatOpenTrigger = useCallback(
     (item: any) => {
       if (item.entry_min === null || item.entry_max === null) return "-";
-      return ctx.locale === "zh-CN"
-        ? `仅在 ${item.entry_min} - ${item.entry_max} 区间内开仓`
-        : `Open only inside ${item.entry_min} - ${item.entry_max}`;
+      return template("openTriggerRange", { min: String(item.entry_min), max: String(item.entry_max) });
     },
-    [ctx.locale]
+    []
   );
 
   const formatAddTrigger = useCallback(
     (item: any) => {
       if (!item.allow_add_position) return "-";
-      return ctx.locale === "zh-CN"
-        ? "满足加仓条件后分批加仓"
-        : "Add in tranches when conditions met";
+      return t("addTriggerDesc");
     },
-    [ctx.locale]
+    []
   );
 
   const formatStopTrigger = useCallback(
     (item: any) => {
       if (item.stop_loss === null) return "-";
-      return ctx.locale === "zh-CN"
-        ? `跌破 ${item.stop_loss} 止损`
-        : `Stop if breaks below ${item.stop_loss}`;
+      return template("stopTriggerDesc", { stop: String(item.stop_loss) });
     },
-    [ctx.locale]
+    []
   );
 
   const formatTrimTrigger = useCallback(
     (item: any) => {
       if (item.target_price === null) return "-";
-      return ctx.locale === "zh-CN"
-        ? `触及 ${item.target_price} 减仓`
-        : `Trim near ${item.target_price}`;
+      return template("trimTriggerDesc", { target: String(item.target_price) });
     },
-    [ctx.locale]
+    []
   );
 
   // Backdrop click handler
@@ -735,7 +725,6 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
   const scoreBreakdown = useMemo(() => {
     if (!detail?.latest_score) return null;
     const s = detail.latest_score;
-    const isZh = ctx.locale === "zh-CN";
 
     // P1：优先使用评分时保存的配置快照 + dimension_scores_json
     let dimScoresMap: Record<string, number> = {};
@@ -755,10 +744,10 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         score: Number(s.trend_score ?? 0),
         weight: 0.25,
         explain: (v: number) =>
-          v >= 70 ? (isZh ? "趋势向上突破MA50，均线多头排列" : "Trend breakout above MA50, bullish alignment")
-          : v >= 55 ? (isZh ? "趋势偏强，价格在MA50上方" : "Moderate trend, price above MA50")
-          : v >= 40 ? (isZh ? "趋势中性，均线纠缠" : "Neutral trend, MA lines intertwined")
-          : (isZh ? "趋势偏弱，价格低于MA50" : "Weak trend, price below MA50"),
+          v >= 70 ? t("scoreExplain_trend_70")
+          : v >= 55 ? t("scoreExplain_trend_55")
+          : v >= 40 ? t("scoreExplain_trend_40")
+          : t("scoreExplain_trend_low"),
       },
       {
         key: "momentum",
@@ -766,10 +755,10 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         score: Number(s.momentum_score ?? 0),
         weight: 0.20,
         explain: (v: number) =>
-          v >= 70 ? (isZh ? "动量强劲，20日涨幅>8%" : "Strong momentum, 20-day gain >8%")
-          : v >= 55 ? (isZh ? "动量偏多，短期有上涨动能" : "Moderate momentum, bullish short-term")
-          : v >= 40 ? (isZh ? "动量中性，涨跌平衡" : "Neutral momentum")
-          : (isZh ? "动量偏空，短期下跌趋势" : "Weak momentum, bearish short-term"),
+          v >= 70 ? t("scoreExplain_momentum_70")
+          : v >= 55 ? t("scoreExplain_momentum_55")
+          : v >= 40 ? t("scoreExplain_momentum_40")
+          : t("scoreExplain_momentum_low"),
       },
       {
         key: "volatility",
@@ -777,10 +766,10 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         score: Number(s.volatility_score ?? 0),
         weight: 0.15,
         explain: (v: number) =>
-          v >= 65 ? (isZh ? "波动健康，涨跌有序无异常震荡" : "Healthy volatility, orderly movement")
-          : v >= 50 ? (isZh ? "波动适中，风险可控" : "Moderate volatility")
-          : v >= 35 ? (isZh ? "波动偏大，需注意止损" : "Higher volatility, watch stop-loss")
-          : (isZh ? "波动剧烈，风险较高" : "High volatility, high risk"),
+          v >= 65 ? t("scoreExplain_volatility_65")
+          : v >= 50 ? t("scoreExplain_volatility_50")
+          : v >= 35 ? t("scoreExplain_volatility_35")
+          : t("scoreExplain_volatility_low"),
       },
       {
         key: "liquidity",
@@ -788,10 +777,10 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         score: Number(s.liquidity_score ?? 0),
         weight: 0.15,
         explain: (v: number) =>
-          v >= 60 ? (isZh ? "流动性充足，成交活跃" : "High liquidity, active trading")
-          : v >= 45 ? (isZh ? "流动性适中，交易正常" : "Moderate liquidity")
-          : v >= 30 ? (isZh ? "流动性偏低，买卖可能滑点" : "Lower liquidity, possible slippage")
-          : (isZh ? "流动性不足，交易困难" : "Low liquidity, hard to trade"),
+          v >= 60 ? t("scoreExplain_liquidity_60")
+          : v >= 45 ? t("scoreExplain_liquidity_45")
+          : v >= 30 ? t("scoreExplain_liquidity_30")
+          : t("scoreExplain_liquidity_low"),
       },
       {
         key: "breadth",
@@ -799,9 +788,9 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         score: Number(s.breadth_score ?? 0),
         weight: 0.15,
         explain: (v: number) =>
-          v >= 65 ? (isZh ? "题材/板块强度高，市场关注度高" : "Strong theme/sector, high attention")
-          : v >= 55 ? (isZh ? "题材偏强，有板块效应" : "Moderate theme, sector effect")
-          : (isZh ? "无明显题材或板块效应" : "No significant theme or sector"),
+          v >= 65 ? t("scoreExplain_breadth_65")
+          : v >= 55 ? t("scoreExplain_breadth_55")
+          : t("scoreExplain_breadth_low"),
       },
       {
         key: "event",
@@ -809,17 +798,17 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         score: Number(s.event_score ?? 0),
         weight: 0.10,
         explain: (v: number) =>
-          v >= 65 ? (isZh ? "有重大利好事件催化" : "Major bullish event catalyst")
-          : v >= 55 ? (isZh ? "有一般性利好消息" : "Moderate bullish news")
-          : v >= 45 ? (isZh ? "事件中性无明显影响" : "Neutral event impact")
-          : (isZh ? "有潜在风险事件或利空" : "Potential risk or bearish event"),
+          v >= 65 ? t("scoreExplain_event_65")
+          : v >= 55 ? t("scoreExplain_event_55")
+          : v >= 45 ? t("scoreExplain_event_45")
+          : t("scoreExplain_event_low"),
       },
     ];
 
     // legacy 解释函数复用：按维度 key 复用对应文案
     const explainByDimKey = (dimKey: string, v: number): string => {
       const legacy = legacyFactors.find((f) => f.key === dimKey || f.key === dimKey.replace("_score", ""));
-      return legacy ? legacy.explain(v) : (v >= 60 ? (isZh ? "表现偏强" : "Strong") : v >= 40 ? (isZh ? "表现中性" : "Neutral") : (isZh ? "表现偏弱" : "Weak"));
+      return legacy ? legacy.explain(v) : (v >= 60 ? t("scoreExplain_generic_strong") : v >= 40 ? t("scoreExplain_generic_neutral") : t("scoreExplain_generic_weak"));
     };
 
     let factors: Array<{ key: string; label: string; score: number; weight: number; explain: (v: number) => string }>;
@@ -877,7 +866,6 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
   const timingBreakdown = useMemo(() => {
     if (!detail?.latest_score) return null;
     const s = detail.latest_score;
-    const isZh = ctx.locale === "zh-CN";
 
     // P1：优先使用评分时保存的配置快照 + dimension_scores_json
     let dimScoresMap: Record<string, number> = {};
@@ -892,12 +880,12 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     const legacyFactors = [
       {
         key: "breakout",
-        label: isZh ? "突破信号" : "Breakout",
+        label: t("timingLabel_breakout"),
         score: Number(s.breakout_score ?? 0),
         weight: 0.30,
         explain: (v: number) =>
-          v >= 70 ? (isZh ? "价格突破20日高点，形成新高信号" : "Price broke 20-day high")
-          : (isZh ? "未突破近期高点，无明显突破" : "No breakout signal"),
+          v >= 70 ? t("timingExplain_breakout_70")
+          : t("timingExplain_breakout_low"),
       },
       {
         key: "momentum",
@@ -905,10 +893,10 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         score: Number(s.momentum_score ?? 0),
         weight: 0.20,
         explain: (v: number) =>
-          v >= 70 ? (isZh ? "动量强劲，短期上涨动能充足" : "Strong momentum")
-          : v >= 55 ? (isZh ? "动量偏多，有上涨动力" : "Moderate momentum")
-          : v >= 40 ? (isZh ? "动量中性" : "Neutral momentum")
-          : (isZh ? "动量偏空" : "Weak momentum"),
+          v >= 70 ? t("timingExplain_momentum_70")
+          : v >= 55 ? t("timingExplain_momentum_55")
+          : v >= 40 ? t("timingExplain_momentum_40")
+          : t("timingExplain_momentum_low"),
       },
       {
         key: "liquidity",
@@ -916,18 +904,18 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         score: Number(s.liquidity_score ?? 0),
         weight: 0.15,
         explain: (v: number) =>
-          v >= 60 ? (isZh ? "流动性充足，交易活跃" : "High liquidity")
-          : v >= 45 ? (isZh ? "流动性适中" : "Moderate liquidity")
-          : (isZh ? "流动性偏低" : "Low liquidity"),
+          v >= 60 ? t("timingExplain_liquidity_60")
+          : v >= 45 ? t("timingExplain_liquidity_45")
+          : t("timingExplain_liquidity_low"),
       },
       {
         key: "pullback",
-        label: isZh ? "回调结构" : "Pullback",
+        label: t("timingLabel_pullback"),
         score: Number(s.pullback_score ?? 0),
         weight: 0.15,
         explain: (v: number) =>
-          v >= 65 ? (isZh ? "回调结构良好，价格站稳MA20附近" : "Healthy pullback near MA20")
-          : (isZh ? "回调结构不佳或跌破MA20" : "Weak pullback structure"),
+          v >= 65 ? t("timingExplain_pullback_65")
+          : t("timingExplain_pullback_low"),
       },
       {
         key: "event",
@@ -935,27 +923,27 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         score: Number(s.event_score ?? 0),
         weight: 0.10,
         explain: (v: number) =>
-          v >= 65 ? (isZh ? "有事件催化利好" : "Bullish event catalyst")
-          : v >= 45 ? (isZh ? "事件影响中性" : "Neutral event")
-          : (isZh ? "有风险事件或利空" : "Risk event"),
+          v >= 65 ? t("timingExplain_event_65")
+          : v >= 45 ? t("timingExplain_event_45")
+          : t("timingExplain_event_low"),
       },
       {
         key: "overheat",
-        label: isZh ? "过热惩罚" : "Overheat",
+        label: t("timingLabel_overheat"),
         score: 100 - Number(s.overheat_penalty ?? 0), // 转换为正向分数
         weight: 0.10,
         rawPenalty: Number(s.overheat_penalty ?? 0),
         explain: (penalty: number) =>
-          penalty >= 20 ? (isZh ? "短期涨幅过大(>12%)，存在过热风险" : "Overheated (>12% gain)")
-          : penalty >= 10 ? (isZh ? "涨幅较大，需关注回调风险" : "Watch for pullback")
-          : (isZh ? "无明显过热" : "No overheat"),
+          penalty >= 20 ? t("timingExplain_overheat_20")
+          : penalty >= 10 ? t("timingExplain_overheat_10")
+          : t("timingExplain_overheat_low"),
       },
     ];
 
     // P1：按配置快照构建 timing 分项（取 score_bucket === 'timing' 的启用维度）
     const explainByDimKey = (dimKey: string, v: number): string => {
       const legacy = legacyFactors.find((f) => f.key === dimKey || f.key === dimKey.replace("_score", ""));
-      return legacy ? legacy.explain(v) : (v >= 60 ? (isZh ? "表现偏强" : "Strong") : v >= 40 ? (isZh ? "表现中性" : "Neutral") : (isZh ? "表现偏弱" : "Weak"));
+      return legacy ? legacy.explain(v) : (v >= 60 ? t("scoreExplain_generic_strong") : v >= 40 ? t("scoreExplain_generic_neutral") : t("scoreExplain_generic_weak"));
     };
 
     let factors: Array<{ key: string; label: string; score: number; weight: number; explain: (v: number) => string }>;
@@ -994,29 +982,29 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
 
       if (stage === "overheat") {
         return {
-          reason: isZh ? "价格超过MA20 12%以上，短期涨幅过大" : "Price >12% above MA20",
-          risk: isZh ? "存在短期回调风险，不建议追高" : "Risk of pullback, avoid chasing",
-          suggestion: isZh ? "建议减仓或观望，等待回调企稳" : "Reduce position or wait",
+          reason: t("stageReason_overheat"),
+          risk: t("stageRisk_overheat"),
+          suggestion: t("stageSuggestion_overheat"),
         };
       }
       if (stage === "accel") {
         return {
-          reason: isZh ? "趋势加速：价格站上MA20和MA50，动量>8%" : "Acceleration: price above MA20&MA50, momentum >8%",
-          risk: isZh ? "上涨动能充足，但需防过热" : "Strong uptrend, watch for overheat",
-          suggestion: isZh ? "可持有观察，关注是否出现过热信号" : "Hold and monitor",
+          reason: t("stageReason_accel"),
+          risk: t("stageRisk_accel"),
+          suggestion: t("stageSuggestion_accel"),
         };
       }
       if (stage === "start") {
         return {
-          reason: isZh ? "启动信号：价格站上MA20，动量转正" : "Start signal: price above MA20, momentum positive",
-          risk: isZh ? "趋势刚启动，需确认支撑有效" : "Early trend, confirm support",
-          suggestion: isZh ? "可考虑开仓，设置止损保护" : "Consider opening with stop-loss",
+          reason: t("stageReason_start"),
+          risk: t("stageRisk_start"),
+          suggestion: t("stageSuggestion_start"),
         };
       }
       return {
-        reason: isZh ? "退潮阶段：趋势偏弱，动量不足" : "Cooldown: weak trend, low momentum",
-        risk: isZh ? "趋势不明朗，不适合开新仓" : "Unclear trend, avoid new positions",
-        suggestion: isZh ? "观望为主，等待明确信号" : "Wait for clear signals",
+        reason: t("stageReason_cooldown"),
+        risk: t("stageRisk_cooldown"),
+        suggestion: t("stageSuggestion_cooldown"),
       };
     })();
 
@@ -1041,11 +1029,10 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     try {
       factorDetail = JSON.parse(detail.latest_score.factor_scores_json);
     } catch { /* ignore */ }
-    const isZh = ctx.locale === "zh-CN";
     const EXTERNAL_KEYS: Record<string, string> = {
-      pe_score: isZh ? "PE 估值分" : "PE Valuation Score",
-      main_net_inflow_score: isZh ? "主力净流入分" : "Main Net Inflow Score",
-      premium_discount_score: isZh ? "溢价折价分" : "Premium/Discount Score",
+      pe_score: t("extFactor_pe_score"),
+      main_net_inflow_score: t("extFactor_main_net_inflow_score"),
+      premium_discount_score: t("extFactor_premium_discount_score"),
     };
     return Object.entries(factorDetail)
       .filter(([key]) => key in EXTERNAL_KEYS)
@@ -1428,28 +1415,22 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                     </div>
                     {signalStats.sample_count === 0 && (
                       <div className="signal-stats-empty">
-                        <strong>{ctx.locale === "zh-CN" ? "暂无可回测样本" : "No backtestable samples yet"}</strong>
+                        <strong>{t("noBacktestSamples")}</strong>
                         <span>
-                          {ctx.locale === "zh-CN"
-                            ? signalStats.matched_count > 0
-                              ? `已匹配 ${signalStats.matched_count} 条历史评分，但缺少可用于回测的逐日评分。现有K线无需重拉，可直接生成历史评分。`
-                              : "当前规则下没有足够相似的历史评分。现有K线无需重拉，可先生成逐日历史评分。"
-                            : signalStats.matched_count > 0
-                              ? `${signalStats.matched_count} matching scores were found, but daily historical scores are missing. Existing bars can be reused without refetching.`
-                              : "No sufficiently similar historical scores. Generate daily scores from the existing local bars first."}
+                          {signalStats.matched_count > 0
+                            ? template("samplesMissingDaily", { count: String(signalStats.matched_count) })
+                            : t("noSimilarSamples")}
                         </span>
                         <Button size="small" type="primary" loading={scoreBackfillStarting} onClick={handleLocalScoreBackfill}>
-                          {ctx.locale === "zh-CN" ? "基于现有K线生成评分" : "Generate Scores from Local Bars"}
+                          {t("generateScoresFromBars")}
                         </Button>
                       </div>
                     )}
                     {signalStats.sample_count > 0 && signalStats.sample_count < signalStats.min_sample_count && (
                       <div className="signal-stats-empty signal-stats-empty--warning">
-                        <strong>{ctx.locale === "zh-CN" ? "样本量不足" : "Insufficient sample size"}</strong>
+                        <strong>{t("insufficientSamples")}</strong>
                         <span>
-                          {ctx.locale === "zh-CN"
-                            ? `当前仅 ${signalStats.sample_count} 个可回测样本，低于建议的 ${signalStats.min_sample_count} 个，统计结果仅供参考。`
-                            : `${signalStats.sample_count} samples are available, below the recommended ${signalStats.min_sample_count}; treat the statistics as indicative only.`}
+                          {template("samplesBelowMinimum", { count: String(signalStats.sample_count), min: String(signalStats.min_sample_count) })}
                         </span>
                       </div>
                     )}
@@ -1484,9 +1465,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
               {detail?.latest_score?.data_credibility != null && detail.latest_score.data_credibility < 0.5 && (
                 <div className="credibility-warning">
                   <span className="credibility-warning-icon">&#9888;</span>
-                  {ctx.locale === "zh-CN"
-                    ? `数据可信度低 (${(detail.latest_score.data_credibility * 100).toFixed(0)}%)，评分仅供参考`
-                    : `Low data credibility (${(detail.latest_score.data_credibility * 100).toFixed(0)}%), scores for reference only`}
+                  {template("lowCredibilityWarn", { pct: (detail.latest_score.data_credibility * 100).toFixed(0) })}
                 </div>
               )}
               <div className="score-radar-breakdown-grid">
@@ -1498,9 +1477,9 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                 {scoreBreakdown && (
                   <div className="breakdown-panel">
                     <div className="breakdown-header">
-                      <span className="breakdown-title">{ctx.locale === "zh-CN" ? "分项评分解析" : "Score Breakdown"}</span>
+                      <span className="breakdown-title">{t("scoreBreakdownTitle")}</span>
                       <span className="breakdown-total">
-                        {ctx.locale === "zh-CN" ? "总分" : "Total"}: {score(scoreBreakdown.qualityScore ?? 0)}
+                        {t("totalScore")}: {score(scoreBreakdown.qualityScore ?? 0)}
                       </span>
                     </div>
                     {scoreBreakdown.presetName && (
@@ -1508,7 +1487,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                         <Tag color="blue" style={{ margin: 0 }}>
                           {scoreBreakdown.presetName} v{scoreBreakdown.presetVersion}
                         </Tag>
-                        <Tooltip title={ctx.locale === "zh-CN" ? "本评分按该预设版本计算并保存快照，切换预设不会重算历史评分。" : "Score computed with this preset version (snapshot saved). Switching presets will not recompute historical scores."}>
+                        <Tooltip title={t("presetSnapshotTip")}>
                           <span style={{ cursor: "help" }}><QuestionCircleOutlined /></span>
                         </Tooltip>
                       </div>
@@ -1543,10 +1522,10 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                     </div>
                     <div className="breakdown-summary">
                       <span className="breakdown-highlight-green">
-                        {ctx.locale === "zh-CN" ? "主要加分" : "Top Strength"}: {scoreBreakdown.topFactor.label} (+{scoreBreakdown.topFactor.contribution.toFixed(1)})
+                        {t("topStrength")}: {scoreBreakdown.topFactor.label} (+{scoreBreakdown.topFactor.contribution.toFixed(1)})
                       </span>
                       <span className="breakdown-highlight-red">
-                        {ctx.locale === "zh-CN" ? "主要扣分" : "Main Risk"}: {scoreBreakdown.bottomFactor.label} (+{scoreBreakdown.bottomFactor.contribution.toFixed(1)})
+                        {t("mainRisk")}: {scoreBreakdown.bottomFactor.label} (+{scoreBreakdown.bottomFactor.contribution.toFixed(1)})
                       </span>
                     </div>
                   </div>
@@ -1557,13 +1536,13 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
             {/* Timing Score Breakdown */}
             {timingBreakdown && (
               <div className="detail-card timing-analysis-card wide">
-                <h3>{ctx.locale === "zh-CN" ? "时点评分解析" : "Timing Score Breakdown"}</h3>
+                <h3>{t("timingBreakdownTitle")}</h3>
                 <div className="timing-breakdown-grid">
                   <div className="timing-scores-panel">
                     <div className="timing-header">
-                      <span className="timing-title">{ctx.locale === "zh-CN" ? "分项评分" : "Score Factors"}</span>
+                      <span className="timing-title">{t("scoreFactors")}</span>
                       <span className="timing-total">
-                        {ctx.locale === "zh-CN" ? "时点分" : "Timing"}: {score(timingBreakdown.timingScore ?? 0)}
+                        {t("timingScoreLabel")}: {score(timingBreakdown.timingScore ?? 0)}
                       </span>
                     </div>
                     <div className="timing-list">
@@ -1597,28 +1576,28 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                   </div>
                   <div className="stage-panel">
                     <div className="stage-header">
-                      <span className="stage-title">{ctx.locale === "zh-CN" ? "阶段判断" : "Stage Analysis"}</span>
+                      <span className="stage-title">{t("stageAnalysis")}</span>
                       <span className={`stage-badge stage-badge--${timingBreakdown.stage}`}>
                         {stageLabel(timingBreakdown.stage)}
                       </span>
                     </div>
                     <div className="stage-content">
                       <div className="stage-row">
-                        <span className="stage-label">{ctx.locale === "zh-CN" ? "判定依据" : "Reason"}:</span>
+                        <span className="stage-label">{t("stageReasonLabel")}:</span>
                         <span className="stage-text">{timingBreakdown.stageExplanation.reason}</span>
                       </div>
                       <div className="stage-row">
-                        <span className="stage-label">{ctx.locale === "zh-CN" ? "风险提示" : "Risk"}:</span>
+                        <span className="stage-label">{t("stageRiskLabel")}:</span>
                         <span className="stage-text stage-text--risk">{timingBreakdown.stageExplanation.risk}</span>
                       </div>
                       <div className="stage-row">
-                        <span className="stage-label">{ctx.locale === "zh-CN" ? "操作建议" : "Suggestion"}:</span>
+                        <span className="stage-label">{t("stageSuggestionLabel")}:</span>
                         <span className="stage-text stage-text--suggestion">{timingBreakdown.stageExplanation.suggestion}</span>
                       </div>
                     </div>
                     <div className="stage-action-bar">
                       <span className={`stage-action stage-action--${timingBreakdown.action}`}>
-                        {ctx.locale === "zh-CN" ? "建议动作" : "Action"}: {actionLabel(timingBreakdown.action)}
+                        {t("suggestedAction")}: {actionLabel(timingBreakdown.action)}
                       </span>
                     </div>
                   </div>

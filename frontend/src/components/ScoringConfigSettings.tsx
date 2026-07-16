@@ -154,7 +154,7 @@ export default function ScoringConfigSettings() {
     setDupModal({
       source: row,
       newKey: `${row.preset_key}_copy`,
-      newName: `${row.name} 副本`,
+      newName: `${row.name} ${t("presetCopySuffix")}`,
       newDesc: row.description || "",
     });
   };
