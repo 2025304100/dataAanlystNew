@@ -57,20 +57,22 @@ function executionTimingShortLabel(value: string | null | undefined): string {
   return t("btTimingSignalCloseShort");
 }
 
-const CONDITION_LABELS = new Map(CONDITION_FIELDS.map((field) => [field.key, field.label]));
+const CONDITION_LABELS = new Map(CONDITION_FIELDS.map((field) => [field.key, field.labelKey]));
 
 function conditionFieldLabel(field: string, trace?: BacktestConditionTrace): string {
   if (field === "custom_indicator") {
     return trace?.indicator_name || t("btCustomIndicator");
   }
-  return CONDITION_LABELS.get(field) ?? field;
+  const labelKey = CONDITION_LABELS.get(field);
+  return labelKey ? t(labelKey) : field;
 }
 
 function reasonLabel(reason: string): string {
   const key = `btReason_${reason}`;
   const label = t(key);
   if (label !== key) return label;
-  return CONDITION_LABELS.get(reason) ?? reason;
+  const labelKey = CONDITION_LABELS.get(reason);
+  return labelKey ? t(labelKey) : reason;
 }
 
 function exitReasonLabel(reason: string | null | undefined): string {

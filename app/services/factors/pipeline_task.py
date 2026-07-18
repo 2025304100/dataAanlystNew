@@ -4,7 +4,11 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict
+import threading
 from datetime import date, timedelta
+from statistics import median
+
+from sqlalchemy import select
 
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
@@ -32,6 +36,15 @@ from app.services.factors.target_engine import calculate_targets
 
 logger = logging.getLogger(__name__)
 TASK_TYPE = 'factor_pipeline'
+
+# 样本不足时按运行模式回退；训练、全量刷新不能再沿用 3 分钟。
+DEFAULT_ETA_SECONDS = {
+    (False, False): 900,
+    (True, False): 1200,
+    (False, True): 1800,
+    (True, True): 3600,
+}
+TASK_HEARTBEAT_SECONDS = 15.0
 
 
 def resolve_pipeline_dates(
@@ -76,6 +89,87 @@ def _cancelled(task_id: str) -> bool:
         cancel_db.close()
 
 
+def _touch_task_heartbeat(task_id: str) -> bool:
+    """Refresh updated_at for a running task using a short DB session."""
+    SessionLocal = get_session_local()
+    heartbeat_db = SessionLocal()
+    try:
+        task = heartbeat_db.get(AsyncTaskRecord, task_id)
+        if task is None or task.status != 'running':
+            return False
+        task.updated_at = _now()
+        heartbeat_db.commit()
+        return True
+    finally:
+        heartbeat_db.close()
+
+
+def _start_task_heartbeat(
+    task_id: str,
+) -> tuple[threading.Event, threading.Thread]:
+    """Keep long DuckDB calculations visible without holding a SQL session."""
+    stop_event = threading.Event()
+
+    def _beat() -> None:
+        while not stop_event.wait(TASK_HEARTBEAT_SECONDS):
+            try:
+                if not _touch_task_heartbeat(task_id):
+                    return
+            except Exception:
+                logger.exception(
+                    'Failed to heartbeat factor pipeline task %s',
+                    task_id,
+                )
+
+    thread = threading.Thread(
+        target=_beat,
+        name=f'factor-heartbeat-{task_id[:8]}',
+        daemon=True,
+    )
+    thread.start()
+
+# mirror 阶段子阶段的 percent 映射
+# metadata: 5% → 8%（通常很快）
+# universe_bars: 8% → 18%
+# business_bars: 18% → 25%
+_MIRROR_PHASE_PERCENT = {
+    'metadata': (5.0, 8.0),
+    'universe_bars': (8.0, 18.0),
+    'business_bars': (18.0, 25.0),
+}
+
+
+def _make_mirror_progress_callback(task_id: str):
+    """构造 mirror 阶段的进度回调。
+
+    使用独立 session 调用 _set_task，避免影响主 mirror 事务。
+    callback 签名：(phase, processed, total, message)
+    """
+    def _callback(phase: str, processed: int, total: int, message: str) -> None:
+        start_pct, end_pct = _MIRROR_PHASE_PERCENT.get(phase, (5.0, 25.0))
+        ratio = min(1.0, processed / total) if total > 0 else 0.0
+        percent = round(start_pct + (end_pct - start_pct) * ratio, 1)
+        # 独立 session：主 session 在 mirror 事务中，commit 会提前结束事务
+        SessionLocal = get_session_local()
+        progress_db = SessionLocal()
+        try:
+            _set_task(
+                progress_db,
+                task_id,
+                total=total,
+                processed=processed,
+                percent=percent,
+                message=message,
+            )
+        except Exception:
+            logger.exception(
+                'Failed to update mirror progress for task %s', task_id
+            )
+        finally:
+            progress_db.close()
+    return _callback
+
+
 def _latest_factor_date(
     warehouse: FactorWarehouse,
     calc_batch_id: str,
@@ -90,6 +184,75 @@ def _latest_factor_date(
             [calc_batch_id],
         ).fetchone()
     return row[0] if row and row[0] is not None else None
+
+
+def get_pipeline_eta(
+    *,
+    train_model: bool = True,
+    full_refresh: bool = False,
+) -> dict:
+    """基于最近已完成的 factor_pipeline 任务统计预估总耗时。
+
+    返回字段：
+      avg_seconds / median_seconds: 历史 done 任务的平均/中位数总耗时
+      sample_count: 样本数
+      fallback_seconds: 样本不足时使用的经验默认值
+      recommended_seconds: 实际推荐的预估时长（样本 >=3 用中位数，否则用 fallback）
+    """
+    SessionLocal = get_session_local()
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            select(
+                AsyncTaskRecord.started_at,
+                AsyncTaskRecord.finished_at,
+                AsyncTaskRecord.payload_json,
+            )
+            .where(
+                AsyncTaskRecord.task_type == TASK_TYPE,
+                AsyncTaskRecord.status == 'done',
+                AsyncTaskRecord.started_at.isnot(None),
+                AsyncTaskRecord.finished_at.isnot(None),
+            )
+            .order_by(AsyncTaskRecord.finished_at.desc())
+            .limit(50)
+        ).all()
+    finally:
+        db.close()
+
+    durations: list[float] = []
+    for started, finished, payload_json in rows:
+        if not started or not finished:
+            continue
+        try:
+            payload = json.loads(payload_json or '{}')
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if bool(payload.get('train_model', True)) != train_model:
+            continue
+        if bool(payload.get('full_refresh', False)) != full_refresh:
+            continue
+        delta = (finished - started).total_seconds()
+        if delta > 0:
+            durations.append(delta)
+        if len(durations) >= 10:
+            break
+
+    sample_count = len(durations)
+    avg_seconds = sum(durations) / sample_count if durations else 0.0
+    med_seconds = float(median(durations)) if durations else 0.0
+    fallback = float(DEFAULT_ETA_SECONDS[(train_model, full_refresh)])
+    # 样本 >=3 用中位数（抗异常值），否则用对应运行模式的经验默认值
+    recommended = med_seconds if sample_count >= 3 else fallback
+    return {
+        'avg_seconds': round(avg_seconds, 1),
+        'median_seconds': round(med_seconds, 1),
+        'sample_count': sample_count,
+        'fallback_seconds': fallback,
+        'recommended_seconds': round(recommended, 1),
+        'train_model': train_model,
+        'full_refresh': full_refresh,
+    }
 
 
 def create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
@@ -107,6 +270,8 @@ def create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
 
 
 def _run_factor_pipeline(task_id: str) -> None:
+    heartbeat_stop: threading.Event | None = None
+    heartbeat_thread: threading.Thread | None = None
     SessionLocal = get_session_local()
     db = SessionLocal()
     try:
@@ -115,6 +280,19 @@ def _run_factor_pipeline(task_id: str) -> None:
             return
         if task.status == 'cancelled':
             return
+        # 入口立即更新状态：让前端看到 worker 已启动，避免"提交后没动静"的错觉
+        _set_task(
+            db,
+            task_id,
+            status='running',
+            stage='initializing',
+            percent=2,
+            message='Initializing warehouse and resolving date range',
+            started_at=_now(),
+        )
+        heartbeat_stop, heartbeat_thread = _start_task_heartbeat(
+            task_id
+        )
         payload = FactorPipelineCreate.model_validate(
             json.loads(task.payload_json or '{}')
         )
@@ -159,6 +337,10 @@ def _run_factor_pipeline(task_id: str) -> None:
             message='Mirroring local market and factor inputs',
             started_at=_now(),
         )
+        # Release the configuration-read transaction before long local
+        # warehouse writes. All bar reads below use short sessions, so MySQL
+        # connections are returned to the pool between DuckDB batches.
+        db.rollback()
         bars = mirror_daily_bars(
             db,
             warehouse=warehouse,
@@ -166,9 +348,19 @@ def _run_factor_pipeline(task_id: str) -> None:
             end_date=effective_end_date,
             full_refresh=payload.full_refresh,
             should_cancel=should_cancel,
+            progress_callback=_make_mirror_progress_callback(task_id),
         )
         if should_cancel():
             return
+        # daily bars mirror 完成，进入 factor inputs mirror 阶段
+        # 更新 message 和 percent，避免用户看到进度停滞
+        _set_task(
+            db,
+            task_id,
+            stage='mirror',
+            percent=27,
+            message='Mirroring factor inputs (valuations, financials, flows)',
+        )
         inputs = mirror_factor_inputs(
             db,
             warehouse=warehouse,
@@ -306,12 +498,17 @@ def _run_factor_pipeline(task_id: str) -> None:
         except Exception:
             logger.exception('Failed to mark factor pipeline task failed')
     finally:
+        if heartbeat_stop is not None:
+            heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=1.0)
         db.close()
 
 
 __all__ = [
     'TASK_TYPE',
     'create_factor_pipeline_task',
+    'get_pipeline_eta',
     'resolve_calculation_start',
     'resolve_pipeline_dates',
 ]

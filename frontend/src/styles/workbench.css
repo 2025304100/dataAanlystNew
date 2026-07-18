@@ -7641,6 +7641,33 @@ td .symbol-name {
   white-space: nowrap;
 }
 
+.factor-task-strip .factor-task-elapsed {
+  color: #0f766e;
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.factor-task-strip .factor-task-stalled {
+  color: #d97706;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: normal;
+  overflow: visible;
+}
+
+.factor-task-strip .factor-task-eta {
+  color: #2563eb;
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.factor-task-strip .factor-task-eta-hint {
+  color: #94a3b8;
+  font-size: 11px;
+  white-space: normal;
+  overflow: visible;
+}
+
 .factor-model-id {
   display: flex;
   align-items: center;

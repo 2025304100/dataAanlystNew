@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import asdict, dataclass
-from datetime import date
+from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
 from typing import Any
 
 import numpy as np
@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.daily_bar import DailyBar
+from app.models.factor_model import FactorModelRun
 from app.models.score import Score
 from app.models.symbol import Symbol
 
@@ -25,6 +26,7 @@ from app.models.symbol import Symbol
 TRADING_DAYS_PER_YEAR = 252
 RISK_FREE_RATE = 0.03
 SIGNAL_MODES = {"ma_cross", "score_trend"}
+SCORE_VISIBILITY_MODES = {"strict", "reconstructed"}
 
 
 class VectorBTUnavailable(RuntimeError):
@@ -51,6 +53,8 @@ class VectorBTConfig:
     take_profit_pct: float | None = None
     execution_lag: int = 1
     disable_numba: bool = True
+    score_visibility_mode: str = "strict"
+    score_max_age_days: int = 5
 
     def validate(self) -> None:
         if self.signal_mode not in SIGNAL_MODES:
@@ -69,6 +73,14 @@ class VectorBTConfig:
             raise ValueError("max_positions must be between 1 and 100")
         if not 0 <= self.execution_lag <= 5:
             raise ValueError("execution_lag must be between 0 and 5")
+        if self.score_visibility_mode not in SCORE_VISIBILITY_MODES:
+            raise ValueError(
+                "score_visibility_mode must be strict or reconstructed"
+            )
+        if not 0 <= self.score_max_age_days <= 60:
+            raise ValueError(
+                "score_max_age_days must be between 0 and 60"
+            )
         for name in (
             "commission_rate",
             "stamp_tax_rate",
@@ -97,6 +109,7 @@ class VectorBTInputFrames:
     symbol_ids: dict[str, int]
     score_weight_mode: str
     factor_model_run_id: str | None
+    visibility: dict[str, Any] = field(default_factory=dict)
 
 
 def _load_vectorbt(*, disable_numba: bool):
@@ -133,6 +146,34 @@ def _pivot_prices(
     return result.reindex(columns=columns).sort_index().astype(float)
 
 
+def _as_date(value: Any) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return pd.Timestamp(value).date()
+
+
+def _latest_date(*values: Any) -> date | None:
+    dates = [item for item in (_as_date(value) for value in values) if item]
+    return max(dates) if dates else None
+
+
+def _forward_fill_score_frame(
+    frame: pd.DataFrame,
+    *,
+    index: pd.Index,
+    limit: int,
+) -> pd.DataFrame:
+    aligned = frame.reindex(index)
+    if limit == 0:
+        return aligned
+    return aligned.ffill(limit=limit)
+
+
+
 def load_project_frames(
     db: Session,
     *,
@@ -141,6 +182,8 @@ def load_project_frames(
     end_date: date,
     score_weight_mode: str = "manual",
     factor_model_run_id: str | None = None,
+    score_visibility_mode: str = "strict",
+    score_max_age_days: int = 5,
 ) -> VectorBTInputFrames:
     """Load aligned price and Score matrices from the local business DB."""
     if not symbol_ids:
@@ -151,7 +194,26 @@ def load_project_frames(
         raise ValueError("score_weight_mode must be manual or ridge")
     if score_weight_mode == "ridge" and not factor_model_run_id:
         raise ValueError("factor_model_run_id is required for ridge mode")
+    if score_visibility_mode not in SCORE_VISIBILITY_MODES:
+        raise ValueError(
+            "score_visibility_mode must be strict or reconstructed"
+        )
+    if not 0 <= score_max_age_days <= 60:
+        raise ValueError("score_max_age_days must be between 0 and 60")
 
+    model_run: FactorModelRun | None = None
+    model_available_date: date | None = None
+    if score_weight_mode == "ridge":
+        model_run = db.get(FactorModelRun, str(factor_model_run_id))
+        if model_run is None:
+            raise ValueError(
+                f"factor model not found: {factor_model_run_id}"
+            )
+        model_available_date = _latest_date(
+            model_run.train_end_date,
+            model_run.data_cutoff_at,
+            model_run.created_at,
+        )
     symbols = db.execute(
         select(Symbol)
         .where(Symbol.id.in_(symbol_ids))
@@ -212,6 +274,43 @@ def load_project_frames(
     scores = db.execute(
         score_stmt.order_by(Score.trade_date, Score.symbol_id, Score.id)
     ).scalars().all()
+    score_rows_loaded = len(scores)
+    exclusions = {
+        "data_cutoff_after_trade_date": 0,
+        "before_model_available": 0,
+        "created_after_trade_date": 0,
+    }
+    visible_scores: list[Score] = []
+    for item in scores:
+        trade_date = item.trade_date
+        data_cutoff_date = _as_date(item.factor_data_cutoff_at)
+        created_date = _as_date(item.created_at)
+        if data_cutoff_date and data_cutoff_date > trade_date:
+            exclusions["data_cutoff_after_trade_date"] += 1
+            continue
+        if model_available_date and model_available_date > trade_date:
+            exclusions["before_model_available"] += 1
+            continue
+        if (
+            score_visibility_mode == "strict"
+            and created_date
+            and created_date > trade_date
+        ):
+            exclusions["created_after_trade_date"] += 1
+            continue
+        visible_scores.append(item)
+    scores = visible_scores
+    visibility = {
+        "mode": score_visibility_mode,
+        "score_max_age_days": score_max_age_days,
+        "score_rows_loaded": score_rows_loaded,
+        "score_rows_visible": len(scores),
+        "excluded_score_rows": exclusions,
+        "model_available_date": (
+            model_available_date.isoformat() if model_available_date else None
+        ),
+        "leading_price_backfill": False,
+    }
     if not scores:
         quality = _empty_score_frame(close)
         timing = _empty_score_frame(close)
@@ -243,23 +342,30 @@ def load_project_frames(
                     "quality": quality_value,
                     "timing": timing_value,
                     "ranking": ranking_value,
+                    "created_at": item.created_at,
                     "id": item.id,
                 }
             )
         score_frame = (
             pd.DataFrame(score_rows)
-            .sort_values("id")
+            .sort_values(["created_at", "id"])
             .drop_duplicates(["symbol", "trade_date"], keep="last")
         )
-        quality = _pivot_prices(
-            score_frame, "quality", columns=ordered_codes
-        ).reindex(close.index).ffill()
-        timing = _pivot_prices(
-            score_frame, "timing", columns=ordered_codes
-        ).reindex(close.index).ffill()
-        ranking = _pivot_prices(
-            score_frame, "ranking", columns=ordered_codes
-        ).reindex(close.index).ffill()
+        quality = _forward_fill_score_frame(
+            _pivot_prices(score_frame, "quality", columns=ordered_codes),
+            index=close.index,
+            limit=score_max_age_days,
+        )
+        timing = _forward_fill_score_frame(
+            _pivot_prices(score_frame, "timing", columns=ordered_codes),
+            index=close.index,
+            limit=score_max_age_days,
+        )
+        ranking = _forward_fill_score_frame(
+            _pivot_prices(score_frame, "ranking", columns=ordered_codes),
+            index=close.index,
+            limit=score_max_age_days,
+        )
 
     return VectorBTInputFrames(
         close=close,
@@ -272,6 +378,7 @@ def load_project_frames(
         symbol_ids={code: symbol_id for symbol_id, code in symbol_map.items()},
         score_weight_mode=score_weight_mode,
         factor_model_run_id=factor_model_run_id,
+        visibility=visibility,
     )
 
 
@@ -413,6 +520,11 @@ def _equal_weight_benchmark(close: pd.DataFrame) -> float:
     return sum(returns) / len(returns) if returns else 0.0
 
 
+def _prepare_simulation_close(close: pd.DataFrame) -> pd.DataFrame:
+    """Forward-fill prices without inventing pre-listing observations."""
+    return close.ffill()
+
+
 def run_vectorbt_backtest(
     frames: VectorBTInputFrames,
     config: VectorBTConfig,
@@ -444,12 +556,13 @@ def run_vectorbt_backtest(
         },
         score_weight_mode=frames.score_weight_mode,
         factor_model_run_id=frames.factor_model_run_id,
+        visibility=frames.visibility,
     )
     entries, exits = build_vectorbt_signals(active_frames, config)
     close = active_frames.close.dropna(how="all")
     entries = entries.reindex(close.index).fillna(False)
     exits = exits.reindex(close.index).fillna(False)
-    simulation_close = close.ffill().bfill()
+    simulation_close = _prepare_simulation_close(close)
 
     # VectorBT from_signals applies one fee rate to both sides. Splitting the
     # sell-only stamp tax equally preserves the proportional round-trip total:
@@ -531,6 +644,7 @@ def run_vectorbt_backtest(
         "score_weight_mode": frames.score_weight_mode,
         "factor_model_run_id": frames.factor_model_run_id,
         "config": asdict(config),
+        "data_visibility": frames.visibility,
         "signals": {
             "entries": int(entries.to_numpy(dtype=bool).sum()),
             "exits": int(exits.to_numpy(dtype=bool).sum()),
@@ -603,6 +717,8 @@ def run_project_vectorbt_backtest(
         end_date=end_date,
         score_weight_mode=score_weight_mode,
         factor_model_run_id=factor_model_run_id,
+        score_visibility_mode=config.score_visibility_mode,
+        score_max_age_days=config.score_max_age_days,
     )
     return run_vectorbt_backtest(frames, config)
 

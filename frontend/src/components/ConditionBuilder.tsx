@@ -48,13 +48,13 @@ function buildCustomIndicatorField(customIndicators: CustomIndicator[] = [], ind
   const isNumber = indicator?.value_type === "number";
   return {
     key: "custom_indicator",
-    label: t("cbCustomIndicator"),
+    labelKey: "cbCustomIndicator",
     category: "technical",
     valueType: isNumber ? "number" : "boolean",
     operators: isNumber ? ["gt", "gte", "lt", "lte", "eq", "neq"] : ["eq", "neq"],
     requiresHistory: true,
     side: "both",
-    params: [{ key: "indicator_key", label: t("cbIndicator"), type: "select", default: indicator?.key ?? "" }],
+    params: [{ key: "indicator_key", labelKey: "cbIndicator", type: "select", default: indicator?.key ?? "" }],
   };
 }
 
@@ -108,8 +108,8 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete, customIndicators }: 
     const groups: Record<string, { label: string; options: { label: string; value: string }[] }> = {};
     for (const field of fields) {
       const category = field.category;
-      if (!groups[category]) groups[category] = { label: CATEGORY_LABELS[category] || category, options: [] };
-      groups[category].options.push({ label: field.label, value: field.key });
+      if (!groups[category]) groups[category] = { label: t(CATEGORY_LABELS[category] || category), options: [] };
+      groups[category].options.push({ label: t(field.labelKey), value: field.key });
     }
     return Object.values(groups);
   }, [fields]);
@@ -135,7 +135,7 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete, customIndicators }: 
   );
 
   const operatorOptions = useMemo(
-    () => (fieldDef?.operators ?? ["gte"]).map((op) => ({ label: OPERATOR_LABELS[op] ?? op, value: op })),
+    () => (fieldDef?.operators ?? ["gte"]).map((op) => ({ label: OPERATOR_LABELS[op] ? t(OPERATOR_LABELS[op]) : op, value: op })),
     [fieldDef],
   );
 
@@ -160,11 +160,12 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete, customIndicators }: 
           />
         );
       case "string_list": {
-        const options = leaf.field === "stage"
+        const rawOptions = leaf.field === "stage"
           ? STAGE_OPTIONS
           : leaf.field === "action" || leaf.field === "score_action"
             ? ACTION_OPTIONS
             : [];
+        const options = rawOptions.map((opt) => ({ label: t(opt.labelKey), value: opt.value }));
         const value = Array.isArray(leaf.value) ? (leaf.value as string[]) : [];
         return (
           <Select
@@ -226,7 +227,7 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete, customIndicators }: 
             key={param.key}
             size="small"
             style={{ width: 360 }}
-            addonBefore={param.label}
+            addonBefore={t(param.labelKey)}
             value={String(leaf.params?.[param.key] ?? param.default ?? "")}
             placeholder={param.placeholder}
             onChange={(event) =>
@@ -243,7 +244,7 @@ function ConditionLeafRow({ leaf, side, onChange, onDelete, customIndicators }: 
           key={param.key}
           size="small"
           style={{ width: 88 }}
-          addonBefore={param.label}
+          addonBefore={t(param.labelKey)}
           value={Number(leaf.params?.[param.key] ?? param.default)}
           onChange={(value) =>
             onChange({

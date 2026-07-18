@@ -132,7 +132,7 @@ export default function App() {
         </div>
       )}
 
-      <nav className="view-tabs" aria-label="Main views">
+      <nav className="view-tabs" aria-label={t("ariaMainViews")}>
         <button
           className={`view-tab${ctx.activeTab === "decision" ? " active" : ""}`}
           onClick={() => ctx.setActiveTab("decision")}
@@ -261,7 +261,7 @@ export default function App() {
               </div>
             </header>
 
-            <nav className="sub-tabs" aria-label="Portfolio sub-views">
+            <nav className="sub-tabs" aria-label={t("ariaPortfolioSubViews")}>
               <button
                 className={`sub-tab${ctx.activeSubTab === "portfolio-workbench" ? " active" : ""}`}
                 onClick={() => ctx.setActiveSubTab("portfolio-workbench")}

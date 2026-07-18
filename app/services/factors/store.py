@@ -289,6 +289,39 @@ _UPSERT_DAILY_BAR_SQL = """
         batch_id = excluded.batch_id
 """
 
+_UPSERT_DAILY_BAR_FRAME_SQL = """
+    INSERT INTO raw_daily_bars (
+        symbol, trade_date, adjust, business_symbol_id, universe_symbol_id,
+        open, high, low, close, volume, amount, turnover_rate, source,
+        source_origin, source_row_id, source_updated_at, ingested_at, batch_id
+    )
+    SELECT
+        symbol, trade_date, adjust, business_symbol_id, universe_symbol_id,
+        open, high, low, close, volume, amount, turnover_rate, source,
+        source_origin, source_row_id, source_updated_at, ingested_at, batch_id
+    FROM incoming_daily_bars
+    ON CONFLICT (symbol, trade_date, adjust) DO UPDATE SET
+        business_symbol_id = COALESCE(
+            excluded.business_symbol_id, raw_daily_bars.business_symbol_id
+        ),
+        universe_symbol_id = COALESCE(
+            excluded.universe_symbol_id, raw_daily_bars.universe_symbol_id
+        ),
+        open = excluded.open,
+        high = excluded.high,
+        low = excluded.low,
+        close = excluded.close,
+        volume = excluded.volume,
+        amount = excluded.amount,
+        turnover_rate = excluded.turnover_rate,
+        source = excluded.source,
+        source_origin = excluded.source_origin,
+        source_row_id = excluded.source_row_id,
+        source_updated_at = excluded.source_updated_at,
+        ingested_at = excluded.ingested_at,
+        batch_id = excluded.batch_id
+"""
+
 _UPSERT_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     "raw_asset_universe": (
         "symbol",
@@ -595,7 +628,7 @@ class FactorWarehouse:
     ) -> int:
         """Atomically upsert a batch and advance its source watermark."""
         records = [
-            tuple(row.get(column) for column in _DAILY_BAR_COLUMNS)
+            {column: row.get(column) for column in _DAILY_BAR_COLUMNS}
             for row in rows
         ]
         self.initialize()
@@ -603,7 +636,17 @@ class FactorWarehouse:
             conn.execute("BEGIN TRANSACTION")
             try:
                 if records:
-                    conn.executemany(_UPSERT_DAILY_BAR_SQL, records)
+                    # DuckDB executemany executes the statement once per row.
+                    # Register one frame so DuckDB merges the whole batch in a
+                    # single vectorized statement.
+                    import pandas as pd
+
+                    frame = pd.DataFrame.from_records(
+                        records, columns=list(_DAILY_BAR_COLUMNS)
+                    )
+                    conn.register("incoming_daily_bars", frame)
+                    conn.execute(_UPSERT_DAILY_BAR_FRAME_SQL)
+                    conn.unregister("incoming_daily_bars")
                 conn.execute(
                     """
                     INSERT INTO warehouse_watermarks (
@@ -617,9 +660,36 @@ class FactorWarehouse:
                 )
                 conn.execute("COMMIT")
             except Exception:
+                try:
+                    conn.unregister("incoming_daily_bars")
+                except Exception:
+                    pass
                 conn.execute("ROLLBACK")
                 raise
         return len(records)
+
+    def delete_watermarks(self, source_key_prefix: str) -> int:
+        """Delete temporary checkpoint watermarks matching a source prefix."""
+        self.initialize()
+        with self._write_lock, self.connection() as conn:
+            conn.execute("BEGIN TRANSACTION")
+            try:
+                count = int(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM warehouse_watermarks "
+                        "WHERE source_key LIKE ?",
+                        [f"{source_key_prefix}%"],
+                    ).fetchone()[0]
+                )
+                conn.execute(
+                    "DELETE FROM warehouse_watermarks WHERE source_key LIKE ?",
+                    [f"{source_key_prefix}%"],
+                )
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        return count
 
     def upsert_records(
         self,

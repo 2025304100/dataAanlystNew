@@ -246,8 +246,8 @@ export default function DbConfigSection() {
               <Popconfirm
                 title={t("dbMigrateConfirm")}
                 onConfirm={handleMigrate}
-                okText="OK"
-                cancelText="Cancel"
+                okText={t("ok")}
+                cancelText={t("cancel")}
                 disabled={migrating}
               >
                 <Button

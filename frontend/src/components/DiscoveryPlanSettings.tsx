@@ -342,7 +342,7 @@ export default function DiscoveryPlanSettings() {
                     </label>
                     <label className="inline-control discovery-filter-control">
                       <span>{t("dpOperator")}</span>
-                      <Select value={filter.operator} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, operator: value }))} options={operatorOptions.map((item) => ({ label: OPERATOR_LABELS[item] ?? item, value: item }))} disabled={!indicator} aria-label={t("dpOperator")} />
+                      <Select value={filter.operator} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, operator: value }))} options={operatorOptions.map((item) => ({ label: OPERATOR_LABELS[item] ? t(OPERATOR_LABELS[item]) : item, value: item }))} disabled={!indicator} aria-label={t("dpOperator")} />
                     </label>
                     {indicator?.value_type === "number" ? (
                       <label className="inline-control discovery-filter-control">

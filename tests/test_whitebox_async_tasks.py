@@ -48,6 +48,30 @@ def test_task_to_dict_handles_null_json():
     assert d["percent"] == 100.0
 
 
+def test_task_timestamps_are_serialized_as_explicit_utc():
+    from datetime import datetime, timezone
+
+    task = AsyncTaskRecord(
+        id="qa-utc",
+        task_type="factor_pipeline",
+        status="running",
+        stage="mirror",
+        percent=5,
+        message="working",
+        total=10,
+        processed=1,
+        ok_count=0,
+        failed_count=0,
+        created_at=datetime(2026, 7, 17, 4, 0),
+        updated_at=datetime(2026, 7, 17, 4, 1),
+    )
+    payload = async_tasks._task_to_read(task).model_dump(mode="json")
+
+    assert payload["created_at"].endswith("Z")
+    assert payload["updated_at"].endswith("Z")
+    assert async_tasks._as_utc(task.created_at).tzinfo == timezone.utc
+
+
 def test_json_loads_fallback():
     """_json_loads 在解析失败时应返回 fallback。"""
     assert async_tasks._json_loads(None, []) == []

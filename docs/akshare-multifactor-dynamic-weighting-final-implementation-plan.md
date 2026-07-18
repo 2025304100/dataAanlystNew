@@ -51,7 +51,7 @@
 - Week 4：今日决策展示活动评分范围、模型版本和平均因子覆盖率；
 - Week 4：投资中心展示单股原值、标准化值、系数、贡献及宏观仓位乘数；
 - Week 4：生产前端打包完成，Vite 共转换 3682 个模块。
-- Week 4 补充：VectorBT 0.28.5 专用研究回测已完成；支持 ma_cross/score_trend、manual/ridge 固定评分版本、每日截面 Top-N 入场筛选、多标的共享现金、执行滞后、止损止盈、成本近似、等权基准、权益曲线和交易明细 JSON 输出。
+- Week 4 补充：VectorBT 0.28.5 专用研究回测已完成；支持 ma_cross/score_trend、manual/ridge 固定评分版本、严格历史可见性、每日截面 Top-N 入场筛选、多标的共享现金、执行滞后、止损止盈、成本近似、等权基准、权益曲线和交易明细 JSON 输出。
 - V1.1 阶段一：DuckDB Schema V2 资产元数据、全市场成交额变化/Z20、上涨家数占比、两融/成交额背离和市场流动性分已完成；仅用于宏观状态、仓位折扣和解释，不作为个股截面特征。
 - V1.1 阶段二：公告日对齐 ROE 同比增速已完成；新增财报版本化业务表、AkShare 逐股同步入口、DuckDB 增量镜像、公告日 point-in-time 计算、Ridge/Quality 接入和手工同步界面。
 - V1.1 阶段三：龙虎榜机构净买额已完成；使用 stock_lhb_jgmmtj_em 的真实机构席位买卖口径，保存机构买入、卖出、净额、机构数和原始响应，并生成 lhb_institution_net_ratio 稀疏事件因子。
@@ -1359,20 +1359,24 @@ Priority Score 继续由现有 scoring_config 的 final_weights 聚合，不另�
 
 入口：
 
-    C:\Python312\python.exe -m scripts.backtest_vectorbt --portfolio-id 2 --symbols 000001 000048 600519 --start-date 2025-07-01 --end-date 2026-07-09 --signal-mode score_trend --score-weight-mode manual --fast-window 10 --slow-window 20 --quality-min 55 --timing-min 50 --position-pct 0.2 --max-positions 3 --stop-loss-pct 0.08 --take-profit-pct 0.15 --output tmp/vectorbt_sample_result.json
+    C:\Python312\python.exe -m scripts.backtest_vectorbt --portfolio-id 2 --symbols 000001 000048 600519 --start-date 2025-07-01 --end-date 2026-07-09 --signal-mode score_trend --score-weight-mode manual --score-visibility-mode strict --score-max-age-days 5 --fast-window 10 --slow-window 20 --quality-min 55 --timing-min 50 --position-pct 0.2 --max-positions 3 --stop-loss-pct 0.08 --take-profit-pct 0.15 --output tmp/vectorbt_sample_result.json
 
 运行约束：
 
 - 只读取本地 SQL 业务库中的 DailyBar 和 Score，运行期间不调用 AkShare 或其他网络接口；
 - signal_mode 支持 score_trend 和 ma_cross；
 - score_weight_mode=manual 读取手工评分；使用 ridge 时必须同时传入固定的 --factor-model-run-id；
+- 默认 score_visibility_mode=strict；只接受 created_at 和 factor_data_cutoff_at 不晚于交易日的 Score，同日多批次从当时可见记录中取最新；
+- reconstructed 仅用于明确标注的历史重建研究，可忽略 Score 实际创建日，但不能绕过因子数据截止日或 Ridge 模型可用日；
+- Ridge 模型可用日取 train_end_date、data_cutoff_at 和 created_at 三者最大值，模型可用日前的评分一律排除；
+- Score 默认最多向后填充 5 个交易行；行情只在首次有效价格后前填，不再使用 bfill 生成上市前价格；
 - 默认 execution_lag=1，将收盘后生成的信号延后一行执行，避免同一收盘价前视；
 - score_trend 每日先过滤质量、时机和趋势门槛，再选 Top-N 入场候选；manual 按 priority_score 排序，ridge 按 model_alpha_score 排序，同分按股票代码稳定处理；
 - 多标的使用共享现金，单次入场比例取 position_pct 和 1/max_positions 的较小值；当前阶段不因跌出 Top-N 强制卖出，严格持仓槽位和定期换仓在下一阶段实现；
 - Windows 默认关闭 Numba JIT，避免首次导入长时间编译；Linux 或已完成缓存预热的环境可增加 --enable-numba；
 - 生产依赖固定 vectorbt==0.28.5，并保持 pandas==2.3.3，避免 VectorBT 1.1 对 Pandas 3 的强制升级冲突。
 
-JSON 输出包括引擎及依赖版本、实际回测区间和标的、完整配置、信号数量、总收益、最大回撤、252 日夏普、胜率、盈亏比、交易数、等权基准收益、超额收益、每日权益曲线和 VectorBT 交易记录。
+JSON 输出包括引擎及依赖版本、实际回测区间和标的、完整配置、Score 总行数/可见行数/各类排除行数、模型可用日、信号数量、总收益、最大回撤、252 日夏普、胜率、盈亏比、交易数、等权基准收益、超额收益、每日权益曲线和 VectorBT 交易记录。
 
 成本口径：
 

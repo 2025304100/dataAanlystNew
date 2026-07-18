@@ -1020,11 +1020,11 @@ export interface RuleTemplate {
 
 export interface ConditionFieldDef {
   key: string;
-  label: string;
+  labelKey: string;
   category: "basic" | "sub_score" | "technical" | "sell";
   valueType: "number" | "string" | "boolean" | "string_list";
   operators: ConditionOperator[];
-  params?: { key: string; label: string; type: "number" | "text" | "select"; default: number | string; placeholder?: string }[];
+  params?: { key: string; labelKey: string; type: "number" | "text" | "select"; default: number | string; placeholder?: string }[];
   requiresHistory: boolean;
   side?: "buy" | "sell" | "both";
 }

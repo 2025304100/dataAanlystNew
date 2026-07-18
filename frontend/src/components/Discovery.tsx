@@ -1444,7 +1444,7 @@ export default function Discovery() {
                     <Tooltip title={t("dpOperatorTip")}>
                       <span>{t("dpOperator")} <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} /></span>
                     </Tooltip>
-                    <Select value={filter.operator} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, operator: value }))} options={operatorOptions.map((item) => ({ label: OPERATOR_LABELS[item] ?? item, value: item }))} disabled={!indicator} />
+                    <Select value={filter.operator} onChange={(value) => updateFilter(filter.id, (current) => ({ ...current, operator: value }))} options={operatorOptions.map((item) => ({ label: OPERATOR_LABELS[item] ? t(OPERATOR_LABELS[item]) : item, value: item }))} disabled={!indicator} />
                   </label>
                   {indicator?.value_type === "number" ? (
                     <label className="inline-control">

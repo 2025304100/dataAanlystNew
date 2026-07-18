@@ -178,9 +178,10 @@ def list_strategies(locale: str = "zh-CN"):
 
 
 # 探测端点总体超时（秒）
-# 覆盖单次 akshare 调用（连接 5s + 读取 15s = 最多 20s）+ 余量
-# 即使 akshare 内部永久阻塞，asyncio.wait_for 也会在 30s 后强制返回超时
-_PROBE_TIMEOUT_SECONDS = 30.0
+# 覆盖：防风控延时（最多 5s）+ 首次调用（连接 5s + 读取 15s = 20s）
+#       + 退避 3s + 重试调用（20s）= 最多约 48s
+# 即使 akshare 内部永久阻塞，asyncio.wait_for 也会强制返回超时
+_PROBE_TIMEOUT_SECONDS = 50.0
 
 # P0 稳定性：探测专用独立线程池
 # 避免探测超时后泄漏的子线程耗尽 FastAPI 默认线程池（anyio 默认 40 线程），
@@ -188,11 +189,56 @@ _PROBE_TIMEOUT_SECONDS = 30.0
 # 独立池限制最大泄漏数为 8，且不阻塞其他异步路由。
 _PROBE_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="akshare-probe")
 
+# 探测重试退避（秒）：首次失败后等待此时间再重试，给 WAF 冷却窗口
+_PROBE_RETRY_BACKOFF_SECONDS = 3.0
 
-def _run_probe(func: Any, probe_args: dict[str, Any]) -> Any:
-    """在线程中执行同步 akshare 调用（供 asyncio.to_thread 包装）。"""
-    with _proxy_bypass(), quiet_akshare_output():
-        return func(**probe_args)
+
+def _is_retryable_probe_error(exc: Exception) -> bool:
+    """判断探测异常是否为可重试的网络瞬时错误（与 call_akshare_with_retry 对齐）。"""
+    exc_name = type(exc).__name__
+    exc_msg = str(exc).lower()
+    return (
+        exc_name in ("ConnectionError", "RemoteDisconnected", "TimeoutError",
+                      "ConnectTimeout", "ReadTimeout", "ProtocolError")
+        or "remote" in exc_msg
+        or "connection" in exc_msg
+        or "timeout" in exc_msg
+        or "reset" in exc_msg
+        or "broken pipe" in exc_msg
+    )
+
+
+def _run_probe(func: Any, probe_args: dict[str, Any], api_key: str) -> Any:
+    """在线程中执行同步 akshare 调用（供 asyncio.to_thread 包装）。
+
+    探测前应用防风控延时（apply_delay），避免批量探测时高频请求触发 WAF。
+    遇到网络瞬时错误（RemoteDisconnected/ConnectionError/Timeout）重试 1 次，
+    退避 3 秒给 WAF 冷却窗口，能区分"瞬时风控"和"持续不可用"。
+    """
+    from app.services.akshare_registry import apply_delay
+
+    # 探测前应用防风控延时，降低 WAF 触发概率
+    try:
+        apply_delay(api_key)
+    except Exception:
+        logger.debug("probe %s: apply_delay failed, proceeding without delay", api_key)
+
+    max_attempts = 2  # 首次 + 重试 1 次
+    for attempt in range(max_attempts):
+        try:
+            with _proxy_bypass(), quiet_akshare_output():
+                return func(**probe_args)
+        except Exception as exc:
+            if not _is_retryable_probe_error(exc) or attempt == max_attempts - 1:
+                raise
+            logger.info(
+                "probe %s attempt %d failed (%s: %s), retrying in %.0fs",
+                api_key, attempt + 1, type(exc).__name__, exc,
+                _PROBE_RETRY_BACKOFF_SECONDS,
+            )
+            time.sleep(_PROBE_RETRY_BACKOFF_SECONDS)
+    # 理论不可达
+    raise RuntimeError("probe loop exhausted without result")
 
 
 @router.post("/external-data/apis/{api_key}/probe", response_model=ProbeResult)
@@ -216,7 +262,7 @@ async def probe_api(api_key: str, db: Session = Depends(get_db)):
     try:
         loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
-            loop.run_in_executor(_PROBE_EXECUTOR, _run_probe, func, probe_args),
+            loop.run_in_executor(_PROBE_EXECUTOR, _run_probe, func, probe_args, api_key),
             timeout=_PROBE_TIMEOUT_SECONDS,
         )
         latency_ms = int((time.time() - start) * 1000)

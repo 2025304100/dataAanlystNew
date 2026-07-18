@@ -1,0 +1,1394 @@
+{
+  "engine": {
+    "name": "vectorbt",
+    "version": "0.28.5",
+    "pandas_version": "2.3.3",
+    "numpy_version": "2.4.6",
+    "numba_disabled": true
+  },
+  "range": {
+    "start_date": "2025-07-01",
+    "end_date": "2026-07-09",
+    "trading_days": 249
+  },
+  "symbols": [
+    "000001",
+    "000048",
+    "600519"
+  ],
+  "score_weight_mode": "manual",
+  "factor_model_run_id": null,
+  "config": {
+    "signal_mode": "score_trend",
+    "initial_cash": 1000000.0,
+    "fast_window": 10,
+    "slow_window": 20,
+    "quality_min": 55.0,
+    "timing_min": 50.0,
+    "quality_exit": 45.0,
+    "timing_exit": 40.0,
+    "position_pct": 0.2,
+    "max_positions": 1,
+    "commission_rate": 0.0003,
+    "min_commission": 5.0,
+    "stamp_tax_rate": 0.001,
+    "slippage_rate": 0.001,
+    "stop_loss_pct": 0.08,
+    "take_profit_pct": 0.15,
+    "execution_lag": 1,
+    "disable_numba": true
+  },
+  "signals": {
+    "entries": 28,
+    "exits": 22
+  },
+  "selection": {
+    "mode": "daily_top_n",
+    "ranking_field": "priority_score",
+    "top_n": 1
+  },
+  "metrics": {
+    "initial_cash": 1000000.0,
+    "final_value": 972791.31,
+    "total_return": -27208.69,
+    "total_return_pct": -0.027209,
+    "max_drawdown_pct": 0.066201,
+    "sharpe_ratio_252d": -0.8858,
+    "win_rate": 0.3,
+    "profit_factor": 0.774916,
+    "trade_count": 20,
+    "benchmark_return_pct": 0.053807,
+    "excess_return_pct": -0.081016
+  },
+  "cost_model": {
+    "equivalent_fee_rate_per_side": 0.0007999999999999999,
+    "slippage_rate_per_side": 0.001,
+    "minimum_commission_exact": false,
+    "minimum_commission": 5.0,
+    "note": "VectorBT applies an equivalent symmetric rate. Sell-only stamp tax is split across both sides; the event-driven engine remains authoritative for exact minimum commission and A-share lot handling."
+  },
+  "equity_curve": [
+    {
+      "date": "2025-07-01",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-02",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-03",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-04",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-07",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-08",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-09",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-10",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-11",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-14",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-15",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-16",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-17",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-18",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-21",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-22",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-23",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-24",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-25",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-28",
+      "equity": 1000000.0
+    },
+    {
+      "date": "2025-07-29",
+      "equity": 999640.49
+    },
+    {
+      "date": "2025-07-30",
+      "equity": 1001087.74
+    },
+    {
+      "date": "2025-07-31",
+      "equity": 997235.62
+    },
+    {
+      "date": "2025-08-01",
+      "equity": 996587.09
+    },
+    {
+      "date": "2025-08-04",
+      "equity": 996865.86
+    },
+    {
+      "date": "2025-08-05",
+      "equity": 998077.68
+    },
+    {
+      "date": "2025-08-06",
+      "equity": 997541.82
+    },
+    {
+      "date": "2025-08-07",
+      "equity": 997329.5
+    },
+    {
+      "date": "2025-08-08",
+      "equity": 996784.15
+    },
+    {
+      "date": "2025-08-11",
+      "equity": 996784.15
+    },
+    {
+      "date": "2025-08-12",
+      "equity": 996784.15
+    },
+    {
+      "date": "2025-08-13",
+      "equity": 996784.15
+    },
+    {
+      "date": "2025-08-14",
+      "equity": 996784.15
+    },
+    {
+      "date": "2025-08-15",
+      "equity": 996784.15
+    },
+    {
+      "date": "2025-08-18",
+      "equity": 996425.79
+    },
+    {
+      "date": "2025-08-19",
+      "equity": 996554.1
+    },
+    {
+      "date": "2025-08-20",
+      "equity": 998350.34
+    },
+    {
+      "date": "2025-08-21",
+      "equity": 998991.86
+    },
+    {
+      "date": "2025-08-22",
+      "equity": 997165.54
+    },
+    {
+      "date": "2025-08-25",
+      "equity": 1001702.35
+    },
+    {
+      "date": "2025-08-26",
+      "equity": 1013199.03
+    },
+    {
+      "date": "2025-08-27",
+      "equity": 1003642.49
+    },
+    {
+      "date": "2025-08-28",
+      "equity": 1001511.89
+    },
+    {
+      "date": "2025-08-29",
+      "equity": 1001477.38
+    },
+    {
+      "date": "2025-09-01",
+      "equity": 1003490.59
+    },
+    {
+      "date": "2025-09-02",
+      "equity": 1001807.64
+    },
+    {
+      "date": "2025-09-03",
+      "equity": 999997.75
+    },
+    {
+      "date": "2025-09-04",
+      "equity": 1001064.12
+    },
+    {
+      "date": "2025-09-05",
+      "equity": 1007962.0
+    },
+    {
+      "date": "2025-09-08",
+      "equity": 1009174.58
+    },
+    {
+      "date": "2025-09-09",
+      "equity": 1007274.96
+    },
+    {
+      "date": "2025-09-10",
+      "equity": 1009766.41
+    },
+    {
+      "date": "2025-09-11",
+      "equity": 1011083.04
+    },
+    {
+      "date": "2025-09-12",
+      "equity": 1018735.91
+    },
+    {
+      "date": "2025-09-15",
+      "equity": 1021845.0
+    },
+    {
+      "date": "2025-09-16",
+      "equity": 1021099.24
+    },
+    {
+      "date": "2025-09-17",
+      "equity": 1021109.38
+    },
+    {
+      "date": "2025-09-18",
+      "equity": 1016975.22
+    },
+    {
+      "date": "2025-09-19",
+      "equity": 1012614.04
+    },
+    {
+      "date": "2025-09-22",
+      "equity": 1015258.5
+    },
+    {
+      "date": "2025-09-23",
+      "equity": 1011918.81
+    },
+    {
+      "date": "2025-09-24",
+      "equity": 1011458.39
+    },
+    {
+      "date": "2025-09-25",
+      "equity": 1012262.12
+    },
+    {
+      "date": "2025-09-26",
+      "equity": 1010337.57
+    },
+    {
+      "date": "2025-09-29",
+      "equity": 1001356.33
+    },
+    {
+      "date": "2025-09-30",
+      "equity": 1002767.67
+    },
+    {
+      "date": "2025-10-09",
+      "equity": 1009952.66
+    },
+    {
+      "date": "2025-10-10",
+      "equity": 1010080.96
+    },
+    {
+      "date": "2025-10-13",
+      "equity": 1010594.17
+    },
+    {
+      "date": "2025-10-14",
+      "equity": 1010337.57
+    },
+    {
+      "date": "2025-10-15",
+      "equity": 1010332.81
+    },
+    {
+      "date": "2025-10-16",
+      "equity": 1010332.81
+    },
+    {
+      "date": "2025-10-17",
+      "equity": 1010332.81
+    },
+    {
+      "date": "2025-10-20",
+      "equity": 1010332.81
+    },
+    {
+      "date": "2025-10-21",
+      "equity": 1009969.59
+    },
+    {
+      "date": "2025-10-22",
+      "equity": 1011427.24
+    },
+    {
+      "date": "2025-10-23",
+      "equity": 1013431.52
+    },
+    {
+      "date": "2025-10-24",
+      "equity": 1012156.07
+    },
+    {
+      "date": "2025-10-27",
+      "equity": 1011427.24
+    },
+    {
+      "date": "2025-10-28",
+      "equity": 1010516.21
+    },
+    {
+      "date": "2025-10-29",
+      "equity": 1009240.76
+    },
+    {
+      "date": "2025-10-30",
+      "equity": 1009058.55
+    },
+    {
+      "date": "2025-10-31",
+      "equity": 1007965.31
+    },
+    {
+      "date": "2025-11-03",
+      "equity": 1009969.59
+    },
+    {
+      "date": "2025-11-04",
+      "equity": 1012702.69
+    },
+    {
+      "date": "2025-11-05",
+      "equity": 1011427.24
+    },
+    {
+      "date": "2025-11-06",
+      "equity": 1011245.04
+    },
+    {
+      "date": "2025-11-07",
+      "equity": 1011973.87
+    },
+    {
+      "date": "2025-11-10",
+      "equity": 1013431.52
+    },
+    {
+      "date": "2025-11-11",
+      "equity": 1014160.35
+    },
+    {
+      "date": "2025-11-12",
+      "equity": 1014342.56
+    },
+    {
+      "date": "2025-11-13",
+      "equity": 1014706.97
+    },
+    {
+      "date": "2025-11-14",
+      "equity": 1015618.01
+    },
+    {
+      "date": "2025-11-17",
+      "equity": 1014160.35
+    },
+    {
+      "date": "2025-11-18",
+      "equity": 1012702.69
+    },
+    {
+      "date": "2025-11-19",
+      "equity": 1016056.26
+    },
+    {
+      "date": "2025-11-20",
+      "equity": 1016540.17
+    },
+    {
+      "date": "2025-11-21",
+      "equity": 1013751.1
+    },
+    {
+      "date": "2025-11-24",
+      "equity": 1010508.96
+    },
+    {
+      "date": "2025-11-25",
+      "equity": 1013164.62
+    },
+    {
+      "date": "2025-11-26",
+      "equity": 1011837.05
+    },
+    {
+      "date": "2025-11-27",
+      "equity": 1011998.19
+    },
+    {
+      "date": "2025-11-28",
+      "equity": 1010526.72
+    },
+    {
+      "date": "2025-12-01",
+      "equity": 1011710.29
+    },
+    {
+      "date": "2025-12-02",
+      "equity": 1009485.91
+    },
+    {
+      "date": "2025-12-03",
+      "equity": 1006804.54
+    },
+    {
+      "date": "2025-12-04",
+      "equity": 1005711.3
+    },
+    {
+      "date": "2025-12-05",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-08",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-09",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-10",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-11",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-12",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-15",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-16",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-17",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-18",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-19",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-22",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-23",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-24",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-25",
+      "equity": 1006074.27
+    },
+    {
+      "date": "2025-12-26",
+      "equity": 1005712.57
+    },
+    {
+      "date": "2025-12-29",
+      "equity": 1005782.85
+    },
+    {
+      "date": "2025-12-30",
+      "equity": 1002704.98
+    },
+    {
+      "date": "2025-12-31",
+      "equity": 1002949.32
+    },
+    {
+      "date": "2026-01-05",
+      "equity": 1001403.23
+    },
+    {
+      "date": "2026-01-06",
+      "equity": 999820.89
+    },
+    {
+      "date": "2026-01-07",
+      "equity": 998748.81
+    },
+    {
+      "date": "2026-01-08",
+      "equity": 995144.14
+    },
+    {
+      "date": "2026-01-09",
+      "equity": 995024.08
+    },
+    {
+      "date": "2026-01-12",
+      "equity": 995856.52
+    },
+    {
+      "date": "2026-01-13",
+      "equity": 993916.77
+    },
+    {
+      "date": "2026-01-14",
+      "equity": 992427.96
+    },
+    {
+      "date": "2026-01-15",
+      "equity": 991382.62
+    },
+    {
+      "date": "2026-01-16",
+      "equity": 990593.05
+    },
+    {
+      "date": "2026-01-19",
+      "equity": 989905.54
+    },
+    {
+      "date": "2026-01-20",
+      "equity": 989324.79
+    },
+    {
+      "date": "2026-01-21",
+      "equity": 1002734.24
+    },
+    {
+      "date": "2026-01-22",
+      "equity": 1002373.75
+    },
+    {
+      "date": "2026-01-23",
+      "equity": 1012688.06
+    },
+    {
+      "date": "2026-01-26",
+      "equity": 1015793.44
+    },
+    {
+      "date": "2026-01-27",
+      "equity": 1015128.0
+    },
+    {
+      "date": "2026-01-28",
+      "equity": 1011911.71
+    },
+    {
+      "date": "2026-01-29",
+      "equity": 1005479.13
+    },
+    {
+      "date": "2026-01-30",
+      "equity": 1004370.07
+    },
+    {
+      "date": "2026-02-02",
+      "equity": 1001819.21
+    },
+    {
+      "date": "2026-02-03",
+      "equity": 1002373.75
+    },
+    {
+      "date": "2026-02-04",
+      "equity": 1002041.03
+    },
+    {
+      "date": "2026-02-05",
+      "equity": 1001752.63
+    },
+    {
+      "date": "2026-02-06",
+      "equity": 1000738.98
+    },
+    {
+      "date": "2026-02-09",
+      "equity": 995663.87
+    },
+    {
+      "date": "2026-02-10",
+      "equity": 989373.56
+    },
+    {
+      "date": "2026-02-11",
+      "equity": 990212.31
+    },
+    {
+      "date": "2026-02-12",
+      "equity": 995151.62
+    },
+    {
+      "date": "2026-02-13",
+      "equity": 994019.56
+    },
+    {
+      "date": "2026-02-24",
+      "equity": 988213.29
+    },
+    {
+      "date": "2026-02-25",
+      "equity": 990773.06
+    },
+    {
+      "date": "2026-02-26",
+      "equity": 988152.15
+    },
+    {
+      "date": "2026-02-27",
+      "equity": 986999.83
+    },
+    {
+      "date": "2026-03-02",
+      "equity": 985463.75
+    },
+    {
+      "date": "2026-03-03",
+      "equity": 983913.49
+    },
+    {
+      "date": "2026-03-04",
+      "equity": 983913.49
+    },
+    {
+      "date": "2026-03-05",
+      "equity": 983913.49
+    },
+    {
+      "date": "2026-03-06",
+      "equity": 983913.49
+    },
+    {
+      "date": "2026-03-09",
+      "equity": 983913.49
+    },
+    {
+      "date": "2026-03-10",
+      "equity": 983559.76
+    },
+    {
+      "date": "2026-03-11",
+      "equity": 987142.37
+    },
+    {
+      "date": "2026-03-12",
+      "equity": 994000.49
+    },
+    {
+      "date": "2026-03-13",
+      "equity": 1000142.09
+    },
+    {
+      "date": "2026-03-16",
+      "equity": 993488.69
+    },
+    {
+      "date": "2026-03-17",
+      "equity": 985299.88
+    },
+    {
+      "date": "2026-03-18",
+      "equity": 1005157.74
+    },
+    {
+      "date": "2026-03-19",
+      "equity": 1006181.34
+    },
+    {
+      "date": "2026-03-20",
+      "equity": 996047.69
+    },
+    {
+      "date": "2026-03-23",
+      "equity": 985709.32
+    },
+    {
+      "date": "2026-03-24",
+      "equity": 991032.05
+    },
+    {
+      "date": "2026-03-25",
+      "equity": 988292.42
+    },
+    {
+      "date": "2026-03-26",
+      "equity": 991567.94
+    },
+    {
+      "date": "2026-03-27",
+      "equity": 998384.85
+    },
+    {
+      "date": "2026-03-30",
+      "equity": 1018840.71
+    },
+    {
+      "date": "2026-03-31",
+      "equity": 1019866.68
+    },
+    {
+      "date": "2026-04-01",
+      "equity": 1003416.06
+    },
+    {
+      "date": "2026-04-02",
+      "equity": 1004893.55
+    },
+    {
+      "date": "2026-04-03",
+      "equity": 1002829.1
+    },
+    {
+      "date": "2026-04-07",
+      "equity": 998891.61
+    },
+    {
+      "date": "2026-04-08",
+      "equity": 1001562.6
+    },
+    {
+      "date": "2026-04-09",
+      "equity": 999628.19
+    },
+    {
+      "date": "2026-04-10",
+      "equity": 998729.52
+    },
+    {
+      "date": "2026-04-13",
+      "equity": 997209.72
+    },
+    {
+      "date": "2026-04-14",
+      "equity": 998957.99
+    },
+    {
+      "date": "2026-04-15",
+      "equity": 1001917.63
+    },
+    {
+      "date": "2026-04-16",
+      "equity": 999750.28
+    },
+    {
+      "date": "2026-04-17",
+      "equity": 992175.21
+    },
+    {
+      "date": "2026-04-20",
+      "equity": 993336.98
+    },
+    {
+      "date": "2026-04-21",
+      "equity": 993761.94
+    },
+    {
+      "date": "2026-04-22",
+      "equity": 991989.94
+    },
+    {
+      "date": "2026-04-23",
+      "equity": 993084.74
+    },
+    {
+      "date": "2026-04-24",
+      "equity": 992800.4
+    },
+    {
+      "date": "2026-04-27",
+      "equity": 992800.4
+    },
+    {
+      "date": "2026-04-28",
+      "equity": 992800.4
+    },
+    {
+      "date": "2026-04-29",
+      "equity": 992800.4
+    },
+    {
+      "date": "2026-04-30",
+      "equity": 992443.48
+    },
+    {
+      "date": "2026-05-06",
+      "equity": 990304.6
+    },
+    {
+      "date": "2026-05-07",
+      "equity": 990482.84
+    },
+    {
+      "date": "2026-05-08",
+      "equity": 989235.15
+    },
+    {
+      "date": "2026-05-11",
+      "equity": 988878.67
+    },
+    {
+      "date": "2026-05-12",
+      "equity": 988343.95
+    },
+    {
+      "date": "2026-05-13",
+      "equity": 986561.55
+    },
+    {
+      "date": "2026-05-14",
+      "equity": 984957.39
+    },
+    {
+      "date": "2026-05-15",
+      "equity": 983887.95
+    },
+    {
+      "date": "2026-05-18",
+      "equity": 981570.82
+    },
+    {
+      "date": "2026-05-19",
+      "equity": 981570.82
+    },
+    {
+      "date": "2026-05-20",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-05-21",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-05-22",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-05-25",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-05-26",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-05-27",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-05-28",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-05-29",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-06-01",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-06-02",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-06-03",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-06-04",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-06-05",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-06-08",
+      "equity": 979810.42
+    },
+    {
+      "date": "2026-06-09",
+      "equity": 979458.17
+    },
+    {
+      "date": "2026-06-10",
+      "equity": 982724.38
+    },
+    {
+      "date": "2026-06-11",
+      "equity": 982079.66
+    },
+    {
+      "date": "2026-06-12",
+      "equity": 981937.35
+    },
+    {
+      "date": "2026-06-15",
+      "equity": 966271.04
+    },
+    {
+      "date": "2026-06-16",
+      "equity": 963818.33
+    },
+    {
+      "date": "2026-06-17",
+      "equity": 961074.99
+    },
+    {
+      "date": "2026-06-18",
+      "equity": 954197.68
+    },
+    {
+      "date": "2026-06-22",
+      "equity": 971672.74
+    },
+    {
+      "date": "2026-06-23",
+      "equity": 972041.66
+    },
+    {
+      "date": "2026-06-24",
+      "equity": 965373.32
+    },
+    {
+      "date": "2026-06-25",
+      "equity": 979833.3
+    },
+    {
+      "date": "2026-06-26",
+      "equity": 976385.64
+    },
+    {
+      "date": "2026-06-29",
+      "equity": 976567.09
+    },
+    {
+      "date": "2026-06-30",
+      "equity": 972791.31
+    },
+    {
+      "date": "2026-07-01",
+      "equity": 972791.31
+    },
+    {
+      "date": "2026-07-02",
+      "equity": 972791.31
+    },
+    {
+      "date": "2026-07-03",
+      "equity": 972791.31
+    },
+    {
+      "date": "2026-07-06",
+      "equity": 972791.31
+    },
+    {
+      "date": "2026-07-07",
+      "equity": 972791.31
+    },
+    {
+      "date": "2026-07-08",
+      "equity": 972791.31
+    },
+    {
+      "date": "2026-07-09",
+      "equity": 972791.31
+    }
+  ],
+  "trades": [
+    {
+      "Exit Trade Id": 0,
+      "Column": "000001",
+      "Size": 18220.7168536992,
+      "Entry Timestamp": "2025-10-21",
+      "Avg Entry Price": 11.081069999999999,
+      "Entry Fees": 161.52403112480533,
+      "Exit Timestamp": "2025-12-05",
+      "Avg Exit Price": 11.14884,
+      "Exit Fees": 162.5118855097566,
+      "PnL": 910.7820645406723,
+      "Return": 0.004510942715821017,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 0
+    },
+    {
+      "Exit Trade Id": 1,
+      "Column": "000001",
+      "Size": 17981.482354654574,
+      "Entry Timestamp": "2025-12-26",
+      "Avg Entry Price": 11.181169999999998,
+      "Entry Fees": 160.84320884750923,
+      "Exit Timestamp": "2026-01-13",
+      "Avg Exit Price": 11.088899999999999,
+      "Exit Fees": 159.51588774602325,
+      "PnL": -1979.5104734575032,
+      "Return": -0.009845665167419809,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 1
+    },
+    {
+      "Exit Trade Id": 2,
+      "Column": "000001",
+      "Size": 14838.82675012542,
+      "Entry Timestamp": "2026-03-25",
+      "Avg Entry Price": 10.600589999999999,
+      "Entry Fees": 125.84025476727402,
+      "Exit Timestamp": "2026-04-24",
+      "Avg Exit Price": 10.63935,
+      "Exit Fees": 126.3003771071575,
+      "PnL": 323.0122929604646,
+      "Return": 0.002053475136761577,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 2
+    },
+    {
+      "Exit Trade Id": 3,
+      "Column": "000001",
+      "Size": 17824.024861295224,
+      "Entry Timestamp": "2026-04-30",
+      "Avg Entry Price": 11.131119999999997,
+      "Entry Fees": 158.7210876912286,
+      "Exit Timestamp": "2026-05-20",
+      "Avg Exit Price": 10.41957,
+      "Exit Fees": 148.5749397792047,
+      "PnL": -12989.980917524977,
+      "Return": -0.06547324545957595,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 3
+    },
+    {
+      "Exit Trade Id": 4,
+      "Column": "000001",
+      "Size": 18145.624335415407,
+      "Entry Timestamp": "2026-06-09",
+      "Avg Entry Price": 10.790779999999998,
+      "Entry Fees": 156.64435213286197,
+      "Exit Timestamp": "2026-06-30",
+      "Avg Exit Price": 10.039950000000001,
+      "Exit Fees": 145.74492883708314,
+      "PnL": -13926.668400729859,
+      "Return": -0.07112503303746313,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 4
+    },
+    {
+      "Exit Trade Id": 5,
+      "Column": "000048",
+      "Size": 12830.333569216065,
+      "Entry Timestamp": "2025-08-18",
+      "Avg Entry Price": 15.525509999999999,
+      "Entry Fees": 159.35797770574572,
+      "Exit Timestamp": "2025-10-15",
+      "Avg Exit Price": 16.86312,
+      "Exit Fees": 173.087563694175,
+      "PnL": 16829.53694411916,
+      "Return": 0.08448669937412683,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 5
+    },
+    {
+      "Exit Trade Id": 6,
+      "Column": "000048",
+      "Size": 7460.593212823831,
+      "Entry Timestamp": "2025-12-30",
+      "Avg Entry Price": 17.24723,
+      "Entry Fees": 102.93965366239718,
+      "Exit Timestamp": "2026-01-06",
+      "Avg Exit Price": 15.81,
+      "Exit Fees": 94.36158295579581,
+      "PnL": -10919.889619884969,
+      "Return": -0.08486439758732249,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 6
+    },
+    {
+      "Exit Trade Id": 7,
+      "Column": "000048",
+      "Size": 9877.610589495715,
+      "Entry Timestamp": "2026-01-20",
+      "Avg Entry Price": 16.83682,
+      "Entry Fees": 133.04604122033925,
+      "Exit Timestamp": "2026-01-21",
+      "Avg Exit Price": 18.4815,
+      "Exit Fees": 146.04244808781203,
+      "PnL": 15966.420095023686,
+      "Return": 0.09600538248909256,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 7
+    },
+    {
+      "Exit Trade Id": 8,
+      "Column": "000048",
+      "Size": 11090.656672394196,
+      "Entry Timestamp": "2026-01-22",
+      "Avg Entry Price": 18.06805,
+      "Entry Fees": 160.30923143171822,
+      "Exit Timestamp": "2026-02-24",
+      "Avg Exit Price": 17.63235,
+      "Exit Fees": 156.44347214199183,
+      "PnL": -5148.95181573585,
+      "Return": -0.025695098253546936,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 8
+    },
+    {
+      "Exit Trade Id": 9,
+      "Column": "000048",
+      "Size": 10236.006727711578,
+      "Entry Timestamp": "2026-03-10",
+      "Avg Entry Price": 19.20919,
+      "Entry Fees": 157.30031845910707,
+      "Exit Timestamp": "2026-03-30",
+      "Avg Exit Price": 22.61,
+      "Exit Fees": 185.148889690847,
+      "PnL": 34468.26483151886,
+      "Return": 0.17529914837637617,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 9
+    },
+    {
+      "Exit Trade Id": 10,
+      "Column": "000048",
+      "Size": 7264.64899573839,
+      "Entry Timestamp": "2026-03-31",
+      "Avg Entry Price": 23.683659999999996,
+      "Entry Fees": 137.64278146752622,
+      "Exit Timestamp": "2026-04-01",
+      "Avg Exit Price": 21.29,
+      "Exit Fees": 123.73150169541626,
+      "PnL": -17650.473998302077,
+      "Return": -0.10258713931883827,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 10
+    },
+    {
+      "Exit Trade Id": 11,
+      "Column": "000048",
+      "Size": 7980.003277339238,
+      "Entry Timestamp": "2026-06-11",
+      "Avg Entry Price": 19.629609999999996,
+      "Entry Fees": 125.31548170628957,
+      "Exit Timestamp": "2026-06-15",
+      "Avg Exit Price": 17.37,
+      "Exit Fees": 110.89012554190604,
+      "PnL": -18267.900812756667,
+      "Return": -0.11662023280136447,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 11
+    },
+    {
+      "Exit Trade Id": 12,
+      "Column": "000048",
+      "Size": 7997.951420533815,
+      "Entry Timestamp": "2026-06-16",
+      "Avg Entry Price": 19.129109999999997,
+      "Entry Fees": 122.3949539984169,
+      "Exit Timestamp": "2026-06-25",
+      "Avg Exit Price": 22.31,
+      "Exit Fees": 142.7474369536875,
+      "PnL": 25175.461303109703,
+      "Return": 0.16455228246374262,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 12
+    },
+    {
+      "Exit Trade Id": 13,
+      "Column": "600519",
+      "Size": 144.43675836367504,
+      "Entry Timestamp": "2025-07-29",
+      "Avg Entry Price": 1383.5821999999998,
+      "Entry Fees": 159.87210231812787,
+      "Exit Timestamp": "2025-08-08",
+      "Avg Exit Price": 1363.51512,
+      "Exit Fees": 157.5533631301259,
+      "PnL": -3215.8494504727896,
+      "Return": -0.016092110650165834,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 13
+    },
+    {
+      "Exit Trade Id": 14,
+      "Column": "600519",
+      "Size": 113.21526634723855,
+      "Entry Timestamp": "2025-08-22",
+      "Avg Entry Price": 1407.5661599999999,
+      "Entry Fees": 127.48638216458494,
+      "Exit Timestamp": "2025-09-25",
+      "Avg Exit Price": 1380.8178,
+      "Exit Fees": 125.06372400320637,
+      "PnL": -3280.872807919599,
+      "Return": -0.020588067539219383,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 14
+    },
+    {
+      "Exit Trade Id": 15,
+      "Column": "600519",
+      "Size": 114.203482424137,
+      "Entry Timestamp": "2025-11-19",
+      "Avg Entry Price": 1414.35294,
+      "Entry Fees": 129.21922489983262,
+      "Exit Timestamp": "2025-12-03",
+      "Avg Exit Price": 1371.3173100000001,
+      "Exit Fees": 125.28736984839985,
+      "PnL": -5169.325409064881,
+      "Return": -0.032003444769591737,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 15
+    },
+    {
+      "Exit Trade Id": 16,
+      "Column": "600519",
+      "Size": 117.32162641461552,
+      "Entry Timestamp": "2025-12-29",
+      "Avg Entry Price": 1370.9595899999997,
+      "Entry Fees": 128.67456707800739,
+      "Exit Timestamp": "2026-01-21",
+      "Avg Exit Price": 1318.50018,
+      "Exit Fees": 123.75086843645065,
+      "PnL": -6407.048737465585,
+      "Return": -0.03983412655948511,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 16
+    },
+    {
+      "Exit Trade Id": 17,
+      "Column": "600519",
+      "Size": 105.42713034421,
+      "Entry Timestamp": "2026-02-05",
+      "Avg Entry Price": 1520.5690499999998,
+      "Entry Fees": 128.24738514536875,
+      "Exit Timestamp": "2026-03-03",
+      "Avg Exit Price": 1393.22,
+      "Exit Fees": 117.5065492305282,
+      "PnL": -13671.798827937206,
+      "Return": -0.08528391475546596,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 17
+    },
+    {
+      "Exit Trade Id": 18,
+      "Column": "600519",
+      "Size": 118.05224348911177,
+      "Entry Timestamp": "2026-04-02",
+      "Avg Entry Price": 1427.55613,
+      "Entry Fees": 134.82096308248583,
+      "Exit Timestamp": "2026-04-07",
+      "Avg Exit Price": 1405.32327,
+      "Exit Fees": 132.72125188076382,
+      "PnL": -2892.181217142569,
+      "Return": -0.017161611375658973,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 18
+    },
+    {
+      "Exit Trade Id": 19,
+      "Column": "600519",
+      "Size": 117.59872262199859,
+      "Entry Timestamp": "2026-04-09",
+      "Avg Entry Price": 1428.14672,
+      "Entry Fees": 134.35858399100835,
+      "Exit Timestamp": "2026-04-23",
+      "Avg Exit Price": 1384.80381,
+      "Exit Fees": 130.28092731046146,
+      "PnL": -5361.710362021691,
+      "Return": -0.03192478040631534,
+      "Direction": "Long",
+      "Status": "Closed",
+      "Position Id": 19
+    }
+  ],
+  "portfolio": {
+    "id": 2,
+    "name": "????"
+  }
+}

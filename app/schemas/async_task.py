@@ -24,6 +24,7 @@ class AsyncTaskRead(BaseModel):
     created_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class MarketDataSyncCreate(BaseModel):

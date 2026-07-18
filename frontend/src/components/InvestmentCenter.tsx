@@ -1425,8 +1425,8 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
       <div className="ic__plan-tab-panel">
         {tradePlanEditing && draft ? (
           <div className="ic__plan-edit-grid">
-            {renderPlanEditNumber(t("buyZone") + " 下限", "entry_min")}
-            {renderPlanEditNumber(t("buyZone") + " 上限", "entry_max")}
+            {renderPlanEditNumber(t("buyZoneLower"), "entry_min")}
+            {renderPlanEditNumber(t("buyZoneUpper"), "entry_max")}
             {renderPlanEditNumber(t("stopLoss"), "stop_loss")}
             {renderPlanEditNumber(t("target"), "target_price")}
             {renderPlanEditNumber(t("recommendedPosition"), "recommended_position_pct", "%")}

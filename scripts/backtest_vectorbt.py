@@ -12,6 +12,7 @@ from app.models.portfolio import Portfolio
 from app.models.symbol import Symbol
 from app.services.vectorbt_backtest import (
     SIGNAL_MODES,
+    SCORE_VISIBILITY_MODES,
     VectorBTConfig,
     run_project_vectorbt_backtest,
 )
@@ -71,6 +72,18 @@ def _parser() -> argparse.ArgumentParser:
         default="manual",
     )
     parser.add_argument("--factor-model-run-id")
+    parser.add_argument(
+        "--score-visibility-mode",
+        choices=sorted(SCORE_VISIBILITY_MODES),
+        default="strict",
+        help="strict excludes scores created after their trade date",
+    )
+    parser.add_argument(
+        "--score-max-age-days",
+        type=int,
+        default=5,
+        help="maximum trading rows to forward-fill a visible Score",
+    )
     parser.add_argument("--initial-cash", type=float)
     parser.add_argument("--fast-window", type=int, default=10)
     parser.add_argument("--slow-window", type=int, default=20)
@@ -144,6 +157,8 @@ def run(args: argparse.Namespace) -> dict:
             take_profit_pct=args.take_profit_pct,
             execution_lag=args.execution_lag,
             disable_numba=not args.enable_numba,
+            score_visibility_mode=args.score_visibility_mode,
+            score_max_age_days=args.score_max_age_days,
         )
         result = run_project_vectorbt_backtest(
             db,

@@ -114,6 +114,13 @@ export const api = {
     requestJson<FactorPipelineTask>(`${API}/factor-pipeline/tasks/${encodeURIComponent(taskId)}`),
   cancelFactorPipelineTask: (taskId: string) =>
     requestJson<FactorPipelineTask>(`${API}/factor-pipeline/tasks/${encodeURIComponent(taskId)}/cancel`, { method: "POST" }),
+  getFactorPipelineEta: (trainModel: boolean = true, fullRefresh: boolean = false) => {
+    const params = new URLSearchParams({
+      train_model: String(trainModel),
+      full_refresh: String(fullRefresh),
+    });
+    return requestJson<FactorPipelineEta>(`${API}/factor-pipeline/eta?${params.toString()}`);
+  },
   getSymbolFactorExplanation: (symbolId: number, options: { tradeDate?: string; modelRunId?: string } = {}) => {
     const params = new URLSearchParams();
     if (options.tradeDate) params.set("trade_date", options.tradeDate);
@@ -828,6 +835,17 @@ export interface FactorPipelineTask {
   created_at: string | null;
   started_at: string | null;
   finished_at: string | null;
+  updated_at: string | null;
+}
+
+export interface FactorPipelineEta {
+  avg_seconds: number;
+  median_seconds: number;
+  sample_count: number;
+  fallback_seconds: number;
+  recommended_seconds: number;
+  train_model: boolean;
+  full_refresh: boolean;
 }
 
 export interface FactorContribution {

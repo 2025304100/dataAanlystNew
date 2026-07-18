@@ -9,10 +9,23 @@ from app.services.async_tasks import (
 from app.services.factors.pipeline_task import (
     TASK_TYPE,
     create_factor_pipeline_task,
+    get_pipeline_eta,
 )
 
 
 router = APIRouter()
+
+
+@router.get('/factor-pipeline/eta')
+def get_eta(
+    train_model: bool = Query(default=True),
+    full_refresh: bool = Query(default=False),
+):
+    """返回基于历史已完成任务的预估总耗时（秒）。"""
+    return get_pipeline_eta(
+        train_model=train_model,
+        full_refresh=full_refresh,
+    )
 
 
 @router.post('/factor-pipeline/tasks', response_model=AsyncTaskRead)

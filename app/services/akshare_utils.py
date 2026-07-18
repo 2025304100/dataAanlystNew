@@ -55,6 +55,35 @@ _DEFAULT_TIMEOUT: tuple[float, float] = (
 _http_hardened = False
 
 
+# 东财 kline API 的 fields2 字段修复
+# akshare 1.18.30 在 stock_zh_a_hist 的 fields2 中新增了 f116 字段，
+# 但东财服务器（push2his.eastmoney.com）拒绝 f51-f61 + f116 的组合，
+# 直接 RemoteDisconnected。去掉 f116 后请求正常返回数据。
+# 此修复在 HTTP 加固层拦截，只影响该特定 API，未来升级 akshare 后
+# 若新版去掉了 f116，此 patch 无副作用（fields2 不匹配条件即跳过）。
+_EASTMONEY_KLINE_URL = "push2his.eastmoney.com/api/qt/stock/kline/get"
+
+
+def _fix_eastmoney_kline_fields2(url: str, kwargs: dict) -> None:
+    """修复东财 kline API 的 fields2：去掉被服务器拒绝的 f116 字段。"""
+    if _EASTMONEY_KLINE_URL not in url:
+        return
+    params = kwargs.get("params")
+    if not isinstance(params, dict):
+        return
+    fields2 = params.get("fields2")
+    if not isinstance(fields2, str) or "f116" not in fields2:
+        return
+    # 仅当 fields2 包含其他字段时才去掉 f116（单独请求 f116 不受影响）
+    parts = [p for p in fields2.split(",") if p and p != "f116"]
+    if len(parts) == 0:
+        return  # fields2 只有 f116，不处理
+    new_fields2 = ",".join(parts)
+    if new_fields2 != fields2:
+        params["fields2"] = new_fields2
+        logger.debug("eastmoney kline fields2 fixed: removed f116 (%r -> %r)", fields2, new_fields2)
+
+
 def _harden_requests_session() -> None:
     """一次性给 requests.Session 注入浏览器 UA + Connection: close + 默认 timeout。
 
@@ -92,6 +121,7 @@ def _harden_requests_session() -> None:
         def _patched_request(self, method: str, url: str, **kwargs: Any) -> Any:
             if "timeout" not in kwargs or kwargs["timeout"] is None:
                 kwargs["timeout"] = _DEFAULT_TIMEOUT
+            _fix_eastmoney_kline_fields2(url, kwargs)
             return _orig_request(self, method, url, **kwargs)
 
         requests.Session.request = _patched_request  # type: ignore[assignment]

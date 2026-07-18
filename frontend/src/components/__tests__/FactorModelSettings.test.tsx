@@ -83,6 +83,15 @@ const { mockApi, showToast } = vi.hoisted(() => ({
     })),
     listFactorPipelineTasks: vi.fn(async () => []),
     getFactorPipelineTask: vi.fn(),
+    getFactorPipelineEta: vi.fn(async () => ({
+      avg_seconds: 0,
+      median_seconds: 0,
+      sample_count: 0,
+      fallback_seconds: 1200,
+      recommended_seconds: 1200,
+      train_model: true,
+      full_refresh: false,
+    })),
     createFactorPipelineTask: vi.fn(async () => ({
       id: "task-1",
       task_type: "factor_pipeline",
@@ -100,6 +109,7 @@ const { mockApi, showToast } = vi.hoisted(() => ({
       created_at: null,
       started_at: null,
       finished_at: null,
+      updated_at: null,
     })),
     cancelFactorPipelineTask: vi.fn(),
     updateFactorSystemConfig: vi.fn(async () => ({})),

@@ -35,6 +35,15 @@ def _json_loads(value: str | None, fallback):
         return fallback
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Attach UTC to timestamps stored as legacy naive UTC values."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _task_to_dict(task: AsyncTaskRecord) -> dict:
     """将 ORM 对象转为前端可用的字典，用于 AsyncTaskRead 构建。"""
     return {
@@ -51,9 +60,10 @@ def _task_to_dict(task: AsyncTaskRecord) -> dict:
         "current_item": task.current_item,
         "result": _json_loads(task.result_json, None),
         "errors": _json_loads(task.errors_json, [])[-20:],
-        "created_at": task.created_at,
-        "started_at": task.started_at,
-        "finished_at": task.finished_at,
+        "created_at": _as_utc(task.created_at),
+        "started_at": _as_utc(task.started_at),
+        "finished_at": _as_utc(task.finished_at),
+        "updated_at": _as_utc(task.updated_at),
     }
 
 

@@ -1,14 +1,16 @@
 """Incrementally mirror SQLAlchemy daily bars into the factor warehouse."""
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypeVar
 from uuid import uuid4
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.daily_bar import DailyBar
 from app.models.symbol import Symbol
@@ -16,10 +18,15 @@ from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.services.factors.store import FactorWarehouse
 
 
+logger = logging.getLogger(__name__)
 BUSINESS_SOURCE_KEY = "sql.daily_bars"
 UNIVERSE_SOURCE_KEY = "sql.universe_daily_bars"
 UNIVERSE_METADATA_SOURCE_KEY = "sql.universe_symbols"
 CancelCheck = Callable[[], bool]
+# 进度回调签名：(phase, processed, total, message)
+# phase ∈ {"metadata", "universe_bars", "business_bars"}
+ProgressCallback = Callable[[str, int, int, str], None]
+T = TypeVar("T")
 
 
 @dataclass
@@ -61,6 +68,61 @@ def _date_filters(column, start_date: date | None, end_date: date | None):
     if end_date is not None:
         filters.append(column <= end_date)
     return filters
+
+
+def _read_with_retry(
+    db: Session,
+    operation: Callable[[Session], T],
+    *,
+    attempts: int = 2,
+) -> T:
+    """Run one read in a short session and retry a dropped DB connection.
+
+    ORM rows are fully materialized before the short session closes, so a
+    subsequent DuckDB write never keeps the MySQL connection checked out.
+    Retrying is safe because callers only issue SELECT statements.
+    """
+    factory = sessionmaker(
+        bind=db.get_bind(),
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+        future=True,
+    )
+    for attempt in range(1, attempts + 1):
+        read_db = factory()
+        try:
+            return operation(read_db)
+        except DBAPIError:
+            try:
+                read_db.invalidate()
+            except Exception:
+                pass
+            if attempt >= attempts:
+                raise
+            logger.warning(
+                "Database connection dropped during factor mirror read; "
+                "retrying with a fresh connection (%s/%s)",
+                attempt,
+                attempts,
+            )
+        finally:
+            read_db.close()
+    raise RuntimeError("unreachable")
+
+
+def _read_all(db: Session, statement) -> list[Any]:
+    return _read_with_retry(db, lambda read_db: read_db.execute(statement).all())
+
+
+def _read_scalars_all(db: Session, statement) -> list[Any]:
+    return _read_with_retry(
+        db, lambda read_db: read_db.execute(statement).scalars().all()
+    )
+
+
+def _read_scalar(db: Session, statement) -> Any:
+    return _read_with_retry(db, lambda read_db: read_db.execute(statement).scalar())
 
 
 def _watermark_key(
@@ -145,11 +207,31 @@ def _mirror_business_bars(
     adjust: str,
     full_refresh: bool,
     should_cancel: CancelCheck | None,
+    progress_callback: ProgressCallback | None = None,
 ) -> None:
     if _cancelled(should_cancel):
         return
     source_key = _watermark_key(BUSINESS_SOURCE_KEY, start_date, end_date)
     cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    # 一次性 COUNT 总行数（基于 cursor 过滤），用于进度计算
+    total_rows = int(
+        _read_scalar(db,
+            select(func.count(DailyBar.id))
+            .join(Symbol, Symbol.id == DailyBar.symbol_id)
+            .where(
+                DailyBar.id > cursor,
+                Symbol.asset_type == "stock",
+                Symbol.market.in_(("sh", "sz", "bj", "cn")),
+                *_date_filters(DailyBar.trade_date, start_date, end_date),
+            )
+        )
+        or 0
+    )
+    if progress_callback is not None:
+        progress_callback(
+            "business_bars", 0, total_rows,
+            f"Mirroring business bars: 0/{total_rows}",
+        )
     while True:
         if _cancelled(should_cancel):
             break
@@ -165,7 +247,7 @@ def _mirror_business_bars(
             .order_by(DailyBar.id)
             .limit(batch_size)
         )
-        rows = db.execute(stmt).all()
+        rows = _read_all(db, stmt)
         if not rows:
             break
         if _cancelled(should_cancel):
@@ -187,6 +269,13 @@ def _mirror_business_bars(
             source_key=source_key,
             watermark=cursor,
         )
+        if progress_callback is not None:
+            progress_callback(
+                "business_bars",
+                result.business_rows,
+                total_rows,
+                f"Mirroring business bars: {result.business_rows}/{total_rows}",
+            )
     result.business_watermark = cursor
 
 
@@ -201,6 +290,7 @@ def _mirror_universe_bars(
     adjust: str,
     full_refresh: bool,
     should_cancel: CancelCheck | None,
+    progress_callback: ProgressCallback | None = None,
 ) -> None:
     if _cancelled(should_cancel):
         return
@@ -215,10 +305,36 @@ def _mirror_universe_bars(
             end_date=end_date,
             batch_size=batch_size,
             adjust=adjust,
+            full_refresh=full_refresh,
             should_cancel=should_cancel,
+            progress_callback=progress_callback,
         )
         return
     cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    # 一次性 COUNT 总行数
+    total_rows = int(
+        _read_scalar(db,
+            select(func.count(UniverseDailyBar.id))
+            .join(
+                UniverseSymbol,
+                UniverseSymbol.id == UniverseDailyBar.universe_symbol_id,
+            )
+            .where(
+                UniverseDailyBar.id > cursor,
+                UniverseSymbol.asset_type == "stock",
+                UniverseSymbol.region == "cn",
+                *_date_filters(
+                    UniverseDailyBar.trade_date, start_date, end_date
+                ),
+            )
+        )
+        or 0
+    )
+    if progress_callback is not None:
+        progress_callback(
+            "universe_bars", 0, total_rows,
+            f"Mirroring universe bars: 0/{total_rows}",
+        )
     while True:
         if _cancelled(should_cancel):
             break
@@ -239,7 +355,7 @@ def _mirror_universe_bars(
             .order_by(UniverseDailyBar.id)
             .limit(batch_size)
         )
-        rows = db.execute(stmt).all()
+        rows = _read_all(db, stmt)
         if not rows:
             break
         if _cancelled(should_cancel):
@@ -261,6 +377,13 @@ def _mirror_universe_bars(
             source_key=source_key,
             watermark=cursor,
         )
+        if progress_callback is not None:
+            progress_callback(
+                "universe_bars",
+                result.universe_rows,
+                total_rows,
+                f"Mirroring universe bars: {result.universe_rows}/{total_rows}",
+            )
     result.universe_watermark = cursor
 
 
@@ -274,24 +397,45 @@ def _mirror_universe_bars_by_symbol(
     end_date: date | None,
     batch_size: int,
     adjust: str,
+    full_refresh: bool,
     should_cancel: CancelCheck | None,
+    progress_callback: ProgressCallback | None = None,
 ) -> None:
     """Use the existing (symbol_id, trade_date) index for bounded ranges."""
-    symbol_ids = db.execute(
+    symbol_ids = _read_scalars_all(db,
         select(UniverseSymbol.id)
         .where(
             UniverseSymbol.asset_type == "stock",
             UniverseSymbol.region == "cn",
         )
         .order_by(UniverseSymbol.id)
-    ).scalars().all()
+    )
+    total_symbols = len(symbol_ids)
+    if progress_callback is not None:
+        progress_callback(
+            "universe_bars", 0, total_symbols,
+            f"Mirroring universe bars by symbol: 0/{total_symbols}",
+        )
     symbol_batch_size = max(1, min(batch_size, 50))
-    cursor = warehouse.get_watermark(source_key)
+    cursor = 0
     for offset in range(0, len(symbol_ids), symbol_batch_size):
         if _cancelled(should_cancel):
             break
         chunk = symbol_ids[offset : offset + symbol_batch_size]
-        rows = db.execute(
+        chunk_source_key = (
+            f"{source_key}|symbols:{int(chunk[0])}-{int(chunk[-1])}"
+        )
+        chunk_cursor = (
+            0
+            if full_refresh
+            else warehouse.get_watermark(chunk_source_key)
+        )
+        if progress_callback is not None:
+            progress_callback(
+                "universe_bars", offset, total_symbols,
+                f"Reading universe bars for symbols {offset + 1}-{min(offset + symbol_batch_size, total_symbols)}",
+            )
+        rows = _read_all(db,
             select(UniverseDailyBar, UniverseSymbol)
             .join(
                 UniverseSymbol,
@@ -300,6 +444,7 @@ def _mirror_universe_bars_by_symbol(
             )
             .where(
                 UniverseDailyBar.universe_symbol_id.in_(chunk),
+                UniverseDailyBar.id > chunk_cursor,
                 *_date_filters(
                     UniverseDailyBar.trade_date,
                     start_date,
@@ -310,11 +455,23 @@ def _mirror_universe_bars_by_symbol(
                 UniverseDailyBar.universe_symbol_id,
                 UniverseDailyBar.trade_date,
             )
-        ).all()
+        )
+        processed = min(offset + symbol_batch_size, total_symbols)
         if not rows:
+            # symbol 已处理但无数据，仍需推进进度
+            if progress_callback is not None:
+                progress_callback(
+                    "universe_bars", processed, total_symbols,
+                    f"Mirroring universe bars by symbol: {processed}/{total_symbols}",
+                )
             continue
         if _cancelled(should_cancel):
             break
+        if progress_callback is not None:
+            progress_callback(
+                "universe_bars", offset, total_symbols,
+                f"Writing {len(rows)} universe bars to local warehouse",
+            )
         ingested_at = _utcnow_naive()
         records = [
             _universe_record(
@@ -326,15 +483,28 @@ def _mirror_universe_bars_by_symbol(
             )
             for bar, symbol in rows
         ]
+        chunk_cursor = max(int(bar.id) for bar, _symbol in rows)
         cursor = max(
-            cursor, max(int(bar.id) for bar, _symbol in rows)
+            cursor, chunk_cursor
         )
         result.universe_rows += warehouse.upsert_daily_bars(
             records,
-            source_key=source_key,
-            watermark=cursor,
+            source_key=chunk_source_key,
+            watermark=chunk_cursor,
         )
+        if progress_callback is not None:
+            progress_callback(
+                "universe_bars", processed, total_symbols,
+                f"Mirroring universe bars by symbol: {processed}/{total_symbols}",
+            )
     result.universe_watermark = cursor
+    if not _cancelled(should_cancel):
+        # Checkpoints only resume an interrupted bounded-range run. Clear them
+        # after a complete pass so the next run can pick up source corrections
+        # inside the same date range.
+        warehouse.delete_watermarks(
+            f"{source_key}|symbols:"
+        )
 
 
 def _mirror_universe_metadata(
@@ -345,6 +515,7 @@ def _mirror_universe_metadata(
     batch_size: int,
     full_refresh: bool,
     should_cancel: CancelCheck | None,
+    progress_callback: ProgressCallback | None = None,
 ) -> None:
     if _cancelled(should_cancel):
         return
@@ -353,15 +524,29 @@ def _mirror_universe_metadata(
         if full_refresh
         else warehouse.get_watermark(UNIVERSE_METADATA_SOURCE_KEY)
     )
+    # 一次性 COUNT 总行数
+    total_rows = int(
+        _read_scalar(db,
+            select(func.count(UniverseSymbol.id)).where(
+                UniverseSymbol.id > cursor
+            )
+        )
+        or 0
+    )
+    if progress_callback is not None:
+        progress_callback(
+            "metadata", 0, total_rows,
+            f"Mirroring universe metadata: 0/{total_rows}",
+        )
     while True:
         if _cancelled(should_cancel):
             break
-        rows = db.execute(
+        rows = _read_scalars_all(db,
             select(UniverseSymbol)
             .where(UniverseSymbol.id > cursor)
             .order_by(UniverseSymbol.id)
             .limit(batch_size)
-        ).scalars().all()
+        )
         if not rows:
             break
         if _cancelled(should_cancel):
@@ -388,6 +573,13 @@ def _mirror_universe_metadata(
             source_key=UNIVERSE_METADATA_SOURCE_KEY,
             watermark=cursor,
         )
+        if progress_callback is not None:
+            progress_callback(
+                "metadata",
+                result.metadata_rows,
+                total_rows,
+                f"Mirroring universe metadata: {result.metadata_rows}/{total_rows}",
+            )
     result.metadata_watermark = cursor
 
 
@@ -403,6 +595,7 @@ def mirror_daily_bars(
     include_universe: bool = True,
     full_refresh: bool = False,
     should_cancel: CancelCheck | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> BarMirrorResult:
     """Mirror new SQL rows without making any network request.
 
@@ -436,6 +629,7 @@ def mirror_daily_bars(
             batch_size=batch_size,
             full_refresh=full_refresh,
             should_cancel=should_cancel,
+            progress_callback=progress_callback,
         )
         if _cancelled(should_cancel):
             return result
@@ -449,6 +643,7 @@ def mirror_daily_bars(
             adjust=adjust,
             full_refresh=full_refresh,
             should_cancel=should_cancel,
+            progress_callback=progress_callback,
         )
     if include_business and not _cancelled(should_cancel):
         _mirror_business_bars(
@@ -461,5 +656,6 @@ def mirror_daily_bars(
             adjust=adjust,
             full_refresh=full_refresh,
             should_cancel=should_cancel,
+            progress_callback=progress_callback,
         )
     return result

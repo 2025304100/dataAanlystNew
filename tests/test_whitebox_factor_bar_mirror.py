@@ -6,9 +6,12 @@ import pytest
 
 pytest.importorskip("duckdb")
 
+from sqlalchemy.exc import OperationalError
+
 from app.models.daily_bar import DailyBar
 from app.models.symbol import Symbol
 from app.models.universe import UniverseDailyBar, UniverseSymbol
+from app.services.factors import bar_mirror
 from app.services.factors.bar_mirror import mirror_daily_bars
 from app.services.factors.store import FactorWarehouse
 
@@ -294,3 +297,115 @@ def test_mirror_pre_cancel_does_not_open_warehouse(db_session, tmp_path):
 
     assert result.rows_written == 0
     assert path.exists() is False
+
+
+def test_short_read_retries_dropped_connection_and_closes_sessions(
+    db_session, monkeypatch
+):
+    sessions = []
+
+    class FakeReadSession:
+        def __init__(self):
+            self.closed = False
+            self.invalidated = False
+
+        def invalidate(self):
+            self.invalidated = True
+
+        def close(self):
+            self.closed = True
+
+    def fake_sessionmaker(**_kwargs):
+        def factory():
+            session = FakeReadSession()
+            sessions.append(session)
+            return session
+
+        return factory
+
+    monkeypatch.setattr(bar_mirror, "sessionmaker", fake_sessionmaker)
+
+    def operation(_read_db):
+        if len(sessions) == 1:
+            raise OperationalError(
+                "SELECT 1", {}, Exception("MySQL server has gone away")
+            )
+        return "ok"
+
+    assert bar_mirror._read_with_retry(db_session, operation) == "ok"
+    assert len(sessions) == 2
+    assert sessions[0].invalidated is True
+    assert all(session.closed for session in sessions)
+
+
+def test_bounded_range_resumes_after_failed_duckdb_batch(
+    db_session, tmp_path, monkeypatch
+):
+    symbols = [
+        UniverseSymbol(
+            symbol=f"00000{index}",
+            name=f"测试{index}",
+            asset_type="stock",
+            market="sz",
+            region="cn",
+        )
+        for index in (1, 2)
+    ]
+    db_session.add_all(symbols)
+    db_session.flush()
+    db_session.add_all(
+        [
+            UniverseDailyBar(
+                universe_symbol_id=symbol.id,
+                trade_date=date(2026, 7, 10),
+                close=10 + index,
+            )
+            for index, symbol in enumerate(symbols)
+        ]
+    )
+    db_session.commit()
+
+    warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
+    original_upsert = warehouse.upsert_daily_bars
+    calls = 0
+
+    def fail_second_batch(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("injected DuckDB write failure")
+        return original_upsert(*args, **kwargs)
+
+    monkeypatch.setattr(
+        warehouse, "upsert_daily_bars", fail_second_batch
+    )
+    with pytest.raises(RuntimeError, match="injected"):
+        mirror_daily_bars(
+            db_session,
+            warehouse=warehouse,
+            start_date=date(2026, 7, 10),
+            end_date=date(2026, 7, 10),
+            batch_size=1,
+            include_business=False,
+        )
+
+    monkeypatch.setattr(
+        warehouse, "upsert_daily_bars", original_upsert
+    )
+    resumed = mirror_daily_bars(
+        db_session,
+        warehouse=warehouse,
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 10),
+        batch_size=1,
+        include_business=False,
+    )
+
+    assert resumed.universe_rows == 1
+    assert warehouse.health().raw_daily_bars == 2
+    with warehouse.connection(read_only=True) as conn:
+        checkpoints = conn.execute(
+            "SELECT COUNT(*) FROM warehouse_watermarks "
+            "WHERE source_key LIKE '%|symbols:%'"
+        ).fetchone()[0]
+    assert checkpoints == 0

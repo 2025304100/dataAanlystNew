@@ -211,7 +211,7 @@ export default function MetricModal({ type, onClose }: MetricModalProps) {
             <p className="panel-kicker">{t("listActions")}</p>
             <h2>{title}</h2>
           </div>
-          <Button type="text" aria-label="Close" onClick={onClose}>
+          <Button type="text" aria-label={t("close")} onClick={onClose}>
             &times;
           </Button>
         </header>

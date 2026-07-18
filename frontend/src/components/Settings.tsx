@@ -162,7 +162,7 @@ export default function Settings() {
   return (
     <div className="tab-container" data-tab-content="settings">
       <div className="settings-layout">
-        <nav className="settings-sidebar" aria-label="Settings categories">
+        <nav className="settings-sidebar" aria-label={t("ariaSettingsCategories")}>
           <button
             type="button"
             className={`settings-nav-item ${activeSection === "rules" ? "active" : ""}`}

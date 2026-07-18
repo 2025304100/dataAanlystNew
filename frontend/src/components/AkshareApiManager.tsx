@@ -7,7 +7,7 @@ import {
   QuestionCircleOutlined, ReloadOutlined, ThunderboltOutlined, CheckCircleTwoTone, CloseCircleTwoTone,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { t, template } from "../i18n";
+import { t, template, getLocale } from "../i18n";
 import { api } from "../api/client";
 import type { AkshareApiStatus, AkshareStrategyInfo, AkshareApiConfigUpdate } from "../api/client";
 
@@ -31,8 +31,7 @@ export default function AkshareApiManager() {
   // 本地编辑态：{ [apiKey]: { strategy, delay_min, delay_max, enabled } }
   const [edits, setEdits] = useState<Record<string, AkshareApiConfigUpdate>>({});
 
-  const locale = (typeof window !== "undefined" && (localStorage.getItem("locale") === "en")) ? "en" : "zh-CN";
-  const localeParam = locale === "en" ? "en-US" : "zh-CN";
+  const localeParam = getLocale();
 
   const loadAll = useCallback(async () => {
     setLoading(true);

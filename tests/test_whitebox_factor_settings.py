@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta
+
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -16,6 +19,8 @@ from app.db.session import get_session_local
 from app.schemas.async_task import FactorPipelineCreate
 from app.services.factors.pipeline_task import (
     _cancelled,
+    _touch_task_heartbeat,
+    get_pipeline_eta,
     resolve_calculation_start,
     resolve_pipeline_dates,
 )
@@ -117,3 +122,83 @@ def test_factor_pipeline_cancel_check_uses_fresh_session(db_session):
         cancel_db.close()
 
     assert _cancelled(task.id) is True
+
+
+def test_factor_pipeline_heartbeat_only_touches_running_task(db_session):
+    base = datetime(2026, 7, 17, 1, 0)
+    task = AsyncTaskRecord(
+        id='factor-heartbeat-test',
+        task_type='factor_pipeline',
+        status='running',
+        stage='factors',
+        updated_at=base,
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    assert _touch_task_heartbeat(task.id) is True
+    db_session.expire_all()
+    refreshed = db_session.get(AsyncTaskRecord, task.id)
+    assert refreshed.updated_at > base
+
+    refreshed.status = 'failed'
+    db_session.commit()
+    failed_updated_at = refreshed.updated_at
+    assert _touch_task_heartbeat(task.id) is False
+    db_session.expire_all()
+    assert (
+        db_session.get(AsyncTaskRecord, task.id).updated_at
+        == failed_updated_at
+    )
+
+
+def test_factor_pipeline_eta_is_grouped_by_run_mode(db_session):
+    base = datetime(2026, 7, 17, 1, 0)
+    for index, duration in enumerate((100, 200, 300), start=1):
+        db_session.add(
+            AsyncTaskRecord(
+                id=f"eta-train-{index}",
+                task_type="factor_pipeline",
+                status="done",
+                stage="done",
+                payload_json=json.dumps(
+                    {"train_model": True, "full_refresh": False}
+                ),
+                started_at=base,
+                finished_at=base + timedelta(seconds=duration),
+            )
+        )
+    db_session.add(
+        AsyncTaskRecord(
+            id="eta-daily-1",
+            task_type="factor_pipeline",
+            status="done",
+            stage="done",
+            payload_json=json.dumps(
+                {"train_model": False, "full_refresh": False}
+            ),
+            started_at=base,
+            finished_at=base + timedelta(seconds=600),
+        )
+    )
+    db_session.commit()
+
+    training = get_pipeline_eta(
+        train_model=True,
+        full_refresh=False,
+    )
+    daily = get_pipeline_eta(
+        train_model=False,
+        full_refresh=False,
+    )
+    full_training = get_pipeline_eta(
+        train_model=True,
+        full_refresh=True,
+    )
+
+    assert training["sample_count"] == 3
+    assert training["recommended_seconds"] == 200
+    assert daily["sample_count"] == 1
+    assert daily["recommended_seconds"] == 900
+    assert full_training["sample_count"] == 0
+    assert full_training["recommended_seconds"] == 3600
