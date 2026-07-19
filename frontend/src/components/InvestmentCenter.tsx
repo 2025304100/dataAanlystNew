@@ -1758,7 +1758,11 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
               activeSymbolId={ctx.activeSymbolId}
               onResult={setBacktestResult}
             />
-            <BacktestResult result={backtestResult} />
+            <BacktestResult
+              result={backtestResult}
+              portfolioId={ctx.portfolioId}
+              onAppliedToPortfolio={() => ctx.loadWorkbench()}
+            />
           </div>
         </div>
       </section>

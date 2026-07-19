@@ -293,6 +293,9 @@ export interface AlertEvent {
   symbol?: { id: number; symbol: string; name: string } | null;
   data?: Record<string, any>;
   acknowledged: number;
+  resolved?: boolean;
+  resolved_at?: string | null;
+  technical_details?: string | null;
   created_at: string;
 }
 
@@ -471,7 +474,78 @@ export interface Portfolio {
   cash_reserve_ratio: number;
   currency: string;
   is_default: number;
+  auto_trade_enabled: number;
+  auto_trade_last_run_at: string | null;
   created_at: string;
+  updated_at?: string;
+}
+
+// P0-6：组合 CRUD 新增类型
+export interface PortfolioCreatePayload {
+  name: string;
+  account_type: string;  // "simulated" | "manual"
+  total_capital: number;
+  investable_ratio: number;
+  cash_reserve_ratio: number;
+  currency?: string;
+  is_default?: boolean;
+  auto_trade_enabled?: boolean;
+}
+
+export interface PortfolioUpdatePayload {
+  name?: string;
+  total_capital?: number;
+  investable_ratio?: number;
+  cash_reserve_ratio?: number;
+  currency?: string;
+  is_default?: boolean;
+  auto_trade_enabled?: boolean;
+}
+
+// P2-3：自动交易执行结果
+export interface AutoTradePlanItem {
+  symbol_id: number;
+  symbol: string;
+  name: string;
+  action: string;
+  stage?: string | null;
+  ref_price: number;
+  executed: boolean;
+  order_id?: number | null;
+  filled_price?: number | null;
+  fee?: number | null;
+  // 卖出特有
+  held_quantity?: number | null;
+  sell_quantity?: number | null;
+  reason?: string | null;
+  // 买入特有
+  can_open?: boolean | null;
+  decision?: string | null;
+  blocked_reasons?: string[];
+  recommended_amount?: number | null;
+  buy_quantity?: number | null;
+}
+
+export interface AutoTradeResult {
+  portfolio_id: number;
+  dry_run: boolean;
+  sells: AutoTradePlanItem[];
+  buys: AutoTradePlanItem[];
+  errors: string[];
+  executed_at: string;
+}
+
+// P2-2: 组合整体回测结果
+export interface PortfolioBacktestResult {
+  run_id: number;
+  portfolio_id: number;
+  symbol_ids: number[];
+  symbol_count: number;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+  status: string;
+  run_name: string;
 }
 
 export interface SignalRulePreset {

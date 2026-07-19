@@ -166,4 +166,62 @@ class BacktestRunDetail(BacktestRunRead):
     diagnostics: dict = Field(default_factory=dict)
 
 
+# ---------- P2-1：回测结果应用到模拟组合 ----------
+
+
+class BacktestApplyRequest(BaseModel):
+    """应用回测结果到组合的请求体。"""
+    portfolio_id: int
+    clear_existing: bool = False
+
+
+class BacktestApplyResult(BaseModel):
+    """应用回测结果到组合的响应。"""
+    run_id: int
+    portfolio_id: int
+    initial_capital: float
+    final_cash: float
+    applied_trades: int
+    skipped_trades: int
+    open_positions: int
+    errors: list[str] = Field(default_factory=list)
+
+
+# ---------- P2-2：组合整体回测 ----------
+
+
+class PortfolioBacktestRequest(BaseModel):
+    """组合整体回测请求。
+
+    前提：portfolio 必须是 simulated 账户且 auto_trade_enabled=1。
+    symbol_ids 由后端自动推导（当前持仓 + 最新 scan executable 候选）。
+    initial_capital 沿用 portfolio.total_capital（与单标的回测一致）。
+    """
+    portfolio_id: int
+    start_date: date
+    end_date: date
+    run_name: str | None = None
+
+    @field_validator("end_date")
+    @classmethod
+    def end_after_start(cls, v: date, info) -> date:
+        start = info.data.get("start_date")
+        if start and v < start:
+            raise ValueError("end_date must be >= start_date")
+        return v
+
+
+class PortfolioBacktestResult(BaseModel):
+    """组合整体回测响应。"""
+    run_id: int
+    portfolio_id: int
+    symbol_ids: list[int]
+    symbol_count: int
+    start_date: date
+    end_date: date
+    initial_capital: float
+    status: str
+    run_name: str
+
+
 

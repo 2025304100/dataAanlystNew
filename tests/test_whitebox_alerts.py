@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -29,6 +30,8 @@ from app.api.routes.alerts import (
     update_alert_rule,
 )
 from app.models.alert import AlertEvent, AlertRule
+from app.models.async_task import AsyncTaskRecord
+from app.services import alerts as alert_service
 from app.schemas.alert import AlertRuleCreate, AlertRuleUpdate
 
 pytestmark = pytest.mark.whitebox
@@ -317,3 +320,86 @@ def test_list_active_alerts_returns_events_and_count():
     assert "events" in result
     assert "count" in result
     assert result["count"] == 2
+
+
+def test_task_failed_alert_is_summarized_and_deduplicated(db_session):
+    rule = AlertRule(
+        name="task failures",
+        alert_type="task_failed",
+        enabled=1,
+        severity="error",
+        config_json=json.dumps({"lookback_hours": 24}),
+        cooldown_minutes=1,
+    )
+    task = AsyncTaskRecord(
+        id="failed-factor-task",
+        task_type="factor_pipeline",
+        status="failed",
+        stage="mirror",
+        message="OperationalError 2006: MySQL server has gone away",
+        processed=10,
+        total=100,
+        errors_json=json.dumps([{"error": "ConnectionAbortedError 10053"}]),
+        updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    db_session.add_all([rule, task])
+    db_session.commit()
+
+    first = alert_service._eval_task_failed(db_session, rule)
+    db_session.commit()
+    second = alert_service._eval_task_failed(db_session, rule)
+
+    assert len(first) == 1
+    assert second == []
+    assert "数据库连接中断" in first[0].message
+    data = json.loads(first[0].data_json)
+    assert data["error_code"] == "MYSQL_CONNECTION_LOST"
+    assert "10053" in data["technical_details"]
+
+
+def test_task_failed_alert_recovers_after_newer_success(db_session):
+    failed_at = (
+        datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10)
+    )
+    failed = AsyncTaskRecord(
+        id="failed-sync-task",
+        task_type="universe_smart_sync",
+        status="failed",
+        stage="failed",
+        message="Task expired (no update for 30 minutes)",
+        created_at=failed_at,
+        updated_at=failed_at,
+    )
+    succeeded = AsyncTaskRecord(
+        id="successful-sync-task",
+        task_type="universe_smart_sync",
+        status="done",
+        stage="done",
+        message="done",
+        created_at=failed_at + timedelta(minutes=5),
+        updated_at=failed_at + timedelta(minutes=6),
+    )
+    event = AlertEvent(
+        rule_id=1,
+        alert_type="task_failed",
+        severity="error",
+        title="sync failed",
+        message="任务中断",
+        acknowledged=0,
+        data_json=json.dumps({
+            "task_id": failed.id,
+            "task_type": failed.task_type,
+            "technical_details": failed.message,
+        }),
+    )
+    db_session.add_all([failed, succeeded, event])
+    db_session.commit()
+
+    assert alert_service.reconcile_task_alert_recoveries(db_session) == 1
+    db_session.refresh(event)
+    data = json.loads(event.data_json)
+    assert data["resolution"]["status"] == "recovered"
+    assert data["resolution"]["recovered_by_task_id"] == succeeded.id
+    assert "任务长时间没有进度" in event.message
+    assert data["error_code"] == "TASK_HEARTBEAT_EXPIRED"
+    assert "Task expired" in data["technical_details"]

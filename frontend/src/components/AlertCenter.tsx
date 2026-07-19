@@ -229,7 +229,7 @@ export default function AlertCenter() {
     }
   }, [form, editingRule, showToast, loadRules]);
 
-  const unackCount = events.length;
+  const unackCount = events.filter((event) => !event.resolved).length;
 
   return (
     <div className="alert-center-container">
@@ -260,7 +260,7 @@ export default function AlertCenter() {
           <div className="alert-actions-bar">
             <Space>
               <Button icon={<ThunderboltOutlined />} onClick={handleEvaluate}>{t("alertEvaluate")}</Button>
-              {unackCount > 0 && (
+              {events.length > 0 && (
                 <Button icon={<CheckOutlined />} onClick={handleAcknowledgeAll}>{t("alertAcknowledgeAll")}</Button>
               )}
               <Button icon={<ReloadOutlined />} onClick={loadEvents}>{t("refresh")}</Button>
@@ -276,12 +276,15 @@ export default function AlertCenter() {
               {events.map((ev) => (
                 <Alert
                   key={ev.id}
-                  type={ev.severity === "error" ? "error" : ev.severity === "warn" ? "warning" : "info"}
+                  type={ev.resolved ? "success" : ev.severity === "error" ? "error" : ev.severity === "warn" ? "warning" : "info"}
                   showIcon
-                  icon={ev.severity === "error" ? <ExclamationCircleOutlined /> : undefined}
+                  icon={!ev.resolved && ev.severity === "error" ? <ExclamationCircleOutlined /> : undefined}
                   message={
                     <div className="alert-event-header">
-                      <span className="alert-event-title">{ev.title}</span>
+                      <span className="alert-event-title">
+                        {ev.title}
+                        {ev.resolved && <Tag color="green" style={{ marginLeft: 8 }}>已恢复</Tag>}
+                      </span>
                       <span className="alert-event-time">{formatTime(ev.created_at)}</span>
                     </div>
                   }
@@ -289,9 +292,30 @@ export default function AlertCenter() {
                     <div className="alert-event-body">
                       <p>{ev.message}</p>
                       <Space>
-                        <Tag color={SEVERITY_COLORS[ev.severity]}>{alertTypeLabel(ev.alert_type)}</Tag>
+                        <Tag color={ev.resolved ? "green" : SEVERITY_COLORS[ev.severity]}>{alertTypeLabel(ev.alert_type)}</Tag>
                         {ev.symbol && <Tag>{ev.symbol.symbol} {ev.symbol.name}</Tag>}
                       </Space>
+                      {ev.resolved_at && (
+                        <div style={{ marginTop: 8, color: "#389e0d" }}>
+                          恢复时间：{formatTime(ev.resolved_at)}
+                        </div>
+                      )}
+                      {ev.technical_details && (
+                        <Collapse
+                          ghost
+                          size="small"
+                          style={{ marginTop: 8 }}
+                          items={[{
+                            key: `details-${ev.id}`,
+                            label: "技术详情",
+                            children: (
+                              <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0, maxHeight: 240, overflow: "auto" }}>
+                                {ev.technical_details}
+                              </pre>
+                            ),
+                          }]}
+                        />
+                      )}
                       <div className="alert-event-actions">
                         <Button size="small" icon={<CheckOutlined />} onClick={() => handleAcknowledge(ev.id)}>
                           {t("alertAcknowledge")}

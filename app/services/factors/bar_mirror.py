@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from collections.abc import Callable
@@ -74,7 +75,7 @@ def _read_with_retry(
     db: Session,
     operation: Callable[[Session], T],
     *,
-    attempts: int = 2,
+    attempts: int = 3,
 ) -> T:
     """Run one read in a short session and retry a dropped DB connection.
 
@@ -93,22 +94,45 @@ def _read_with_retry(
         read_db = factory()
         try:
             return operation(read_db)
-        except DBAPIError:
+        except DBAPIError as exc:
             try:
                 read_db.invalidate()
             except Exception:
                 pass
-            if attempt >= attempts:
+            if attempt >= attempts or not _is_disconnect_error(exc):
                 raise
+            delay = 0.5 * (2 ** (attempt - 1))
             logger.warning(
                 "Database connection dropped during factor mirror read; "
-                "retrying with a fresh connection (%s/%s)",
+                "retrying with a fresh connection in %.1fs (%s/%s)",
+                delay,
                 attempt,
                 attempts,
             )
+            time.sleep(delay)
         finally:
             read_db.close()
     raise RuntimeError("unreachable")
+
+
+def _is_disconnect_error(exc: DBAPIError) -> bool:
+    """Return whether a DBAPI error is safe to retry as a read disconnect."""
+    if exc.connection_invalidated:
+        return True
+    values = getattr(exc.orig, "args", ())
+    codes = {value for value in values if isinstance(value, int)}
+    if codes.intersection({2006, 2013, 10053, 10054}):
+        return True
+    message = " ".join(str(value) for value in values).lower()
+    return any(
+        marker in message
+        for marker in (
+            "server has gone away",
+            "lost connection",
+            "connection was aborted",
+            "connection reset",
+        )
+    )
 
 
 def _read_all(db: Session, statement) -> list[Any]:
@@ -416,7 +440,7 @@ def _mirror_universe_bars_by_symbol(
             "universe_bars", 0, total_symbols,
             f"Mirroring universe bars by symbol: 0/{total_symbols}",
         )
-    symbol_batch_size = max(1, min(batch_size, 50))
+    symbol_batch_size = max(1, min(batch_size, 25))
     cursor = 0
     for offset in range(0, len(symbol_ids), symbol_batch_size):
         if _cancelled(should_cancel):

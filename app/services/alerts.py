@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.manager import DatabaseManager
 from app.db.session import get_session_local
 from app.models.alert import AlertEvent, AlertRule
+from app.models.async_task import AsyncTaskRecord
 from app.models.daily_bar import DailyBar
 from app.models.discovery import DiscoveryTaskRecord
 from app.models.score import Score
@@ -79,6 +80,143 @@ def _fire_event(session: Session, rule: AlertRule, title: str, message: str,
     session.add(event)
     rule.last_triggered_at = _now()
     return event
+
+
+def _task_failure_summary(message: str | None, stage: str | None) -> tuple[str, str]:
+    """Convert infrastructure details into a stable user-facing summary."""
+    details = f"{message or ''} {stage or ''}".lower()
+    if "backend restarted" in details or "backend_restart_interrupted" in details:
+        return "BACKEND_RESTART_INTERRUPTED", "后端重启导致任务中断"
+    if "expired" in details or "no update" in details:
+        return "TASK_HEARTBEAT_EXPIRED", "任务长时间没有进度，已被系统中断"
+    if any(
+        marker in details
+        for marker in (
+            "mysql server has gone away",
+            "lost connection",
+            "connectionabortederror",
+            "10053",
+            "2006",
+            "2013",
+        )
+    ):
+        return "MYSQL_CONNECTION_LOST", "数据库连接中断，任务未完成"
+    return "TASK_FAILED", "任务执行失败，未能完成"
+
+
+def _task_technical_details(task: AsyncTaskRecord) -> str:
+    details = task.message or task.stage or ""
+    if not task.errors_json:
+        return details
+    try:
+        errors = json.loads(task.errors_json)
+        error_text = json.dumps(errors, ensure_ascii=False, default=str)
+    except (json.JSONDecodeError, TypeError):
+        error_text = task.errors_json
+    return f"{details}\n{error_text}".strip()
+
+
+def _existing_task_alert_ids(session: Session) -> set[str]:
+    task_ids: set[str] = set()
+    rows = session.execute(
+        select(AlertEvent).where(AlertEvent.alert_type == "task_failed")
+    ).scalars().all()
+    for event in rows:
+        task_id = _safe_load_data_json(event).get("task_id")
+        if task_id:
+            task_ids.add(str(task_id))
+    return task_ids
+
+
+def reconcile_task_alert_recoveries(session: Session) -> int:
+    """Mark failed-task alerts recovered after a newer task of the same type succeeds."""
+    events = session.execute(
+        select(AlertEvent).where(
+            AlertEvent.alert_type == "task_failed",
+            AlertEvent.acknowledged == 0,
+        )
+    ).scalars().all()
+    pending: list[tuple[AlertEvent, dict]] = []
+    task_ids: set[str] = set()
+    task_types: set[str] = set()
+    for event in events:
+        data = _safe_load_data_json(event)
+        task_id = data.get("task_id")
+        task_type = data.get("task_type")
+        if task_id and task_type and task_type != "discovery":
+            pending.append((event, data))
+            task_ids.add(str(task_id))
+            task_types.add(str(task_type))
+    if not pending:
+        return 0
+
+    failed_tasks = {
+        task.id: task
+        for task in session.execute(
+            select(AsyncTaskRecord).where(AsyncTaskRecord.id.in_(task_ids))
+        ).scalars().all()
+    }
+    successful_by_type: dict[str, AsyncTaskRecord] = {}
+    successful_tasks = session.execute(
+        select(AsyncTaskRecord)
+        .where(
+            AsyncTaskRecord.task_type.in_(task_types),
+            AsyncTaskRecord.status == "done",
+        )
+        .order_by(AsyncTaskRecord.created_at.desc())
+    ).scalars().all()
+    for task in successful_tasks:
+        successful_by_type.setdefault(task.task_type, task)
+
+    recovered = 0
+    normalized = 0
+    resolved_at = _now().isoformat()
+    for event, data in pending:
+        failed_task = failed_tasks.get(str(data["task_id"]))
+        successful_task = successful_by_type.get(str(data["task_type"]))
+        if failed_task is not None:
+            error_code, summary = _task_failure_summary(
+                failed_task.message, failed_task.stage
+            )
+            technical_details = _task_technical_details(failed_task)
+            desired_title = f"{failed_task.task_type} 任务失败"
+            desired_message = f"任务 {failed_task.id[:8]}…：{summary}"
+            needs_normalization = (
+                data.get("error_code") != error_code
+                or data.get("technical_details") != technical_details
+                or event.title != desired_title
+                or event.message != desired_message
+            )
+            data["error_code"] = error_code
+            data["technical_details"] = technical_details
+            data["stage"] = failed_task.stage
+            data["processed"] = failed_task.processed
+            data["total"] = failed_task.total
+            if needs_normalization:
+                event.title = desired_title
+                event.message = desired_message
+                normalized += 1
+        already_recovered = (
+            data.get("resolution", {}).get("status") == "recovered"
+        )
+        if (
+            already_recovered
+            or failed_task is None
+            or successful_task is None
+            or successful_task.created_at <= failed_task.created_at
+        ):
+            event.data_json = json.dumps(data, ensure_ascii=False, default=str)
+            continue
+        data["resolution"] = {
+            "status": "recovered",
+            "resolved_at": resolved_at,
+            "recovered_by_task_id": successful_task.id,
+        }
+        event.data_json = json.dumps(data, ensure_ascii=False, default=str)
+        recovered += 1
+    if recovered or normalized:
+        session.commit()
+    return recovered
 
 
 # ── 各类型评估器 ──────────────────────────────────────────
@@ -191,6 +329,7 @@ def _eval_task_failed(session: Session, rule: AlertRule) -> list[AlertEvent]:
     lookback_hours = int(cfg.get("lookback_hours", 24))
     cutoff = _now() - timedelta(hours=lookback_hours)
     events = []
+    existing_task_ids = _existing_task_alert_ids(session)
 
     # 检查 discovery_tasks
     failed_disc = session.execute(
@@ -201,6 +340,8 @@ def _eval_task_failed(session: Session, rule: AlertRule) -> list[AlertEvent]:
     ).scalars().all()
 
     for task in failed_disc:
+        if task.id in existing_task_ids:
+            continue
         events.append(_fire_event(
             session, rule,
             title=f"机会挖掘任务失败",
@@ -208,9 +349,9 @@ def _eval_task_failed(session: Session, rule: AlertRule) -> list[AlertEvent]:
             data={"task_id": task.id, "task_type": "discovery", "stage": task.stage,
                   "processed": task.processed, "total": task.total},
         ))
+        existing_task_ids.add(task.id)
 
     # 检查 async_tasks
-    from app.models.async_task import AsyncTaskRecord
     failed_async = session.execute(
         select(AsyncTaskRecord).where(
             AsyncTaskRecord.status == "failed",
@@ -219,6 +360,10 @@ def _eval_task_failed(session: Session, rule: AlertRule) -> list[AlertEvent]:
     ).scalars().all()
 
     for task in failed_async:
+        if task.id in existing_task_ids:
+            continue
+        error_code, summary = _task_failure_summary(task.message, task.stage)
+        technical_details = _task_technical_details(task)
         events.append(_fire_event(
             session, rule,
             title=f"{task.task_type} 任务失败",
@@ -226,6 +371,23 @@ def _eval_task_failed(session: Session, rule: AlertRule) -> list[AlertEvent]:
             data={"task_id": task.id, "task_type": task.task_type, "stage": task.stage,
                   "message": task.message},
         ))
+        event = events[-1]
+        event.title = f"{task.task_type} 任务失败"
+        event.message = f"任务 {task.id[:8]}…：{summary}"
+        event.data_json = json.dumps(
+            {
+                "task_id": task.id,
+                "task_type": task.task_type,
+                "stage": task.stage,
+                "processed": task.processed,
+                "total": task.total,
+                "error_code": error_code,
+                "technical_details": technical_details,
+            },
+            ensure_ascii=False,
+            default=str,
+        )
+        existing_task_ids.add(task.id)
     return events
 
 
@@ -256,6 +418,7 @@ def evaluate_all_rules() -> list[dict]:
     SessionLocal = get_session_local()
     session = SessionLocal()
     try:
+        reconcile_task_alert_recoveries(session)
         rules = session.execute(
             select(AlertRule).where(AlertRule.enabled == 1)
         ).scalars().all()
@@ -325,11 +488,22 @@ def _safe_load_data_json(ev: AlertEvent) -> dict:
         return {}
 
 
+def _alert_resolution_fields(data: dict) -> dict:
+    resolution = data.get("resolution") or {}
+    resolved = resolution.get("status") == "recovered"
+    return {
+        "resolved": resolved,
+        "resolved_at": resolution.get("resolved_at") if resolved else None,
+        "technical_details": data.get("technical_details"),
+    }
+
+
 def get_active_alerts(limit: int = 50) -> list[dict]:
     """获取未确认的告警事件列表。"""
     SessionLocal = get_session_local()
     session = SessionLocal()
     try:
+        reconcile_task_alert_recoveries(session)
         rows = session.execute(
             select(AlertEvent)
             .where(AlertEvent.acknowledged == 0)
@@ -349,6 +523,7 @@ def get_active_alerts(limit: int = 50) -> list[dict]:
         result = []
         for ev in rows:
             data = _safe_load_data_json(ev)
+            state = _alert_resolution_fields(data)
             symbol_info = None
             if ev.symbol_id:
                 sym = symbol_map.get(ev.symbol_id)
@@ -366,6 +541,7 @@ def get_active_alerts(limit: int = 50) -> list[dict]:
                 "symbol": symbol_info,
                 "data": data,
                 "acknowledged": ev.acknowledged,
+                **state,
                 "created_at": ev.created_at.isoformat() if ev.created_at else None,
             })
         return result

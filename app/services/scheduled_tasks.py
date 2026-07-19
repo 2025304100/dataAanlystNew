@@ -23,7 +23,7 @@ from app.schemas.scheduled_task import ScheduledTaskCreate, ScheduledTaskUpdate
 
 logger = logging.getLogger(__name__)
 SCHEDULER_CHECK_INTERVAL_SECONDS = 30
-DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v4"
+DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v6"
 
 TASK_DEFINITIONS: dict[str, dict] = {
     "universe_incremental_sync": {
@@ -82,6 +82,24 @@ TASK_DEFINITIONS: dict[str, dict] = {
             "use_cached_bars_first": True,
             "use_cached_symbols_only": True,
         },
+    },
+    # P0-9：组合每日净值快照（绩效统计基础数据）
+    "portfolio_equity_snapshot": {
+        "name": "组合净值快照",
+        "description": "每日收盘后写入所有模拟组合的净值快照（绩效统计基础数据，历史不可回溯）",
+        "default_payload": {},
+    },
+    # P3+：市场指数日线同步（Benchmark 对比曲线数据源）
+    "index_daily_sync": {
+        "name": "指数日线同步",
+        "description": "同步沪深300等指数日线到 index_prices 表，供组合绩效 benchmark 对比曲线使用",
+        "default_payload": {"symbol": "000300", "lookback_days": 5},
+    },
+    # P2-3：自动交易执行（基于评分+候选池+风控自动触发模拟买卖）
+    "portfolio_auto_trade": {
+        "name": "组合自动交易",
+        "description": "每日收盘前对所有已开启 auto_trade_enabled 的模拟组合执行一次自动买卖评估与下单",
+        "default_payload": {"dry_run": False, "buy_candidate_limit": 10},
     },
 }
 
@@ -168,6 +186,36 @@ DEFAULT_SCHEDULES = (
         "time_of_day": "18:40",
         "weekdays": [],
         "payload": TASK_DEFINITIONS["discovery_mining"]["default_payload"],
+        "enabled": False,
+    },
+    # P0-9：每日组合净值快照（A 股 15:00 收盘，16:00 写入避开行情同步高峰）
+    {
+        "name": "每日组合净值快照",
+        "task_type": "portfolio_equity_snapshot",
+        "frequency": "daily",
+        "time_of_day": "16:00",
+        "weekdays": [],
+        "payload": TASK_DEFINITIONS["portfolio_equity_snapshot"]["default_payload"],
+        "enabled": True,
+    },
+    # P3+：每日指数日线同步（16:05 在组合快照之后，确保 benchmark 数据就绪）
+    {
+        "name": "每日指数日线同步",
+        "task_type": "index_daily_sync",
+        "frequency": "daily",
+        "time_of_day": "16:05",
+        "weekdays": [],
+        "payload": TASK_DEFINITIONS["index_daily_sync"]["default_payload"],
+        "enabled": True,
+    },
+    # P2-3：每日自动交易（A 股 14:55 收盘前 5 分钟执行，避免与 15:00 收盘冲突）
+    {
+        "name": "每日组合自动交易",
+        "task_type": "portfolio_auto_trade",
+        "frequency": "daily",
+        "time_of_day": "14:55",
+        "weekdays": [],
+        "payload": TASK_DEFINITIONS["portfolio_auto_trade"]["default_payload"],
         "enabled": False,
     },
 )
@@ -347,6 +395,27 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
         from app.schemas.discovery import DiscoveryTaskCreate
 
         return DiscoveryTaskCreate.model_validate(payload).model_dump(mode="json")
+    if task_type == "portfolio_equity_snapshot":
+        # P0-9：组合净值快照无需 payload（遍历所有模拟组合），但允许空 dict
+        if payload:
+            raise ValueError("portfolio_equity_snapshot payload must be empty")
+        return {}
+    if task_type == "index_daily_sync":
+        # P3+：指数日线同步 payload 必须含 symbol(str) 和可选 lookback_days(int, 1-365)
+        symbol = str(payload.get("symbol", "000300")).strip()
+        if not symbol:
+            raise ValueError("symbol must be a non-empty string")
+        lookback_days = int(payload.get("lookback_days", 5))
+        if not 1 <= lookback_days <= 365:
+            raise ValueError("lookback_days must be between 1 and 365")
+        return {"symbol": symbol, "lookback_days": lookback_days}
+    if task_type == "portfolio_auto_trade":
+        # P2-3：自动交易 payload 必须含 dry_run(bool) 和 buy_candidate_limit(int, 1-50)
+        dry_run = bool(payload.get("dry_run", False))
+        buy_candidate_limit = int(payload.get("buy_candidate_limit", 10))
+        if not 1 <= buy_candidate_limit <= 50:
+            raise ValueError("buy_candidate_limit must be between 1 and 50")
+        return {"dry_run": dry_run, "buy_candidate_limit": buy_candidate_limit}
     raise ValueError(f"Unsupported scheduled task type: {task_type}")
 
 
@@ -481,6 +550,29 @@ def _dispatch_task(item: ScheduledTask):
 
         task = create_discovery_task(DiscoveryTaskCreate.model_validate(payload))
         return "discovery", task
+    if item.task_type == "portfolio_equity_snapshot":
+        from app.services.portfolio_equity_snapshot import (
+            create_portfolio_equity_snapshot_task,
+        )
+
+        return "async", create_portfolio_equity_snapshot_task()
+    if item.task_type == "index_daily_sync":
+        from app.services.index_data_task import (
+            create_index_daily_sync_task,
+        )
+
+        symbol = str(payload.get("symbol", "000300"))
+        lookback_days = int(payload.get("lookback_days", 5))
+        return "async", create_index_daily_sync_task(symbol=symbol, lookback_days=lookback_days)
+    if item.task_type == "portfolio_auto_trade":
+        from app.services.auto_trade_task import (
+            create_portfolio_auto_trade_task,
+        )
+
+        return "async", create_portfolio_auto_trade_task(
+            dry_run=bool(payload.get("dry_run", False)),
+            buy_candidate_limit=int(payload.get("buy_candidate_limit", 10)),
+        )
     raise ValueError(f"Unsupported scheduled task type: {item.task_type}")
 
 

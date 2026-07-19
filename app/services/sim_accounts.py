@@ -12,20 +12,23 @@ from app.models.portfolio import Portfolio, Position
 from app.models.sim_account import CashLedger, SimOrder, SimTrade
 from app.models.symbol import Symbol
 from app.services.regions import region_from_market
+# 共享模块：成本模型 + 市场规则。抽取自此文件原 lot_size/normalize_order_quantity，
+# 并新增 T+1/涨跌停/手续费/滑点等真实市场规则，供模拟交易、（未来的）自动下单共用。
+from app.services.cost_model import DEFAULT_COST_CONFIG, compute_cost, compute_fill_price_with_slippage
+from app.services.market_rules import (
+    lot_size_for_symbol,
+    normalize_order_quantity,
+    round_to_tick,
+    validate_market_rules,
+)
 
 
 def _round_money(value: float) -> float:
     return round(float(value), 2)
 
 
-def lot_size_for_symbol(symbol: Symbol) -> int:
-    return 100 if region_from_market(symbol.market) == "cn" else 1
-
-
-def normalize_order_quantity(symbol: Symbol, quantity: float) -> float:
-    lot_size = lot_size_for_symbol(symbol)
-    normalized = floor(float(quantity) / lot_size) * lot_size
-    return float(normalized)
+# 注：lot_size_for_symbol / normalize_order_quantity 已从 app.services.market_rules 导入，
+# 此处保留导入以维持向后兼容（外部模块可能 from app.services.sim_accounts import lot_size_for_symbol）。
 
 
 def latest_price_for_symbol(db: Session, symbol_id: int) -> float | None:
@@ -161,7 +164,35 @@ def place_sim_order(
     price: float | None = None,
     order_type: str = "market",
     note: str | None = None,
+    *,
+    enforce_rules: bool = True,
+    apply_fees: bool = True,
+    cost_config: dict | None = None,
 ) -> tuple[SimOrder, SimTrade]:
+    """下模拟订单。
+
+    改造说明（P0）：
+    - 默认启用真实手续费/滑点（apply_fees=True），修复原 fee=0.0 的失真问题
+    - 默认启用市场规则校验（enforce_rules=True）：T+1 限制 + 涨跌停板
+    - 通过 cost_config 可自定义费率（组合级覆盖）
+    - 旧的 fee=0.0 行为可通过 apply_fees=False 恢复（仅供测试/兼容）
+
+    Args:
+        db: 数据库会话
+        portfolio: 组合（必须 account_type="simulated"）
+        symbol: 标的
+        side: "buy" or "sell"
+        quantity: 下单数量（自动归一化为手数倍）
+        price: 指定价（None 时用最新收盘价）
+        order_type: "market" or "limit"
+        note: 订单备注
+        enforce_rules: 是否强制市场规则（T+1/涨跌停），默认 True
+        apply_fees: 是否计算真实手续费/滑点，默认 True
+        cost_config: 自定义成本配置，None 时用 DEFAULT_COST_CONFIG
+
+    Returns:
+        (SimOrder, SimTrade)
+    """
     if portfolio.account_type != "simulated":
         raise HTTPException(status_code=400, detail="Only simulated portfolios support sim orders")
     if side not in {"buy", "sell"}:
@@ -179,12 +210,40 @@ def place_sim_order(
         )
 
     latest_price = latest_price_for_symbol(db, symbol.id)
-    fill_price = _round_money(price if price and price > 0 else (latest_price or 0.0))
-    if fill_price <= 0:
+    base_price = _round_money(price if price and price > 0 else (latest_price or 0.0))
+    if base_price <= 0:
         raise HTTPException(status_code=400, detail="No usable price for simulated fill")
 
+    # 圆整到最小变动价位（A 股 0.01，ETF 0.001）
+    base_price = round_to_tick(base_price, symbol)
+
+    # 应用滑点：买入成交价上浮，卖出成交价下浮（模拟真实撮合摩擦）
+    if apply_fees:
+        fill_price = _round_money(compute_fill_price_with_slippage(base_price, side, cost_config))
+    else:
+        fill_price = base_price
+
+    # 计算真实手续费（佣金 + 印花税 + 滑点成本）
+    if apply_fees:
+        fee = _round_money(compute_cost(fill_price, normalized_quantity, side, cost_config))
+    else:
+        fee = 0.0
+
     filled_amount = _round_money(normalized_quantity * fill_price)
-    fee = 0.0
+
+    # 市场规则校验：T+1（卖出）+ 涨跌停板（买卖）
+    # 在资金校验前执行，避免规则违反时仍扣款
+    if enforce_rules:
+        validate_market_rules(
+            db=db,
+            symbol=symbol,
+            side=side,
+            quantity=normalized_quantity,
+            fill_price=fill_price,
+            portfolio_id=portfolio.id,
+            enforce_t_plus_1=True,
+            enforce_price_limit=True,
+        )
 
     if side == "buy" and cash_balance(db, portfolio.id) < filled_amount + fee:
         raise HTTPException(status_code=400, detail="Not enough simulated cash")
@@ -196,7 +255,7 @@ def place_sim_order(
         order_type=order_type,
         quantity=normalized_quantity,
         limit_price=price if order_type == "limit" else None,
-        submitted_price=fill_price,
+        submitted_price=base_price,
         status="filled",
         filled_quantity=normalized_quantity,
         filled_price=fill_price,

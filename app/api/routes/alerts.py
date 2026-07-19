@@ -81,9 +81,14 @@ def list_alert_events(
     db: Session = Depends(get_db),
 ):
     from app.models.alert import AlertEvent
-    from app.services.alerts import _safe_load_data_json
+    from app.services.alerts import (
+        _alert_resolution_fields,
+        _safe_load_data_json,
+        reconcile_task_alert_recoveries,
+    )
     from sqlalchemy import select as sa_select
 
+    reconcile_task_alert_recoveries(db)
     stmt = sa_select(AlertEvent).order_by(AlertEvent.created_at.desc()).limit(limit)
     if not include_acknowledged:
         stmt = stmt.where(AlertEvent.acknowledged == 0)
@@ -93,6 +98,7 @@ def list_alert_events(
     for ev in rows:
         # 风控加固：复用 service 层统一解析函数，避免静默吞没 JSON 异常
         data = _safe_load_data_json(ev)
+        state = _alert_resolution_fields(data)
         result.append({
             "id": ev.id,
             "rule_id": ev.rule_id,
@@ -103,9 +109,16 @@ def list_alert_events(
             "symbol_id": ev.symbol_id,
             "data": data,
             "acknowledged": ev.acknowledged,
+            **state,
             "created_at": ev.created_at.isoformat() if ev.created_at else None,
         })
-    return {"events": result, "unacknowledged_count": sum(1 for e in result if not e["acknowledged"])}
+    return {
+        "events": result,
+        "unacknowledged_count": sum(
+            1 for event in result
+            if not event["acknowledged"] and not event["resolved"]
+        ),
+    }
 
 
 @router.post("/alerts/evaluate")
@@ -119,7 +132,10 @@ def trigger_evaluation():
 def list_active_alerts(limit: int = Query(default=50, ge=1, le=200)):
     """获取未确认的告警。"""
     events = get_active_alerts(limit)
-    return {"events": events, "count": len(events)}
+    return {
+        "events": events,
+        "count": sum(1 for event in events if not event.get("resolved", False)),
+    }
 
 
 @router.post("/alerts/acknowledge/{event_id}")

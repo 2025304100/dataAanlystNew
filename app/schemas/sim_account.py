@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,6 +11,11 @@ class SimOrderCreate(BaseModel):
     price: float | None = Field(default=None, gt=0)
     order_type: str = "market"
     note: str | None = None
+    # 改造后新增：可选控制市场规则与成本模型
+    # None → 使用后端默认（True），显式传 False 可禁用（用于测试/兼容旧版前端）
+    enforce_rules: bool | None = None
+    apply_fees: bool | None = None
+    cost_config: dict[str, Any] | None = None
 
 
 class SimOrderRead(BaseModel):

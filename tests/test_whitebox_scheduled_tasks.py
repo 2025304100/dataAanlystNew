@@ -33,24 +33,95 @@ def test_calculate_next_daily_and_weekly_run_in_configured_timezone():
 
 
 def test_seed_default_schedules_is_idempotent(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 9
+    assert scheduled_tasks.seed_default_schedules(db_session) == 12
     db_session.commit()
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     rows = db_session.query(ScheduledTask).all()
-    assert len(rows) == 9
+    assert len(rows) == 12
     enabled = [item for item in rows if item.enabled]
-    assert [item.task_type for item in enabled] == ["universe_incremental_sync"]
-    assert enabled[0].next_run_at is not None
+    # 默认启用：行情增量同步 + 组合净值快照 + 指数日线同步（自动交易默认关闭，需用户主动开启）
+    assert {item.task_type for item in enabled} == {
+        "universe_incremental_sync",
+        "portfolio_equity_snapshot",
+        "index_daily_sync",
+    }
+    assert all(item.next_run_at is not None for item in enabled)
+    # P2-3：portfolio_auto_trade 应在默认调度中且默认关闭
+    auto_trade = [r for r in rows if r.task_type == "portfolio_auto_trade"]
+    assert len(auto_trade) == 1
+    assert auto_trade[0].enabled == 0
+    assert auto_trade[0].next_run_at is None
 
 
 def test_deleted_or_renamed_defaults_are_not_reseeded(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 9
+    assert scheduled_tasks.seed_default_schedules(db_session) == 12
     db_session.commit()
     item = db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").one()
     scheduled_tasks.delete_schedule(db_session, item.id)
 
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     assert db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").count() == 0
+
+
+def test_portfolio_auto_trade_payload_validation(db_session):
+    """P2-3：portfolio_auto_trade payload 校验。"""
+    # 合法 payload
+    result = scheduled_tasks.validate_task_payload(
+        "portfolio_auto_trade", {"dry_run": False, "buy_candidate_limit": 10}
+    )
+    assert result == {"dry_run": False, "buy_candidate_limit": 10}
+    # 默认值
+    result = scheduled_tasks.validate_task_payload("portfolio_auto_trade", {})
+    assert result == {"dry_run": False, "buy_candidate_limit": 10}
+    # buy_candidate_limit 越界
+    try:
+        scheduled_tasks.validate_task_payload(
+            "portfolio_auto_trade", {"buy_candidate_limit": 0}
+        )
+    except ValueError as exc:
+        assert "buy_candidate_limit" in str(exc)
+    else:
+        raise AssertionError("buy_candidate_limit=0 must be rejected")
+    try:
+        scheduled_tasks.validate_task_payload(
+            "portfolio_auto_trade", {"buy_candidate_limit": 51}
+        )
+    except ValueError as exc:
+        assert "buy_candidate_limit" in str(exc)
+    else:
+        raise AssertionError("buy_candidate_limit=51 must be rejected")
+
+
+def test_index_daily_sync_payload_validation(db_session):
+    """P3+：index_daily_sync payload 校验。"""
+    # 合法 payload
+    result = scheduled_tasks.validate_task_payload(
+        "index_daily_sync", {"symbol": "000300", "lookback_days": 5}
+    )
+    assert result == {"symbol": "000300", "lookback_days": 5}
+    # 默认值
+    result = scheduled_tasks.validate_task_payload("index_daily_sync", {})
+    assert result == {"symbol": "000300", "lookback_days": 5}
+    # symbol 空串
+    try:
+        scheduled_tasks.validate_task_payload("index_daily_sync", {"symbol": ""})
+    except ValueError as exc:
+        assert "symbol" in str(exc)
+    else:
+        raise AssertionError("symbol='' must be rejected")
+    # lookback_days 越界
+    try:
+        scheduled_tasks.validate_task_payload("index_daily_sync", {"lookback_days": 0})
+    except ValueError as exc:
+        assert "lookback_days" in str(exc)
+    else:
+        raise AssertionError("lookback_days=0 must be rejected")
+    try:
+        scheduled_tasks.validate_task_payload("index_daily_sync", {"lookback_days": 366})
+    except ValueError as exc:
+        assert "lookback_days" in str(exc)
+    else:
+        raise AssertionError("lookback_days=366 must be rejected")
 
 
 def test_schedule_create_update_and_delete(db_session):

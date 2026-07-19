@@ -1,5 +1,7 @@
 # Database config (contains credentials)
 config/db_config.json
+config/ai_config.json
+config/.ai_config.json.*.tmp
 
 # Python
 __pycache__/

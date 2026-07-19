@@ -325,7 +325,14 @@ def test_get_sim_account_snapshot_portfolio_not_found_raises_404(db_session):
 # ----------------------------------------------------------------------------
 
 def test_create_sim_order_buy_success(db_session):
-    """【P1-3 API 测试】create_sim_order 买入成功，生成 order + trade + ledger。"""
+    """【P1-3 API 测试】create_sim_order 买入成功，生成 order + trade + ledger。
+
+    P0-5 改造后默认启用滑点（0.1%）+ 手续费（佣金 0.03% 最低 5 元 + 滑点成本 0.1%）：
+    - base_price=10.0 → fill_price=10.0*1.001=10.01（买入滑点上浮）
+    - filled_amount=100*10.01=1001.0
+    - fee = max(1001*0.0003, 5.0) + 1001*0.001 = 5.0 + 1.001 ≈ 6.0（买入无印花税）
+    - cash 扣减 = 1001.0 + 6.0 = 1007.0
+    """
     portfolio = _make_portfolio(db_session)
     sym = _make_symbol(db_session, symbol="600010")
     payload = SimOrderCreate(symbol_id=sym.id, side="buy", quantity=100, price=10.0)
@@ -333,8 +340,9 @@ def test_create_sim_order_buy_success(db_session):
     result = create_sim_order(portfolio.id, payload, db=db_session)
     assert result.order.side == "buy"
     assert result.order.filled_quantity == 100  # cn 1 手 = 100 股
-    assert result.order.filled_price == 10.0
-    assert result.order.filled_amount == 1000.0
+    assert result.order.filled_price == 10.01  # 应用 0.1% 买入滑点
+    assert result.order.filled_amount == 1001.0
+    assert result.order.fee == 6.0  # 佣金 5.0 + 滑点 1.001（四舍五入 2 位）
     assert result.trade.symbol_id == sym.id
     assert result.trade.realized_pnl is None  # 买入无 realized_pnl
     # 验证 DB 中确实创建了 order/trade
@@ -342,7 +350,30 @@ def test_create_sim_order_buy_success(db_session):
     assert len(orders) == 1
     trades = db_session.query(SimTrade).filter(SimTrade.portfolio_id == portfolio.id).all()
     assert len(trades) == 1
-    # 验证扣减现金
+    # 验证扣减现金：成交金额 + 手续费
+    assert result.summary.cash_balance == 1_000_000 - 1001.0 - 6.0
+
+
+def test_create_sim_order_buy_with_apply_fees_false_escapes_cost_model(db_session):
+    """【P0-5 回归测试】apply_fees=False 时退化为旧 fee=0.0 行为（escape hatch）。
+
+    守护 P0-5 改造的向后兼容路径：测试场景和旧前端仍可通过显式禁用获得无成本成交。
+    """
+    portfolio = _make_portfolio(db_session)
+    sym = _make_symbol(db_session, symbol="600011")
+    payload = SimOrderCreate(
+        symbol_id=sym.id,
+        side="buy",
+        quantity=100,
+        price=10.0,
+        apply_fees=False,
+        enforce_rules=False,
+    )
+
+    result = create_sim_order(portfolio.id, payload, db=db_session)
+    assert result.order.filled_price == 10.0  # 无滑点
+    assert result.order.filled_amount == 1000.0
+    assert result.order.fee == 0.0  # 旧行为
     assert result.summary.cash_balance == 1_000_000 - 1000.0
 
 

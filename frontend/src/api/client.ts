@@ -131,6 +131,36 @@ export const api = {
 
   // Portfolios
   getPortfolios: () => requestJson<any[]>(`${API}/portfolios`),
+  // P0-6：组合 CRUD 补全
+  createPortfolio: (payload: unknown) =>
+    requestJson<any>(`${API}/portfolios`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  updatePortfolio: (portfolioId: number, payload: unknown) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  deletePortfolio: (portfolioId: number) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}`, { method: "DELETE" }),
+  // P0-10/P1-1：组合净值快照 + 绩效指标
+  getPortfolioEquitySnapshots: (portfolioId: number, params: { startDate?: string; endDate?: string; limit?: number } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.startDate) sp.set("start_date", params.startDate);
+    if (params.endDate) sp.set("end_date", params.endDate);
+    sp.set("limit", String(params.limit ?? 400));
+    return requestJson<any[]>(`${API}/portfolios/${portfolioId}/equity-snapshots?${sp.toString()}`);
+  },
+  getPortfolioPerformance: (portfolioId: number, params: { startDate?: string; endDate?: string; snapshotLimit?: number } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.startDate) sp.set("start_date", params.startDate);
+    if (params.endDate) sp.set("end_date", params.endDate);
+    sp.set("snapshot_limit", String(params.snapshotLimit ?? 1000));
+    return requestJson<any>(`${API}/portfolios/${portfolioId}/performance?${sp.toString()}`);
+  },
+  // P2-3：自动交易执行（dry_run 只返回计划，dry_run=False 实际下单）
+  executeAutoTrade: (portfolioId: number, payload: { dry_run: boolean; buy_candidate_limit?: number }) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}/auto-trade/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      timeoutMs: 60000,
+    }),
   getWorkbench: (portfolioId: number, marketGroup: string) =>
     requestJson<any>(`${API}/dashboard/workbench?portfolio_id=${portfolioId}&market_group=${marketGroup}`),
   getSymbolDetail: (portfolioId: number, symbolId: number, sampleLimit?: number, barLimit?: number) => {
@@ -490,6 +520,24 @@ export const api = {
     requestJson<any>(`${API}/backtest/runs/${runId}`),
   deleteBacktestRun: (runId: number) =>
     requestJson<any>(`${API}/backtest/runs/${runId}`, { method: "DELETE" }),
+  applyBacktestToPortfolio: (runId: number, portfolioId: number, clearExisting = false) =>
+    requestJson<any>(
+      `${API}/backtest/runs/${runId}/apply-to-portfolio`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ portfolio_id: portfolioId, clear_existing: clearExisting }),
+        timeoutMs: 60000,
+      },
+    ),
+  // P2-2: 组合整体回测（symbol_ids 与 rule_config 由后端自动推导）
+  runPortfolioBacktest: (portfolioId: number, payload: { start_date: string; end_date: string; run_name?: string }) =>
+    requestJson<any>(`${API}/backtest/portfolio/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ portfolio_id: portfolioId, ...payload }),
+      timeoutMs: 120000,
+    }),
 
   // Backtest rule templates
   getBacktestTemplates: () =>
@@ -656,15 +704,15 @@ export const api = {
       `${API}/settings/ai-config`,
       { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
     ),
-  testAiConnection: (params: { service_url: string; api_key: string; model?: string }) =>
+  testAiConnection: (params: AiConfigUpdate) =>
     requestJson<{ success: boolean; message: string }>(
       `${API}/settings/ai-config/test`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), timeoutMs: 20000 },
     ),
-  listAiModels: (params: { service_url: string; api_key: string }) =>
+  listAiModels: (params: AiConfigUpdate) =>
     requestJson<{ models: AiModelInfo[]; error?: string }>(
-      `${API}/settings/ai-config/models?service_url=${encodeURIComponent(params.service_url)}&api_key=${encodeURIComponent(params.api_key)}`,
-      { timeoutMs: 20000 },
+      `${API}/settings/ai-config/models`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), timeoutMs: 20000 },
     ),
   aiChat: (payload: AiChatPayload) =>
     requestJson<AiChatResult>(
@@ -963,10 +1011,22 @@ export interface ScheduledTaskRun {
 // AI 接口配置类型
 // ----------------------------------------------------------------------------
 export interface AiConfig {
+  provider: "openai_compatible" | "anthropic" | "ollama" | "custom";
   service_url: string;
   api_key: string;
   model: string;
   enabled: boolean;
+  auth_type: "bearer" | "x-api-key" | "api-key" | "custom" | "none";
+  auth_header: string;
+  chat_path: string;
+  models_path: string;
+  timeout_seconds: number;
+  temperature: number;
+  max_tokens: number;
+  extra_headers: Record<string, string>;
+  api_key_set: boolean;
+  persisted: boolean;
+  updated_at?: string | null;
 }
 
 export interface AiModelInfo {
@@ -976,10 +1036,19 @@ export interface AiModelInfo {
 }
 
 export interface AiConfigUpdate {
+  provider?: AiConfig["provider"];
   service_url?: string;
-  api_key?: string;
+  api_key?: string | null;
   model?: string;
   enabled?: boolean;
+  auth_type?: AiConfig["auth_type"];
+  auth_header?: string;
+  chat_path?: string;
+  models_path?: string;
+  timeout_seconds?: number;
+  temperature?: number;
+  max_tokens?: number;
+  extra_headers?: Record<string, string>;
 }
 
 export interface AiChatPayload {

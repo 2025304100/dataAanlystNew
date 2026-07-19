@@ -181,6 +181,27 @@ def test_expire_stale_tasks_marks_running_as_failed(db_session):
     assert "expired" in task.message.lower()
 
 
+def test_interrupt_orphaned_async_tasks_marks_only_non_terminal(db_session):
+    queued = _create_task(db_session, status="queued", task_type="factor_pipeline")
+    running = _create_task(db_session, status="running", task_type="universe_smart_sync")
+    done = _create_task(db_session, status="done", task_type="factor_pipeline")
+
+    interrupted_ids = async_tasks.interrupt_orphaned_async_tasks(db_session)
+    db_session.refresh(queued)
+    db_session.refresh(running)
+    db_session.refresh(done)
+
+    assert set(interrupted_ids) == {queued.id, running.id}
+    assert queued.status == running.status == "failed"
+    assert queued.stage == running.stage == "interrupted"
+    assert "Backend restarted" in queued.message
+    assert done.status == "done"
+
+    import json
+    error = json.loads(queued.errors_json)[-1]
+    assert error["code"] == "BACKEND_RESTART_INTERRUPTED"
+
+
 # ============================================================================
 # discovery_tasks 稳定性常量守护（P0 回归：防止超时常量被意外修改）
 # ============================================================================

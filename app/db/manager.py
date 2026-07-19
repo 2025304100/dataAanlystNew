@@ -63,16 +63,22 @@ class DatabaseManager:
                 engine_kwargs.setdefault("connect_args", {"check_same_thread": False, "timeout": 30})
             elif db_type == "mysql":
                 engine_kwargs.setdefault("pool_pre_ping", True)
-                engine_kwargs.setdefault("pool_recycle", 3600)
+                # Recycle sockets before a low MySQL wait_timeout closes them.
+                # LIFO favors the most recently verified pooled connection.
+                engine_kwargs.setdefault(
+                    "pool_recycle", int(os.environ.get("DB_POOL_RECYCLE", "60"))
+                )
+                engine_kwargs.setdefault("pool_use_lifo", True)
                 # 连接池大小：支持并发挖掘（3 worker + 主线程 + watchdog + HTTP 请求）
                 # 可通过环境变量 DB_POOL_SIZE / DB_MAX_OVERFLOW 覆盖
                 engine_kwargs.setdefault("pool_size", int(os.environ.get("DB_POOL_SIZE", "10")))
                 engine_kwargs.setdefault("max_overflow", int(os.environ.get("DB_MAX_OVERFLOW", "20")))
                 # pymysql 连接超时：防止 DB 操作永久卡住（Lost connection / 连接被 MySQL 关闭）
-                # connect_timeout=10s（TCP 连接），read_timeout=30s（查询读取）
+                # Defaults: connect_timeout=10s, read/write timeout=60s.
                 engine_kwargs.setdefault("connect_args", {
-                    "connect_timeout": 10,
-                    "read_timeout": 30,
+                    "connect_timeout": int(os.environ.get("DB_CONNECT_TIMEOUT", "10")),
+                    "read_timeout": int(os.environ.get("DB_READ_TIMEOUT", "60")),
+                    "write_timeout": int(os.environ.get("DB_WRITE_TIMEOUT", "60")),
                 })
 
             self._engine = create_engine(url, **engine_kwargs)

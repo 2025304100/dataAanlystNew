@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,10 +9,14 @@ from app.db.session import get_db
 from app.models.backtest import BacktestRun, BacktestRuleTemplate, BacktestTrade
 from app.models.symbol import Symbol
 from app.schemas.backtest import (
+    BacktestApplyRequest,
+    BacktestApplyResult,
     BacktestRunDetail,
     BacktestRunRead,
     BacktestRunRequest,
     BacktestTradeRead,
+    PortfolioBacktestRequest,
+    PortfolioBacktestResult,
     RuleTemplateCreate,
     RuleTemplateResponse,
     RuleTemplateUpdate,
@@ -22,7 +26,9 @@ from app.services.backtest import (
     build_backtest_detail_context,
     run_backtest,
 )
+from app.services.backtest_apply import apply_backtest_run_to_portfolio
 from app.services.factors.runtime import get_factor_runtime_snapshot
+from app.services.portfolio_backtest import run_portfolio_backtest
 
 
 router = APIRouter()
@@ -140,6 +146,78 @@ def delete_backtest_run(run_id: int, db: Session = Depends(get_db)):
     db.delete(run)
     db.commit()
     return {"success": True}
+
+
+@router.post("/backtest/runs/{run_id}/apply-to-portfolio", response_model=BacktestApplyResult)
+def apply_backtest_to_portfolio(
+    run_id: int,
+    payload: BacktestApplyRequest,
+    db: Session = Depends(get_db),
+):
+    """P2-1：将回测结果应用到模拟组合。
+
+    将回测的每笔交易重放为 SimOrder/SimTrade，重建组合的持仓、现金、交易历史。
+    时间戳使用回测的 entry_date/exit_date，不污染最近交易统计。
+
+    clear_existing=False 时若目标组合已有 sim orders，返回 409。
+    """
+    try:
+        result = apply_backtest_run_to_portfolio(
+            db=db,
+            run_id=run_id,
+            portfolio_id=payload.portfolio_id,
+            clear_existing=payload.clear_existing,
+        )
+        return BacktestApplyResult(**result)
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg or "not simulated" in msg:
+            raise HTTPException(status_code=404, detail=msg)
+        if "already has sim orders" in msg:
+            raise HTTPException(status_code=409, detail=msg)
+        if "status is" in msg:
+            raise HTTPException(status_code=409, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    except Exception as exc:
+        logging.getLogger(__name__).exception("应用回测到组合失败")
+        raise HTTPException(status_code=500, detail="应用回测到组合失败，请稍后重试") from exc
+
+
+
+@router.post("/backtest/portfolio/run", response_model=PortfolioBacktestResult)
+def create_portfolio_backtest_run(payload: PortfolioBacktestRequest, db: Session = Depends(get_db)):
+    """P2-2：组合整体回测。
+
+    自动从组合持仓 + 最新 scan executable 候选推导 symbol_ids，
+    自动构造与 auto_trade 信号逻辑一致的 rule_config（基于 Score.action），
+    复用 portfolio 的 active rule 限制仓位与持仓数。
+
+    前提：portfolio 必须是 simulated 账户且 auto_trade_enabled=1。
+    否则回测的信号源（Score.action）与实际执行逻辑不一致，结果无意义。
+    """
+    try:
+        result = run_portfolio_backtest(
+            db=db,
+            portfolio_id=payload.portfolio_id,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            run_name=payload.run_name,
+        )
+        return PortfolioBacktestResult(**result)
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg)
+        if "auto_trade_enabled is 0" in msg:
+            raise HTTPException(status_code=409, detail=msg)
+        if "is not simulated" in msg:
+            raise HTTPException(status_code=409, detail=msg)
+        if "total_capital is" in msg or "Cannot run whole-portfolio backtest" in msg:
+            raise HTTPException(status_code=400, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    except Exception as exc:
+        logging.getLogger(__name__).exception("组合整体回测执行失败")
+        raise HTTPException(status_code=500, detail="组合整体回测执行失败，请稍后重试") from exc
 
 
 

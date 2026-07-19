@@ -74,6 +74,26 @@ interface AppContextValue extends AppState {
   setSignalSampleLimit: (limit: number | null) => void;
   showToast: (type: "success" | "error" | "info", msg: string) => void;
   loadPortfolios: () => Promise<void>;
+  // P0-7：组合管理方法（切换/创建/更新/删除）
+  switchPortfolio: (portfolioId: number) => Promise<void>;
+  createPortfolio: (payload: {
+    name: string;
+    account_type: string;
+    total_capital: number;
+    investable_ratio: number;
+    cash_reserve_ratio: number;
+    currency?: string;
+    is_default?: boolean;
+  }) => Promise<Portfolio | null>;
+  updatePortfolio: (portfolioId: number, payload: {
+    name?: string;
+    total_capital?: number;
+    investable_ratio?: number;
+    cash_reserve_ratio?: number;
+    currency?: string;
+    is_default?: boolean;
+  }) => Promise<Portfolio | null>;
+  deletePortfolio: (portfolioId: number) => Promise<boolean>;
   loadWorkbench: () => Promise<void>;
   loadSymbolDetail: (symbolId: number, options?: { force?: boolean; focus?: boolean; barLimit?: number }) => Promise<SymbolDetail | undefined>;
   loadSignalRuleConfig: () => Promise<void>;
@@ -355,6 +375,82 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       showToast("error", error?.message || t("loadFailed"));
     }
   }, [update, showToast]);
+
+  // P0-7：切换当前活跃组合（替代原 window.location.reload() 的暴力刷新）
+  const switchPortfolio = useCallback(async (portfolioId: number) => {
+    update({ portfolioId });
+    // 切换后重新加载 workbench 以反映新组合的持仓/规则/账户摘要
+    try {
+      await loadWorkbench();
+    } catch (error: any) {
+      showToast("error", error?.message || t("loadFailed"));
+    }
+  }, [update, loadWorkbench, showToast]);
+
+  // P0-7：创建新组合
+  const createPortfolio = useCallback(async (payload: {
+    name: string;
+    account_type: string;
+    total_capital: number;
+    investable_ratio: number;
+    cash_reserve_ratio: number;
+    currency?: string;
+    is_default?: boolean;
+  }): Promise<Portfolio | null> => {
+    try {
+      const newPortfolio = await api.createPortfolio(payload);
+      // 刷新组合列表
+      await loadPortfolios();
+      showToast("success", t("portfolioCreated"));
+      return newPortfolio as Portfolio;
+    } catch (error: any) {
+      showToast("error", error?.message || t("portfolioCreateFailed"));
+      return null;
+    }
+  }, [loadPortfolios, showToast]);
+
+  // P0-7：更新组合属性
+  const updatePortfolio = useCallback(async (portfolioId: number, payload: {
+    name?: string;
+    total_capital?: number;
+    investable_ratio?: number;
+    cash_reserve_ratio?: number;
+    currency?: string;
+    is_default?: boolean;
+  }): Promise<Portfolio | null> => {
+    try {
+      const updated = await api.updatePortfolio(portfolioId, payload);
+      await loadPortfolios();
+      // 若更新的是当前组合，重新加载 workbench
+      if (portfolioId === portfolioIdRef.current) {
+        await loadWorkbench();
+      }
+      showToast("success", t("portfolioUpdated"));
+      return updated as Portfolio;
+    } catch (error: any) {
+      showToast("error", error?.message || t("portfolioUpdateFailed"));
+      return null;
+    }
+  }, [loadPortfolios, loadWorkbench, showToast]);
+
+  // P0-7：删除组合（默认组合和最后一个组合会被后端拒绝）
+  const deletePortfolio = useCallback(async (portfolioId: number): Promise<boolean> => {
+    try {
+      await api.deletePortfolio(portfolioId);
+      // loadPortfolios 会自动把 portfolioId 设为默认组合（或第一个）
+      // 若删除的是当前组合，loadPortfolios 会切换到新默认；需补一次 workbench 刷新
+      const wasCurrent = portfolioId === portfolioIdRef.current;
+      await loadPortfolios();
+      if (wasCurrent) {
+        await loadWorkbench();
+      }
+      showToast("success", t("portfolioDeleted"));
+      return true;
+    } catch (error: any) {
+      showToast("error", error?.message || t("portfolioDeleteFailed"));
+      return false;
+    }
+  }, [loadPortfolios, loadWorkbench, showToast]);
 
   const loadSignalRuleConfig = useCallback(async () => {
     const pid = portfolioIdRef.current;
@@ -917,6 +1013,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSignalSampleLimit,
     showToast,
     loadPortfolios,
+    // P0-7：组合管理方法
+    switchPortfolio,
+    createPortfolio,
+    updatePortfolio,
+    deletePortfolio,
     loadWorkbench,
     loadSymbolDetail,
     loadSignalRuleConfig,

@@ -93,6 +93,38 @@ def _expire_stale_tasks(db: Session) -> None:
         db.commit()
 
 
+def interrupt_orphaned_async_tasks(db: Session) -> list[str]:
+    """Fail queued/running in-process tasks left behind by a backend restart."""
+    rows = (
+        db.execute(
+            select(AsyncTaskRecord).where(
+                AsyncTaskRecord.status.in_(("queued", "running"))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    interrupted_at = _now()
+    for task in rows:
+        previous_stage = task.stage
+        _append_error(
+            task,
+            {
+                "code": "BACKEND_RESTART_INTERRUPTED",
+                "stage": previous_stage,
+                "error": "Backend restarted before the in-process worker completed",
+            },
+        )
+        task.status = "failed"
+        task.stage = "interrupted"
+        task.message = "Backend restarted before task completed"
+        task.finished_at = interrupted_at
+        task.updated_at = interrupted_at
+    if rows:
+        db.commit()
+    return [task.id for task in rows]
+
+
 def _set_task(db: Session, task_id: str, **updates) -> AsyncTaskRecord:
     """原子更新任务字段并提交。如果任务已处于终态则不再覆盖 status/stage。"""
     task = db.get(AsyncTaskRecord, task_id)

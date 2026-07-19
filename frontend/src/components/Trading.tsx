@@ -15,6 +15,9 @@ import {
   computeDefaultSellQuantity,
   lotSizeForDetail,
 } from "../utils/format";
+import PortfolioPerformancePanel from "./PortfolioPerformancePanel";
+import AutoTradePanel from "./AutoTradePanel";
+import PortfolioBacktestPanel from "./PortfolioBacktestPanel";
 
 const SEP = " | ";
 
@@ -151,6 +154,15 @@ export default function Trading() {
           )}
         </div>
       </section>
+
+      {/* P1-2：组合绩效面板（净值曲线 + 绩效指标卡片） */}
+      <PortfolioPerformancePanel />
+
+      {/* P2-3：自动交易执行面板（dry_run 预览 + 实际下单） */}
+      <AutoTradePanel />
+
+      {/* P2-2：组合整体回测面板（基于 Score.action 信号 + 自动推导标的） */}
+      <PortfolioBacktestPanel />
 
       <div className="trading-columns">
         {/* Order Panel */}

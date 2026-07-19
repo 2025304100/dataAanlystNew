@@ -58,6 +58,8 @@ def create_sim_order(portfolio_id: int, payload: SimOrderCreate, db: Session = D
     if symbol is None:
         raise HTTPException(status_code=404, detail="Symbol not found")
 
+    # 改造后默认启用真实手续费 + 市场规则（T+1/涨跌停）
+    # payload 中的 enforce_rules/apply_fees/cost_config 为可选覆盖项
     order, trade = place_sim_order(
         db=db,
         portfolio=portfolio,
@@ -67,6 +69,9 @@ def create_sim_order(portfolio_id: int, payload: SimOrderCreate, db: Session = D
         price=payload.price,
         order_type=payload.order_type,
         note=payload.note,
+        enforce_rules=payload.enforce_rules if payload.enforce_rules is not None else True,
+        apply_fees=payload.apply_fees if payload.apply_fees is not None else True,
+        cost_config=payload.cost_config,
     )
     summary = build_sim_account_summary(db, portfolio)
     db.commit()

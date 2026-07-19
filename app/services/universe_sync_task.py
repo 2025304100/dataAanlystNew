@@ -82,6 +82,7 @@ def _task_to_dict(task: AsyncTaskRecord) -> dict:
         "created_at": task.created_at,
         "started_at": task.started_at,
         "finished_at": task.finished_at,
+        "updated_at": task.updated_at,
     }
 
 
@@ -127,6 +128,38 @@ def _is_cancelled(task_id: str) -> bool:
         return task.status == "cancelled"
     finally:
         db.close()
+
+
+def _start_task_heartbeat(
+    session_factory,
+    task_id: str,
+    interval_seconds: float = 30.0,
+) -> tuple[threading.Event, threading.Thread]:
+    """Keep a long-running in-process task alive between progress callbacks."""
+    stop_event = threading.Event()
+
+    def _heartbeat() -> None:
+        while not stop_event.wait(interval_seconds):
+            db = session_factory()
+            try:
+                task = db.get(AsyncTaskRecord, task_id)
+                if task is None or task.status in ("done", "failed", "cancelled"):
+                    return
+                task.updated_at = _now()
+                db.commit()
+            except Exception:
+                logger.exception("Heartbeat update failed for universe task %s", task_id)
+                db.rollback()
+            finally:
+                db.close()
+
+    thread = threading.Thread(
+        target=_heartbeat,
+        name=f"universe-heartbeat-{task_id[:8]}",
+        daemon=True,
+    )
+    thread.start()
+    return stop_event, thread
 
 
 def _make_progress_callback(db_session_factory, task_id: str, stage: str, range_start: float, range_end: float, base_message: str):
@@ -930,6 +963,9 @@ def _run_universe_smart_sync(
     SessionFactory = get_session_local()
     errors: list[dict] = []
     result_summary: dict[str, Any] = {}
+    heartbeat_stop, heartbeat_thread = _start_task_heartbeat(
+        SessionFactory, task_id
+    )
 
     def _set_stage(stage: str, percent: float, message: str) -> None:
         db = SessionFactory()
@@ -1147,6 +1183,9 @@ def _run_universe_smart_sync(
                 db.close()
         except Exception:
             logger.exception("Failed to mark smart sync task %s as failed", task_id)
+    finally:
+        heartbeat_stop.set()
+        heartbeat_thread.join(timeout=2)
 
 
 # ── 历史回补任务 ─────────────────────────────────────────

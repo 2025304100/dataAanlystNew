@@ -24,6 +24,10 @@ from app.models import (
     akshare_api_config,
     # 基础数据隔离层：全市场标的元数据 + K线 + 挖掘结果独立存储
     universe, discovery_candidate,
+    # P0-8：组合每日净值快照（绩效统计基础数据）
+    portfolio_equity_snapshot,
+    # P3+：市场指数日线（Benchmark 对比曲线基础设施）
+    index_price,
 )
 
 
@@ -151,6 +155,18 @@ def _ensure_sqlite_discovery_columns(engine) -> None:
     )
 
 
+def _ensure_sqlite_portfolio_columns(engine) -> None:
+    """P2-3：组合自动交易开关字段（旧库升级补丁）。"""
+    _ensure_sqlite_columns(
+        engine,
+        "portfolios",
+        {
+            "auto_trade_enabled": "INTEGER DEFAULT 0",
+            "auto_trade_last_run_at": "DATETIME",
+        },
+    )
+
+
 def _ensure_mysql_indicator_version_columns(engine) -> None:
     """为 MySQL 中已存在的表补充新增列。"""
     import logging
@@ -274,6 +290,23 @@ def _ensure_mysql_indicator_version_columns(engine) -> None:
                 except Exception as e:
                     logger.warning("Failed to add %s column to factors: %s", col_name, e)
 
+        # P2-3：组合自动交易开关字段
+        portfolio_new_cols = [
+            ("auto_trade_enabled", "INTEGER NOT NULL DEFAULT 0"),
+            ("auto_trade_last_run_at", "DATETIME NULL"),
+        ]
+        for col_name, col_ddl in portfolio_new_cols:
+            result = conn.execute(text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'portfolios' AND COLUMN_NAME = :col"
+            ), {"db": db_name, "col": col_name})
+            if result.first() is None:
+                try:
+                    conn.execute(text(f"ALTER TABLE portfolios ADD COLUMN {col_name} {col_ddl}"))
+                    logger.info("Added %s column to portfolios", col_name)
+                except Exception as e:
+                    logger.warning("Failed to add %s column to portfolios: %s", col_name, e)
+
 
 def _convert_myisam_to_innodb(engine) -> None:
     """将 MySQL 中已存在的 MyISAM 表转为 InnoDB，确保外键兼容。"""
@@ -323,6 +356,7 @@ def init_db() -> None:
         _ensure_sqlite_indicator_version_columns(eng)
         _ensure_sqlite_journal_columns(eng)
         _ensure_sqlite_discovery_columns(eng)
+        _ensure_sqlite_portfolio_columns(eng)
         with eng.begin() as conn:
             conn.execute(text("PRAGMA journal_mode=WAL;"))
             conn.execute(text("PRAGMA busy_timeout=30000;"))

@@ -1,13 +1,17 @@
 import ReactECharts from "echarts-for-react";
-import { Alert, Card, Col, Row, Space, Table, Tag } from "antd";
+import { Alert, Button, Card, Col, Modal, Row, Space, Switch, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { useState } from "react";
 import { t } from "../i18n";
 import { CONDITION_FIELDS } from "../constants/conditionFields";
 import type { BacktestConditionTrace, BacktestPricePoint, BacktestRun, BacktestTrade } from "../types";
 import { money, percent, score, pnlClass } from "../utils/format";
+import { api } from "../api/client";
 
 interface BacktestResultProps {
   result: BacktestRun | null;
+  portfolioId?: number;
+  onAppliedToPortfolio?: () => void;
 }
 
 function parseEquityCurve(result: BacktestRun | null): Array<{ date: string; equity: number }> {
@@ -155,7 +159,7 @@ function renderTraceList(title: string, traces: BacktestConditionTrace[] | undef
   );
 }
 
-export default function BacktestResult({ result }: BacktestResultProps) {
+export default function BacktestResult({ result, portfolioId, onAppliedToPortfolio }: BacktestResultProps) {
   const equityCurve = parseEquityCurve(result);
   const trades = result?.trades ?? [];
   const priceSeries: BacktestPricePoint[] = result?.price_series ?? [];
@@ -178,6 +182,43 @@ export default function BacktestResult({ result }: BacktestResultProps) {
   const avgLossPct = losers.length ? losers.reduce((sum, trade) => sum + Number(trade.pnl_pct ?? 0), 0) / losers.length : null;
   const signalConversion = buySignalDays > 0 ? (trades.length / buySignalDays) : null;
   const sampleMisses = (diagnostics.sample_misses ?? []) as Array<Record<string, any>>;
+
+  // P2-1：应用回测到组合
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [applyClearExisting, setApplyClearExisting] = useState(true);
+  const [applying, setApplying] = useState(false);
+
+  const handleApplyToPortfolio = async () => {
+    if (!result || !portfolioId) return;
+    setApplying(true);
+    try {
+      const res = await api.applyBacktestToPortfolio(result.id, portfolioId, applyClearExisting);
+      const errCount = res?.errors?.length ?? 0;
+      const msg = `${t("btApplySuccess")}: ${res?.applied_trades ?? 0} ${t("items")}` +
+        (errCount > 0 ? `, ${errCount} ${t("btApplySkipped")}` : "");
+      Modal.success({
+        title: t("btApplySuccess"),
+        content: (
+          <div>
+            <div>{msg}</div>
+            <div style={{ marginTop: 8, color: "var(--muted)" }}>
+              {t("btApplyOpenPositions")}: {res?.open_positions ?? 0} | {t("btApplyFinalCash")}: {money(res?.final_cash ?? 0)}
+            </div>
+          </div>
+        ),
+      });
+      setApplyModalOpen(false);
+      onAppliedToPortfolio?.();
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      Modal.error({
+        title: t("btApplyFailed"),
+        content: errMsg,
+      });
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const priceRows = priceSeries.map((point) => ({
     date: point.date,
@@ -407,11 +448,40 @@ export default function BacktestResult({ result }: BacktestResultProps) {
 
   return (
     <section className="backtest-result">
-      <div style={{ marginBottom: 8 }}>
+      <div style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <Tag color={config.version === 2 ? "purple" : "default"}>
           {config.version === 2 ? t("btModeAdvanced") : t("btModeStandard")}
         </Tag>
+        {portfolioId && result && (
+          <Button size="small" type="primary" ghost onClick={() => setApplyModalOpen(true)}>
+            {t("btApplyToPortfolio")}
+          </Button>
+        )}
       </div>
+
+      <Modal
+        open={applyModalOpen}
+        title={t("btApplyToPortfolio")}
+        confirmLoading={applying}
+        okText={t("btApplyConfirm")}
+        cancelText={t("cancel")}
+        onOk={handleApplyToPortfolio}
+        onCancel={() => setApplyModalOpen(false)}
+      >
+        <div style={{ marginBottom: 12 }}>{t("btApplyHint")}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Switch checked={applyClearExisting} onChange={setApplyClearExisting} />
+          <span>{t("btApplyClearExisting")}</span>
+        </div>
+        {!applyClearExisting && (
+          <Alert
+            style={{ marginTop: 12 }}
+            type="info"
+            showIcon
+            message={t("btApplyKeepExistingHint")}
+          />
+        )}
+      </Modal>
 
       <Row gutter={[12, 12]}>
         {metrics.map((item) => (

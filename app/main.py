@@ -16,6 +16,7 @@ from app.core.config import settings, load_db_config, build_mysql_url
 from app.db.init_db import init_db
 from app.db.manager import DatabaseManager
 from app.services.discovery_cleanup import cleanup_expired_discovery_results
+from app.services.async_tasks import interrupt_orphaned_async_tasks
 from app.services.scheduled_tasks import scheduler_loop
 from app.services.symbol_cleanup import cleanup_stale_discovery_symbols
 
@@ -101,6 +102,13 @@ def _run_startup_cleanup() -> None:
         SessionLocal = _get_session_local()
         db = SessionLocal()
         try:
+            interrupted_ids = interrupt_orphaned_async_tasks(db)
+            if interrupted_ids:
+                logger.warning(
+                    "Startup cleanup: marked %d orphaned async tasks as interrupted: %s",
+                    len(interrupted_ids),
+                    interrupted_ids,
+                )
             result = cleanup_expired_discovery_results(db)
             if result["deleted"] > 0:
                 logger.info(

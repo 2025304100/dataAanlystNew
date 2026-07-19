@@ -338,6 +338,18 @@ def test_short_read_retries_dropped_connection_and_closes_sessions(
     assert all(session.closed for session in sessions)
 
 
+def test_disconnect_classifier_rejects_non_connection_errors():
+    dropped = OperationalError(
+        "SELECT 1", {}, Exception(2006, "MySQL server has gone away")
+    )
+    invalid_sql = OperationalError(
+        "SELECT broken", {}, Exception(1064, "SQL syntax error")
+    )
+
+    assert bar_mirror._is_disconnect_error(dropped) is True
+    assert bar_mirror._is_disconnect_error(invalid_sql) is False
+
+
 def test_bounded_range_resumes_after_failed_duckdb_batch(
     db_session, tmp_path, monkeypatch
 ):

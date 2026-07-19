@@ -19,6 +19,10 @@ class Portfolio(Base):
     cash_reserve_ratio: Mapped[float] = mapped_column(Float)
     currency: Mapped[str] = mapped_column(String(16), default="CNY")
     is_default: Mapped[int] = mapped_column(Integer, default=0)
+    # P2-3：自动交易开关（0=关闭，1=开启）。开启后定时任务才会扫描该组合。
+    auto_trade_enabled: Mapped[int] = mapped_column(Integer, default=0)
+    # P2-3：自动交易最后执行时间（用于审计与展示）
+    auto_trade_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

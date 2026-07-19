@@ -19,22 +19,22 @@ from app.models.portfolio import Portfolio
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.services.factors.runtime import get_factor_runtime_snapshot
+# 共享模块：成本模型、绩效指标。抽取自此文件原 _compute_cost/_compute_statistics，
+# 供回测、模拟交易、（未来的）自动下单三方共用，避免重复实现。
+from app.services.cost_model import DEFAULT_COST_CONFIG, compute_cost as _compute_cost
+from app.services.metrics import (
+    TRADING_DAYS_PER_YEAR,
+    RISK_FREE_RATE,
+    compute_statistics as _shared_compute_statistics,
+)
 
 
 EXECUTION_PRICE_FIELDS = {"open", "close"}
 EXECUTION_TIMING_MODES = {"signal_open", "signal_close", "next_open"}
 
-# 默认交易成本配置（与 schema 校验默认值保持一致，避免硬编码重复）
-DEFAULT_COST_CONFIG = {
-    "commission_rate": 0.0003,
-    "min_commission": 5.0,
-    "stamp_tax_rate": 0.001,
-    "slippage_rate": 0.001,
-}
-# 年化交易日数（用于夏普比率等年化指标计算）
-TRADING_DAYS_PER_YEAR = 252
-# 无风险利率（用于夏普比率计算）
-RISK_FREE_RATE = 0.03
+# 注：DEFAULT_COST_CONFIG / TRADING_DAYS_PER_YEAR / RISK_FREE_RATE
+# 已从 app.services.cost_model / app.services.metrics 导入，
+# 此处保留导入以维持向后兼容（外部模块可能 from app.services.backtest import DEFAULT_COST_CONFIG）。
 
 logger = logging.getLogger(__name__)
 
@@ -181,23 +181,6 @@ def _compute_price_context(bars: list[DailyBar], lookback_days: int) -> dict:
     prior_high = max((float(bar.high) for bar in prior), default=None)
     prior_low = min((float(bar.low) for bar in prior), default=None)
     return {"current": current, "ma": ma, "prior_high": prior_high, "prior_low": prior_low, "has_window": len(window) >= lookback_days}
-
-
-def _compute_cost(price: float, quantity: float, side: str, config: dict) -> float:
-    """Doc."""
-    commission_rate = float(config.get("commission_rate", 0.0003))
-    min_commission = float(config.get("min_commission", 5.0))
-    stamp_tax_rate = float(config.get("stamp_tax_rate", 0.001))
-    slippage_rate = float(config.get("slippage_rate", 0.001))
-    
-    amount = price * quantity
-    commission = max(amount * commission_rate, min_commission)
-    slippage = amount * slippage_rate
-    
-    if side == "sell":
-        stamp_tax = amount * stamp_tax_rate
-        return commission + stamp_tax + slippage
-    return commission + slippage
 
 
 def _evaluate_buy_signal(
@@ -1153,86 +1136,24 @@ def _compute_statistics(
     initial_capital: float,
     equity_curve: list[dict],
 ) -> dict:
-    """Doc."""
-    if not trades or not equity_curve:
-        return {
-            "total_return": 0.0,
-            "total_return_pct": 0.0,
-            "max_drawdown": 0.0,
-            "max_drawdown_pct": 0.0,
-            "sharpe_ratio": 0.0,
-            "win_rate": 0.0,
-            "profit_factor": 0.0,
-            "trade_count": 0,
-            "avg_holding_days": 0.0,
+    """回测绩效统计 - 委托到 app.services.metrics 共享模块。
+
+    保留原签名以维持 backtest.py 内部调用兼容（line 2090 等）。
+    将 BacktestTrade ORM 对象转换为通用 dict 后调用共享实现，
+    确保算法与原实现一致（回测结果可复现）。
+
+    未来组合实盘绩效、自动下单效果评估可直接调用
+    app.services.metrics.compute_statistics，无需经过此包装。
+    """
+    # 转换 BacktestTrade → dict，与 metrics.compute_statistics 期望的输入对齐
+    trade_dicts = [
+        {
+            "pnl": t.pnl if t.exit_date is not None else None,
+            "hold_days": t.hold_days,
         }
-    # Total return.
-    final_equity = equity_curve[-1]["equity"]
-    total_return = final_equity - initial_capital
-    total_return_pct = total_return / initial_capital if initial_capital > 0 else 0.0
-    # Max drawdown.
-    peak = initial_capital
-    max_dd = 0.0
-    max_dd_pct = 0.0
-    for point in equity_curve:
-        equity = point["equity"]
-        if equity > peak:
-            peak = equity
-        dd = peak - equity
-        dd_pct = dd / peak if peak > 0 else 0.0
-        if dd > max_dd:
-            max_dd = dd
-            max_dd_pct = dd_pct
-    
-    # 统计胜率与盈亏比
-    completed_trades = [t for t in trades if t.exit_date is not None and t.pnl is not None]
-    win_trades = [t for t in completed_trades if t.pnl > 0]
-    loss_trades = [t for t in completed_trades if t.pnl < 0]
-    
-    win_rate = len(win_trades) / len(completed_trades) if completed_trades else 0.0
-    
-    avg_win = sum(t.pnl for t in win_trades) / len(win_trades) if win_trades else 0.0
-    avg_loss = abs(sum(t.pnl for t in loss_trades) / len(loss_trades)) if loss_trades else 0.0
-    # 风控：loss_trades 非空但 avg_loss=0（脏数据/平值成交）时除零 → 兜底 inf
-    gross_loss = avg_loss * len(loss_trades)
-    profit_factor = (avg_win * len(win_trades)) / gross_loss if gross_loss > 0 else float('inf')
-
-    # 计算平均持仓天数
-    avg_hold_days = sum(t.hold_days or 0 for t in completed_trades) / len(completed_trades) if completed_trades else 0.0
-
-    # 计算夏普比率等年化指标
-    # 风控：equity=0/负/NaN 时除零或失真，需逐点保护
-    if len(equity_curve) > 1:
-        returns = []
-        for i in range(1, len(equity_curve)):
-            prev_eq = equity_curve[i-1]["equity"]
-            curr_eq = equity_curve[i]["equity"]
-            # prev_eq=0 → 除零；NaN/inf → 污染统计；prev_eq<0 → 收益率符号反转
-            if not isinstance(prev_eq, (int, float)) or prev_eq <= 0 or prev_eq != prev_eq:
-                returns.append(0.0)
-                continue
-            if not isinstance(curr_eq, (int, float)) or curr_eq != curr_eq:
-                returns.append(0.0)
-                continue
-            returns.append((curr_eq - prev_eq) / prev_eq)
-        mean_return = sum(returns) / len(returns) if returns else 0.0
-        variance = sum((r - mean_return) ** 2 for r in returns) / len(returns) if returns else 0.0
-        std = variance ** 0.5
-        sharpe_ratio = (mean_return * TRADING_DAYS_PER_YEAR - RISK_FREE_RATE) / (std * (TRADING_DAYS_PER_YEAR ** 0.5)) if std > 0 else 0.0
-    else:
-        sharpe_ratio = 0.0
-    
-    return {
-        "total_return": round(total_return, 2),
-        "total_return_pct": round(total_return_pct, 4),
-        "max_drawdown": round(max_dd, 2),
-        "max_drawdown_pct": round(max_dd_pct, 4),
-        "sharpe_ratio": round(sharpe_ratio, 2),
-        "win_rate": round(win_rate, 4),
-        "profit_factor": round(profit_factor, 2) if profit_factor != float('inf') else 999.0,
-        "trade_count": len(trades),
-        "avg_holding_days": round(avg_hold_days, 1),
-    }
+        for t in trades
+    ]
+    return _shared_compute_statistics(trade_dicts, initial_capital, equity_curve)
 
 
 def _json_safe_trace_value(value):
@@ -1983,9 +1904,10 @@ def run_backtest(
 
                 peak_prices[symbol_id] = max(peak_prices.get(symbol_id, trade.entry_price), float(bar.high))
 
-                score = None
-                if rule_config.get("version", 1) >= 2:
-                    score = _latest_score_on_or_before(score_map, symbol_id, current_date)
+                # Bug fix: v1 _evaluate_sell_signal 也支持 score_actions 检查，
+                # 但此前仅 v2 fetch score。统一 fetch 以让 v1 的 score_actions 生效。
+                # score_map 是内存查找（O(log n) bisect），无 DB 性能影响。
+                score = _latest_score_on_or_before(score_map, symbol_id, current_date)
 
                 should_sell, exit_reason = _evaluate_sell_signal(
                     trade,

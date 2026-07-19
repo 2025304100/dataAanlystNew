@@ -9,6 +9,8 @@ from app.models import (
     daily_bar, factor, journal_entry, market_event, news_event,
     portfolio, scan, score, signal_rule, sim_account,
     symbol, trade_setup, watchlist,
+    # P3+：市场指数日线（Benchmark 对比曲线基础设施）
+    index_price,
 )
 
 config = context.config

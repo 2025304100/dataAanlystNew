@@ -16,3 +16,7 @@ from app.models import (
 from app.models import akshare_api_config
 # 基础数据隔离层：全市场标的元数据 + K线 + 挖掘结果独立存储
 from app.models import universe, discovery_candidate
+# P0-8：组合每日净值快照（绩效统计基础数据）
+from app.models import portfolio_equity_snapshot
+# P3+：市场指数日线（Benchmark 对比曲线基础设施）
+from app.models import index_price
