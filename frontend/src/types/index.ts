@@ -536,6 +536,7 @@ export interface AutoTradeResult {
 }
 
 // P2-2: 组合整体回测结果
+// WP7.1/WP7.3: 新增 symbol_source / source_type / excluded_member_count
 export interface PortfolioBacktestResult {
   run_id: number;
   portfolio_id: number;
@@ -546,6 +547,9 @@ export interface PortfolioBacktestResult {
   initial_capital: number;
   status: string;
   run_name: string;
+  symbol_source?: string | null;
+  source_type?: string | null;
+  excluded_member_count?: number;
 }
 
 export interface SignalRulePreset {
@@ -952,6 +956,16 @@ export interface BacktestRun {
   price_series?: BacktestPricePoint[];
   diagnostics?: BacktestDiagnostics;
   summary?: BacktestSummary;
+  // WP7.2 回测快照字段（旧回测这些字段为 null/undefined）
+  member_snapshot_json?: string | null;
+  symbol_ids_json?: string | null;
+  excluded_members_json?: string | null;
+  portfolio_rule_version_id?: number | null;
+  score_mode?: string | null;
+  data_cutoff_at?: string | null;
+  engine_name?: string | null;
+  engine_version?: string | null;
+  source_type?: string | null;
 }
 
 // Custom indicator definitions and preview payloads.
@@ -1242,5 +1256,287 @@ export interface BacktestCoverageWarning {
     min_coverage_pct?: number;
   };
   issues: BacktestCoverageIssue[];
+}
+
+// ----------------------------------------------------------------------------
+// WP8.3：绩效归因、复盘与基准对比类型
+// ----------------------------------------------------------------------------
+
+/**
+ * 单个归因条目。各维度通用结构：
+ * - label: 分组标签（成员名 / 执行模式 / 来源 / 规则版本等）
+ * - contribution_pct: 贡献占比
+ * - pnl: 盈亏金额
+ * - trade_count: 交易笔数
+ * - detail / extra: 维度专属补充字段
+ */
+export interface AttributionItem {
+  label: string;
+  contribution_pct: number | null;
+  pnl: number | null;
+  trade_count: number | null;
+  detail?: string | null;
+  extra?: Record<string, string | number | null>;
+}
+
+/**
+ * 归因维度结果。
+ * - items: 分组条目
+ * - sample_warning: 样本不足提示（null 表示样本充足）
+ * - sample_size: 采样交易笔数（可选，后端未返回时前端用 items 推断）
+ * - group_count: 分组数（可选）
+ */
+export interface AttributionDimension {
+  items: AttributionItem[];
+  sample_warning: string | null;
+  sample_size?: number | null;
+  group_count?: number | null;
+}
+
+/** 回测 vs 模拟 偏差。字段为后端返回的指标差异，保留扩展。 */
+export interface BacktestVsSimDiff {
+  total_return_pct?: number | null;
+  max_drawdown_pct?: number | null;
+  sharpe_ratio?: number | null;
+  win_rate?: number | null;
+  trade_count?: number | null;
+  [key: string]: unknown;
+}
+
+export interface BacktestVsSim {
+  diff: BacktestVsSimDiff;
+  explanation: string;
+}
+
+/** 成本影响汇总。 */
+export interface CostImpact {
+  total_cost: number;
+  slippage_cost: number;
+  rejected_count: number;
+  risk_blocked_count: number;
+  impact_pct: number;
+}
+
+/** 基准对比（沪深 300 / 中证 500 等）。后端未配置时为 null。 */
+export interface BenchmarkComparison {
+  name: string;
+  excess_return: number | null;
+  tracking_error: number | null;
+  information_ratio: number | null;
+}
+
+/** 归因报告整体结构，对应 GET /portfolios/{id}/attribution 返回。 */
+export interface AttributionReport {
+  by_member: AttributionDimension;
+  by_execution_mode: AttributionDimension;
+  by_source: AttributionDimension;
+  by_rule_signal: AttributionDimension;
+  backtest_vs_sim: BacktestVsSim;
+  cost_impact: CostImpact;
+  summary: string;
+  benchmark?: BenchmarkComparison | null;
+}
+
+/** 复盘记录。 */
+export interface Review {
+  id: number;
+  portfolio_id: number;
+  note: string;
+  attribution_snapshot?: string | null;
+  created_at: string;
+  created_by?: string | null;
+}
+
+// ----------------------------------------------------------------------------
+// WP-AI.7：AI 助手前端类型定义
+// ----------------------------------------------------------------------------
+
+/** AI 会话（对应后端 AISession 模型）。 */
+export interface AISession {
+  id: number;
+  title: string;
+  source_page: string | null;
+  provider: string | null;
+  model: string | null;
+  profile_id: string | null;
+  status: string;
+  context_summary: string | null;
+  total_tokens: number;
+  total_cost: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  deleted_at: string | null;
+}
+
+/** AI 会话列表响应。 */
+export interface AISessionListResponse {
+  items: AISession[];
+  limit: number;
+  offset: number;
+  include_archived: boolean;
+}
+
+/** AI 消息（对应后端 AIMessage 模型）。 */
+export interface AIMessage {
+  id: number;
+  session_id: number;
+  role: string;
+  content: string;
+  context_summary: string | null;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  latency_ms: number | null;
+  model_used: string | null;
+  provider_used: string | null;
+  metadata_json: string | null;
+  created_at: string | null;
+}
+
+/** AI 消息列表响应。 */
+export interface AIMessageListResponse {
+  items: AIMessage[];
+  session_id: number;
+  limit: number;
+  offset: number;
+}
+
+/** AI 动作审计（对应后端 AIActionAudit 模型）。 */
+export interface AIActionAudit {
+  id: number;
+  message_id: number;
+  action_type: string;
+  suggested_payload: string;
+  preview_result: string | null;
+  user_confirmed: boolean;
+  confirmed_at: string | null;
+  final_result: string | null;
+  rejected_reason: string | null;
+  created_at: string | null;
+}
+
+/** AI Profile（对应后端 AIProfile 模型）。 */
+export interface AIProfile {
+  id: number;
+  name: string;
+  provider: string;
+  base_url: string | null;
+  model: string;
+  auth_type: string | null;
+  secret_key_ref: string | null;
+  timeout_seconds: number;
+  max_tokens: number;
+  max_context_tokens: number;
+  daily_request_limit: number;
+  max_concurrent: number;
+  purpose: string;
+  priority: number;
+  is_enabled: boolean;
+  is_fallback: boolean;
+  health_status: string;
+  last_health_check: string | null;
+  daily_request_count: number;
+  daily_request_reset_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** AI Profile 测试连接结果。 */
+export interface AIProfileTestResult {
+  success: boolean;
+  latency_ms: number;
+  model_info: Record<string, unknown> | null;
+  error: string | null;
+}
+
+/** AI Profile 用量。 */
+export interface AIProfileUsage {
+  profile_id: number;
+  daily_request_count: number;
+  daily_request_limit: number;
+  remaining: number;
+  daily_request_reset_at: string | null;
+}
+
+/** AI 健康状态条目。 */
+export interface AIHealth {
+  id: number;
+  name: string;
+  provider: string;
+  model: string;
+  priority: number;
+  is_enabled: boolean;
+  is_fallback: boolean;
+  health_status: string;
+  last_health_check: string | null;
+  daily_request_count: number;
+  daily_request_limit: number;
+}
+
+/** AI 统一响应结构（对应后端 AIResponse）。 */
+export interface AIResponse {
+  answer: string;
+  evidence: Array<{
+    type: string;
+    source: string;
+    content: string;
+    confidence: number | null;
+  }>;
+  warnings: string[];
+  suggested_actions: Array<{
+    action_type: string;
+    description: string;
+    draft_id?: string;
+  }>;
+  draft: Record<string, unknown> | null;
+  metadata: {
+    data_as_of?: string | null;
+    model_version?: string | null;
+    rule_version?: string | null;
+    provider_used?: string | null;
+    latency_ms?: number | null;
+    tokens?: number | null;
+    [key: string]: unknown;
+  };
+}
+
+/** AI 助手上下文（页面来源 + 引用 ID）。 */
+export interface AIAssistantContext {
+  source_page: string;
+  references: Record<string, number | string>;
+  initial_question?: string;
+}
+
+// WP-S-FIX.1: 能力门禁类型（对应后端 app/schemas/capability.py）
+export interface CapabilityPrerequisite {
+  key: string;
+  label: string;
+  satisfied: boolean;
+  detail: string | null;
+}
+
+export interface CapabilityAction {
+  label: string;
+  action_type: "redirect" | "configure" | "sync" | "retry" | "dismiss";
+  target: string | null;
+  reason: string | null;
+}
+
+export interface CapabilityItem {
+  key: string;
+  label: string;
+  status: "ready" | "degraded" | "blocked";
+  reason_code: string | null;
+  user_message: string;
+  prerequisites: CapabilityPrerequisite[];
+  recommended_actions: CapabilityAction[];
+  data_cutoff_at: string | null;
+  last_checked_at: string;
+}
+
+export interface CapabilitiesResponse {
+  overall_status: "ready" | "degraded" | "blocked";
+  capabilities: CapabilityItem[];
+  checked_at: string;
 }
 

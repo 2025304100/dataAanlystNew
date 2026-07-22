@@ -20,13 +20,21 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
 from app.db.session import get_db
 from app.models.portfolio import Portfolio, PortfolioRule, Position
+from app.models.portfolio_member import (
+    EXECUTION_AUTO,
+    STATUS_ACTIVE,
+    PortfolioMember,
+)
 from app.models.scan import ScanResult, ScanRun
 from app.models.score import Score
 from app.models.sim_account import SimOrder
 from app.models.symbol import Symbol
+from app.services.auto_trade_member_source import execute_member_source
+from app.services.auto_trade_safety import verify_order_attribution
 from app.services.auto_trade_task import (
     TASK_TYPE,
     create_portfolio_auto_trade_task,
@@ -562,7 +570,11 @@ class TestAutoTradeEndpoint:
                 json={"dry_run": True},
             )
             assert resp.status_code == 404
-            assert "not found" in resp.json()["detail"]
+            # WP-S.6：HTTPException 被全局处理器包装为统一错误协议，
+            # 原始 detail 保留在 technical_details.error_message
+            body = resp.json()
+            assert body["error_code"] == "NOT_FOUND"
+            assert "not found" in body["technical_details"]["error_message"].lower()
         finally:
             app.dependency_overrides.pop(get_db, None)
 
@@ -583,7 +595,10 @@ class TestAutoTradeEndpoint:
                 json={"dry_run": True},
             )
             assert resp.status_code == 400
-            assert "not simulated" in resp.json()["detail"]
+            # WP-S.6：HTTPException 被全局处理器包装为统一错误协议，
+            # 原始 detail 保留在 technical_details.error_message
+            body = resp.json()
+            assert "not simulated" in body["technical_details"]["error_message"].lower()
         finally:
             app.dependency_overrides.pop(get_db, None)
 
@@ -604,7 +619,10 @@ class TestAutoTradeEndpoint:
                 json={"dry_run": True},
             )
             assert resp.status_code == 409
-            assert "auto_trade_enabled" in resp.json()["detail"]
+            # WP-S.6：HTTPException 被全局处理器包装为统一错误协议，
+            # 原始 detail 保留在 technical_details.error_message
+            body = resp.json()
+            assert "auto_trade_enabled" in body["technical_details"]["error_message"].lower()
         finally:
             app.dependency_overrides.pop(get_db, None)
 
@@ -756,3 +774,485 @@ class TestScheduledTasksIntegration:
         assert item.enabled == 0  # 默认关闭，用户需主动开启
         assert item.next_run_at is None
         assert item.time_of_day == "14:55"
+
+
+# ============================================================================
+# 9. WP6 信号归因字段（SimOrder 归因持久化与可追溯性）
+# ============================================================================
+
+
+class TestWP6OrderAttribution:
+    """WP6 信号归因字段测试。
+
+    守护 SimOrder 的 WP6.1 归因字段：
+    - member_id / source_type / source_id / signal_id
+    - signal_snapshot_json / rule_version_id / execution_mode
+    - client_order_key / decision_snapshot_json
+    - rejection_code / rejection_detail
+
+    覆盖 5 个场景：归因字段持久化、client_order_key 唯一索引、
+    信号快照可追溯、拒绝码与拒绝详情、跨任务归因追溯。
+    """
+
+    # ------------------------------------------------------------------
+    # 1. 归因字段持久化（2 个）
+    # ------------------------------------------------------------------
+
+    def test_sim_order_attribution_fields_persisted(self, db_session):
+        """【WP6】归因字段持久化：写入后刷新可读。"""
+        # Arrange：造组合、标的、成员、信号
+        p = _make_portfolio(db_session, name="QA-WP6-Attr-Persist")
+        sym = _make_symbol(db_session, symbol="700001")
+        member = PortfolioMember(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            status=STATUS_ACTIVE,
+            execution_mode=EXECUTION_AUTO,
+            entry_rule_version_id=5001,
+        )
+        db_session.add(member)
+        db_session.commit()
+        db_session.refresh(member)
+        score = _make_score(db_session, sym.id, action="open")
+
+        # Act：创建带完整归因字段的 SimOrder 并提交刷新
+        order = SimOrder(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            side="buy",
+            order_type="market",
+            quantity=100,
+            submitted_price=10.0,
+            status="filled",
+            filled_quantity=100,
+            filled_price=10.0,
+            filled_amount=1000.0,
+            fee=5.0,
+            # WP6.1 归因字段
+            member_id=member.id,
+            source_type="member",
+            source_id=member.id,
+            signal_id=score.id,
+            signal_snapshot_json=json.dumps({"action": "open", "score": 75.0}),
+            rule_version_id=5001,
+            execution_mode=EXECUTION_AUTO,
+            client_order_key="qa-wp6-persist-1",
+            decision_snapshot_json=json.dumps(
+                {"action": "open", "signal_id": score.id}
+            ),
+        )
+        db_session.add(order)
+        db_session.commit()
+        db_session.refresh(order)
+
+        # Assert：所有归因字段可读且值正确
+        assert order.member_id == member.id
+        assert order.source_type == "member"
+        assert order.source_id == member.id
+        assert order.signal_id == score.id
+        assert order.signal_snapshot_json is not None
+        assert json.loads(order.signal_snapshot_json)["action"] == "open"
+        assert order.rule_version_id == 5001
+        assert order.execution_mode == EXECUTION_AUTO
+        assert order.client_order_key == "qa-wp6-persist-1"
+        assert order.decision_snapshot_json is not None
+        assert json.loads(order.decision_snapshot_json)["signal_id"] == score.id
+
+    def test_sim_order_attribution_fields_nullable(self, db_session):
+        """【WP6】归因字段可空：不传归因字段时仍可创建（向后兼容历史订单）。"""
+        # Arrange
+        p = _make_portfolio(db_session, name="QA-WP6-Attr-Nullable")
+        sym = _make_symbol(db_session, symbol="700002")
+
+        # Act：不传任何归因字段创建 SimOrder
+        order = SimOrder(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            side="buy",
+            order_type="market",
+            quantity=100,
+            submitted_price=10.0,
+            status="filled",
+            filled_quantity=100,
+            filled_price=10.0,
+            filled_amount=1000.0,
+            fee=5.0,
+            # 不设置任何 WP6.1 归因字段
+        )
+        db_session.add(order)
+        db_session.commit()
+        db_session.refresh(order)
+
+        # Assert：订单创建成功，归因字段均为 None（向后兼容历史订单）
+        assert order.id is not None
+        assert order.member_id is None
+        assert order.source_type is None
+        assert order.source_id is None
+        assert order.signal_id is None
+        assert order.signal_snapshot_json is None
+        assert order.rule_version_id is None
+        assert order.execution_mode is None
+        assert order.client_order_key is None
+        assert order.decision_snapshot_json is None
+        assert order.rejection_code is None
+        assert order.rejection_detail is None
+
+    # ------------------------------------------------------------------
+    # 2. client_order_key 唯一索引（2 个）
+    # ------------------------------------------------------------------
+
+    def test_client_order_key_unique_constraint(self, db_session):
+        """【WP6】client_order_key 唯一索引：相同 key 第二次写入抛 IntegrityError。"""
+        # Arrange：先写入一条带 client_order_key 的订单
+        p = _make_portfolio(db_session, name="QA-WP6-UniqueKey")
+        sym = _make_symbol(db_session, symbol="700003")
+        order1 = SimOrder(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            side="buy",
+            quantity=100,
+            submitted_price=10.0,
+            client_order_key="qa-wp6-dup-key-1",
+        )
+        db_session.add(order1)
+        db_session.commit()
+
+        # Act & Assert：相同 client_order_key 第二次写入应抛 IntegrityError
+        order2 = SimOrder(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            side="buy",
+            quantity=200,
+            submitted_price=11.0,
+            client_order_key="qa-wp6-dup-key-1",  # 相同 key
+        )
+        with pytest.raises(IntegrityError):
+            db_session.add(order2)
+            db_session.commit()
+        # 清理被污染的会话
+        db_session.rollback()
+
+    def test_client_order_key_null_allows_multiple(self, db_session):
+        """【WP6】client_order_key=None 允许多条（SQLite NULL 不参与唯一性比较）。"""
+        # Arrange
+        p = _make_portfolio(db_session, name="QA-WP6-NullKey")
+        sym = _make_symbol(db_session, symbol="700004")
+
+        # Act：插入两条 client_order_key=None 的订单
+        order1 = SimOrder(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            side="buy",
+            quantity=100,
+            submitted_price=10.0,
+            client_order_key=None,
+        )
+        order2 = SimOrder(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            side="sell",
+            quantity=100,
+            submitted_price=11.0,
+            client_order_key=None,
+        )
+        db_session.add(order1)
+        db_session.commit()
+        db_session.add(order2)
+        db_session.commit()
+
+        # Assert：两条记录都存在（部分唯一索引语义）
+        db_session.refresh(order1)
+        db_session.refresh(order2)
+        assert order1.id is not None
+        assert order2.id is not None
+        assert order1.id != order2.id
+        count = (
+            db_session.query(SimOrder)
+            .filter_by(portfolio_id=p.id)
+            .filter(SimOrder.client_order_key.is_(None))
+            .count()
+        )
+        assert count == 2
+
+    # ------------------------------------------------------------------
+    # 3. 信号快照可追溯（2 个）
+    # ------------------------------------------------------------------
+
+    def test_signal_snapshot_json_preserved_after_signal_update(self, db_session):
+        """【WP6】信号快照保留：原 Score 修改后 SimOrder.signal_snapshot_json 不变。"""
+        # Arrange：创建 Score 并写入 SimOrder 信号快照
+        p = _make_portfolio(db_session, name="QA-WP6-Snapshot")
+        sym = _make_symbol(db_session, symbol="700005")
+        score = _make_score(db_session, sym.id, action="open", stage="start")
+        original_snapshot = json.dumps({
+            "action": "open",
+            "stage": "start",
+            "trade_date": str(score.trade_date),
+            "score_id": score.id,
+        })
+        order = SimOrder(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            side="buy",
+            quantity=100,
+            submitted_price=10.0,
+            signal_id=score.id,
+            signal_snapshot_json=original_snapshot,
+            client_order_key="qa-wp6-snapshot-1",
+        )
+        db_session.add(order)
+        db_session.commit()
+        db_session.refresh(order)
+
+        # Act：修改原 Score（模拟信号后续变更）
+        score.action = "exit"
+        score.stage = "overheat"
+        db_session.commit()
+
+        # Assert：SimOrder 的 signal_snapshot_json 仍保留原始快照
+        db_session.refresh(order)
+        assert order.signal_snapshot_json == original_snapshot
+        snapshot = json.loads(order.signal_snapshot_json)
+        assert snapshot["action"] == "open"  # 原始值，未变成 exit
+        assert snapshot["stage"] == "start"
+
+    def test_decision_snapshot_json_contains_full_context(self, db_session):
+        """【WP6】决策快照包含完整归因上下文（WP6 归因追溯）。
+
+        spec 要求 decision_snapshot_json 包含完整决策上下文：
+        action/symbol/signal_id/source/member_id/rule_version_id/
+        data_cutoff_at/score/decision_timestamp。
+        """
+        # Arrange：组合 + 成员 + 信号 + 行情
+        p = _make_portfolio(db_session, name="QA-WP6-DecisionCtx")
+        sym = _make_symbol(db_session, symbol="700006")
+        _make_daily_bar(db_session, sym.id, date(2026, 7, 17), close=10.0)
+        score = _make_score(db_session, sym.id, action="open")
+        member = PortfolioMember(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            status=STATUS_ACTIVE,
+            execution_mode=EXECUTION_AUTO,
+            entry_rule_version_id=6001,
+        )
+        db_session.add(member)
+        db_session.commit()
+        db_session.refresh(member)
+
+        # Act：执行 auto_trade_member_source
+        execute_member_source(db_session, portfolio_id=p.id, dry_run=False)
+
+        # Assert：SimOrder.decision_snapshot_json 包含完整归因字段
+        order = (
+            db_session.query(SimOrder)
+            .filter_by(portfolio_id=p.id, symbol_id=sym.id)
+            .one()
+        )
+        assert order.decision_snapshot_json is not None
+        snapshot = json.loads(order.decision_snapshot_json)
+
+        # 已有字段：action / symbol / signal_id / source / score
+        assert snapshot["action"] == "open"
+        assert snapshot["symbol"] == "700006"
+        assert snapshot["signal_id"] == score.id
+        assert snapshot["source"] == "buy_rule"
+        assert "score" in snapshot
+
+        # 新增归因字段：member_id / rule_version_id / data_cutoff_at /
+        # decision_timestamp
+        assert snapshot["member_id"] == member.id
+        assert snapshot["rule_version_id"] == 6001
+        # data_cutoff_at 为 ISO 8601 字符串（来自 K 线/Score 时间戳）
+        assert snapshot["data_cutoff_at"] is not None
+        assert isinstance(snapshot["data_cutoff_at"], str)
+        # decision_timestamp 为 UTC ISO 8601 字符串
+        assert snapshot["decision_timestamp"] is not None
+        assert isinstance(snapshot["decision_timestamp"], str)
+
+    # ------------------------------------------------------------------
+    # 4. 拒绝码与拒绝详情（1 个）
+    # ------------------------------------------------------------------
+
+    def test_rejection_code_detail_recorded_on_block(self, db_session):
+        """【WP6】拒绝码与详情持久化：SimOrder.rejection_code/rejection_detail 可写入。
+
+        NOTE: 当前 auto_trade_member_source 流程中，被风控阻断的决策进入
+        rejected_decisions 列表（不创建 SimOrder），因此 rejection_code /
+        rejection_detail 实际未在 SimOrder 上写入。本测试验证模型层持久化
+        能力（字段可写入、可读回），流程层的缺口作为 bug 单独汇报。
+        """
+        # Arrange
+        p = _make_portfolio(db_session, name="QA-WP6-Reject")
+        sym = _make_symbol(db_session, symbol="700007")
+
+        # Act：直接创建带 rejection 字段的 SimOrder
+        order = SimOrder(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            side="buy",
+            quantity=100,
+            submitted_price=10.0,
+            status="rejected",  # 阻断订单
+            client_order_key="qa-wp6-reject-1",
+            rejection_code="BLOCKED",
+            rejection_detail="数据过期 fail-closed：K线数据过期（阈值 24h）",
+        )
+        db_session.add(order)
+        db_session.commit()
+        db_session.refresh(order)
+
+        # Assert：rejection 字段持久化且非空
+        assert order.rejection_code is not None
+        assert order.rejection_code == "BLOCKED"
+        assert order.rejection_detail is not None
+        assert "数据过期" in order.rejection_detail
+
+    # ------------------------------------------------------------------
+    # 5. 跨任务归因追溯（1 个）
+    # ------------------------------------------------------------------
+
+    def test_order_attribution_verifiable(self, db_session):
+        """【WP6】verify_order_attribution：完整归因返回 True，缺字段返回 False 并列出。"""
+        # Arrange：完整归因订单
+        p = _make_portfolio(db_session, name="QA-WP6-Verify")
+        sym = _make_symbol(db_session, symbol="700008")
+        member = PortfolioMember(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            status=STATUS_ACTIVE,
+            execution_mode=EXECUTION_AUTO,
+            entry_rule_version_id=7001,
+        )
+        db_session.add(member)
+        db_session.commit()
+        db_session.refresh(member)
+
+        complete_order = SimOrder(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            side="buy",
+            quantity=100,
+            submitted_price=10.0,
+            member_id=member.id,
+            source_type="member",
+            source_id=member.id,
+            signal_id=9999,
+            signal_snapshot_json=json.dumps({"action": "open"}),
+            rule_version_id=7001,
+            execution_mode=EXECUTION_AUTO,
+            client_order_key="qa-wp6-verify-complete",
+            decision_snapshot_json=json.dumps({"action": "open"}),
+        )
+        db_session.add(complete_order)
+        db_session.commit()
+        db_session.refresh(complete_order)
+
+        # Act & Assert 1：完整归因 → (True, "")
+        ok, msg = verify_order_attribution(complete_order)
+        assert ok is True
+        assert msg == ""
+
+        # Arrange：缺失多个归因字段的订单
+        incomplete_order = SimOrder(
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            side="buy",
+            quantity=100,
+            submitted_price=10.0,
+            # 故意不设置 source_type / signal_id / rule_version_id /
+            # execution_mode / client_order_key / decision_snapshot_json
+            member_id=member.id,
+        )
+        db_session.add(incomplete_order)
+        db_session.commit()
+        db_session.refresh(incomplete_order)
+
+        # Act & Assert 2：缺字段 → (False, "缺失归因字段：...")
+        ok2, msg2 = verify_order_attribution(incomplete_order)
+        assert ok2 is False
+        assert "缺失归因字段" in msg2
+        # 验证所有缺失字段被列出
+        for missing in [
+            "source_type",
+            "signal_id",
+            "rule_version_id",
+            "execution_mode",
+            "client_order_key",
+            "decision_snapshot_json",
+        ]:
+            assert missing in msg2
+
+
+# ============================================================================
+# WP9.5：默认来源切换为成员 + 旧来源仍可通过环境变量回退
+# ============================================================================
+
+
+class TestWP95MemberSourceDefault:
+    """WP9.5：验证成员来源开关默认值切换 + 旧来源可通过环境变量回退。
+
+    守护 spec 要求：
+    - settings.AUTO_TRADE_MEMBER_SOURCE_ENABLED 默认值由 False 改为 True
+    - is_member_source_enabled 在未设置环境变量时回退到 settings 默认值（True）
+    - 显式设置环境变量 AUTO_TRADE_MEMBER_SOURCE_ENABLED=false 时回退到旧来源
+    """
+
+    def test_default_source_is_member(self, db_session, monkeypatch):
+        """【WP9.5】未设置环境变量时，is_member_source_enabled 默认返回 True（成员来源）。
+
+        验证点：
+        1. settings.AUTO_TRADE_MEMBER_SOURCE_ENABLED 默认值为 True
+        2. 未设置环境变量时 is_member_source_enabled() 返回 True
+        """
+        from app.core.config import settings as _settings
+        from app.services.auto_trade_dual_run import ENV_FLAG, is_member_source_enabled
+
+        # 清除环境变量，确保使用 settings 默认值（非环境变量覆盖）
+        monkeypatch.delenv(ENV_FLAG, raising=False)
+
+        # 验证 settings 默认值为 True（WP9.5 切换后的新默认值）
+        assert _settings.AUTO_TRADE_MEMBER_SOURCE_ENABLED is True, (
+            "WP9.5: settings.AUTO_TRADE_MEMBER_SOURCE_ENABLED 默认值应为 True"
+        )
+
+        # 验证 is_member_source_enabled 在无环境变量时回退到 settings 默认值
+        assert is_member_source_enabled() is True, (
+            "WP9.5: 未设置环境变量时 is_member_source_enabled 应返回 True（成员来源为默认）"
+        )
+
+        # 验证带 portfolio_id 调用同样返回 True（无白名单/黑名单时跟随全局开关）
+        assert is_member_source_enabled(portfolio_id=99999) is True
+
+    def test_legacy_source_still_available_via_flag(self, db_session, monkeypatch):
+        """【WP9.5】显式设置环境变量 AUTO_TRADE_MEMBER_SOURCE_ENABLED=false 时回退到旧来源。
+
+        验证点：
+        1. 环境变量优先级高于 settings 默认值
+        2. 设置 false 时 is_member_source_enabled 返回 False
+        3. 设置 true 时返回 True
+        4. 测试结束后环境变量恢复，不污染其他测试
+        """
+        from app.services.auto_trade_dual_run import ENV_FLAG, is_member_source_enabled
+
+        # 1. 环境变量=false → 回退到旧来源（持仓+最新扫描）
+        monkeypatch.setenv(ENV_FLAG, "false")
+        assert is_member_source_enabled() is False, (
+            "WP9.5: AUTO_TRADE_MEMBER_SOURCE_ENABLED=false 时应回退到旧来源"
+        )
+
+        # 2. 环境变量=true → 成员来源
+        monkeypatch.setenv(ENV_FLAG, "true")
+        assert is_member_source_enabled() is True
+
+        # 3. 环境变量=1 → 等价于 true
+        monkeypatch.setenv(ENV_FLAG, "1")
+        assert is_member_source_enabled() is True
+
+        # 4. 环境变量=0 → 等价于 false
+        monkeypatch.setenv(ENV_FLAG, "0")
+        assert is_member_source_enabled() is False
+
+        # 5. 清除环境变量 → 回退到 settings 默认值 True
+        monkeypatch.delenv(ENV_FLAG, raising=False)
+        assert is_member_source_enabled() is True
+

@@ -15,6 +15,8 @@ import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { t } from "../i18n";
 import type { UnifiedTask } from "../types";
+// WP-AI.7：让 AI 解释按钮
+import ExplainButton from "./ai/ExplainButton";
 
 const STATUS_COLORS: Record<string, string> = {
   done: "#0f766e",
@@ -178,18 +180,25 @@ export default function TaskCenter() {
     return (
       <div className="task-detail-panel">
         {/* Actions */}
-        {abortable && (
-          <div className="task-detail-section task-detail-actions">
-            <Button
-              danger
-              icon={<PoweroffOutlined />}
-              loading={isAborting}
-              onClick={() => handleAbort(task)}
-            >
-              {isAborting ? t("taskAbortRunning") : t("taskAbort")}
-            </Button>
-          </div>
-        )}
+        <div className="task-detail-section task-detail-actions">
+          <Space size="small">
+            {abortable && (
+              <Button
+                danger
+                icon={<PoweroffOutlined />}
+                loading={isAborting}
+                onClick={() => handleAbort(task)}
+              >
+                {isAborting ? t("taskAbortRunning") : t("taskAbort")}
+              </Button>
+            )}
+            {/* WP-AI.7：让 AI 解释（携带 task_id） */}
+            <ExplainButton
+              sourcePage="task_center"
+              references={{ task_id: task.id }}
+            />
+          </Space>
+        </div>
         {/* Progress */}
         <div className="task-detail-section">
           <div className="task-detail-row">

@@ -1,6 +1,16 @@
 import { t } from "../i18n";
-import type { CustomIndicatorPreviewRead, SignalRule, SignalRulePreviewResult } from "../types";
+import type { CapabilitiesResponse, CustomIndicatorPreviewRead, SignalRule, SignalRulePreviewResult } from "../types";
+import type { AttributionReport, Review } from "../types";
 import type { SymbolRelationships } from "../types/symbolRelationships";
+import type {
+  AISession,
+  AIMessage,
+  AIProfile,
+  AIProfileTestResult,
+  AIProfileUsage,
+  AIHealth,
+  AIResponse,
+} from "../types";
 
 // 通用 API 响应类型：默认 unknown，调用方可显式指定具体类型
 type ApiResponse<T = unknown> = T;
@@ -72,6 +82,7 @@ export const api = {
   // System
   getDataHealth: () => requestJson<any>(SYSTEM_HEALTH_URL),
   getSymbolDataHealth: (symbolId: number) => requestJson<any>(`${API}/system/data-health/symbols/${symbolId}`),
+  getCapabilities: () => requestJson<CapabilitiesResponse>(`${API}/system/capabilities`),
 
   // Dynamic factor engine
   getFactorOverview: () =>
@@ -154,6 +165,22 @@ export const api = {
     sp.set("snapshot_limit", String(params.snapshotLimit ?? 1000));
     return requestJson<any>(`${API}/portfolios/${portfolioId}/performance?${sp.toString()}`);
   },
+  // WP8.3：绩效归因报告
+  getAttributionReport: (portfolioId: number, startDate: string, endDate: string, dimensions?: string) => {
+    const sp = new URLSearchParams({ start_date: startDate, end_date: endDate });
+    if (dimensions) sp.set("dimensions", dimensions);
+    return requestJson<AttributionReport>(`${API}/portfolios/${portfolioId}/attribution?${sp.toString()}`);
+  },
+  // WP8.3：复盘记录列表
+  getReviews: (portfolioId: number) =>
+    requestJson<Review[]>(`${API}/portfolios/${portfolioId}/reviews`),
+  // WP8.3：创建复盘记录（备注 + 自动附归因快照）
+  createReview: (portfolioId: number, payload: { note: string; attribution_snapshot?: string }) =>
+    requestJson<Review>(`${API}/portfolios/${portfolioId}/reviews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
   // P2-3：自动交易执行（dry_run 只返回计划，dry_run=False 实际下单）
   executeAutoTrade: (portfolioId: number, payload: { dry_run: boolean; buy_candidate_limit?: number }) =>
     requestJson<any>(`${API}/portfolios/${portfolioId}/auto-trade/execute`, {
@@ -162,6 +189,74 @@ export const api = {
       body: JSON.stringify(payload),
       timeoutMs: 60000,
     }),
+  // WP6.6：自动交易双跑与成员级状态
+  getAutoTradeDryRunDiff: (portfolioId: number) =>
+    requestJson<{
+      portfolio_id: number;
+      old_set: { buys: any[]; sells: any[]; rejected: any[] };
+      new_set: { buys: any[]; sells: any[]; rejected: any[] };
+      diffs: Array<{
+        symbol_id: number;
+        side: string;
+        old_action: string | null;
+        new_action: string | null;
+        reason: string;
+        detail: string;
+      }>;
+    }>(`${API}/portfolios/${portfolioId}/auto-trade/dry-run-diff`, { timeoutMs: 60000 }),
+  getAutoTradeMemberSourceStatus: (portfolioId: number) =>
+    requestJson<{
+      portfolio_id: number;
+      enabled: boolean;
+      env_var_name: string;
+      env_flag: string;
+      whitelist_match: boolean;
+      blacklist_match: boolean;
+      whitelist: number[];
+      blacklist: number[];
+    }>(`${API}/portfolios/${portfolioId}/auto-trade/member-source-status`),
+  rollbackAutoTradeToOldSource: (portfolioId: number) =>
+    requestJson<{ ok: boolean; portfolio_id: number; message: string }>(
+      `${API}/portfolios/${portfolioId}/auto-trade/rollback-to-old-source`,
+      { method: "POST" },
+    ),
+  getAutoTradeMemberStatus: (portfolioId: number) =>
+    requestJson<{
+      portfolio_id: number;
+      total: number;
+      members: Array<{
+        member_id: number;
+        symbol_id: number;
+        symbol: string | null;
+        status: string;
+        execution_mode: string;
+        source_type: string;
+        manual_lock: boolean;
+        has_position: boolean;
+        position_quantity: number;
+        latest_order: {
+          order_id: number;
+          side: string;
+          status: string;
+          created_at: string | null;
+          source_type: string | null;
+          signal_id: number | null;
+          execution_mode: string | null;
+          client_order_key: string | null;
+          rejection_code: string | null;
+          rejection_detail: string | null;
+        } | null;
+        data_health: {
+          healthy: boolean;
+          reason: string;
+          kline_latest_at: string | null;
+          score_latest_at: string | null;
+          rule_version_id: number | null;
+        };
+        risk_blocked: boolean;
+        data_expired: boolean;
+      }>;
+    }>(`${API}/portfolios/${portfolioId}/auto-trade/member-status`),
   getWorkbench: (portfolioId: number, marketGroup: string) =>
     requestJson<any>(`${API}/dashboard/workbench?portfolio_id=${portfolioId}&market_group=${marketGroup}`),
   getSymbolDetail: (portfolioId: number, symbolId: number, sampleLimit?: number, barLimit?: number) => {
@@ -536,12 +631,64 @@ export const api = {
       },
     ),
   // P2-2: 组合整体回测（symbol_ids 与 rule_config 由后端自动推导）
-  runPortfolioBacktest: (portfolioId: number, payload: { start_date: string; end_date: string; run_name?: string }) =>
+  // WP7.3: 新增 only_auto 参数（仅回测 auto 成员，跳过 manual/confirm）
+  runPortfolioBacktest: (portfolioId: number, payload: { start_date: string; end_date: string; run_name?: string; only_auto?: boolean }) =>
     requestJson<any>(`${API}/backtest/portfolio/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ portfolio_id: portfolioId, ...payload }),
       timeoutMs: 120000,
+    }),
+  // WP7.4: 组合回测标的来源开关状态
+  getPortfolioBacktestSourceStatus: (portfolioId: number) =>
+    requestJson<{ enabled: boolean; env_flag: string; source_label: string }>(
+      `${API}/portfolios/${portfolioId}/backtest/source-status`,
+    ),
+  // WP7.4: 新旧引擎对比（同区间跑两次回测并对比标的集/指标差异）
+  comparePortfolioBacktestEngines: (
+    portfolioId: number,
+    payload: { start_date: string; end_date: string; initial_capital?: number; run_name_prefix?: string },
+  ) =>
+    requestJson<{
+      old: {
+        run_id: number;
+        symbol_ids: number[];
+        source_type: string;
+        trades: Array<{ symbol_id: number; entry_date: string | null; exit_date: string | null; pnl: number | null; pnl_pct: number | null }>;
+        metrics: {
+          total_return: number | null;
+          total_return_pct: number | null;
+          max_drawdown: number | null;
+          max_drawdown_pct: number | null;
+          sharpe_ratio: number | null;
+          trade_count: number;
+        };
+      };
+      new: {
+        run_id: number;
+        symbol_ids: number[];
+        source_type: string;
+        trades: Array<{ symbol_id: number; entry_date: string | null; exit_date: string | null; pnl: number | null; pnl_pct: number | null }>;
+        metrics: {
+          total_return: number | null;
+          total_return_pct: number | null;
+          max_drawdown: number | null;
+          max_drawdown_pct: number | null;
+          sharpe_ratio: number | null;
+          trade_count: number;
+        };
+      };
+      diff: {
+        symbol_ids_added: number[];
+        symbol_ids_removed: number[];
+        metrics_diff: Record<string, { old: number | null; new: number | null; delta: number | null }>;
+        explanation: string;
+      };
+    }>(`${API}/portfolios/${portfolioId}/backtest/compare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ portfolio_id: portfolioId, ...payload }),
+      timeoutMs: 240000,
     }),
 
   // Backtest rule templates
@@ -724,6 +871,57 @@ export const api = {
       `${API}/settings/ai-chat`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 35000 },
     ),
+
+  // WP-AI.7：AI 会话管理
+  getAISessions: (limit: number = 20, offset: number = 0) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    return requestJson<{ items: AISession[]; limit: number; offset: number; include_archived: boolean }>(
+      `${API}/ai/sessions?${params.toString()}`,
+    );
+  },
+  getAISession: (sessionId: number) =>
+    requestJson<AISession>(`${API}/ai/sessions/${sessionId}`),
+  createAISession: (payload: { title: string; source_page?: string; message?: string; references?: Record<string, unknown> }) =>
+    requestJson<{ session_id: number; response: AIResponse }>(
+      `${API}/ai/sessions`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 60000 },
+    ),
+  getAIMessages: (sessionId: number, limit: number = 100) =>
+    requestJson<{ items: AIMessage[]; session_id: number; limit: number; offset: number }>(
+      `${API}/ai/sessions/${sessionId}/messages?limit=${limit}`,
+    ),
+  deleteAISession: (sessionId: number) =>
+    requestJson<{ status: string; message: string; session_id: number }>(
+      `${API}/ai/sessions/${sessionId}`,
+      { method: "DELETE" },
+    ),
+  cleanupAISessions: () =>
+    requestJson<{ status: string; cleaned: number; retention_days: number; message: string }>(
+      `${API}/ai/sessions/cleanup`,
+      { method: "POST" },
+    ),
+
+  // WP-AI.7：AI Profile 管理
+  getAIProfiles: () =>
+    requestJson<AIProfile[]>(`${API}/ai/profiles`),
+  createAIProfile: (payload: Record<string, unknown>) =>
+    requestJson<AIProfile>(`${API}/ai/profiles`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }),
+  updateAIProfile: (id: number, payload: Record<string, unknown>) =>
+    requestJson<AIProfile>(`${API}/ai/profiles/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }),
+  deleteAIProfile: (id: number) =>
+    requestJson<{ status: string; message: string }>(`${API}/ai/profiles/${id}`, { method: "DELETE" }),
+  testAIProfile: (id: number) =>
+    requestJson<AIProfileTestResult>(`${API}/ai/profiles/${id}/test`, { method: "POST", timeoutMs: 30000 }),
+  discoverAIModels: (id: number) =>
+    requestJson<{ models: Array<{ id: string; owned_by?: string }> }>(`${API}/ai/profiles/${id}/models`),
+  getAIProfileUsage: (id: number) =>
+    requestJson<AIProfileUsage>(`${API}/ai/profiles/${id}/usage`),
+  getAIHealth: () =>
+    requestJson<AIHealth[]>(`${API}/ai/health`),
 };
 
 // ----------------------------------------------------------------------------

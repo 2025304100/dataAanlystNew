@@ -2,9 +2,11 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { Input, InputNumber, Button, Tag, Space, Modal, Dropdown, Empty, Skeleton, Table } from "antd";
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { ArrowRightOutlined } from "@ant-design/icons";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
 import { t, template, DOT, stageLabel, actionLabel } from "../i18n";
+import { navigateToResearch } from "../utils/sourceContext";
 import {
   percent,
   score,
@@ -12,8 +14,6 @@ import {
   joinParts,
   badgeClass,
   pnlClass,
-  withFinalOpportunityScore,
-  opportunityScoreValue,
   inferSymbolPayload,
 } from "../utils/format";
 import type { Position, AllocationSnapshot, WorkbenchCandidate } from "../types";
@@ -21,6 +21,8 @@ import type { Position, AllocationSnapshot, WorkbenchCandidate } from "../types"
 import { OpportunityStatusBadges } from "./opportunity/OpportunityStatusBadges";
 // WP4.5：组合成员页签
 import { PortfolioMembersPanel } from "./PortfolioMembersPanel";
+// WP-AI.7：让 AI 解释按钮
+import ExplainButton from "./ai/ExplainButton";
 
 // P3 M-10: 备份条目类型 —— 后端可能返回字符串路径，或包含详细字段的对象
 interface BackupEntryObject {
@@ -82,31 +84,9 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
   const ctx = useApp();
   const workbench = ctx.workbench;
 
-  const scoredCandidates = useMemo(() => {
-    if (!workbench) return [];
-    return workbench.candidates
-      .map((item) => withFinalOpportunityScore(item, ctx.newsSnapshot))
-      .sort((a, b) => opportunityScoreValue(b) - opportunityScoreValue(a));
-  }, [workbench, ctx.newsSnapshot]);
-
-  const todayExecutable = useMemo(() => scoredCandidates.slice(0, 5), [scoredCandidates]);
-
-  const watchQueue = useMemo(() => {
-    if (!workbench) return [];
-    const candidateIds = new Set(workbench.candidates.map((item) => item.symbol_id));
-    return workbench.latest_scores
-      .filter((item) => !candidateIds.has(item.symbol_id))
-      .map((item) => withFinalOpportunityScore(item, ctx.newsSnapshot))
-      .sort((a, b) => opportunityScoreValue(b) - opportunityScoreValue(a))
-      .slice(0, 5);
-  }, [workbench, ctx.newsSnapshot]);
-
-  const todayMessages = useMemo(() => {
-    if (!ctx.newsSnapshot) return [];
-    return [...ctx.newsSnapshot.symbols]
-      .sort((a, b) => Math.abs(b.message_score) - Math.abs(a.message_score))
-      .slice(0, 5);
-  }, [ctx.newsSnapshot]);
+  // WP9.4：今日机会/观察/消息三列概览已移除（与机会中心重复），
+  // 改为顶部"查看机会中心"链接卡片。原 scoredCandidates/todayExecutable/watchQueue/todayMessages
+  // 派生逻辑随之移除，候选/观察数据请前往机会中心查看。
 
   const filteredCandidates = useMemo(() => {
     if (!workbench) return [];
@@ -228,10 +208,6 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
   const latestScan = workbench.latest_scan;
   const activeRule = workbench.active_rule;
   const marketScope = workbench.market_scope;
-
-  const todayMeta = `${t("candidates")}: ${workbench.candidates.length}${DOT}${
-    ctx.newsSnapshot ? `${t("todayMessages")}: ${ctx.newsSnapshot.symbols_total}` : t("noNewsYet")
-  }`;
 
   const accountMeta = account
     ? `${t("activeTrades")}: ${account.trade_count_7d}${DOT}${t("lastTrade")}: ${
@@ -439,16 +415,45 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
       title: t("operations"),
       key: "operations",
       render: (_, item) => (
-        <Button
-          className="delete-btn"
-          size="small"
-          danger
-          loading={deletingPositionSymbolId === item.symbol_id}
-          onClick={(e) => { e.stopPropagation(); handleDeletePosition(item.symbol_id); }}
-          aria-label={template("deletePositionFor", { symbol: item.symbol })}
-        >
-          {t("deletePosition")}
-        </Button>
+        <Space size="small" wrap>
+          {/* WP5.3：持仓入口跳转，携带 portfolio_id 与 position 来源 */}
+          <Button
+            size="small"
+            type="link"
+            icon={<ArrowRightOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigateToResearch(
+                ctx,
+                {
+                  symbol_id: item.symbol_id,
+                  source_type: "position",
+                  // Position 类型无独立 ID，使用 portfolio_id 作为来源上下文
+                  source_id: undefined,
+                  portfolio_id: portfolioId,
+                  return_to: "portfolio",
+                },
+                {
+                  returnState: {
+                    portfolioId,
+                  },
+                },
+              );
+            }}
+          >
+            {t("portfolioWorkbenchEnterResearch")}
+          </Button>
+          <Button
+            className="delete-btn"
+            size="small"
+            danger
+            loading={deletingPositionSymbolId === item.symbol_id}
+            onClick={(e) => { e.stopPropagation(); handleDeletePosition(item.symbol_id); }}
+            aria-label={template("deletePositionFor", { symbol: item.symbol })}
+          >
+            {t("deletePosition")}
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -486,106 +491,47 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
 
   return (
     <div className="sub-tab-container" data-sub-content="portfolio-workbench">
-      <section className="band today-band">
+      {/* WP9.4：原"今日机会/观察/消息"三列概览与机会中心重复，已移除。
+          此处仅保留指向机会中心的链接卡片，不重复呈现候选/观察列表。 */}
+      <section className="band today-band" data-testid="opportunity-center-link-card">
         <div className="panel wide">
           <div className="panel-head">
             <div>
               <p className="panel-kicker">{t("decisionPath")}</p>
               <h2>{t("todayOpportunities")}</h2>
             </div>
-            <p className="panel-meta">{todayMeta}</p>
           </div>
-          <div className="today-grid">
-            <div className="today-column">
-              <p className="panel-kicker">{t("todayExecutable")}</p>
-              <div className="today-list">
-                {todayExecutable.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noCandidates")} />
-                ) : (
-                  todayExecutable.map((item) => (
-                    <Button
-                      key={item.symbol_id}
-                      type="text"
-                      className="today-item"
-                      data-symbol-id={item.symbol_id}
-                      onClick={() => handleSymbolClick(item.symbol_id)}
-                      aria-label={template("viewSymbolDetail", { symbol: item.symbol })}
-                    >
-                      <div>
-                        <div className="symbol-title">
-                          <span className="symbol-code">{item.symbol}</span>
-                          <span className="symbol-name">{item.name}</span>
-                        </div>
-                        <p className="item-subline">
-                          {joinParts([stageLabel(item.stage), actionLabel(item.action)])}
-                        </p>
-                      </div>
-                      <span className="today-score">{score(opportunityScoreValue(item))}</span>
-                    </Button>
-                  ))
-                )}
-              </div>
+          <div
+            className="opportunity-link-card"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "12px 16px",
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              background: "#f9fafb",
+            }}
+          >
+            <div>
+              <strong style={{ display: "block", marginBottom: 4 }}>
+                {t("tabOpportunity")}
+              </strong>
+              <span className="item-subline" style={{ fontSize: 12 }}>
+                {t("candidateList")}: {workbench.candidates.length}
+                {DOT}
+                {t("latestScores")}: {workbench.latest_scores.length}
+              </span>
             </div>
-
-            <div className="today-column">
-              <p className="panel-kicker">{t("todayWatch")}</p>
-              <div className="today-list">
-                {watchQueue.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noScores")} />
-                ) : (
-                  watchQueue.map((item) => (
-                    <Button
-                      key={item.symbol_id}
-                      type="text"
-                      className="today-item"
-                      data-symbol-id={item.symbol_id}
-                      onClick={() => handleSymbolClick(item.symbol_id)}
-                      aria-label={template("viewSymbolDetail", { symbol: item.symbol })}
-                    >
-                      <div>
-                        <div className="symbol-title">
-                          <span className="symbol-code">{item.symbol}</span>
-                          <span className="symbol-name">{item.name}</span>
-                        </div>
-                        <p className="item-subline">
-                          {joinParts([stageLabel(item.stage), actionLabel(item.action)])}
-                        </p>
-                      </div>
-                      <span className="today-score">{score(opportunityScoreValue(item))}</span>
-                    </Button>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="today-column">
-              <p className="panel-kicker">{t("todayMessages")}</p>
-              <div className="today-list">
-                {todayMessages.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("noNewsYet")} />
-                ) : (
-                  todayMessages.map((item) => (
-                    <Button
-                      key={item.symbol_id}
-                      type="text"
-                      className="today-item"
-                      data-symbol-id={item.symbol_id}
-                      onClick={() => handleSymbolClick(item.symbol_id)}
-                      aria-label={template("viewSymbolDetail", { symbol: item.symbol })}
-                    >
-                      <div>
-                        <div className="symbol-title">
-                          <span className="symbol-code">{item.symbol}</span>
-                          <span className="symbol-name">{item.name}</span>
-                        </div>
-                        <p className="item-subline">{item.latest_title}</p>
-                      </div>
-                      <span className="today-score">{score(item.message_score)}</span>
-                    </Button>
-                  ))
-                )}
-              </div>
-            </div>
+            <Button
+              type="primary"
+              icon={<ArrowRightOutlined />}
+              onClick={() => ctx.setActiveTab("opportunity")}
+              data-testid="goto-opportunity-center"
+            >
+              {t("wp9.viewOpportunityCenter")}
+            </Button>
           </div>
         </div>
       </section>
@@ -634,7 +580,14 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                   <p className="panel-kicker">{t("simAccount")}</p>
                   <h2>{t("accountSummary")}</h2>
                 </div>
-                <p className="panel-meta">{accountMeta}</p>
+                <Space size="small">
+                  {/* WP-AI.7：让 AI 解释（携带 portfolio_id） */}
+                  <ExplainButton
+                    sourcePage="portfolio_workbench"
+                    references={{ portfolio_id: portfolioId }}
+                  />
+                  <p className="panel-meta">{accountMeta}</p>
+                </Space>
               </div>
               {account ? (
                 <div className="account-grid">

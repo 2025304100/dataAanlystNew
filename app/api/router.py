@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import alerts, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, factor_models, factor_pipeline, factors, journals, macro, market_data, market_events, news, portfolios, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config
+from app.api.routes import alerts, auto_trade, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, factor_models, factor_pipeline, factors, journals, linkage, macro, market_data, market_events, news, portfolios, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_profiles, ai_sessions
 from app.core.config import settings
 
 
@@ -18,6 +18,8 @@ api_router.include_router(market_events.router, tags=["market-events"])
 api_router.include_router(discovery.router, tags=["discovery"])
 api_router.include_router(portfolios.router, tags=["portfolios"])
 api_router.include_router(sim_accounts.router, tags=["sim-accounts"])
+# WP6.6：自动交易双跑与成员级状态路由（/portfolios/{id}/auto-trade/*）
+api_router.include_router(auto_trade.router, tags=["auto-trade"])
 api_router.include_router(signal_rules.router, tags=["signal-rules"])
 api_router.include_router(scores.router, tags=["scores"])
 api_router.include_router(scans.router, tags=["scans"])
@@ -39,3 +41,9 @@ api_router.include_router(alerts.router, tags=["alerts"])
 api_router.include_router(universe.router, tags=["universe"])
 # AI 接口配置与对话代理
 api_router.include_router(ai_config.router, tags=["settings"])
+# WP-AI.2：AI Profile 多 Profile 主备降级管理
+api_router.include_router(ai_profiles.router, tags=["ai-profiles"])
+# WP8.2：跨模块联动 API（订单/成交/告警/今日决策/回测成员快照/归因建议复盘）
+api_router.include_router(linkage.router, tags=["linkage"])
+# WP-AI.6：AI 会话与审计管理
+api_router.include_router(ai_sessions.router, tags=["ai-sessions"])

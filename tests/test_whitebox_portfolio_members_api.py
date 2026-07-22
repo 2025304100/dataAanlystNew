@@ -20,11 +20,14 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.db.session import get_db
 from app.models.portfolio import Portfolio, Position
+from app.models.sim_account import SimOrder
 from app.models.symbol import Symbol
 
 
@@ -608,3 +611,165 @@ def test_restore_portfolio_member_not_found_returns_404(client, db_session):
     assert resp.status_code == 404
     body = resp.json()
     assert body.get("error_code") == "NOT_FOUND"
+
+
+# ----------------------------------------------------------------------------
+# 15. WP4-FIX：list API 返回 latest_signal 字段
+# ----------------------------------------------------------------------------
+
+
+def _make_sim_order(
+    db_session,
+    *,
+    portfolio_id: int,
+    symbol_id: int,
+    member_id: int,
+    side: str = "buy",
+    signal_id: int | None = 1001,
+    created_at: datetime | None = None,
+) -> SimOrder:
+    """构造一条 SimOrder（带 member_id 归因，WP6.1 字段）。"""
+    order = SimOrder(
+        portfolio_id=portfolio_id,
+        symbol_id=symbol_id,
+        side=side,
+        order_type="market",
+        quantity=100.0,
+        submitted_price=10.0,
+        status="filled",
+        filled_quantity=100.0,
+        filled_price=10.0,
+        filled_amount=1000.0,
+        member_id=member_id,
+        signal_id=signal_id,
+        created_at=created_at or datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    db_session.add(order)
+    db_session.commit()
+    db_session.refresh(order)
+    return order
+
+
+def test_list_members_includes_latest_signal_field(client, db_session):
+    """【WP4-FIX】成员关联 SimOrder（带 signal_id）后，list API 返回 latest_signal 不为 None。
+
+    覆盖联表查询逻辑：SELECT * FROM sim_orders WHERE member_id=? ORDER BY created_at DESC LIMIT 1
+    验证 latest_signal / latest_signal_at / latest_signal_action 三个字段均正确填充。
+    """
+    pf = _make_portfolio(db_session, name="QA-API-LatestSignal-PF")
+    sym = _make_symbol(db_session, symbol="610200")
+
+    # 创建成员
+    r_create = client.post(
+        f"/api/v1/portfolios/{pf.id}/members",
+        json={"symbol_id": sym.id},
+    )
+    assert r_create.status_code == 200
+    member_id = r_create.json()["id"]
+
+    # 创建一条关联该成员的 SimOrder（买入，带 signal_id）
+    order_time = datetime(2026, 7, 19, 10, 30, 0)
+    _make_sim_order(
+        db_session,
+        portfolio_id=pf.id,
+        symbol_id=sym.id,
+        member_id=member_id,
+        side="buy",
+        signal_id=1001,
+        created_at=order_time,
+    )
+
+    # 再创建一条更早的卖出订单，验证取最近一条（按 created_at DESC）
+    _make_sim_order(
+        db_session,
+        portfolio_id=pf.id,
+        symbol_id=sym.id,
+        member_id=member_id,
+        side="sell",
+        signal_id=1000,
+        created_at=order_time - timedelta(days=1),
+    )
+
+    resp = client.get(f"/api/v1/portfolios/{pf.id}/members")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    item = data[0]
+
+    # 三个 latest_signal 字段均不为 None
+    assert item["latest_signal"] is not None
+    assert item["latest_signal_at"] is not None
+    assert item["latest_signal_action"] is not None
+
+    # 取最近一条（买入，2026-07-19）
+    assert item["latest_signal_action"] == "buy"
+    # latest_signal 文本含"买入"和日期
+    assert "买入" in item["latest_signal"]
+    assert "2026-07-19" in item["latest_signal"]
+    # latest_signal_at 是 ISO 8601 格式
+    assert item["latest_signal_at"].startswith("2026-07-19")
+
+
+def test_list_members_without_orders_returns_null_signal(client, db_session):
+    """【WP4-FIX】成员无关联订单时 latest_signal 等三个字段均为 None。"""
+    pf = _make_portfolio(db_session, name="QA-API-NullSignal-PF")
+    sym = _make_symbol(db_session, symbol="610201")
+
+    r_create = client.post(
+        f"/api/v1/portfolios/{pf.id}/members",
+        json={"symbol_id": sym.id},
+    )
+    assert r_create.status_code == 200
+    member_id = r_create.json()["id"]
+
+    # 不创建任何 SimOrder
+
+    resp = client.get(f"/api/v1/portfolios/{pf.id}/members")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    item = data[0]
+
+    # 三个字段均为 None
+    assert item["latest_signal"] is None
+    assert item["latest_signal_at"] is None
+    assert item["latest_signal_action"] is None
+    # member_id 字段确认（用于联表查询）
+    assert item["id"] == member_id
+
+
+def test_list_members_latest_signal_picks_most_recent_order(client, db_session):
+    """【WP4-FIX】多条订单时取 created_at 最新的一条（卖出覆盖买入）。"""
+    pf = _make_portfolio(db_session, name="QA-API-MostRecent-PF")
+    sym = _make_symbol(db_session, symbol="610202")
+
+    r_create = client.post(
+        f"/api/v1/portfolios/{pf.id}/members",
+        json={"symbol_id": sym.id},
+    )
+    member_id = r_create.json()["id"]
+
+    # 先创建买入（较早），再创建卖出（较晚）
+    _make_sim_order(
+        db_session,
+        portfolio_id=pf.id,
+        symbol_id=sym.id,
+        member_id=member_id,
+        side="buy",
+        created_at=datetime(2026, 7, 1, 10, 0, 0),
+    )
+    _make_sim_order(
+        db_session,
+        portfolio_id=pf.id,
+        symbol_id=sym.id,
+        member_id=member_id,
+        side="sell",
+        created_at=datetime(2026, 7, 20, 10, 0, 0),
+    )
+
+    resp = client.get(f"/api/v1/portfolios/{pf.id}/members")
+    item = resp.json()[0]
+    # 取最新一条 = 卖出（2026-07-20）
+    assert item["latest_signal_action"] == "sell"
+    assert "卖出" in item["latest_signal"]
+    assert "2026-07-20" in item["latest_signal"]

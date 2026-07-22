@@ -30,3 +30,11 @@ from app.models import opportunity_transition_event
 from app.models import portfolio_member
 # WP-MSG.1：通知数据模型
 from app.models import notification
+# WP-AI.2：AI Profile 多 Profile 主备降级
+from app.models import ai_profile
+# WP8：组合复盘记录（绩效归因）
+from app.models import review
+# WP-AI.1：AI 会话与审计数据模型
+from app.models import ai_session
+# WP9.6：API 废弃访问日志
+from app.models import api_deprecation_log

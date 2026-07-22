@@ -24,10 +24,12 @@ import {
   PlusOutlined,
   ReloadOutlined,
   ThunderboltOutlined,
+  ArrowRightOutlined,
 } from "@ant-design/icons";
 import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { t, template } from "../i18n";
+import { navigateToResearch } from "../utils/sourceContext";
 import type { AlertRule, AlertEvent as AlertEventType } from "../types";
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -87,7 +89,8 @@ const DEFAULT_FORM: RuleFormData = {
 };
 
 export default function AlertCenter() {
-  const { showToast } = useApp();
+  const ctx = useApp();
+  const { showToast } = ctx;
   const [activeTab, setActiveTab] = useState<"events" | "rules">("events");
   const [events, setEvents] = useState<AlertEventType[]>([]);
   const [rules, setRules] = useState<AlertRule[]>([]);
@@ -320,6 +323,25 @@ export default function AlertCenter() {
                         <Button size="small" icon={<CheckOutlined />} onClick={() => handleAcknowledge(ev.id)}>
                           {t("alertAcknowledge")}
                         </Button>
+                        {/* WP5.3：告警入口跳转，仅当事件关联具体标的时显示 */}
+                        {ev.symbol_id != null && (
+                          <Button
+                            size="small"
+                            type="link"
+                            icon={<ArrowRightOutlined />}
+                            onClick={() => {
+                              navigateToResearch(ctx, {
+                                symbol_id: ev.symbol_id as number,
+                                source_type: "alert",
+                                source_id: ev.id,
+                                portfolio_id: undefined,
+                                return_to: "alert",
+                              });
+                            }}
+                          >
+                            {t("alertEnterResearch")}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   }

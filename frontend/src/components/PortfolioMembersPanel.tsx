@@ -27,6 +27,7 @@ import {
   Spin,
   Table,
   Tag,
+  Tooltip,
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -36,10 +37,13 @@ import {
   PauseCircleOutlined,
   InboxOutlined,
   RollbackOutlined,
+  QuestionCircleOutlined,
+  ArrowRightOutlined,
 } from "@ant-design/icons";
 import { useApp } from "../context/AppContext";
 import { requestJson } from "../api/client";
 import { t } from "../i18n";
+import { navigateToResearch } from "../utils/sourceContext";
 
 // 组合成员富读模型（对齐 app.schemas.portfolio_member.PortfolioMemberRead）
 interface PortfolioMember {
@@ -59,6 +63,10 @@ interface PortfolioMember {
   note: string | null;
   created_at: string | null;
   updated_at: string | null;
+  // WP4-FIX：最近信号摘要（联表 SimOrder 填充）
+  latest_signal?: string | null;
+  latest_signal_at?: string | null;
+  latest_signal_action?: string | null; // buy/sell/hold
 }
 
 // 带持仓信息的扩展类型（后端在未来版本可附加，前端兼容处理）
@@ -66,7 +74,6 @@ interface MemberWithPosition extends PortfolioMember {
   has_position?: boolean;
   position_quantity?: number;
   symbol?: string;
-  latest_signal?: string | null;
 }
 
 export interface PortfolioMembersPanelProps {
@@ -322,6 +329,42 @@ export const PortfolioMembersPanel: React.FC<PortfolioMembersPanelProps> = ({ po
       },
     },
     {
+      title: (
+        <Tooltip title={t("portfolioMemberLatestSignalTooltip")}>
+          <Space size={4}>
+            <QuestionCircleOutlined />
+            <span>{t("portfolioMemberColumnLatestSignal")}</span>
+          </Space>
+        </Tooltip>
+      ),
+      key: "latest_signal",
+      width: 160,
+      render: (_v: unknown, record: MemberWithPosition) => {
+        const action = record.latest_signal_action;
+        // 无信号：显示 "-"
+        if (!action && !record.latest_signal) {
+          return <span>-</span>;
+        }
+        // 由 action + latest_signal_at 构造 i18n 友好的显示文本，
+        // 缺失 action 时回退到后端预格式化的 latest_signal
+        const actionText =
+          action === "buy"
+            ? t("portfolioMemberSignalBuy")
+            : action === "sell"
+              ? t("portfolioMemberSignalSell")
+              : action === "hold"
+                ? t("portfolioMemberSignalHold")
+                : record.latest_signal ?? "-";
+        const dateStr = record.latest_signal_at
+          ? new Date(record.latest_signal_at).toLocaleDateString()
+          : "";
+        const text = dateStr ? `${actionText} ${dateStr}` : actionText;
+        const color =
+          action === "buy" ? "green" : action === "sell" ? "red" : "default";
+        return <Tag color={color}>{text}</Tag>;
+      },
+    },
+    {
       title: t("portfolioMemberColumnPriority"),
       dataIndex: "priority",
       key: "priority",
@@ -339,9 +382,35 @@ export const PortfolioMembersPanel: React.FC<PortfolioMembersPanelProps> = ({ po
     {
       title: t("portfolioMemberColumnActions"),
       key: "actions",
-      width: 220,
+      width: 280,
       render: (_v: unknown, record: MemberWithPosition) => (
         <Space size="small">
+          {/* WP5.3：组合成员入口跳转，携带 portfolio_id 与 portfolio_member 来源 */}
+          <Button
+            size="small"
+            type="link"
+            icon={<ArrowRightOutlined />}
+            onClick={() => {
+              navigateToResearch(
+                ctx,
+                {
+                  symbol_id: record.symbol_id,
+                  source_type: "portfolio_member",
+                  source_id: record.id,
+                  portfolio_id: record.portfolio_id,
+                  return_to: "portfolio",
+                },
+                {
+                  returnState: {
+                    statusFilter,
+                    portfolioId: activePortfolioId,
+                  },
+                },
+              );
+            }}
+          >
+            {t("portfolioMemberEnterResearch")}
+          </Button>
           {record.status === "active" && (
             <Button
               size="small"

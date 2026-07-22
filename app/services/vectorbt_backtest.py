@@ -3,6 +3,15 @@
 This module complements the event-driven production backtester. It translates
 project prices and Score snapshots into matrix signals and delegates portfolio
 simulation to vectorbt.Portfolio.from_signals.
+
+WP7.3 兼容与切换说明（spec line 285-288）：
+- 本模块**仅作研究对比**，不作为正式回测权威。
+- 正式回测以事件驱动引擎（``app.services.backtest.run_backtest`` /
+  ``app.services.portfolio_backtest.run_portfolio_backtest``）为准。
+- VectorBT 与事件驱动引擎在撮合时序、滑点处理、持仓上限等细节上存在差异，
+  其结果仅供研究/敏感性分析参考，不能作为组合决策依据。
+- 调用方应在 UI/API 返回中明确标注"VectorBT 结果仅供参考，正式回测以
+  事件驱动引擎为准"。
 """
 from __future__ import annotations
 

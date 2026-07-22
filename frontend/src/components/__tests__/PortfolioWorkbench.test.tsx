@@ -12,6 +12,7 @@ const { mockContext, mockApi } = vi.hoisted(() => ({
     portfolioId: 1,
     activeSymbolId: null as number | null,
     setCandidateSearch: vi.fn((v: string) => {}),
+    setActiveTab: vi.fn((tab: string) => {}),
     loadWorkbench: vi.fn(async () => {}),
     showToast: vi.fn((_type: string, _msg: string) => {}),
     loadSymbolDetail: vi.fn(async (_id: number) => {}),
@@ -207,14 +208,30 @@ describe("PortfolioWorkbench 组件渲染测试", () => {
     expect(screen.getByText("decisionPath")).toBeInTheDocument();
   });
 
-  it("should render three today columns (executable/watch/messages)", async () => {
+  // WP9.4：原"今日机会/观察/消息"三列概览已移除（与机会中心重复），
+  // 替换为指向机会中心的链接卡片。
+  it("should render opportunity center link card instead of duplicate today columns", async () => {
     mockContext.workbench = makeWorkbench();
     render(<PortfolioWorkbench openMetricModal={vi.fn()} />);
     await waitFor(() => {
-      expect(screen.getAllByText("todayExecutable").length).toBeGreaterThan(0);
+      expect(screen.getByTestId("goto-opportunity-center")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("todayWatch").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("todayMessages").length).toBeGreaterThan(0);
+    // 链接卡片文案
+    expect(screen.getByText("wp9.viewOpportunityCenter")).toBeInTheDocument();
+    // 不再重复呈现机会/观察/消息三列
+    expect(screen.queryByText("todayExecutable")).not.toBeInTheDocument();
+    expect(screen.queryByText("todayWatch")).not.toBeInTheDocument();
+    expect(screen.queryByText("todayMessages")).not.toBeInTheDocument();
+  });
+
+  it("should navigate to opportunity center when link card clicked", async () => {
+    mockContext.workbench = makeWorkbench();
+    render(<PortfolioWorkbench openMetricModal={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("goto-opportunity-center")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("goto-opportunity-center"));
+    expect(mockContext.setActiveTab).toHaveBeenCalledWith("opportunity");
   });
 
   it("should render account summary section with metrics", async () => {

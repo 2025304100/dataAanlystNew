@@ -13,12 +13,22 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
+from starlette.middleware.base import BaseHTTPMiddleware
 from uuid import uuid4
 
 from app.api.router import api_router
 from app.core.config import settings, load_db_config, build_mysql_url
 from app.db.init_db import init_db
 from app.db.manager import DatabaseManager
+from app.middleware.deprecation_log import (
+    DEPRECATED_ENDPOINTS,
+    _get_client_ip,
+    _get_user_agent,
+    _match_deprecated,
+    apply_deprecation_headers,
+    ensure_deprecation_log_table,
+    record_deprecation_access,
+)
 from app.schemas.errors import (
     NextAction,
     TechnicalDetails,
@@ -69,6 +79,15 @@ async def lifespan(_: FastAPI):
 
     init_db()
 
+    # WP9.5：检测旧默认值迁移状态，记录日志便于运维定位
+    _log_member_source_migration_status()
+
+    # WP9.6：确保 api_deprecation_logs 表存在（防御性，init_db 已包含 create_all）
+    try:
+        ensure_deprecation_log_table(mgr.engine)
+    except Exception:
+        logger.exception("WP9.6: ensure_deprecation_log_table failed (non-fatal)")
+
     # 启动时清理：移除过期且未冻结的挖掘结果
     _run_startup_cleanup()
 
@@ -110,6 +129,55 @@ async def lifespan(_: FastAPI):
 
     # 关闭数据库连接池
     mgr.dispose()
+
+
+def _log_member_source_migration_status() -> None:
+    """WP9.5：检测成员来源开关迁移状态并记录日志。
+
+    WP9.5 将 AUTO_TRADE_MEMBER_SOURCE_ENABLED / PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED
+    默认值由 False 改为 True。首次启动时检测：
+    - 若开关为 True（新默认值）→ 记录 INFO 日志，确认已切换到成员来源
+    - 若开关为 False（旧默认值，通过环境变量显式回退）→ 记录 WARNING 日志，
+      提示运维该实例仍在使用旧的"持仓+最新扫描"来源
+
+    本函数仅记录日志，不修改任何状态，不影响启动流程。
+    """
+    import os as _os
+
+    auto_trade_flag = settings.AUTO_TRADE_MEMBER_SOURCE_ENABLED
+    backtest_flag = settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED
+
+    # 检测是否通过环境变量显式设置（用于判断是"新默认值"还是"显式回退"）
+    auto_trade_env_set = _os.getenv("AUTO_TRADE_MEMBER_SOURCE_ENABLED") is not None
+    backtest_env_set = _os.getenv("PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED") is not None
+
+    if auto_trade_flag:
+        logger.info(
+            "WP9.5: AUTO_TRADE_MEMBER_SOURCE_ENABLED=True（成员来源为默认）"
+            "env_explicitly_set=%s",
+            auto_trade_env_set,
+        )
+    else:
+        logger.warning(
+            "WP9.5: AUTO_TRADE_MEMBER_SOURCE_ENABLED=False（已回退到旧的持仓+最新扫描来源）。"
+            "如无需回退，请移除环境变量 AUTO_TRADE_MEMBER_SOURCE_ENABLED=false 以使用新默认值。"
+            "env_explicitly_set=%s",
+            auto_trade_env_set,
+        )
+
+    if backtest_flag:
+        logger.info(
+            "WP9.5: PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED=True（成员来源为默认）"
+            "env_explicitly_set=%s",
+            backtest_env_set,
+        )
+    else:
+        logger.warning(
+            "WP9.5: PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED=False（已回退到旧的持仓+最新扫描来源）。"
+            "如无需回退，请移除环境变量 PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED=false 以使用新默认值。"
+            "env_explicitly_set=%s",
+            backtest_env_set,
+        )
 
 
 def _run_startup_cleanup() -> None:
@@ -208,6 +276,59 @@ app = FastAPI(
 )
 
 app.include_router(api_router)
+
+
+# ── WP9.6 API 废弃期访问日志中间件 ──────────────────────
+#
+# 对所有进入的请求匹配 DEPRECATED_ENDPOINTS 注册表：
+# - 命中则添加 Deprecation/Sunset/Link 头，并异步记录访问日志
+# - 不命中或日志写入失败均不阻断请求
+# - 旧 API 在 Sunset 日期前仍可访问
+
+
+class DeprecationLogMiddleware(BaseHTTPMiddleware):
+    """WP9.6：对废弃端点添加 HTTP 头并记录访问日志。"""
+
+    async def dispatch(self, request: Request, call_next):
+        # 预先匹配，避免无关请求进入响应处理逻辑
+        path = request.url.path
+        method = request.method
+        entry = _match_deprecated(path, method)
+
+        response = await call_next(request)
+
+        if entry is not None:
+            # 1. 添加废弃相关 HTTP 头
+            apply_deprecation_headers(response, entry)
+            # 2. best-effort 记录访问日志（失败不阻断请求）
+            try:
+                client_ip = _get_client_ip(request)
+                user_agent = _get_user_agent(request)
+                SessionLocal = _get_session_local()
+                db = SessionLocal()
+                try:
+                    record_deprecation_access(
+                        db,
+                        endpoint=path,
+                        method=method,
+                        client_ip=client_ip,
+                        user_agent=user_agent,
+                        successor_endpoint=entry.get("successor"),
+                        sunset_date=entry.get("sunset"),
+                        status_code=response.status_code,
+                        context_json=entry.get("reason"),
+                    )
+                finally:
+                    db.close()
+            except Exception:
+                logger.exception(
+                    "WP9.6: deprecation access log failed path=%s", path,
+                )
+
+        return response
+
+
+app.add_middleware(DeprecationLogMiddleware)  # WP9.6 deprecation middleware
 
 
 # ── WP-S.6 全局异常处理器（统一用户错误协议） ──────────

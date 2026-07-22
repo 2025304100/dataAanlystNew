@@ -16,6 +16,7 @@ import {
 import { api, type FactorOverview } from "../api/client";
 import { actionLabel, stageLabel, t, template } from "../i18n";
 import { useApp } from "../context/AppContext";
+import { navigateToResearch } from "../utils/sourceContext";
 import { baseOpportunityScoreValue, formatRelativeTime, opportunityScoreValue, score, withFinalOpportunityScore } from "../utils/format";
 import type { DataHealth, DataHealthBarIssue, MacroOverview, MarketEvent, WorkbenchCandidate } from "../types";
 // WP1-FIX.1：今日决策接入 OpportunityStatusBadges（compact 模式）
@@ -176,8 +177,17 @@ export default function TodayDecision() {
   const openSymbol = async (item: WorkbenchCandidate) => {
     setOpeningSymbolId(item.symbol_id);
     try {
-      await ctx.loadSymbolDetail(item.symbol_id);
-      ctx.setActiveTab("investment");
+      // WP5.3：今日决策入口跳转，携带 candidate 来源与 candidate_id
+      navigateToResearch(
+        ctx,
+        {
+          symbol_id: item.symbol_id,
+          source_type: "candidate",
+          source_id: item.candidate_id ?? undefined,
+          portfolio_id: undefined,
+          return_to: "candidate",
+        },
+      );
     } catch (err: any) {
       ctx.showToast("error", err.message || t("tdLoadDetailFailed"));
     } finally {

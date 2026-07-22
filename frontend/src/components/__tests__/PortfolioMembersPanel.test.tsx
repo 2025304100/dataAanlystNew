@@ -420,4 +420,64 @@ describe("PortfolioMembersPanel 组件测试", () => {
     // 不应显示恢复按钮
     expect(screen.queryByText("restore")).not.toBeInTheDocument();
   });
+
+  // 15. WP4-FIX：最近信号列渲染 - 含 latest_signal 的成员显示对应文本
+  it("含 latest_signal_action=buy 的成员应在最近信号列显示买入文本", async () => {
+    const member = makeMember({
+      symbol: "610200",
+      latest_signal: "买入 2026-07-19",
+      latest_signal_at: "2026-07-19T10:00:00Z",
+      latest_signal_action: "buy",
+    });
+    mockRequestJson.mockResolvedValue([member]);
+    render(<PortfolioMembersPanel portfolioId={1} />);
+    await waitFor(() => {
+      expect(screen.getByText("610200")).toBeInTheDocument();
+    });
+    // 列头应包含"最近信号"i18n key（列头包裹在 Space/Tooltip 中，可能匹配多个祖先元素）
+    expect(screen.getAllByText("portfolioMemberColumnLatestSignal").length).toBeGreaterThanOrEqual(1);
+    // 应渲染买入动作的 i18n key（由 action + latest_signal_at 构造）
+    expect(screen.getByText(/portfolioMemberSignalBuy/)).toBeInTheDocument();
+  });
+
+  // 16. WP4-FIX：卖出信号用红色 Tag
+  it("含 latest_signal_action=sell 的成员应显示卖出文本", async () => {
+    const member = makeMember({
+      symbol: "610201",
+      latest_signal: "卖出 2026-07-20",
+      latest_signal_at: "2026-07-20T10:00:00Z",
+      latest_signal_action: "sell",
+    });
+    mockRequestJson.mockResolvedValue([member]);
+    render(<PortfolioMembersPanel portfolioId={1} />);
+    await waitFor(() => {
+      expect(screen.getByText("610201")).toBeInTheDocument();
+    });
+    // 应渲染卖出动作的 i18n key
+    expect(screen.getByText(/portfolioMemberSignalSell/)).toBeInTheDocument();
+  });
+
+  // 17. WP4-FIX：无 latest_signal 的成员显示"-"
+  it("无 latest_signal 的成员应在最近信号列显示 -", async () => {
+    const member = makeMember({
+      symbol: "610202",
+      latest_signal: null,
+      latest_signal_at: null,
+      latest_signal_action: null,
+    });
+    mockRequestJson.mockResolvedValue([member]);
+    render(<PortfolioMembersPanel portfolioId={1} />);
+    await waitFor(() => {
+      expect(screen.getByText("610202")).toBeInTheDocument();
+    });
+    // 列头应存在（Space/Tooltip 包裹可能匹配多个祖先元素）
+    expect(screen.getAllByText("portfolioMemberColumnLatestSignal").length).toBeGreaterThanOrEqual(1);
+    // 不应渲染买入/卖出动作文本
+    expect(screen.queryByText(/portfolioMemberSignalBuy/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/portfolioMemberSignalSell/)).not.toBeInTheDocument();
+    // 应渲染 "-"（最近信号列的空值占位）
+    // 表格中可能有多个 "-"，使用 getAllByText 并断言至少 1 个
+    const dashes = screen.getAllByText("-");
+    expect(dashes.length).toBeGreaterThanOrEqual(1);
+  });
 });

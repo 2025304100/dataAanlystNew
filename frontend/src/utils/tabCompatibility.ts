@@ -16,6 +16,10 @@
  * - discovery → opportunity（旧机会挖掘链接重定向到新机会中心）
  * - investment → research（投资中心后续改为标的研究）
  * - 其他现有 tab 值保持不变
+ *
+ * WP9.1：investment 一级入口已从导航移除，但 ?tab=investment 深链接仍需可用。
+ * 因 "research" 尚未作为独立 tab 落地，resolveLegacyTab 对 investment 暂回退到
+ * "investment"（渲染 InvestmentCenter 薄壳 = SymbolResearchShell，即标的研究视图）。
  */
 export const LEGACY_TAB_MAPPING: Record<string, string> = {
   portfolio: "portfolio",
@@ -30,6 +34,9 @@ export const LEGACY_TAB_MAPPING: Record<string, string> = {
  *
  * WP1.1：已加入 "opportunity"，旧 ?tab=discovery 深链接现可重定向到新机会中心入口。
  * 注意：旧 discovery 入口在 App.tsx 仍保留，但用户主动访问新入口时会切到 opportunity。
+ *
+ * WP9.1："investment" 保留在此集合中仅为兼容深链接（?tab=investment），
+ * 一级导航按钮已在 App.tsx 移除。用户访问旧链接时仍渲染标的研究视图，不会 404。
  */
 export const VALID_TABS: ReadonlySet<string> = new Set([
   "decision",
@@ -40,6 +47,7 @@ export const VALID_TABS: ReadonlySet<string> = new Set([
   "macro",
   "news",
   "settings",
+  "ai-settings",
 ]);
 
 /** 默认 tab，当传入值既不是有效 tab 也无法映射时的兜底。 */

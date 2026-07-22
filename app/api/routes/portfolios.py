@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.portfolio import Portfolio, PortfolioRule, Position
+from app.models.review import Review
 from app.models.sim_account import CashLedger, SimOrder, SimTrade
 from app.models.symbol import Symbol
+from app.schemas.attribution import AttributionReport, ReviewCreate, ReviewRead
 from app.schemas.portfolio import (
     AllocationSummary,
     AutoTradeExecuteRequest,
@@ -47,6 +49,7 @@ from app.services.portfolio_members import (
     update_member,
 )
 from app.services.portfolio_performance import compute_portfolio_performance
+from app.services.attribution import get_attribution_report
 from app.services.sim_accounts import ensure_sim_account_seed
 
 
@@ -455,6 +458,53 @@ def _member_to_dict(member) -> dict:
     }
 
 
+def _fetch_latest_orders_by_member(
+    db: Session, member_ids: list[int]
+) -> dict[int, SimOrder]:
+    """按 member_id 批量查询最近一条 SimOrder（WP4-FIX）。
+
+    查询逻辑：SELECT * FROM sim_orders WHERE member_id IN (?) ORDER BY created_at DESC
+    然后在 Python 中按 member_id 去重，保留 created_at 最新的一条。
+    单次查询避免 N+1。
+    """
+    if not member_ids:
+        return {}
+    rows = db.execute(
+        select(SimOrder)
+        .where(SimOrder.member_id.in_(member_ids))
+        .order_by(SimOrder.created_at.desc())
+    ).scalars().all()
+    latest: dict[int, SimOrder] = {}
+    for order in rows:
+        # rows 已按 created_at DESC 排序，首次出现的 member_id 即为最新订单
+        if order.member_id is not None and order.member_id not in latest:
+            latest[order.member_id] = order
+    return latest
+
+
+def _build_latest_signal_fields(order: SimOrder | None) -> dict:
+    """从 SimOrder 构造 latest_signal 相关字段（WP4-FIX）。
+
+    返回 dict 含 latest_signal / latest_signal_at / latest_signal_action。
+    无订单时三个字段均为 None。
+    """
+    if order is None:
+        return {
+            "latest_signal": None,
+            "latest_signal_at": None,
+            "latest_signal_action": None,
+        }
+    side = order.side  # buy/sell
+    side_zh = "买入" if side == "buy" else "卖出" if side == "sell" else side
+    date_str = order.created_at.strftime("%Y-%m-%d") if order.created_at else ""
+    latest_signal = f"{side_zh} {date_str}".strip() if date_str else side_zh
+    return {
+        "latest_signal": latest_signal,
+        "latest_signal_at": order.created_at.isoformat() if order.created_at else None,
+        "latest_signal_action": side,
+    }
+
+
 @router.get(
     "/portfolios/{portfolio_id}/members",
     response_model=list[PortfolioMemberRead],
@@ -472,6 +522,8 @@ def list_portfolio_members(
     """列出组合成员（WP4.4）。
 
     默认不返回归档成员（effective_to 非空），可通过 include_archived=true 包含。
+    每个成员附带最近信号信息（WP4-FIX）：按 member_id 联表查询最近一条 SimOrder，
+    填充 latest_signal / latest_signal_at / latest_signal_action。
     """
     members = list_members(
         db,
@@ -482,7 +534,16 @@ def list_portfolio_members(
         limit=limit,
         offset=offset,
     )
-    return [PortfolioMemberRead(**_member_to_dict(m)) for m in members]
+    if not members:
+        return []
+
+    latest_orders = _fetch_latest_orders_by_member(db, [m.id for m in members])
+    result: list[PortfolioMemberRead] = []
+    for m in members:
+        data = _member_to_dict(m)
+        data.update(_build_latest_signal_fields(latest_orders.get(m.id)))
+        result.append(PortfolioMemberRead(**data))
+    return result
 
 
 @router.post(
@@ -640,3 +701,142 @@ def backfill_portfolio_members(
     dry_run = payload.dry_run if payload else False
     stats = backfill_positions_to_members(db, portfolio_id=portfolio_id, dry_run=dry_run)
     return BackfillResult(**stats)
+
+
+# ============================================================================
+# WP8 绩效归因接口（仅追加，不修改上方已稳定端点）
+# ============================================================================
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/attribution",
+    response_model=AttributionReport,
+    tags=["portfolio_attribution"],
+)
+def get_portfolio_attribution_route(
+    portfolio_id: int,
+    start_date: date_type | None = Query(None, description="起始日期（含），格式 YYYY-MM-DD"),
+    end_date: date_type | None = Query(None, description="结束日期（含），格式 YYYY-MM-DD"),
+    dimensions: str | None = Query(
+        None,
+        description="逗号分隔的维度列表，可选值：by_member,by_execution_mode,by_source,by_rule_signal,backtest_vs_sim,cost_impact；不传则返回全部维度",
+    ),
+    backtest_run_id: int | None = Query(None, description="回测运行 ID（仅 backtest_vs_sim 维度需要）"),
+    db: Session = Depends(get_db),
+) -> AttributionReport:
+    """WP8：返回组合绩效归因报告。
+
+    用途：
+    - 解释组合收益来自哪些成员、执行模式、来源、规则版本
+    - 对比回测与模拟账户同期偏差
+    - 量化成本/滑点/未成交/风控阻断影响
+
+    数据来源：
+    - SimTrade（已平仓交易）join SimOrder（归因字段）
+    - BacktestRun（回测快照）
+    - PortfolioEquitySnapshot（组合净值时序）
+
+    边界处理：
+    - 样本不足时在对应维度返回 sample_warning 字段
+    - 不存在的组合返回 404
+    - backtest_vs_sim 维度未传 backtest_run_id 时返回 None
+    """
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    # 解析 dimensions 参数
+    dims: list[str] | None = None
+    if dimensions:
+        dims = [d.strip() for d in dimensions.split(",") if d.strip()]
+
+    try:
+        report = get_attribution_report(
+            db,
+            portfolio_id,
+            start_date=start_date,
+            end_date=end_date,
+            dimensions=dims,
+            backtest_run_id=backtest_run_id,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+
+    return AttributionReport(**report)
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/reviews",
+    response_model=list[ReviewRead],
+    tags=["portfolio_attribution"],
+)
+def list_portfolio_reviews(
+    portfolio_id: int,
+    limit: int = Query(50, ge=1, le=500, description="最多返回条数"),
+    db: Session = Depends(get_db),
+) -> list[ReviewRead]:
+    """WP8：列出组合的复盘记录（按创建时间降序）。"""
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    rows = db.execute(
+        select(Review)
+        .where(Review.portfolio_id == portfolio_id)
+        .order_by(Review.created_at.desc(), Review.id.desc())
+        .limit(limit)
+    ).scalars().all()
+    return [ReviewRead.model_validate(r) for r in rows]
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/reviews",
+    response_model=ReviewRead,
+    tags=["portfolio_attribution"],
+)
+def create_portfolio_review(
+    portfolio_id: int,
+    payload: ReviewCreate,
+    db: Session = Depends(get_db),
+) -> ReviewRead:
+    """WP8：创建复盘记录。
+
+    接收归因报告快照 + 备注，创建复盘记录关联 portfolio_id 和时间范围。
+    若提供 report_snapshot，则直接保存；否则按 start_date/end_date/dimensions
+    实时计算归因报告并保存为快照。
+    """
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    # 若未提供 report_snapshot，实时计算归因报告
+    if payload.report_snapshot is not None:
+        report_dict = payload.report_snapshot
+    else:
+        try:
+            report_dict = get_attribution_report(
+                db,
+                portfolio_id,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                dimensions=payload.dimensions,
+                backtest_run_id=payload.backtest_run_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    review = Review(
+        portfolio_id=portfolio_id,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        report_snapshot_json=json.dumps(report_dict, ensure_ascii=False, default=str),
+        note=payload.note,
+        title=payload.title,
+    )
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+    return ReviewRead.model_validate(review)

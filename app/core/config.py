@@ -52,9 +52,12 @@ class Settings:
         # 注意：这 4 个字段使用大写属性名以匹配任务规范，便于在业务代码中作为显式开关标识
         self.OPPORTUNITY_CENTER_ENABLED = _env_bool("OPPORTUNITY_CENTER_ENABLED", False)
         self.PORTFOLIO_MEMBERS_ENABLED = _env_bool("PORTFOLIO_MEMBERS_ENABLED", False)
-        self.AUTO_TRADE_MEMBER_SOURCE_ENABLED = _env_bool("AUTO_TRADE_MEMBER_SOURCE_ENABLED", False)
+        # WP9.5：成员来源开关默认值改为 True，停止读取最新扫描作为默认来源。
+        # 旧默认值为 False（使用持仓+最新扫描），WP6/WP7 双轨验收通过后切换为 True。
+        # 如需回退到旧行为，显式设置环境变量 AUTO_TRADE_MEMBER_SOURCE_ENABLED=false。
+        self.AUTO_TRADE_MEMBER_SOURCE_ENABLED = _env_bool("AUTO_TRADE_MEMBER_SOURCE_ENABLED", True)
         self.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED = _env_bool(
-            "PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED", False
+            "PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED", True
         )
         # WP-S：外部数据网关稳定性底座配置
         # 单飞/限流/熔断/缓存的运行时参数，可通过环境变量覆盖
@@ -111,6 +114,17 @@ class Settings:
         # 网关功能开关（默认开启，可通过环境变量关闭以回退到旧直接调用模式）
         self.EXTERNAL_DATA_GATEWAY_ENABLED = _env_bool(
             "EXTERNAL_DATA_GATEWAY_ENABLED", True
+        )
+        # WP-AI.6：结构化输出与审计配置
+        # 会话保留天数（超过后由 cleanup_expired_sessions 归档）
+        self.AI_SESSION_RETENTION_DAYS = int(
+            os.getenv("AI_SESSION_RETENTION_DAYS", "90")
+        )
+        # 是否启用审计（关闭后 create_audit_record 直接返回 None）
+        self.AI_AUDIT_ENABLED = _env_bool("AI_AUDIT_ENABLED", True)
+        # 审计上下文最大大小（字符），超出截断
+        self.AI_AUDIT_MAX_CONTEXT_SIZE = int(
+            os.getenv("AI_AUDIT_MAX_CONTEXT_SIZE", "2048")
         )
 
 

@@ -3,12 +3,19 @@ import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
 import { OPERATOR_LABELS } from "../constants/conditionFields";
 import { t, template, regionShortLabel, assetTypeLabel, stageLabel, actionLabel, DOT } from "../i18n";
+import { navigateToResearch } from "../utils/sourceContext";
 import { Checkbox, Select, Button, Tag, Space, InputNumber, Switch, Input, Empty, Table, Collapse, Tooltip, Dropdown, Alert, Modal } from "antd";
 import { MoreOutlined, WarningOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { CustomIndicator, DiscoveryIndicatorEvaluation, DiscoveryPlan as StoredDiscoveryPlan, DiscoveryPlanFilter as StoredDiscoveryPlanFilter, WorkbenchCandidate } from "../types";
 // WP1-FIX.2：候选列表接入 OpportunityStatusBadges
 import { OpportunityStatusBadges } from "./opportunity/OpportunityStatusBadges";
+// WP-S-FIX.4：阻断操作就地处理（按钮替换为 CapabilityGateButton）
+import { CapabilityGateButton } from "./capability/CapabilityGateButton";
+// WP-S-FIX.3：首次扫描向导
+import { FirstScanWizard } from "./capability/FirstScanWizard";
+// WP-AI.7：让 AI 解释按钮
+import ExplainButton from "./ai/ExplainButton";
 import {
   percent,
   score,
@@ -298,7 +305,22 @@ function saveAdvancedConfig(cfg: Record<string, unknown>) {
   }
 }
 
-export default function Discovery() {
+export interface DiscoveryProps {
+  /**
+   * 当 Discovery 用作候选池入口时，跳转到标的研究应携带的 source_type。
+   * 默认 'candidate'。当直接在 discovery tab 渲染时可传 'legacy'。
+   */
+  sourceType?: "candidate" | "legacy";
+  /**
+   * 返回来源页面的标识。默认 'candidate'（对应机会中心候选池子页签）。
+   */
+  returnTo?: "candidate" | "research";
+}
+
+export default function Discovery({
+  sourceType = "candidate",
+  returnTo = "candidate",
+}: DiscoveryProps = {}) {
   const ctx = useApp();
   const task = ctx.discoveryTask;
   const scopeStats = ctx.discoveryScopeStats;
@@ -318,6 +340,7 @@ export default function Discovery() {
   const [includeNews, setIncludeNews] = useState(_savedCfg?.includeNews ?? true);
   const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [pausing, setPausing] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -703,6 +726,11 @@ export default function Discovery() {
   }, [defaultIndicatorKey]);
 
   const handleStart = useCallback(async () => {
+    // WP-S-FIX.3: 如果整体 blocked，打开向导而非直接执行
+    if (ctx.capabilities?.overall_status === "blocked") {
+      setWizardOpen(true);
+      return;
+    }
     setStarting(true);
     try {
       await ctx.runDiscoveryMining({
@@ -804,11 +832,20 @@ export default function Discovery() {
     }
   }, [ctx]);
 
-  const handleRunBacktest = useCallback((symbolId: number) => {
-    ctx.setActiveSymbolId(symbolId);
-    ctx.setActiveTab("investment");
-    ctx.showToast("success", t("discoveryNavigatedToBacktest"));
-  }, [ctx]);
+  const handleRunBacktest = useCallback(
+    (symbolId: number, candidateId?: number | null) => {
+      // WP5.3：跳转前写入 SourceContext（candidate 入口）
+      navigateToResearch(ctx, {
+        symbol_id: symbolId,
+        source_type: sourceType,
+        source_id: candidateId ?? undefined,
+        portfolio_id: ctx.portfolioId ?? undefined,
+        return_to: returnTo,
+      });
+      ctx.showToast("success", t("discoveryNavigatedToBacktest"));
+    },
+    [ctx, sourceType, returnTo],
+  );
 
   const handleCreateJournal = useCallback(async (symbolId: number, item: WorkbenchCandidate) => {
     try {
@@ -1111,7 +1148,7 @@ export default function Discovery() {
                   },
                 ],
                 onClick: ({ key }: { key: string }) => {
-                  if (key === "backtest") handleRunBacktest(item.symbol_id);
+                  if (key === "backtest") handleRunBacktest(item.symbol_id, item.candidate_id ?? null);
                   else if (key === "journal") handleCreateJournal(item.symbol_id, item);
                   else if (key === "freeze" && resultId) handleToggleFreeze(resultId, !!item.is_frozen, item.symbol_id);
                 },
@@ -1122,6 +1159,14 @@ export default function Discovery() {
                 {t("discoveryMoreActions")} <MoreOutlined />
               </Button>
             </Dropdown>
+            {/* WP-AI.7：让 AI 解释（携带 candidate_id + symbol_id） */}
+            <ExplainButton
+              sourcePage="discovery"
+              references={{
+                candidate_id: candidateId ?? item.symbol_id,
+                symbol_id: item.symbol_id,
+              }}
+            />
           </Space>
         );
       },
@@ -1273,7 +1318,7 @@ export default function Discovery() {
               </Checkbox>
             </label>
             <div className="discovery-actions">
-              <Button id="discoveryRunButton" type="primary" loading={starting} onClick={handleStart} disabled={!canStart}>{t("startDiscovery")}</Button>
+              <CapabilityGateButton capabilityKey="discovery" id="discoveryRunButton" type="primary" loading={starting} onClick={handleStart} disabled={!canStart}>{t("startDiscovery")}</CapabilityGateButton>
               <Button loading={pausing} onClick={handlePause} disabled={!canPause}>{t("pauseDiscovery")}</Button>
               <Button loading={resuming} onClick={handleResume} disabled={!canResume}>{t("resumeDiscovery")}</Button>
               <Button danger loading={cancelling} onClick={handleCancel} disabled={!canCancel}>{t("cancelDiscovery")}</Button>
@@ -1566,6 +1611,7 @@ export default function Discovery() {
           <Empty description={t("discoveryErrorEmpty")} />
         )}
       </Modal>
+      <FirstScanWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
     </div>
   );
 }

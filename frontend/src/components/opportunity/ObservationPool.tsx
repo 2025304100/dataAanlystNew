@@ -32,11 +32,13 @@ import {
   ReloadOutlined,
   InboxOutlined,
   EyeOutlined,
+  ArrowRightOutlined,
 } from "@ant-design/icons";
 import { useApp } from "../../context/AppContext";
 import { requestJson } from "../../api/client";
 import { t } from "../../i18n";
 import { OpportunityStatusBadges } from "./OpportunityStatusBadges";
+import { navigateToResearch } from "../../utils/sourceContext";
 
 // 观察项富读模型（对齐 app.schemas.watchlist.ObservationRead）
 interface ObservationItem {
@@ -385,9 +387,37 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
       {
         title: t("observationPoolColumnActions"),
         key: "actions",
-        width: 140,
+        width: 200,
         render: (_v: unknown, row: ObservationItem) => (
           <Space size="small">
+            <Button
+              size="small"
+              type="link"
+              icon={<ArrowRightOutlined />}
+              onClick={() => {
+                // WP5.3：观察池入口跳转，携带 portfolio_id（target_portfolio_id）
+                navigateToResearch(
+                  ctx,
+                  {
+                    symbol_id: row.symbol_id,
+                    source_type: "observation",
+                    source_id: row.watchlist_item_id,
+                    portfolio_id: row.target_portfolio_id ?? undefined,
+                    return_to: "observation",
+                  },
+                  {
+                    returnState: {
+                      statusFilter,
+                      originFilter,
+                      tagFilter,
+                      watchlistFilter,
+                    },
+                  },
+                );
+              }}
+            >
+              {t("observationPoolEnterResearch")}
+            </Button>
             <Button
               size="small"
               type="link"
@@ -440,7 +470,8 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
         ),
       },
     ],
-    [fetchObservations],
+    // WP5.3：补全依赖项，避免闭包过期导致 returnState 携带旧筛选值
+    [fetchObservations, ctx, statusFilter, originFilter, tagFilter, watchlistFilter],
   );
 
   // 空/错/加载状态

@@ -511,3 +511,651 @@ class TestBenchmarkCurve:
         # 3060/3000 = 1.02 → 102000
         assert bench[1]["equity"] == pytest.approx(102000.0, rel=1e-4)
 
+
+# ============================================================================
+# WP8 绩效归因测试
+# ============================================================================
+# 守护 6 类归因维度 + 统一入口 + 样本提示 + API 端点
+# 1. attribute_by_member 基本成员归因
+# 2. attribute_by_execution_mode 执行模式归因
+# 3. attribute_by_source 来源归因
+# 4. attribute_by_rule_signal 规则/信号归因
+# 5. compute_backtest_vs_sim_diff 回测与模拟偏差
+# 6. attribute_cost_impact 成本影响
+# 7. get_attribution_report 完整报告
+# 8. 样本不足提示
+# 9. API 端点
+# ============================================================================
+
+from app.models.backtest import BacktestRun
+from app.models.portfolio_member import PortfolioMember
+from app.services.attribution import (
+    attribute_by_member,
+    attribute_by_execution_mode,
+    attribute_by_source,
+    attribute_by_rule_signal,
+    compute_backtest_vs_sim_diff,
+    attribute_cost_impact,
+    get_attribution_report,
+    MIN_TRADE_SAMPLE,
+)
+
+
+def _make_member(
+    db_session, portfolio_id, symbol_id, execution_mode="manual", source_type="manual"
+) -> PortfolioMember:
+    """造一个组合成员。"""
+    m = PortfolioMember(
+        portfolio_id=portfolio_id,
+        symbol_id=symbol_id,
+        status="active",
+        execution_mode=execution_mode,
+        source_type=source_type,
+    )
+    db_session.add(m)
+    db_session.commit()
+    db_session.refresh(m)
+    return m
+
+
+def _make_attributed_sell_trade(
+    db_session,
+    *,
+    portfolio_id: int,
+    symbol_id: int,
+    realized_pnl: float,
+    created_at: datetime,
+    member_id: int | None = None,
+    execution_mode: str | None = None,
+    source_type: str | None = None,
+    signal_id: int | None = None,
+    rule_version_id: int | None = None,
+    note: str | None = None,
+    fee: float = 0.0,
+    submitted_price: float = 11.0,
+    filled_price: float = 11.0,
+    status: str = "filled",
+    rejection_code: str | None = None,
+):
+    """造一笔带归因字段的卖出 trade（SimOrder + SimTrade）。
+
+    SimOrder 携带 WP6 归因字段（member_id/execution_mode/source_type 等）。
+    """
+    sell_order = SimOrder(
+        portfolio_id=portfolio_id,
+        symbol_id=symbol_id,
+        side="sell",
+        order_type="market",
+        quantity=100,
+        submitted_price=submitted_price,
+        status=status,
+        filled_quantity=100,
+        filled_price=filled_price,
+        filled_amount=filled_price * 100,
+        fee=fee,
+        filled_at=created_at,
+        member_id=member_id,
+        execution_mode=execution_mode,
+        source_type=source_type,
+        signal_id=signal_id,
+        rule_version_id=rule_version_id,
+        note=note,
+        rejection_code=rejection_code,
+        created_at=created_at,
+    )
+    db_session.add(sell_order)
+    db_session.flush()
+    sell_trade = SimTrade(
+        portfolio_id=portfolio_id,
+        symbol_id=symbol_id,
+        order_id=sell_order.id,
+        side="sell",
+        quantity=100,
+        price=filled_price,
+        amount=filled_price * 100,
+        fee=fee,
+        realized_pnl=realized_pnl,
+        created_at=created_at,
+    )
+    db_session.add(sell_trade)
+    db_session.commit()
+    return sell_order, sell_trade
+
+
+class TestAttributeByMember:
+    """【WP8 测试】按成员贡献归因。"""
+
+    def test_attribute_by_member_basic(self, db_session):
+        """【WP8 测试】基本成员归因：两个成员各自贡献正确计算。"""
+        p = _make_portfolio(db_session, name="QA-Attr-Member", total_capital=100000.0)
+        sym1 = _make_symbol(db_session, symbol="700001")
+        sym2 = _make_symbol(db_session, symbol="700002")
+        m1 = _make_member(db_session, p.id, sym1.id, execution_mode="manual")
+        m2 = _make_member(db_session, p.id, sym2.id, execution_mode="auto")
+
+        # m1 盈利 500，m2 亏损 200
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym1.id, realized_pnl=500.0,
+            created_at=datetime(2026, 7, 16, 10, 0), member_id=m1.id,
+        )
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym2.id, realized_pnl=-200.0,
+            created_at=datetime(2026, 7, 17, 10, 0), member_id=m2.id,
+        )
+
+        result = attribute_by_member(
+            db_session, p.id, date(2026, 7, 1), date(2026, 7, 31)
+        )
+
+        assert result["total_pnl"] == 300.0  # 500 - 200
+        assert result["total_trades"] == 2
+        assert result["member_count"] == 2
+        items = result["items"]
+        # 按 pnl 降序：m1(500) 在前，m2(-200) 在后
+        assert items[0]["member_id"] == m1.id
+        assert items[0]["pnl"] == 500.0
+        assert items[0]["contribution_pct"] == pytest.approx(166.67, abs=0.1)
+        assert items[1]["member_id"] == m2.id
+        assert items[1]["pnl"] == -200.0
+        assert items[1]["contribution_pct"] == pytest.approx(-66.67, abs=0.1)
+
+
+class TestAttributeByExecutionMode:
+    """【WP8 测试】按执行模式归因。"""
+
+    def test_attribute_by_execution_mode(self, db_session):
+        """【WP8 测试】manual/auto/confirm 三种模式各自贡献。"""
+        p = _make_portfolio(db_session, name="QA-Attr-Mode", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700010")
+
+        # manual 盈利 300，auto 盈利 100，confirm 亏损 50
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=300.0,
+            created_at=datetime(2026, 7, 16, 10, 0), execution_mode="manual",
+        )
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=100.0,
+            created_at=datetime(2026, 7, 17, 10, 0), execution_mode="auto",
+        )
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=-50.0,
+            created_at=datetime(2026, 7, 18, 10, 0), execution_mode="confirm",
+        )
+
+        result = attribute_by_execution_mode(
+            db_session, p.id, date(2026, 7, 1), date(2026, 7, 31)
+        )
+
+        assert result["total_pnl"] == 350.0
+        assert result["total_trades"] == 3
+        items = result["items"]
+        modes = {it["execution_mode"]: it for it in items}
+        assert modes["manual"]["pnl"] == 300.0
+        assert modes["auto"]["pnl"] == 100.0
+        assert modes["confirm"]["pnl"] == -50.0
+        # 标签正确
+        assert modes["manual"]["execution_label"] == "手动"
+        assert modes["auto"]["execution_label"] == "自动"
+        assert modes["confirm"]["execution_label"] == "确认"
+
+
+class TestAttributeBySource:
+    """【WP8 测试】按来源归因。"""
+
+    def test_attribute_by_source(self, db_session):
+        """【WP8 测试】member/scan/manual 来源各自贡献。"""
+        p = _make_portfolio(db_session, name="QA-Attr-Source", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700020")
+
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=400.0,
+            created_at=datetime(2026, 7, 16, 10, 0), source_type="member",
+        )
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=-100.0,
+            created_at=datetime(2026, 7, 17, 10, 0), source_type="scan",
+        )
+        # 无 source_type 的历史订单
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=50.0,
+            created_at=datetime(2026, 7, 18, 10, 0), source_type=None,
+        )
+
+        result = attribute_by_source(
+            db_session, p.id, date(2026, 7, 1), date(2026, 7, 31)
+        )
+
+        assert result["total_pnl"] == 350.0
+        items = result["items"]
+        srcs = {it["source_type"]: it for it in items}
+        assert srcs["member"]["pnl"] == 400.0
+        assert srcs["member"]["source_label"] == "组合成员"
+        assert srcs["scan"]["pnl"] == -100.0
+        assert srcs["scan"]["source_label"] == "扫描结果"
+        # None → unknown
+        assert srcs["unknown"]["pnl"] == 50.0
+        assert srcs["unknown"]["source_label"] == "未知"
+
+
+class TestAttributeByRuleSignal:
+    """【WP8 测试】按规则版本/信号/退出原因归因。"""
+
+    def test_attribute_by_rule_signal(self, db_session):
+        """【WP8 测试】不同 rule_version_id + signal_id + exit_reason 分组。"""
+        p = _make_portfolio(db_session, name="QA-Attr-Rule", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700030")
+
+        # rule_v1 + signal_1 + exit:stop_loss
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=-200.0,
+            created_at=datetime(2026, 7, 16, 10, 0),
+            rule_version_id=1, signal_id=101, note="exit:stop_loss",
+        )
+        # rule_v1 + signal_1 + exit:take_profit
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=500.0,
+            created_at=datetime(2026, 7, 17, 10, 0),
+            rule_version_id=1, signal_id=101, note="exit:take_profit",
+        )
+        # rule_v2 + signal_2 + 无 note
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=150.0,
+            created_at=datetime(2026, 7, 18, 10, 0),
+            rule_version_id=2, signal_id=102, note=None,
+        )
+
+        result = attribute_by_rule_signal(
+            db_session, p.id, date(2026, 7, 1), date(2026, 7, 31)
+        )
+
+        assert result["total_pnl"] == 450.0
+        assert result["total_trades"] == 3
+        items = result["items"]
+        # 应有 3 个分组：(1, 101, stop_loss), (1, 101, take_profit), (2, 102, unspecified)
+        assert len(items) == 3
+        groups = {(it["rule_version_id"], it["signal_id"], it["exit_reason"]): it for it in items}
+        assert (1, 101, "stop_loss") in groups
+        assert (1, 101, "take_profit") in groups
+        assert (2, 102, "unspecified") in groups
+        assert groups[(1, 101, "take_profit")]["pnl"] == 500.0
+        assert groups[(2, 102, "unspecified")]["pnl"] == 150.0
+
+
+class TestComputeBacktestVsSimDiff:
+    """【WP8 测试】回测与模拟账户同期偏差。"""
+
+    def test_compute_backtest_vs_sim_diff(self, db_session):
+        """【WP8 测试】回测指标 vs 模拟指标偏差计算正确。"""
+        p = _make_portfolio(db_session, name="QA-Attr-BtVsSim", total_capital=100000.0)
+        # 造 5 天 snapshot（总收益 +400 = 0.4%）
+        _seed_snapshots(db_session, p.id, start_equity=100000.0, days=5)
+
+        # 造回测记录：total_return_pct=2%, max_drawdown_pct=5%, sharpe=1.5, win_rate=0.6
+        bt_run = BacktestRun(
+            portfolio_id=p.id,
+            run_name="QA-BtRun",
+            symbols_json="[]",
+            rule_config_json="{}",
+            start_date=date(2026, 7, 15),
+            end_date=date(2026, 7, 19),
+            initial_capital=100000.0,
+            total_return=2000.0,
+            total_return_pct=0.02,
+            max_drawdown=5000.0,
+            max_drawdown_pct=0.05,
+            sharpe_ratio=1.5,
+            win_rate=0.6,
+            profit_factor=2.0,
+            trade_count=10,
+            avg_holding_days=3.0,
+            status="completed",
+        )
+        db_session.add(bt_run)
+        db_session.commit()
+        db_session.refresh(bt_run)
+
+        result = compute_backtest_vs_sim_diff(
+            db_session, p.id, bt_run.id,
+            start_date=date(2026, 7, 15), end_date=date(2026, 7, 19),
+        )
+
+        # 回测指标
+        assert result["backtest_metrics"]["total_return_pct"] == 0.02
+        assert result["backtest_metrics"]["sharpe_ratio"] == 1.5
+        # 模拟指标（snapshot 总收益 0.4%）
+        assert result["sim_metrics"]["total_return_pct"] == pytest.approx(0.004, abs=1e-4)
+        # 偏差 = sim - backtest = 0.004 - 0.02 = -0.016
+        assert result["diff"]["return_diff_pct"] == pytest.approx(-0.016, abs=1e-4)
+        assert result["diff"]["sharpe_diff"] != 0  # 有差异
+        # 解释文本非空
+        assert result["explanation"]
+        # 样本不足（sim 无 trade）
+        assert result["sample_warning"] is not None
+
+    def test_compute_backtest_vs_sim_diff_not_found(self, db_session):
+        """【WP8 测试】不存在的 backtest_run_id 抛 ValueError。"""
+        p = _make_portfolio(db_session, name="QA-Attr-BtNotFound")
+        with pytest.raises(ValueError, match="BacktestRun not found"):
+            compute_backtest_vs_sim_diff(
+                db_session, p.id, 99999,
+                start_date=date(2026, 7, 1), end_date=date(2026, 7, 31),
+            )
+
+
+class TestAttributeCostImpact:
+    """【WP8 测试】成本/滑点/未成交/风控阻断影响。"""
+
+    def test_attribute_cost_impact(self, db_session):
+        """【WP8 测试】手续费 + 滑点 + 拒绝/风控阻断计数正确。"""
+        p = _make_portfolio(db_session, name="QA-Attr-Cost", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700040")
+
+        # 订单1：已成交，fee=5，滑点=|11-10|*100=100
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=500.0,
+            created_at=datetime(2026, 7, 16, 10, 0),
+            fee=5.0, submitted_price=10.0, filled_price=11.0,
+        )
+        # 订单2：已成交，fee=3，无滑点
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=200.0,
+            created_at=datetime(2026, 7, 17, 10, 0),
+            fee=3.0, submitted_price=11.0, filled_price=11.0,
+        )
+        # 订单3：被风控拒绝（status=rejected, rejection_code=risk_limit_exceed）
+        rejected_order = SimOrder(
+            portfolio_id=p.id, symbol_id=sym.id, side="buy", order_type="market",
+            quantity=100, submitted_price=10.0, status="rejected",
+            filled_quantity=0, filled_price=0, filled_amount=0, fee=0,
+            filled_at=datetime(2026, 7, 18, 10, 0),
+            rejection_code="risk_limit_exceed",
+            created_at=datetime(2026, 7, 18, 10, 0),
+        )
+        db_session.add(rejected_order)
+        db_session.commit()
+
+        result = attribute_cost_impact(
+            db_session, p.id, date(2026, 7, 1), date(2026, 7, 31)
+        )
+
+        # 手续费 = 5 + 3 = 8
+        assert result["fee_cost"] == 8.0
+        # 滑点 = |11-10|*100 = 100（订单1）+ 0（订单2）= 100
+        assert result["slippage_cost"] == 100.0
+        # 总成本 = 8 + 100 = 108
+        assert result["total_cost"] == 108.0
+        # 拒绝订单数 = 1（rejected_order）
+        assert result["rejected_count"] == 1
+        # 风控阻断数 = 1（rejection_code 含 "risk" 和 "limit"）
+        assert result["risk_blocked_count"] == 1
+        # 影响百分比 = 108 / (11*100 + 11*100) * 100 = 108/2200*100 ≈ 4.9091
+        assert result["impact_pct"] == pytest.approx(4.9091, abs=0.01)
+
+
+class TestGetAttributionReport:
+    """【WP8 测试】统一归因入口。"""
+
+    def test_get_attribution_report_full(self, db_session):
+        """【WP8 测试】完整报告包含全部维度 + summary。"""
+        p = _make_portfolio(db_session, name="QA-Attr-Report", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700050")
+        m = _make_member(db_session, p.id, sym.id, execution_mode="auto", source_type="candidate")
+        _seed_snapshots(db_session, p.id, start_equity=100000.0, days=3)
+
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=500.0,
+            created_at=datetime(2026, 7, 16, 10, 0),
+            member_id=m.id, execution_mode="auto", source_type="candidate",
+            rule_version_id=1, signal_id=201, note="exit:take_profit",
+        )
+
+        report = get_attribution_report(
+            db_session, p.id,
+            start_date=date(2026, 7, 1), end_date=date(2026, 7, 31),
+        )
+
+        assert report["portfolio_id"] == p.id
+        assert report["start_date"] == "2026-07-01"
+        assert report["end_date"] == "2026-07-31"
+        # 全部维度都计算了
+        assert report["by_member"] is not None
+        assert report["by_execution_mode"] is not None
+        assert report["by_source"] is not None
+        assert report["by_rule_signal"] is not None
+        # backtest_vs_sim 未传 backtest_run_id → None
+        assert report["backtest_vs_sim"] is None
+        assert report["cost_impact"] is not None
+        # summary 非空
+        assert report["summary"]
+        # 验证成员归因数据正确
+        assert report["by_member"]["items"][0]["member_id"] == m.id
+        assert report["by_member"]["items"][0]["pnl"] == 500.0
+
+    def test_get_attribution_report_partial_dimensions(self, db_session):
+        """【WP8 测试】只请求部分维度时其他维度为 None。"""
+        p = _make_portfolio(db_session, name="QA-Attr-Partial", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700060")
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=100.0,
+            created_at=datetime(2026, 7, 16, 10, 0),
+        )
+
+        report = get_attribution_report(
+            db_session, p.id,
+            start_date=date(2026, 7, 1), end_date=date(2026, 7, 31),
+            dimensions=["by_member", "cost_impact"],
+        )
+
+        assert report["by_member"] is not None
+        assert report["cost_impact"] is not None
+        # 未请求的维度为 None
+        assert report["by_execution_mode"] is None
+        assert report["by_source"] is None
+        assert report["by_rule_signal"] is None
+        assert report["backtest_vs_sim"] is None
+
+    def test_get_attribution_report_not_found(self, db_session):
+        """【WP8 测试】不存在的组合抛 ValueError。"""
+        with pytest.raises(ValueError, match="Portfolio not found"):
+            get_attribution_report(
+                db_session, 99999,
+                start_date=date(2026, 7, 1), end_date=date(2026, 7, 31),
+            )
+
+
+class TestAttributionSampleSizeWarning:
+    """【WP8 测试】样本不足提示。"""
+
+    def test_attribution_sample_size_warning(self, db_session):
+        """【WP8 测试】交易笔数 < MIN_TRADE_SAMPLE 时返回 sample_warning。"""
+        p = _make_portfolio(db_session, name="QA-Attr-Sample", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700070")
+
+        # 只造 1 笔交易（< MIN_TRADE_SAMPLE=5）
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=100.0,
+            created_at=datetime(2026, 7, 16, 10, 0),
+            execution_mode="manual", source_type="manual",
+        )
+
+        result_member = attribute_by_member(
+            db_session, p.id, date(2026, 7, 1), date(2026, 7, 31)
+        )
+        result_mode = attribute_by_execution_mode(
+            db_session, p.id, date(2026, 7, 1), date(2026, 7, 31)
+        )
+        result_source = attribute_by_source(
+            db_session, p.id, date(2026, 7, 1), date(2026, 7, 31)
+        )
+
+        # 交易笔数 1 < 5 → 样本不足
+        assert result_member["total_trades"] == 1
+        assert result_member["sample_warning"] == "样本不足，结论仅供参考"
+        assert result_mode["sample_warning"] == "样本不足，结论仅供参考"
+        assert result_source["sample_warning"] == "样本不足，结论仅供参考"
+
+    def test_attribution_member_count_warning(self, db_session):
+        """【WP8 测试】成员数 < MIN_MEMBER_SAMPLE 时 member 归因返回 sample_warning。"""
+        p = _make_portfolio(db_session, name="QA-Attr-MemberCount", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700071")
+        m = _make_member(db_session, p.id, sym.id)
+
+        # 造 6 笔交易（>= MIN_TRADE_SAMPLE=5），但只有 1 个成员（< MIN_MEMBER_SAMPLE=3）
+        for i in range(6):
+            _make_attributed_sell_trade(
+                db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=50.0,
+                created_at=datetime(2026, 7, 10 + i, 10, 0),
+                member_id=m.id,
+            )
+
+        result = attribute_by_member(
+            db_session, p.id, date(2026, 7, 1), date(2026, 7, 31)
+        )
+        # 交易笔数足够（6 >= 5），但成员数不足（1 < 3）
+        assert result["total_trades"] == 6
+        assert result["member_count"] == 1
+        assert result["sample_warning"] == "样本不足，结论仅供参考"
+
+
+class TestAttributionAPIEndpoint:
+    """【WP8 测试】归因 API 端点。"""
+
+    @pytest.fixture()
+    def client(self, db_session):
+        """构造 TestClient，依赖覆盖让 get_db 返回测试 session。"""
+        from fastapi.testclient import TestClient
+
+        from app.db.session import get_db
+        from app.main import app
+
+        def _override_get_db():
+            try:
+                yield db_session
+            finally:
+                pass
+
+        app.dependency_overrides[get_db] = _override_get_db
+        yield TestClient(app)
+        app.dependency_overrides.pop(get_db, None)
+
+    def test_attribution_api_endpoint(self, client, db_session):
+        """【WP8 测试】GET /portfolios/{id}/attribution 返回归因报告。"""
+        p = _make_portfolio(db_session, name="QA-Attr-API", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700080")
+        m = _make_member(db_session, p.id, sym.id, execution_mode="auto")
+
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=300.0,
+            created_at=datetime(2026, 7, 16, 10, 0),
+            member_id=m.id, execution_mode="auto", source_type="member",
+            rule_version_id=1, signal_id=301,
+        )
+
+        resp = client.get(
+            f"/api/v1/portfolios/{p.id}/attribution",
+            params={
+                "start_date": "2026-07-01",
+                "end_date": "2026-07-31",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["portfolio_id"] == p.id
+        assert data["start_date"] == "2026-07-01"
+        assert data["end_date"] == "2026-07-31"
+        # 全部维度都返回
+        assert data["by_member"] is not None
+        assert data["by_execution_mode"] is not None
+        assert data["by_source"] is not None
+        assert data["by_rule_signal"] is not None
+        assert data["cost_impact"] is not None
+        # backtest_vs_sim 未传 backtest_run_id → None
+        assert data["backtest_vs_sim"] is None
+        # summary 非空
+        assert data["summary"]
+        # 成员归因数据正确
+        assert data["by_member"]["items"][0]["member_id"] == m.id
+        assert data["by_member"]["items"][0]["pnl"] == 300.0
+
+    def test_attribution_api_endpoint_partial_dimensions(self, client, db_session):
+        """【WP8 测试】GET ?dimensions=by_member,cost_impact 只返回指定维度。"""
+        p = _make_portfolio(db_session, name="QA-Attr-API-Partial", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700081")
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=200.0,
+            created_at=datetime(2026, 7, 16, 10, 0),
+        )
+
+        resp = client.get(
+            f"/api/v1/portfolios/{p.id}/attribution",
+            params={
+                "start_date": "2026-07-01",
+                "end_date": "2026-07-31",
+                "dimensions": "by_member,cost_impact",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["by_member"] is not None
+        assert data["cost_impact"] is not None
+        assert data["by_execution_mode"] is None
+        assert data["by_source"] is None
+
+    def test_attribution_api_endpoint_not_found(self, client, db_session):
+        """【WP8 测试】GET 不存在的组合返回 404。"""
+        resp = client.get("/api/v1/portfolios/99999/attribution")
+        assert resp.status_code == 404
+
+    def test_create_review_api_endpoint(self, client, db_session):
+        """【WP8 测试】POST /portfolios/{id}/reviews 创建复盘记录。"""
+        p = _make_portfolio(db_session, name="QA-Attr-Review", total_capital=100000.0)
+        sym = _make_symbol(db_session, symbol="700090")
+        _make_attributed_sell_trade(
+            db_session, portfolio_id=p.id, symbol_id=sym.id, realized_pnl=100.0,
+            created_at=datetime(2026, 7, 16, 10, 0),
+        )
+
+        resp = client.post(
+            f"/api/v1/portfolios/{p.id}/reviews",
+            json={
+                "start_date": "2026-07-01",
+                "end_date": "2026-07-31",
+                "note": "本月归因复盘",
+                "title": "7月复盘",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] is not None
+        assert data["portfolio_id"] == p.id
+        assert data["start_date"] == "2026-07-01"
+        assert data["end_date"] == "2026-07-31"
+        assert data["note"] == "本月归因复盘"
+        assert data["title"] == "7月复盘"
+        # report_snapshot_json 非空（自动计算了归因报告）
+        assert data["report_snapshot_json"] is not None
+
+    def test_list_reviews_api_endpoint(self, client, db_session):
+        """【WP8 测试】GET /portfolios/{id}/reviews 列出复盘记录。"""
+        p = _make_portfolio(db_session, name="QA-Attr-ReviewList", total_capital=100000.0)
+
+        # 创建两条复盘记录
+        for i in range(2):
+            client.post(
+                f"/api/v1/portfolios/{p.id}/reviews",
+                json={
+                    "start_date": "2026-07-01",
+                    "end_date": "2026-07-31",
+                    "note": f"复盘 {i}",
+                    "title": f"7月复盘-{i}",
+                },
+            )
+
+        resp = client.get(f"/api/v1/portfolios/{p.id}/reviews")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 2
+        # 按创建时间降序
+        assert data[0]["title"] == "7月复盘-1"
+

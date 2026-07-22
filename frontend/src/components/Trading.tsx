@@ -20,6 +20,8 @@ import AutoTradePanel from "./AutoTradePanel";
 import PortfolioBacktestPanel from "./PortfolioBacktestPanel";
 // WP1-FIX.3：组合页交易子页持仓表接入 OpportunityStatusBadges
 import { OpportunityStatusBadges } from "./opportunity/OpportunityStatusBadges";
+// WP-S-FIX.4：阻断操作就地处理（按钮替换为 CapabilityGateButton）
+import { CapabilityGateButton } from "./capability/CapabilityGateButton";
 
 const SEP = " | ";
 
@@ -273,7 +275,8 @@ export default function Trading() {
               </div>
 
               <div className="trading-order-actions">
-                <Button
+                <CapabilityGateButton
+                  capabilityKey="portfolio"
                   id="simBuyButton"
                   type="primary"
                   className="ghost-button detail-action buy-action"
@@ -281,15 +284,16 @@ export default function Trading() {
                   onClick={handleBuy}
                 >
                   {t("simBuy")}
-                </Button>
-                <Button
+                </CapabilityGateButton>
+                <CapabilityGateButton
+                  capabilityKey="portfolio"
                   id="simSellButton"
                   className="ghost-button detail-action sell-action"
                   loading={selling}
                   onClick={handleSell}
                 >
                   {t("simSell")}
-                </Button>
+                </CapabilityGateButton>
               </div>
             </div>
           </section>

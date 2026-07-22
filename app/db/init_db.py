@@ -59,6 +59,12 @@ from app.models import (
     portfolio_member,
     # WP-MSG.1：通知数据模型
     notification,
+    # WP-AI.1：AI 会话与审计数据模型
+    ai_session,
+    # WP-AI.2：AI Profile 多 Profile 主备降级
+    ai_profile,
+    # WP9.6：API 废弃访问日志
+    api_deprecation_log,
 )
 
 
@@ -142,6 +148,30 @@ def _ensure_sqlite_backtest_columns(engine) -> None:
             'score_weight_mode': "TEXT DEFAULT 'manual'",
             'factor_model_run_id': 'TEXT',
             'factor_data_cutoff_at': 'DATETIME',
+        },
+    )
+
+
+def _ensure_sqlite_backtest_snapshot_columns(engine) -> None:
+    """WP7.2：backtest_runs 表回测快照字段补丁（SQLite，幂等）。
+
+    向后兼容：历史回测的新字段为 NULL，仍可正常读取。
+    注：cost_config_json / factor_model_run_id / factor_data_cutoff_at
+    已由 _ensure_sqlite_backtest_columns 与模型定义覆盖，此处不重复。
+    """
+    _ensure_sqlite_columns(
+        engine,
+        'backtest_runs',
+        {
+            'member_snapshot_json': 'TEXT',
+            'symbol_ids_json': 'TEXT',
+            'excluded_members_json': 'TEXT',
+            'portfolio_rule_version_id': 'INTEGER',
+            'score_mode': 'VARCHAR(32)',
+            'data_cutoff_at': 'DATETIME',
+            'engine_name': 'VARCHAR(64)',
+            'engine_version': 'VARCHAR(32)',
+            'source_type': 'VARCHAR(32)',
         },
     )
 
@@ -774,6 +804,206 @@ def _ensure_mysql_sim_orders_attribution_columns(engine: Engine) -> None:
             logger.info("已创建 idx_sim_orders_client_key 唯一索引")
 
 
+def _ensure_sqlite_ai_session_tables(engine: Engine) -> None:
+    """WP-AI.1: 确保 ai_sessions / ai_messages / ai_action_audits 三张表存在（SQLite，幂等）。
+
+    幂等：表已存在时跳过，表不存在时创建。
+    Base.metadata.create_all 已创建表，本补丁用于防御性检查，
+    保证旧库升级或异常场景下也能补齐 schema。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    inspector = inspect(engine)
+
+    from app.models.ai_session import AIActionAudit, AIMessage, AISession
+
+    models_map = {
+        "ai_sessions": AISession,
+        "ai_messages": AIMessage,
+        "ai_action_audits": AIActionAudit,
+    }
+
+    for table_name, model_cls in models_map.items():
+        if not inspector.has_table(table_name):
+            model_cls.__table__.create(engine, checkfirst=True)
+            logger.info("WP-AI.1: 已创建 %s 表", table_name)
+
+
+def _ensure_mysql_ai_session_tables(engine: Engine) -> None:
+    """WP-AI.1: 确保 ai_sessions / ai_messages / ai_action_audits 三张表存在（MySQL，幂等）。
+
+    幂等：通过 information_schema.TABLES 检查表是否存在，不存在则创建。
+    Base.metadata.create_all 已创建表，本补丁用于防御性检查，
+    保证旧库升级或异常场景下也能补齐 schema。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    inspector = inspect(engine)
+
+    from app.models.ai_session import AIActionAudit, AIMessage, AISession
+
+    models_map = {
+        "ai_sessions": AISession,
+        "ai_messages": AIMessage,
+        "ai_action_audits": AIActionAudit,
+    }
+
+    for table_name, model_cls in models_map.items():
+        if not inspector.has_table(table_name):
+            model_cls.__table__.create(engine, checkfirst=True)
+            logger.info("WP-AI.1: 已创建 %s 表", table_name)
+
+
+def _ensure_sqlite_portfolio_reviews_table(engine) -> None:
+    """WP8: 确保 portfolio_reviews 表存在（SQLite，幂等）。
+
+    幂等：表已存在时跳过，表不存在时创建。
+    通常 Base.metadata.create_all 已创建该表，本补丁用于防御性检查。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    inspector = inspect(engine)
+    if inspector.has_table("portfolio_reviews"):
+        return
+
+    from app.models.review import Review
+    Review.__table__.create(engine, checkfirst=True)
+    logger.info("WP8: 已创建 portfolio_reviews 表")
+
+
+def _ensure_mysql_portfolio_reviews_table(engine) -> None:
+    """WP8: 确保 portfolio_reviews 表存在（MySQL，幂等）。"""
+    import logging
+    logger = logging.getLogger(__name__)
+    inspector = inspect(engine)
+    if inspector.has_table("portfolio_reviews"):
+        return
+
+    from app.models.review import Review
+    Review.__table__.create(engine, checkfirst=True)
+    logger.info("WP8: 已创建 portfolio_reviews 表")
+
+
+def _ensure_sqlite_ai_profiles_table(engine) -> None:
+    """WP-AI.2: 确保 ai_profiles 表存在（SQLite，幂等）。
+
+    幂等：表已存在时跳过，表不存在时创建。
+    通常 Base.metadata.create_all 已创建该表，本补丁用于防御性检查，
+    以及处理表已存在但缺列等边界情况。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    inspector = inspect(engine)
+    if not inspector.has_table("ai_profiles"):
+        from app.models.ai_profile import AIProfile
+        AIProfile.__table__.create(engine, checkfirst=True)
+        logger.info("WP-AI.2: 已创建 ai_profiles 表")
+        return
+
+    # 表已存在，补齐可能缺失的列（兼容旧库升级）
+    _ensure_sqlite_columns(
+        engine,
+        "ai_profiles",
+        {
+            "name": "VARCHAR(64) NOT NULL",
+            "provider": "VARCHAR(64) NOT NULL",
+            "base_url": "VARCHAR(256)",
+            "model": "VARCHAR(128) NOT NULL",
+            "auth_type": "VARCHAR(32)",
+            "secret_key_ref": "VARCHAR(128)",
+            "timeout_seconds": "INTEGER DEFAULT 30",
+            "max_tokens": "INTEGER DEFAULT 4096",
+            "max_context_tokens": "INTEGER DEFAULT 8192",
+            "daily_request_limit": "INTEGER DEFAULT 100",
+            "max_concurrent": "INTEGER DEFAULT 3",
+            "purpose": "VARCHAR(64) NOT NULL DEFAULT 'all'",
+            "priority": "INTEGER DEFAULT 0",
+            "is_enabled": "INTEGER DEFAULT 1",
+            "is_fallback": "INTEGER DEFAULT 0",
+            "health_status": "VARCHAR(16) DEFAULT 'unknown'",
+            "last_health_check": "DATETIME",
+            "daily_request_count": "INTEGER DEFAULT 0",
+            "daily_request_reset_at": "DATETIME",
+            "created_at": "DATETIME",
+            "updated_at": "DATETIME",
+        },
+    )
+
+
+def _ensure_mysql_ai_profiles_table(engine) -> None:
+    """WP-AI.2: 确保 ai_profiles 表存在（MySQL，幂等）。"""
+    import logging
+    logger = logging.getLogger(__name__)
+    inspector = inspect(engine)
+    if not inspector.has_table("ai_profiles"):
+        from app.models.ai_profile import AIProfile
+        AIProfile.__table__.create(engine, checkfirst=True)
+        logger.info("WP-AI.2: 已创建 ai_profiles 表")
+        return
+
+    # 表已存在，补齐可能缺失的列（兼容旧库升级）
+    with engine.begin() as conn:
+        db_name = conn.execute(text("SELECT DATABASE()")).scalar()
+        if not db_name:
+            return
+        new_cols = [
+            ("name", "VARCHAR(64) NOT NULL"),
+            ("provider", "VARCHAR(64) NOT NULL"),
+            ("base_url", "VARCHAR(256) NULL"),
+            ("model", "VARCHAR(128) NOT NULL"),
+            ("auth_type", "VARCHAR(32) NULL"),
+            ("secret_key_ref", "VARCHAR(128) NULL"),
+            ("timeout_seconds", "INTEGER NOT NULL DEFAULT 30"),
+            ("max_tokens", "INTEGER NOT NULL DEFAULT 4096"),
+            ("max_context_tokens", "INTEGER NOT NULL DEFAULT 8192"),
+            ("daily_request_limit", "INTEGER NOT NULL DEFAULT 100"),
+            ("max_concurrent", "INTEGER NOT NULL DEFAULT 3"),
+            ("purpose", "VARCHAR(64) NOT NULL DEFAULT 'all'"),
+            ("priority", "INTEGER NOT NULL DEFAULT 0"),
+            ("is_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("is_fallback", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("health_status", "VARCHAR(16) NOT NULL DEFAULT 'unknown'"),
+            ("last_health_check", "DATETIME NULL"),
+            ("daily_request_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("daily_request_reset_at", "DATETIME NULL"),
+            ("created_at", "DATETIME NOT NULL"),
+            ("updated_at", "DATETIME NULL"),
+        ]
+        for col_name, col_ddl in new_cols:
+            result = conn.execute(text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'ai_profiles' AND COLUMN_NAME = :col"
+            ), {"db": db_name, "col": col_name})
+            if result.first() is None:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE ai_profiles ADD COLUMN {col_name} {col_ddl}"
+                    ))
+                    logger.info("Added %s column to ai_profiles", col_name)
+                except Exception as e:
+                    logger.warning("Failed to add %s column to ai_profiles: %s", col_name, e)
+
+
+def _migrate_ai_config_json_to_profiles() -> None:
+    """WP-AI.2: 将 ai_config.json 兼容迁移为 AIProfile 记录（幂等）。
+
+    幂等：原文件已标记 migrated=true 或同名 Profile 已存在时跳过。
+    原文件不删除，仅添加 migrated=true 标记。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        from app.db.session import SessionLocal
+        from app.services.ai_profile_migration import migrate_ai_config_json
+        with SessionLocal() as db:
+            count = migrate_ai_config_json(db)
+            if count > 0:
+                db.commit()
+                logger.info("WP-AI.2: migrated %d AI profile(s) from ai_config.json", count)
+    except Exception as e:
+        logger.warning("WP-AI.2: ai_config.json migration failed: %s", e)
+
+
 def _ensure_sqlite_external_endpoint_runtime_columns(engine) -> None:
     """WP-S：external_endpoint_runtime 表旧库升级补丁。
 
@@ -1076,6 +1306,50 @@ def _convert_myisam_to_innodb(engine) -> None:
                 logger.warning("Failed to convert table '%s' to InnoDB: %s", tbl, e)
 
 
+def _ensure_mysql_backtest_snapshot_columns(engine) -> None:
+    """WP7.2：backtest_runs 表回测快照字段补丁（MySQL，幂等）。
+
+    通过 information_schema.COLUMNS 检查列是否存在，幂等添加。
+    向后兼容：历史回测的新字段为 NULL，仍可正常读取。
+    注：cost_config_json / factor_model_run_id / factor_data_cutoff_at
+    已由 _ensure_mysql_indicator_version_columns 中的 backtest 段覆盖，此处不重复。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    with engine.begin() as conn:
+        db_name = conn.execute(text("SELECT DATABASE()")).scalar()
+        if not db_name:
+            return
+
+        new_cols = [
+            ("member_snapshot_json", "TEXT NULL"),
+            ("symbol_ids_json", "TEXT NULL"),
+            ("excluded_members_json", "TEXT NULL"),
+            ("portfolio_rule_version_id", "INTEGER NULL"),
+            ("score_mode", "VARCHAR(32) NULL"),
+            ("data_cutoff_at", "DATETIME NULL"),
+            ("engine_name", "VARCHAR(64) NULL"),
+            ("engine_version", "VARCHAR(32) NULL"),
+            ("source_type", "VARCHAR(32) NULL"),
+        ]
+        for col_name, col_ddl in new_cols:
+            result = conn.execute(text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'backtest_runs' "
+                "AND COLUMN_NAME = :col"
+            ), {"db": db_name, "col": col_name})
+            if result.first() is None:
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE backtest_runs ADD COLUMN {col_name} {col_ddl}"
+                    ))
+                    logger.info("Added %s column to backtest_runs", col_name)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to add backtest_runs.%s: %s", col_name, e
+                    )
+
+
 def init_db() -> None:
     """初始化数据库：创建表结构，按需执行必要的补丁。"""
     mgr = DatabaseManager.get()
@@ -1095,6 +1369,7 @@ def init_db() -> None:
         _ensure_sqlite_score_columns(eng)
         _ensure_sqlite_factor_columns(eng)
         _ensure_sqlite_backtest_columns(eng)
+        _ensure_sqlite_backtest_snapshot_columns(eng)
         _ensure_sqlite_trade_setup_columns(eng)
         _ensure_sqlite_indicator_version_columns(eng)
         _ensure_sqlite_journal_columns(eng)
@@ -1112,6 +1387,8 @@ def init_db() -> None:
             conn.execute(text("PRAGMA busy_timeout=30000;"))
     else:
         _ensure_mysql_indicator_version_columns(eng)
+        # WP7.2：backtest_runs 表回测快照字段补丁（MySQL 路径）
+        _ensure_mysql_backtest_snapshot_columns(eng)
         # WP2.1：watchlist_items 正式观察池扩展字段（MySQL 路径）
         _ensure_mysql_watchlist_item_columns(eng)
 
@@ -1146,6 +1423,27 @@ def init_db() -> None:
         _ensure_sqlite_sim_orders_attribution_columns(eng)
     elif mgr.is_mysql:
         _ensure_mysql_sim_orders_attribution_columns(eng)
+
+    # WP8：确保 portfolio_reviews 复盘记录表存在（幂等）
+    if mgr.is_sqlite:
+        _ensure_sqlite_portfolio_reviews_table(eng)
+    elif mgr.is_mysql:
+        _ensure_mysql_portfolio_reviews_table(eng)
+
+    # WP-AI.1：确保 ai_sessions / ai_messages / ai_action_audits 三张表存在（幂等）
+    if mgr.is_sqlite:
+        _ensure_sqlite_ai_session_tables(eng)
+    elif mgr.is_mysql:
+        _ensure_mysql_ai_session_tables(eng)
+
+    # WP-AI.2：确保 ai_profiles 表存在（幂等）
+    if mgr.is_sqlite:
+        _ensure_sqlite_ai_profiles_table(eng)
+    elif mgr.is_mysql:
+        _ensure_mysql_ai_profiles_table(eng)
+
+    # WP-AI.2：将 ai_config.json 兼容迁移为 AIProfile 记录（幂等，原文件保留）
+    _migrate_ai_config_json_to_profiles()
 
     # P0：初始化系统评分预设（幂等）
     _seed_system_scoring_configs()

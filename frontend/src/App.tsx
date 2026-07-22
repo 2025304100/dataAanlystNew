@@ -15,8 +15,14 @@ import MarketNews from "./components/MarketNews";  // 行情消息
 import Settings from "./components/Settings";
 import DetailModal from "./components/DetailModal";
 import MetricModal from "./components/MetricModal";
+// WP-AI.7：AI 助手前端入口
+import { AIAssistantProvider } from "./components/ai/AIAssistantContext";
+import AIAssistant from "./components/ai/AIAssistant";
+import AISettings from "./components/ai/AISettings";
 // WP0.4：旧路由与 activeTab 兼容映射
 import { resolveTabFromUrl } from "./utils/tabCompatibility";
+// WP-S-FIX.4：阻断操作就地处理（按钮替换为 CapabilityGateButton）
+import { CapabilityGateButton } from "./components/capability/CapabilityGateButton";
 
 export default function App() {
   const ctx = useApp();
@@ -199,6 +205,7 @@ export default function App() {
   }, []);
 
   return (
+    <AIAssistantProvider>
     <div className="shell" data-active-tab={ctx.activeTab}>
       {ctx.globalLoading && (
         <div
@@ -231,15 +238,8 @@ export default function App() {
           {t("tabTodayDecision")}
         </button>
 
-        {/* ✨ 新增：投资中心导航（放在第一位） */}
-        <button
-          className={`view-tab${ctx.activeTab === "investment" ? " active" : ""}`}
-          onClick={() => ctx.setActiveTab("investment")}
-        >
-          {t("tabInvestmentCenter")}
-        </button>
-
-        {/* 原有导航保持不变 */}
+        {/* WP9.1：旧"投资中心"一级入口已移除，统一由"机会中心/标的研究"承接。
+            ?tab=investment 深链接仍可通过 tabCompatibility 兼容路由访问（见下方渲染块）。 */}
         <button
           className={`view-tab${ctx.activeTab === "portfolio" ? " active" : ""}`}
           onClick={() => ctx.setActiveTab("portfolio")}
@@ -277,14 +277,32 @@ export default function App() {
         >
           {t("tabSettings")}
         </button>
+        {/* WP-AI.7：AI 助手设置入口 */}
+        <button
+          className={`view-tab${ctx.activeTab === "ai-settings" ? " active" : ""}`}
+          onClick={() => ctx.setActiveTab("ai-settings")}
+        >
+          {t("aiSettings.tabAISettings")}
+        </button>
       </nav>
 
       <main className="layout">
         {ctx.activeTab === "decision" && <TodayDecision />}
 
-        {/* ✨ 新增：投资中心整合视图 */}
+        {/* WP9.1：投资中心一级入口已从导航移除，此处仅保留兼容渲染。
+            用户直接访问 ?tab=investment 时，tabCompatibility.resolveLegacyTab 仍解析为 "investment"，
+            渲染 InvestmentCenter 薄壳（= SymbolResearchShell），即"标的研究"视图。 */}
         {ctx.activeTab === "investment" && (
-          <InvestmentCenter openMetricModal={openMetricModal} />
+          <div className="tab-container" data-tab-content="investment-legacy">
+            <p
+              className="panel-meta"
+              style={{ margin: "8px 0", padding: "4px 12px", color: "#b7791f", background: "#fffbeb", borderRadius: 4, fontSize: 12 }}
+              role="note"
+            >
+              {t("wp9.legacyEntryRemoved")}
+            </p>
+            <InvestmentCenter openMetricModal={openMetricModal} />
+          </div>
         )}
 
         {/* 原有逻辑完全保留 */}
@@ -381,19 +399,19 @@ export default function App() {
                   <Button onClick={handleAddSymbol} loading={busyButton === "add"}>
                     {busyButton === "add" ? t("addingSymbol") : t("addSymbol")}
                   </Button>
-                  <Button onClick={handleSync} loading={busyButton === "sync" || ctx.syncPolling}>
+                  <CapabilityGateButton capabilityKey="market_data" onClick={handleSync} loading={busyButton === "sync" || ctx.syncPolling}>
                     {ctx.syncPolling && ctx.syncTask
                       ? template("syncProgress", { current: ctx.syncTask.processed ?? 0, total: ctx.syncTask.total ?? 0 })
                       : busyButton === "sync" ? t("syncing") : t("sync")}
-                  </Button>
+                  </CapabilityGateButton>
                   {ctx.syncPolling && ctx.syncTask && (
                     <Button onClick={() => ctx.cancelSync()}>
                       {t("cancel")}
                     </Button>
                   )}
-                  <Button onClick={handleScan} loading={busyButton === "scan"}>
+                  <CapabilityGateButton capabilityKey="discovery" onClick={handleScan} loading={busyButton === "scan"}>
                     {busyButton === "scan" ? t("scanning") : t("scan")}
-                  </Button>
+                  </CapabilityGateButton>
                   <Button onClick={handleNews} loading={busyButton === "news"}>
                     {busyButton === "news" ? t("newsUpdating") : t("newsUpdate")}
                   </Button>
@@ -436,6 +454,9 @@ export default function App() {
         {ctx.activeTab === "news" && <MarketNews />}
 
         {ctx.activeTab === "settings" && <Settings />}
+
+        {/* WP-AI.7：AI 助手设置页面 */}
+        {ctx.activeTab === "ai-settings" && <AISettings />}
       </main>
 
       {detailModalOpen && ctx.detail && (
@@ -565,6 +586,13 @@ export default function App() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* WP-AI.7：全局 AI 助手浮动按钮 + 抽屉 */}
+      <AIAssistant
+        activeTab={ctx.activeTab}
+        onGoToSettings={() => ctx.setActiveTab("ai-settings")}
+      />
     </div>
+    </AIAssistantProvider>
   );
 }

@@ -45,6 +45,39 @@ class BacktestRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # WP7.2 回测快照字段（全部 nullable=True，向后兼容历史回测）
+    # 注：cost_config_json / factor_model_run_id / factor_data_cutoff_at 已存在，
+    # 此处仅新增缺失的快照字段。
+    member_snapshot_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="成员快照 JSON：[{member_id, symbol_id, effective_from, effective_to, execution_mode, entry_rule_version_id, exit_rule_version_id}]",
+    )
+    symbol_ids_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="标的 ID 列表 JSON",
+    )
+    excluded_members_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="运行时排除的成员及原因 JSON：[{member_id, symbol_id, reason}]",
+    )
+    portfolio_rule_version_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="组合风控版本 ID",
+    )
+    score_mode: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="评分模式：quality/timing/combined",
+    )
+    data_cutoff_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="数据截止时间",
+    )
+    engine_name: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, comment="引擎名称：event_driven/vectorbt",
+    )
+    engine_version: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="引擎版本",
+    )
+    source_type: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="来源类型：member/legacy_scan",
+    )
+
 
 class BacktestTrade(Base):
     __tablename__ = "backtest_trades"

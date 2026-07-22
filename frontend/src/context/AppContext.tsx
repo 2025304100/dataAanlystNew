@@ -15,6 +15,8 @@ import {
   WatchlistItem,
   Symbol,
   TradeSetupOverrides,
+  CapabilitiesResponse,
+  CapabilityItem,
 } from "../types";
 import { computeSuggestedPrice, computeSuggestedBuyQuantity, computeDefaultSellQuantity, score as fmtScore, setCurrency, inferSymbolPayload } from "../utils/format";
 
@@ -63,6 +65,8 @@ interface AppState {
   simPrice: string;
   candidateSearch: string;
   globalLoading: boolean;
+  capabilities: CapabilitiesResponse | null;
+  capabilitiesLoading: boolean;
 }
 
 interface AppContextValue extends AppState {
@@ -144,6 +148,9 @@ interface AppContextValue extends AppState {
   setSignalRulePreview: (result: SignalRulePreviewResult | null) => void;
   discoveryPolling: boolean;
   syncPolling: boolean;
+  loadCapabilities: () => Promise<void>;
+  getCapability: (key: string) => CapabilityItem | undefined;
+  isCapabilityBlocked: (key: string) => boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -189,6 +196,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     simPrice: "",
     candidateSearch: "",
     globalLoading: false,
+    capabilities: null,
+    capabilitiesLoading: false,
   });
 
   const [signalRulePreview, setSignalRulePreview] = useState<SignalRulePreviewResult | null>(null);
@@ -620,6 +629,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchDiscoveryTasks, startDiscoveryPolling]);
 
+  // WP-S-FIX.1: 能力门禁加载与查询
+  const loadCapabilities = useCallback(async () => {
+    update({ capabilitiesLoading: true });
+    try {
+      const resp = await api.getCapabilities();
+      update({ capabilities: resp, capabilitiesLoading: false });
+    } catch (error: any) {
+      update({ capabilitiesLoading: false });
+      // 静默失败，不弹 toast，避免启动时噪音；capabilities 保持 null 或旧值
+      console.warn("loadCapabilities failed", error);
+    }
+  }, [update]);
+
+  const getCapability = useCallback((key: string): CapabilityItem | undefined => {
+    return state.capabilities?.capabilities.find((c) => c.key === key);
+  }, [state.capabilities]);
+
+  const isCapabilityBlocked = useCallback((key: string): boolean => {
+    return getCapability(key)?.status === "blocked";
+  }, [getCapability]);
+
   const runDiscoveryMining = useCallback(async (config?: {
     scope?: string;
     minScore?: number;
@@ -671,10 +701,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await loadWorkbench();
       startDiscoveryPolling();
       showToast("success", isSync ? t("discoveryStartedSync") : t("discoveryStartedCached"));
+      void loadCapabilities();
     } catch (error: any) {
       showToast("error", error?.message || t("discoveryCommandFailed"));
     }
-  }, [state.discoveryTask, state.portfolioId, state.workbench, update, showToast, loadWorkbench, startDiscoveryPolling, t]);
+  }, [state.discoveryTask, state.portfolioId, state.workbench, update, showToast, loadWorkbench, startDiscoveryPolling, t, loadCapabilities]);
 
   const sendDiscoveryTaskCommand = useCallback(async (command: string) => {
     const task = state.discoveryTask;
@@ -800,10 +831,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       update({ syncTask: task });
       startSyncPolling(task.id);
       showToast("info", t("syncStarted"));
+      void loadCapabilities();
     } catch (error: any) {
       showToast("error", error?.message || t("syncFailed"));
     }
-  }, [state.portfolioId, state.workbench, fetchVisibleSymbols, showToast, startSyncPolling, update]);
+  }, [state.portfolioId, state.workbench, fetchVisibleSymbols, showToast, startSyncPolling, update, loadCapabilities]);
 
   const cancelSync = useCallback(async () => {
     const taskId = syncTaskIdRef.current || state.syncTask?.id;
@@ -835,10 +867,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
       await loadWorkbench();
       showToast("success", template("scanSummary", { count: state.workbench?.latest_scan?.executable_count ?? 0 }));
+      void loadCapabilities();
     } catch (error: any) {
       showToast("error", error?.message || t("scanFailed"));
     }
-  }, [state.portfolioId, state.workbench, fetchVisibleSymbols, loadWorkbench, showToast]);
+  }, [state.portfolioId, state.workbench, fetchVisibleSymbols, loadWorkbench, showToast, loadCapabilities]);
 
   const addSymbolToWatchlist = useCallback(async (watchlistId: number, symbolId: number) => {
     try {
@@ -982,6 +1015,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await loadSignalRuleConfig();
       const activeTask = await fetchDiscoveryTasks();
       await loadWorkbench();
+      await loadCapabilities(); // WP-S-FIX.1: 启动时加载能力状态
       if (activeTask && ["queued", "running"].includes(activeTask.status)) {
         startDiscoveryPolling();
       }
@@ -1054,6 +1088,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fetchVisibleSymbols,
     syncOrderForm,
     removeDetailFromDock,
+    loadCapabilities,
+    getCapability,
+    isCapabilityBlocked,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

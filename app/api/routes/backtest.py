@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.backtest import BacktestRun, BacktestRuleTemplate, BacktestTrade
+from app.models.portfolio import Portfolio
 from app.models.symbol import Symbol
 from app.schemas.backtest import (
     BacktestApplyRequest,
@@ -15,8 +17,11 @@ from app.schemas.backtest import (
     BacktestRunRead,
     BacktestRunRequest,
     BacktestTradeRead,
+    PortfolioBacktestCompareRequest,
+    PortfolioBacktestCompareResult,
     PortfolioBacktestRequest,
     PortfolioBacktestResult,
+    PortfolioBacktestSourceStatus,
     RuleTemplateCreate,
     RuleTemplateResponse,
     RuleTemplateUpdate,
@@ -28,7 +33,7 @@ from app.services.backtest import (
 )
 from app.services.backtest_apply import apply_backtest_run_to_portfolio
 from app.services.factors.runtime import get_factor_runtime_snapshot
-from app.services.portfolio_backtest import run_portfolio_backtest
+from app.services.portfolio_backtest import compare_new_old_engine, run_portfolio_backtest
 
 
 router = APIRouter()
@@ -194,6 +199,8 @@ def create_portfolio_backtest_run(payload: PortfolioBacktestRequest, db: Session
 
     前提：portfolio 必须是 simulated 账户且 auto_trade_enabled=1。
     否则回测的信号源（Score.action）与实际执行逻辑不一致，结果无意义。
+
+    WP7.3：接受 only_auto 参数，仅在 member 来源生效时跳过 manual/confirm 成员。
     """
     try:
         result = run_portfolio_backtest(
@@ -202,6 +209,7 @@ def create_portfolio_backtest_run(payload: PortfolioBacktestRequest, db: Session
             start_date=payload.start_date,
             end_date=payload.end_date,
             run_name=payload.run_name,
+            only_auto=payload.only_auto,
         )
         return PortfolioBacktestResult(**result)
     except ValueError as exc:
@@ -214,10 +222,104 @@ def create_portfolio_backtest_run(payload: PortfolioBacktestRequest, db: Session
             raise HTTPException(status_code=409, detail=msg)
         if "total_capital is" in msg or "Cannot run whole-portfolio backtest" in msg:
             raise HTTPException(status_code=400, detail=msg)
+        if "manual/confirm 成员" in msg:
+            raise HTTPException(status_code=409, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
     except Exception as exc:
         logging.getLogger(__name__).exception("组合整体回测执行失败")
         raise HTTPException(status_code=500, detail="组合整体回测执行失败，请稍后重试") from exc
+
+
+# ----------------------------------------------------------------------------
+# WP7.4：组合回测来源状态 + 新旧引擎对比
+# ----------------------------------------------------------------------------
+
+_PORTFOLIO_BACKTEST_SOURCE_ENV_FLAG = "PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED"
+
+
+def _get_portfolio_or_404(db: Session, portfolio_id: int) -> Portfolio:
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+    return portfolio
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/backtest/source-status",
+    response_model=PortfolioBacktestSourceStatus,
+    tags=["backtest"],
+)
+def get_portfolio_backtest_source_status(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+):
+    """WP7.4 组合回测标的来源开关状态。
+
+    返回 {enabled, env_flag, source_label}：
+    - enabled：PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED 当前是否开启
+    - env_flag：环境变量名（便于 UI 展示）
+    - source_label：当前生效的来源标签 "legacy" / "members"
+    """
+    _get_portfolio_or_404(db, portfolio_id)
+    enabled = bool(settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED)
+    return PortfolioBacktestSourceStatus(
+        enabled=enabled,
+        env_flag=_PORTFOLIO_BACKTEST_SOURCE_ENV_FLAG,
+        source_label="members" if enabled else "legacy",
+    )
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/backtest/compare",
+    response_model=PortfolioBacktestCompareResult,
+    tags=["backtest"],
+)
+def compare_portfolio_backtest_engines(
+    portfolio_id: int,
+    payload: PortfolioBacktestCompareRequest,
+    db: Session = Depends(get_db),
+):
+    """WP7.4 新旧引擎对比。
+
+    使用相同日期/资金/成本对比新旧来源回测结果：
+    - 旧来源（legacy）：持仓 + 最新 scan 候选池
+    - 新来源（members）：按有效日期读取历史成员
+
+    返回 {old, new, diff}，详见 PortfolioBacktestCompareResult。
+    """
+    _get_portfolio_or_404(db, portfolio_id)
+    if payload.portfolio_id != portfolio_id:
+        raise HTTPException(
+            status_code=400,
+            detail="payload.portfolio_id must match path portfolio_id",
+        )
+    try:
+        result = compare_new_old_engine(
+            db=db,
+            portfolio_id=portfolio_id,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            initial_capital=payload.initial_capital,
+            run_name_prefix=payload.run_name_prefix,
+        )
+        return PortfolioBacktestCompareResult(**result)
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg)
+        if "auto_trade_enabled is 0" in msg or "is not simulated" in msg:
+            raise HTTPException(status_code=409, detail=msg)
+        if "total_capital is" in msg or "Cannot run whole-portfolio backtest" in msg:
+            raise HTTPException(status_code=400, detail=msg)
+        if "manual/confirm 成员" in msg:
+            raise HTTPException(status_code=409, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    except Exception as exc:
+        logging.getLogger(__name__).exception("组合回测新旧引擎对比失败")
+        raise HTTPException(
+            status_code=500,
+            detail="组合回测新旧引擎对比失败，请稍后重试",
+        ) from exc
 
 
 

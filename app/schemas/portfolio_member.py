@@ -23,6 +23,10 @@ class PortfolioMemberRead(BaseModel):
     note: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    # WP4-FIX：最近信号摘要（联表 SimOrder 取最近一条订单填充）
+    latest_signal: str | None = None
+    latest_signal_at: str | None = None
+    latest_signal_action: str | None = None
 
 
 class PortfolioMemberCreate(BaseModel):

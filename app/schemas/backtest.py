@@ -129,7 +129,7 @@ class BacktestTradeRead(BaseModel):
 class BacktestRunRead(BaseModel):
     """回测运行结果摘要，包含核心性能指标。"""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     portfolio_id: int
     run_name: str
@@ -157,6 +157,16 @@ class BacktestRunRead(BaseModel):
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    # WP7.2 回测快照字段（向后兼容：历史 BacktestRun 这些字段为 None）
+    member_snapshot_json: str | None = None
+    symbol_ids_json: str | None = None
+    excluded_members_json: str | None = None
+    portfolio_rule_version_id: int | None = None
+    score_mode: str | None = None
+    data_cutoff_at: datetime | None = None
+    engine_name: str | None = None
+    engine_version: str | None = None
+    source_type: str | None = None
 
 
 class BacktestRunDetail(BacktestRunRead):
@@ -196,11 +206,16 @@ class PortfolioBacktestRequest(BaseModel):
     前提：portfolio 必须是 simulated 账户且 auto_trade_enabled=1。
     symbol_ids 由后端自动推导（当前持仓 + 最新 scan executable 候选）。
     initial_capital 沿用 portfolio.total_capital（与单标的回测一致）。
+
+    WP7.3 新增：
+    - only_auto：仅回测 execution_mode='auto' 成员，跳过 manual/confirm 成员
+      （仅在 PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED=true 时生效）
     """
     portfolio_id: int
     start_date: date
     end_date: date
     run_name: str | None = None
+    only_auto: bool = False
 
     @field_validator("end_date")
     @classmethod
@@ -222,6 +237,55 @@ class PortfolioBacktestResult(BaseModel):
     initial_capital: float
     status: str
     run_name: str
+    # WP7.1/WP7.3：标的来源标签与排除成员数（旧来源回测时为 0）
+    symbol_source: str | None = None
+    source_type: str | None = None
+    excluded_member_count: int = 0
+
+
+# ---------- WP7.4：组合回测来源状态与新旧对比 ----------
+
+
+class PortfolioBacktestSourceStatus(BaseModel):
+    """组合回测标的来源开关状态。
+
+    - enabled：当前是否启用历史成员来源（PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED）
+    - env_flag：环境变量名
+    - source_label：当前生效的来源标签（"legacy" / "members"）
+    """
+    enabled: bool
+    env_flag: str
+    source_label: str
+
+
+class PortfolioBacktestCompareRequest(BaseModel):
+    """新旧引擎对比请求。"""
+    portfolio_id: int
+    start_date: date
+    end_date: date
+    initial_capital: float | None = None
+    run_name_prefix: str = "compare"
+
+    @field_validator("end_date")
+    @classmethod
+    def end_after_start(cls, v: date, info) -> date:
+        start = info.data.get("start_date")
+        if start and v < start:
+            raise ValueError("end_date must be >= start_date")
+        return v
+
+
+class PortfolioBacktestCompareResult(BaseModel):
+    """新旧引擎对比响应。
+
+    old/new 各自包含 run_id、symbol_ids、source_type、trades、metrics；
+    diff 包含标的集差异、关键指标差异与文本解释。
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    old: dict
+    new: dict
+    diff: dict
 
 
 

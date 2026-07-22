@@ -1038,7 +1038,7 @@ class TestRejectionDecisions:
             execution_mode=EXECUTION_AUTO,
         )
 
-        def mock_check(db, symbol_id):
+        def mock_check(db, symbol_id, rule_version_id=None):
             if symbol_id == sym1.id:
                 return (False, "K线数据过期")
             return (True, "")

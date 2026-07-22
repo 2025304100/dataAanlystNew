@@ -357,4 +357,32 @@ def compute_portfolio_performance(
     }
 
 
-__all__ = ["compute_portfolio_performance"]
+# ============================================================================
+# WP8 绩效归因扩展
+# ----------------------------------------------------------------------------
+# 归因函数实现位于 app/services/attribution.py（独立模块，避免本文件过大）。
+# 此处通过 re-export 让调用方可从 portfolio_performance 统一导入，
+# 也可直接 from app.services.attribution import ... 导入。
+# ============================================================================
+from app.services.attribution import (  # noqa: E402
+    attribute_by_member,
+    attribute_by_execution_mode,
+    attribute_by_source,
+    attribute_by_rule_signal,
+    compute_backtest_vs_sim_diff,
+    attribute_cost_impact,
+    get_attribution_report,
+)
+
+
+__all__ = [
+    "compute_portfolio_performance",
+    # WP8 归因
+    "attribute_by_member",
+    "attribute_by_execution_mode",
+    "attribute_by_source",
+    "attribute_by_rule_signal",
+    "compute_backtest_vs_sim_diff",
+    "attribute_cost_impact",
+    "get_attribution_report",
+]

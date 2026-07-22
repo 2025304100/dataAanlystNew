@@ -39,3 +39,8 @@ if (!window.IntersectionObserver) {
 if (!window.HTMLCanvasElement.prototype.getContext) {
   window.HTMLCanvasElement.prototype.getContext = () => null as any;
 }
+
+// jsdom 未实现 Element.prototype.scrollIntoView，mock 为空函数
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

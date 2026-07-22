@@ -8,10 +8,20 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
 
 # 将项目根目录加入 sys.path，使 `import app.xxx` 可用
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+# WP9 验证环境兼容：若 akshare/sklearn 未安装（如 CI 沙箱），注入 stub 以允许
+# `import app.main`（transitively imports app.services.discovery_tasks /
+# app.services.factors.ridge_model）。真正调用这些库的测试应显式 import 并标记 slow/联网。
+for _stub_mod in ("akshare", "sklearn", "sklearn.linear_model", "sklearn.metrics"):
+    try:
+        __import__(_stub_mod)
+    except ImportError:
+        sys.modules[_stub_mod] = MagicMock(name=f"{_stub_mod}_stub")
 
 import pytest
 from sqlalchemy import create_engine

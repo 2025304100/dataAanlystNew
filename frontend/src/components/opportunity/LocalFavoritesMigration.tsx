@@ -250,6 +250,10 @@ export const LocalFavoritesMigration: React.FC = () => {
           <Typography.Paragraph>
             {template("icFavoritesMigrationDesc", { count: stats.total })}
           </Typography.Paragraph>
+          {/* WP9.2：本地收藏已停用，提示用户后续使用观察池 */}
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+            {t("wp9.favoritesDeprecated")}
+          </Typography.Paragraph>
           <Alert
             type="info"
             showIcon

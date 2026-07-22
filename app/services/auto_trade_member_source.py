@@ -68,6 +68,7 @@ class MemberTradeCandidate:
     risk_check_ok: bool
     rejection_code: str | None = None
     rejection_detail: str | None = None
+    data_cutoff_at: str | None = None  # ISO 8601，决策快照追溯用
 
 
 @dataclass
@@ -150,22 +151,57 @@ def _get_symbol_code(db: Session, symbol_id: int) -> str | None:
 # ----------------------------------------------------------------------------
 
 
-def _check_data_health(db: Session, symbol_id: int) -> tuple[bool, str]:
-    """数据健康检查。
+def _check_data_health(
+    db: Session,
+    symbol_id: int,
+    rule_version_id: int | None = None,
+) -> tuple[bool, str]:
+    """数据健康检查（WP6.5 fail-closed 接入安全门禁）。
 
-    检查 K 线/评分/规则版本是否过期。
-    WP6.5 实现详细检查，WP6.2 返回 True（占位）。
+    检查 K 线/评分/规则版本是否过期，任一过期则 fail-closed 禁止买入。
+    调用 app.services.auto_trade_safety.check_data_health 实现。
+    错误消息不暴露敏感信息（脱敏后的概要描述）。
     """
-    # TODO: WP6.5 实现详细数据健康检查
-    return True, ""
+    from app.services.auto_trade_safety import check_data_health
+
+    result = check_data_health(
+        db, symbol_id=symbol_id, rule_version_id=rule_version_id
+    )
+    return result.healthy, result.reason
+
+
+def _get_data_cutoff_at(
+    db: Session,
+    symbol_id: int,
+    rule_version_id: int | None = None,
+) -> str | None:
+    """获取数据截止时间（ISO 8601 字符串，用于决策快照追溯）。
+
+    取最新 K 线时间与评分时间的较新者作为 data_cutoff_at。
+    即使数据健康检查不通过（过期），仍返回可用的时间戳用于追溯。
+    若两者均缺失，返回 None。
+    """
+    from app.services.auto_trade_safety import check_data_health
+
+    result = check_data_health(
+        db, symbol_id=symbol_id, rule_version_id=rule_version_id
+    )
+    cutoff: datetime | None = None
+    if result.kline_latest_at:
+        cutoff = result.kline_latest_at
+    if result.score_latest_at:
+        if cutoff is None or result.score_latest_at > cutoff:
+            cutoff = result.score_latest_at
+    return cutoff.isoformat() if cutoff else None
 
 
 def _check_portfolio_risk(db: Session, portfolio_id: int) -> tuple[bool, str]:
-    """组合风控检查。
+    """组合风控检查（WP6.5 占位，详细风控在后续完善）。
 
-    WP6.5 实现详细检查，WP6.2 返回 True（占位）。
+    买入组合级风控：仓位/集中度/风险预算等。
+    第一阶段返回 True（占位），实际风控规则在 WP6.5 后续完善。
     """
-    # TODO: WP6.5 实现详细风控检查
+    # TODO: WP6.5 后续接入组合级风控规则（仓位/集中度/预算）
     return True, ""
 
 
@@ -221,8 +257,14 @@ def get_buy_candidates(
         if action not in _BUY_ACTIONS:
             continue  # 信号不允许买入
 
-        # 4. 数据健康检查
-        data_health_ok, data_reason = _check_data_health(db, member.symbol_id)
+        # 4. 数据健康检查（WP6.5 接入 fail-closed 检查，含规则版本新鲜度）
+        data_health_ok, data_reason = _check_data_health(
+            db, member.symbol_id, rule_version_id=member.entry_rule_version_id
+        )
+        # 数据截止时间（用于决策快照追溯，即使健康检查不通过也记录）
+        data_cutoff_at = _get_data_cutoff_at(
+            db, member.symbol_id, rule_version_id=member.entry_rule_version_id
+        )
 
         # 5. 组合风控检查
         risk_check_ok, risk_reason = _check_portfolio_risk(db, portfolio_id)
@@ -246,6 +288,7 @@ def get_buy_candidates(
                 risk_check_ok=risk_check_ok,
                 rejection_code=rejection_code,
                 rejection_detail=rejection_detail,
+                data_cutoff_at=data_cutoff_at,
             )
         )
 
@@ -299,6 +342,11 @@ def get_signal_candidates(
         if action not in _BUY_ACTIONS:
             continue
 
+        # 数据截止时间（用于决策快照追溯；manual/confirm 不阻断，仅记录）
+        data_cutoff_at = _get_data_cutoff_at(
+            db, member.symbol_id, rule_version_id=member.entry_rule_version_id
+        )
+
         candidates.append(
             MemberTradeCandidate(
                 member=member,
@@ -310,6 +358,7 @@ def get_signal_candidates(
                 signal_snapshot=signal_snapshot,
                 data_health_ok=True,
                 risk_check_ok=True,
+                data_cutoff_at=data_cutoff_at,
             )
         )
 
@@ -369,6 +418,22 @@ def get_sell_candidates(
         if action not in _SELL_ACTIONS:
             continue
 
+        # WP6.5 卖出风控：数据缺失时生成高优先级告警，但不阻断卖出（止损保护）
+        # 调用 check_sell_risk 触发告警，结果忽略（卖出始终允许）
+        from app.services.auto_trade_safety import check_sell_risk
+
+        check_sell_risk(
+            db, symbol_id=pos.symbol_id, portfolio_id=portfolio_id
+        )
+
+        # 数据截止时间（用于决策快照追溯；卖出始终允许，仅记录）
+        sell_rule_version_id = (
+            member.exit_rule_version_id if member is not None else None
+        )
+        data_cutoff_at = _get_data_cutoff_at(
+            db, pos.symbol_id, rule_version_id=sell_rule_version_id
+        )
+
         candidates.append(
             MemberTradeCandidate(
                 member=member,  # 可能为 None
@@ -379,8 +444,10 @@ def get_sell_candidates(
                 signal_id=signal_id,
                 signal_snapshot=signal_snapshot,
                 # 卖出不因数据缺失静默跳过（spec WP6.5 安全门禁）
+                # check_sell_risk 已在数据缺失时触发告警，这里始终允许卖出
                 data_health_ok=True,
                 risk_check_ok=True,
+                data_cutoff_at=data_cutoff_at,
             )
         )
 
@@ -431,6 +498,8 @@ def decide_trades(
     """
     decisions: list[TradeDecision] = []
     signal_date = _now_utc().strftime("%Y-%m-%d")
+    # 决策时间戳（UTC ISO 8601，用于 decision_snapshot 追溯）
+    decision_timestamp = _now_utc().isoformat()
 
     # ==================================================================
     # 1. 卖出候选（优先级高于买入）
@@ -475,6 +544,10 @@ def decide_trades(
                     "score": cand.score,
                     "signal_id": cand.signal_id,
                     "source": "sell_rule",
+                    "member_id": cand.member.id if cand.member else None,
+                    "rule_version_id": rule_version_id,
+                    "data_cutoff_at": cand.data_cutoff_at,
+                    "decision_timestamp": decision_timestamp,
                 },
             )
         )
@@ -515,6 +588,10 @@ def decide_trades(
                 "score": cand.score,
                 "signal_id": cand.signal_id,
                 "source": "buy_rule",
+                "member_id": cand.member.id,
+                "rule_version_id": rule_version_id,
+                "data_cutoff_at": cand.data_cutoff_at,
+                "decision_timestamp": decision_timestamp,
             },
         )
 
@@ -562,6 +639,10 @@ def decide_trades(
                     "score": cand.score,
                     "signal_id": cand.signal_id,
                     "source": "signal_plan",
+                    "member_id": cand.member.id,
+                    "rule_version_id": rule_version_id,
+                    "data_cutoff_at": cand.data_cutoff_at,
+                    "decision_timestamp": decision_timestamp,
                 },
             )
         )
@@ -693,8 +774,34 @@ def execute_member_source(
             "rejected_decisions": [...], # 被拒绝的决策（数据/风控阻断）
             "executed_orders": [...],   # 实际下单/计划
             "errors": [...],             # 单笔失败原因
+            "skipped_due_to_cancel": bool,  # WP6.5 任务取消跳过
         }
+
+    WP6.5 任务取消传播：
+    - 进入时检查 check_task_cancelled，若已取消则跳过该组合
+    - 决策循环中再次检查，确保中途取消能停止后续订单
+    - 跳过的组合通过 record_portfolio_skipped 记录
     """
+    from app.services.auto_trade_safety import (
+        check_task_cancelled,
+        record_portfolio_processed,
+        record_portfolio_skipped,
+    )
+
+    # WP6.5 任务取消传播：进入时检查
+    if check_task_cancelled():
+        record_portfolio_skipped(portfolio_id)
+        return {
+            "portfolio_id": portfolio_id,
+            "buy_decisions": [],
+            "sell_decisions": [],
+            "signal_decisions": [],
+            "rejected_decisions": [],
+            "executed_orders": [],
+            "errors": [],
+            "skipped_due_to_cancel": True,
+        }
+
     decisions = decide_trades(db, portfolio_id=portfolio_id)
 
     result: dict[str, Any] = {
@@ -705,9 +812,16 @@ def execute_member_source(
         "rejected_decisions": [],
         "executed_orders": [],
         "errors": [],
+        "skipped_due_to_cancel": False,
     }
 
     for decision in decisions:
+        # WP6.5 任务取消传播：每个决策处理前检查
+        if check_task_cancelled():
+            record_portfolio_skipped(portfolio_id)
+            result["skipped_due_to_cancel"] = True
+            break
+
         decision_dict = {
             "side": decision.side,
             "symbol_id": decision.symbol_id,
@@ -789,6 +903,255 @@ def execute_member_source(
                 exc_info=True,
             )
 
+    # WP6.5：完整处理完一个组合后记录已处理（用于任务摘要）
+    if not result.get("skipped_due_to_cancel"):
+        record_portfolio_processed(portfolio_id)
+
+    return result
+
+
+# ----------------------------------------------------------------------------
+# 幂等订单（WP6.3）
+# ----------------------------------------------------------------------------
+
+
+def find_existing_order_by_client_key(
+    db: Session,
+    *,
+    client_order_key: str,
+) -> SimOrder | None:
+    """按 client_order_key 查找已存在的订单（WP6.3 幂等）。
+
+    如果存在，说明同一业务事件已下过单，跳过。
+    """
+    return db.execute(
+        select(SimOrder).where(SimOrder.client_order_key == client_order_key)
+    ).scalars().first()
+
+
+def execute_order_idempotent(
+    db: Session,
+    *,
+    decision: TradeDecision,
+) -> tuple[SimOrder | None, str]:
+    """幂等执行订单（WP6.3）。
+
+    返回 (order, status)：
+    - status="executed"：新下单
+    - status="skipped_existing"：已存在，跳过
+    - status="failed"：下单失败
+
+    如果 client_order_key 已存在，直接返回已存在的订单，不重复下单。
+    失败时不占用 client_order_key（未创建 SimOrder），可重试。
+    """
+    # 1. 检查 client_order_key 是否已存在
+    existing = find_existing_order_by_client_key(
+        db, client_order_key=decision.client_order_key
+    )
+    if existing is not None:
+        logger.info(
+            "幂等跳过：client_order_key=%s 已存在 order_id=%s",
+            decision.client_order_key,
+            existing.id,
+        )
+        return existing, "skipped_existing"
+
+    # 2. 执行下单（失败不占用 client_order_key）
+    try:
+        order = _execute_order(db, decision)
+        return order, "executed"
+    except Exception as e:
+        # 不暴露敏感信息，仅记录概要
+        logger.warning(
+            "下单失败 client_order_key=%s: %s",
+            decision.client_order_key,
+            e,
+            exc_info=True,
+        )
+        return None, "failed"
+
+
+def _create_pending_confirmation_order(
+    db: Session,
+    decision: TradeDecision,
+) -> SimOrder:
+    """创建待确认占位订单（confirm 模式，用于幂等追踪）。
+
+    confirm 模式不实际成交，但需要占位 SimOrder 以支持 client_order_key 幂等检查。
+    占位订单 status=pending_confirmation，quantity/price 为 0，不产生现金流。
+    """
+    order = SimOrder(
+        portfolio_id=decision.portfolio_id,
+        symbol_id=decision.symbol_id,
+        side=decision.side,
+        order_type="market",
+        quantity=0,
+        submitted_price=0,
+        status="pending_confirmation",
+        filled_quantity=0,
+        filled_price=0,
+        filled_amount=0,
+        fee=0,
+        note=f"Pending confirmation: action={decision.action}, mode={decision.execution_mode}",
+        member_id=decision.member.id if decision.member else None,
+        source_type="member",
+        source_id=decision.member.id if decision.member else None,
+        signal_id=decision.signal_id,
+        rule_version_id=decision.rule_version_id,
+        execution_mode=decision.execution_mode,
+        client_order_key=decision.client_order_key,
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def run_idempotent_member_source(
+    db: Session,
+    *,
+    portfolio_id: int,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """幂等运行基于成员的自动交易（WP6.3 主入口）。
+
+    与 execute_member_source 区别：使用 execute_order_idempotent 确保不重复下单。
+    调度重跑同一信号日时，已下过单的决策会被跳过并记录到 skipped_orders。
+
+    返回：
+        {
+            "portfolio_id": int,
+            "buy_decisions": [...],     # auto 模式买入决策
+            "sell_decisions": [...],    # 卖出决策
+            "signal_decisions": [...],  # manual/confirm 信号决策
+            "rejected_decisions": [...], # 被拒绝的决策
+            "executed_orders": [...],   # 实际下单
+            "skipped_orders": [...],    # WP6.3 新增：幂等跳过的订单
+            "errors": [...],            # 单笔失败原因
+            "skipped_due_to_cancel": bool,  # WP6.5 任务取消跳过
+        }
+
+    WP6.5 任务取消传播：
+    - 进入时检查 check_task_cancelled，若已取消则跳过该组合
+    - 决策循环中再次检查，确保中途取消能停止后续订单
+    - 跳过的组合通过 record_portfolio_skipped 记录
+    """
+    from app.services.auto_trade_safety import (
+        check_task_cancelled,
+        record_portfolio_processed,
+        record_portfolio_skipped,
+    )
+
+    # WP6.5 任务取消传播：进入时检查
+    if check_task_cancelled():
+        record_portfolio_skipped(portfolio_id)
+        return {
+            "portfolio_id": portfolio_id,
+            "buy_decisions": [],
+            "sell_decisions": [],
+            "signal_decisions": [],
+            "rejected_decisions": [],
+            "executed_orders": [],
+            "skipped_orders": [],
+            "errors": [],
+            "skipped_due_to_cancel": True,
+        }
+
+    decisions = decide_trades(db, portfolio_id=portfolio_id)
+
+    result: dict[str, Any] = {
+        "portfolio_id": portfolio_id,
+        "buy_decisions": [],
+        "sell_decisions": [],
+        "signal_decisions": [],
+        "rejected_decisions": [],
+        "executed_orders": [],
+        "skipped_orders": [],  # WP6.3 新增：幂等跳过的订单
+        "errors": [],
+        "skipped_due_to_cancel": False,
+    }
+
+    for decision in decisions:
+        # WP6.5 任务取消传播：每个决策处理前检查
+        if check_task_cancelled():
+            record_portfolio_skipped(portfolio_id)
+            result["skipped_due_to_cancel"] = True
+            break
+
+        decision_dict = {
+            "side": decision.side,
+            "symbol_id": decision.symbol_id,
+            "action": decision.action,
+            "execution_mode": decision.execution_mode,
+            "signal_id": decision.signal_id,
+            "client_order_key": decision.client_order_key,
+            "rejection_code": decision.rejection_code,
+            "rejection_detail": decision.rejection_detail,
+        }
+
+        # 被拒绝的决策
+        if decision.rejection_code:
+            result["rejected_decisions"].append(decision_dict)
+            continue
+
+        # manual 模式：只提示信号，无需幂等（不创建 SimOrder）
+        if decision.execution_mode == EXECUTION_MANUAL:
+            result["signal_decisions"].append(decision_dict)
+            continue
+
+        # confirm 模式：检查是否已存在待确认订单
+        if decision.execution_mode == EXECUTION_CONFIRM:
+            existing = find_existing_order_by_client_key(
+                db, client_order_key=decision.client_order_key
+            )
+            if existing is not None:
+                result["skipped_orders"].append({
+                    "client_order_key": decision.client_order_key,
+                    "existing_order_id": existing.id,
+                    "reason": "confirm_already_pending",
+                })
+                continue
+            result["signal_decisions"].append(decision_dict)
+            # 创建占位 SimOrder 以支持幂等（dry_run 不创建）
+            if not dry_run:
+                _create_pending_confirmation_order(db, decision)
+            continue
+
+        # auto 模式：分类决策
+        if decision.side == "buy":
+            result["buy_decisions"].append(decision_dict)
+        else:
+            result["sell_decisions"].append(decision_dict)
+
+        if dry_run:
+            continue
+
+        # 幂等执行
+        order, status = execute_order_idempotent(db, decision=decision)
+
+        if status == "executed":
+            result["executed_orders"].append({
+                "order_id": order.id if order else None,
+                "side": decision.side,
+                "symbol_id": decision.symbol_id,
+                "client_order_key": decision.client_order_key,
+            })
+        elif status == "skipped_existing":
+            result["skipped_orders"].append({
+                "client_order_key": decision.client_order_key,
+                "existing_order_id": order.id if order else None,
+                "reason": "idempotent_skip",
+            })
+        elif status == "failed":
+            result["errors"].append({
+                "decision": decision_dict,
+                "error": "execute_failed",
+            })
+
+    # WP6.5：完整处理完一个组合后记录已处理（用于任务摘要）
+    if not result.get("skipped_due_to_cancel"):
+        record_portfolio_processed(portfolio_id)
+
     return result
 
 
@@ -798,7 +1161,10 @@ __all__ = [
     "build_client_order_key",
     "decide_trades",
     "execute_member_source",
+    "execute_order_idempotent",
+    "find_existing_order_by_client_key",
     "get_buy_candidates",
     "get_sell_candidates",
     "get_signal_candidates",
+    "run_idempotent_member_source",
 ]

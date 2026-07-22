@@ -1676,6 +1676,16 @@ def run_backtest(
     run_name: str | None = None,
     score_weight_mode: str | None = None,
     factor_model_run_id: str | None = None,
+    *,
+    member_snapshot_json: str | None = None,
+    symbol_ids_json: str | None = None,
+    excluded_members_json: str | None = None,
+    portfolio_rule_version_id: int | None = None,
+    score_mode: str | None = None,
+    data_cutoff_at: datetime | None = None,
+    engine_name: str | None = None,
+    engine_version: str | None = None,
+    source_type: str | None = None,
 ) -> BacktestRun:
     """Doc."""
     # Execute a backtest run for the selected portfolio and symbols.
@@ -1719,6 +1729,16 @@ def run_backtest(
         initial_capital=initial_capital,
         status="running",
         started_at=datetime.now(timezone.utc),
+        # WP7.2/WP7.3 快照字段（全部可选，None 时保持历史回测行为不变）
+        member_snapshot_json=member_snapshot_json,
+        symbol_ids_json=symbol_ids_json,
+        excluded_members_json=excluded_members_json,
+        portfolio_rule_version_id=portfolio_rule_version_id,
+        score_mode=score_mode,
+        data_cutoff_at=data_cutoff_at,
+        engine_name=engine_name,
+        engine_version=engine_version,
+        source_type=source_type,
     )
     db.add(run)
     db.flush()
