@@ -296,6 +296,24 @@ def run_auto_trade(
                     "blocked_reasons": budget.get("blocked_reasons", []),
                     "executed": False,
                 })
+                # WP-MSG.7：自动交易阻断事件接入通知系统（不阻断主流程）
+                try:
+                    from app.services.notifications.event_emitter import emit_auto_trade_blocked
+                    blocked_reasons = budget.get("blocked_reasons", [])
+                    reason_text = "; ".join(str(r) for r in blocked_reasons) if blocked_reasons else str(budget.get("decision") or "blocked")
+                    emit_auto_trade_blocked(
+                        db,
+                        portfolio_id=portfolio_id,
+                        symbol_id=symbol.id,
+                        symbol=symbol.symbol,
+                        reason=reason_text,
+                        rule_name=budget.get("decision"),
+                    )
+                except Exception:
+                    logger.warning(
+                        "emit_auto_trade_blocked failed for portfolio=%s symbol=%s (non-blocking)",
+                        portfolio_id, symbol.symbol, exc_info=True,
+                    )
                 continue
 
             recommended_amount = float(budget.get("recommended_amount", 0))

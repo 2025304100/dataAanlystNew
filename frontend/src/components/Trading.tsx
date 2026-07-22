@@ -18,6 +18,8 @@ import {
 import PortfolioPerformancePanel from "./PortfolioPerformancePanel";
 import AutoTradePanel from "./AutoTradePanel";
 import PortfolioBacktestPanel from "./PortfolioBacktestPanel";
+// WP1-FIX.3：组合页交易子页持仓表接入 OpportunityStatusBadges
+import { OpportunityStatusBadges } from "./opportunity/OpportunityStatusBadges";
 
 const SEP = " | ";
 
@@ -341,6 +343,17 @@ export default function Trading() {
                             {percent(record.unrealized_pnl_pct)}
                           </div>
                         </>
+                      ),
+                    },
+                    // WP1-FIX.3：关联状态列（持仓会显示"持仓 active"，但不会把持仓显示成观察项）
+                    {
+                      title: t("opportunityObservationColStatus"),
+                      key: "status_badges",
+                      render: (_: unknown, record: any) => (
+                        <OpportunityStatusBadges
+                          symbolId={record.symbol_id}
+                          onOpenDetail={handlePositionClick}
+                        />
                       ),
                     },
                   ] as TableColumnsType<any>}

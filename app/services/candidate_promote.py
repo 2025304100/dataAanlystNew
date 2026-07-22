@@ -23,10 +23,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.discovery_candidate import DiscoveryCandidate
+from app.models.discovery_score_snapshot import DiscoveryScoreSnapshotItem
 from app.models.scan import ScanResult, ScanRun
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.models.universe import UniverseSymbol
+from app.models.watchlist import Watchlist, WatchlistItem
 from app.services.factors.score_scope import get_active_score_scope
 
 logger = logging.getLogger(__name__)
@@ -174,6 +176,23 @@ def sync_scan_results_to_candidates(
             is_promoted=0,
         )
         db.add(candidate)
+        db.flush()  # 确保 candidate.id 可用，供 emit_discovery_new 使用
+        # WP-MSG.7：候选新发现事件接入通知系统（不阻断主流程）
+        try:
+            from app.services.notifications.event_emitter import emit_discovery_new
+            emit_discovery_new(
+                db,
+                candidate_id=candidate.id,
+                symbol_id=symbol.id,
+                symbol=symbol.symbol,
+                score=float(candidate.priority_score or 0.0),
+                reason=None,
+            )
+        except Exception:
+            logger.warning(
+                "emit_discovery_new failed for symbol=%s scan_run=%d (non-blocking)",
+                symbol.symbol, scan_run_id, exc_info=True,
+            )
         created += 1
         existing_universe_ids.add(universe.id)
 
@@ -510,4 +529,180 @@ def _candidate_to_dict(
         "promoted_at": c.promoted_at.isoformat() if c.promoted_at else None,
         "is_legacy": False,
         "created_at": c.created_at.isoformat() if c.created_at else None,
+    }
+
+
+def _build_score_snapshot_json(
+    candidate: DiscoveryCandidate,
+    snapshot_item: DiscoveryScoreSnapshotItem | None,
+) -> str:
+    """构造 WatchlistItem.score_snapshot_json 的内容（JSON 字符串）。
+
+    参照 spec："候选晋升为观察项或组合成员时把入选评分和来源复制为正式快照"。
+    不引用快照 item ID（防止快照清理后引用断裂），仅保存评分副本。
+
+    数据来源优先级：
+    1. snapshot_item（WP-P.2 评分快照明细，最权威）
+    2. candidate 自身的 quality/timing/priority/dimension_scores_json（sync 时快照）
+    """
+    payload: dict[str, Any] = {
+        "source": "discovery_candidate",
+        "candidate_id": candidate.id,
+        "scan_run_id": candidate.scan_run_id,
+        "symbol": candidate.symbol,
+        "stage": candidate.stage,
+        "action": candidate.action,
+        "warning_days": candidate.warning_days,
+        "valid_days": candidate.valid_days,
+        "promoted_at": _now().isoformat(),
+    }
+
+    if snapshot_item is not None:
+        payload.update({
+            "quality_score": snapshot_item.quality_score,
+            "timing_score": snapshot_item.timing_score,
+            "priority_score": snapshot_item.priority_score,
+            "dimension_scores_json": snapshot_item.dimension_scores_json,
+            "data_credibility": snapshot_item.data_credibility,
+            "health_summary_json": snapshot_item.health_summary_json,
+            "snapshot_item_id": snapshot_item.id,  # 仅作参考，清理后仍可用其他字段
+        })
+    else:
+        payload.update({
+            "quality_score": candidate.quality_score,
+            "timing_score": candidate.timing_score,
+            "priority_score": candidate.priority_score,
+            "dimension_scores_json": candidate.dimension_scores_json,
+        })
+
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def promote_candidate_to_observation(
+    db: Session,
+    *,
+    candidate_id: int,
+    watchlist_id: int,
+    snapshot_item_id: int | None = None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """候选晋升为观察项时，把入选评分和来源复制为正式快照（WP-P.7）。
+
+    参照 spec："候选晋升为观察项或组合成员时把入选评分和来源复制为正式快照"。
+
+    实现：
+    1. 读取 DiscoveryCandidate
+    2. （可选）读取 DiscoveryScoreSnapshotItem，构造 score_snapshot_json
+    3. 通过 candidate.symbol 反查 Symbol.id
+    4. 创建 WatchlistItem，score_snapshot_json 字段存入快照评分副本
+    5. 标记 candidate.is_promoted=1
+    6. 单事务写入（参照 project_memory 硬约束：delete+insert 用单事务）
+
+    幂等：若 (watchlist_id, symbol_id) 已存在 WatchlistItem，仅追加/覆盖 score_snapshot_json，
+    不创建重复项；candidate.is_promoted 也置为 1。
+
+    Returns:
+        {
+            "ok": bool,
+            "candidate_id": int,
+            "watchlist_item_id": int,
+            "symbol": str,
+            "already_in_watchlist": bool,
+        }
+    """
+    candidate = db.get(DiscoveryCandidate, candidate_id)
+    if candidate is None:
+        return {
+            "ok": False,
+            "error": "candidate not found",
+            "candidate_id": candidate_id,
+            "watchlist_item_id": None,
+            "symbol": None,
+            "already_in_watchlist": False,
+        }
+
+    # 校验 watchlist 存在
+    watchlist = db.get(Watchlist, watchlist_id)
+    if watchlist is None:
+        return {
+            "ok": False,
+            "error": "watchlist not found",
+            "candidate_id": candidate_id,
+            "watchlist_item_id": None,
+            "symbol": candidate.symbol,
+            "already_in_watchlist": False,
+        }
+
+    # 通过 candidate.symbol 反查 Symbol.id
+    symbol = db.execute(
+        select(Symbol).where(Symbol.symbol == candidate.symbol)
+    ).scalars().first()
+    if symbol is None:
+        return {
+            "ok": False,
+            "error": "symbol not found in symbols table",
+            "candidate_id": candidate_id,
+            "watchlist_item_id": None,
+            "symbol": candidate.symbol,
+            "already_in_watchlist": False,
+        }
+
+    # 可选：读取 DiscoveryScoreSnapshotItem
+    snapshot_item: DiscoveryScoreSnapshotItem | None = None
+    if snapshot_item_id is not None:
+        snapshot_item = db.get(DiscoveryScoreSnapshotItem, snapshot_item_id)
+
+    score_snapshot_json = _build_score_snapshot_json(candidate, snapshot_item)
+
+    # 幂等：检查 (watchlist_id, symbol_id) 是否已存在
+    existing_item = db.execute(
+        select(WatchlistItem).where(
+            WatchlistItem.watchlist_id == watchlist_id,
+            WatchlistItem.symbol_id == symbol.id,
+        )
+    ).scalars().first()
+
+    already_in_watchlist = existing_item is not None
+
+    try:
+        if existing_item is not None:
+            # 已存在：覆盖 score_snapshot_json（追加评分快照）
+            existing_item.score_snapshot_json = score_snapshot_json
+            if note is not None:
+                existing_item.note = note
+            watchlist_item = existing_item
+        else:
+            # 新建 WatchlistItem
+            watchlist_item = WatchlistItem(
+                watchlist_id=watchlist_id,
+                symbol_id=symbol.id,
+                note=note,
+                score_snapshot_json=score_snapshot_json,
+            )
+            db.add(watchlist_item)
+
+        # 同事务标记 candidate.is_promoted=1
+        if candidate.is_promoted != 1:
+            candidate.is_promoted = 1
+            candidate.promoted_at = _now()
+
+        # 单事务提交（参照 project_memory：delete+insert 用单事务）
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(watchlist_item)
+    logger.info(
+        "promote_candidate_to_observation: candidate_id=%d symbol=%s watchlist_id=%d "
+        "already_in_watchlist=%s snapshot_item_id=%s",
+        candidate_id, candidate.symbol, watchlist_id,
+        already_in_watchlist, snapshot_item_id,
+    )
+    return {
+        "ok": True,
+        "candidate_id": candidate_id,
+        "watchlist_item_id": watchlist_item.id,
+        "symbol": candidate.symbol,
+        "already_in_watchlist": already_in_watchlist,
     }

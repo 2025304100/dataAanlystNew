@@ -324,3 +324,358 @@ def test_discovery_latest_candidates_returns_non_executable(client):
         actions = {item.get("action") for item in data}
         # 至少应该有结果（不论什么 action）
         assert len(actions) > 0, "latest-candidates 应返回结果"
+
+
+# ---------- WP1.5 标的统一关联状态接口 ----------
+
+def test_symbol_relationships_not_found(client):
+    """GET /api/v1/symbols/{nonexistent}/relationships 应返回 404 + UserError。"""
+    r = client.get("/api/v1/symbols/99999999/relationships")
+    assert r.status_code == 404
+    body = r.json()
+    # WP-S.6 统一错误协议：必须包含 error_code / user_message / impact / retryable / correlation_id
+    assert "error_code" in body, "404 响应应遵循 WP-S.6 UserError 协议"
+    assert "user_message" in body
+    assert "impact" in body
+    assert "correlation_id" in body
+
+
+def test_symbol_relationships_existing_symbol(client):
+    """GET /api/v1/symbols/{id}/relationships 对已存在标的应返回完整结构。"""
+    r = client.get("/api/v1/symbols?page=1&page_size=5")
+    assert r.status_code == 200
+    symbols = r.json()
+    if not symbols:
+        pytest.skip("无可用 symbol")
+    sid = symbols[0]["id"]
+
+    r = client.get(f"/api/v1/symbols/{sid}/relationships")
+    assert r.status_code == 200
+    data = r.json()
+    # WP1.5 关键字段完整性
+    assert data["symbol_id"] == sid
+    assert "symbol" in data
+    assert "candidate" in data
+    assert "observation" in data
+    assert "portfolio_member" in data
+    assert "position" in data
+    assert "alert" in data
+    assert "fetched_at" in data
+    assert "degraded" in data
+    # 子结构关键字段
+    assert "has_candidate" in data["candidate"]
+    assert "has_observation" in data["observation"]
+    assert "has_portfolio_membership" in data["portfolio_member"]
+    assert "has_position" in data["position"]
+    assert "has_active_alert" in data["alert"]
+    # 默认无 degraded_reason（除非降级）
+    assert "degraded_reason" in data
+
+
+def test_symbol_relationships_alert_structure(client):
+    """GET /api/v1/symbols/{id}/relationships 的 alert 子结构字段完整。"""
+    r = client.get("/api/v1/symbols?page=1&page_size=20")
+    assert r.status_code == 200
+    symbols = r.json()
+    if not symbols:
+        pytest.skip("无可用 symbol")
+    sid = symbols[0]["id"]
+
+    r = client.get(f"/api/v1/symbols/{sid}/relationships")
+    assert r.status_code == 200
+    alert = r.json()["alert"]
+    # 字段类型正确
+    assert isinstance(alert["alert_rule_ids"], list)
+    assert isinstance(alert["active_alert_events"], int)
+    # has_active_alert 必须是 bool（不误报"未加入"或字符串）
+    assert isinstance(alert["has_active_alert"], bool)
+
+
+def test_symbol_relationships_position_structure(client):
+    """GET /api/v1/symbols/{id}/relationships 的 position 子结构字段完整。"""
+    r = client.get("/api/v1/symbols?page=1&page_size=20")
+    assert r.status_code == 200
+    symbols = r.json()
+    if not symbols:
+        pytest.skip("无可用 symbol")
+    sid = symbols[0]["id"]
+
+    r = client.get(f"/api/v1/symbols/{sid}/relationships")
+    assert r.status_code == 200
+    pos = r.json()["position"]
+    # has_position 必须是 bool（不会把观察项显示成持仓）
+    assert isinstance(pos["has_position"], bool)
+    assert isinstance(pos["portfolio_id"], (int, type(None)))
+    assert isinstance(pos["quantity"], (int, float, type(None)))
+
+
+# ---------- WP1.7 relationships 子结构与关联场景补充 ----------
+
+def test_symbol_relationships_observation_structure(client):
+    """GET /api/v1/symbols/{id}/relationships 的 observation 子结构字段完整。"""
+    r = client.get("/api/v1/symbols?page=1&page_size=20")
+    assert r.status_code == 200
+    symbols = r.json()
+    if not symbols:
+        pytest.skip("无可用 symbol")
+    sid = symbols[0]["id"]
+
+    r = client.get(f"/api/v1/symbols/{sid}/relationships")
+    assert r.status_code == 200
+    obs = r.json()["observation"]
+    # has_observation 必须是 bool（不会把候选显示成观察项）
+    assert isinstance(obs["has_observation"], bool)
+    assert isinstance(obs["watchlist_id"], (int, type(None)))
+    assert isinstance(obs["watchlist_name"], (str, type(None)))
+    assert isinstance(obs["watchlist_item_id"], (int, type(None)))
+    # tags 必须是 list（即便为空）
+    assert isinstance(obs["tags"], list)
+    assert isinstance(obs["priority"], (int, type(None)))
+
+
+def test_symbol_relationships_candidate_structure(client):
+    """GET /api/v1/symbols/{id}/relationships 的 candidate 子结构字段完整。"""
+    r = client.get("/api/v1/symbols?page=1&page_size=20")
+    assert r.status_code == 200
+    symbols = r.json()
+    if not symbols:
+        pytest.skip("无可用 symbol")
+    sid = symbols[0]["id"]
+
+    r = client.get(f"/api/v1/symbols/{sid}/relationships")
+    assert r.status_code == 200
+    cand = r.json()["candidate"]
+    # has_candidate 必须是 bool（不会把观察项显示成候选）
+    assert isinstance(cand["has_candidate"], bool)
+    assert isinstance(cand["candidate_id"], (int, type(None)))
+    assert isinstance(cand["scope"], (str, type(None)))
+    assert isinstance(cand["priority_score"], (int, float, type(None)))
+    assert isinstance(cand["scan_run_id"], (int, type(None)))
+
+
+def test_symbol_relationships_portfolio_member_structure(client):
+    """GET /api/v1/symbols/{id}/relationships 的 portfolio_member 子结构字段完整。"""
+    r = client.get("/api/v1/symbols?page=1&page_size=20")
+    assert r.status_code == 200
+    symbols = r.json()
+    if not symbols:
+        pytest.skip("无可用 symbol")
+    sid = symbols[0]["id"]
+
+    r = client.get(f"/api/v1/symbols/{sid}/relationships")
+    assert r.status_code == 200
+    pm = r.json()["portfolio_member"]
+    # has_portfolio_membership 必须是 bool
+    assert isinstance(pm["has_portfolio_membership"], bool)
+    assert isinstance(pm["portfolio_id"], (int, type(None)))
+    assert isinstance(pm["portfolio_name"], (str, type(None)))
+    # 第一阶段 member_id 为预留字段，应为 null 或 int
+    assert isinstance(pm["member_id"], (int, type(None)))
+
+
+def test_symbol_relationships_degraded_field_type(client):
+    """degraded 字段必须是 bool，degraded_reason 为 str 或 null。"""
+    r = client.get("/api/v1/symbols?page=1&page_size=5")
+    assert r.status_code == 200
+    symbols = r.json()
+    if not symbols:
+        pytest.skip("无可用 symbol")
+    sid = symbols[0]["id"]
+
+    r = client.get(f"/api/v1/symbols/{sid}/relationships")
+    assert r.status_code == 200
+    data = r.json()
+    # degraded 必须是 bool（不能是字符串或 null）
+    assert isinstance(data["degraded"], bool)
+    # degraded_reason 必须是 str 或 null
+    assert isinstance(data["degraded_reason"], (str, type(None)))
+    # fetched_at 必须是非空字符串（ISO 8601）
+    assert isinstance(data["fetched_at"], str) and len(data["fetched_at"]) > 0
+
+
+def test_symbol_relationships_observation_true_for_watchlist_item(client):
+    """若标的已在观察池（watchlist_items）中，relationships.observation.has_observation 应为 true。
+
+    只读场景：从 watchlists 列表中找一个非空 watchlist，取其第一个 item 的 symbol_id，
+    验证 GET /relationships 返回 has_observation=true。
+    """
+    r = client.get("/api/v1/watchlists")
+    assert r.status_code == 200
+    watchlists = r.json()
+    if not watchlists:
+        pytest.skip("无可用 watchlist")
+
+    target_symbol_id = None
+    for wl in watchlists:
+        wl_id = wl.get("id")
+        if wl_id is None:
+            continue
+        r_items = client.get(f"/api/v1/watchlists/{wl_id}/items")
+        if r_items.status_code != 200:
+            continue
+        items = r_items.json()
+        if items:
+            target_symbol_id = items[0].get("symbol_id")
+            break
+
+    if target_symbol_id is None:
+        pytest.skip("所有 watchlist 均为空，无法验证 has_observation=true")
+
+    r = client.get(f"/api/v1/symbols/{target_symbol_id}/relationships")
+    assert r.status_code == 200
+    obs = r.json()["observation"]
+    # 关键约束：观察池中的标的必须返回 has_observation=true，不能误报"未加入"
+    assert obs["has_observation"] is True, (
+        f"symbol_id={target_symbol_id} 已在 watchlist_items 中，"
+        "但 relationships.observation.has_observation 未返回 true"
+    )
+    # 应同时返回 watchlist_id 与 watchlist_item_id
+    assert obs["watchlist_id"] is not None
+    assert obs["watchlist_item_id"] is not None
+
+
+def test_symbol_relationships_candidate_true_for_discovery_candidate(client):
+    """若标的为最新候选（discovery_latest_candidates）之一，relationships.candidate.has_candidate 应为 true。
+
+    只读场景：从 latest-candidates 取第一个候选的 symbol_id，
+    验证 GET /relationships 返回 has_candidate=true。
+    若 latest-candidates 端点本身不可用（如数据库 schema 未同步），跳过本测试。
+    """
+    r = client.get("/api/v1/discovery/latest-candidates?min_score=0&limit=10")
+    if r.status_code != 200:
+        pytest.skip(f"latest-candidates 端点不可用（status={r.status_code}），跳过候选关联验证")
+    candidates = r.json()
+    if not candidates:
+        pytest.skip("无可用 discovery candidate")
+
+    target_symbol_id = candidates[0].get("symbol_id")
+    if target_symbol_id is None:
+        pytest.skip("候选缺少 symbol_id 字段")
+
+    r = client.get(f"/api/v1/symbols/{target_symbol_id}/relationships")
+    assert r.status_code == 200
+    cand = r.json()["candidate"]
+    # 关键约束：候选池中的标的必须返回 has_candidate=true
+    assert cand["has_candidate"] is True, (
+        f"symbol_id={target_symbol_id} 在 latest-candidates 中，"
+        "但 relationships.candidate.has_candidate 未返回 true"
+    )
+    # 应同时返回 candidate_id
+    assert cand["candidate_id"] is not None
+
+
+def test_symbol_relationships_returns_user_error_on_invalid_id(client):
+    """GET /api/v1/symbols/{invalid}/relationships 对非数字 ID 应返回 422。"""
+    r = client.get("/api/v1/symbols/not-a-number/relationships")
+    # 路径参数类型错误应由 Pydantic/FastAPI 拒绝
+    assert r.status_code in (404, 422)
+
+
+# ---------- WP2.3 观察池端点 ----------
+
+def test_list_observations_endpoint(client):
+    """GET /api/v1/watchlists/{id}/observations 应返回富读列表。
+
+    选取第一个非空 watchlist，验证端点可达且返回结构化富读字段。
+    """
+    r = client.get("/api/v1/watchlists")
+    assert r.status_code == 200
+    watchlists = r.json()
+    if not watchlists:
+        pytest.skip("无可用 watchlist")
+
+    target_wl_id = None
+    for wl in watchlists:
+        wl_id = wl.get("id")
+        if wl_id is None:
+            continue
+        # 通过 observations 端点查找（兼容 WP2.1 之前仅有 items 端点的旧库）
+        r_obs = client.get(f"/api/v1/watchlists/{wl_id}/observations")
+        if r_obs.status_code == 200 and r_obs.json():
+            target_wl_id = wl_id
+            break
+
+    if target_wl_id is None:
+        pytest.skip("所有 watchlist 均无观察项，跳过富读字段验证")
+
+    r = client.get(f"/api/v1/watchlists/{target_wl_id}/observations")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
+
+    item = data[0]
+    # WP2.3 富读字段完整性
+    for key in (
+        "watchlist_item_id",
+        "watchlist_id",
+        "symbol_id",
+        "status",
+        "origin_type",
+        "priority",
+        "tags",
+        "degraded",
+    ):
+        assert key in item, f"observation 富读缺字段 {key}"
+    assert item["watchlist_id"] == target_wl_id
+    # degraded 必须是 bool（不能是字符串或 null）
+    assert isinstance(item["degraded"], bool)
+
+
+def test_list_observations_status_filter(client):
+    """GET /api/v1/watchlists/{id}/observations?status=archived 应返回归档项。"""
+    r = client.get("/api/v1/watchlists")
+    assert r.status_code == 200
+    watchlists = r.json()
+    if not watchlists:
+        pytest.skip("无可用 watchlist")
+
+    wl_id = watchlists[0]["id"]
+    # 默认不返回 archived
+    r_default = client.get(f"/api/v1/watchlists/{wl_id}/observations")
+    assert r_default.status_code == 200
+    for item in r_default.json():
+        assert item["status"] != "archived", "默认列表不应包含 archived 项"
+
+    # 显式筛选 archived
+    r_archived = client.get(
+        f"/api/v1/watchlists/{wl_id}/observations?status=archived"
+    )
+    assert r_archived.status_code == 200
+    for item in r_archived.json():
+        assert item["status"] == "archived"
+
+
+def test_observation_endpoints_404(client):
+    """WP2.3 观察池端点对不存在的 observation_id 应返回 404 + UserError。"""
+    r = client.get("/api/v1/watchlists")
+    assert r.status_code == 200
+    watchlists = r.json()
+    if not watchlists:
+        pytest.skip("无可用 watchlist")
+    wl_id = watchlists[0]["id"]
+
+    # PATCH 不存在 observation_id → 404
+    r_patch = client.patch(
+        f"/api/v1/watchlists/{wl_id}/observations/99999999",
+        json={"priority": 5},
+    )
+    assert r_patch.status_code == 404
+    body = r_patch.json()
+    # WP-S.6 统一错误协议
+    assert "error_code" in body
+    assert body["error_code"] == "NOT_FOUND"
+
+    # POST /archive 不存在 → 404
+    r_arch = client.post(
+        f"/api/v1/watchlists/{wl_id}/observations/99999999/archive"
+    )
+    assert r_arch.status_code == 404
+    assert r_arch.json()["error_code"] == "NOT_FOUND"
+
+    # POST /restore 不存在 → 404
+    r_rest = client.post(
+        f"/api/v1/watchlists/{wl_id}/observations/99999999/restore"
+    )
+    assert r_rest.status_code == 404
+    assert r_rest.json()["error_code"] == "NOT_FOUND"

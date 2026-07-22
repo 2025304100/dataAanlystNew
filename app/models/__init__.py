@@ -20,3 +20,13 @@ from app.models import universe, discovery_candidate
 from app.models import portfolio_equity_snapshot
 # P3+：市场指数日线（Benchmark 对比曲线基础设施）
 from app.models import index_price
+# WP-S：外部接口运行时状态（熔断器 + 计数器）
+from app.models import external_endpoint_runtime
+# WP-P.2：评分快照（挖掘性能改造基础）
+from app.models import discovery_score_snapshot
+# WP3.1：机会状态流转审计事件
+from app.models import opportunity_transition_event
+# WP4.1：组合成员
+from app.models import portfolio_member
+# WP-MSG.1：通知数据模型
+from app.models import notification

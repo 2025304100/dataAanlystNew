@@ -3,7 +3,7 @@ import { useApp } from "../context/AppContext";
 import { t, DOT } from "../i18n";
 import { statPct, pnlClass, clamp } from "../utils/format";
 import { Input, InputNumber, Checkbox, Button, Space, Card, Form } from "antd";
-import { CalendarOutlined, DatabaseOutlined, ExperimentOutlined, FunctionOutlined, SettingOutlined, SyncOutlined, MedicineBoxOutlined, UnorderedListOutlined, BellOutlined, TrophyOutlined, GlobalOutlined, ApiOutlined, RobotOutlined } from "@ant-design/icons";
+import { CalendarOutlined, DatabaseOutlined, ExperimentOutlined, FunctionOutlined, SettingOutlined, SyncOutlined, MedicineBoxOutlined, UnorderedListOutlined, BellOutlined, TrophyOutlined, GlobalOutlined, ApiOutlined, RobotOutlined, NotificationOutlined } from "@ant-design/icons";
 import DbConfigSection from "./DbConfigSection";
 import CustomIndicatorSettings from "./CustomIndicatorSettings";
 import DiscoveryPlanSettings from "./DiscoveryPlanSettings";
@@ -18,6 +18,10 @@ import UniverseDataPanel from "./UniverseDataPanel";
 import FactorModelSettings from "./FactorModelSettings";
 import ScheduledTaskManager from "./ScheduledTaskManager";
 import AiConfigSection from "./AiConfigSection";
+import { ChannelConfig } from "./notifications/ChannelConfig";
+import { PolicyEditor } from "./notifications/PolicyEditor";
+import { TemplateEditor } from "./notifications/TemplateEditor";
+import { DeliveryLog } from "./notifications/DeliveryLog";
 
 export default function Settings() {
   const ctx = useApp();
@@ -26,15 +30,20 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "alerts" | "scoring" | "factor-model" | "external" | "api-mgmt" | "universe" | "db" | "ai">(() => {
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "alerts" | "scoring" | "factor-model" | "external" | "api-mgmt" | "universe" | "db" | "ai" | "notifications">(() => {
     if (typeof window === "undefined") return "rules";
     const stored = window.localStorage.getItem("settings_active_section");
-    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "alerts" || stored === "scoring" || stored === "factor-model" || stored === "external" || stored === "api-mgmt" || stored === "universe" || stored === "db" || stored === "ai" ? stored : "rules";
+    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "alerts" || stored === "scoring" || stored === "factor-model" || stored === "external" || stored === "api-mgmt" || stored === "universe" || stored === "db" || stored === "ai" || stored === "notifications" ? stored : "rules";
   });
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<"formulas" | "plans">(() => {
     if (typeof window === "undefined") return "formulas";
     const stored = window.localStorage.getItem("settings_indicator_subtab");
     return stored === "formulas" || stored === "plans" ? stored : "formulas";
+  });
+  const [activeNotificationTab, setActiveNotificationTab] = useState<"channels" | "policies" | "templates" | "deliveries">(() => {
+    if (typeof window === "undefined") return "channels";
+    const stored = window.localStorage.getItem("settings_notification_subtab");
+    return stored === "channels" || stored === "policies" || stored === "templates" || stored === "deliveries" ? stored : "channels";
   });
   const [historyFocusSignal, setHistoryFocusSignal] = useState(0);
   const [diagnosticSymbolId, setDiagnosticSymbolId] = useState<number | null>(null);
@@ -58,6 +67,12 @@ export default function Settings() {
       window.localStorage.setItem("settings_indicator_subtab", activeIndicatorTab);
     }
   }, [activeIndicatorTab]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("settings_notification_subtab", activeNotificationTab);
+    }
+  }, [activeNotificationTab]);
 
   const applyPreset = (mode: string) => {
     const preset = presets.find((p) => p.mode === mode);
@@ -288,6 +303,15 @@ export default function Settings() {
           >
             <span className="settings-nav-icon"><RobotOutlined /></span>
             <span className="settings-nav-copy">{t("aiConfigTabTitle")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "notifications" ? "active" : ""}`}
+            aria-current={activeSection === "notifications" ? "page" : undefined}
+            onClick={() => setActiveSection("notifications")}
+          >
+            <span className="settings-nav-icon"><NotificationOutlined /></span>
+            <span className="settings-nav-copy">{t("messageManagement")}</span>
           </button>
         </nav>
         <div className="settings-content">
@@ -537,6 +561,60 @@ export default function Settings() {
             <div className="settings-tab-container" data-settings-content="settings-ai">
               <section className="band">
                 <AiConfigSection />
+              </section>
+            </div>
+          )}
+          {activeSection === "notifications" && (
+            <div className="settings-tab-container" data-settings-content="settings-notifications">
+              <section className="band">
+                <div className="settings-indicator-stack">
+                  <div className="sub-tabs" aria-label={t("messageManagement")}>
+                    <button
+                      type="button"
+                      className={`sub-tab ${activeNotificationTab === "channels" ? "active" : ""}`}
+                      aria-current={activeNotificationTab === "channels" ? "page" : undefined}
+                      onClick={() => setActiveNotificationTab("channels")}
+                    >
+                      {t("channelConfig")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`sub-tab ${activeNotificationTab === "policies" ? "active" : ""}`}
+                      aria-current={activeNotificationTab === "policies" ? "page" : undefined}
+                      onClick={() => setActiveNotificationTab("policies")}
+                    >
+                      {t("policyEditor")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`sub-tab ${activeNotificationTab === "templates" ? "active" : ""}`}
+                      aria-current={activeNotificationTab === "templates" ? "page" : undefined}
+                      onClick={() => setActiveNotificationTab("templates")}
+                    >
+                      {t("templateEditor")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`sub-tab ${activeNotificationTab === "deliveries" ? "active" : ""}`}
+                      aria-current={activeNotificationTab === "deliveries" ? "page" : undefined}
+                      onClick={() => setActiveNotificationTab("deliveries")}
+                    >
+                      {t("deliveryLog")}
+                    </button>
+                  </div>
+                  <div className="sub-tab-container" hidden={activeNotificationTab !== "channels"}>
+                    <ChannelConfig />
+                  </div>
+                  <div className="sub-tab-container" hidden={activeNotificationTab !== "policies"}>
+                    <PolicyEditor />
+                  </div>
+                  <div className="sub-tab-container" hidden={activeNotificationTab !== "templates"}>
+                    <TemplateEditor />
+                  </div>
+                  <div className="sub-tab-container" hidden={activeNotificationTab !== "deliveries"}>
+                    <DeliveryLog />
+                  </div>
+                </div>
               </section>
             </div>
           )}

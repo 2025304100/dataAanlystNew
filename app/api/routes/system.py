@@ -101,6 +101,22 @@ def _format_bar_issue_row(row) -> dict:
     }
 
 
+@router.get("/system/capabilities")
+def get_capabilities(db: Session = Depends(get_db)):
+    """聚合查询所有功能的就绪状态、前置条件、推荐操作（WP-S.7）。
+
+    返回 `CapabilitiesResponse`，包含 8 个域的就绪状态：
+    基础数据采集 / 评分配置激活 / Ridge 因子仓库 / 机会扫描快照 /
+    组合操作前 / 自动交易前 / AI 配置 / 外部消息渠道。
+
+    每项返回 `status`（ready/degraded/blocked）、`reason_code`、`user_message`、
+    `prerequisites`、`recommended_actions`、`data_cutoff_at`。
+    前端可基于此做按钮门禁（禁用时显示原因 + "去完成前置条件"入口）。
+    """
+    from app.services.capability_gates import get_all_capabilities
+    return get_all_capabilities(db).model_dump(mode="json")
+
+
 @router.get("/system/data-health")
 def get_data_health(db: Session = Depends(get_db)):
     today = _now().date()

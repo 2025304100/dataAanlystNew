@@ -3,18 +3,34 @@ import asyncio
 import logging
 import socket
 import time
+import traceback
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
+from uuid import uuid4
 
 from app.api.router import api_router
 from app.core.config import settings, load_db_config, build_mysql_url
 from app.db.init_db import init_db
 from app.db.manager import DatabaseManager
+from app.schemas.errors import (
+    NextAction,
+    TechnicalDetails,
+    UnifiedErrorException,
+    build_user_error,
+)
+from app.schemas.error_sanitizer import sanitize_message
+from app.schemas.external_data import (
+    CircuitBreakerOpenError,
+    DataValidationError,
+    StaleDataError,
+)
 from app.services.discovery_cleanup import cleanup_expired_discovery_results
 from app.services.async_tasks import interrupt_orphaned_async_tasks
 from app.services.scheduled_tasks import scheduler_loop
@@ -192,6 +208,181 @@ app = FastAPI(
 )
 
 app.include_router(api_router)
+
+
+# ── WP-S.6 全局异常处理器（统一用户错误协议） ──────────
+#
+# 所有异常统一转换为 UserError 响应：
+# - 普通用户看到 user_message / impact / next_actions
+# - technical_details 折叠（前端默认隐藏）
+# - 敏感信息（密码/API Key/Webhook/SMTP）经 sanitize_message 脱敏后才能进入日志/响应
+
+
+@app.exception_handler(UnifiedErrorException)
+async def unified_error_handler(request: Request, exc: UnifiedErrorException):
+    """处理业务方主动 raise 的 UnifiedErrorException。"""
+    user_error = build_user_error(
+        exc.error_code,
+        correlation_id=exc.correlation_id,
+        completed=exc.completed,
+        technical_details=exc.technical_details,
+        override_user_message=exc.override_user_message,
+        override_impact=exc.override_impact,
+        extra_next_actions=exc.extra_next_actions,
+    )
+    logger.warning(
+        "UnifiedError [%s] correlation_id=%s path=%s status=%d",
+        exc.error_code, exc.correlation_id, request.url.path, exc.status_code,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=user_error.model_dump(mode="json"),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    """FastAPI 请求参数校验失败 → VALIDATION_ERROR。"""
+    correlation_id = uuid4().hex
+    errors_summary = "; ".join(
+        f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
+        for err in exc.errors()[:5]
+    )
+    user_error = build_user_error(
+        "VALIDATION_ERROR",
+        correlation_id=correlation_id,
+        technical_details=TechnicalDetails(
+            exception_type="RequestValidationError",
+            status_code=422,
+            error_message=sanitize_message(errors_summary)[:500],
+        ),
+        extra_next_actions=[NextAction(
+            label="修改后重试", action_type="retry",
+            reason="请按提示修正输入参数",
+        )],
+    )
+    return JSONResponse(status_code=422, content=user_error.model_dump(mode="json"))
+
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError):
+    """SQLAlchemy 异常 → DB_CONNECTION_FAILED / DB_LOCK_TIMEOUT / DB_INTEGRITY_VIOLATION。"""
+    correlation_id = uuid4().hex
+    error_code = "DB_CONNECTION_FAILED"
+    status_code = 503
+    if isinstance(exc, OperationalError):
+        msg = str(exc).lower()
+        if "locked" in msg or "deadlock" in msg:
+            error_code = "DB_LOCK_TIMEOUT"
+        else:
+            error_code = "DB_CONNECTION_FAILED"
+    elif isinstance(exc, IntegrityError):
+        error_code = "DB_INTEGRITY_VIOLATION"
+        status_code = 409
+    # 原始 DB 错误码（如 MySQL 1054 / SQLite UNIQUE constraint）
+    orig = getattr(exc, "orig", None)
+    db_error_code = None
+    if orig is not None:
+        # orig 可能是字符串或 DBAPI 异常对象
+        orig_str = str(orig)
+        if orig_str:
+            db_error_code = orig_str[:100]
+    user_error = build_user_error(
+        error_code,
+        correlation_id=correlation_id,
+        technical_details=TechnicalDetails(
+            exception_type=type(exc).__name__,
+            status_code=status_code,
+            error_message=sanitize_message(str(exc))[:500],
+            db_error_code=db_error_code,
+        ),
+    )
+    logger.exception(
+        "DB error correlation_id=%s path=%s type=%s",
+        correlation_id, request.url.path, type(exc).__name__,
+    )
+    return JSONResponse(status_code=status_code, content=user_error.model_dump(mode="json"))
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """HTTPException 兼容包装为 UserError。"""
+    correlation_id = uuid4().hex
+    error_code = "UNKNOWN_ERROR"
+    if exc.status_code == 404:
+        error_code = "NOT_FOUND"
+    elif exc.status_code in (401, 403):
+        error_code = "UNAUTHORIZED"
+    elif exc.status_code == 429:
+        error_code = "RATE_LIMITED"
+    user_error = build_user_error(
+        error_code,
+        correlation_id=correlation_id,
+        technical_details=TechnicalDetails(
+            exception_type="HTTPException",
+            status_code=exc.status_code,
+            error_message=sanitize_message(str(exc.detail))[:500],
+        ),
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=user_error.model_dump(mode="json"),
+    )
+
+
+@app.exception_handler(CircuitBreakerOpenError)
+async def circuit_breaker_error_handler(request: Request, exc: CircuitBreakerOpenError):
+    """熔断器打开异常 → CIRCUIT_BREAKER_OPEN。"""
+    return JSONResponse(
+        status_code=503,
+        content=exc.to_unified_error().model_dump(mode="json"),
+    )
+
+
+@app.exception_handler(DataValidationError)
+async def data_validation_error_handler(request: Request, exc: DataValidationError):
+    """数据校验异常 → DATA_VALIDATION_FAILED。"""
+    return JSONResponse(
+        status_code=422,
+        content=exc.to_unified_error().model_dump(mode="json"),
+    )
+
+
+@app.exception_handler(StaleDataError)
+async def stale_data_error_handler(request: Request, exc: StaleDataError):
+    """数据过期异常 → STALE_DATA。"""
+    return JSONResponse(
+        status_code=503,
+        content=exc.to_unified_error().model_dump(mode="json"),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """兜底未捕获异常 → UNKNOWN_ERROR。
+
+    所有未识别异常最终都返回 500 + UNKNOWN_ERROR，技术详情折叠堆栈（限 1000 字符）。
+    """
+    correlation_id = uuid4().hex
+    tb_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    # 顶层 5 帧，限 1000 字符
+    stack_summary = "".join(tb_lines[:5])[-1000:]
+    user_error = build_user_error(
+        "UNKNOWN_ERROR",
+        correlation_id=correlation_id,
+        technical_details=TechnicalDetails(
+            exception_type=type(exc).__name__,
+            status_code=500,
+            error_message=sanitize_message(str(exc))[:500],
+            stack_summary=stack_summary,
+        ),
+    )
+    logger.exception(
+        "Unhandled error correlation_id=%s path=%s type=%s msg=%s",
+        correlation_id, request.url.path, type(exc).__name__,
+        sanitize_message(str(exc))[:200],
+    )
+    return JSONResponse(status_code=500, content=user_error.model_dump(mode="json"))
 
 FRONTEND_DEV_ORIGIN = "http://127.0.0.1:5173"
 FRONTEND_DEV_HOST = "127.0.0.1"

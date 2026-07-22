@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from math import floor
 
@@ -21,6 +22,8 @@ from app.services.market_rules import (
     round_to_tick,
     validate_market_rules,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _round_money(value: float) -> float:
@@ -301,6 +304,24 @@ def place_sim_order(
     )
     db.add(trade)
     db.flush()
+    # WP-MSG.7：成交事件接入通知系统（不阻断主流程）
+    try:
+        from app.services.notifications.event_emitter import emit_trade_executed
+        emit_trade_executed(
+            db,
+            trade_id=trade.id,
+            portfolio_id=portfolio.id,
+            symbol_id=symbol.id,
+            symbol=symbol.symbol,
+            action=side,
+            quantity=float(normalized_quantity),
+            price=float(fill_price),
+        )
+    except Exception:
+        logger.warning(
+            "emit_trade_executed failed for portfolio=%s symbol=%s side=%s (non-blocking)",
+            portfolio.id, symbol.symbol, side, exc_info=True,
+        )
     return order, trade
 
 

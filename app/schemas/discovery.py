@@ -86,3 +86,86 @@ class DiscoveryIndicatorEvaluationRow(BaseModel):
     scan_result_id: int
     symbol_id: int
     values: dict[str, bool | float | None] = Field(default_factory=dict)
+
+
+# ── WP-P.4 数据准备与用户扫描分离 ──────────────────────────────
+
+
+DiscoveryScopeLiteral = Literal["cn-stock", "cn-etf", "us-stock", "us-etf"]
+
+
+class FastScanRequest(BaseModel):
+    """用户快速扫描请求（同步执行，目标 < 5 分钟）。
+
+    约束：扫描路径不发起任何第三方 HTTP 请求；
+    只读 ready 状态快照，绝不读 building 半成品。
+    """
+
+    scope: DiscoveryScopeLiteral = Field(default="cn-stock")
+    min_score: float = Field(default=55, ge=0, le=100)
+    asset_types: list[str] | None = None
+    stages: list[str] | None = None
+    actions: list[str] | None = None
+    # 自定义指标计划，WP-P.5 完整实现向量化；上限 5 个
+    indicator_plan: dict[str, Any] | None = None
+    portfolio_id: int | None = None
+    portfolio_rule_id: int | None = None
+    # SQL 粗筛 Top-K 上限（WP-P.5 完整实现）
+    limit: int = Field(default=300, ge=1, le=300)
+
+
+class FastScanResponse(BaseModel):
+    """用户快速扫描响应。"""
+
+    snapshot_id: int | None = None
+    snapshot_generated_at: datetime | None = None
+    scope: str
+    total_in_snapshot: int = 0
+    coarse_match_count: int = 0
+    advanced_match_count: int = 0
+    result_rows_written: int = 0
+    cache_key: str | None = None
+    cache_hit: bool = False
+    results: list[dict[str, Any]] = Field(default_factory=list)
+    duration_ms: float = 0.0
+    degraded_reason: str | None = None
+    recommended_action: str | None = None
+
+
+class DataPrepRequest(BaseModel):
+    """后台数据准备任务创建请求（异步执行，不受 5 分钟 SLA 约束）。
+
+    链路：行情增量同步 → 外部因子/宏观更新 → 因子与评分增量计算 →
+          dirty 集合计算 → ready 评分快照生成 → 可选触发快速扫描。
+    """
+
+    scope: DiscoveryScopeLiteral = Field(default="cn-stock")
+    trade_date: date | None = None
+    force_full_rebuild: bool = False
+    # 数据就绪后是否自动触发快速扫描
+    trigger_fast_scan_after_ready: bool = False
+    # 自动触发快速扫描时使用的参数（透传给 run_fast_scan）
+    fast_scan_params: dict[str, Any] | None = None
+
+
+class SnapshotStatusRead(BaseModel):
+    """快照状态查询响应（GET /discovery/snapshot/status）。"""
+
+    scope: str
+    has_ready_snapshot: bool = False
+    ready_snapshot_id: int | None = None
+    ready_snapshot_generated_at: datetime | None = None
+    ready_snapshot_trade_date: date | None = None
+    ready_snapshot_symbol_count: int | None = None
+    ready_snapshot_dirty_symbol_count: int | None = None
+    has_building_snapshot: bool = False
+    building_snapshot_id: int | None = None
+    building_snapshot_created_at: datetime | None = None
+    last_data_prep_task_id: str | None = None
+    last_data_prep_status: str | None = None
+    recommended_action: str | None = None
+    # WP-P.8：最近一次 fast_scan 的 timings / status（供前端展示具体慢在哪一步）
+    # 数据来源：AsyncTaskRecord.result_json.timings（task_type="discovery_fast_scan"）
+    # 当前 fast_scan 为同步执行，无 task 记录时为 None
+    last_fast_scan_timings: dict[str, Any] | None = None
+    last_fast_scan_status: str | None = None

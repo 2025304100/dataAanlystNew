@@ -8,11 +8,15 @@ import Trading from "./components/Trading";
 import InvestmentCenter from "./components/InvestmentCenter";
 import TodayDecision from "./components/TodayDecision";
 import Discovery from "./components/Discovery";
+// WP1.1：机会中心主入口（信息架构壳层，四页签：候选池/观察池/已排除/扫描记录）
+import OpportunityCenter from "./components/OpportunityCenter";
 import MacroData from "./components/MacroData";
 import MarketNews from "./components/MarketNews";  // 行情消息
 import Settings from "./components/Settings";
 import DetailModal from "./components/DetailModal";
 import MetricModal from "./components/MetricModal";
+// WP0.4：旧路由与 activeTab 兼容映射
+import { resolveTabFromUrl } from "./utils/tabCompatibility";
 
 export default function App() {
   const ctx = useApp();
@@ -23,6 +27,16 @@ export default function App() {
   const symbolCodeRef = useRef<InputRef>(null);
   // 记录已处理过的 detailFocusRequest 编号，避免切换标签回来时重复弹窗
   const lastHandledFocusRef = useRef(0);
+
+  // WP0.4：应用启动时读取 URL 中的 ?tab=... 并解析为有效 tab（旧深链接兼容）
+  // 仅在挂载时执行一次，不修改用户后续手动切换 tab 的行为
+  useEffect(() => {
+    const resolved = resolveTabFromUrl();
+    if (resolved && resolved !== ctx.activeTab) {
+      ctx.setActiveTab(resolved);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // P0-7：组合管理 Modal 状态
   const [portfolioModalOpen, setPortfolioModalOpen] = useState(false);
@@ -101,13 +115,14 @@ export default function App() {
   }, [ctx]);
 
   // Portfolio and discovery use the modal; investment center renders detail inline.
+  // WP1.1：opportunity tab 中的候选池复用 Discovery，同样需要触发详情弹窗
   useEffect(() => {
     if (
       ctx.activeSymbolId
       && ctx.detail
       && ctx.detailFocusRequest > 0
       && ctx.detailFocusRequest !== lastHandledFocusRef.current
-      && ["portfolio", "discovery"].includes(ctx.activeTab)
+      && ["portfolio", "discovery", "opportunity"].includes(ctx.activeTab)
     ) {
       lastHandledFocusRef.current = ctx.detailFocusRequest;
       setDetailModalOpen(true);
@@ -230,6 +245,13 @@ export default function App() {
           onClick={() => ctx.setActiveTab("portfolio")}
         >
           {t("tabPortfolio")}
+        </button>
+        {/* WP1.1：新增"机会中心"一级入口（信息架构壳层：候选池/观察池/已排除/扫描记录） */}
+        <button
+          className={`view-tab${ctx.activeTab === "opportunity" ? " active" : ""}`}
+          onClick={() => ctx.setActiveTab("opportunity")}
+        >
+          {t("tabOpportunity")}
         </button>
         <button
           className={`view-tab${ctx.activeTab === "discovery" ? " active" : ""}`}
@@ -405,6 +427,9 @@ export default function App() {
         )}
 
         {ctx.activeTab === "discovery" && <Discovery />}
+
+        {/* WP1.1：机会中心主入口（信息架构壳层） */}
+        {ctx.activeTab === "opportunity" && <OpportunityCenter />}
 
         {ctx.activeTab === "macro" && <MacroData />}
 

@@ -32,42 +32,29 @@ def _safe_datetime(value):
 
 
 def cleanup_expired_discovery_results(db: Session) -> dict:
-    """Delete non-frozen ScanResults whose age exceeds valid_days.
+    """清理过期挖掘结果（向后兼容接口）。
 
-    Returns a summary dict with deleted counts.
+    WP-P.7 后：内部委托给分层清理服务 `cleanup_expired_discovery_results_layered`，
+    返回兼容旧格式 {"deleted": int, "layered_report": dict}。
+
+    旧调用方（main.py / discovery 路由）读取 `result["deleted"]`，无需修改；
+    新调用方可读取 `result["layered_report"]` 获取分层清理详情。
+
+    Returns:
+        {
+            "deleted": int,                # ScanResult + DiscoveryCandidate 删除总数
+            "skipped_frozen": 0,           # 兼容字段（永远为 0）
+            "layered_report": dict,        # CleanupReport.to_dict()
+        }
     """
-    now = _now()
+    # 延迟导入避免循环依赖
+    from app.services.discovery_retention import cleanup_expired_discovery_results_layered
 
-    # Find all non-frozen results that have exceeded their valid_days
-    expired_rows = (
-        db.execute(
-            select(ScanResult)
-            .where(ScanResult.is_frozen == 0)
-            .where(
-                # age >= valid_days  =>  created_at + valid_days days <= now
-                # Using raw SQL date arithmetic for SQLite compatibility
-            )
-        )
-        .scalars()
-        .all()
-    )
+    report = cleanup_expired_discovery_results_layered(db)
 
-    expired_ids: list[int] = []
-    for row in expired_rows:
-        age_days = max(0, (now - _safe_datetime(row.created_at)).days)
-        if age_days >= row.valid_days:
-            expired_ids.append(row.id)
-
-    if not expired_ids:
-        logger.info("Cleanup: no expired discovery results to remove")
-        return {"deleted": 0, "skipped_frozen": 0}
-
-    # Delete expired scan_results
-    result = db.execute(
-        delete(ScanResult).where(ScanResult.id.in_(expired_ids))
-    )
-    deleted_count = result.rowcount
-    db.commit()
-
-    logger.info("Cleanup: removed %d expired discovery results", deleted_count)
-    return {"deleted": deleted_count, "skipped_frozen": 0}
+    deleted_total = report.deleted_scan_results + report.deleted_discovery_candidates
+    return {
+        "deleted": deleted_total,
+        "skipped_frozen": 0,
+        "layered_report": report.to_dict(),
+    }

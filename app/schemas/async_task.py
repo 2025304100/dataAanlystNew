@@ -25,6 +25,17 @@ class AsyncTaskRead(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     updated_at: datetime | None = None
+    # WP-S.5 任务防卡死状态机扩展字段（全部可选，向后兼容旧前端）
+    heartbeat_at: datetime | None = None
+    stage_budget_seconds: int | None = None
+    stage_started_at: datetime | None = None
+    last_progress_at: datetime | None = None
+    last_progress_percent: float | None = None
+    current_step_description: str | None = None
+    suggested_action: str | None = None
+    batch_recovery: list[dict] | None = None
+    last_patrol_at: datetime | None = None
+    cancel_requested: bool = False
 
 
 class MarketDataSyncCreate(BaseModel):

@@ -64,6 +64,17 @@ def _task_to_dict(task: AsyncTaskRecord) -> dict:
         "started_at": _as_utc(task.started_at),
         "finished_at": _as_utc(task.finished_at),
         "updated_at": _as_utc(task.updated_at),
+        # WP-S.5 任务防卡死状态机扩展字段（追加在末尾，不影响现有契约）
+        "heartbeat_at": _as_utc(task.heartbeat_at),
+        "stage_budget_seconds": task.stage_budget_seconds,
+        "stage_started_at": _as_utc(task.stage_started_at),
+        "last_progress_at": _as_utc(task.last_progress_at),
+        "last_progress_percent": task.last_progress_percent,
+        "current_step_description": task.current_step_description,
+        "suggested_action": task.suggested_action,
+        "batch_recovery": _json_loads(task.batch_recovery_json, None),
+        "last_patrol_at": _as_utc(task.last_patrol_at),
+        "cancel_requested": bool(task.cancel_requested or False),
     }
 
 
@@ -91,6 +102,20 @@ def _expire_stale_tasks(db: Session) -> None:
         task.finished_at = _now()
     if rows:
         db.commit()
+
+
+def _run_patrol(db: Session) -> None:
+    """best-effort 执行巡检，让 interrupted/stalled 优先于 30 分钟兜底失败被识别。
+
+    巡检逻辑由 `app.services.task_state_machine.patrol_interrupted_and_stalled`
+    提供，更精细（heartbeat + worker 线程存活 + 阶段预算 + 进度停滞）。
+    异常仅记录日志，不掩盖后续 _expire_stale_tasks。
+    """
+    try:
+        from app.services.task_state_machine import patrol_interrupted_and_stalled
+        patrol_interrupted_and_stalled(db)
+    except Exception:
+        logger.exception("patrol_interrupted_and_stalled failed; continuing with _expire_stale_tasks")
 
 
 def interrupt_orphaned_async_tasks(db: Session) -> list[str]:
@@ -192,6 +217,7 @@ def create_async_task(task_type: str, payload: dict) -> AsyncTaskRead:
     SessionLocal = get_session_local()
     db = SessionLocal()
     try:
+        _run_patrol(db)
         _expire_stale_tasks(db)
         task_id = uuid4().hex
         task = AsyncTaskRecord(
@@ -216,6 +242,7 @@ def get_async_task(task_id: str) -> AsyncTaskRead | None:
     SessionLocal = get_session_local()
     db = SessionLocal()
     try:
+        _run_patrol(db)
         _expire_stale_tasks(db)
         task = db.get(AsyncTaskRecord, task_id)
         return _task_to_read(task) if task is not None else None
@@ -228,6 +255,7 @@ def list_async_tasks(task_type: str | None = None, limit: int = 20) -> list[Asyn
     SessionLocal = get_session_local()
     db = SessionLocal()
     try:
+        _run_patrol(db)
         _expire_stale_tasks(db)
         stmt = select(AsyncTaskRecord).order_by(desc(AsyncTaskRecord.created_at)).limit(limit)
         if task_type:

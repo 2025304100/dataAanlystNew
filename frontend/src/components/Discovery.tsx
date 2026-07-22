@@ -7,6 +7,8 @@ import { Checkbox, Select, Button, Tag, Space, InputNumber, Switch, Input, Empty
 import { MoreOutlined, WarningOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { CustomIndicator, DiscoveryIndicatorEvaluation, DiscoveryPlan as StoredDiscoveryPlan, DiscoveryPlanFilter as StoredDiscoveryPlanFilter, WorkbenchCandidate } from "../types";
+// WP1-FIX.2：候选列表接入 OpportunityStatusBadges
+import { OpportunityStatusBadges } from "./opportunity/OpportunityStatusBadges";
 import {
   percent,
   score,
@@ -927,10 +929,18 @@ export default function Discovery() {
       render: (_: unknown, item: WorkbenchCandidate) => {
         // P1："为什么入选"标签 = 维度强项（分数>=65 的前 2 个维度）
         const strengthTags = dimensionStrengthTags(item);
+        // WP3.3 双轨兼容：基于 is_promoted 字段显示"已晋升"Tag
+        // spec 硬约束：第一阶段继续保留 is_promoted，旧字段至少保留一个发布周期
+        const isPromoted = item.is_promoted === 1;
         return (
           <div>
             <div className="symbol-title">
               <span className="symbol-code">{item.symbol}</span>
+              {isPromoted && (
+                <Tag color="green" style={{ marginLeft: 6, marginRight: 0 }} aria-label={t("candidatePromoted")}>
+                  {t("candidatePromoted")}
+                </Tag>
+              )}
               <span className="symbol-name">{item.name}</span>
             </div>
             <div className="item-subline">{joinParts([regionShortLabel(item.region), assetTypeLabel(item.asset_type)])}</div>
@@ -1116,6 +1126,18 @@ export default function Discovery() {
         );
       },
     };
+    // WP1-FIX.2：关联状态列（候选/观察/组合成员/持仓/告警五段徽标）
+    const statusBadgesColumn = {
+      title: t("opportunityObservationColStatus"),
+      key: "status_badges",
+      width: 200,
+      render: (_: unknown, item: WorkbenchCandidate) => (
+        <OpportunityStatusBadges
+          symbolId={item.symbol_id}
+          onOpenDetail={handleRowClick}
+        />
+      ),
+    };
     return [
       rankColumn,
       symbolColumn,
@@ -1191,6 +1213,7 @@ export default function Discovery() {
         width: 90,
       },
       indicatorColumn,
+      statusBadgesColumn,
       operationsColumn,
     ];
   }, [t, indicatorColumnTitle, activeFilters, indicatorMap, indicatorValues, ctx.locale, ctx.primaryWatchlistSymbolIds, rowActionLoading, handleAddToWatchlist, handleRunBacktest, handleCreateJournal, handleToggleFreeze, handleUpdateRow]);

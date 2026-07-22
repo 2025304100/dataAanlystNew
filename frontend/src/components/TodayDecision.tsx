@@ -18,6 +18,8 @@ import { actionLabel, stageLabel, t, template } from "../i18n";
 import { useApp } from "../context/AppContext";
 import { baseOpportunityScoreValue, formatRelativeTime, opportunityScoreValue, score, withFinalOpportunityScore } from "../utils/format";
 import type { DataHealth, DataHealthBarIssue, MacroOverview, MarketEvent, WorkbenchCandidate } from "../types";
+// WP1-FIX.1：今日决策接入 OpportunityStatusBadges（compact 模式）
+import { OpportunityStatusBadges } from "./opportunity/OpportunityStatusBadges";
 
 const { Text } = Typography;
 
@@ -183,6 +185,12 @@ export default function TodayDecision() {
     }
   };
 
+  // WP1-FIX.1：徽标点击时复用 openSymbol 逻辑（切换到 investment 标签打开详情）
+  // 因 TodayDecision 不在 DetailModal 自动触发列表（portfolio/discovery/opportunity）内，需切换标签
+  const openSymbolDetail = (symbolId: number) => {
+    openSymbol({ symbol_id: symbolId } as WorkbenchCandidate);
+  };
+
   const explainRows = selectedExplain ? [
     [t("tdFinalScore"), score(opportunityScoreValue(selectedExplain), 1)],
     [t("tdBaseScore"), score(baseOpportunityScoreValue(selectedExplain), 1)],
@@ -295,7 +303,7 @@ export default function TodayDecision() {
       <Row gutter={[12, 12]}>
         <Col xs={24} lg={14}>
           <Card title={t("tdTopOpportunities")} extra={<Button type="link" onClick={() => ctx.setActiveTab("discovery")}>{t("tdGoDiscovery")}</Button>}>
-            {candidates.length === 0 ? <Empty description={t("tdEmpty")} /> : <div className="decision-list">{candidates.map((item, index) => <div key={item.symbol_id} className="decision-row decision-row-split"><button type="button" disabled={openingSymbolId === item.symbol_id} onClick={() => openSymbol(item)}><span className="decision-rank">{index + 1}</span><strong>{item.symbol}</strong><span>{item.name}</span><Tag>{stageLabel(item.stage)}</Tag><b>{scoreValue(Number(opportunityScoreValue(item)))}</b>{openingSymbolId === item.symbol_id ? <LoadingOutlined spin /> : <ArrowRightOutlined />}</button><Button size="small" icon={<InfoCircleOutlined />} onClick={() => setSelectedExplain(item)}>{t("tdExplain")}</Button></div>)}</div>}
+            {candidates.length === 0 ? <Empty description={t("tdEmpty")} /> : <div className="decision-list">{candidates.map((item, index) => <div key={item.symbol_id} className="decision-row decision-row-split"><button type="button" disabled={openingSymbolId === item.symbol_id} onClick={() => openSymbol(item)}><span className="decision-rank">{index + 1}</span><strong>{item.symbol}</strong><span>{item.name}</span><Tag>{stageLabel(item.stage)}</Tag><b>{scoreValue(Number(opportunityScoreValue(item)))}</b>{openingSymbolId === item.symbol_id ? <LoadingOutlined spin /> : <ArrowRightOutlined />}</button><Button size="small" icon={<InfoCircleOutlined />} onClick={() => setSelectedExplain(item)}>{t("tdExplain")}</Button><OpportunityStatusBadges symbolId={item.symbol_id} compact onOpenDetail={openSymbolDetail} /></div>)}</div>}
           </Card>
         </Col>
         <Col xs={24} lg={10}>
@@ -306,7 +314,7 @@ export default function TodayDecision() {
       </Row>
 
       <Card title={t("tdActions")} extra={<Button type="link" onClick={() => ctx.setActiveTab("investment")}>{t("tdGoInvestment")}</Button>}>
-        {actions.length === 0 ? <Empty description={t("tdEmpty")} /> : <div className="decision-actions">{actions.map((item) => <button key={item.symbol_id} disabled={openingSymbolId === item.symbol_id} onClick={() => openSymbol(item)}>{openingSymbolId === item.symbol_id ? <LoadingOutlined spin /> : <CheckCircleOutlined />}<span>{item.symbol} {item.name}</span><Tag>{actionLabel(item.action)}</Tag><Text type="secondary">{item.reason_tags?.slice(0, 2).join(" / ")}</Text></button>)}</div>}
+        {actions.length === 0 ? <Empty description={t("tdEmpty")} /> : <div className="decision-actions">{actions.map((item) => <button key={item.symbol_id} disabled={openingSymbolId === item.symbol_id} onClick={() => openSymbol(item)}>{openingSymbolId === item.symbol_id ? <LoadingOutlined spin /> : <CheckCircleOutlined />}<span>{item.symbol} {item.name}</span><Tag>{actionLabel(item.action)}</Tag><Text type="secondary">{item.reason_tags?.slice(0, 2).join(" / ")}</Text><OpportunityStatusBadges symbolId={item.symbol_id} compact onOpenDetail={openSymbolDetail} /></button>)}</div>}
       </Card>
 
       <Modal

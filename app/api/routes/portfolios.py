@@ -1,5 +1,6 @@
 import json
 from datetime import date as date_type
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -20,11 +21,30 @@ from app.schemas.portfolio import (
     PositionRead,
     PositionUpsert,
 )
+from app.schemas.portfolio_member import (
+    BackfillRequest,
+    BackfillResult,
+    MemberHasPositionErrorSchema,
+    PortfolioMemberArchiveRequest,
+    PortfolioMemberCreate,
+    PortfolioMemberRead,
+    PortfolioMemberUpdate,
+)
 from app.services.allocation import compute_allocation, get_active_rule
 from app.services.auto_trade_task import run_auto_trade
 from app.services.portfolio_equity_snapshot import (
     list_portfolio_equity_snapshots,
     snapshot_to_dict,
+)
+from app.services.portfolio_member_backfill import backfill_positions_to_members
+from app.services.portfolio_members import (
+    MemberHasPositionError,
+    archive_member,
+    create_member,
+    list_members,
+    pause_member,
+    restore_member,
+    update_member,
 )
 from app.services.portfolio_performance import compute_portfolio_performance
 from app.services.sim_accounts import ensure_sim_account_seed
@@ -406,3 +426,217 @@ def delete_position(portfolio_id: int, symbol_id: int, db: Session = Depends(get
     db.delete(position)
     db.commit()
     return {"deleted": True}
+
+
+# ============================================================================
+# WP4.4 组合成员接口（仅追加，不修改上方已稳定端点）
+# ============================================================================
+
+
+def _member_to_dict(member) -> dict:
+    """将 PortfolioMember ORM 对象转为 dict（日期字段统一转 ISO 字符串）。"""
+    return {
+        "id": member.id,
+        "portfolio_id": member.portfolio_id,
+        "symbol_id": member.symbol_id,
+        "status": member.status,
+        "execution_mode": member.execution_mode,
+        "source_type": member.source_type,
+        "source_id": member.source_id,
+        "entry_rule_version_id": member.entry_rule_version_id,
+        "exit_rule_version_id": member.exit_rule_version_id,
+        "effective_from": member.effective_from.isoformat() if member.effective_from else None,
+        "effective_to": member.effective_to.isoformat() if member.effective_to else None,
+        "manual_lock": member.manual_lock,
+        "priority": member.priority,
+        "note": member.note,
+        "created_at": member.created_at.isoformat() if member.created_at else None,
+        "updated_at": member.updated_at.isoformat() if member.updated_at else None,
+    }
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/members",
+    response_model=list[PortfolioMemberRead],
+    tags=["portfolio_members"],
+)
+def list_portfolio_members(
+    portfolio_id: int,
+    status: str | None = None,
+    source_type: str | None = None,
+    include_archived: bool = False,
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+) -> list[PortfolioMemberRead]:
+    """列出组合成员（WP4.4）。
+
+    默认不返回归档成员（effective_to 非空），可通过 include_archived=true 包含。
+    """
+    members = list_members(
+        db,
+        portfolio_id=portfolio_id,
+        status=status,
+        source_type=source_type,
+        include_archived=include_archived,
+        limit=limit,
+        offset=offset,
+    )
+    return [PortfolioMemberRead(**_member_to_dict(m)) for m in members]
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/members",
+    response_model=PortfolioMemberRead,
+    tags=["portfolio_members"],
+)
+def create_portfolio_member(
+    portfolio_id: int,
+    payload: PortfolioMemberCreate,
+    db: Session = Depends(get_db),
+) -> PortfolioMemberRead:
+    """创建组合成员（WP4.4）。
+
+    同组合同标的已存在有效成员时返回 409。
+    """
+    try:
+        member = create_member(
+            db,
+            portfolio_id=portfolio_id,
+            symbol_id=payload.symbol_id,
+            status=payload.status,
+            execution_mode=payload.execution_mode,
+            source_type=payload.source_type,
+            source_id=payload.source_id,
+            entry_rule_version_id=payload.entry_rule_version_id,
+            exit_rule_version_id=payload.exit_rule_version_id,
+            effective_from=datetime.fromisoformat(payload.effective_from) if payload.effective_from else None,
+            manual_lock=payload.manual_lock,
+            priority=payload.priority,
+            note=payload.note,
+        )
+        return PortfolioMemberRead(**_member_to_dict(member))
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.patch(
+    "/portfolios/{portfolio_id}/members/{member_id}",
+    response_model=PortfolioMemberRead,
+    tags=["portfolio_members"],
+)
+def update_portfolio_member(
+    portfolio_id: int,
+    member_id: int,
+    payload: PortfolioMemberUpdate,
+    db: Session = Depends(get_db),
+) -> PortfolioMemberRead:
+    """更新组合成员字段（WP4.4）。"""
+    member = update_member(
+        db,
+        member_id=member_id,
+        status=payload.status,
+        execution_mode=payload.execution_mode,
+        entry_rule_version_id=payload.entry_rule_version_id,
+        exit_rule_version_id=payload.exit_rule_version_id,
+        manual_lock=payload.manual_lock,
+        priority=payload.priority,
+        note=payload.note,
+    )
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    return PortfolioMemberRead(**_member_to_dict(member))
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/members/{member_id}/archive",
+    response_model=PortfolioMemberRead,
+    tags=["portfolio_members"],
+)
+def archive_portfolio_member(
+    portfolio_id: int,
+    member_id: int,
+    payload: PortfolioMemberArchiveRequest | None = None,
+    db: Session = Depends(get_db),
+) -> PortfolioMemberRead:
+    """归档组合成员（WP4.4，默认不物理删除）。
+
+    存在持仓时返回 409，提示选择"仅停止买入"或先卖出。
+    传 {"force": true} 时即使有持仓也强制归档（用于先卖出后归档的场景）。
+    """
+    force = payload.force if payload else False
+    try:
+        member = archive_member(db, member_id=member_id, force=force)
+    except MemberHasPositionError as e:
+        raise HTTPException(
+            status_code=409,
+            detail=MemberHasPositionErrorSchema(
+                portfolio_id=e.portfolio_id,
+                symbol_id=e.symbol_id,
+                quantity=e.quantity,
+                message=str(e),
+            ).model_dump(),
+        )
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    return PortfolioMemberRead(**_member_to_dict(member))
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/members/{member_id}/pause",
+    response_model=PortfolioMemberRead,
+    tags=["portfolio_members"],
+)
+def pause_portfolio_member(
+    portfolio_id: int,
+    member_id: int,
+    db: Session = Depends(get_db),
+) -> PortfolioMemberRead:
+    """暂停组合成员（WP4.4，仅停止买入，卖出规则继续）。"""
+    member = pause_member(db, member_id=member_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    return PortfolioMemberRead(**_member_to_dict(member))
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/members/{member_id}/restore",
+    response_model=PortfolioMemberRead,
+    tags=["portfolio_members"],
+)
+def restore_portfolio_member(
+    portfolio_id: int,
+    member_id: int,
+    db: Session = Depends(get_db),
+) -> PortfolioMemberRead:
+    """恢复归档的组合成员（WP4.4）。
+
+    若同组合同标的已有新的有效成员，返回 409。
+    """
+    try:
+        member = restore_member(db, member_id=member_id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    return PortfolioMemberRead(**_member_to_dict(member))
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/members/backfill",
+    response_model=BackfillResult,
+    tags=["portfolio_members"],
+)
+def backfill_portfolio_members(
+    portfolio_id: int,
+    payload: BackfillRequest | None = None,
+    db: Session = Depends(get_db),
+) -> BackfillResult:
+    """回填持仓为组合成员（WP4.3/WP4.4 触发）。
+
+    对每条未平仓持仓创建 source_type=legacy_position 成员，幂等。
+    dry_run=true 时只返回统计，不实际写入。
+    """
+    dry_run = payload.dry_run if payload else False
+    stats = backfill_positions_to_members(db, portfolio_id=portfolio_id, dry_run=dry_run)
+    return BackfillResult(**stats)

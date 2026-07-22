@@ -18,6 +18,15 @@ import {
 } from "../types";
 import { computeSuggestedPrice, computeSuggestedBuyQuantity, computeDefaultSellQuantity, score as fmtScore, setCurrency, inferSymbolPayload } from "../utils/format";
 
+// WP0.4：旧路由与 activeTab 兼容映射（re-export，便于从 context 模块统一访问）
+export {
+  resolveLegacyTab,
+  resolveTabFromUrl,
+  LEGACY_TAB_MAPPING,
+  VALID_TABS,
+  DEFAULT_TAB,
+} from "../utils/tabCompatibility";
+
 const DEFAULT_CHART_WINDOW = 60;
 
 interface AppState {

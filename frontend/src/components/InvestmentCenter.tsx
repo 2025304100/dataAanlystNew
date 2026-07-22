@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ReactECharts from "echarts-for-react";
-import { Button, Input, InputNumber, Progress, Switch, Tabs, Tag } from "antd";
+import { Alert, Button, Input, InputNumber, Progress, Switch, Tabs, Tag, message } from "antd";
 import { ExperimentOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useApp } from "../context/AppContext";
 import BacktestConfig from "./BacktestConfig";
@@ -33,7 +33,7 @@ import {
   signalLabel,
 } from "../utils/format";
 import type { BacktestRun, FutureBuyPlan, FuturePlanTuning, ReturnScenarios, Symbol as SymbolInfo, TradeSetup, TradeSetupOverrides, TradeSetupTranche, WorkbenchBar } from "../types";
-import { api, type SymbolFactorExplanation } from "../api/client";
+import { api, requestJson, type SymbolFactorExplanation } from "../api/client";
 
 // ─── 共享工具库导入 ───
 import {
@@ -452,15 +452,62 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
     setChartEntryPrice(null);
   }, [ctx]);
 
-  // 切换收藏
-  const toggleFavorite = useCallback((symbolId: number) => {
+  // 切换收藏（WP2.4：优先加入后端观察池；API 失败回退 localStorage 暂存）
+  // 不删除 ic_favorites 的读取逻辑（WP2.5 迁移工具会处理）
+  const toggleFavorite = useCallback(async (symbolId: number) => {
+    const isFav = favorites.has(symbolId);
+    // 移除操作：仅在前端状态中移除（后端通过归档管理，不在本按钮处理）
+    if (isFav) {
+      setFavorites((prev) => {
+        const next = new Set(prev);
+        next.delete(symbolId);
+        try { localStorage.setItem("ic_favorites", JSON.stringify([...next])); } catch {}
+        return next;
+      });
+      return;
+    }
+    // 添加操作：优先调用后端观察池接口
+    const watchlistId = ctx.activeWatchlistId;
+    if (watchlistId) {
+      try {
+        await requestJson(`/api/v1/watchlists/${watchlistId}/observations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            symbol_id: symbolId,
+            origin_type: "manual",
+            note: t("icFavoriteObservationNote"),
+          }),
+        });
+        // 同步前端状态
+        setFavorites((prev) => {
+          const next = new Set(prev);
+          next.add(symbolId);
+          try { localStorage.setItem("ic_favorites", JSON.stringify([...next])); } catch {}
+          return next;
+        });
+        message.success(t("icFavoriteAddedToObservation"));
+        return;
+      } catch {
+        // 回退期：API 失败时暂存本地，稍后由迁移工具同步
+        setFavorites((prev) => {
+          const next = new Set(prev);
+          next.add(symbolId);
+          try { localStorage.setItem("ic_favorites", JSON.stringify([...next])); } catch {}
+          return next;
+        });
+        message.warning(t("icFavoriteFallbackToLocal"));
+        return;
+      }
+    }
+    // 无 activeWatchlistId：直接暂存本地
     setFavorites((prev) => {
       const next = new Set(prev);
-      if (next.has(symbolId)) next.delete(symbolId); else next.add(symbolId);
+      next.add(symbolId);
       try { localStorage.setItem("ic_favorites", JSON.stringify([...next])); } catch {}
       return next;
     });
-  }, []);
+  }, [ctx.activeWatchlistId, favorites]);
 
   // 清空搜索历史
   const clearSearchHistory = useCallback(() => {
@@ -1771,7 +1818,16 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
 
   if (isMobile) {
     return (
-      <div className="investment-center ic__mobile-layout">
+    <div className="investment-center ic__mobile-layout">
+      {/* WP1.4：迁移提示横幅（旧入口暂留，仍可继续使用） */}
+      <Alert
+        type="warning"
+        showIcon
+        banner
+        message={t("icMigrationNotice")}
+        description={t("icMigrationDesc")}
+        style={{ marginBottom: 8 }}
+      />
         <div className="ic__search-bar">
           <Input prefix={<SearchOutlined style={{ color: "var(--muted)" }} />}
             placeholder={t("searchSymbolPlaceholder")}
@@ -1832,6 +1888,15 @@ export default function InvestmentCenter({ openMetricModal }: InvestmentCenterPr
   // 桌面端布局
   return (
     <div className="investment-center ic__desktop-layout ic__layout--fullwidth">
+      {/* WP1.4：迁移提示横幅（旧入口暂留，仍可继续使用） */}
+      <Alert
+        type="warning"
+        showIcon
+        banner
+        message={t("icMigrationNotice")}
+        description={t("icMigrationDesc")}
+        style={{ marginBottom: 8 }}
+      />
       <header className="ic__top-search">
         <Input prefix={<SearchOutlined style={{ color: "var(--muted)", fontSize: 15 }} />}
           placeholder={t("searchSymbolPlaceholder")}

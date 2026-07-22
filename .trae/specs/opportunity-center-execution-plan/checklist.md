@@ -1,0 +1,367 @@
+# Checklist
+
+> 验收清单按底稿各 WP 验收小节、第 33 章测试清单、第 34 章数据迁移对账表、第 42 章横向能力发布门槛汇总。
+>
+> 每个检查项必须可追溯到 spec.md 中的 Scenario 或 tasks.md 中的验证步骤。
+
+## WP0 基线、迁移框架与功能开关
+
+- [ ] `app/core/config.py` 存在 4 个功能开关字段，默认值符合 spec（`OPPORTUNITY_CENTER_ENABLED=False`、`PORTFOLIO_MEMBERS_ENABLED=False`、`AUTO_TRADE_MEMBER_SOURCE_ENABLED=False`、`PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED=False`）
+- [ ] 4 个开关全部为 `false` 时，当前页面、自动交易、组合回测行为与改造前完全一致
+- [ ] SQLite 新库、SQLite 旧库升级、MySQL 旧库升级均可正常启动
+- [ ] 重复执行迁移不会重复回填、改写 ID 或报错
+- [ ] `alembic/versions/` 目录结构已建立，`init_db.py` 兼容迁移能力保留
+- [ ] `docs/migration-baseline-2026-07-19.json` 包含完整基线数量
+- [ ] 旧 URL/`activeTab` 值（`portfolio`、`discovery`、`investment`）可自动重定向到新入口，不返回 404
+
+## WP-S 接口风控、本地缓存与程序稳定性
+
+- [x] `app/services/external_data_gateway.py` 已实现，接口签名包含 `interface_key`、`request_params`、`freshness_requirement`、`allow_stale`、`preferred_sources`、`task_context`
+- [x] 本地存在合格数据时，扫描/回测/研究/评分不发起第三方请求
+- [x] 相同参数 20 个并发调用只产生 1 个真实网络请求
+- [x] 接口连续失败后进入 `open` 熔断状态，自动尝试备用源/旧缓存；冷却后只允许 1 个 half-open 探测请求
+- [x] 强制取消因子/同步/挖掘任务后，DuckDB/数据库连接与文件锁均可再次获取
+- [x] worker 被强制终止后，任务在巡检窗口内进入 `interrupted`，不永久 `running`
+- [x] `app/schemas/errors.py` 已实现统一错误协议，包含 `error_code`、`user_message`、`impact`、`retryable`、`completed`、`next_actions`、`technical_details`、`correlation_id`
+- [x] 普通用户默认只看 user_message/impact/next_actions；技术堆栈/HTTP/SQL 折叠在 technical_details
+- [x] 不显示 `Request failed`、`HTTP 500`、`NoneType`、数据库锁或第三方原始 HTML
+- [x] 后台日志不含 API Key、Webhook、SMTP 密码或完整用户数据
+- [x] `GET /api/v1/system/capabilities` 已实现，返回每项功能的 `status` / `reason_code` / `user_message` / `prerequisites` / `recommended_actions` / `data_cutoff_at`，覆盖域：基础数据采集 / 行情新鲜度 / 评分配置激活 / Ridge 因子仓库与活动模型 / 机会扫描快照 / 组合操作前 / 自动交易前 / AI 配置 / 外部消息渠道
+- [ ] 页面门禁：按钮显示禁用原因，提供"去完成前置条件"入口，条件 ready 后自动刷新
+- [ ] 新用户不阅读文档也能按向导完成第一次扫描
+- [ ] 任意后续操作被阻断时，用户能在当前页面完成或跳转处理前置条件
+- [x] 随机注入超时/429/空字段/数据库断连/响应格式变化时，用户都能看到可理解错误和下一步
+- [x] `tests/test_whitebox_external_data_gateway.py`、`test_whitebox_task_state_machine.py`、`test_whitebox_unified_errors.py`、`test_whitebox_capability_gates.py` 全部通过
+- [x] `tests/test_whitebox_local_persistence.py` 通过（WP-S.4b 新增）
+- [x] `CacheLevel` 枚举已实现，包含 `L1_PROCESS` / `L2_BUSINESS_DB` / `L3_DUCKDB` / `L4_REMOTE` / `NONE` 五个值
+- [x] `GatewayRequest` dataclass 已实现，字段与 `fetch()` 入参一致
+- [x] `fetch_via_gateway(req: GatewayRequest) -> GatewayResponse` 主入口已实现，与 `fetch()` 行为等价
+- [x] `register_source_chain(interface_key, source_chain)` 与 `get_source_chain(interface_key)` 已实现，注册后 L4 默认 fetcher 优先使用已注册的 SourceChain
+- [x] `app/services/local_persistence.py` 已实现，包含 `validate_record_contract`、`batch_upsert`、`with_short_transaction`
+- [x] `with_short_transaction` 上下文管理器在网络请求后建立短事务，异常时回滚，自建 session 自动关闭
+- [x] 新增 API 测试覆盖：`fetch_via_gateway` 入口语义、`register_source_chain` 注册与查询、`local_persistence` 三个函数契约
+
+## WP-P 挖掘性能与 5 分钟扫描 SLA
+
+- [x] `discovery_score_snapshots` 与 `discovery_score_snapshot_items` 模型已建立，复合索引齐全
+- [x] 快照生成完成后一次性 `building` → `ready`，扫描永不读半成品
+- [x] SQLite/MySQL 双库迁移可重复执行
+- [x] dirty 集合只包含真实变化标的（`last_synced_at`/`last_bar_date`/财报/资金/人气/龙虎榜/尾盘变化/定向修复成功）
+- [x] 新快照 ready 前继续提供旧快照
+- [x] 同一 scope、同一配置版本同时只允许一个快照构建任务
+- [x] 默认"开始挖掘"执行快速扫描，不隐式触发第三方网络同步
+- [ ] 机会中心提供"前往基础数据""运行现有增量同步""数据就绪后自动扫描"三个联动入口
+- [x] 快速扫描路径发起任何第三方 HTTP 请求即测试失败
+- [x] SQL 粗筛保留 Top 300，高级筛选只对 Top 300 批量加载 K 线，向量化计算最多 5 个自定义指标
+- [x] 组合风控只对高级筛选后最终集合执行
+- [x] 自定义指标只处理 Top 300，超限明确拒绝或转后台预计算
+- [x] 相同 `snapshot_id + scope + min_score + filter_hash + indicator_plan_version + portfolio_id + portfolio_rule_version` 二次扫描 ≤ 10 秒
+- [x] 单次运行写入结果数受 Top-K 限制，不再接近 `3 × 全市场标的数`
+- [x] 分层清理服务已扩展，覆盖当前候选展示/未晋升 ScanResult/未晋升 DiscoveryCandidate/已晋升快照/评分快照 items/ScanRun 摘要/日 K/Score 历史
+- [x] 候选清理后底层快照仍可复用
+- [ ] A 股 5,500 只、ETF 1,600 只，ready 快照命中 P95 ≤ 300 秒
+- [ ] 无可用快照时 10 秒内明确返回"数据准备未完成"，同时给出上一快照或启动准备任务
+- [x] 阶段预算：快照与数据健康预检 10s + SQL 粗筛排序 Top-K 30s + 高级指标批量计算 90s + 组合约束过滤 60s + 候选快照与摘要写入 60s + 收尾审计前端返回 30s = 280s + 预留 20s
+- [x] 无高级指标或组合过滤时目标 60s 内完成
+- [x] 超过阶段预算显示具体慢在哪一步，允许取消
+- [x] `tests/test_whitebox_discovery_stage_budget.py` 通过（WP-P.8 阶段预算与可观测性）
+- [x] `tests/test_whitebox_discovery_snapshot.py`、`test_whitebox_discovery_incremental.py`、`test_whitebox_discovery_result_retention.py`、`test_whitebox_discovery_fast_scan.py` 全部通过
+- [ ] `tests/performance/test_discovery_5500_sla.py`（标记 `slow`）在发布环境通过
+
+## WP1 信息架构壳层与只读关联状态
+
+- [x] `frontend/src/components/OpportunityCenter.tsx` 已实现，提供候选池/观察池/已排除/扫描记录四个页签
+- [x] 未完成页签显示明确建设状态，不伪造数据
+- [x] `frontend/src/components/opportunity/CandidatePool.tsx`、`ObservationPool.tsx`、`OpportunityStatusBadges.tsx` 已实现
+- [x] 候选数据与旧 Discovery 入口一致
+- [x] "目前观察池"已重命名"组合交易"，保留 `activeTab=portfolio` 兼容值
+- [x] 投资中心保留旧入口并显示"即将迁移为标的研究"说明与来源面包屑
+- [x] `GET /api/v1/symbols/{symbol_id}/relationships` 已实现
+- [x] 今日决策、候选列表、组合页使用统一徽标并能打开现有详情弹窗（WP1-FIX.1/2/3/4/5 已完成：TodayDecision/Discovery/PortfolioWorkbench/Trading 均已接入 OpportunityStatusBadges，徽标支持 onOpenDetail 点击打开详情弹窗，14 个定向测试全部通过）
+- [x] 不会把观察项显示成持仓，也不会把组合成员显示成已成交
+- [x] 接口失败时徽标降级"状态未知"，不误报"未加入"
+- [x] `zh-CN.ts` 与 `en-US.ts` 同步新增 key
+- [x] `OpportunityCenter.test.tsx`、`OpportunityStatusBadges.test.tsx` 通过
+- [x] 前端定向测试：Opportunity Center 页签和兼容导航测试通过
+- [x] `tests/test_blackbox_api.py` relationships 接口测试通过（含子结构与关联场景）
+
+## WP2 正式观察池与本地收藏迁移
+
+- [x] `app/models/watchlist.py` 已扩展 `origin_type`、`origin_id`、`reason_json`、`score_snapshot_json`、`status`、`priority`、`tags_json`、`target_portfolio_id`、`updated_at`、`archived_at` 字段
+- [x] `app/db/init_db.py` 增加 SQLite `_ensure_sqlite_watchlist_item_columns` + MySQL `information_schema.COLUMNS` 检查（参照 project_memory 硬约束）
+- [x] SQLite/MySQL 双库升级幂等
+- [x] `app/services/observations.py` 已实现，富读模型返回标的/最新行情/最新评分/数据健康/来源/组合关系
+- [x] 同名单同标的重复请求返回已有记录（非 409）
+- [x] 支持更新标签/优先级/原因/目标组合/状态，支持归档/恢复
+- [x] 候选加入观察时同一事务写来源与评分快照
+- [x] `app/api/routes/watchlists.py` 已扩展富读列表/幂等加入/批量更新/归档恢复接口
+- [x] `app/schemas/watchlist.py` 已新增 `ObservationRead`、`ObservationCreate`、`ObservationUpdate`、`ObservationBatchImport`
+- [x] `ObservationPool.tsx` 实现 列表/筛选/详情/批量操作/空错加载状态
+- [x] `InvestmentCenter.tsx` 本地收藏按钮改为加入观察池
+- [x] 清空浏览器缓存后正式观察池数据仍存在
+- [x] 本地收藏迁移工具：读取 `ic_favorites` → 比对 `core` → 显示"将导入 N/已存在 N/无效 N" → 用户确认后批量幂等写入 → 记录 `ic_favorites_migrated_v1`
+- [x] 迁移可重复执行且不产生重复项
+- [x] `core` 名单及 6 个观察项原样保留
+- [x] 历史无来源项标记 `legacy/manual_unknown`，禁止伪造来源
+- [x] 观察项能回答"从哪里来、为什么加入、加入时多少分、现在什么状态、准备进哪个组合"
+- [x] 从候选池和标的研究加入观察池得到同一条后端记录
+- [x] `tests/test_whitebox_observations.py`、`ObservationPool.test.tsx` 通过；`tests/test_whitebox_watchlists_portfolios.py` 扩展通过
+
+## WP-MSG 统一消息管理
+
+- [x] `notification_channels`、`notification_policies`、`notification_policy_channels`、`notification_outbox`、`notification_deliveries`、`notification_templates` 数据模型已建立
+- [x] 敏感字段用 Secret Store 引用或加密存储
+- [x] SQLite/MySQL 双库迁移可重复执行
+- [x] 渠道适配器 `base.py`、`in_app.py`、`wxpusher.py`、`dingtalk.py`、`onebot.py`、`email.py`、`webhook.py` 已实现
+- [x] 适配器统一使用有限超时/重试/熔断，不建立无法取消的永久线程
+- [x] `dispatcher.py` 已实现 Outbox 异步发送
+- [x] `event_key + channel_id` 唯一约束生效，同业务事件重放不重复发送
+- [x] 超时与临时错误指数退避，达上限进 dead-letter
+- [x] 鉴权失败直接暂停渠道并产生站内系统告警
+- [x] 一渠道失败不影响其他渠道
+- [x] dispatcher 重启后继续处理未完成 Outbox
+- [x] 用户可对失败记录手动重发
+- [x] 渠道状态机：未配置 → 已配置待测试 → 测试成功 → 已启用；测试失败为独立状态
+- [x] 未配置或测试失败的第三方渠道不能被策略选中，明确提示如何处理
+- [x] 相同来源/标的/规则/状态在去重窗口内只发送一次
+- [x] 支持交易日/工作日/免打扰时间
+- [x] 消息只含必要标的/状态/跳转 ID，不含数据库连接/Token/完整策略配置/技术堆栈
+- [x] 第三方内容超限时自动摘要，保留站内完整详情
+- [x] 模板变量转义，防止 Markdown/Webhook 注入
+- [x] API/日志/导出/前端状态中均不出现完整 Token、Webhook 签名 Secret、SMTP 密码
+- [x] 设置中"消息管理"分区包含渠道配置/推送策略/消息模板/发送记录四个页签
+- [x] 用户可同时选择多个消息来源和多个渠道
+- [x] 测试消息能显示第三方响应/耗时/失败原因
+- [x] 业务事件（AlertEvent/任务完成/成交/数据过期/候选新发现/观察信号满足/自动交易阻断/回撤预警）能匹配策略并写入 Outbox
+- [x] 现有 `AlertEvent` 继续作为正式告警事实，不把每个第三方发送结果塞进 `data_json`
+- [x] `tests/test_whitebox_notification_channels.py`、`test_whitebox_notification_outbox.py`、`test_whitebox_notification_dispatcher.py` 全部通过
+
+## WP3 统一状态流转与审计
+
+- [x] `opportunity_transition_events` 审计表已建立，包含 `idempotency_key` 唯一索引
+- [x] SQLite/MySQL 双库迁移可重复执行
+- [x] `app/services/opportunity_transitions.py` 已实现候选→观察/候选→组合/观察→组合/排除恢复过期/成员归档回观察
+- [x] 单事务写入业务对象和关联状态
+- [x] 幂等键防双击/重试/网络超时产生重复关系
+- [x] 失败回滚，不出现"候选已晋升但观察项没写成功"的半状态
+- [x] 第一阶段继续保留 `discovery_candidates.is_promoted`，由统一服务同步更新
+- [x] 历史 `is_promoted` 候选仍可正常显示
+- [x] 同一候选连续点击两次"加入观察"只产生 1 个观察项和 1 个成功事件
+- [x] 任一步骤异常时所有写入回滚
+- [x] 每个观察项和组合成员都能查看来源链
+- [x] `tests/test_whitebox_opportunity_transitions.py` 通过
+
+## WP4 组合成员模型
+
+- [x] `portfolio_members` 表已建立，字段完整（`portfolio_id`、`symbol_id`、`status`、`execution_mode`、`source_type/source_id`、`entry_rule_version_id`、`exit_rule_version_id`、`effective_from`、`effective_to`、`manual_lock`、`priority`、`note`、`created_at`、`updated_at`）
+- [x] 同一组合同一标的只能存在一条当前有效成员关系（部分唯一索引生效）
+- [x] SQLite/MySQL 双库迁移可重复执行
+- [x] `app/services/portfolio_members.py` CRUD 已实现，归档默认不物理删除
+- [x] 已持仓成员即使暂停买入也允许卖出规则继续风控退出
+- [x] 删除成员默认归档，存在持仓时提示选择"仅停止买入"或先卖出
+- [x] 现有 3 条持仓回填后对应 3 个有效成员，`source_type=legacy_position`
+- [x] `effective_from` 优先取 `Position.opened_at`
+- [x] Position ID、数量、成本、最新价、持仓比例完全不变
+- [x] 无持仓组合不凭最新扫描结果自动创建成员
+- [x] 回填脚本可重复运行，使用组合+标的幂等检查
+- [x] 成员归档不会误删持仓
+- [x] 无持仓成员可以存在，账户权益不变化
+- [x] `GET/POST/PATCH /api/v1/portfolios/{id}/members` 与 `POST /api/v1/portfolios/{id}/members/{member_id}/archive` 已实现
+- [ ] `PortfolioMembersPanel.tsx` 显示成员状态/是否持仓/执行模式/来源/最近信号 <!-- PARTIAL：状态/是否持仓/执行模式/来源 4 项已实现；"最近信号"列未渲染（前端类型预留 `latest_signal?: string | null`，后端 `PortfolioMemberRead` schema 未包含该字段，需 WP6 完成 `SimOrder.signal_id` 扩展后联表查询） -->
+- [x] `tests/test_whitebox_portfolio_members.py` 通过；`tests/test_whitebox_portfolio_crud.py` 扩展通过
+
+## WP5 标的研究收口与组件拆分
+
+- [ ] `InvestmentCenter.tsx` 已拆分为 9 个子组件：`SymbolResearchShell`、`SymbolSearchHeader`、`SymbolRelationshipBar`、`FactorExplanationPanel`、`SymbolAlertSummary`、`RiskReferencePanel`、`TradePlanPanel`、`SymbolChartPanel`、`SingleSymbolBacktestPanel`
+- [ ] 组件拆分后现有单股回测/未来计划/移动端布局/详情绘图不丢失
+- [ ] 搜索历史可继续保留本地
+- [ ] 收藏改读写后端观察池；本地 `ic_favorites` 进入只读回退期
+- [ ] 正式价格/评分/公式提醒通过 `alert_rules` 创建；页面内即时计算标注"未持久化"
+- [ ] `ic_risk_settings` 仅作研究情景参数，正式风控读 `PortfolioRule`
+- [ ] 模拟下单按钮跳转到指定组合交易上下文
+- [ ] 单股回测结果保存来源上下文
+- [ ] 收藏/正式提醒/组合风控/下单不再存在两套业务真相
+- [ ] 统一参数对象：`symbol_id`、`source_type`、`source_id`、`portfolio_id`、`return_to`
+- [ ] 候选/观察/组合/告警/回测使用同一研究壳层
+- [ ] 返回时保留原筛选和滚动位置
+- [ ] 同一标的从不同来源进入时研究数据一致
+- [ ] 原 InvestmentCenter 兼容入口仍能打开研究壳层
+- [ ] `SymbolResearchShell.test.tsx`、`SymbolRelationshipBar.test.tsx` 通过
+
+## WP-AI 量化助手
+
+- [ ] `ai_sessions`、`ai_messages`、`ai_action_audits` 数据模型已建立
+- [ ] SQLite/MySQL 双库迁移可重复执行
+- [ ] 单一 `ai_config.json` 已兼容迁移为多个 AI Profile
+- [ ] 主模型超时/限流切备用模型或本地 Ollama，切换在回复中显示
+- [ ] AI 失败不阻塞扫描/回测/告警/交易
+- [ ] 相同解释请求按数据版本短期缓存
+- [ ] AI 与消息渠道共用统一 Secret Store
+- [ ] 日志/API 响应/导出永不返回明文 Secret
+- [ ] 受控上下文包：用户问题+页面来源/标的/候选/观察/组合/任务 ID/数据截止/来源/可信度/缺失项/评分配置/模型版本/因子贡献/能力门禁/允许下一步/相关行情/回测/绩效摘要
+- [ ] 上下文包限制大小，去除 API Key/Webhook/邮箱密码
+- [ ] 新闻和第三方文本标记为"不可信数据内容"
+- [ ] AI 回复附"数据截至、模型/规则版本、依据对象"
+- [ ] 只读工具集已实现：`get_capabilities`、`get_data_health`、`get_task_status`、`get_symbol_research`、`get_candidate_explanation`、`get_portfolio_summary`、`get_backtest_explanation`
+- [ ] AI 不得自行查询任意数据库或调用第三方接口
+- [ ] AI 能正确解释至少五类当前对象（数据健康/任务/候选/标的/回测）
+- [ ] 缺数据时明确说不知道
+- [ ] 草稿工具三步流程：AI 建议 → 系统规则校验和变更预览 → 用户明确确认后由普通业务 API 执行
+- [ ] 不确认时不产生任何数据库变化
+- [ ] 模拟订单即使由 AI 起草也必须重新经过现金/手数/T+1/涨跌停/数据健康/组合风控校验
+- [ ] 自动交易永远由策略规则和调度器负责，不由对话直接触发
+- [ ] AI 响应统一包含 `answer`、`evidence`、`warnings`、`suggested_actions`、可选 `draft`
+- [ ] 会话保留期可配置，用户可删除
+- [ ] 审计记录只保存必要上下文摘要
+- [ ] AI 生成的公式必须通过现有公式校验后才能插入
+- [ ] 全局助手入口每个主要页面可打开，自动携带当前上下文
+- [ ] 候选/标的研究/任务/组合/回测提供"让 AI 解释"
+- [ ] 设置 → AI 助手：Profile 管理/连接测试/模型发现/主备优先级/用量/健康状态
+- [ ] 结果以解释卡/证据列表/操作草稿展示
+- [ ] AI 未配置时显示用途和配置入口，不进入请求失败
+- [ ] AI 无法连接/超时/限流/格式异常时用户看到可理解错误且核心功能正常
+- [ ] 任何 AI 请求和日志均不出现数据库密码/AI Key/Webhook/SMTP 密码/完整 Secret
+- [ ] `tests/test_whitebox_ai_context.py`、`test_whitebox_ai_tools.py`、`test_whitebox_ai_drafts.py`、`test_whitebox_ai_failover.py` 全部通过
+
+## WP6 自动交易成员化与安全切换
+
+- [x] `SimOrder` 已扩展 `member_id`、`source_type/source_id`、`signal_id` 或信号快照、`rule_version_id`、`execution_mode`、`client_order_key` 唯一索引、`decision_snapshot_json`、`rejection_code/rejection_detail`
+- [x] SQLite/MySQL 双库迁移可重复执行
+- [ ] 买入候选来源：`active PortfolioMember AND execution_mode=auto AND 当前无持仓 AND 最新有效信号允许买入 AND 数据健康通过 AND 组合风控通过`
+- [ ] 卖出侧覆盖所有当前持仓，即使成员暂停或归档
+- [ ] `confirm` 模式只生成待确认订单计划；`manual` 模式只提示信号不下单
+- [ ] 冲突优先级：手动锁定 → 组合级风险强制减仓/清仓 → 自动卖出规则 → 自动买入规则 → 普通信号建议
+- [ ] 三种执行模式结果互不混淆
+- [x] `client_order_key`（组合+成员+信号日期+方向+规则版本）唯一索引生效
+- [ ] 同一任务重复执行或调度重跑不重复下单
+- [ ] `AUTO_TRADE_MEMBER_SOURCE_ENABLED=false` 时旧来源实际执行，新来源仅 Dry Run
+- [ ] 连续 5 个交易日或 3 次有效运行保存旧/新买卖集合差异
+- [ ] 对每个差异给出原因：成员缺失/状态暂停/信号不同/数据过期/风控阻断
+- [ ] 差异经人工确认后先对一个非默认测试组合开启新来源
+- [ ] 再逐组合切换；开关关闭可立即回退
+- [ ] 旧来源至少保留一个发布周期
+- [ ] 关闭新来源开关后恢复当前 `Score.action + latest executable scan` 逻辑
+- [ ] K 线/评分/规则版本过期时 fail-closed 禁止买入
+- [ ] 卖出风控不得静默跳过，应生成高优先级告警
+- [ ] 自动交易任务取消时停止后续组合和后续订单
+- [ ] 每笔失败独立记录，不回滚已合法成交的其他标的
+- [ ] 所有新订单可追溯到成员/信号/规则/数据截止时间
+- [ ] `AutoTradePanel.tsx` 显示成员级执行状态、dry-run 差异对比、双跑切换 UI
+- [ ] `tests/test_whitebox_auto_trade_member_source.py` 通过；`tests/test_whitebox_auto_trade.py` 扩展通过
+
+## WP7 组合回测成员化与历史可复现
+
+- [ ] `app/services/portfolio_backtest.py` 按 `effective_from <= trade_date AND (effective_to IS NULL OR effective_to >= trade_date)` 读取成员
+- [ ] 未来才加入的成员不会出现在过去日期回测中
+- [ ] 中途归档成员只参与有效期内回测
+- [ ] 回测快照已保存：成员 ID/标的 ID/有效日期/执行模式/买卖规则版本/组合风控版本/成本配置/评分模式/因子模型运行 ID/数据截止时间/引擎名称和版本/运行时排除标的及原因
+- [ ] 历史回测即使成员/规则/模型改变仍按原快照可读
+- [ ] 同一快照重复运行得到一致标的集/规则/成本
+- [ ] `app/models/backtest.py` 已扩展快照字段
+- [ ] SQLite/MySQL 双库迁移可重复执行
+- [ ] `PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED=false` 时继续运行旧推导逻辑
+- [ ] UI 明确显示本次使用"旧临时标的集"还是"历史成员集"
+- [ ] 新旧引擎使用相同日期/资金/成本后做对比；差异可解释
+- [ ] VectorBT 可用于快速研究对比，正式回测以事件驱动引擎为权威
+- [ ] 完整组合回测前提：全部有效成员均为 `auto` 且规则有效
+- [ ] 存在 manual/confirm 成员时默认禁止完整回测，提供"仅回测自动成员"选项及排除清单
+- [ ] 切回旧开关后原 22 条历史回测仍可查看
+- [ ] `PortfolioBacktestPanel.tsx` 显示成员资格校验/组合快照/新旧来源说明
+- [ ] `tests/test_whitebox_portfolio_backtest_membership.py` 通过；`tests/test_whitebox_portfolio_backtest.py` 扩展通过
+
+## WP8 绩效归因、复盘和跨模块联动
+
+- [ ] 绩效归因维度已扩展：按成员贡献/按执行模式贡献/按候选来源或观察标签贡献/按规则版本/信号类型/退出原因贡献/回测与模拟账户同期偏差/成本/滑点/未成交/风控阻断影响
+- [ ] 订单和成交打开对应成员与信号
+- [ ] 绩效异常可一键创建复盘记录
+- [ ] 告警打开对应观察项/成员/持仓上下文
+- [ ] 今日决策显示待确认订单/数据门禁阻断/成员失效待办
+- [ ] 组合回测结果可回到成员列表，标记使用的成员快照
+- [ ] 用户能解释一笔交易"为何进入、谁触发、用哪套规则、成本多少、结果如何"
+- [ ] 用户能解释一个组合收益来自哪些成员和执行模式
+- [ ] 绩效样本不足时显示样本数和限制，不展示具有误导性的稳定结论
+- [ ] `PortfolioPerformancePanel.tsx` 显示归因维度/样本数提示/基准对比
+- [ ] `tests/test_whitebox_portfolio_performance.py` 扩展通过
+
+## WP9 旧入口与重复状态清理
+
+- [ ] WP1~WP8、WP-AI、WP-MSG 全部验收通过
+- [ ] 旧投资中心一级入口已移除，兼容路由跳转到标的研究
+- [ ] 停止写入 `ic_favorites`，保留最后一次恢复/导入工具后再删除读取逻辑
+- [ ] 停止前端即时提醒称为正式告警，页面内即时计算明确标注"未持久化"
+- [ ] 移除组合工作台中的机会/观察重复区块，改为链接机会中心
+- [ ] 停止自动交易和组合回测读取最新扫描作为默认来源（仅在 WP6/WP7 完成双轨切换并验收后执行）
+- [ ] 旧 API/字段进入废弃期，记录访问日志，确认无调用后才允许在未来版本删除
+- [ ] 不删除历史候选/观察/组合/持仓/订单/成交/回测/净值快照/告警事件
+- [ ] 与基线对账一致
+
+## Final 黑盒主链路与发布对账
+
+- [ ] 黑盒主链路完整可走通：运行扫描 → 查看候选来源与数据日期 → 加入观察池 → 修改观察标签/原因 → 加入指定组合 → 确认只是成员而非持仓 → 运行单股回测 → 生成待确认订单 → 手动确认模拟成交 → 查看现金/持仓/净值/归因 → 创建复盘
+- [ ] 自动模式专项测试每种异常都有合理处理：重复调度/任务取消/数据过期/规则失效/涨跌停/T+1/现金不足/部分标的失败
+- [ ] **数据迁移对账（按 34 章）**：
+  - [ ] `watchlists` 不减少（基线 1）
+  - [ ] `watchlist_items` 原 6 项必须存在，仅允许新增导入项
+  - [ ] `portfolios` ID/名称/资金不变（基线 2）
+  - [ ] `positions` 数量/成本/标的不变（基线 3）
+  - [ ] `portfolio_members` 至少覆盖全部现有持仓（基线 0/不存在）
+  - [ ] `cash_ledger` 迁移阶段完全不变（基线 9）
+  - [ ] `sim_orders` ID 和金额不变（基线 7）
+  - [ ] `sim_trades` ID 和金额不变（基线 7）
+  - [ ] `backtest_runs` 历史运行可读（基线 22）
+  - [ ] `scheduled_tasks` 原计划和启停状态不变（基线 11）
+  - [ ] `alert_rules` 不变（基线 3）
+  - [ ] `alert_events` 历史事件可读（基线 95）
+- [ ] **横向能力发布门槛（按 42 章）**：
+  - [ ] WP-S：核心页面本地命中优先，接口失败可降级，任务不会永久卡住
+  - [ ] 前置条件：用户不能在条件缺失时误入下游，只能安全浏览或按引导修复
+  - [ ] WP-P：ready 快照下 A 股/ETF 快速扫描 P95 不超过 5 分钟
+  - [ ] WP-AI：至少完成系统引导/数据诊断/候选解释/公式/任务诊断；AI 不直接写业务状态
+  - [ ] WP-MSG：站内与已配置外部渠道具备策略/Outbox/重试/发送审计
+
+## 后端定向测试（按 33.1 章）
+
+- [ ] `pytest tests/test_whitebox_watchlists_portfolios.py` 通过
+- [ ] `pytest tests/test_whitebox_candidate_labels.py` 通过
+- [ ] `pytest tests/test_whitebox_portfolio_crud.py` 通过
+- [ ] `pytest tests/test_whitebox_auto_trade.py` 通过
+- [ ] `pytest tests/test_whitebox_portfolio_backtest.py` 通过
+- [ ] `pytest tests/test_whitebox_portfolio_performance.py` 通过
+- [ ] `pytest tests/test_whitebox_alerts.py` 通过
+- [ ] `pytest tests/test_blackbox_api.py` 通过
+- [ ] `pytest tests/test_whitebox_observations.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_opportunity_transitions.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_portfolio_members.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_auto_trade_member_source.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_portfolio_backtest_membership.py` 通过（新增）
+- [x] `pytest tests/test_whitebox_external_data_gateway.py` 通过（新增）
+- [x] `pytest tests/test_whitebox_task_state_machine.py` 通过（新增）
+- [x] `pytest tests/test_whitebox_unified_errors.py` 通过（新增）
+- [x] `pytest tests/test_whitebox_capability_gates.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_discovery_snapshot.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_discovery_incremental.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_discovery_result_retention.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_discovery_fast_scan.py` 通过（新增）
+- [x] `pytest tests/test_whitebox_discovery_data_prep.py` 通过（WP-P.4 新增）
+- [x] `pytest tests/test_whitebox_discovery_filter.py` 通过（WP-P.5 新增）
+- [ ] `pytest tests/test_whitebox_notification_channels.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_notification_outbox.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_notification_dispatcher.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_ai_context.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_ai_tools.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_ai_drafts.py` 通过（新增）
+- [ ] `pytest tests/test_whitebox_ai_failover.py` 通过（新增）
+
+## 前端定向测试（按 33.2 章）
+
+- [ ] `cd frontend && npx tsc -b --pretty false` 零 TypeScript 错误
+- [ ] `cd frontend && npm test -- --run` 通过
+- [ ] Opportunity Center 页签和兼容导航测试通过
+- [ ] Observation Pool 富状态/批量操作/空错加载状态测试通过
+- [ ] 本地收藏幂等迁移测试通过
+- [ ] Portfolio Members 成员/持仓区分测试通过
+- [ ] 标的研究来源上下文和返回行为测试通过
+- [ ] 自动交易三种执行模式测试通过
+- [ ] 组合回测新旧来源说明测试通过
+- [ ] WP-AI 全局助手与解释卡测试通过
+- [ ] WP-MSG 消息管理四个页签测试通过

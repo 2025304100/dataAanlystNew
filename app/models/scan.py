@@ -38,6 +38,21 @@ class ScanRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # ── WP-P.6：扫描结果缓存与摘要统计字段（全部 nullable，向后兼容旧库） ──
+    # 关联的评分快照 ID（用于显式校验缓存命中）
+    snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    # 扫描缓存键（WP-P.6）：相同 cache_key + snapshot_id 直接复用结果
+    cache_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    # 是否命中缓存（0/1）；新建 ScanRun 时永远为 0，命中缓存不写新 ScanRun
+    cache_hit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 摘要统计：避免后续查询 ScanResult 重新计数
+    total_in_snapshot: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    coarse_match_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    advanced_match_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    result_rows_written: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 降级原因（与 run_fast_scan 返回的 degraded_reason 一致）
+    degraded_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     results = relationship("ScanResult", back_populates="scan_run_ref", cascade="all, delete-orphan")
 
 
@@ -61,6 +76,9 @@ class ScanResult(Base):
     warning_days: Mapped[int] = mapped_column(Integer, default=3)
     valid_days: Mapped[int] = mapped_column(Integer, default=5)
     is_frozen: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    # WP-P.7：活动候选展示标志（1=活动展示，0=已隐藏但未删除）
+    # 超过 display_days（默认 5）的未晋升候选由分层清理服务标记为 is_active=0
+    is_active: Mapped[int] = mapped_column(Integer, default=1, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     scan_run_ref = relationship("ScanRun", back_populates="results")

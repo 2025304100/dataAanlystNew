@@ -39,3 +39,15 @@ class AsyncTaskRecord(Base):
         default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
     )
+    # WP-S.5 任务防卡死状态机扩展字段（全部 nullable，向后兼容旧数据）
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    stage_budget_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stage_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_progress_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_progress_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    current_step_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    suggested_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    batch_recovery_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_patrol_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    worker_thread_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    cancel_requested: Mapped[bool | None] = mapped_column(Integer, nullable=True, default=0)

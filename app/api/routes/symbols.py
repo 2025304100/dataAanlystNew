@@ -5,11 +5,14 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.score import Score
 from app.models.symbol import Symbol
-from app.services.factors.score_scope import apply_active_score_scope
+from app.schemas.errors import UserError
 from app.schemas.symbol import SymbolCreate, SymbolRead
+from app.schemas.symbol_relationships import SymbolRelationships
+from app.services.factors.score_scope import apply_active_score_scope
 from app.services.regions import region_from_market
 from app.services.symbol_cleanup import cleanup_stale_discovery_symbols
 from app.services.symbol_names import refresh_symbol_name
+from app.services.symbol_relationships import get_symbol_relationships
 
 
 router = APIRouter()
@@ -119,3 +122,27 @@ def cleanup_stale_symbols(db: Session = Depends(get_db)) -> dict:
         "cleaned_count": result["total_cleaned"],
         "cleaned_tasks": result["cleaned_task_ids"],
     }
+
+
+@router.get(
+    "/symbols/{symbol_id}/relationships",
+    response_model=SymbolRelationships,
+    responses={
+        404: {"model": UserError, "description": "Symbol not found"},
+        500: {"model": UserError, "description": "Internal server error"},
+    },
+)
+def get_symbol_relationships_endpoint(
+    symbol_id: int,
+    db: Session = Depends(get_db),
+) -> SymbolRelationships:
+    """获取标的统一关联状态（WP1.5）。
+
+    返回候选/观察/组合成员/持仓/告警五类状态。
+    子查询失败时降级（degraded=True）但不抛异常，
+    保证前端徽标显示"状态未知"而非误报"未加入"。
+    """
+    symbol = db.get(Symbol, symbol_id)
+    if symbol is None:
+        raise HTTPException(status_code=404, detail="Symbol not found")
+    return get_symbol_relationships(db, symbol_id=symbol_id)

@@ -1,5 +1,6 @@
 import { t } from "../i18n";
 import type { CustomIndicatorPreviewRead, SignalRule, SignalRulePreviewResult } from "../types";
+import type { SymbolRelationships } from "../types/symbolRelationships";
 
 // 通用 API 响应类型：默认 unknown，调用方可显式指定具体类型
 type ApiResponse<T = unknown> = T;
@@ -198,6 +199,10 @@ export const api = {
   },
   createSymbol: (payload: unknown) =>
     requestJson<any>(`${API}/symbols`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+
+  // WP1.5：标的统一关联状态（候选/观察/组合成员/持仓/告警）
+  getSymbolRelationships: (symbolId: number) =>
+    requestJson<SymbolRelationships>(`${API}/symbols/${symbolId}/relationships`),
 
   // Watchlists
   getWatchlistItems: (watchlistId: number) => requestJson<any[]>(`${API}/watchlists/${watchlistId}/items`),

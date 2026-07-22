@@ -1,14 +1,23 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.async_task import AsyncTaskRecord
+from app.schemas.async_task import AsyncTaskRead
 from app.schemas.discovery import (
+    DataPrepRequest,
     DiscoveryIndicatorEvaluateRequest,
     DiscoveryIndicatorEvaluationRow,
     DiscoveryResultUpdate,
     DiscoveryScopeStatsRead,
     DiscoveryTaskCreate,
     DiscoveryTaskRead,
+    FastScanRequest,
+    FastScanResponse,
+    SnapshotStatusRead,
 )
 from app.services.discovery_tasks import (
     cancel_discovery_task,
@@ -29,6 +38,21 @@ from app.services.candidate_promote import (
     promote_candidates_batch,
     unpromote_candidate,
 )
+from app.services.discovery_data_prep import (
+    TASK_TYPE_DATA_PREP,
+    start_data_prep_task,
+)
+from app.services.discovery_dirty_set import is_snapshot_building_for_scope
+from app.services.discovery_fast_scan import (
+    TASK_TYPE_FAST_SCAN,
+    get_ready_snapshot,
+    run_fast_scan,
+)
+
+
+def _normalize_scope_for_snapshot(scope: str) -> str:
+    """scope 归一化（snapshot 表用下划线格式）。"""
+    return scope.replace("-", "_")
 
 
 router = APIRouter()
@@ -204,3 +228,172 @@ def promote_discovery_candidates_batch(
     if not all(isinstance(x, int) for x in candidate_ids):
         raise HTTPException(status_code=400, detail="candidate_ids must be integers")
     return promote_candidates_batch(db, candidate_ids)
+
+
+# ── WP-P.4 数据准备与用户扫描分离 ──────────────────────────────
+# 用户快速扫描链：同步执行，目标 < 5 分钟，绝不发起任何第三方 HTTP 请求
+# 后台数据准备链：异步执行，不受 5 分钟约束
+
+
+@router.post("/discovery/fast-scan", response_model=FastScanResponse)
+def run_discovery_fast_scan(
+    payload: FastScanRequest, db: Session = Depends(get_db)
+) -> dict:
+    """用户快速扫描（同步执行）。
+
+    读取 ready 评分快照 → SQL 粗筛和排序 → Top-K 高级指标过滤 →
+    组合约束过滤 → 保存小规模候选结果。
+
+    严格约束：
+    - 不发起任何第三方 HTTP 请求（market_data_sync / financial_report_task 等）
+    - 只读 ready 状态快照，绝不读 building 半成品
+    - 无可用快照时 10 秒内返回，degraded_reason="no_ready_snapshot"
+    """
+    return run_fast_scan(
+        scope=payload.scope,
+        min_score=payload.min_score,
+        asset_types=payload.asset_types,
+        stages=payload.stages,
+        actions=payload.actions,
+        indicator_plan=payload.indicator_plan,
+        portfolio_id=payload.portfolio_id,
+        portfolio_rule_id=payload.portfolio_rule_id,
+        limit=payload.limit,
+        db=db,
+    )
+
+
+@router.post("/discovery/data-prep", response_model=AsyncTaskRead)
+def start_discovery_data_prep(payload: DataPrepRequest) -> dict:
+    """启动后台数据准备任务（异步执行，不受 5 分钟 SLA 约束）。
+
+    链路：行情增量同步 → 外部因子/宏观更新 → 因子与评分增量计算 →
+          dirty 集合计算 → ready 评分快照生成 → 可选触发快速扫描。
+
+    并发保护：同一 scope 同时只允许一个 data_prep 任务运行；
+    若已有任务 queued/running，返回该任务而非创建新任务。
+    """
+    try:
+        return start_data_prep_task(
+            scope=payload.scope,
+            trade_date=payload.trade_date,
+            force_full_rebuild=payload.force_full_rebuild,
+            trigger_fast_scan_after_ready=payload.trigger_fast_scan_after_ready,
+            fast_scan_params=payload.fast_scan_params,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/discovery/snapshot/status", response_model=SnapshotStatusRead)
+def get_discovery_snapshot_status(
+    scope: str = Query(..., description="挖掘范围（cn-stock/cn-etf/us-stock/us-etf）"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """查询某 scope 的快照状态与最近数据准备任务状态。
+
+    用于机会中心展示：
+    - 当前 ready 快照的生成时间 / 标的数 / dirty 数
+    - 是否有 building 状态快照（数据准备进行中）
+    - 最近一次 data_prep 任务的状态
+    - 推荐下一步动作（无快照 → 启动数据准备；有快照 → 执行快速扫描）
+    """
+    normalized = _normalize_scope_for_snapshot(scope)
+
+    # ready 快照
+    ready = get_ready_snapshot(db, normalized)
+    # building 快照
+    building = is_snapshot_building_for_scope(db, normalized)
+
+    # 最近一次 data_prep 任务（任意状态）
+    last_data_prep_task_id: str | None = None
+    last_data_prep_status: str | None = None
+    try:
+        stmt = (
+            select(AsyncTaskRecord)
+            .where(AsyncTaskRecord.task_type == TASK_TYPE_DATA_PREP)
+            .order_by(desc(AsyncTaskRecord.created_at))
+            .limit(20)
+        )
+        for task in db.execute(stmt).scalars().all():
+            # 通过 payload_json 中的 scope 过滤（兼容连字符/下划线）
+            try:
+                payload = json.loads(task.payload_json or "{}") or {}
+            except (TypeError, ValueError):
+                payload = {}
+            task_scope = payload.get("scope")
+            if task_scope is None:
+                continue
+            if _normalize_scope_for_snapshot(str(task_scope)) == normalized:
+                last_data_prep_task_id = task.id
+                last_data_prep_status = task.status
+                break
+    except Exception:
+        # 查询失败时只忽略 last_data_prep 字段，不影响主响应
+        last_data_prep_task_id = None
+        last_data_prep_status = None
+
+    # WP-P.8：最近一次 fast_scan 任务的 timings / fast_scan_status
+    # 数据来源：AsyncTaskRecord.result_json.timings 与 result_json.fast_scan_status
+    # 当前 fast_scan 为同步执行，无 task 记录时为 None
+    last_fast_scan_timings: dict | None = None
+    last_fast_scan_status: str | None = None
+    try:
+        stmt = (
+            select(AsyncTaskRecord)
+            .where(AsyncTaskRecord.task_type == TASK_TYPE_FAST_SCAN)
+            .order_by(desc(AsyncTaskRecord.created_at))
+            .limit(20)
+        )
+        for task in db.execute(stmt).scalars().all():
+            # 通过 payload_json 中的 scope 过滤（兼容连字符/下划线）
+            try:
+                payload = json.loads(task.payload_json or "{}") or {}
+            except (TypeError, ValueError):
+                payload = {}
+            task_scope = payload.get("scope")
+            if task_scope is None:
+                continue
+            if _normalize_scope_for_snapshot(str(task_scope)) == normalized:
+                try:
+                    result = json.loads(task.result_json or "{}") or {}
+                except (TypeError, ValueError):
+                    result = {}
+                last_fast_scan_timings = result.get("timings")
+                # fast_scan_status 优先取 result_json.fast_scan_status（ok/cancelled/timeout），
+                # 兜底取 task.status（done/failed/cancelled）以保证字段非空
+                last_fast_scan_status = result.get("fast_scan_status") or task.status
+                break
+    except Exception:
+        # 查询失败时只忽略 last_fast_scan 字段，不影响主响应
+        last_fast_scan_timings = None
+        last_fast_scan_status = None
+
+    # 推荐下一步动作
+    recommended_action: str | None = None
+    if ready is None and building is None:
+        recommended_action = "无可用快照，请启动数据准备任务"
+    elif ready is None and building is not None:
+        recommended_action = "数据准备进行中，请稍后执行快速扫描"
+    elif ready is not None and building is not None:
+        recommended_action = "新版本快照构建中，当前可继续扫描旧快照"
+    else:
+        recommended_action = "快照已就绪，可执行快速扫描"
+
+    return SnapshotStatusRead(
+        scope=normalized,
+        has_ready_snapshot=ready is not None,
+        ready_snapshot_id=ready.id if ready else None,
+        ready_snapshot_generated_at=ready.generated_at if ready else None,
+        ready_snapshot_trade_date=ready.trade_date.date() if ready and ready.trade_date else None,
+        ready_snapshot_symbol_count=ready.symbol_count if ready else None,
+        ready_snapshot_dirty_symbol_count=ready.dirty_symbol_count if ready else None,
+        has_building_snapshot=building is not None,
+        building_snapshot_id=building.id if building else None,
+        building_snapshot_created_at=building.created_at if building else None,
+        last_data_prep_task_id=last_data_prep_task_id,
+        last_data_prep_status=last_data_prep_status,
+        recommended_action=recommended_action,
+        last_fast_scan_timings=last_fast_scan_timings,
+        last_fast_scan_status=last_fast_scan_status,
+    ).model_dump()

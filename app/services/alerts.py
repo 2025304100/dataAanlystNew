@@ -79,6 +79,27 @@ def _fire_event(session: Session, rule: AlertRule, title: str, message: str,
     )
     session.add(event)
     rule.last_triggered_at = _now()
+    # WP-MSG.7：将告警事件接入通知系统（AlertEvent 继续作为正式告警事实，
+    # 不修改其 data_json；此处仅触发通知）
+    # session.flush() 确保 event.id 可用，emit_alert_event 失败不阻断主流程
+    try:
+        session.flush()
+        from app.services.notifications.event_emitter import emit_alert_event
+        emit_alert_event(
+            session,
+            alert_event_id=event.id,
+            alert_type=rule.alert_type,
+            severity=rule.severity,
+            title=title,
+            body=message,
+            symbol_id=symbol_id,
+        )
+    except Exception:
+        # 通知触发失败不阻断告警主流程，记录日志即可
+        logger.warning(
+            "emit_alert_event failed for rule=%s alert_type=%s (non-blocking)",
+            rule.id, rule.alert_type, exc_info=True,
+        )
     return event
 
 

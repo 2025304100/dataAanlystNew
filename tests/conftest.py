@@ -30,6 +30,22 @@ from app.models import (  # noqa: F401
 )
 
 
+def pytest_configure(config):
+    """注册自定义 markers（与 pytest.ini 中已声明的 markers 共存，幂等）。
+
+    WP-P.9 要求 slow / performance 标记可用于 tests/performance/ 下的测试。
+    使用 addinivalue_line 重复注册同一 marker 不会报错。
+    """
+    config.addinivalue_line(
+        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+    )
+    config.addinivalue_line(
+        "markers",
+        "performance: performance baseline tests requiring release environment "
+        "with full A-share 5500 / ETF 1600 universe",
+    )
+
+
 @pytest.fixture(scope="function")
 def tmp_sqlite_url() -> str:
     """每个测试函数独立 SQLite 文件，测完自动清理。"""

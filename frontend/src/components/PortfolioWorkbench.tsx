@@ -17,6 +17,10 @@ import {
   inferSymbolPayload,
 } from "../utils/format";
 import type { Position, AllocationSnapshot, WorkbenchCandidate } from "../types";
+// WP1-FIX.3：组合页持仓表接入 OpportunityStatusBadges
+import { OpportunityStatusBadges } from "./opportunity/OpportunityStatusBadges";
+// WP4.5：组合成员页签
+import { PortfolioMembersPanel } from "./PortfolioMembersPanel";
 
 // P3 M-10: 备份条目类型 —— 后端可能返回字符串路径，或包含详细字段的对象
 interface BackupEntryObject {
@@ -420,6 +424,17 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
       key: "unrealized_pnl_pct",
       render: (v) => <span className={pnlClass(v)}>{percent(v)}</span>,
     },
+    // WP1-FIX.3：关联状态列（持仓会显示"持仓 active"，但不会把持仓显示成观察项）
+    {
+      title: t("opportunityObservationColStatus"),
+      key: "status_badges",
+      render: (_, item) => (
+        <OpportunityStatusBadges
+          symbolId={item.symbol_id}
+          onOpenDetail={handleSymbolClick}
+        />
+      ),
+    },
     {
       title: t("operations"),
       key: "operations",
@@ -742,6 +757,20 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
+
+          {/* WP4.5：组合成员页签 —— 显示成员状态/是否持仓/执行模式/来源/最近信号 */}
+          <section className="band portfolio-members-band">
+            <div className="panel">
+              <div className="panel-head">
+                <div>
+                  <p className="panel-kicker">{t("portfolio")}</p>
+                  <h2>{t("portfolioMembersPanel")}</h2>
+                </div>
+                <p className="panel-meta">{t("portfolioMembersDesc")}</p>
+              </div>
+              <PortfolioMembersPanel portfolioId={portfolioId} />
             </div>
           </section>
 
