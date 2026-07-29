@@ -210,7 +210,7 @@ describe("ScoringConfigSettings 交互测试", () => {
     });
     // Row 2 (激进成长) is_active=0, activate button enabled; Row 1 disabled
     const activateBtns = screen.getAllByRole("button", { name: "scBtnActivate" });
-    const enabledBtn = activateBtns.find((b) => !b.disabled);
+    const enabledBtn = activateBtns.find((b) => !(b as HTMLButtonElement).disabled);
     expect(enabledBtn).toBeDefined();
     fireEvent.click(enabledBtn!);
     await waitFor(() => {
@@ -242,7 +242,8 @@ describe("ScoringConfigSettings 交互测试", () => {
         2,
         expect.objectContaining({
           new_preset_key: "aggressive_growth_copy",
-          new_name: "激进成长 副本",
+          // 实现使用 t("presetCopySuffix")，i18n mock 返回 key
+          new_name: "激进成长 presetCopySuffix",
         }),
       );
     });
@@ -257,7 +258,7 @@ describe("ScoringConfigSettings 交互测试", () => {
     });
     // Row 2 (激进成长) is_system=0 is_active=0, delete button enabled
     const deleteBtns = screen.getAllByRole("button", { name: "scBtnDelete" });
-    const enabledBtn = deleteBtns.find((b) => !b.disabled);
+    const enabledBtn = deleteBtns.find((b) => !(b as HTMLButtonElement).disabled);
     expect(enabledBtn).toBeDefined();
     fireEvent.click(enabledBtn!);
     // Modal.confirm 应被调用
@@ -266,7 +267,7 @@ describe("ScoringConfigSettings 交互测试", () => {
     });
     // 直接调用 onOk 回调
     const config = confirmSpy.mock.calls[0][0];
-    await config.onOk();
+    await config.onOk?.();
     await waitFor(() => {
       expect(mockApi.deleteScoringConfig).toHaveBeenCalledWith(2);
     });
@@ -281,7 +282,7 @@ describe("ScoringConfigSettings 交互测试", () => {
     });
     // Row 2 (激进成长) is_system=0, edit button enabled
     const editBtns = screen.getAllByRole("button", { name: "scBtnEdit" });
-    const enabledBtn = editBtns.find((b) => !b.disabled);
+    const enabledBtn = editBtns.find((b) => !(b as HTMLButtonElement).disabled);
     expect(enabledBtn).toBeDefined();
     await user.click(enabledBtn!);
     await waitFor(() => {

@@ -53,6 +53,13 @@ export function t(key: string): string {
   return value;
 }
 
+export function enumLabel(prefix: string, value: string | null | undefined, fallback = "-"): string {
+  if (!value) return fallback;
+  const key = `${prefix}_${value}`;
+  const translated = t(key);
+  return translated === key ? value : translated;
+}
+
 export function template(key: string, params: Record<string, string | number> = {}): string {
   return t(key).replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ""));
 }

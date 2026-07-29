@@ -10,8 +10,9 @@
 //
 // 关键约束：
 // - 后端存储，清空浏览器缓存后数据仍存在
-// - 接口失败降级不抛异常，显示错误信息 + 重试按钮
-// - 错误消息不暴露敏感信息
+// - 接口失败降级不抛异常，按 WP-S.6 统一错误协议展示 error_code/user_message/impact/next_actions
+// - 不再只显示"重试"按钮，而是给出具体原因 + 下一步动作（前往基础数据 / 运行增量同步 / 重试 等）
+// - 错误消息不暴露敏感信息，技术详情折叠
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -25,6 +26,7 @@ import {
   Spin,
   Table,
   Tag,
+  Typography,
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -33,12 +35,16 @@ import {
   InboxOutlined,
   EyeOutlined,
   ArrowRightOutlined,
+  DatabaseOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import { useApp } from "../../context/AppContext";
-import { requestJson } from "../../api/client";
-import { t } from "../../i18n";
+import { ApiError, requestJson } from "../../api/client";
+import { enumLabel, t, template } from "../../i18n";
 import { OpportunityStatusBadges } from "./OpportunityStatusBadges";
 import { navigateToResearch } from "../../utils/sourceContext";
+
+const { Text, Paragraph } = Typography;
 
 // 观察项富读模型（对齐 app.schemas.watchlist.ObservationRead）
 interface ObservationItem {
@@ -75,21 +81,37 @@ interface ObservationItem {
   degraded_reason: string | null;
 }
 
-// 状态/来源筛选可选项
-const STATUS_OPTIONS = [
-  { value: "watching", label: "watching" },
-  { value: "ready", label: "ready" },
-  { value: "invalid", label: "invalid" },
-  { value: "archived", label: "archived" },
-];
+// WP-S.6 统一错误协议展示模型
+interface ObservationPoolErrorInfo {
+  error_code: string;
+  user_message: string;
+  impact: string;
+  retryable: boolean;
+  status_code?: number;
+  correlation_id?: string;
+  // 已映射为本地图例的下一步动作
+  next_actions: Array<{
+    label: string;
+    action_type: "retry" | "redirect" | "configure" | "dismiss" | "view_details" | "sync";
+    target?: string | null;
+    reason?: string | null;
+  }>;
+  // 原始技术详情（折叠展示，不暴露给普通用户）
+  technical_details?:
+    | {
+        exception_type?: string | null;
+        error_message?: string | null;
+        stack_summary?: string | null;
+      }
+    | string
+    | null;
+}
 
-const ORIGIN_OPTIONS = [
-  { value: "manual", label: "manual" },
-  { value: "candidate", label: "candidate" },
-  { value: "scan_result", label: "scan_result" },
-  { value: "alert", label: "alert" },
-  { value: "legacy_manual_unknown", label: "legacy_manual_unknown" },
-];
+// 状态/来源筛选可选项
+const STATUS_VALUES = ["watching", "ready", "invalid", "archived"];
+const ORIGIN_VALUES = ["manual", "candidate", "scan_result", "alert", "legacy_manual_unknown"];
+const statusLabel = (value: string) => enumLabel("observationPoolStatus", value);
+const originLabel = (value: string) => enumLabel("observationPoolOrigin", value);
 
 // 优先级可选值
 const PRIORITY_OPTIONS = [
@@ -99,6 +121,46 @@ const PRIORITY_OPTIONS = [
   { value: 75, label: "75" },
   { value: 100, label: "100" },
 ];
+
+/**
+ * 将任意异常映射为 ObservationPoolErrorInfo（WP-S.6 统一错误协议）。
+ *
+ * 优先复用 ApiError 携带的 error_code/user_message/next_actions；
+ * 对于非 ApiError（如原生 TypeError 网络错误、超时）按场景映射中文文案 + 下一步动作。
+ */
+function toErrorInfo(err: unknown): ObservationPoolErrorInfo {
+  if (err instanceof ApiError) {
+    const code = err.error_code ?? "UNKNOWN_ERROR";
+    const userMessage = err.user_message ?? err.message ?? t("observationPoolErrorUnknownMessage");
+    const impact = err.impact ?? "";
+    const retryable = err.retryable ?? false;
+    const nextActions = err.next_actions && err.next_actions.length > 0
+      ? err.next_actions
+      : retryable
+        ? [{ label: t("observationPoolErrorActionRetry"), action_type: "retry" as const }]
+        : [];
+    return {
+      error_code: code,
+      user_message: userMessage,
+      impact,
+      retryable,
+      status_code: err.status_code,
+      correlation_id: err.correlation_id,
+      next_actions: nextActions,
+      technical_details: err.detail as ObservationPoolErrorInfo["technical_details"],
+    };
+  }
+  // 非 ApiError：兜底为 UNKNOWN_ERROR
+  const fallbackMsg = err instanceof Error ? err.message : String(err);
+  return {
+    error_code: "UNKNOWN_ERROR",
+    user_message: t("observationPoolErrorUnknownMessage"),
+    impact: "",
+    retryable: true,
+    next_actions: [{ label: t("observationPoolErrorActionRetry"), action_type: "retry" }],
+    technical_details: fallbackMsg,
+  };
+}
 
 export interface ObservationPoolProps {
   className?: string;
@@ -122,7 +184,7 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
 
   const [observations, setObservations] = useState<ObservationItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorInfo, setErrorInfo] = useState<ObservationPoolErrorInfo | null>(null);
 
   // 筛选条件
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
@@ -141,17 +203,20 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
   const [batchPriority, setBatchPriority] = useState<number | undefined>(undefined);
   const [batchTagInput, setBatchTagInput] = useState<string>("");
 
+  // 技术详情展开（错误展示用）
+  const [showTechnical, setShowTechnical] = useState(false);
+
   // 实际查询的 watchlistId（支持多名单筛选）
   const effectiveWatchlistId = watchlistFilter ?? watchlistId;
 
   const fetchObservations = useCallback(async () => {
     if (!effectiveWatchlistId) {
       setObservations([]);
-      setError(null);
+      setErrorInfo(null);
       return;
     }
     setLoading(true);
-    setError(null);
+    setErrorInfo(null);
     try {
       const params = new URLSearchParams();
       params.set("limit", "200");
@@ -162,9 +227,8 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
       const data = await requestJson<ObservationItem[]>(url);
       setObservations(data ?? []);
     } catch (err) {
-      // 错误消息不暴露敏感信息，仅展示通用错误
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg || t("observationPoolError"));
+      // WP-S.6 统一错误协议：解析 error_code/user_message/impact/next_actions
+      setErrorInfo(toErrorInfo(err));
     } finally {
       setLoading(false);
     }
@@ -173,6 +237,61 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
   useEffect(() => {
     fetchObservations();
   }, [fetchObservations]);
+
+  // 错误展示中的"下一步动作"统一执行入口
+  const handleNextAction = useCallback(
+    (actionType: string, target?: string | null) => {
+      switch (actionType) {
+        case "retry":
+          fetchObservations();
+          break;
+        case "redirect":
+          if (target === "/market-data" || target === "macro") {
+            ctx.setActiveTab("macro");
+          } else if (target === "/settings") {
+            ctx.setActiveTab("settings");
+          } else {
+            // 默认跳转到基础数据 tab
+            ctx.setActiveTab("macro");
+          }
+          break;
+        case "configure":
+          ctx.setActiveTab("settings");
+          break;
+        case "dismiss":
+          setErrorInfo(null);
+          break;
+        case "view_details":
+          setShowTechnical(true);
+          break;
+        default:
+          // 兜底：重试
+          fetchObservations();
+      }
+    },
+    [fetchObservations, ctx],
+  );
+
+  // 单条错误 toast 的统一封装：将 ApiError 转中文 user_message
+  const showActionError = useCallback((err: unknown, fallbackKey: string) => {
+    if (err instanceof ApiError && err.user_message) {
+      message.error(err.user_message);
+    } else if (err instanceof Error && err.message) {
+      message.error(err.message);
+    } else {
+      message.error(t(fallbackKey));
+    }
+  }, []);
+
+  // 跳转到基础数据 tab（用于"数据未准备好"场景的下一步动作）
+  const handleGoToMarketData = useCallback(() => {
+    ctx.setActiveTab("macro");
+  }, [ctx]);
+
+  // 触发增量同步（用于"数据未准备好"场景的下一步动作）
+  const handleRunSync = useCallback(() => {
+    ctx.runSync();
+  }, [ctx]);
 
   // 批量归档
   const handleBatchArchive = useCallback(async () => {
@@ -188,8 +307,12 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
             { method: "POST" },
           );
           okCount += 1;
-        } catch {
+        } catch (err) {
           failCount += 1;
+          // 第一条失败立即提示，但继续处理后续项
+          if (failCount === 1) {
+            showActionError(err, "observationPoolBatchArchiveFailed");
+          }
         }
       }
       if (okCount > 0) {
@@ -203,7 +326,7 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
     } finally {
       setBatchUpdating(false);
     }
-  }, [selectedRowKeys, effectiveWatchlistId, fetchObservations]);
+  }, [selectedRowKeys, effectiveWatchlistId, fetchObservations, showActionError]);
 
   // 批量恢复
   const handleBatchRestore = useCallback(async () => {
@@ -219,8 +342,11 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
             { method: "POST" },
           );
           okCount += 1;
-        } catch {
+        } catch (err) {
           failCount += 1;
+          if (failCount === 1) {
+            showActionError(err, "observationPoolBatchRestoreFailed");
+          }
         }
       }
       if (okCount > 0) {
@@ -234,7 +360,7 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
     } finally {
       setBatchUpdating(false);
     }
-  }, [selectedRowKeys, effectiveWatchlistId, fetchObservations]);
+  }, [selectedRowKeys, effectiveWatchlistId, fetchObservations, showActionError]);
 
   // 批量更新优先级
   const handleBatchUpdatePriority = useCallback(async () => {
@@ -258,8 +384,11 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
             },
           );
           okCount += 1;
-        } catch {
+        } catch (err) {
           failCount += 1;
+          if (failCount === 1) {
+            showActionError(err, "observationPoolBatchUpdateFailed");
+          }
         }
       }
       if (okCount > 0) {
@@ -274,7 +403,7 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
     } finally {
       setBatchUpdating(false);
     }
-  }, [selectedRowKeys, effectiveWatchlistId, batchPriority, fetchObservations]);
+  }, [selectedRowKeys, effectiveWatchlistId, batchPriority, fetchObservations, showActionError]);
 
   // 批量更新标签
   const handleBatchUpdateTags = useCallback(async () => {
@@ -302,8 +431,11 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
             },
           );
           okCount += 1;
-        } catch {
+        } catch (err) {
           failCount += 1;
+          if (failCount === 1) {
+            showActionError(err, "observationPoolBatchUpdateFailed");
+          }
         }
       }
       if (okCount > 0) {
@@ -318,7 +450,7 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
     } finally {
       setBatchUpdating(false);
     }
-  }, [selectedRowKeys, effectiveWatchlistId, batchTagInput, fetchObservations]);
+  }, [selectedRowKeys, effectiveWatchlistId, batchTagInput, fetchObservations, showActionError]);
 
   const columns: ColumnsType<ObservationItem> = useMemo(
     () => [
@@ -333,7 +465,7 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
         dataIndex: "origin_type",
         key: "origin_type",
         width: 130,
-        render: (v: string) => <Tag>{v}</Tag>,
+        render: (v: string) => <Tag>{originLabel(v)}</Tag>,
       },
       {
         title: t("observationPoolColumnAddedAt"),
@@ -354,7 +486,7 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
         dataIndex: "status",
         key: "status",
         width: 110,
-        render: (v: string) => <Tag color={v === "archived" ? "default" : "blue"}>{v}</Tag>,
+        render: (v: string) => <Tag color={v === "archived" ? "default" : "blue"}>{statusLabel(v)}</Tag>,
       },
       {
         title: t("observationPoolColumnLatestPrice"),
@@ -437,8 +569,8 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
                     );
                     message.success(t("observationPoolArchiveDone"));
                     fetchObservations();
-                  } catch {
-                    message.error(t("observationPoolArchiveFailed"));
+                  } catch (err) {
+                    showActionError(err, "observationPoolArchiveFailed");
                   }
                 }}
               >
@@ -458,8 +590,8 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
                     );
                     message.success(t("observationPoolRestoreDone"));
                     fetchObservations();
-                  } catch {
-                    message.error(t("observationPoolRestoreFailed"));
+                  } catch (err) {
+                    showActionError(err, "observationPoolRestoreFailed");
                   }
                 }}
               >
@@ -471,44 +603,191 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
       },
     ],
     // WP5.3：补全依赖项，避免闭包过期导致 returnState 携带旧筛选值
-    [fetchObservations, ctx, statusFilter, originFilter, tagFilter, watchlistFilter],
+    [fetchObservations, ctx, statusFilter, originFilter, tagFilter, watchlistFilter, showActionError],
   );
+
+  // 渲染统一错误协议展示（WP-S.6）
+  const renderError = () => {
+    if (!errorInfo) return null;
+    const info = errorInfo;
+    // 标题：优先使用 user_message，否则使用通用标题
+    const title = info.user_message || t("observationPoolErrorTitle");
+    // 错误码标签：以稳定的 error_code 显示，便于排查
+    const codeTag = (
+      <Space size={4} wrap>
+        <Tag color="error">{info.error_code}</Tag>
+        {info.status_code != null && info.status_code > 0 && (
+          <Tag color="warning">HTTP {info.status_code}</Tag>
+        )}
+        {info.retryable && (
+          <Tag color="processing">{t("observationPoolErrorRetryableYes")}</Tag>
+        )}
+      </Space>
+    );
+    // 下一步动作按钮：根据 action_type 渲染对应的入口
+    // 检查 next_actions 是否已包含 redirect / sync 动作（避免与下方兜底按钮重复）
+    const hasRedirectAction = info.next_actions.some(
+      (a) => a.action_type === "redirect",
+    );
+    const hasSyncAction = info.next_actions.some(
+      (a) => a.action_type === "sync",
+    );
+    const actionButtons = (
+      <Space size="small" wrap>
+        {info.next_actions.map((action, idx) => {
+          const icon =
+            action.action_type === "retry"
+              ? <ReloadOutlined />
+              : action.action_type === "redirect" && (action.target === "/market-data" || action.target === "macro")
+                ? <DatabaseOutlined />
+                : action.action_type === "configure"
+                  ? <DatabaseOutlined />
+                  : <SyncOutlined />;
+          return (
+            <Button
+              key={`${action.action_type}-${idx}`}
+              size="small"
+              type={action.action_type === "retry" ? "primary" : "default"}
+              icon={icon}
+              onClick={() => handleNextAction(action.action_type, action.target)}
+            >
+              {action.label}
+            </Button>
+          );
+        })}
+        {/* 数据未准备好场景：额外暴露"前往基础数据"和"运行增量同步"入口
+            （后端通过 STALE_DATA / DATA_SYNC_TIMEOUT / DATA_NOT_READY 等错误码触发，
+             若 next_actions 已包含同类型动作则不重复渲染，避免按钮重复） */}
+        {(info.error_code === "STALE_DATA" ||
+          info.error_code === "DATA_SYNC_TIMEOUT" ||
+          info.error_code === "DATA_NOT_READY") && (
+          <>
+            {!hasRedirectAction && (
+              <Button
+                size="small"
+                icon={<DatabaseOutlined />}
+                onClick={handleGoToMarketData}
+              >
+                {t("observationPoolErrorActionGoMarketData")}
+              </Button>
+            )}
+            {!hasSyncAction && (
+              <Button
+                size="small"
+                icon={<SyncOutlined />}
+                onClick={handleRunSync}
+              >
+                {t("observationPoolErrorActionRunSync")}
+              </Button>
+            )}
+          </>
+        )}
+      </Space>
+    );
+
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message={
+          <div>
+            <div style={{ marginBottom: 4 }}>
+              <Text strong>{title}</Text>
+            </div>
+            <div style={{ marginBottom: 4 }}>{codeTag}</div>
+            {info.impact && (
+              <div style={{ marginBottom: 4, color: "var(--muted)", fontSize: 12 }}>
+                <Text type="secondary">
+                  {t("observationPoolErrorImpact")}: {info.impact}
+                </Text>
+              </div>
+            )}
+            {info.correlation_id && (
+              <div style={{ marginBottom: 4, color: "var(--muted)", fontSize: 12 }}>
+                <Text type="secondary" code>
+                  {t("observationPoolErrorCorrelation")}: {info.correlation_id.slice(0, 8)}
+                </Text>
+              </div>
+            )}
+          </div>
+        }
+        description={
+          <div>
+            <div style={{ marginBottom: 8 }}>
+              <Text type="secondary" strong>
+                {t("observationPoolErrorActions")}
+              </Text>
+            </div>
+            {actionButtons}
+            {/* 技术详情折叠区域：默认隐藏，避免暴露 SQL/堆栈给普通用户 */}
+            {info.technical_details && (
+              <div style={{ marginTop: 8 }}>
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => setShowTechnical((v) => !v)}
+                >
+                  {t("observationPoolErrorToggleTechnical")}
+                </Button>
+                {showTechnical && (
+                  <pre
+                    style={{
+                      margin: "4px 0",
+                      padding: 8,
+                      background: "#f5f5f5",
+                      maxHeight: 200,
+                      overflow: "auto",
+                      fontSize: 12,
+                    }}
+                  >
+                    {typeof info.technical_details === "string"
+                      ? info.technical_details
+                      : JSON.stringify(info.technical_details, null, 2)}
+                  </pre>
+                )}
+              </div>
+            )}
+          </div>
+        }
+        action={
+          // Alert 右侧主操作：可重试时显示"重试加载"
+          info.retryable ? (
+            <Button size="small" type="primary" onClick={() => fetchObservations()}>
+              {t("observationPoolErrorActionRetry")}
+            </Button>
+          ) : undefined
+        }
+      />
+    );
+  };
 
   // 空/错/加载状态
   const renderBody = () => {
     if (!workbench) {
       return (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <Spin tip={t("opportunityObservationLoading")} />
+          <Spin tip={t("opportunityObservationLoading")}>
+            <div style={{ minHeight: 48 }} />
+          </Spin>
         </div>
       );
     }
     if (!primaryWatchlist && !watchlistFilter) {
       return <Empty description={t("opportunityObservationNoWatchlist")} />;
     }
-    if (loading && observations.length === 0) {
+    if (loading && observations.length === 0 && !errorInfo) {
       return (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <Spin tip={t("opportunityObservationLoading")} />
+          <Spin tip={t("opportunityObservationLoading")}>
+            <div style={{ minHeight: 48 }} />
+          </Spin>
         </div>
       );
     }
-    if (error && observations.length === 0) {
-      return (
-        <Alert
-          type="error"
-          showIcon
-          message={t("observationPoolError")}
-          description={error}
-          action={
-            <Button size="small" onClick={fetchObservations}>
-              {t("observationPoolRetry")}
-            </Button>
-          }
-        />
-      );
+    if (errorInfo && observations.length === 0) {
+      return renderError();
     }
-    if (observations.length === 0) {
+    if (observations.length === 0 && !errorInfo) {
       return (
         <Empty
           description={
@@ -555,7 +834,7 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
         onCancel={() => setDetailItem(null)}
       >
         <div style={{ marginBottom: 8 }}>
-          <strong>{t("observationPoolDetailOrigin")}:</strong> <Tag>{item.origin_type}</Tag>
+          <strong>{t("observationPoolDetailOrigin")}:</strong> <Tag>{originLabel(item.origin_type)}</Tag>
           {item.origin_id != null && <span style={{ marginLeft: 8 }}>#{item.origin_id}</span>}
         </div>
         <div style={{ marginBottom: 8 }}>
@@ -584,12 +863,12 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
           {item.data_credibility ?? "-"}
           {item.bar_count != null && (
             <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 12 }}>
-              bars={item.bar_count}
+              {template("observationPoolDetailBars", { count: item.bar_count })}
             </span>
           )}
           {item.degraded && (
             <Tag color="warning" style={{ marginLeft: 8 }}>
-              {item.degraded_reason ?? "degraded"}
+              {item.degraded_reason ?? t("observationPoolDetailDegraded")}
             </Tag>
           )}
         </div>
@@ -598,18 +877,18 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
           {item.target_portfolio_name ?? "-"}
           {item.has_position && (
             <Tag color="green" style={{ marginLeft: 8 }}>
-              {item.position_portfolio_name ?? "position"}
+              {item.position_portfolio_name ?? t("observationPoolDetailPosition")}
             </Tag>
           )}
         </div>
         {item.note && (
           <div style={{ marginBottom: 8 }}>
-            <strong>note:</strong> {item.note}
+            <strong>{t("observationPoolDetailNote")}:</strong> {item.note}
           </div>
         )}
         {item.tags.length > 0 && (
           <div style={{ marginBottom: 8 }}>
-            <strong>tags:</strong>{" "}
+            <strong>{t("observationPoolDetailTags")}:</strong>{" "}
             {item.tags.map((tag) => (
               <Tag key={tag}>{tag}</Tag>
             ))}
@@ -632,7 +911,7 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
             style={{ minWidth: 140 }}
             value={statusFilter}
             onChange={(v) => setStatusFilter(v)}
-            options={STATUS_OPTIONS}
+            options={STATUS_VALUES.map((value) => ({ value, label: statusLabel(value) }))}
           />
           <Select
             allowClear
@@ -640,7 +919,7 @@ export default function ObservationPool({ className }: ObservationPoolProps) {
             style={{ minWidth: 160 }}
             value={originFilter}
             onChange={(v) => setOriginFilter(v)}
-            options={ORIGIN_OPTIONS}
+            options={ORIGIN_VALUES.map((value) => ({ value, label: originLabel(value) }))}
           />
           <Input
             allowClear

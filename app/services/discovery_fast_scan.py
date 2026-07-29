@@ -109,6 +109,32 @@ def get_ready_snapshot(db: Session, scope: str) -> DiscoveryScoreSnapshot | None
     return db.execute(stmt).scalars().first()
 
 
+def get_latest_historical_snapshot(db: Session, scope: str) -> DiscoveryScoreSnapshot | None:
+    """获取某 scope 最近一个非 building 状态的历史快照（用于无 ready 快照时回退只读查看）。
+
+    优先级：ready（旧版本）> superseded > failed。
+    不返回 building 状态（防半成品）。
+
+    Args:
+        db: 数据库会话
+        scope: 范围
+
+    Returns:
+        DiscoveryScoreSnapshot 或 None（首次使用无任何历史快照时）
+    """
+    normalized = _normalize_scope(scope)
+    stmt = (
+        select(DiscoveryScoreSnapshot)
+        .where(
+            DiscoveryScoreSnapshot.scope == normalized,
+            DiscoveryScoreSnapshot.status.in_(["ready", "superseded", "failed"]),
+        )
+        .order_by(DiscoveryScoreSnapshot.generated_at.desc().nullslast())
+        .limit(1)
+    )
+    return db.execute(stmt).scalars().first()
+
+
 def _count_snapshot_items(db: Session, snapshot_id: int) -> int:
     """统计某快照下 item 总数。"""
     return int(
@@ -962,6 +988,64 @@ def run_fast_scan(
         snapshot = get_ready_snapshot(db, scope)
         if snapshot is None:
             timings.finish_stage("snapshot_health_check")
+            # WP-P-FIX.2: 无 ready 快照时尝试返回上一历史快照 + 自动启动数据准备任务
+            # 1. 查询历史快照（ready 旧版本 / superseded / failed）
+            historical_snapshot = get_latest_historical_snapshot(db, scope)
+            # 2. 自动启动数据准备任务（fire-and-forget，不阻塞响应）
+            data_prep_task_id: str | None = None
+            try:
+                # 延迟导入避免循环依赖（discovery_data_prep 可能反向导入 discovery_fast_scan）
+                from app.services.discovery_data_prep import start_data_prep_task, _is_data_prep_running
+                # 并发保护：已有 data_prep 运行时不重复启动
+                if _is_data_prep_running(db, normalized) is None:
+                    fast_scan_params = {
+                        "scope": normalized,
+                        "min_score": min_score,
+                        "asset_types": asset_types,
+                        "stages": stages,
+                        "actions": actions,
+                        "portfolio_id": portfolio_id,
+                        "portfolio_rule_id": portfolio_rule_id,
+                        "limit": limit,
+                    }
+                    task_read = start_data_prep_task(
+                        scope=normalized,
+                        trigger_fast_scan_after_ready=True,
+                        fast_scan_params=fast_scan_params,
+                    )
+                    data_prep_task_id = task_read.id
+            except Exception as e:
+                logger.warning("auto start data_prep failed for scope=%s: %s", normalized, e)
+                # 启动失败不影响主响应，用户可手动触发
+
+            # 3. 构造响应
+            if historical_snapshot is not None:
+                # 返回上一历史快照（只读查看旧候选）
+                timings.degraded_reason = "using_stale_snapshot"
+                return {
+                    "snapshot_id": historical_snapshot.id,
+                    "snapshot_generated_at": historical_snapshot.generated_at,
+                    "scope": normalized,
+                    "total_in_snapshot": historical_snapshot.symbol_count or 0,
+                    "coarse_match_count": 0,
+                    "advanced_match_count": 0,
+                    "result_rows_written": 0,
+                    "cache_key": None,
+                    "cache_hit": False,
+                    "results": [],
+                    "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
+                    "degraded_reason": "using_stale_snapshot",
+                    "recommended_action": "正在使用历史快照（数据可能过期），已自动启动数据准备任务，完成后将自动刷新",
+                    "filter_stats": {"coarse": {}, "advanced": {}, "portfolio": {}},
+                    "cached_from_scan_run_id": None,
+                    "cached_at": None,
+                    "timings": timings.to_dict(),
+                    "status": "ok",
+                    "exceeded_stages": None,
+                    "data_prep_task_id": data_prep_task_id,
+                    "data_cutoff_at": historical_snapshot.data_cutoff_at.isoformat() if historical_snapshot.data_cutoff_at else None,
+                }
+            # 4. 首次使用无任何历史快照
             timings.degraded_reason = "no_ready_snapshot"
             return {
                 "snapshot_id": None,
@@ -976,13 +1060,14 @@ def run_fast_scan(
                 "results": [],
                 "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
                 "degraded_reason": "no_ready_snapshot",
-                "recommended_action": "前往基础数据初始化或启动数据准备任务",
+                "recommended_action": "正在为您准备数据，完成后将自动扫描",
                 "filter_stats": {"coarse": {}, "advanced": {}, "portfolio": {}},
                 "cached_from_scan_run_id": None,
                 "cached_at": None,
                 "timings": timings.to_dict(),
                 "status": "ok",
                 "exceeded_stages": None,
+                "data_prep_task_id": data_prep_task_id,
             }
         timings.finish_stage(
             "snapshot_health_check", item_count=snapshot.symbol_count or 0

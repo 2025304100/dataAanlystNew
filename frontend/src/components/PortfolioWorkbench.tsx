@@ -1,10 +1,10 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { Input, InputNumber, Button, Tag, Space, Modal, Dropdown, Empty, Skeleton, Table } from "antd";
+import { Input, InputNumber, Button, Tag, Space, Modal, Dropdown, Empty, Skeleton, Table, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { ArrowRightOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined, ScanOutlined } from "@ant-design/icons";
 import { useApp } from "../context/AppContext";
-import { api } from "../api/client";
+import { api, requestJson } from "../api/client";
 import { t, template, DOT, stageLabel, actionLabel } from "../i18n";
 import { navigateToResearch } from "../utils/sourceContext";
 import {
@@ -23,6 +23,8 @@ import { OpportunityStatusBadges } from "./opportunity/OpportunityStatusBadges";
 import { PortfolioMembersPanel } from "./PortfolioMembersPanel";
 // WP-AI.7：让 AI 解释按钮
 import ExplainButton from "./ai/ExplainButton";
+// P1-05：能力门禁按钮（扫描前 capability 检查）
+import { CapabilityGateButton } from "./capability/CapabilityGateButton";
 
 // P3 M-10: 备份条目类型 —— 后端可能返回字符串路径，或包含详细字段的对象
 interface BackupEntryObject {
@@ -224,9 +226,20 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
   };
 
   // ── P2: 持仓录入 / 删除 / 规则保存 ──
+  // P1-04：空输入校验状态
+  const [posFormErrors, setPosFormErrors] = useState<{ symbol?: string; quantity?: string; avgCost?: string }>({});
+  // P1-05：扫描状态
+  const [scanning, setScanning] = useState(false);
+
   const handleUpsertPosition = async () => {
     const code = posSymbolCode.trim();
-    if (!code || posQuantity == null || posAvgCost == null) return;
+    // P1-04：空输入校验 —— 移除 disabled，改为点击时校验并展示中文提示
+    const errors: { symbol?: string; quantity?: string; avgCost?: string } = {};
+    if (!code) errors.symbol = t("symbolCodeRequired");
+    if (posQuantity == null) errors.quantity = t("quantityRequired");
+    if (posAvgCost == null) errors.avgCost = t("avgCostRequired");
+    setPosFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     try {
       setSavingPosition(true);
       const payload = inferSymbolPayload(code);
@@ -249,6 +262,7 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
       setPosSymbolCode("");
       setPosQuantity(null);
       setPosAvgCost(null);
+      setPosFormErrors({});
       await loadPositions();
       await loadAllocation();
       await ctx.loadWorkbench();
@@ -293,6 +307,34 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
       ctx.showToast("error", error?.message || t("ruleSaveFailed"));
     } finally {
       setSavingRule(false);
+    }
+  };
+
+  // P1-05：快速扫描（带能力门禁 + 统一错误协议展示）
+  const handleStartScan = async () => {
+    try {
+      setScanning(true);
+      await requestJson("/api/v1/discovery/fast-scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope: "cn-stock",
+          min_score: 0,
+          limit: 50,
+        }),
+        timeoutMs: 300000,
+      });
+      ctx.showToast("success", t("portfolioScanCompleted"));
+      await ctx.loadWorkbench();
+    } catch (error: any) {
+      // P1-05：统一错误协议已由 requestJson 解析为 ApiError，含 user_message + next_actions
+      // 不再暴露 HTTP 状态文案，展示中文 user_message
+      const userMsg = error?.user_message || error?.message || t("portfolioScanFailed");
+      ctx.showToast("error", userMsg);
+      // 扫描失败后刷新 capabilities，让 CapabilityGateButton 反映最新状态
+      ctx.loadCapabilities?.();
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -524,30 +566,47 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                 {t("latestScores")}: {workbench.latest_scores.length}
               </span>
             </div>
-            <Button
-              type="primary"
-              icon={<ArrowRightOutlined />}
-              onClick={() => ctx.setActiveTab("opportunity")}
-              data-testid="goto-opportunity-center"
-            >
-              {t("wp9.viewOpportunityCenter")}
-            </Button>
+            <Space>
+              {/* P1-05：扫描按钮带能力门禁，capability 不足时弹出 CapabilityBlockModal */}
+              <CapabilityGateButton
+                capabilityKey="discovery"
+                type="primary"
+                icon={<ScanOutlined />}
+                loading={scanning}
+                onClick={handleStartScan}
+                id="portfolioScanButton"
+              >
+                {t("portfolioScan")}
+              </CapabilityGateButton>
+              <Button
+                type="primary"
+                icon={<ArrowRightOutlined />}
+                onClick={() => ctx.setActiveTab("opportunity")}
+                data-testid="goto-opportunity-center"
+              >
+                {t("wp9.viewOpportunityCenter")}
+              </Button>
+            </Space>
           </div>
         </div>
       </section>
 
       <section className="band metrics-band">
         <div className="metric-grid">
-          <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("symbols")} aria-label={template("metricActionView", { label: t("trackedUniverse") })}>
-            <span className="metric-label">{t("trackedUniverse")}</span>
-            <span className="metric-value">{marketScope?.filtered_symbols ?? overview.symbols_count}</span>
-            <span className="metric-note">{t("items")}</span>
-          </Button>
-          <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("watchlists")} aria-label={template("metricActionView", { label: t("watchlists") })}>
-            <span className="metric-label">{t("watchlists")}</span>
-            <span className="metric-value">{overview.watchlists_count}</span>
-            <span className="metric-note">{t("items")}</span>
-          </Button>
+          <Tooltip title={template("metricActionView", { label: t("trackedUniverse") })}>
+            <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("symbols")} aria-label={template("metricActionView", { label: t("trackedUniverse") })}>
+              <span className="metric-label">{t("trackedUniverse")}</span>
+              <span className="metric-value">{marketScope?.filtered_symbols ?? overview.symbols_count}</span>
+              <span className="metric-note">{t("items")}</span>
+            </Button>
+          </Tooltip>
+          <Tooltip title={template("metricActionView", { label: t("watchlists") })}>
+            <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("watchlists")} aria-label={template("metricActionView", { label: t("watchlists") })}>
+              <span className="metric-label">{t("watchlists")}</span>
+              <span className="metric-value">{overview.watchlists_count}</span>
+              <span className="metric-note">{t("items")}</span>
+            </Button>
+          </Tooltip>
           <div className="metric-card">
             <span className="metric-label">{t("portfolioUsage")}</span>
             <span className="metric-value">{percent(overview.total_position_pct)}</span>
@@ -558,11 +617,13 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
             <span className="metric-value">{percent(overview.cash_pct)}</span>
             <span className="metric-note">{t("reserveLeft")}</span>
           </div>
-          <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("candidates")} aria-label={template("metricActionView", { label: t("candidates") })}>
-            <span className="metric-label">{t("candidates")}</span>
-            <span className="metric-value">{workbench.candidates.length}</span>
-            <span className="metric-note">{t("items")}</span>
-          </Button>
+          <Tooltip title={template("metricActionView", { label: t("candidates") })}>
+            <Button type="text" className="metric-card metric-action" onClick={() => openMetricModal("candidates")} aria-label={template("metricActionView", { label: t("candidates") })}>
+              <span className="metric-label">{t("candidates")}</span>
+              <span className="metric-value">{workbench.candidates.length}</span>
+              <span className="metric-note">{t("items")}</span>
+            </Button>
+          </Tooltip>
           <div className="metric-card">
             <span className="metric-label">{t("maxSingle")}</span>
             <span className="metric-value">{percent(activeRule?.max_single_position_pct)}</span>
@@ -647,38 +708,58 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
                     <span>{t("symbolCode")}</span>
                     <Input
                       value={posSymbolCode}
-                      onChange={(e) => setPosSymbolCode(e.target.value)}
+                      onChange={(e) => {
+                        setPosSymbolCode(e.target.value);
+                        if (posFormErrors.symbol) setPosFormErrors((prev) => ({ ...prev, symbol: undefined }));
+                      }}
                       placeholder={t("searchSymbolPlaceholder")}
                       allowClear
+                      status={posFormErrors.symbol ? "error" : undefined}
                     />
+                    {posFormErrors.symbol && (
+                      <span className="form-error-text" style={{ color: "#ff4d4f", fontSize: 12 }}>{posFormErrors.symbol}</span>
+                    )}
                   </label>
                   <label>
                     <span>{t("quantity")}</span>
                     <InputNumber
                       value={posQuantity}
-                      onChange={(v) => setPosQuantity(v)}
+                      onChange={(v) => {
+                        setPosQuantity(v);
+                        if (posFormErrors.quantity) setPosFormErrors((prev) => ({ ...prev, quantity: undefined }));
+                      }}
                       min={0}
                       style={{ width: "100%" }}
                       placeholder="0"
+                      status={posFormErrors.quantity ? "error" : undefined}
                     />
+                    {posFormErrors.quantity && (
+                      <span className="form-error-text" style={{ color: "#ff4d4f", fontSize: 12 }}>{posFormErrors.quantity}</span>
+                    )}
                   </label>
                   <label>
                     <span>{t("avgCost")}</span>
                     <InputNumber
                       value={posAvgCost}
-                      onChange={(v) => setPosAvgCost(v)}
+                      onChange={(v) => {
+                        setPosAvgCost(v);
+                        if (posFormErrors.avgCost) setPosFormErrors((prev) => ({ ...prev, avgCost: undefined }));
+                      }}
                       min={0}
                       step={0.01}
                       style={{ width: "100%" }}
                       placeholder="0.00"
+                      status={posFormErrors.avgCost ? "error" : undefined}
                     />
+                    {posFormErrors.avgCost && (
+                      <span className="form-error-text" style={{ color: "#ff4d4f", fontSize: 12 }}>{posFormErrors.avgCost}</span>
+                    )}
                   </label>
                   <div className="position-form-actions">
                     <Space>
                       <Button
                         type="primary"
                         loading={savingPosition}
-                        disabled={!posSymbolCode.trim() || posQuantity == null || posAvgCost == null}
                         onClick={handleUpsertPosition}
                       >
                         {t("addPosition")}

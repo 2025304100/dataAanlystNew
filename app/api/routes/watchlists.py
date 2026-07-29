@@ -26,6 +26,11 @@ from app.services.observations import (
     restore_observation,
     update_observation,
 )
+from app.services.opportunity_transitions import (
+    exclude_observation as _audit_exclude_observation,
+    restore_observation as _audit_restore_observation,
+    transition_candidate_to_observation,
+)
 
 
 router = APIRouter()
@@ -174,19 +179,29 @@ def add_observation_from_candidate(
     payload: ObservationCandidateCreate,
     db: Session = Depends(get_db),
 ) -> ObservationRead:
-    """候选加入观察池（WP2.3，单事务写来源与评分快照）。
+    """候选加入观察池（WP2.3 + WP3.2，单事务写来源、评分快照与审计事件）。
 
     路径参数 watchlist_id 优先于 payload 中的同名属性。
+    幂等：同一候选重复请求返回已有观察项，不重复创建审计事件。
+    归档/恢复：归档后再次候选加入会自动恢复为 watching 并补写审计事件。
+
+    UAT-PAGES.1 P1-02：服务层对"候选不存在/标的不存在"抛 ValueError，
+    路由层捕获并转为 HTTPException(404)，全局异常处理器包装为
+    WP-S.6 统一错误协议（error_code=NOT_FOUND），不再返回 500 UNKNOWN_ERROR。
     """
-    item = add_candidate_to_observation(
-        db,
-        candidate_id=payload.candidate_id,
-        watchlist_id=watchlist_id,
-        note=payload.note,
-        priority=payload.priority,
-        tags=payload.tags,
-        target_portfolio_id=payload.target_portfolio_id,
-    )
+    try:
+        item, _event = transition_candidate_to_observation(
+            db,
+            candidate_id=payload.candidate_id,
+            watchlist_id=watchlist_id,
+            note=payload.note,
+            priority=payload.priority,
+            tags=payload.tags,
+            target_portfolio_id=payload.target_portfolio_id,
+        )
+    except ValueError as exc:
+        # 候选不存在 / 标的无法解析 → 404 NOT_FOUND（统一错误协议）
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     rich = get_observation_rich(db, watchlist_item_id=item.id)
     return ObservationRead(**rich.to_dict())
 
@@ -229,10 +244,23 @@ def archive_observation_endpoint(
     observation_id: int,
     db: Session = Depends(get_db),
 ) -> ObservationRead:
-    """归档观察项（WP2.3，不物理删除）。"""
+    """归档观察项（WP2.3 + WP3.2，不物理删除，单事务写审计事件）。
+
+    审计：写入 opportunity_transition_events（event_type='exclude'），幂等。
+    """
     item = archive_observation(db, watchlist_item_id=observation_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Observation not found")
+    # 写审计事件（幂等，重复归档不重复写事件）
+    try:
+        _audit_exclude_observation(
+            db,
+            watchlist_item_id=observation_id,
+            reason="manual archive",
+        )
+    except ValueError:
+        # 审计服务判定对象不存在时不影响已完成的归档状态
+        pass
     rich = get_observation_rich(db, watchlist_item_id=item.id)
     return ObservationRead(**rich.to_dict())
 
@@ -247,10 +275,21 @@ def restore_observation_endpoint(
     observation_id: int,
     db: Session = Depends(get_db),
 ) -> ObservationRead:
-    """恢复归档的观察项（WP2.3）。"""
+    """恢复归档的观察项（WP2.3 + WP3.2，单事务写审计事件）。
+
+    审计：写入 opportunity_transition_events（event_type='restore'），幂等。
+    """
     item = restore_observation(db, watchlist_item_id=observation_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Observation not found")
+    # 写审计事件（幂等，重复恢复不重复写事件）
+    try:
+        _audit_restore_observation(
+            db,
+            watchlist_item_id=observation_id,
+        )
+    except ValueError:
+        pass
     rich = get_observation_rich(db, watchlist_item_id=item.id)
     return ObservationRead(**rich.to_dict())
 

@@ -427,13 +427,15 @@ def _query_data_health(
     """查询数据健康（best-effort）。
 
     返回 (bar_count, data_credibility_label)。
-    data_credibility 简单判定：>=250 high，>=60 medium，否则 low。
+    data_credibility 简单判定：>=250 high，>=60 medium，>0 low，0 时 None（无数据不可评估）。
     """
     count = db.execute(
         select(func.count(DailyBar.id)).where(DailyBar.symbol_id == symbol_id)
     ).scalar()
     if count is None:
         return None, None
+    if count == 0:
+        return 0, None
     if count >= 250:
         credibility = "high"
     elif count >= 60:

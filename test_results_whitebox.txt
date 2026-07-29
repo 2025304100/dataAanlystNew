@@ -1,0 +1,609 @@
+================================================================================
+1. SECURITY ANALYSIS
+================================================================================
+
+--- 1a. Hardcoded Secrets / API Keys / Passwords ---
+  app\models\ai_profile.py:47 [Hardcoded API key] AUTH_API_KEY = "api_key"
+  app\services\akshare_registry.py:11 [Hardcoded API key] df = call_akshare_with_retry(ak.stock_zh_a_spot_em, api_key="stock_zh_a_spot_em")
+  app\services\capital_flow_data.py:77 [Hardcoded API key] df = call_akshare_with_retry(ak.stock_individual_fund_flow, stock=code, market=market, api_key="stock_individual_fund_fl
+  app\services\capital_flow_data.py:255 [Hardcoded API key] df = call_akshare_with_retry(ak.stock_hsgt_north_net_flow_in, symbol="北上", api_key="stock_hsgt_north_net_flow_in", db=db
+  app\services\discovery_tasks.py:541 [Hardcoded API key] api_key="fund_etf_spot_em",
+  app\services\discovery_tasks.py:573 [Hardcoded API key] api_key="fund_etf_category_sina",
+  app\services\etf_basic_data.py:73 [Hardcoded API key] df = call_akshare_with_retry(ak.fund_etf_spot_em, api_key="fund_etf_spot_em", db=db)
+  app\services\etf_basic_data.py:100 [Hardcoded API key] df = call_akshare_with_retry(ak.fund_etf_fund_info_em, fund=code, api_key="fund_etf_fund_info_em", db=db)
+  app\services\etf_basic_data.py:128 [Hardcoded API key] df = call_akshare_with_retry(ak.fund_etf_fund_daily_em, api_key="fund_etf_fund_daily_em", db=db)
+  app\services\financial_data.py:29 [Hardcoded API key] _FINANCIAL_API_KEY = "stock_financial_analysis_indicator_em"
+  app\services\fundamental_data.py:81 [Hardcoded API key] df = call_akshare_with_retry(ak.stock_zh_a_spot_em, api_key="stock_zh_a_spot_em", db=db)
+  app\services\fundamental_data.py:105 [Hardcoded API key] df = call_akshare_with_retry(ak.stock_individual_info_em, symbol=code, api_key="stock_individual_info_em", db=db)
+  app\services\fundamental_data.py:127 [Hardcoded API key] api_key="stock_value_em",
+  app\services\hot_rank_data.py:25 [Hardcoded API key] _API_KEY = "stock_hot_rank_em"
+  app\services\lhb_data.py:29 [Hardcoded API key] _API_KEY = "stock_lhb_jgmmtj_em"
+  app\services\market_data.py:166 [Hardcoded API key] api_key="stock_zh_a_daily",
+  app\services\market_data.py:283 [Hardcoded API key] api_key="stock_zh_a_hist_tx",
+  app\services\market_data.py:299 [Hardcoded API key] api_key="stock_zh_a_hist",
+  app\services\market_data.py:313 [Hardcoded API key] api_key="stock_zh_a_daily",
+  app\services\market_data.py:328 [Hardcoded API key] api_key="stock_zh_a_hist_tx",
+  app\services\market_data.py:344 [Hardcoded API key] api_key="fund_etf_hist_em",
+  app\services\market_data.py:354 [Hardcoded API key] api_key="fund_etf_hist_sina",
+  app\services\market_data.py:366 [Hardcoded API key] api_key="stock_us_daily",
+  app\services\news.py:217 [Hardcoded API key] api_key="stock_news_em", max_attempts=2,
+  app\services\news.py:236 [Hardcoded API key] api_key="stock_zh_a_disclosure_report_cninfo",
+  app\services\tail_proxy_data.py:31 [Hardcoded API key] _API_KEY = "stock_zh_a_hist_min_em"
+  app\services\universe_sync.py:97 [Hardcoded API key] api_key="fund_etf_spot_em",
+  app\services\universe_sync.py:108 [Hardcoded API key] api_key="fund_etf_category_sina",
+  app\services\factors\capital_flow.py:34 [Hardcoded API key] api_key="stock_individual_fund_flow",
+  app\services\factors\capital_flow.py:64 [Hardcoded API key] api_key="stock_lhb_detail_em",
+  app\services\factors\capital_flow.py:104 [Hardcoded API key] api_key="stock_lhb_jgmmtj_em",
+  app\services\factors\fundamental.py:57 [Hardcoded API key] api_key="stock_value_em",
+  app\services\factors\fundamental.py:99 [Hardcoded API key] api_key="stock_lrb_em",
+  app\services\factors\fundamental.py:142 [Hardcoded API key] api_key="stock_financial_analysis_indicator_em",
+  app\services\factors\macro.py:30 [Hardcoded API key] api_key="bond_zh_us_rate",
+  app\services\factors\sentiment.py:24 [Hardcoded API key] api_key="stock_hot_rank_em",
+  app\services\factors\tail_proxy.py:46 [Hardcoded API key] api_key="stock_zh_a_hist_min_em",
+  app\services\market_data_sources\sources\akshare_source.py:68 [Hardcoded API key] api_key="stock_zh_a_hist",
+  app\services\market_data_sources\sources\akshare_source.py:98 [Hardcoded API key] api_key="fund_etf_hist_em",
+  app\services\market_data_sources\sources\akshare_source.py:132 [Hardcoded API key] api_key="stock_zh_a_daily",
+  app\services\market_data_sources\sources\akshare_source.py:158 [Hardcoded API key] api_key="fund_etf_hist_sina",
+  app\services\market_data_sources\sources\akshare_source.py:199 [Hardcoded API key] api_key="stock_zh_a_hist_tx",
+  app\services\market_data_sources\sources\akshare_source.py:228 [Hardcoded API key] api_key="stock_us_daily",
+  Total: 43
+
+--- 1b. SQL Injection Vulnerabilities ---
+  app\db\init_db.py:83 [SQL injection via f-string] conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN "{name}" {ddl}'))
+  app\db\init_db.py:725 [SQL injection via f-string] conn.execute(text(f"ALTER TABLE sim_orders ADD COLUMN {col_name} {col_type}"))
+  app\db\init_db.py:740 [SQL injection via f-string] conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON sim_orders ({idx_cols})"))
+  app\db\init_db.py:780 [SQL injection via f-string] conn.execute(text(f"ALTER TABLE sim_orders ADD COLUMN {col_name} {col_type}"))
+  app\db\init_db.py:795 [SQL injection via f-string] conn.execute(text(f"CREATE INDEX {idx_name} ON sim_orders ({idx_cols})"))
+  app\db\init_db.py:1129 [SQL injection via f-string] conn.execute(text(f"ALTER TABLE scores ADD COLUMN {col_name} {col_ddl}"))
+  app\db\init_db.py:1174 [SQL injection via f-string] conn.execute(text(f"ALTER TABLE factors ADD COLUMN {col_name} {col_ddl}"))
+  app\db\init_db.py:1191 [SQL injection via f-string] conn.execute(text(f"ALTER TABLE portfolios ADD COLUMN {col_name} {col_ddl}"))
+  app\db\init_db.py:1219 [SQL injection via f-string] text(f"ALTER TABLE external_endpoint_runtime ADD COLUMN {col_name} {col_ddl}")
+  app\db\init_db.py:1250 [SQL injection via f-string] conn.execute(text(f"ALTER TABLE async_tasks ADD COLUMN {col_name} {col_ddl}"))
+  app\db\init_db.py:1278 [SQL injection via f-string] conn.execute(text(f"ALTER TABLE discovery_tasks ADD COLUMN {col_name} {col_ddl}"))
+  app\db\init_db.py:1309 [SQL injection via f-string] conn.execute(text(f"ALTER TABLE scan_results ADD COLUMN {col_name} {col_ddl}"))
+  app\db\init_db.py:1344 [SQL injection via f-string] conn.execute(text(f"ALTER TABLE scan_runs ADD COLUMN {col_name} {col_ddl}"))
+  app\db\init_db.py:1369 [SQL injection via f-string] conn.execute(text(f"ALTER TABLE `{tbl}` ENGINE=InnoDB"))
+  Total: 14
+
+--- 1c. XSS Vulnerabilities (dangerouslySetInnerHTML) ---
+  No dangerouslySetInnerHTML usage found.
+  Total: 0
+
+--- 1d. Path Traversal Vulnerabilities ---
+  No path traversal patterns found.
+  Total: 0
+
+================================================================================
+2. ERROR HANDLING QUALITY
+================================================================================
+
+--- 2a. Bare except: Clauses ---
+  No bare except: clauses found. Good practice.
+  Total: 0
+
+--- 2b. API Routes Missing try/except ---
+  Routes WITH try/except: 61
+  Routes WITHOUT try/except: 215
+  Sample routes without try/except (first 20):
+    app\api\routes\ai_config.py:403 @router.get("/settings/ai-config", response_model=AiConfigRead)
+    app\api\routes\ai_config.py:504 @router.post("/settings/ai-config/models")
+    app\api\routes\ai_profiles.py:73 @router.get("/ai/profiles", response_model=list[AIProfileRead])
+    app\api\routes\ai_profiles.py:165 @router.delete("/ai/profiles/{profile_id}")
+    app\api\routes\ai_profiles.py:175 @router.post("/ai/profiles/{profile_id}/test", response_model=AIProfileTestResult)
+    app\api\routes\ai_profiles.py:183 @router.get("/ai/profiles/{profile_id}/models")
+    app\api\routes\ai_profiles.py:190 @router.get("/ai/profiles/{profile_id}/usage", response_model=AIProfileUsage)
+    app\api\routes\ai_profiles.py:200 @router.get("/ai/health", response_model=list[AIProfileHealth])
+    app\api\routes\ai_sessions.py:176 @router.post("/ai/sessions")
+    app\api\routes\ai_sessions.py:353 @router.get("/ai/sessions")
+    app\api\routes\ai_sessions.py:372 @router.get("/ai/sessions/{session_id}")
+    app\api\routes\ai_sessions.py:381 @router.get("/ai/sessions/{session_id}/messages")
+    app\api\routes\ai_sessions.py:403 @router.delete("/ai/sessions/{session_id}")
+    app\api\routes\ai_sessions.py:420 @router.get("/ai/sessions/{session_id}/audit")
+    app\api\routes\akshare_apis.py:156 @router.get("/external-data/apis", response_model=list[ApiStatus])
+    app\api\routes\akshare_apis.py:163 @router.get("/external-data/apis/strategies", response_model=list[StrategyInfo])
+    app\api\routes\akshare_apis.py:296 @router.put("/external-data/apis/{api_key}", response_model=ApiStatus)
+    app\api\routes\alerts.py:25 @router.get("/alerts/rules", response_model=list[AlertRuleRead])
+    app\api\routes\alerts.py:31 @router.post("/alerts/rules", response_model=AlertRuleRead)
+    app\api\routes\alerts.py:47 @router.patch("/alerts/rules/{rule_id}", response_model=AlertRuleRead)
+    ... and 195 more
+
+--- 2c. Database Session Management ---
+  No direct session management issues found.
+  Total: 0
+
+================================================================================
+3. CODE QUALITY ISSUES
+================================================================================
+
+--- 3a. TODO/FIXME/HACK Comments ---
+  app\schemas\error_sanitizer.py:23 [XXX] ）
+  app\schemas\error_sanitizer.py:29 [XXX] / pwd=xxx（不区分大小写）
+  app\schemas\error_sanitizer.py:35 [XXX] 或 smtp...password: xxx
+  app\schemas\error_sanitizer.py:41 [XXX] / api_key=xxx / apikey=xxx / secret=xxx
+  app\services\auto_trade_dual_run.py:357 [TODO] 创建差异记录表（如需持久化）
+  app\services\auto_trade_dual_run.py:387 [TODO] 查询历史差异记录
+  app\services\auto_trade_member_source.py:204 [TODO] WP6.5 后续接入组合级风控规则（仓位/集中度/预算）
+  app\services\auto_trade_member_source.py:673 [TODO] WP6.5 接入 compute_position_budget 做实际仓位计算
+  app\services\auto_trade_safety.py:199 [TODO] 接入规则版本表后实现真实查询
+  app\services\external_data_gateway.py:150 [XXX] / pwd=xxx
+  app\services\market_data.py:84 [XXX] 新代码 / 4xx 8xx 老代码）。"""
+  app\services\market_data.py:154 [XXX] /830xxx）返回空 dict_list，
+  app\services\market_data.py:261 [XXX] 前缀可用）
+  app\services\market_data.py:262 [XXX] /830xxx）返回空数据会触发 KeyError，
+  app\services\universe_sync.py:41 [XXX] 为北交所新代码段（2024年起新增），优先判断，避免被 "9" → "sh" 误判
+  app\services\universe_sync.py:66 [XXX] 为北交所新代码段，8xx/4xx 为北交所/老三板
+  app\services\universe_sync.py:254 [XXX] 旧记录 market='sh'）
+  app\services\ai\context_pack.py:52 [XXX] 、key-xxx、AKIA-xxx 等
+  app\services\ai\context_pack.py:59 [XXX] 、?token=xxxx）
+  app\services\ai\context_pack.py:63 [XXX] 、pwd=xxx）
+  app\services\ai\context_pack.py:72 [XXX] 形态脱敏）
+  app\services\ai\drafts\order.py:11 [XXX] 校验
+  app\services\ai\drafts\order.py:12 [XXX] 调用 place_sim_order 时会再次重新校验（防止确认期间数据变化）
+  app\services\ai\drafts\_common.py:37 [XXX] ）
+  app\services\ai\drafts\__init__.py:12 [XXX] (db, context, ai_suggestion) → AI 建议（不写 DB）
+  app\services\ai\drafts\__init__.py:14 [XXX] (db, suggested_payload) → 系统规则校验和变更预览（dry-run，不写 DB）
+  app\services\ai\drafts\__init__.py:16 [XXX] (db, audit_id) → 用户确认后执行（调用普通业务 API）
+  app\services\notifications\base.py:161 [XXX] / token=xxx 等替换为 ***，
+  app\services\notifications\dingtalk.py:39 [XXX] ",
+  app\services\notifications\dingtalk.py:40 [XXX] ",
+  app\services\notifications\event_emitter.py:10 [XXX] 调用）
+  app\services\notifications\webhook.py:9 [XXX] " 或 "xxx"）（敏感）
+  app\services\notifications\webhook.py:128 [XXX] " 与裸 token
+  app\services\notifications\wxpusher.py:39 [XXX] ",
+  app\services\notifications\wxpusher.py:40 [XXX] "],
+  frontend/src\api\client.ts:183 [TODO] 待后续类型强化——下方 requestJson<any>/requestJson<any[]> 调用保留 any 是为了
+  frontend/src\components\symbol-research\SymbolResearchShell.tsx:1083 [TODO] 待后续类型强化——ECharts tooltip 回调参数类型较复杂，暂保留 any
+  frontend/src\components\symbol-research\SymbolResearchShell.tsx:1266 [TODO] 待后续类型强化——ECharts markPoint 配置类型暂保留 as any
+  Total: 38
+
+--- 3b. Deprecated API Usage ---
+  app\main.py:24 [Deprecation warning] DEPRECATED_ENDPOINTS,
+  app\main.py:27 [Deprecation warning] _match_deprecated,
+  app\main.py:283 [Deprecation warning] # 对所有进入的请求匹配 DEPRECATED_ENDPOINTS 注册表：
+  app\main.py:296 [Deprecation warning] entry = _match_deprecated(path, method)
+  app\middleware\deprecation_log.py:4 [Deprecation warning] 1. 对已标记为 deprecated 的 API 端点添加 HTTP 废弃头：
+  app\middleware\deprecation_log.py:13 [Deprecation warning] - 废弃端点注册表（DEPRECATED_ENDPOINTS）集中管理，便于扩展
+  app\middleware\deprecation_log.py:52 [Deprecation warning] DEPRECATED_ENDPOINTS: list[dict[str, Any]] = [
+  app\middleware\deprecation_log.py:80 [Deprecation warning] def _match_deprecated(path: str, method: str) -> dict[str, Any] | None:
+  app\middleware\deprecation_log.py:86 [Deprecation warning] for entry in DEPRECATED_ENDPOINTS:
+  app\middleware\deprecation_log.py:264 [Deprecation warning] "DEPRECATED_ENDPOINTS",
+  app\models\api_deprecation_log.py:9 [Deprecation warning] - 仅记录被标记为 deprecated 的端点访问，不影响正常 API
+  app\models\api_deprecation_log.py:26 [Deprecation warning] 每次访问被标记为 deprecated 的端点时写入一条记录。
+  Total: 12
+
+--- 3c. Potential Race Conditions ---
+  app\main.py:66 [async + global state without lock] async def lifespan(_: FastAPI):
+  app\api\routes\market_data.py:40 [async + global state without lock] async def trigger_market_data_update(payload: MarketDataUpdateRequest, db: Session = Depends(get_db)
+  app\services\scheduled_tasks.py:729 [async + global state without lock] async def scheduler_loop() -> None:
+  Total: 3
+
+--- 3d. Potential Memory Leaks ---
+  app\services\akshare_utils.py:139 [Unclosed HTTP client] "Failed to harden requests.Session (UA/timeout/Connection:close NOT applied): %s. "
+  app\services\secret_store.py:155 [Unbounded dict/cache] self._cache = {}
+  Total: 2
+
+================================================================================
+4. DATABASE LAYER
+================================================================================
+
+--- 4a. Model Index Definitions ---
+  Models WITH indexes: 26
+  Models WITHOUT indexes: 19
+  Models missing indexes:
+    app/models/ai_profile.py
+    app/models/akshare_api_config.py
+    app/models/alert.py
+    app/models/api_deprecation_log.py
+    app/models/async_task.py
+    app/models/backtest.py
+    app/models/custom_indicator.py
+    app/models/discovery.py
+    app/models/discovery_plan.py
+    app/models/external_endpoint_runtime.py
+    app/models/factor_runtime.py
+    app/models/journal_entry.py
+    app/models/market_event.py
+    app/models/review.py
+    app/models/scan.py
+    app/models/scheduled_task.py
+    app/models/signal_rule.py
+    app/models/symbol.py
+    app/models/trade_setup.py
+
+--- 4b. Potential N+1 Query Patterns ---
+  Found 22 potential N+1 patterns:
+    app\models\ai_session.py:161 [Relationship without eager loading] messages: Mapped[list["AIMessage"]] = relationship(
+    app\models\ai_session.py:256 [Relationship without eager loading] session: Mapped["AISession"] = relationship("AISession", back_populates="messages")
+    app\models\ai_session.py:258 [Relationship without eager loading] action_audits: Mapped[list["AIActionAudit"]] = relationship(
+    app\models\ai_session.py:344 [Relationship without eager loading] message: Mapped["AIMessage"] = relationship("AIMessage", back_populates="action_audits")
+    app\models\daily_bar.py:28 [Relationship without eager loading] symbol_ref = relationship("Symbol", back_populates="daily_bars")
+    app\models\factor_model.py:81 [Relationship without eager loading] weights = relationship(
+    app\models\factor_model.py:111 [Relationship without eager loading] model_run = relationship("FactorModelRun", back_populates="weights")
+    app\models\portfolio.py:29 [Relationship without eager loading] rules = relationship("PortfolioRule", back_populates="portfolio_ref", cascade="all, delete-orphan")
+    app\models\portfolio.py:30 [Relationship without eager loading] positions = relationship("Position", back_populates="portfolio_ref", cascade="all, delete-orphan")
+    app\models\portfolio.py:49 [Relationship without eager loading] portfolio_ref = relationship("Portfolio", back_populates="rules")
+    app\models\portfolio.py:69 [Relationship without eager loading] portfolio_ref = relationship("Portfolio", back_populates="positions")
+    app\models\scan.py:56 [Relationship without eager loading] results = relationship("ScanResult", back_populates="scan_run_ref", cascade="all, delete-orphan")
+    app\models\scan.py:84 [Relationship without eager loading] scan_run_ref = relationship("ScanRun", back_populates="results")
+    app\models\scheduled_task.py:38 [Relationship without eager loading] runs: Mapped[list["ScheduledTaskRun"]] = relationship(
+    app\models\scheduled_task.py:61 [Relationship without eager loading] schedule: Mapped[ScheduledTask] = relationship(back_populates="runs")
+    app\models\score.py:72 [Relationship without eager loading] symbol_ref = relationship("Symbol", back_populates="scores")
+    app\models\symbol.py:28 [Relationship without eager loading] daily_bars = relationship("DailyBar", back_populates="symbol_ref", cascade="all, delete-orphan")
+    app\models\symbol.py:29 [Relationship without eager loading] scores = relationship("Score", back_populates="symbol_ref", cascade="all, delete-orphan")
+    app\models\universe.py:47 [Relationship without eager loading] daily_bars = relationship("UniverseDailyBar", back_populates="universe_symbol_ref", cascade="all, de
+    app\models\universe.py:79 [Relationship without eager loading] universe_symbol_ref = relationship("UniverseSymbol", back_populates="daily_bars")
+    ... and 2 more
+
+--- 4c. Alembic Migration Status ---
+  Migration files found: 21
+    alembic/versions/2026_07_19_0001_external_endpoint_runtime.py
+    alembic/versions/2026_07_23_0001_scan_runs_snapshot_id.py
+    alembic/versions/2026_07_23_0002_scan_results_columns.py
+    alembic/versions/2026_07_23_0003_scores_columns.py
+    alembic/versions/2026_07_23_0004_factors_columns.py
+    alembic/versions/2026_07_23_0005_backtest_runs_columns.py
+    alembic/versions/2026_07_23_0006_trade_setups_columns.py
+    alembic/versions/2026_07_23_0007_indicator_journal_discovery_columns.py
+    alembic/versions/2026_07_23_0008_portfolios_auto_trade_columns.py
+    alembic/versions/2026_07_23_0009_discovery_tasks_perf_columns.py
+    ... and 11 more
+  alembic.ini: Present
+
+--- 4d. DatabaseManager Singleton Pattern ---
+  File: app/db/manager.py
+  Has singleton pattern (_instance/__instance): True
+  Has __new__ method: False
+  Has initialization guard: True
+  Assessment: Singleton pattern appears implemented.
+
+================================================================================
+5. FRONTEND CODE QUALITY
+================================================================================
+
+--- 5a. Unhandled Promise Rejections ---
+  No unhandled promise patterns found.
+
+--- 5b. Missing useEffect Cleanup ---
+  Found 21 useEffect cleanup issues:
+    frontend\src\App.tsx:42 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\AiChatDrawer.tsx:26 [useEffect with setTimeout but no clearTimeout] useEffect(() => {
+    frontend\src\components\AlertCenter.tsx:123 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\CustomIndicatorSettings.tsx:450 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\DbConfigSection.tsx:47 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\DbConfigSection.tsx:51 [useEffect without cleanup] useEffect(() => () => {
+    frontend\src\components\MacroData.tsx:209 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\MacroData.tsx:213 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\MacroData.tsx:230 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\MarketNews.tsx:272 [useEffect without cleanup] useEffect(() => { loadData(); }, [loadData]);
+    frontend\src\components\UniverseDataPanel.tsx:298 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\ai\AISettings.tsx:150 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\notifications\ChannelConfig.tsx:168 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\notifications\DeliveryLog.tsx:170 [useEffect without cleanup] useEffect(() => {
+    frontend\src\components\opportunity\DataPrepActions.tsx:29 [useEffect without cleanup] useEffect(() => {
+    ... and 6 more
+
+--- 5c. Hardcoded Values in Frontend ---
+  frontend\src\components\AiConfigSection.tsx:24 [Hardcoded URL] service_url: "http://127.0.0.1:11434",
+  Total: 1
+
+--- 5d. TypeScript `any` Usage ---
+  Found 469 `any` usages:
+    frontend\src\App.tsx:103 } catch (error: any) {
+    frontend\src\App.tsx:147 } catch (error: any) {
+    frontend\src\App.tsx:158 } catch (error: any) {
+    frontend\src\App.tsx:169 } catch (error: any) {
+    frontend\src\App.tsx:180 } catch (error: any) {
+    frontend\src\App.tsx:191 } catch (error: any) {
+    frontend\src\api\client.ts:300 old_set: { buys: any[]; sells: any[]; rejected: any[] };
+    frontend\src\api\client.ts:301 new_set: { buys: any[]; sells: any[]; rejected: any[] };
+    frontend\src\api\client.ts:391 const rows: any[] = [];
+    frontend\src\api\client.ts:938 requestJson<{ tasks: any[] }>(`${API}/system/tasks?limit=${limit}${taskType ? `&task_type=${encodeUR
+    frontend\src\api\client.ts:974 requestJson<{ events: any[]; count: number }>(`${API}/alerts/active?limit=${limit}`),
+    frontend\src\api\client.ts:976 requestJson<{ events: any[]; unacknowledged_count: number }>(`${API}/alerts/events?limit=${limit}&in
+    frontend\src\components\AiChatDrawer.tsx:54 } catch (error: any) {
+    frontend\src\components\AiConfigSection.tsx:89 } catch (error: any) {
+    frontend\src\components\AiConfigSection.tsx:137 } catch (error: any) {
+    frontend\src\components\AiConfigSection.tsx:153 } catch (error: any) {
+    frontend\src\components\AiConfigSection.tsx:171 } catch (error: any) {
+    frontend\src\components\AkshareApiManager.tsx:46 } catch (e: any) {
+    frontend\src\components\AkshareApiManager.tsx:80 } catch (e: any) {
+    frontend\src\components\AkshareApiManager.tsx:113 } catch (e: any) {
+    ... and 449 more
+
+--- 5e. API Client Error Handling ---
+  File: frontend/src/api/client.ts
+  Has interceptor: False
+  Has error handling: True
+  Has timeout config: True
+  Has retry logic: True
+
+================================================================================
+6. TEST COVERAGE ANALYSIS
+================================================================================
+
+--- 6a. Existing Test Files ---
+  Backend test files: 135
+    tests\e2e\test_api_mgmt_flow.py
+    tests\e2e\test_discovery_flow.py
+    tests\e2e\test_external_data_sync_flow.py
+    tests\e2e\test_scoring_flow.py
+    tests\e2e\test_sim_buy.py
+    tests\e2e\test_ui_smoke.py
+    tests\performance\test_discovery_5500_sla.py
+    tests\test_blackbox_ai_sessions_api.py
+    tests\test_blackbox_api.py
+    tests\test_blackbox_api_mgmt.py
+    tests\test_blackbox_auto_mode_edge_cases.py
+    tests\test_blackbox_data_migration_audit.py
+    tests\test_blackbox_factor_settings.py
+    tests\test_blackbox_main_flow.py
+    tests\test_blackbox_notifications_api.py
+    tests\test_blackbox_release_gate.py
+    tests\test_blackbox_stability_guard.py
+    tests\test_dev_services.py
+    tests\test_migration_alembic_chain.py
+    tests\test_whitebox_ai_audit.py
+    ... and 115 more
+  Frontend test files: 39
+    frontend\src\components\__tests__\AiConfigSection.test.tsx
+    frontend\src\components\__tests__\AkshareApiManager.test.tsx
+    frontend\src\components\__tests__\AutoTradePanel.test.tsx
+    frontend\src\components\__tests__\Discovery.badges.test.tsx
+    frontend\src\components\__tests__\Discovery.test.tsx
+    frontend\src\components\__tests__\ExternalDataSync.test.tsx
+    frontend\src\components\__tests__\FactorModelSettings.test.tsx
+    frontend\src\components\__tests__\LocalFavoritesMigration.test.tsx
+    frontend\src\components\__tests__\MacroData.test.tsx
+    frontend\src\components\__tests__\ObservationPool.test.tsx
+    frontend\src\components\__tests__\OpportunityCenter.test.tsx
+    frontend\src\components\__tests__\OpportunityStatusBadges.test.tsx
+    frontend\src\components\__tests__\PortfolioBacktestPanel.test.tsx
+    frontend\src\components\__tests__\PortfolioMembersPanel.test.tsx
+    frontend\src\components\__tests__\PortfolioPerformancePanel.test.tsx
+    frontend\src\components\__tests__\PortfolioWorkbench.badges.test.tsx
+    frontend\src\components\__tests__\PortfolioWorkbench.test.tsx
+    frontend\src\components\__tests__\ScheduledTaskManager.test.tsx
+    frontend\src\components\__tests__\ScoringConfigSettings.test.tsx
+    frontend\src\components\__tests__\TodayDecision.badges.test.tsx
+
+--- 6b. Module Coverage Mapping ---
+  Service modules WITH tests: 116
+  Service modules WITHOUT tests: 8
+  Uncovered service modules:
+    app/services/discovery_history
+    app/services/hot_rank_task
+    app/services/index_data_task
+    app/services/market_data_sync_task
+    app/services/regions
+    app/services/symbol_cleanup
+    app/services/symbol_names
+    app/services/tail_proxy_task
+
+  Route modules WITH tests: 34
+  Route modules WITHOUT tests: 1
+  Uncovered route modules:
+    app/api/routes/discovery_plans
+
+================================================================================
+7. CONFIGURATION & ENVIRONMENT
+================================================================================
+
+--- 7a. Sensitive Config Masking in API Responses ---
+  Secret masking utility found: app/utils/secret_mask.py
+  Contains masking functions.
+  app\api\routes\ai_config.py:245 [API key in response] return str(saved.get("api_key", ""))
+  app\api\routes\akshare_apis.py:278 [API key in response] return ProbeResult(key=api_key, success=success, latency_ms=latency_ms, error=None if success else "
+  app\api\routes\akshare_apis.py:286 [API key in response] return ProbeResult(key=api_key, success=False, latency_ms=latency_ms, error=err_msg)
+  app\api\routes\akshare_apis.py:293 [API key in response] return ProbeResult(key=api_key, success=False, latency_ms=latency_ms, error=err_msg)
+  app\services\akshare_registry.py:603 [API key in response] return _config_cache.get(api_key, {
+  app\services\akshare_registry.py:629 [API key in response] return get_runtime_config(api_key).get("enabled", True)
+  app\services\akshare_registry.py:634 [API key in response] return int(get_runtime_config(api_key).get("max_retries", 3))
+  app\services\discovery_tasks.py:473 [API key in response] return call_akshare_with_retry(func, api_key=api_key, max_attempts=2, db=db)
+  app\services\universe_sync.py:84 [API key in response] return call_akshare_with_retry(func_, api_key=api_key, max_attempts=2, db=db)
+  app\services\universe_sync.py:128 [API key in response] return call_akshare_with_retry(func_, api_key=api_key, max_attempts=2, db=db)
+
+--- 7b. Environment Variable Usage ---
+  Config file: app/core/config.py
+  Environment variables referenced via os.getenv(): 38
+  Key environment variables:
+    DATABASE_URL              - Database connection string (default: SQLite in temp dir)
+    FACTOR_FEATURE_ENABLED    - Feature toggle for factor module
+    FACTOR_WEIGHT_MODE        - Factor weight mode (manual/shadow/ridge)
+    FACTOR_WAREHOUSE_PATH     - DuckDB warehouse path
+    WXPUSHER_ENABLED          - WxPusher notification toggle
+    WXPUSHER_ENDPOINT         - WxPusher API endpoint
+    WXPUSHER_APP_TOKEN        - WxPusher app token (SENSITIVE)
+    WXPUSHER_UID              - WxPusher user ID
+    OPPORTUNITY_CENTER_ENABLED - Opportunity center feature toggle
+    PORTFOLIO_MEMBERS_ENABLED  - Portfolio members feature toggle
+    AUTO_TRADE_MEMBER_SOURCE_ENABLED - Auto trade member source toggle
+    PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED - Portfolio backtest member source toggle
+    EXTERNAL_DATA_HOST_CONCURRENCY      - Host-level concurrency limit
+    EXTERNAL_DATA_INTERFACE_CONCURRENCY - Interface-level concurrency limit
+    EXTERNAL_DATA_TASK_TYPE_CONCURRENCY - Task type concurrency limit
+    EXTERNAL_DATA_L1_CACHE_TTL_SECONDS  - L1 cache TTL
+    EXTERNAL_DATA_L1_CACHE_MAXSIZE      - L1 cache max entries
+    EXTERNAL_DATA_BREAKER_FAILURE_THRESHOLD - Circuit breaker threshold
+    EXTERNAL_DATA_BREAKER_COOLDOWN_SECONDS  - Circuit breaker cooldown
+    EXTERNAL_DATA_BREAKER_MAX_COOLDOWN_SECONDS - Max circuit breaker cooldown
+    EXTERNAL_DATA_BACKOFF_BASE_SECONDS  - Exponential backoff base
+    EXTERNAL_DATA_BACKOFF_MAX_SECONDS   - Exponential backoff max
+    EXTERNAL_DATA_BACKOFF_JITTER        - Backoff jitter
+    EXTERNAL_DATA_UPSERT_BATCH_SIZE     - Batch upsert size
+    EXTERNAL_DATA_UPSERT_MAX_RETRIES    - Batch retry limit
+    EXTERNAL_DATA_GATEWAY_ENABLED       - Gateway feature toggle
+    OFFPEAK_WINDOW_START_HOUR          - Off-peak scheduling start
+    OFFPEAK_WINDOW_END_HOUR            - Off-peak scheduling end
+    EXTERNAL_DATA_FAILED_BATCH_MAX_RETRIES - Failed batch retry limit
+    DATA_FRESHNESS_AUTO_RECOVERY       - Auto recovery toggle
+    AI_SESSION_RETENTION_DAYS          - AI session retention period
+    AI_AUDIT_ENABLED                   - AI audit toggle
+    AI_AUDIT_MAX_CONTEXT_SIZE          - Audit context size limit
+  NOTE: WXPUSHER_APP_TOKEN is a sensitive value stored in env var - good practice.
+  NOTE: DB password is stored in config/db_config.json with file permission restricted to owner (S_IRUSR|S_IWUSR).
+
+--- 7c. Hardcoded Paths ---
+  app\services\market_data_sources\tdx_parser.py:139 [Hardcoded Windows path] r"C:\new_tdx",
+  app\services\market_data_sources\tdx_parser.py:140 [Hardcoded Windows path] r"D:\new_tdx",
+  app\services\market_data_sources\tdx_parser.py:141 [Hardcoded Windows path] r"C:\通达信",
+  app\services\market_data_sources\tdx_parser.py:142 [Hardcoded Windows path] r"D:\通达信",
+  app\services\market_data_sources\tdx_parser.py:143 [Hardcoded Windows path] r"C:\Program Files\通达信",
+  app\services\market_data_sources\tdx_parser.py:144 [Hardcoded Windows path] r"D:\Program Files\通达信",
+  app\services\market_data_sources\tdx_parser.py:145 [Hardcoded Windows path] r"C:\new_tdx\通达信金融终端",
+  app\services\market_data_sources\tdx_parser.py:146 [Hardcoded Windows path] r"D:\new_tdx\通达信金融终端",
+  app\services\market_data_sources\tdx_parser.py:187 [Hardcoded Windows path] tdx_path="C:\\new_tdx", Symbol(symbol="000001", market="SZ")
+  app\services\market_data_sources\tdx_parser.py:188 [Hardcoded Windows path] → Path("C:\\new_tdx\\vipdoc\\sz\\lday\\sz000001.day")
+  Total: 10
+
+================================================================================
+SUMMARY
+================================================================================
+  1. Security Issues:
+     - Hardcoded secrets: 43
+     - SQL injection risks: 14
+     - XSS risks: 0
+     - Path traversal risks: 0
+  2. Error Handling:
+     - Bare except clauses: 0
+     - Routes without try/except: 215
+     - Routes with try/except: 61
+     - DB session issues: 0
+  3. Code Quality:
+     - TODO/FIXME/HACK: 38
+     - Deprecated API usage: 12
+     - Race condition risks: 3
+     - Memory leak risks: 2
+  4. Database:
+     - Models with indexes: 26
+     - Models without indexes: 19
+     - N+1 query patterns: 22
+     - Migration files: 21
+  5. Frontend:
+     - Unhandled promises: 0
+     - useEffect cleanup issues: 21
+     - Hardcoded values: 1
+     - TypeScript any usage: 469
+  6. Test Coverage:
+     - Backend test files: 135
+     - Frontend test files: 39
+     - Uncovered services: 8
+     - Uncovered routes: 1
+  7. Configuration:
+     - Hardcoded paths: 10
+
+================================================================================
+RISK ASSESSMENT & RECOMMENDATIONS
+================================================================================
+
+[CRITICAL] 14 SQL injection risks in app/db/init_db.py
+  Severity: HIGH
+  Location: app/db/init_db.py lines 83, 725, 740, 780, 795, 1129, 1174, 1191,
+            1219, 1250, 1278, 1309, 1344, 1369
+  Detail: f-string used to construct ALTER TABLE / CREATE INDEX SQL statements.
+          While these are likely internal migration helpers (not user-facing),
+          they still pose a risk if any variable is derived from user input.
+  Recommendation: Use parameterized queries or validate/sanitize all variable
+          inputs before interpolation. Consider using alembic for all schema
+          changes instead of ad-hoc DDL in init_db.py.
+
+[HIGH] 215 of 276 API routes (78%) lack try/except error handling
+  Severity: HIGH
+  Location: All files under app/api/routes/
+  Detail: The majority of route handlers delegate error handling to FastAPI's
+          global exception handler. While this works for common exceptions,
+          it may expose stack traces or internal details to clients.
+  Recommendation: Add try/except blocks to critical routes (especially POST/PUT/
+          DELETE operations). Ensure global exception handler sanitizes error
+          messages before returning to clients.
+
+[HIGH] 469 TypeScript `any` usages in frontend
+  Severity: MEDIUM
+  Location: Throughout frontend/src/ (all .ts/.tsx files)
+  Detail: Extensive use of `any` type undermines TypeScript's type safety.
+          Common patterns: `error: any` in catch blocks, `any[]` for API
+          response data, `as any` type casts.
+  Recommendation: Define proper interfaces for API responses. Use `unknown`
+          instead of `any` for catch block errors. Enable strict ESLint rules
+          to prevent new `any` introductions.
+
+[MEDIUM] 19 database models missing index definitions
+  Severity: MEDIUM
+  Location: app/models/ (ai_profile, akshare_api_config, alert, async_task,
+            backtest, custom_indicator, discovery, discovery_plan, etc.)
+  Detail: Models without explicit indexes may suffer from slow queries as data
+          grows. SQLAlchemy defaults to indexing only primary keys.
+  Recommendation: Add __table_args__ with Index definitions for frequently
+          queried columns (e.g., foreign keys, status fields, timestamp fields).
+
+[MEDIUM] 22 potential N+1 query patterns (relationships without eager loading)
+  Severity: MEDIUM
+  Location: app/models/ (ai_session, daily_bar, factor_model, portfolio, scan,
+            scheduled_task, score, symbol, universe)
+  Detail: SQLAlchemy relationships default to lazy loading, which triggers
+          additional queries when accessing related objects in loops.
+  Recommendation: Use joinedload() or selectinload() in queries that access
+          related objects. Add lazy="joined" or lazy="selectin" to frequently
+          accessed relationships.
+
+[MEDIUM] 21 useEffect hooks missing cleanup functions
+  Severity: MEDIUM
+  Location: frontend/src/ (App.tsx, AiChatDrawer.tsx, AlertCenter.tsx,
+            CustomIndicatorSettings.tsx, DbConfigSection.tsx, MacroData.tsx,
+            MarketNews.tsx, UniverseDataPanel.tsx, AISettings.tsx, etc.)
+  Detail: useEffect hooks that set up timers, subscriptions, or async operations
+          without cleanup can cause memory leaks and stale state updates.
+  Recommendation: Add cleanup return functions to all useEffect hooks that use
+          setTimeout, setInterval, addEventListener, or async operations.
+
+[MEDIUM] 3 potential race conditions (async code + global state without locks)
+  Severity: MEDIUM
+  Location: app/main.py:66 (lifespan), app/api/routes/market_data.py:40,
+            app/services/scheduled_tasks.py:729
+  Detail: Async functions accessing/modifying global state without synchronization
+          can lead to race conditions under concurrent requests.
+  Recommendation: Use asyncio.Lock() to protect shared mutable state in async
+          contexts. Consider using dependency injection for shared resources.
+
+[LOW] 43 "api_key" parameter usages flagged as hardcoded
+  Severity: LOW (False positives)
+  Location: app/services/ (akshare_registry, capital_flow_data, discovery_tasks,
+            etf_basic_data, financial_data, fundamental_data, market_data, etc.)
+  Detail: These are NOT actual API keys/secrets. They are akshare data source
+          identifier strings (e.g., "stock_zh_a_spot_em") used as routing keys
+          for the akshare data library. This is by design.
+  Recommendation: No action needed. Consider renaming the parameter from
+          "api_key" to "source_key" or "data_key" to avoid confusion.
+
+[LOW] 10 hardcoded Windows paths in tdx_parser.py
+  Severity: LOW
+  Location: app/services/market_data_sources/tdx_parser.py:139-188
+  Detail: Hardcoded paths to TDX (Tongdaxin) installation directories.
+          These are used as search paths for auto-detection.
+  Recommendation: Make the search paths configurable via settings or environment
+          variable. The current implementation is acceptable as fallback defaults.
+
+[LOW] 38 TODO/FIXME/XXX comments
+  Severity: LOW
+  Location: Throughout app/services/ and frontend/src/
+  Detail: Many are design notes or future improvement markers. Some XXX comments
+          in error_sanitizer.py and context_pack.py are related to secret masking
+          patterns (documentation, not actual secrets).
+  Recommendation: Review periodically. Convert actionable items to issue tracker
+          entries.
+
+[INFO] DatabaseManager singleton correctly implemented
+  Detail: Thread-safe with double-checked locking pattern (threading.Lock +
+          ClassVar _instance). get_db() properly uses try/finally for session
+          cleanup. Session lifecycle is well managed.
+
+[INFO] No bare except: clauses found - good practice
+[INFO] No XSS vulnerabilities (dangerouslySetInnerHTML) found
+[INFO] No path traversal vulnerabilities found
+[INFO] Secret masking utility exists at app/utils/secret_mask.py
+[INFO] Alembic migrations properly set up with 21 migration files
+[INFO] 135 backend test files + 39 frontend test files provide good coverage
+[INFO] Only 8 service modules and 1 route module lack test coverage
+
+================================================================================
+END OF WHITE-BOX TEST REPORT
+================================================================================

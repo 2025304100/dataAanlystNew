@@ -1281,6 +1281,72 @@ def _ensure_mysql_indicator_version_columns(engine) -> None:
                     logger.warning("Failed to add %s column to discovery_tasks: %s", col_name, e)
 
 
+def _ensure_mysql_scan_result_columns(engine) -> None:
+    """scan_results 表字段补丁（MySQL 路径）。
+
+    与 _ensure_sqlite_scan_result_columns 对称；所有字段 nullable，
+    保证旧库升级幂等。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    with engine.begin() as conn:
+        db_name = conn.execute(text("SELECT DATABASE()")).scalar()
+        if not db_name:
+            return
+        scan_result_new_cols = [
+            ("warning_days", "INTEGER DEFAULT 3"),
+            ("valid_days", "INTEGER DEFAULT 5"),
+            ("is_frozen", "INTEGER DEFAULT 0"),
+            ("is_active", "INTEGER DEFAULT 1"),
+        ]
+        for col_name, col_ddl in scan_result_new_cols:
+            result = conn.execute(text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'scan_results' AND COLUMN_NAME = :col"
+            ), {"db": db_name, "col": col_name})
+            if result.first() is None:
+                try:
+                    conn.execute(text(f"ALTER TABLE scan_results ADD COLUMN {col_name} {col_ddl}"))
+                    logger.info("Added %s column to scan_results", col_name)
+                except Exception as e:
+                    logger.warning("Failed to add %s column to scan_results: %s", col_name, e)
+
+
+def _ensure_mysql_scan_run_cache_columns(engine) -> None:
+    """WP-P.6：scan_runs 表扫描缓存与摘要统计字段补丁（MySQL 路径）。
+
+    与 _ensure_sqlite_scan_run_cache_columns 对称；所有字段 nullable，
+    保证旧库升级幂等。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    with engine.begin() as conn:
+        db_name = conn.execute(text("SELECT DATABASE()")).scalar()
+        if not db_name:
+            return
+        scan_run_new_cols = [
+            ("snapshot_id", "INTEGER NULL"),
+            ("cache_key", "VARCHAR(128) NULL"),
+            ("cache_hit", "INTEGER NULL"),
+            ("total_in_snapshot", "INTEGER NULL"),
+            ("coarse_match_count", "INTEGER NULL"),
+            ("advanced_match_count", "INTEGER NULL"),
+            ("result_rows_written", "INTEGER NULL"),
+            ("degraded_reason", "VARCHAR(64) NULL"),
+        ]
+        for col_name, col_ddl in scan_run_new_cols:
+            result = conn.execute(text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = :db AND TABLE_NAME = 'scan_runs' AND COLUMN_NAME = :col"
+            ), {"db": db_name, "col": col_name})
+            if result.first() is None:
+                try:
+                    conn.execute(text(f"ALTER TABLE scan_runs ADD COLUMN {col_name} {col_ddl}"))
+                    logger.info("Added %s column to scan_runs", col_name)
+                except Exception as e:
+                    logger.warning("Failed to add %s column to scan_runs: %s", col_name, e)
+
+
 def _convert_myisam_to_innodb(engine) -> None:
     """将 MySQL 中已存在的 MyISAM 表转为 InnoDB，确保外键兼容。"""
     import logging
@@ -1391,6 +1457,10 @@ def init_db() -> None:
         _ensure_mysql_backtest_snapshot_columns(eng)
         # WP2.1：watchlist_items 正式观察池扩展字段（MySQL 路径）
         _ensure_mysql_watchlist_item_columns(eng)
+        # scan_results 表字段补丁（MySQL 路径）
+        _ensure_mysql_scan_result_columns(eng)
+        # WP-P.6：scan_runs 表扫描缓存字段补丁（MySQL 路径）
+        _ensure_mysql_scan_run_cache_columns(eng)
 
     # WP2.1：将历史 watchlist_items 标记为 legacy_manual_unknown（SQLite/MySQL 通用，幂等）
     _migrate_legacy_watchlist_items_origin_type(eng)

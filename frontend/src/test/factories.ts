@@ -223,6 +223,9 @@ export function makeMockContext(overrides: Partial<AppContextValue> = {}): AppCo
     simPrice: "",
     candidateSearch: "",
     globalLoading: false,
+    capabilities: null,
+    capabilitiesLoading: false,
+    detailFocusRequest: 0,
     signalRulePreview: null,
     discoveryPolling: false,
     syncPolling: false,
@@ -243,6 +246,11 @@ export function makeMockContext(overrides: Partial<AppContextValue> = {}): AppCo
     setSignalSampleLimit: noopSync,
     showToast: noopSync as any,
     loadPortfolios: noop as any,
+    // P0-7：组合管理方法
+    switchPortfolio: noop as any,
+    createPortfolio: noop as any,
+    updatePortfolio: noop as any,
+    deletePortfolio: noop as any,
     loadWorkbench: noop as any,
     loadSymbolDetail: noop as any,
     loadSignalRuleConfig: noop as any,
@@ -250,6 +258,7 @@ export function makeMockContext(overrides: Partial<AppContextValue> = {}): AppCo
     saveSignalRule: noop as any,
     loadSignalRulePreview: noop as any,
     fetchDiscoveryTasks: noop as any,
+    setDiscoveryScope: noop as any,
     runDiscoveryMining: noop as any,
     sendDiscoveryTaskCommand: noop as any,
     refreshDiscoveryTasks: noop as any,
@@ -270,6 +279,10 @@ export function makeMockContext(overrides: Partial<AppContextValue> = {}): AppCo
     syncOrderForm: noopSync as any,
     removeDetailFromDock: noopSync as any,
     setSignalRulePreview: noopSync as any,
+    // WP-S-FIX.1：能力门禁方法
+    loadCapabilities: noop as any,
+    getCapability: ((_key: string) => undefined) as any,
+    isCapabilityBlocked: ((_key: string) => false) as any,
   };
   return { ...base, ...overrides };
 }

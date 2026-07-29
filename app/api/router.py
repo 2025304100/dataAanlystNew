@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import alerts, auto_trade, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, factor_models, factor_pipeline, factors, journals, linkage, macro, market_data, market_events, news, portfolios, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_profiles, ai_sessions
+from app.api.routes import alerts, auto_trade, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, factor_models, factor_pipeline, factors, journals, linkage, macro, market_data, market_events, news, notifications, portfolios, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_profiles, ai_sessions
 from app.core.config import settings
 
 
@@ -47,3 +47,5 @@ api_router.include_router(ai_profiles.router, tags=["ai-profiles"])
 api_router.include_router(linkage.router, tags=["linkage"])
 # WP-AI.6：AI 会话与审计管理
 api_router.include_router(ai_sessions.router, tags=["ai-sessions"])
+# WP-MSG.6：通知消息管理（渠道/策略/模板/发送记录）
+api_router.include_router(notifications.router, tags=["notifications"])

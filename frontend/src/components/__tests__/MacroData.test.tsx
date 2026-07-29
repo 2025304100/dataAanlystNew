@@ -1,5 +1,5 @@
-﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 
 const baseOverview = {
   region: "all",
@@ -45,11 +45,11 @@ const { mockContext, mockApi } = vi.hoisted(() => ({
   },
   mockApi: {
     getMacroOverview: vi.fn(async () => baseOverview),
-    getLatestMacroUpdateTask: vi.fn(async () => null),
-    getMacroUpdateTask: vi.fn(async () => null),
-    startMacroUpdateTask: vi.fn(async () => null),
-    cancelMacroUpdateTask: vi.fn(async () => null),
-    getMacroIndicatorHistory: vi.fn(async () => []),
+    getLatestMacroUpdateTask: vi.fn(async () => null as any),
+    getMacroUpdateTask: vi.fn(async () => null as any),
+    startMacroUpdateTask: vi.fn(async () => null as any),
+    cancelMacroUpdateTask: vi.fn(async () => null as any),
+    getMacroIndicatorHistory: vi.fn(async () => [] as any[]),
   },
 }));
 
@@ -66,22 +66,26 @@ vi.mock("echarts-for-react", () => ({
 }));
 
 import MacroData from "../MacroData";
+import { setLocale } from "../../i18n";
 
 describe("MacroData", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
     mockContext.locale = "en-US";
+    // 测试断言使用英文文案（/partial failures/i、View failure details），
+    // 需同步真实 i18n 模块的 locale（组件 t() 读取 i18n 模块 currentLocale）
+    setLocale("en-US");
     mockApi.getMacroOverview.mockImplementation(async () => ({ ...baseOverview }));
     mockApi.getLatestMacroUpdateTask.mockImplementation(async () => null);
     mockApi.getMacroIndicatorHistory.mockImplementation(async () => []);
   });
 
   afterEach(() => {
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
+    setLocale("zh-CN");
   });
 
+  // 使用真实定时器：组件轮询 interval 为 2500ms，真实定时器下约 3s 完成。
+  // fake timers 下 waitFor 的内部 setTimeout 轮询不会触发，导致测试卡死超时。
   it("keeps partial failure details after background task finishes", async () => {
     mockApi.startMacroUpdateTask.mockImplementation(async () => ({
       id: "task-1",
@@ -122,15 +126,22 @@ describe("MacroData", () => {
       expect(mockApi.getMacroOverview).toHaveBeenCalled();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Update Macro" }));
+    // 等待 overview 数据渲染完成：snapshot 非空时 empty state 消失，
+    // 页面仅剩工具栏一个 "Update Macro" 按钮。
+    // 否则 getByRole 会因匹配到 2 个按钮（工具栏 + 空状态）而报错。
+    await screen.findByText("Market Score");
 
-    await act(async () => {
-      vi.advanceTimersByTime(2600);
-    });
+    // 工具栏按钮含 ReloadOutlined 图标（aria-label="reload"），
+    // 按钮的 accessible name 为 "reload Update Macro" 而非纯 "Update Macro"，
+    // 需用正则匹配。
+    fireEvent.click(screen.getByRole("button", { name: /Update Macro/ }));
 
+    // 真实定时器下，refresh() 调用 startMacroUpdateTask 返回 queued 任务，
+    // useEffect 注册 2500ms 轮询 interval，约 2.5s 后触发 getMacroUpdateTask。
+    // waitFor 轮询检测 getMacroUpdateTask 被调用（timeout 6000ms 覆盖 2500ms interval）。
     await waitFor(() => {
       expect(mockApi.getMacroUpdateTask).toHaveBeenCalledWith("task-1");
-    });
+    }, { timeout: 6000 });
 
     expect(screen.getByText(/partial failures/i)).toBeInTheDocument();
     expect(mockContext.showToast).toHaveBeenCalledWith("info", expect.stringMatching(/partial failures/i));
@@ -138,6 +149,7 @@ describe("MacroData", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "View failure details" })[0]);
 
     expect(await screen.findByText("source timeout")).toBeInTheDocument();
-    expect(screen.getByText("US CPI YoY")).toBeInTheDocument();
-  });
+    // "US CPI YoY" 同时出现在指标表格和失败详情弹窗中，使用 getAllByText
+    expect(screen.getAllByText("US CPI YoY").length).toBeGreaterThanOrEqual(1);
+  }, 12000);
 });

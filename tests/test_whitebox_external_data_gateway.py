@@ -46,10 +46,18 @@ from app.schemas.external_data import (
 from app.services import external_data_gateway as gw
 from app.services.external_data_gateway import (
     CacheLevel,
+    FailedBatch,
     GatewayRequest,
+    clear_failed_batches,
     fetch_via_gateway,
     get_source_chain,
+    is_within_offpeak_window,
+    register_auto_recovery_callback,
     register_source_chain,
+    retry_failed_batch,
+    should_defer_for_offpeak,
+    trigger_auto_recovery,
+    unregister_auto_recovery_callback,
     unregister_source_chain,
 )
 
@@ -74,12 +82,15 @@ def _reset_gateway_state(db_session):
     # 清空 DB 中的熔断器记录
     db_session.query(ExternalEndpointRuntime).delete()
     db_session.commit()
+    # P1-08：清空失败批次注册表与自动恢复回调
+    clear_failed_batches()
     yield
     # 测试后再清理一次，避免遗留状态影响后续测试
     gw.clear_l1_cache()
     gw.reset_breaker()
     gw.reset_rate_limiter()
     gw._breaker._loaded = False
+    clear_failed_batches()
 
 
 def _seed_symbol_and_bars(db_session, symbol: str = "000001", days: int = 5):
@@ -97,7 +108,10 @@ def _seed_symbol_and_bars(db_session, symbol: str = "000001", days: int = 5):
     db_session.commit()
     db_session.refresh(sym)
 
-    today = date.today()
+    # 使用 UTC 日期而非 date.today()（本地时区日期），与 _is_fresh 的 UTC 比较保持一致。
+    # 否则在本地时间已跨天但 UTC 未跨天时（如 Asia/Shanghai 00:00-08:00），
+    # cutoff 会"超前"于 UTC now，导致 now - cutoff 为负，数据被误判为永远 fresh。
+    today = datetime.now(timezone.utc).date()
     for i in range(days):
         d = today - timedelta(days=days - 1 - i)
         db_session.add(DailyBar(
@@ -1601,3 +1615,531 @@ class TestRegisterSourceChain:
             frame, source_detail = gw._default_l4_daily_bars({"symbol": "000001"})
             assert source_detail == "source_chain"
             mock_get_chain.assert_called_once()
+
+
+# ============================================================================
+# P1-08 数据新鲜度闭环：错峰调度测试
+# ============================================================================
+
+class TestOffPeakScheduling:
+    """错峰调度窗口判定测试（P1-08）。
+
+    验证 is_within_offpeak_window / should_defer_for_offpeak 的窗口判定逻辑，
+    覆盖跨夜窗口、同日窗口、起止相同、强制错峰等场景。
+    """
+
+    def test_cross_midnight_window_inside(self, monkeypatch):
+        """跨夜窗口 22-6：23 点在窗口内。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", 22)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 6)
+        now = datetime(2024, 6, 1, 23, 0, 0)
+        assert is_within_offpeak_window(now) is True
+
+    def test_cross_midnight_window_boundary_start(self, monkeypatch):
+        """跨夜窗口 22-6：22 点（含）在窗口内。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", 22)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 6)
+        now = datetime(2024, 6, 1, 22, 0, 0)
+        assert is_within_offpeak_window(now) is True
+
+    def test_cross_midnight_window_early_morning(self, monkeypatch):
+        """跨夜窗口 22-6：凌晨 3 点在窗口内。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", 22)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 6)
+        now = datetime(2024, 6, 1, 3, 0, 0)
+        assert is_within_offpeak_window(now) is True
+
+    def test_cross_midnight_window_outside(self, monkeypatch):
+        """跨夜窗口 22-6：中午 12 点不在窗口内。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", 22)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 6)
+        now = datetime(2024, 6, 1, 12, 0, 0)
+        assert is_within_offpeak_window(now) is False
+
+    def test_same_day_window_inside(self, monkeypatch):
+        """同日窗口 1-5：3 点在窗口内。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", 1)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 5)
+        now = datetime(2024, 6, 1, 3, 0, 0)
+        assert is_within_offpeak_window(now) is True
+
+    def test_same_day_window_outside(self, monkeypatch):
+        """同日窗口 1-5：6 点不在窗口内。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", 1)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 5)
+        now = datetime(2024, 6, 1, 6, 0, 0)
+        assert is_within_offpeak_window(now) is False
+
+    def test_same_start_end_allows_all_day(self, monkeypatch):
+        """起止相同视为全天允许（禁用错峰限制）。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", 8)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 8)
+        now = datetime(2024, 6, 1, 12, 0, 0)
+        assert is_within_offpeak_window(now) is True
+
+    def test_should_defer_when_force_offpeak_and_outside(self, monkeypatch):
+        """force_offpeak=True 且在窗口外应推迟。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", 22)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 6)
+        now = datetime(2024, 6, 1, 12, 0, 0)
+        assert should_defer_for_offpeak(force_offpeak=True, now=now) is True
+
+    def test_should_not_defer_when_force_offpeak_and_inside(self, monkeypatch):
+        """force_offpeak=True 且在窗口内不应推迟。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", 22)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 6)
+        now = datetime(2024, 6, 1, 23, 0, 0)
+        assert should_defer_for_offpeak(force_offpeak=True, now=now) is False
+
+    def test_should_not_defer_when_not_force_offpeak(self, monkeypatch):
+        """force_offpeak=False 时立即执行，不推迟。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", 22)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 6)
+        now = datetime(2024, 6, 1, 12, 0, 0)
+        assert should_defer_for_offpeak(force_offpeak=False, now=now) is False
+
+    def test_invalid_hours_clamped(self, monkeypatch):
+        """越界的小时配置应被归一化到 0-23/24，不抛异常。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_START_HOUR", -5)
+        monkeypatch.setattr(settings, "OFFPEAK_WINDOW_END_HOUR", 99)
+        # start=-5 → 0, end=99 → 24 → 同日窗口 0-24 → 全天
+        now = datetime(2024, 6, 1, 12, 0, 0)
+        assert is_within_offpeak_window(now) is True
+
+
+# ============================================================================
+# P1-08 数据新鲜度闭环：失败批次续跑测试
+# ============================================================================
+
+class TestFailedBatchRegistry:
+    """失败批次注册表测试（P1-08）。
+
+    验证 record_failed_batch / list_failed_batches / retry_failed_batch 的行为：
+    - 失败批次记录后不阻塞其他标的补数
+    - 相同 interface+reason+symbols 去重
+    - 重试成功标记 resolved
+    - 超过最大重试次数标记 resolved
+    """
+
+    def test_record_and_list_unresolved(self):
+        """记录失败批次后可通过 list_failed_batches 查询到。"""
+        batch = gw.record_failed_batch(
+            interface_key="akshare.daily_bars",
+            symbols=["000001"],
+            reason="timeout",
+            error_code="timeout",
+        )
+        assert batch.batch_id is not None
+        assert batch.interface_key == "akshare.daily_bars"
+        assert batch.symbols == ["000001"]
+        assert batch.resolved is False
+        assert batch.retry_count == 0
+
+        unresolved = gw.list_failed_batches()
+        assert len(unresolved) == 1
+        assert unresolved[0].batch_id == batch.batch_id
+
+    def test_record_dedup_same_interface_reason_symbols(self):
+        """相同 interface_key + reason + symbols 的失败应去重，不创建新条目。"""
+        b1 = gw.record_failed_batch(
+            interface_key="akshare.daily_bars",
+            symbols=["000001", "000002"],
+            reason="timeout",
+        )
+        b2 = gw.record_failed_batch(
+            interface_key="akshare.daily_bars",
+            symbols=["000001", "000002"],
+            reason="timeout",
+        )
+        assert b1.batch_id == b2.batch_id  # 去重：同一批次
+        assert len(gw.list_failed_batches()) == 1
+
+    def test_record_different_symbols_creates_new(self):
+        """不同 symbols 的失败应创建新批次。"""
+        b1 = gw.record_failed_batch(
+            interface_key="akshare.daily_bars",
+            symbols=["000001"],
+            reason="timeout",
+        )
+        b2 = gw.record_failed_batch(
+            interface_key="akshare.daily_bars",
+            symbols=["000002"],
+            reason="timeout",
+        )
+        assert b1.batch_id != b2.batch_id
+        assert len(gw.list_failed_batches()) == 2
+
+    def test_record_different_reason_creates_new(self):
+        """不同 reason 的失败应创建新批次。"""
+        b1 = gw.record_failed_batch(
+            interface_key="akshare.daily_bars",
+            symbols=["000001"],
+            reason="timeout",
+        )
+        b2 = gw.record_failed_batch(
+            interface_key="akshare.daily_bars",
+            symbols=["000001"],
+            reason="connection_reset",
+        )
+        assert b1.batch_id != b2.batch_id
+        assert len(gw.list_failed_batches()) == 2
+
+    def test_list_failed_batches_filter_by_interface(self):
+        """list_failed_batches 支持按 interface_key 过滤。"""
+        gw.record_failed_batch(
+            interface_key="akshare.daily_bars", symbols=["000001"], reason="x"
+        )
+        gw.record_failed_batch(
+            interface_key="akshare.index_prices", symbols=["000300"], reason="y"
+        )
+        daily = gw.list_failed_batches(interface_key="akshare.daily_bars")
+        assert len(daily) == 1
+        assert daily[0].interface_key == "akshare.daily_bars"
+
+    def test_list_failed_batches_include_resolved(self):
+        """include_resolved=True 时返回已解决批次。"""
+        batch = gw.record_failed_batch(
+            interface_key="akshare.daily_bars", symbols=["000001"], reason="x"
+        )
+        asyncio.run(retry_failed_batch(batch.batch_id))  # 默认成功
+        unresolved = gw.list_failed_batches()
+        assert len(unresolved) == 0
+        all_batches = gw.list_failed_batches(include_resolved=True)
+        assert len(all_batches) == 1
+        assert all_batches[0].resolved is True
+
+    def test_retry_marks_resolved_on_success(self):
+        """重试成功后标记 resolved=True。"""
+        batch = gw.record_failed_batch(
+            interface_key="akshare.daily_bars", symbols=["000001"], reason="timeout"
+        )
+        updated = asyncio.run(retry_failed_batch(batch.batch_id))
+        assert updated is not None
+        assert updated.resolved is True
+        assert updated.last_retry_result == "success"
+        assert updated.retry_count == 1
+
+    def test_retry_with_fetcher_success(self):
+        """提供 retry_fetcher 且成功时标记 resolved。"""
+        batch = gw.record_failed_batch(
+            interface_key="akshare.daily_bars", symbols=["000001"], reason="timeout"
+        )
+
+        async def good_fetcher(iface, syms):
+            return pd.DataFrame([{"close": 1.0}]), "src"
+
+        updated = asyncio.run(retry_failed_batch(batch.batch_id, good_fetcher))
+        assert updated.resolved is True
+        assert updated.last_retry_result == "success"
+
+    def test_retry_with_fetcher_failure_increments_count(self):
+        """提供 retry_fetcher 且失败时增加 retry_count，不标记 resolved。"""
+        batch = gw.record_failed_batch(
+            interface_key="akshare.daily_bars", symbols=["000001"], reason="timeout"
+        )
+
+        async def bad_fetcher(iface, syms):
+            raise RuntimeError("still down")
+
+        updated = asyncio.run(retry_failed_batch(batch.batch_id, bad_fetcher))
+        assert updated.resolved is False
+        assert updated.retry_count == 1
+        assert updated.last_retry_result == "failed"
+
+    def test_retry_max_retries_marks_resolved(self, monkeypatch):
+        """超过最大重试次数后标记 resolved（不再自动重试）。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "EXTERNAL_DATA_FAILED_BATCH_MAX_RETRIES", 2)
+
+        batch = gw.record_failed_batch(
+            interface_key="akshare.daily_bars", symbols=["000001"], reason="timeout"
+        )
+
+        async def bad_fetcher(iface, syms):
+            raise RuntimeError("still down")
+
+        # 重试 2 次后应标记 resolved
+        asyncio.run(retry_failed_batch(batch.batch_id, bad_fetcher))
+        updated = asyncio.run(retry_failed_batch(batch.batch_id, bad_fetcher))
+        assert updated.resolved is True  # 达到最大重试次数
+        assert updated.retry_count == 2
+
+    def test_retry_nonexistent_returns_none(self):
+        """重试不存在的 batch_id 返回 None。"""
+        result = asyncio.run(retry_failed_batch("nonexistent_batch_id"))
+        assert result is None
+
+    def test_clear_resolved_failed_batches(self):
+        """clear_resolved_failed_batches 清理已解决批次，保留未解决。"""
+        b1 = gw.record_failed_batch(
+            interface_key="akshare.daily_bars", symbols=["000001"], reason="x"
+        )
+        gw.record_failed_batch(
+            interface_key="akshare.daily_bars", symbols=["000002"], reason="y"
+        )
+        asyncio.run(retry_failed_batch(b1.batch_id))  # 解决 b1
+        cleaned = gw.clear_resolved_failed_batches()
+        assert cleaned == 1
+        assert len(gw.list_failed_batches()) == 1  # 仅剩未解决
+
+    def test_failed_batch_does_not_block_other_records(self):
+        """失败批次记录后不阻塞其他标的的补数（可继续记录新批次）。"""
+        # 模拟补数循环：标的 1 失败，标的 2/3 成功
+        gw.record_failed_batch(
+            interface_key="akshare.daily_bars", symbols=["000001"], reason="timeout"
+        )
+        # 标的 2/3 成功（不记录失败批次），继续补数不受影响
+        gw.record_failed_batch(
+            interface_key="akshare.daily_bars", symbols=["000003"], reason="429"
+        )
+        # 两个失败批次都被记录，互不阻塞
+        assert len(gw.list_failed_batches()) == 2
+
+
+class TestFailedBatchClosedLoop:
+    """失败批次闭环集成测试（P1-08）。
+
+    验证：补数失败 → 记录批次 → 后续重试成功 → 标记 resolved 的完整闭环。
+    """
+
+    def test_record_then_retry_resolves_batch(self, monkeypatch):
+        """完整闭环：记录失败批次 → 重试成功 → resolved。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "EXTERNAL_DATA_FAILED_BATCH_MAX_RETRIES", 3)
+
+        # 1. 补数失败，记录失败批次
+        batch = gw.record_failed_batch(
+            interface_key="akshare.daily_bars",
+            symbols=["000001", "000002"],
+            reason="network down",
+            error_code="sync_failed",
+        )
+        assert not batch.resolved
+
+        # 2. 首次重试仍失败
+        async def still_down(iface, syms):
+            raise RuntimeError("network still down")
+
+        b = asyncio.run(retry_failed_batch(batch.batch_id, still_down))
+        assert not b.resolved
+        assert b.retry_count == 1
+
+        # 3. 第二次重试成功
+        async def recovered(iface, syms):
+            return pd.DataFrame([{"close": 10.0}]), "em_stock"
+
+        b = asyncio.run(retry_failed_batch(batch.batch_id, recovered))
+        assert b.resolved
+        assert b.last_retry_result == "success"
+
+        # 4. 未解决批次列表为空
+        assert len(gw.list_failed_batches()) == 0
+
+
+# ============================================================================
+# P1-08 数据新鲜度闭环：自动恢复测试
+# ============================================================================
+
+class TestAutoRecovery:
+    """数据就绪后自动恢复测试（P1-08）。
+
+    验证 trigger_auto_recovery 调用已注册回调、受配置开关控制、
+    单个回调失败不阻塞其他回调（best-effort）。
+    """
+
+    def test_trigger_calls_registered_callback(self):
+        """trigger_auto_recovery 应调用已注册的回调。"""
+        called_with: list[list[str]] = []
+
+        async def callback(symbols):
+            called_with.append(symbols)
+
+        register_auto_recovery_callback(callback)
+        try:
+            asyncio.run(trigger_auto_recovery(["000001", "000002"]))
+            assert called_with == [["000001", "000002"]]
+        finally:
+            unregister_auto_recovery_callback(callback)
+
+    def test_trigger_calls_multiple_callbacks(self):
+        """多个回调都应被调用。"""
+        call_log: list[str] = []
+
+        async def cb_a(symbols):
+            call_log.append("a")
+
+        async def cb_b(symbols):
+            call_log.append("b")
+
+        register_auto_recovery_callback(cb_a)
+        register_auto_recovery_callback(cb_b)
+        try:
+            asyncio.run(trigger_auto_recovery(["000001"]))
+            assert call_log == ["a", "b"]
+        finally:
+            unregister_auto_recovery_callback(cb_a)
+            unregister_auto_recovery_callback(cb_b)
+
+    def test_trigger_skips_when_disabled_by_setting(self, monkeypatch):
+        """DATA_FRESHNESS_AUTO_RECOVERY=False 时不调用回调。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "DATA_FRESHNESS_AUTO_RECOVERY", False)
+
+        called = {"n": 0}
+
+        async def callback(symbols):
+            called["n"] += 1
+
+        register_auto_recovery_callback(callback)
+        try:
+            asyncio.run(trigger_auto_recovery(["000001"]))
+            assert called["n"] == 0  # 被禁用，未调用
+        finally:
+            unregister_auto_recovery_callback(callback)
+
+    def test_trigger_skips_empty_symbols(self):
+        """空 symbols 列表不调用回调。"""
+        called = {"n": 0}
+
+        async def callback(symbols):
+            called["n"] += 1
+
+        register_auto_recovery_callback(callback)
+        try:
+            asyncio.run(trigger_auto_recovery([]))
+            assert called["n"] == 0
+        finally:
+            unregister_auto_recovery_callback(callback)
+
+    def test_callback_failure_does_not_block_others(self):
+        """单个回调失败不阻塞其他回调（best-effort）。"""
+        call_log: list[str] = []
+
+        async def failing_cb(symbols):
+            raise RuntimeError("recovery failed")
+
+        async def good_cb(symbols):
+            call_log.append("good")
+
+        register_auto_recovery_callback(failing_cb)
+        register_auto_recovery_callback(good_cb)
+        try:
+            asyncio.run(trigger_auto_recovery(["000001"]))
+            # 失败的回调不影响后续回调
+            assert call_log == ["good"]
+        finally:
+            unregister_auto_recovery_callback(failing_cb)
+            unregister_auto_recovery_callback(good_cb)
+
+    def test_register_dedup_same_callback(self):
+        """重复注册同一回调应去重。"""
+        called = {"n": 0}
+
+        async def callback(symbols):
+            called["n"] += 1
+
+        register_auto_recovery_callback(callback)
+        register_auto_recovery_callback(callback)  # 重复注册
+        try:
+            asyncio.run(trigger_auto_recovery(["000001"]))
+            assert called["n"] == 1  # 只调用一次
+        finally:
+            unregister_auto_recovery_callback(callback)
+
+    def test_unregister_prevents_future_calls(self):
+        """取消注册后回调不再被调用。"""
+        called = {"n": 0}
+
+        async def callback(symbols):
+            called["n"] += 1
+
+        register_auto_recovery_callback(callback)
+        unregister_auto_recovery_callback(callback)
+        asyncio.run(trigger_auto_recovery(["000001"]))
+        assert called["n"] == 0
+
+
+# ============================================================================
+# P1-08 数据新鲜度闭环：熔断降级到本地测试
+# ============================================================================
+
+class TestCircuitBreakerDegradesToLocal:
+    """熔断打开时降级到本地数据测试（P1-08 缓存优先 + fallback + 熔断）。
+
+    验证：连续失败触发熔断后，后续请求直接降级到本地过期数据，
+    不再发起远程请求（避免雪崩）。
+    """
+
+    def test_breaker_open_skips_remote_and_degrades(self, db_session, monkeypatch):
+        """熔断打开后 L4 不被调用，直接降级到本地过期数据。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "EXTERNAL_DATA_BREAKER_FAILURE_THRESHOLD", 2)
+        monkeypatch.setattr(settings, "EXTERNAL_DATA_BREAKER_COOLDOWN_SECONDS", 60)
+
+        # 注册自定义 L2 fetcher，返回明确过期的数据（cutoff 30 天前）
+        # 避免依赖 date.today() 的新鲜度判定（pre-existing L2 freshness 行为）
+        old_cutoff = gw._utcnow_naive() - timedelta(days=30)
+
+        def stale_l2(db, params):
+            return pd.DataFrame([{"trade_date": date.today(), "close": 10.0}]), old_cutoff
+
+        gw.register_l2_fetcher("test.breaker_degrade", stale_l2)
+
+        l4_calls = {"n": 0}
+
+        def failing_l4(params):
+            l4_calls["n"] += 1
+            raise RuntimeError("timeout")
+
+        gw.register_l4_fetcher("test.breaker_degrade", failing_l4)
+
+        # 直接通过 breaker API 记录失败打开熔断
+        breaker = gw._breaker
+        for _ in range(2):
+            asyncio.run(breaker.record_failure("test.breaker_degrade", "host", "timeout"))
+
+        # 熔断打开后请求：L4 不应被调用，应降级到本地过期数据
+        resp = asyncio.run(gw.fetch(
+            interface_key="test.breaker_degrade",
+            request_params={"symbol": "X"},
+            freshness_requirement=timedelta(hours=24),
+            allow_stale=True,
+        ))
+        assert l4_calls["n"] == 0  # 熔断打开，L4 未被调用
+        assert resp.source == SOURCE_STALE
+        assert resp.degraded_reason == "circuit_breaker_open"
+
+    def test_breaker_closed_allows_remote_when_no_local_data(
+        self, db_session, monkeypatch
+    ):
+        """熔断 closed 且无本地数据时允许远程请求。"""
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "EXTERNAL_DATA_BREAKER_FAILURE_THRESHOLD", 3)
+
+        l4_calls = {"n": 0}
+
+        def good_l4(params):
+            l4_calls["n"] += 1
+            return pd.DataFrame([{"trade_date": date.today(), "close": 100.0}]), "src"
+
+        gw.register_l4_fetcher("test.breaker_closed_ok", good_l4)
+
+        resp = asyncio.run(gw.fetch(
+            interface_key="test.breaker_closed_ok",
+            request_params={"symbol": "NEW"},
+            freshness_requirement=timedelta(hours=24),
+            allow_stale=True,
+        ))
+        assert resp.source == SOURCE_L4_REMOTE
+        assert l4_calls["n"] == 1

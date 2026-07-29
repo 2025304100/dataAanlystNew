@@ -28,7 +28,10 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from app.models.ai_profile import AIProfile
+from app.models.ai_session import AISession, AIMessage
 from app.models.alert import AlertEvent, AlertRule
+from app.models.async_task import AsyncTaskRecord
 from app.models.backtest import BacktestRun
 from app.models.discovery_candidate import DiscoveryCandidate
 from app.models.portfolio import Portfolio, Position
@@ -39,6 +42,7 @@ from app.models.portfolio_member import (
     STATUS_ACTIVE,
     PortfolioMember,
 )
+from app.models.review import Review
 from app.models.scheduled_task import ScheduledTask
 from app.models.scan import ScanRun
 from app.models.sim_account import CashLedger, SimOrder, SimTrade
@@ -1068,4 +1072,249 @@ class TestDataMigrationAudit:
             )
             assert got.daily_return == base["daily_return"]
             assert got.position_count == base["position_count"]
+
+    # ------------------------------------------------------------------
+    # 16. scan_runs WP-P.1 缓存字段可读（UAT-DB.3 迁移字段对账）
+    # ------------------------------------------------------------------
+    def test_scan_runs_cache_fields_readable(self, db_session):
+        """scan_runs WP-P.1 缓存字段（snapshot_id 等）迁移后可读。
+
+        验证修复 Unknown column 'scan_runs.snapshot_id' 报错根因：
+        迁移后 scan_runs 表包含 snapshot_id/cache_key/cache_hit 等字段。
+        """
+        p = _make_portfolio(db_session, name="QA-Audit-PF-ScanCache")
+        run = ScanRun(
+            portfolio_id=p.id,
+            run_name="QA-Scan-Cache-Run",
+            scope_snapshot="cn-stock",
+            status="done",
+            started_at=_utcnow_naive(),
+            finished_at=_utcnow_naive(),
+            snapshot_id=42,
+            cache_key="snapshot_42_cn_stock_hash123",
+            cache_hit=1,
+            total_in_snapshot=5500,
+            coarse_match_count=300,
+            advanced_match_count=50,
+            result_rows_written=50,
+            degraded_reason=None,
+        )
+        db_session.add(run)
+        db_session.commit()
+
+        db_session.expire_all()
+        reloaded = db_session.query(ScanRun).filter_by(id=run.id).one()
+
+        assert reloaded.snapshot_id == 42
+        assert reloaded.cache_key == "snapshot_42_cn_stock_hash123"
+        assert reloaded.cache_hit == 1
+        assert reloaded.total_in_snapshot == 5500
+        assert reloaded.coarse_match_count == 300
+        assert reloaded.advanced_match_count == 50
+        assert reloaded.result_rows_written == 50
+
+    # ------------------------------------------------------------------
+    # 17. sim_orders WP6.1 归因字段可读（UAT-DB.3 迁移字段对账）
+    # ------------------------------------------------------------------
+    def test_sim_orders_attribution_fields_readable(self, db_session):
+        """sim_orders WP6.1 归因字段迁移后可读。
+
+        验证历史订单（归因字段为 NULL）和带归因的订单都可正常读取。
+        """
+        p = _make_portfolio(db_session, name="QA-Audit-PF-Attribution")
+        sym = _make_symbol(db_session, symbol="606001", name="归因标的")
+
+        # 历史订单（归因字段为 NULL）
+        old_order = SimOrder(
+            portfolio_id=p.id, symbol_id=sym.id, side="buy",
+            order_type="market", quantity=100.0,
+            submitted_price=10.0, status="filled",
+            filled_quantity=100.0, filled_price=10.0,
+            filled_amount=1000.0, fee=5.0,
+        )
+        db_session.add(old_order)
+
+        # 带归因的新订单
+        new_order = SimOrder(
+            portfolio_id=p.id, symbol_id=sym.id, side="buy",
+            order_type="market", quantity=200.0,
+            submitted_price=20.0, status="filled",
+            filled_quantity=200.0, filled_price=20.0,
+            filled_amount=4000.0, fee=10.0,
+            source_type="member", source_id=1,
+            signal_id=99, execution_mode="auto",
+            client_order_key="pf1_member1_20260723_buy_v1",
+            decision_snapshot_json='{"reason":"auto_buy"}',
+        )
+        db_session.add(new_order)
+        db_session.commit()
+
+        db_session.expire_all()
+        orders = (
+            db_session.query(SimOrder)
+            .filter_by(portfolio_id=p.id)
+            .order_by(SimOrder.id)
+            .all()
+        )
+        assert len(orders) == 2
+
+        # 历史订单归因字段为 NULL
+        assert orders[0].member_id is None
+        assert orders[0].source_type is None
+        assert orders[0].client_order_key is None
+
+        # 新订单归因字段有值
+        assert orders[1].source_type == "member"
+        assert orders[1].source_id == 1
+        assert orders[1].signal_id == 99
+        assert orders[1].execution_mode == "auto"
+        assert orders[1].client_order_key == "pf1_member1_20260723_buy_v1"
+        assert orders[1].decision_snapshot_json == '{"reason":"auto_buy"}'
+
+    # ------------------------------------------------------------------
+    # 18. async_tasks WP-S.5 状态机字段可读（UAT-DB.3 迁移字段对账）
+    # ------------------------------------------------------------------
+    def test_async_tasks_state_machine_fields_readable(self, db_session):
+        """async_tasks WP-S.5 状态机扩展字段迁移后可读。
+
+        验证旧任务（状态机字段为 NULL）和新任务（有状态机数据）都可读取。
+        """
+        # 旧任务（状态机字段为 NULL）
+        old_task = AsyncTaskRecord(
+            id="audit-old-task",
+            task_type="market_data_sync",
+            status="done",
+            stage="done",
+            percent=100.0,
+            message="completed",
+            total=10, processed=10, ok_count=10, failed_count=0,
+        )
+        db_session.add(old_task)
+
+        # 新任务（有状态机数据）
+        new_task = AsyncTaskRecord(
+            id="audit-new-task",
+            task_type="market_data_sync",
+            status="running",
+            stage="sync",
+            percent=50.0,
+            message="syncing",
+            total=100, processed=50, ok_count=48, failed_count=2,
+            heartbeat_at=_utcnow_naive(),
+            stage_budget_seconds=300,
+            last_progress_percent=50.0,
+            current_step_description="正在同步 600000",
+            worker_thread_id="thread-001",
+            cancel_requested=0,
+        )
+        db_session.add(new_task)
+        db_session.commit()
+
+        db_session.expire_all()
+        old = db_session.query(AsyncTaskRecord).filter_by(id="audit-old-task").one()
+        new = db_session.query(AsyncTaskRecord).filter_by(id="audit-new-task").one()
+
+        # 旧任务状态机字段为 NULL
+        assert old.heartbeat_at is None
+        assert old.stage_budget_seconds is None
+        assert old.worker_thread_id is None
+
+        # 新任务状态机字段有值
+        assert new.heartbeat_at is not None
+        assert new.stage_budget_seconds == 300
+        assert new.last_progress_percent == 50.0
+        assert new.current_step_description == "正在同步 600000"
+        assert new.worker_thread_id == "thread-001"
+        assert new.cancel_requested == 0
+
+    # ------------------------------------------------------------------
+    # 19. ai_profiles 表可读写（UAT-DB.3 新表对账）
+    # ------------------------------------------------------------------
+    def test_ai_profiles_table_accessible(self, db_session):
+        """ai_profiles 表迁移后可正常读写。"""
+        profile = AIProfile(
+            name="audit-profile",
+            provider="openai",
+            model="gpt-4o-mini",
+            auth_type="bearer",
+            secret_key_ref="OPENAI_API_KEY",
+            timeout_seconds=30,
+            max_tokens=4096,
+            purpose="all",
+            priority=0,
+            is_enabled=True,
+            is_fallback=False,
+            health_status="unknown",
+        )
+        db_session.add(profile)
+        db_session.commit()
+
+        db_session.expire_all()
+        reloaded = db_session.query(AIProfile).filter_by(name="audit-profile").one()
+        assert reloaded.provider == "openai"
+        assert reloaded.model == "gpt-4o-mini"
+        assert reloaded.is_enabled is True
+        assert reloaded.health_status == "unknown"
+
+    # ------------------------------------------------------------------
+    # 20. ai_sessions/ai_messages 表可读写（UAT-DB.3 新表对账）
+    # ------------------------------------------------------------------
+    def test_ai_session_tables_accessible(self, db_session):
+        """ai_sessions 和 ai_messages 表迁移后可正常读写。"""
+        session = AISession(
+            title="audit-session",
+            source_page="discovery",
+            provider="openai",
+            model="gpt-4o-mini",
+            status="active",
+            total_tokens=100,
+        )
+        db_session.add(session)
+        db_session.commit()
+        db_session.refresh(session)
+
+        msg = AIMessage(
+            session_id=session.id,
+            role="user",
+            content="test message",
+            prompt_tokens=50,
+            completion_tokens=50,
+            total_tokens=100,
+        )
+        db_session.add(msg)
+        db_session.commit()
+
+        db_session.expire_all()
+        reloaded_session = db_session.query(AISession).filter_by(id=session.id).one()
+        assert reloaded_session.title == "audit-session"
+        assert reloaded_session.status == "active"
+
+        reloaded_msg = db_session.query(AIMessage).filter_by(session_id=session.id).one()
+        assert reloaded_msg.role == "user"
+        assert reloaded_msg.content == "test message"
+        assert reloaded_msg.total_tokens == 100
+
+    # ------------------------------------------------------------------
+    # 21. portfolio_reviews 表可读写（UAT-DB.3 新表对账）
+    # ------------------------------------------------------------------
+    def test_portfolio_reviews_table_accessible(self, db_session):
+        """portfolio_reviews 表迁移后可正常读写。"""
+        p = _make_portfolio(db_session, name="QA-Audit-PF-Review")
+        review = Review(
+            portfolio_id=p.id,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 6, 30),
+            report_snapshot_json='{"total_return": 0.15}',
+            note="季度复盘",
+            title="2026Q2 复盘",
+        )
+        db_session.add(review)
+        db_session.commit()
+
+        db_session.expire_all()
+        reloaded = db_session.query(Review).filter_by(portfolio_id=p.id).one()
+        assert reloaded.start_date == date(2026, 1, 1)
+        assert reloaded.end_date == date(2026, 6, 30)
+        assert reloaded.title == "2026Q2 复盘"
+        assert reloaded.note == "季度复盘"
 

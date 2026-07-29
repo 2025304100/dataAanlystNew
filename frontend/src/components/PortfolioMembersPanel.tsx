@@ -131,7 +131,7 @@ export const PortfolioMembersPanel: React.FC<PortfolioMembersPanelProps> = ({ po
       params.set("limit", "200");
       const url = `/api/v1/portfolios/${activePortfolioId}/members?${params.toString()}`;
       const data = await requestJson<PortfolioMember[]>(url);
-      setMembers((data ?? []) as MemberWithPosition[]);
+      setMembers(Array.isArray(data) ? (data as MemberWithPosition[]) : []);
     } catch (err) {
       // 错误消息不暴露敏感信息，仅展示通用错误
       const msg = err instanceof Error ? err.message : String(err);
@@ -516,7 +516,18 @@ export const PortfolioMembersPanel: React.FC<PortfolioMembersPanelProps> = ({ po
           <Spin tip={t("portfolioMembersLoading")} />
         </div>
       ) : members.length === 0 ? (
-        <Empty description={t("portfolioMembersEmpty")} />
+        <Empty description={t("portfolioMembersEmpty")}>
+          {/* P1-04：空组合引导 —— 前往机会中心添加 */}
+          <Button
+            type="primary"
+            icon={<ArrowRightOutlined />}
+            onClick={() => ctx.setActiveTab("opportunity")}
+            data-testid="goto-opportunity-from-members"
+            style={{ marginTop: 16 }}
+          >
+            {t("portfolioMembersEmptyGoToOpportunity")}
+          </Button>
+        </Empty>
       ) : (
         <Table<MemberWithPosition>
           rowKey="id"

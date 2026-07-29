@@ -34,6 +34,11 @@ from app.services.scans import run_scan
 from app.services.symbol_names import refresh_symbol_name
 from app.services.trade_plans import upsert_trade_setup
 from app.db.session import get_session_local
+from app.services.external_data_gateway import (
+    is_within_offpeak_window,
+    record_failed_batch,
+    trigger_auto_recovery,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +212,17 @@ def _run_market_data_sync(task_id: str) -> None:
                         "symbol_id": symbol_id,
                         "error": str(exc),
                     })
+                # P1-08：记录失败批次到网关失败批次注册表，不阻塞其他标的的补数
+                # 失败批次可通过 retry_failed_batch() 或 /market-data/sync-tasks/{id}/retry-failed 重跑
+                try:
+                    record_failed_batch(
+                        interface_key="akshare.daily_bars",
+                        symbols=[symbol_code],
+                        reason=str(exc),
+                        error_code="sync_failed",
+                    )
+                except Exception:
+                    logger.debug("record_failed_batch failed for %s", symbol_code, exc_info=True)
                 logger.warning("Sync failed for %s: %s", symbol_code, exc)
 
             # 更新进度
@@ -288,6 +304,19 @@ def _run_market_data_sync(task_id: str) -> None:
                   result_json=json.dumps(result_summary, ensure_ascii=False, default=str),
                   finished_at=_now())
 
+        # P1-08：数据就绪后自动恢复——补数完成后触发评分/扫描更新
+        # 调用方可通过 register_auto_recovery_callback 注册自定义恢复逻辑
+        # （如重新计算因子覆盖率、刷新数据健康度、更新扫描快照）
+        if synced_symbol_ids:
+            synced_symbol_codes = [
+                s.symbol for s in symbols if s.id in set(synced_symbol_ids)
+            ]
+            try:
+                import asyncio
+                asyncio.run(trigger_auto_recovery(synced_symbol_codes))
+            except Exception:
+                logger.debug("trigger_auto_recovery failed", exc_info=True)
+
     except Exception as exc:
         logger.exception("Market data sync task %s failed", task_id)
         try:
@@ -297,5 +326,101 @@ def _run_market_data_sync(task_id: str) -> None:
                       finished_at=_now())
         except Exception:
             logger.exception("Failed to mark task %s as failed", task_id)
+    finally:
+        db.close()
+
+
+def retry_sync_failed_symbols(task_id: str) -> dict:
+    """重试指定同步任务中失败的标的（P1-08 失败批次续跑）。
+
+    从原任务的 errors_json 中提取失败标的列表，创建一个新的同步任务仅同步这些标的。
+    失败批次不阻塞其他标的：原任务已完成的标的不会重复同步。
+
+    Args:
+        task_id: 原同步任务 ID
+
+    Returns:
+        新创建的重试任务字典；原任务不存在或无失败标的时返回错误信息
+
+    Raises:
+        ValueError: 原任务不存在
+    """
+    SessionLocal = get_session_local()
+    db = SessionLocal()
+    try:
+        task = db.get(AsyncTaskRecord, task_id)
+        if task is None:
+            raise ValueError(f"Sync task not found: {task_id}")
+        if task.task_type != TASK_TYPE:
+            raise ValueError(f"Task {task_id} is not a market_data_sync task")
+
+        # 从 errors_json 提取失败标的
+        errors = []
+        try:
+            errors = json.loads(task.errors_json or "[]")
+        except (json.JSONDecodeError, TypeError):
+            errors = []
+
+        failed_symbol_ids: list[int] = []
+        for err in errors:
+            sid = err.get("symbol_id")
+            if sid is not None and sid not in failed_symbol_ids:
+                failed_symbol_ids.append(sid)
+
+        if not failed_symbol_ids:
+            return {
+                "task_id": task_id,
+                "retried": False,
+                "reason": "no_failed_symbols",
+                "message": "原任务无失败标的记录，无需重试",
+            }
+
+        # 加载原 payload 以保留 portfolio_id / adjust 等配置
+        try:
+            original_payload = MarketDataSyncCreate.model_validate(
+                json.loads(task.payload_json or "{}")
+            )
+        except Exception:
+            original_payload = None
+
+        # 构造仅含失败标的的新 payload
+        from app.models.symbol import Symbol
+        symbols = db.execute(
+            select(Symbol).where(Symbol.id.in_(failed_symbol_ids))
+        ).scalars().all()
+
+        if not symbols:
+            return {
+                "task_id": task_id,
+                "retried": False,
+                "reason": "symbols_not_found",
+                "message": "失败标的已不存在",
+            }
+
+        retry_payload = MarketDataSyncCreate(
+            scope="symbols",
+            symbol_ids=[s.id for s in symbols],
+            asset_types=(
+                list({s.asset_type for s in symbols})
+                if original_payload is None
+                else original_payload.asset_types
+            ),
+            adjust=original_payload.adjust if original_payload else "qfq",
+            start_date=original_payload.start_date if original_payload else None,
+            end_date=original_payload.end_date if original_payload else None,
+            auto_scan=original_payload.auto_scan if original_payload else False,
+            portfolio_id=original_payload.portfolio_id if original_payload else None,
+            portfolio_rule_id=original_payload.portfolio_rule_id if original_payload else None,
+            watchlist_id=None,
+        )
+
+        retry_task = create_market_data_sync_task(retry_payload)
+        return {
+            "task_id": task_id,
+            "retried": True,
+            "retry_task_id": retry_task.get("id"),
+            "failed_count": len(failed_symbol_ids),
+            "message": f"已创建重试任务，重新同步 {len(failed_symbol_ids)} 个失败标的",
+        }
     finally:
         db.close()

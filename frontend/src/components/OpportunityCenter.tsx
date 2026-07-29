@@ -17,6 +17,7 @@ import ObservationPool from "./opportunity/ObservationPool";
 import ExcludedPool from "./opportunity/ExcludedPool";
 import ScanHistory from "./opportunity/ScanHistory";
 import { LocalFavoritesMigration } from "./opportunity/LocalFavoritesMigration";
+import { DataPrepActions } from "./opportunity/DataPrepActions";
 
 export const OPPORTUNITY_TAB_KEYS = ["candidate", "observation", "excluded", "scan-history"] as const;
 export type OpportunityTabKey = (typeof OPPORTUNITY_TAB_KEYS)[number];
@@ -42,6 +43,8 @@ export default function OpportunityCenter() {
         description={t("opportunityCenterDesc")}
         style={{ marginBottom: 12 }}
       />
+
+      <DataPrepActions scope="cn-stock" />
 
       <Tabs
         activeKey={activeKey}

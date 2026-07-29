@@ -432,6 +432,10 @@ def test_app():
     def _raise_http_429():
         raise HTTPException(status_code=429, detail="too many requests")
 
+    @app.get("/_test/http-503")
+    def _raise_http_503():
+        raise HTTPException(status_code=503, detail="Service Unavailable")
+
     @app.get("/_test/db-locked")
     def _raise_db_locked():
         raise OperationalError(
@@ -678,3 +682,81 @@ def test_to_unified_error_does_not_leak_sensitive_data():
     # 不应泄露明文密码
     assert "secret" not in user_error.technical_details.error_message
     assert "***" in user_error.technical_details.error_message
+
+
+# ============================================================================
+# 8. P1-05：CAPABILITY_BLOCKED 统一错误协议（503 → capability_blocked）
+# ============================================================================
+
+
+def test_capability_blocked_exists_in_library():
+    """ERROR_CODE_LIBRARY 中存在 CAPABILITY_BLOCKED 且字段完整。"""
+    assert "CAPABILITY_BLOCKED" in ERROR_CODE_LIBRARY
+    template = ERROR_CODE_LIBRARY["CAPABILITY_BLOCKED"]
+    assert template["user_message"]
+    assert template["impact"]
+    assert template["retryable"] is True
+    # next_actions 应包含 3 个入口
+    actions = template.get("next_actions", [])
+    assert len(actions) == 3
+    labels = [a["label"] for a in actions]
+    assert "去基础数据" in labels
+    assert "运行增量同步" in labels
+    assert "数据就绪后自动扫描" in labels
+
+
+def test_capability_blocked_next_actions_types():
+    """CAPABILITY_BLOCKED 的 next_actions action_type 合法且含 sync。"""
+    actions = ERROR_CODE_LIBRARY["CAPABILITY_BLOCKED"]["next_actions"]
+    action_types = [a["action_type"] for a in actions]
+    # 应包含 redirect / sync / retry 三种
+    assert "redirect" in action_types
+    assert "sync" in action_types
+    assert "retry" in action_types
+
+
+def test_build_user_error_capability_blocked():
+    """build_user_error("CAPABILITY_BLOCKED") 返回完整 UserError。"""
+    user_error = build_user_error("CAPABILITY_BLOCKED")
+    assert user_error.error_code == "CAPABILITY_BLOCKED"
+    assert user_error.user_message == ERROR_CODE_LIBRARY["CAPABILITY_BLOCKED"]["user_message"]
+    assert user_error.retryable is True
+    assert len(user_error.next_actions) == 3
+    # correlation_id 自动生成
+    assert user_error.correlation_id
+    assert len(user_error.correlation_id) == 32
+
+
+def test_http_503_handler_via_testclient(test_app):
+    """P1-05：HTTPException 503 → 503 + CAPABILITY_BLOCKED（非 UNKNOWN_ERROR）。"""
+    client = TestClient(test_app, raise_server_exceptions=False)
+    resp = client.get("/_test/http-503")
+    assert resp.status_code == 503
+    body = resp.json()
+    # 不再返回 UNKNOWN_ERROR，而是 CAPABILITY_BLOCKED
+    assert body["error_code"] == "CAPABILITY_BLOCKED"
+    assert body["user_message"]
+    # user_message 必须是中文
+    assert any("\u4e00" <= c <= "\u9fff" for c in body["user_message"])
+    assert body["retryable"] is True
+    # 不应出现裸英文 "Service Unavailable" 作为 user_message
+    assert body["user_message"] != "Service Unavailable"
+    # next_actions 包含 3 个入口
+    assert len(body["next_actions"]) == 3
+    labels = [a["label"] for a in body["next_actions"]]
+    assert "去基础数据" in labels
+    assert "运行增量同步" in labels
+    assert "数据就绪后自动扫描" in labels
+
+
+def test_http_503_response_no_bare_english_status(test_app):
+    """P1-05：503 响应不得直接暴露 HTTP 状态文案作为 user_message。"""
+    client = TestClient(test_app, raise_server_exceptions=False)
+    resp = client.get("/_test/http-503")
+    body = resp.json()
+    # 禁止裸露 Service Unavailable / NoneType / HTTP 状态文案
+    assert body["user_message"] not in ("Service Unavailable", "NoneType", "503")
+    assert body["error_code"] != "UNKNOWN_ERROR"
+    # technical_details 中记录原始 status_code
+    assert body["technical_details"]["status_code"] == 503
+    assert body["technical_details"]["exception_type"] == "HTTPException"

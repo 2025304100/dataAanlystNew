@@ -1,6 +1,6 @@
 import { Card, Collapse, List, Tag, Alert, Button, Space, Tooltip, Empty, Descriptions } from "antd";
 import { QuestionCircleOutlined, ExperimentOutlined, WarningOutlined, FileTextOutlined } from "@ant-design/icons";
-import { t } from "../../i18n";
+import { enumLabel, t } from "../../i18n";
 import type { AIResponse } from "../../types";
 
 interface ExplanationCardProps {
@@ -45,9 +45,9 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
               <List.Item key={idx}>
                 <Space direction="vertical" size={2} style={{ width: "100%" }}>
                   <Space>
-                    <Tag color="blue">{item.type}</Tag>
+                    <Tag color="blue">{enumLabel("aiEvidenceType", item.type)}</Tag>
                     <Tag color={tag.color}>{tag.label}</Tag>
-                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{item.source}</span>
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{enumLabel("aiEvidenceSource", item.source)}</span>
                   </Space>
                   <span style={{ fontSize: 13 }}>{item.content}</span>
                 </Space>

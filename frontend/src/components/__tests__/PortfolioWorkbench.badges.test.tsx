@@ -29,22 +29,28 @@ const { mockContext, mockApi, mockHook } = vi.hoisted(() => ({
     loadWorkbench: vi.fn(async () => {}),
     showToast: vi.fn((_type: string, _msg: string) => {}),
     loadSymbolDetail: vi.fn(async (_id: number) => {}),
+    // 能力门禁字段：CapabilityGateButton 通过 useApp 读取这些方法
+    capabilities: null as any,
+    capabilitiesLoading: false,
+    getCapability: vi.fn((_: string) => undefined),
+    isCapabilityBlocked: vi.fn((_: string) => false),
+    loadCapabilities: vi.fn(async () => {}),
   },
   mockApi: {
-    getPositions: vi.fn(async () => []),
+    getPositions: vi.fn(async () => [] as any[]),
     getAllocation: vi.fn(async () => null),
-    getSymbols: vi.fn(async () => []),
+    getSymbols: vi.fn(async () => [] as any[]),
     createSymbol: vi.fn(async () => ({ id: 1 })),
     upsertPosition: vi.fn(async () => ({ ok: true })),
     deletePosition: vi.fn(async () => ({ ok: true })),
     upsertPortfolioRule: vi.fn(async () => ({ ok: true })),
     backupDatabase: vi.fn(async () => ({ backup_path: "/tmp/backup.db" })),
-    listBackups: vi.fn(async () => []),
+    listBackups: vi.fn(async () => [] as any[]),
     restoreDatabase: vi.fn(async () => ({ ok: true })),
   },
   // useSymbolRelationships mock：默认返回空关联（所有 has_*=false）
   mockHook: {
-    useSymbolRelationships: vi.fn((_id: number | null | undefined) => ({
+    useSymbolRelationships: vi.fn((_id: number | null | undefined): any => ({
       data: null,
       loading: false,
       error: null,
@@ -90,6 +96,12 @@ vi.mock("../../context/AppContext", () => ({
 
 // Mock api/client：避免真实请求
 vi.mock("../../api/client", () => ({ api: mockApi }));
+
+// Mock ExplainButton：避免渲染依赖 useAIAssistant 的真实组件
+vi.mock("../ai/ExplainButton", () => ({
+  __esModule: true,
+  default: () => <div data-testid="explain-button-mock" />,
+}));
 
 // Mock useSymbolRelationships hook：直接控制徽标组件数据来源
 vi.mock("../../hooks/useSymbolRelationships", () => ({

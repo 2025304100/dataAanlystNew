@@ -115,6 +115,23 @@ class Settings:
         self.EXTERNAL_DATA_GATEWAY_ENABLED = _env_bool(
             "EXTERNAL_DATA_GATEWAY_ENABLED", True
         )
+        # P1-08 数据新鲜度闭环：错峰调度窗口（小时 0-23）
+        # 默认 22:00-06:00（亚太交易时段外），补数任务在该窗口内优先执行
+        # OFFPEAK_WINDOW_START_HOUR >= OFFPEAK_WINDOW_END_HOUR 表示跨夜窗口（如 22-6）
+        self.OFFPEAK_WINDOW_START_HOUR = int(
+            os.getenv("OFFPEAK_WINDOW_START_HOUR", "22")
+        )
+        self.OFFPEAK_WINDOW_END_HOUR = int(
+            os.getenv("OFFPEAK_WINDOW_END_HOUR", "6")
+        )
+        # 失败批次最大重试次数（0 表示不限制）
+        self.EXTERNAL_DATA_FAILED_BATCH_MAX_RETRIES = int(
+            os.getenv("EXTERNAL_DATA_FAILED_BATCH_MAX_RETRIES", "5")
+        )
+        # 数据就绪后自动恢复：补数完成自动触发评分/扫描更新（默认开启）
+        self.DATA_FRESHNESS_AUTO_RECOVERY = _env_bool(
+            "DATA_FRESHNESS_AUTO_RECOVERY", True
+        )
         # WP-AI.6：结构化输出与审计配置
         # 会话保留天数（超过后由 cleanup_expired_sessions 归档）
         self.AI_SESSION_RETENTION_DAYS = int(

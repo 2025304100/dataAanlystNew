@@ -130,6 +130,10 @@ class FastScanResponse(BaseModel):
     duration_ms: float = 0.0
     degraded_reason: str | None = None
     recommended_action: str | None = None
+    # WP-P-FIX.2: 无快照时自动启动的数据准备任务 ID（供前端轮询状态）
+    data_prep_task_id: str | None = None
+    # WP-P-FIX.2: 历史快照数据截止时间（using_stale_snapshot 时提供）
+    data_cutoff_at: str | None = None
 
 
 class DataPrepRequest(BaseModel):

@@ -679,3 +679,161 @@ def test_observation_endpoints_404(client):
     )
     assert r_rest.status_code == 404
     assert r_rest.json()["error_code"] == "NOT_FOUND"
+
+
+# ---------- UAT-PAGES.2 已排除池 / 扫描记录 / 排除恢复端点 ----------
+
+def test_list_excluded_candidates_endpoint(client):
+    """GET /api/v1/discovery/excluded 应返回已排除候选列表。"""
+    r = client.get("/api/v1/discovery/excluded?limit=10")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    # 字段完整性（若有数据）
+    if data:
+        item = data[0]
+        # 排除事件字段
+        for key in ("event_id", "excluded_at", "actor_type", "exclude_reason",
+                     "from_status", "to_status", "idempotency_key"):
+            assert key in item, f"excluded item 缺少字段 {key}"
+        # 候选基础字段（可能为 null，但 key 必须存在）
+        for key in ("candidate_id", "symbol", "name", "asset_type", "scan_run_id",
+                     "quality_score", "timing_score", "priority_score", "stage", "action"):
+            assert key in item, f"excluded item 缺少字段 {key}"
+
+
+def test_list_excluded_candidates_symbol_filter(client):
+    """GET /api/v1/discovery/excluded?symbol= 应支持标的代码筛选。"""
+    r_all = client.get("/api/v1/discovery/excluded?limit=50")
+    assert r_all.status_code == 200
+    all_data = r_all.json()
+    if not all_data:
+        pytest.skip("无已排除候选数据，跳过筛选验证")
+    # 取一个真实 symbol 做筛选
+    target_symbol = all_data[0].get("symbol")
+    if not target_symbol:
+        pytest.skip("已排除候选缺少 symbol 字段，跳过筛选验证")
+    r_filtered = client.get(f"/api/v1/discovery/excluded?symbol={target_symbol}&limit=50")
+    assert r_filtered.status_code == 200
+    filtered_data = r_filtered.json()
+    # 筛选结果不应多于全量
+    assert len(filtered_data) <= len(all_data), "symbol 筛选后结果数应 <= 全量"
+
+
+def test_list_scan_runs_endpoint(client):
+    """GET /api/v1/discovery/scan-runs 应返回扫描记录列表。"""
+    r = client.get("/api/v1/discovery/scan-runs?limit=10")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    # 字段完整性（若有数据）
+    if data:
+        item = data[0]
+        # ScanRun 基础字段
+        for key in ("id", "run_name", "scope_snapshot", "status"):
+            assert key in item, f"scan run 缺少字段 {key}"
+        # 缓存与统计字段
+        for key in ("snapshot_id", "cache_key", "cache_hit"):
+            assert key in item, f"scan run 缺少字段 {key}"
+        # DiscoveryTaskRecord 字段（可能为 null）
+        for key in ("task_id", "scope", "min_score", "stage_durations",
+                     "dirty_symbol_count", "reused_score_count", "rescored_count"):
+            assert key in item, f"scan run 缺少字段 {key}"
+        # DiscoveryScoreSnapshot 字段（可能为 null）
+        for key in ("snapshot_scope", "snapshot_trade_date", "snapshot_status",
+                     "snapshot_generated_at", "snapshot_error_summary"):
+            assert key in item, f"scan run 缺少字段 {key}"
+
+
+def test_list_scan_runs_scope_filter(client):
+    """GET /api/v1/discovery/scan-runs?scope= 应支持 scope 筛选。"""
+    r_all = client.get("/api/v1/discovery/scan-runs?limit=50")
+    assert r_all.status_code == 200
+    all_data = r_all.json()
+    if not all_data:
+        pytest.skip("无扫描记录数据，跳过 scope 筛选验证")
+    # 找一个真实 scope 做筛选
+    target_scope = None
+    for item in all_data:
+        scope = item.get("scope") or item.get("snapshot_scope")
+        if scope:
+            target_scope = scope
+            break
+    if target_scope is None:
+        pytest.skip("扫描记录缺少 scope 字段，跳过筛选验证")
+    r_filtered = client.get(f"/api/v1/discovery/scan-runs?scope={target_scope}&limit=50")
+    assert r_filtered.status_code == 200
+    filtered_data = r_filtered.json()
+    # 筛选结果不应多于全量
+    assert len(filtered_data) <= len(all_data), "scope 筛选后结果数应 <= 全量"
+    # 筛选结果的 scope 应一致
+    for item in filtered_data:
+        scope = item.get("scope") or item.get("snapshot_scope")
+        assert scope == target_scope, f"scope 筛选后存在不匹配项: {scope} != {target_scope}"
+
+
+def test_scan_run_detail_not_found(client):
+    """GET /api/v1/discovery/scan-runs/{nonexistent} 应返回 404。"""
+    r = client.get("/api/v1/discovery/scan-runs/99999999")
+    assert r.status_code == 404
+    body = r.json()
+    assert "detail" in body, "404 响应应包含 detail 字段"
+
+
+def test_scan_run_detail_field_completeness(client):
+    """GET /api/v1/discovery/scan-runs/{id} 详情应包含 task_record 与 snapshot_record。"""
+    r = client.get("/api/v1/discovery/scan-runs?limit=10")
+    assert r.status_code == 200
+    runs = r.json()
+    if not runs:
+        pytest.skip("无扫描记录可供测试详情")
+    run_id = runs[0]["id"]
+    r_detail = client.get(f"/api/v1/discovery/scan-runs/{run_id}")
+    assert r_detail.status_code == 200
+    detail = r_detail.json()
+    # 详情应包含 task_record 和 snapshot_record 字段（可能为 null）
+    assert "task_record" in detail, "scan run 详情缺少 task_record"
+    assert "snapshot_record" in detail, "scan run 详情缺少 snapshot_record"
+
+
+def test_restore_candidate_not_found(client):
+    """POST /api/v1/discovery/candidates/{nonexistent}/restore 应返回 404。"""
+    r = client.post("/api/v1/discovery/candidates/99999999/restore")
+    assert r.status_code == 404
+    body = r.json()
+    assert "detail" in body, "404 响应应包含 detail 字段"
+
+
+def test_restore_candidate_invalid_target(client):
+    """POST /api/v1/discovery/candidates/{id}/restore target 非法应返回 400。"""
+    r = client.post(
+        "/api/v1/discovery/candidates/99999999/restore",
+        json={"target": "invalid_target"},
+    )
+    # target 非法应被拒绝（400）；若候选不存在则 404 先于 target 校验
+    assert r.status_code in (400, 404), f"非法 target 应返回 400/404，实际 {r.status_code}"
+
+
+def test_restore_candidate_observation_without_watchlist(client):
+    """POST restore target=observation 但缺 watchlist_id 应返回 400（候选存在时）。
+
+    注意：若候选不存在，后端会先返回 404，因此本测试仅验证候选存在时 400 校验。
+    用不存在的候选验证端点可达且不会 500。
+    """
+    r = client.post(
+        "/api/v1/discovery/candidates/99999999/restore",
+        json={"target": "observation"},
+    )
+    # 候选不存在时 404；存在但缺 watchlist_id 时 400
+    assert r.status_code in (400, 404), f"应返回 400/404，实际 {r.status_code}"
+
+
+def test_exclude_candidate_not_found(client):
+    """POST /api/v1/discovery/candidates/{nonexistent}/exclude 应返回 404。"""
+    r = client.post(
+        "/api/v1/discovery/candidates/99999999/exclude",
+        json={"reason": "测试排除"},
+    )
+    assert r.status_code == 404
+    body = r.json()
+    assert "detail" in body, "404 响应应包含 detail 字段"

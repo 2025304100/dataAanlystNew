@@ -123,6 +123,34 @@ def _is_data_prep_running(db: Session, scope: str) -> AsyncTaskRecord | None:
     return None
 
 
+def get_latest_data_prep_task(db: Session, scope: str) -> AsyncTaskRecord | None:
+    """查询某 scope 最近一个 data_prep 任务（任意状态，供前端轮询状态）。
+
+    Args:
+        db: 数据库会话
+        scope: 范围
+
+    Returns:
+        AsyncTaskRecord 或 None
+    """
+    normalized = _normalize_scope(scope)
+    stmt = (
+        select(AsyncTaskRecord)
+        .where(AsyncTaskRecord.task_type == TASK_TYPE_DATA_PREP)
+        .order_by(AsyncTaskRecord.created_at.desc())
+        .limit(50)
+    )
+    tasks = db.execute(stmt).scalars().all()
+    for task in tasks:
+        payload = async_tasks._json_loads(task.payload_json, {}) or {}
+        task_scope = payload.get("scope")
+        if task_scope is None:
+            continue
+        if _normalize_scope(task_scope) == normalized:
+            return task
+    return None
+
+
 def start_data_prep_task(
     *,
     scope: str,

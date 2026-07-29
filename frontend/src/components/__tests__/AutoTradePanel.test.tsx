@@ -52,6 +52,8 @@ const { mockContext, mockApi, mockRequestJson, modalConfirmCalls } = vi.hoisted(
 // Mock i18n：t 返回 key
 vi.mock("../../i18n", () => ({
   t: (key: string) => key,
+  enumLabel: (_prefix: string, v: string | null | undefined) => v ?? "-",
+  sideLabel: (v: string | null | undefined) => v ?? "-",
   template: (key: string, params: Record<string, string | number> = {}) =>
     key.replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? "")),
   DOT: " | ",
@@ -100,6 +102,7 @@ vi.mock("../../api/client", () => ({
 }));
 
 import AutoTradePanel from "../AutoTradePanel";
+import { makeMockContext } from "../../test/factories";
 
 /** 构造一个成员状态项 */
 function makeMember(overrides: Partial<any> = {}): any {
@@ -143,7 +146,21 @@ function makeDiff(overrides: Partial<any> = {}): any {
 describe("AutoTradePanel WP6.6 组件测试", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockContext.portfolioId = 1;
+    // 使用 makeMockContext 补齐 AppContextValue 全部字段（能力门禁方法、组合管理方法等），
+    // 修复 CapabilityGateButton 调用 ctx.getCapability is not a function 运行时错误
+    Object.assign(mockContext, makeMockContext({
+      portfolioId: 1,
+      portfolios: [
+        {
+          id: 1,
+          account_type: "simulated",
+          auto_trade_enabled: 1,
+          auto_trade_last_run_at: null,
+        },
+      ] as any[],
+      showToast: mockContext.showToast,
+      loadWorkbench: mockContext.loadWorkbench,
+    }));
     // 清空 Modal.confirm 调用记录
     modalConfirmCalls.length = 0;
     // 默认 mock：所有新 API 返回空结果

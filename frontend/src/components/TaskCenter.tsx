@@ -13,7 +13,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
-import { t } from "../i18n";
+import { enumLabel, t } from "../i18n";
 import type { UnifiedTask } from "../types";
 // WP-AI.7：让 AI 解释按钮
 import ExplainButton from "./ai/ExplainButton";
@@ -338,7 +338,7 @@ export default function TaskCenter() {
                 <div className="task-list-item-main">
                   {statusTag(task.status)}
                   <Tag>{taskTypeLabel(task.task_type)}</Tag>
-                  <span className="task-list-item-stage">{task.stage}</span>
+                  <span className="task-list-item-stage">{enumLabel("taskStage", task.stage)}</span>
                 </div>
                 <div className="task-list-item-meta">
                   <span>{task.processed}/{task.total}</span>

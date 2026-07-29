@@ -85,11 +85,14 @@ const { mockApi } = vi.hoisted(() => ({
 }));
 
 // Mock i18n: t(key) 返回 key，template 返回拼接后的字符串
+// 组件调用了 getLocale（locale 参数），mock 必须导出该函数
 vi.mock("../../i18n", () => ({
   t: (key: string) => key,
   template: (key: string, params: Record<string, string | number> = {}) =>
     key.replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? "")),
   DOT: " | ",
+  getLocale: () => "zh-CN",
+  setLocale: () => {},
 }));
 
 // Mock antd message

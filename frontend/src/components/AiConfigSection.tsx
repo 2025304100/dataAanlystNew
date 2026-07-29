@@ -215,8 +215,8 @@ export default function AiConfigSection() {
             <Select
               onChange={handleProviderChange}
               options={[
-                { value: "openai_compatible", label: "OpenAI Compatible" },
-                { value: "anthropic", label: "Anthropic Messages" },
+                { value: "openai_compatible", label: t("aiProviderOpenAICompatible") },
+                { value: "anthropic", label: t("aiProviderAnthropicMessages") },
                 { value: "ollama", label: "Ollama" },
                 { value: "custom", label: t("aiProviderCustom") },
               ]}
@@ -277,7 +277,7 @@ export default function AiConfigSection() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <Form.Item label={t("aiAuthType")} name="auth_type" initialValue="bearer">
                       <Select options={[
-                        { value: "bearer", label: "Bearer Token" },
+                        { value: "bearer", label: t("aiAuthBearer") },
                         { value: "x-api-key", label: "x-api-key" },
                         { value: "api-key", label: "api-key" },
                         { value: "custom", label: t("aiAuthCustom") },

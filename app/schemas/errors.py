@@ -39,7 +39,7 @@ class NextAction(BaseModel):
     """
 
     label: str
-    action_type: Literal["retry", "redirect", "configure", "dismiss", "view_details"]
+    action_type: Literal["retry", "redirect", "configure", "dismiss", "view_details", "sync"]
     target: str | None = None
     reason: str | None = None
 
@@ -126,6 +126,19 @@ ERROR_CODE_LIBRARY: dict[str, dict[str, Any]] = {
         "user_message": "请求的资源不存在",
         "impact": "请检查输入或返回列表查看",
         "retryable": False,
+        "next_actions": [
+            {"label": "返回观察池", "action_type": "dismiss", "reason": "关闭错误提示，返回观察池列表"},
+        ],
+    },
+    "DATA_NOT_READY": {
+        "user_message": "数据未准备好，暂时无法加载观察池",
+        "impact": "请先完成基础数据同步或运行增量同步",
+        "retryable": True,
+        "next_actions": [
+            {"label": "前往基础数据", "action_type": "redirect", "target": "macro", "reason": "完成基础数据同步"},
+            {"label": "运行增量同步", "action_type": "sync", "reason": "同步最新行情数据"},
+            {"label": "数据就绪后重试", "action_type": "retry", "reason": "同步完成后重新加载观察池"},
+        ],
     },
     "VALIDATION_ERROR": {
         "user_message": "输入参数有误",
@@ -181,6 +194,16 @@ ERROR_CODE_LIBRARY: dict[str, dict[str, Any]] = {
         "retryable": False,
         "next_actions": [
             {"label": "去配置 AI", "action_type": "redirect", "target": "/settings/ai"}
+        ],
+    },
+    "CAPABILITY_BLOCKED": {
+        "user_message": "功能前置条件未满足，当前操作已被阻断",
+        "impact": "扫描无法执行，请先完成数据准备",
+        "retryable": True,
+        "next_actions": [
+            {"label": "去基础数据", "action_type": "redirect", "target": "macro"},
+            {"label": "运行增量同步", "action_type": "sync", "reason": "同步最新行情数据"},
+            {"label": "数据就绪后自动扫描", "action_type": "retry", "reason": "启动数据准备任务，完成后自动扫描"},
         ],
     },
 }

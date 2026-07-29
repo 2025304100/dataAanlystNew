@@ -41,7 +41,7 @@ from collections import OrderedDict
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
 from uuid import uuid4
 
 import pandas as pd
@@ -1618,6 +1618,339 @@ def reset_rate_limiter() -> None:
     _rate_limiter.reset()
 
 
+# ── P1-08 数据新鲜度闭环：错峰调度 ──────────────────────
+
+def is_within_offpeak_window(now: datetime | None = None) -> bool:
+    """检查当前时间是否在错峰时间窗口内。
+
+    错峰窗口默认 22:00-06:00（亚太交易时段外），可通过环境变量
+    OFFPEAK_WINDOW_START_HOUR / OFFPEAK_WINDOW_END_HOUR 配置。
+
+    跨夜窗口（start >= end，如 22-6）判定：当前小时 >= start 或 < end。
+    同日窗口（start < end，如 1-5）判定：start <= 当前小时 < end。
+
+    Args:
+        now: 可选的当前时间（naive UTC），None 时取 _utcnow_naive()
+
+    Returns:
+        True 表示在错峰窗口内（适合执行补数任务）
+    """
+    now = now or _utcnow_naive()
+    start = settings.OFFPEAK_WINDOW_START_HOUR
+    end = settings.OFFPEAK_WINDOW_END_HOUR
+    # 归一化到 0-23
+    start = max(0, min(23, int(start)))
+    end = max(0, min(24, int(end)))
+    hour = now.hour
+    if start >= end:
+        # 跨夜窗口：22-6 表示 22/23/0/1/2/3/4/5
+        return hour >= start or hour < end
+    if start == end:
+        # 起止相同：视为全天允许（禁用错峰限制）
+        return True
+    # 同日窗口：1-5 表示 1/2/3/4
+    return start <= hour < end
+
+
+def should_defer_for_offpeak(
+    *,
+    force_offpeak: bool = False,
+    now: datetime | None = None,
+) -> bool:
+    """判断补数任务是否应推迟到错峰时段执行。
+
+    Args:
+        force_offpeak: True 时仅在错峰窗口内允许执行（非窗口内返回 True 表示应推迟）
+        now: 可选的当前时间
+
+    Returns:
+        True 表示应推迟执行（当前不在允许窗口内）
+    """
+    if not force_offpeak:
+        # 非强制错峰：立即执行
+        return False
+    return not is_within_offpeak_window(now)
+
+
+# ── P1-08 数据新鲜度闭环：失败批次续跑 ──────────────────
+
+@dataclass
+class FailedBatch:
+    """补数失败批次记录（标的列表 + 失败原因）。
+
+    单个标的或一批标的的补数失败后记录到此结构，不阻塞其他标的的补数。
+    可通过 retry_failed_batch() 单独重跑，重试成功后标记 resolved=True。
+    """
+    batch_id: str
+    interface_key: str
+    symbols: list[str]
+    reason: str
+    error_code: str
+    created_at: datetime
+    retry_count: int = 0
+    last_retry_at: datetime | None = None
+    resolved: bool = False
+    last_retry_result: str | None = None  # "success" / "failed" / None
+
+
+class _FailedBatchRegistry:
+    """失败批次注册表：记录、查询、重试。
+
+    设计：
+    - 进程内单例（与 _breaker / _l1_cache 一致），不持久化（任务级持久化由 AsyncTaskRecord.errors_json 承担）
+    - 失败批次不阻塞其他标的的补数：记录后立即返回，整体补数继续
+    - 提供 retry_failed_batch() 入口，调用方可传入重试回调
+    - 重试次数超限时标记为不可重试（仍保留记录供人工处理）
+    """
+
+    def __init__(self) -> None:
+        self._batches: dict[str, FailedBatch] = {}
+        self._lock = threading.Lock()
+
+    def record(
+        self,
+        *,
+        interface_key: str,
+        symbols: list[str],
+        reason: str,
+        error_code: str = "other",
+        batch_id: str | None = None,
+    ) -> FailedBatch:
+        """记录一个失败批次。
+
+        如果同一 interface_key + reason + symbols 已存在且未解决，则更新 retry 信息
+        而非创建新条目（避免重复记录同一失败）。
+        """
+        batch_id = batch_id or _make_correlation_id()
+        now = _utcnow_naive()
+        with self._lock:
+            # 查找已有相同失败未解决的批次（去重）
+            for existing in self._batches.values():
+                if (
+                    existing.interface_key == interface_key
+                    and existing.reason == reason
+                    and existing.symbols == symbols
+                    and not existing.resolved
+                ):
+                    # 更新创建时间，便于按时间排序重试
+                    existing.created_at = now
+                    return existing
+            batch = FailedBatch(
+                batch_id=batch_id,
+                interface_key=interface_key,
+                symbols=list(symbols),
+                reason=reason,
+                error_code=error_code,
+                created_at=now,
+            )
+            self._batches[batch_id] = batch
+            return batch
+
+    def list_unresolved(self, interface_key: str | None = None) -> list[FailedBatch]:
+        """列出未解决的失败批次（按创建时间升序，便于优先重试旧批次）。"""
+        with self._lock:
+            items = [
+                b for b in self._batches.values()
+                if not b.resolved
+                and (interface_key is None or b.interface_key == interface_key)
+            ]
+        items.sort(key=lambda b: b.created_at)
+        return items
+
+    def list_all(self, interface_key: str | None = None) -> list[FailedBatch]:
+        """列出所有失败批次（含已解决，按创建时间升序）。"""
+        with self._lock:
+            items = [
+                b for b in self._batches.values()
+                if interface_key is None or b.interface_key == interface_key
+            ]
+        items.sort(key=lambda b: b.created_at)
+        return items
+
+    def get(self, batch_id: str) -> FailedBatch | None:
+        with self._lock:
+            return self._batches.get(batch_id)
+
+    def mark_retry(
+        self,
+        batch_id: str,
+        *,
+        success: bool,
+        result_msg: str | None = None,
+    ) -> FailedBatch | None:
+        """标记一次重试结果。
+
+        success=True 时标记为 resolved；success=False 时增加 retry_count，
+        超过最大重试次数也标记为 resolved（不再自动重试，需人工介入）。
+        """
+        with self._lock:
+            batch = self._batches.get(batch_id)
+            if batch is None:
+                return None
+            batch.retry_count += 1
+            batch.last_retry_at = _utcnow_naive()
+            batch.last_retry_result = "success" if success else "failed"
+            if success:
+                batch.resolved = True
+            else:
+                max_retries = settings.EXTERNAL_DATA_FAILED_BATCH_MAX_RETRIES
+                if max_retries > 0 and batch.retry_count >= max_retries:
+                    # 超过最大重试次数：标记为 resolved（不再自动重试）
+                    batch.resolved = True
+            return batch
+
+    def clear_resolved(self) -> int:
+        """清理已解决的批次（供测试与管理接口使用）。返回清理数量。"""
+        with self._lock:
+            resolved_ids = [bid for bid, b in self._batches.items() if b.resolved]
+            for bid in resolved_ids:
+                self._batches.pop(bid, None)
+            return len(resolved_ids)
+
+    def clear(self) -> None:
+        """清空所有失败批次（供测试使用）。"""
+        with self._lock:
+            self._batches.clear()
+
+
+_failed_batches = _FailedBatchRegistry()
+
+
+def record_failed_batch(
+    *,
+    interface_key: str,
+    symbols: list[str],
+    reason: str,
+    error_code: str = "other",
+) -> FailedBatch:
+    """记录一个补数失败批次（公开 API）。
+
+    失败批次不阻塞其他标的的补数：调用方在单个标的/批次失败后调用此函数，
+    然后继续后续标的的补数。失败批次可后续通过 retry_failed_batch() 重跑。
+    """
+    return _failed_batches.record(
+        interface_key=interface_key,
+        symbols=symbols,
+        reason=reason,
+        error_code=error_code,
+    )
+
+
+def list_failed_batches(
+    *, include_resolved: bool = False, interface_key: str | None = None
+) -> list[FailedBatch]:
+    """列出失败批次（公开 API）。
+
+    Args:
+        include_resolved: True 时包含已解决的批次；False 时仅返回未解决
+        interface_key: 可选，按 interface_key 过滤
+    """
+    if include_resolved:
+        return _failed_batches.list_all(interface_key)
+    return _failed_batches.list_unresolved(interface_key)
+
+
+async def retry_failed_batch(
+    batch_id: str,
+    retry_fetcher: Callable[[str, list[str]], Awaitable[tuple[Any, str]]] | None = None,
+) -> FailedBatch | None:
+    """重试一个失败批次（公开 API）。
+
+    Args:
+        batch_id: 失败批次 ID
+        retry_fetcher: 可选的重试回调，签名为
+            async (interface_key, symbols) -> (data, source_detail)
+            未提供时仅标记重试次数，不实际拉取（用于纯状态测试）
+
+    Returns:
+        更新后的 FailedBatch；batch_id 不存在时返回 None
+    """
+    batch = _failed_batches.get(batch_id)
+    if batch is None:
+        return None
+    if retry_fetcher is None:
+        # 仅标记重试（不实际拉取），用于状态机测试
+        return _failed_batches.mark_retry(batch_id, success=True)
+    try:
+        await retry_fetcher(batch.interface_key, batch.symbols)
+        return _failed_batches.mark_retry(batch_id, success=True)
+    except Exception as exc:
+        logger.warning(
+            "Failed batch retry failed: batch=%s interface=%s err=%s",
+            batch_id, batch.interface_key, _sanitize_error(exc),
+        )
+        return _failed_batches.mark_retry(
+            batch_id, success=False, result_msg=_sanitize_error(exc)
+        )
+
+
+def clear_failed_batches() -> None:
+    """清空所有失败批次（供测试与管理接口使用）。"""
+    _failed_batches.clear()
+
+
+def clear_resolved_failed_batches() -> int:
+    """清理已解决的失败批次。返回清理数量。"""
+    return _failed_batches.clear_resolved()
+
+
+# ── P1-08 数据就绪后自动恢复 ────────────────────────────
+
+# 自动恢复回调注册表：补数任务完成后触发评分/扫描更新
+_auto_recovery_callbacks: list[Callable[[list[str]], Awaitable[None]]] = []
+
+
+def register_auto_recovery_callback(
+    callback: Callable[[list[str]], Awaitable[None]],
+) -> None:
+    """注册数据就绪后自动恢复回调。
+
+    补数任务完成后，调用所有已注册的回调，传入本次成功的标的列表，
+    供回调触发评分重算/扫描快照更新等。
+
+    回调签名：async (symbols: list[str]) -> None
+    回调失败仅记录日志，不阻塞其他回调或主流程（best-effort）。
+
+    Args:
+        callback: 异步回调函数
+    """
+    if callback not in _auto_recovery_callbacks:
+        _auto_recovery_callbacks.append(callback)
+
+
+def unregister_auto_recovery_callback(
+    callback: Callable[[list[str]], Awaitable[None]],
+) -> None:
+    """取消注册自动恢复回调（供测试使用）。"""
+    if callback in _auto_recovery_callbacks:
+        _auto_recovery_callbacks.remove(callback)
+
+
+async def trigger_auto_recovery(symbols: list[str]) -> None:
+    """触发数据就绪后自动恢复。
+
+    补数任务完成后调用此函数，依次调用所有已注册的恢复回调。
+    单个回调失败仅记录日志，不阻塞其他回调（best-effort）。
+
+    Args:
+        symbols: 本次补数成功的标的代码列表
+    """
+    if not settings.DATA_FRESHNESS_AUTO_RECOVERY:
+        logger.debug("Auto recovery disabled by settings, skipping")
+        return
+    if not symbols:
+        return
+    for callback in list(_auto_recovery_callbacks):
+        try:
+            await callback(symbols)
+        except Exception as exc:
+            logger.warning(
+                "Auto recovery callback failed: %s err=%s",
+                getattr(callback, "__name__", repr(callback)),
+                _sanitize_error(exc),
+            )
+
+
 __all__ = [
     # 主入口
     "fetch",
@@ -1652,4 +1985,16 @@ __all__ = [
     "clear_l1_cache",
     "reset_breaker",
     "reset_rate_limiter",
+    # P1-08 数据新鲜度闭环：错峰调度 / 失败批次续跑 / 自动恢复
+    "is_within_offpeak_window",
+    "should_defer_for_offpeak",
+    "FailedBatch",
+    "record_failed_batch",
+    "list_failed_batches",
+    "retry_failed_batch",
+    "clear_failed_batches",
+    "clear_resolved_failed_batches",
+    "register_auto_recovery_callback",
+    "unregister_auto_recovery_callback",
+    "trigger_auto_recovery",
 ]

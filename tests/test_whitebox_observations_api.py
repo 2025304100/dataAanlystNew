@@ -18,13 +18,21 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.db.session import get_db
 from app.models.discovery_candidate import DiscoveryCandidate
+from app.models.opportunity_transition_event import (
+    EVENT_CANDIDATE_TO_OBSERVATION,
+    EVENT_EXCLUDE,
+    EVENT_RESTORE,
+    OpportunityTransitionEvent,
+    TYPE_OBSERVATION,
+)
 from app.models.scan import ScanRun
 from app.models.symbol import Symbol
 from app.models.universe import UniverseSymbol
-from app.models.watchlist import Watchlist
+from app.models.watchlist import Watchlist, WatchlistItem
 
 
 pytestmark = pytest.mark.whitebox
@@ -603,3 +611,204 @@ def test_post_after_archive_restores_via_api(client, db_session):
     assert data["watchlist_item_id"] == item_id
     assert data["status"] == "watching"
     assert data["archived_at"] is None
+
+
+# ============================================================================
+# UAT-PAGES.1 P1-02：路由层审计事件 + 真实契约 + 双击幂等
+#
+# 覆盖：
+# 1. POST /from-candidate 写入 OpportunityTransitionEvent 审计事件
+# 2. POST /archive 写入 exclude 审计事件
+# 3. POST /restore 写入 restore 审计事件
+# 4. 候选双击 /from-candidate 只产生 1 个观察项 + 1 个审计事件
+# 5. GET /observations 返回 ObservationRead 完整字段（真实契约）
+# ============================================================================
+
+
+def test_post_from_candidate_writes_audit_event(client, db_session):
+    """【UAT-PAGES.1 P1-02 审计】POST /from-candidate 写入候选→观察审计事件。"""
+    wl = _make_watchlist(db_session, name="QA-API-Audit-Cand")
+    sym = _make_symbol(db_session, symbol="610100")
+    run = _make_scan_run(db_session, name="QA-API-ScanRun-Audit")
+    u = _make_universe_symbol(db_session, symbol="610100")
+    candidate = _make_candidate(
+        db_session,
+        scan_run_id=run.id,
+        universe_symbol_id=u.id,
+        symbol="610100",
+    )
+
+    resp = client.post(
+        f"/api/v1/watchlists/{wl.id}/observations/from-candidate",
+        json={"candidate_id": candidate.id, "watchlist_id": wl.id},
+    )
+    assert resp.status_code == 200
+
+    # 审计事件已写入
+    events = db_session.execute(
+        select(OpportunityTransitionEvent).where(
+            OpportunityTransitionEvent.event_type == EVENT_CANDIDATE_TO_OBSERVATION,
+            OpportunityTransitionEvent.source_id == candidate.id,
+        )
+    ).scalars().all()
+    assert len(events) == 1
+    assert events[0].target_type == TYPE_OBSERVATION
+    assert events[0].target_id == wl.id
+
+
+def test_archive_endpoint_writes_audit_event(client, db_session):
+    """【UAT-PAGES.1 P1-02 审计】POST /archive 写入 exclude 审计事件。"""
+    wl = _make_watchlist(db_session, name="QA-API-Audit-Arch")
+    sym = _make_symbol(db_session, symbol="610110")
+
+    resp_add = client.post(
+        f"/api/v1/watchlists/{wl.id}/observations",
+        json={"watchlist_id": wl.id, "symbol_id": sym.id},
+    )
+    item_id = resp_add.json()["watchlist_item_id"]
+
+    resp = client.post(
+        f"/api/v1/watchlists/{wl.id}/observations/{item_id}/archive"
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "archived"
+
+    # exclude 审计事件已写入
+    events = db_session.execute(
+        select(OpportunityTransitionEvent).where(
+            OpportunityTransitionEvent.event_type == EVENT_EXCLUDE,
+            OpportunityTransitionEvent.source_id == item_id,
+        )
+    ).scalars().all()
+    assert len(events) == 1
+    assert events[0].source_type == TYPE_OBSERVATION
+
+
+def test_restore_endpoint_writes_audit_event(client, db_session):
+    """【UAT-PAGES.1 P1-02 审计】POST /restore 写入 restore 审计事件。"""
+    wl = _make_watchlist(db_session, name="QA-API-Audit-Rst")
+    sym = _make_symbol(db_session, symbol="610120")
+
+    resp_add = client.post(
+        f"/api/v1/watchlists/{wl.id}/observations",
+        json={"watchlist_id": wl.id, "symbol_id": sym.id},
+    )
+    item_id = resp_add.json()["watchlist_item_id"]
+
+    # 先归档
+    client.post(f"/api/v1/watchlists/{wl.id}/observations/{item_id}/archive")
+
+    # 恢复
+    resp = client.post(
+        f"/api/v1/watchlists/{wl.id}/observations/{item_id}/restore"
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "watching"
+
+    # restore 审计事件已写入
+    events = db_session.execute(
+        select(OpportunityTransitionEvent).where(
+            OpportunityTransitionEvent.event_type == EVENT_RESTORE,
+            OpportunityTransitionEvent.source_id == item_id,
+        )
+    ).scalars().all()
+    assert len(events) == 1
+    assert events[0].source_type == TYPE_OBSERVATION
+
+
+def test_from_candidate_double_click_idempotent(client, db_session):
+    """【UAT-PAGES.1 P1-02 幂等】候选双击 /from-candidate 只产生 1 个观察项 + 1 个审计事件。"""
+    wl = _make_watchlist(db_session, name="QA-API-DBL")
+    sym = _make_symbol(db_session, symbol="610130")
+    run = _make_scan_run(db_session, name="QA-API-ScanRun-DBL")
+    u = _make_universe_symbol(db_session, symbol="610130")
+    candidate = _make_candidate(
+        db_session,
+        scan_run_id=run.id,
+        universe_symbol_id=u.id,
+        symbol="610130",
+    )
+
+    # 第一次点击
+    resp1 = client.post(
+        f"/api/v1/watchlists/{wl.id}/observations/from-candidate",
+        json={"candidate_id": candidate.id, "watchlist_id": wl.id},
+    )
+    assert resp1.status_code == 200
+    item_id_1 = resp1.json()["watchlist_item_id"]
+
+    # 第二次点击（双击）
+    resp2 = client.post(
+        f"/api/v1/watchlists/{wl.id}/observations/from-candidate",
+        json={"candidate_id": candidate.id, "watchlist_id": wl.id},
+    )
+    assert resp2.status_code == 200
+    item_id_2 = resp2.json()["watchlist_item_id"]
+
+    # 返回同一观察项
+    assert item_id_1 == item_id_2
+
+    # DB 中只有 1 个观察项
+    items = db_session.execute(
+        select(WatchlistItem).where(WatchlistItem.watchlist_id == wl.id)
+    ).scalars().all()
+    assert len(items) == 1
+
+    # DB 中只有 1 个候选→观察审计事件
+    events = db_session.execute(
+        select(OpportunityTransitionEvent).where(
+            OpportunityTransitionEvent.event_type == EVENT_CANDIDATE_TO_OBSERVATION
+        )
+    ).scalars().all()
+    assert len(events) == 1
+
+
+def test_list_observations_returns_complete_contract(client, db_session):
+    """【UAT-PAGES.1 P1-02 真实契约】GET /observations 返回 ObservationRead 完整字段。
+
+    前后端字段一致：前端 ObservationItem 接口需要的所有字段在 API 响应中存在，
+    不会出现 undefined 导致渲染异常。
+    """
+    wl = _make_watchlist(db_session, name="QA-API-Contract")
+    sym = _make_symbol(db_session, symbol="610140")
+
+    client.post(
+        f"/api/v1/watchlists/{wl.id}/observations",
+        json={
+            "watchlist_id": wl.id,
+            "symbol_id": sym.id,
+            "priority": 50,
+            "tags": ["契约"],
+            "note": "契约测试",
+        },
+    )
+
+    resp = client.get(f"/api/v1/watchlists/{wl.id}/observations")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    item = data[0]
+
+    # 断言 ObservationRead 全部字段在响应中存在（不缺字段）
+    expected_fields = [
+        "watchlist_item_id", "watchlist_id", "watchlist_name", "symbol_id",
+        "symbol", "added_at", "updated_at", "archived_at", "origin_type",
+        "origin_id", "reason", "score_snapshot", "status", "priority",
+        "tags", "note", "target_portfolio_id", "target_portfolio_name",
+        "latest_price", "latest_price_date", "price_change_pct",
+        "latest_total_score", "latest_quality_score", "latest_timing_score",
+        "latest_score_date", "data_credibility", "bar_count", "has_position",
+        "position_portfolio_name", "degraded", "degraded_reason",
+    ]
+    for field in expected_fields:
+        assert field in item, f"API 响应缺少字段: {field}"
+
+    # 关键字段值正确
+    assert item["symbol"] == "610140"
+    assert item["origin_type"] == "manual"
+    assert item["status"] == "watching"
+    assert item["priority"] == 50
+    assert item["tags"] == ["契约"]
+    assert item["note"] == "契约测试"
+    assert item["has_position"] is False
+    assert item["degraded"] is False

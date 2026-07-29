@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import type { CapabilitiesResponse, CustomIndicatorPreviewRead, SignalRule, SignalRulePreviewResult } from "../types";
+import type { AsyncTaskRead, CapabilitiesResponse, CustomIndicatorPreviewRead, SignalRule, SignalRulePreviewResult, SnapshotStatusRead } from "../types";
 import type { AttributionReport, Review } from "../types";
 import type { SymbolRelationships } from "../types/symbolRelationships";
 import type {
@@ -15,8 +15,74 @@ import type {
 // 通用 API 响应类型：默认 unknown，调用方可显式指定具体类型
 type ApiResponse<T = unknown> = T;
 
+// WP-S.6 统一错误协议字段（与 app/schemas/errors.py UserError 对齐）
+export interface UnifiedErrorPayload {
+  error_code: string;
+  user_message: string;
+  impact: string;
+  retryable: boolean;
+  completed: number;
+  next_actions: Array<{
+    label: string;
+    action_type: "retry" | "redirect" | "configure" | "dismiss" | "view_details" | "sync";
+    target?: string | null;
+    reason?: string | null;
+  }>;
+  technical_details?: {
+    exception_type?: string | null;
+    status_code?: number | null;
+    error_message?: string | null;
+    stack_summary?: string | null;
+    db_error_code?: string | null;
+    upstream_response?: string | null;
+    request_id?: string | null;
+  } | null;
+  correlation_id: string;
+}
+
+// 增强错误类型：携带统一错误协议字段，便于上层展示 user_message / next_actions
+export class ApiError extends Error {
+  status_code?: number;
+  error_code?: string;
+  user_message?: string;
+  impact?: string;
+  retryable?: boolean;
+  next_actions?: UnifiedErrorPayload["next_actions"];
+  correlation_id?: string;
+  detail?: unknown;
+
+  constructor(message: string, init: {
+    status_code?: number;
+    error_code?: string;
+    user_message?: string;
+    impact?: string;
+    retryable?: boolean;
+    next_actions?: UnifiedErrorPayload["next_actions"];
+    correlation_id?: string;
+    detail?: unknown;
+  } = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status_code = init.status_code;
+    this.error_code = init.error_code;
+    this.user_message = init.user_message;
+    this.impact = init.impact;
+    this.retryable = init.retryable;
+    this.next_actions = init.next_actions;
+    this.correlation_id = init.correlation_id;
+    this.detail = init.detail;
+  }
+}
+
 let activeRequests = 0;
 const requestListeners: Array<(count: number) => void> = [];
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
+
+type RequestJsonOptions = RequestInit & {
+  timeoutMs?: number;
+  /** Set to false when callers intentionally need parallel GET requests. */
+  dedupe?: boolean;
+};
 
 export function onRequestChange(listener: (count: number) => void) {
   requestListeners.push(listener);
@@ -30,7 +96,48 @@ function notifyRequestChange() {
   requestListeners.forEach((fn) => fn(activeRequests));
 }
 
-export async function requestJson<T = unknown>(url: string, options: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
+function getRequestDedupeKey(url: string, options: RequestJsonOptions): string {
+  const headers = Array.from(new Headers(options.headers).entries())
+    .sort(([left], [right]) => left.localeCompare(right));
+  return JSON.stringify([
+    url,
+    headers,
+    options.credentials ?? null,
+    options.cache ?? null,
+    options.mode ?? null,
+    options.timeoutMs ?? 20000,
+  ]);
+}
+
+function shouldDedupeRequest(options: RequestJsonOptions): boolean {
+  const method = (options.method ?? 'GET').toUpperCase();
+  return method === 'GET' && options.dedupe !== false && options.signal == null;
+}
+
+// 判断 payload 是否为 WP-S.6 统一错误协议响应
+function isUnifiedErrorPayload(payload: unknown): payload is UnifiedErrorPayload {
+  return (
+    !!payload &&
+    typeof payload === "object" &&
+    "error_code" in payload &&
+    "user_message" in payload &&
+    typeof (payload as UnifiedErrorPayload).error_code === "string" &&
+    typeof (payload as UnifiedErrorPayload).user_message === "string"
+  );
+}
+
+function defaultHttpErrorMessage(status: number): string {
+  if (status === 400 || status === 422) return t("httpErrorInvalidRequest");
+  if (status === 401) return t("httpErrorUnauthorized");
+  if (status === 403) return t("httpErrorForbidden");
+  if (status === 404) return t("httpErrorNotFound");
+  if (status === 409) return t("httpErrorConflict");
+  if (status === 429) return t("httpErrorRateLimited");
+  if (status >= 500) return t("httpErrorServer");
+  return t("httpErrorRequestFailed");
+}
+
+async function executeRequestJson<T>(url: string, options: RequestJsonOptions): Promise<T> {
   activeRequests++;
   notifyRequestChange();
   const controller = new AbortController();
@@ -41,17 +148,37 @@ export async function requestJson<T = unknown>(url: string, options: RequestInit
     timedOut = true;
     controller.abort();
   }, timeoutMs);
-  // 移除自定义 timeoutMs 字段，保留标准 RequestInit 字段
-  const { timeoutMs: _omit, ...requestOptions } = options;
+  // 移除自定义字段，保留标准 RequestInit 字段
+  const { timeoutMs: _timeoutMs, dedupe: _dedupe, ...requestOptions } = options;
   try {
     const response = await fetch(url, { ...requestOptions, signal: requestOptions.signal ?? controller.signal });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const detail = payload.detail || payload.message || response.statusText;
-      const msg = typeof detail === "string" ? detail : detail?.message || JSON.stringify(detail);
-      const error = new Error(msg) as Error & { detail?: unknown };
-      error.detail = detail;
-      throw error;
+      // 优先识别 WP-S.6 统一错误协议
+      if (isUnifiedErrorPayload(payload)) {
+        throw new ApiError(payload.user_message || payload.error_code, {
+          status_code: response.status,
+          error_code: payload.error_code,
+          user_message: payload.user_message,
+          impact: payload.impact,
+          retryable: payload.retryable,
+          next_actions: payload.next_actions,
+          correlation_id: payload.correlation_id,
+          detail: payload,
+        });
+      }
+      // 兼容旧式 { detail: string } 或 FastAPI HTTPException
+      const detail = payload.detail || payload.message;
+      const rawMessage = typeof detail === "string" ? detail : detail?.message || (detail ? JSON.stringify(detail) : "");
+      const isGenericStatusText =
+        !rawMessage ||
+        rawMessage === response.statusText ||
+        /^(?:Bad Request|Unauthorized|Forbidden|Not Found|Conflict|Too Many Requests|Internal Server Error|Service Unavailable)$/i.test(rawMessage);
+      const msg = isGenericStatusText ? defaultHttpErrorMessage(response.status) : rawMessage;
+      throw new ApiError(msg || `HTTP ${response.status}`, {
+        status_code: response.status,
+        detail: detail || response.statusText,
+      });
     }
     return payload as T;
   } catch (error: unknown) {
@@ -59,10 +186,28 @@ export async function requestJson<T = unknown>(url: string, options: RequestInit
     if (error instanceof Error && error.name === "AbortError") {
       // 仅超时（timedOut=true）时抛出超时错误；调用方主动取消则静默返回 rejected
       if (timedOut) {
-        throw new Error(t("requestTimeout"));
+        throw new ApiError(t("requestTimeout"), {
+          status_code: 408,
+          error_code: "REQUEST_TIMEOUT",
+          user_message: t("requestTimeout"),
+          impact: t("unifiedErrorTimeoutImpact"),
+          retryable: true,
+          next_actions: [{ label: t("observationPoolRetry"), action_type: "retry" }],
+        });
       }
       // 调用方主动取消：抛出 AbortError 让调用方自行判断
       throw error;
+    }
+    // 网络错误（fetch 直接抛 TypeError，无 response）：包装为统一错误协议
+    if (!(error instanceof ApiError) && error instanceof Error && (error.name === "TypeError" || /network|fetch/i.test(error.message))) {
+      throw new ApiError(t("unifiedErrorNetworkMessage"), {
+        status_code: 0,
+        error_code: "NETWORK_ERROR",
+        user_message: t("unifiedErrorNetworkMessage"),
+        impact: t("unifiedErrorNetworkImpact"),
+        retryable: true,
+        next_actions: [{ label: t("observationPoolRetry"), action_type: "retry" }],
+      });
     }
     throw error;
   } finally {
@@ -70,6 +215,26 @@ export async function requestJson<T = unknown>(url: string, options: RequestInit
     activeRequests = Math.max(0, activeRequests - 1);
     notifyRequestChange();
   }
+}
+
+export function requestJson<T = unknown>(url: string, options: RequestJsonOptions = {}): Promise<T> {
+  if (!shouldDedupeRequest(options)) {
+    return executeRequestJson<T>(url, options);
+  }
+
+  const key = getRequestDedupeKey(url, options);
+  const existing = inFlightGetRequests.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const pending = executeRequestJson<T>(url, options);
+  inFlightGetRequests.set(key, pending);
+  const cleanup = () => {
+    if (inFlightGetRequests.get(key) === pending) {
+      inFlightGetRequests.delete(key);
+    }
+  };
+  pending.then(cleanup, cleanup);
+  return pending;
 }
 
 const API = "/api/v1";
@@ -314,6 +479,19 @@ export const api = {
       body: JSON.stringify(payload),
       timeoutMs: 60000,
     }),
+  repairAllSymbolMarketData: (payload: {
+    symbol_ids: number[];
+    start_date?: string | null;
+    end_date?: string | null;
+    adjust?: string;
+    auto_score?: boolean;
+  }) =>
+    requestJson(`${API}/market-data/repair/batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      timeoutMs: 300000,
+    }),
 
   // Async sync tasks (heartbeat polling)
   createMarketDataSyncTask: (payload: unknown) =>
@@ -496,6 +674,88 @@ export const api = {
         body: JSON.stringify({ candidate_ids: candidateIds }),
       }
     ),
+
+  // UAT-PAGES.2：已排除池 / 扫描记录 / 排除恢复 API
+  listExcludedCandidates: (params: {
+    symbol?: string;
+    name?: string;
+    excludeDateFrom?: string;
+    excludeDateTo?: string;
+    reasonType?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.symbol) sp.set("symbol", params.symbol);
+    if (params.name) sp.set("name", params.name);
+    if (params.excludeDateFrom) sp.set("exclude_date_from", params.excludeDateFrom);
+    if (params.excludeDateTo) sp.set("exclude_date_to", params.excludeDateTo);
+    if (params.reasonType) sp.set("reason_type", params.reasonType);
+    sp.set("limit", String(params.limit ?? 100));
+    sp.set("offset", String(params.offset ?? 0));
+    return requestJson<any[]>(`${API}/discovery/excluded?${sp.toString()}`);
+  },
+  excludeDiscoveryCandidate: (candidateId: number, payload: { reason?: string; actorType?: string } = {}) =>
+    requestJson<{ ok: boolean; candidate_id: number; event_id?: number; excluded_at?: string; already_excluded: boolean }>(
+      `${API}/discovery/candidates/${candidateId}/exclude`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: payload.reason, actor_type: payload.actorType }),
+      }
+    ),
+  restoreDiscoveryCandidate: (candidateId: number, payload: {
+    target?: "candidate" | "observation";
+    watchlistId?: number;
+    note?: string;
+    priority?: number;
+    tags?: string[];
+    targetPortfolioId?: number;
+    actorType?: string;
+  } = {}) =>
+    requestJson<{ ok: boolean; candidate_id: number; event_id?: number | null; restored_at?: string | null; target: string; observation_item_id?: number | null; already_restored: boolean }>(
+      `${API}/discovery/candidates/${candidateId}/restore`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: payload.target,
+          watchlist_id: payload.watchlistId,
+          note: payload.note,
+          priority: payload.priority,
+          tags: payload.tags,
+          target_portfolio_id: payload.targetPortfolioId,
+          actor_type: payload.actorType,
+        }),
+      }
+    ),
+  listScanRuns: (params: {
+    scope?: string;
+    tradeDate?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.scope) sp.set("scope", params.scope);
+    if (params.tradeDate) sp.set("trade_date", params.tradeDate);
+    if (params.status) sp.set("status", params.status);
+    sp.set("limit", String(params.limit ?? 50));
+    sp.set("offset", String(params.offset ?? 0));
+    return requestJson<any[]>(`${API}/discovery/scan-runs?${sp.toString()}`);
+  },
+  getScanRunDetail: (scanRunId: number) =>
+    requestJson<any>(`${API}/discovery/scan-runs/${scanRunId}`),
+
+  // WP-P-FIX.1: 数据准备任务与快照状态
+  startDataPrep: (payload: { scope: string; trigger_fast_scan_after_ready?: boolean; fast_scan_params?: Record<string, unknown> }) =>
+    requestJson<AsyncTaskRead>(`${API}/discovery/data-prep`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" },
+    }),
+  getSnapshotStatus: (scope: string) =>
+    requestJson<SnapshotStatusRead>(`${API}/discovery/snapshot/status?scope=${encodeURIComponent(scope)}`),
 
   // Universe 基础数据层（全市场标的 + K线初始化同步）
   // P0.6：scopes 支持分 scope 独立初始化，None=全部

@@ -44,3 +44,34 @@ if (!window.HTMLCanvasElement.prototype.getContext) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
+
+// jsdom 未完整实现 window.getComputedStyle 的 2 参数形式（pseudoElt），
+// antd 的 rc-util/Dom/scrollLocker 会调用 getComputedStyle(elt, pseudoElt) 并产生大量噪声。
+// 用 polyfill 包装：忽略 pseudoElt 参数，委托给原始实现。
+const originalGetComputedStyle = window.getComputedStyle.bind(window);
+window.getComputedStyle = ((elt: Element, pseudoElt?: string | null) => {
+  return originalGetComputedStyle(elt);
+}) as typeof window.getComputedStyle;
+
+// 抑制 antd 在 jsdom 下的已知警告噪声（Spin tip、Modal destroyOnClose 等）
+const originalConsoleWarn = console.warn;
+const suppressedWarnPatterns = [
+  "destroyOnClose is deprecated",
+  "`destroyOnClose` is deprecated",
+  "Spin `tip`",
+];
+console.warn = (...args: unknown[]) => {
+  const msg = String(args[0] ?? "");
+  if (suppressedWarnPatterns.some((p) => msg.includes(p))) return;
+  originalConsoleWarn(...(args as Parameters<typeof console.warn>));
+};
+
+// 抑制 jsdom "Not implemented" 噪声（getComputedStyle 已由上方 polyfill 解决，
+// 但 antd 其他路径可能仍触发 not-implemented warning）
+const originalConsoleError = console.error;
+const suppressedErrorPatterns = ["Not implemented: window.getComputedStyle"];
+console.error = (...args: unknown[]) => {
+  const msg = String(args[0] ?? "");
+  if (suppressedErrorPatterns.some((p) => msg.includes(p))) return;
+  originalConsoleError(...(args as Parameters<typeof console.error>));
+};

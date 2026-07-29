@@ -31,7 +31,7 @@ import {
   type ScheduledTaskRun,
 } from "../api/client";
 import { useApp } from "../context/AppContext";
-import { t, template } from "../i18n";
+import { enumLabel, t, template } from "../i18n";
 
 const ACTIVE_STATES = new Set(["queued", "running", "dispatching"]);
 
@@ -273,7 +273,7 @@ export default function ScheduledTaskManager() {
       render: (_: unknown, item: ScheduledTask) => (
         <div className="schedule-last-cell">
           <span>{formatUtc(item.last_run_at)}</span>
-          {item.last_task_status && <Tag color={statusColor(item.last_task_status)}>{item.last_task_status}</Tag>}
+          {item.last_task_status && <Tag color={statusColor(item.last_task_status)}>{enumLabel("taskStatus", item.last_task_status)}</Tag>}
         </div>
       ),
     },
@@ -306,7 +306,7 @@ export default function ScheduledTaskManager() {
   const runColumns = [
     { title: t("scheduleName"), dataIndex: "schedule_name", key: "schedule_name" },
     { title: t("scheduleTrigger"), dataIndex: "trigger_source", key: "trigger_source", render: (value: string) => value === "manual" ? t("scheduleManual") : t("scheduleScheduled") },
-    { title: t("scheduleStatus"), dataIndex: "status", key: "status", render: (value: string) => <Tag color={statusColor(value)}>{value}</Tag> },
+    { title: t("scheduleStatus"), dataIndex: "status", key: "status", render: (value: string) => <Tag color={statusColor(value)}>{enumLabel("taskStatus", value)}</Tag> },
     { title: t("scheduleTaskId"), dataIndex: "task_id", key: "task_id", render: (value: string | null) => value ? <Tooltip title={value}>{value.slice(0, 16)}</Tooltip> : "-" },
     { title: t("scheduleMessage"), dataIndex: "message", key: "message", ellipsis: true },
     { title: t("scheduleCreatedAt"), dataIndex: "created_at", key: "created_at", render: (value: string) => formatUtc(value) },

@@ -1,8 +1,8 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
 import { OPERATOR_LABELS } from "../constants/conditionFields";
-import { t, template, regionShortLabel, assetTypeLabel, stageLabel, actionLabel, DOT } from "../i18n";
+import { enumLabel, t, template, regionShortLabel, assetTypeLabel, stageLabel, actionLabel, DOT } from "../i18n";
 import { navigateToResearch } from "../utils/sourceContext";
 import { Checkbox, Select, Button, Tag, Space, InputNumber, Switch, Input, Empty, Table, Collapse, Tooltip, Dropdown, Alert, Modal } from "antd";
 import { MoreOutlined, WarningOutlined, QuestionCircleOutlined } from "@ant-design/icons";
@@ -420,8 +420,13 @@ export default function Discovery({
   }, [scope]);
 
   // 任务完成（done）时自动刷新结果
+  // FIX(2026-07-24)：使用 ref 追踪上一次 task status，仅在状态真正从非 done 变为 done 时刷新，
+  // 避免组件挂载时 task 已是 done 导致与上方 mount effect 重复请求同一接口。
+  const prevTaskStatusRef = useRef<string | undefined>(task?.status);
   useEffect(() => {
-    if (task?.status === "done") {
+    const prev = prevTaskStatusRef.current;
+    prevTaskStatusRef.current = task?.status;
+    if (task?.status === "done" && prev !== "done") {
       reloadDiscoveryCandidates();
     }
   }, [task?.status, reloadDiscoveryCandidates]);
@@ -945,7 +950,7 @@ export default function Discovery({
     processed: task?.processed ?? 0,
   })}`;
   const meta = task
-    ? `${task.status}${DOT}${template("scanCounters", {
+    ? `${enumLabel("taskStatus", task.status)}${DOT}${template("scanCounters", {
         ok: task.ok_count,
         empty: task.empty_count,
         failed: task.failed_count,
@@ -1615,5 +1620,4 @@ export default function Discovery({
     </div>
   );
 }
-
 

@@ -64,10 +64,16 @@ vi.mock("../../context/AppContext", () => ({
 }));
 
 // Mock api/client：仅暴露 requestJson（ObservationPool 唯一调用入口）
-vi.mock("../../api/client", () => ({
-  requestJson: mockRequestJson,
-  api: {},
-}));
+// 保留真实 ApiError 类：toErrorInfo 通过 `err instanceof ApiError` 判定错误类型，
+// 若 mock 不导出 ApiError，instanceof 会因 undefined 抛 TypeError。
+vi.mock("../../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/client")>();
+  return {
+    ...actual,
+    requestJson: mockRequestJson,
+    api: {},
+  };
+});
 
 // Mock OpportunityStatusBadges：渲染可识别占位，隔离 useSymbolRelationships 依赖
 vi.mock("../opportunity/OpportunityStatusBadges", () => ({
@@ -258,10 +264,10 @@ describe("ObservationPool 组件测试", () => {
     mockRequestJson.mockRejectedValue(new Error("network error"));
     render(<ObservationPool />);
     await waitFor(() => {
-      expect(screen.getByText("observationPoolError")).toBeInTheDocument();
+      // 非 ApiError 错误走 toErrorInfo 兜底分支，user_message 为 observationPoolErrorUnknownMessage
+      expect(screen.getByText("observationPoolErrorUnknownMessage")).toBeInTheDocument();
     });
-    // 重试按钮：可能多处出现（Alert action 与顶部 toolbar）
-    // 使用 getAllByText 断言至少一个重试按钮存在
+    // 重试按钮：顶部 toolbar 始终渲染 observationPoolRetry 按钮
     expect(screen.getAllByText("observationPoolRetry").length).toBeGreaterThanOrEqual(1);
   });
 

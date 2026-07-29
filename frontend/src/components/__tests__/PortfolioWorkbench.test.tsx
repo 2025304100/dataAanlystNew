@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 
 // 使用 vi.hoisted 提升 mock，使其可在 vi.mock factory 内引用
 // globals: true 配置下 vi 作为全局变量在 hoisted 回调中可用
-const { mockContext, mockApi } = vi.hoisted(() => ({
+const { mockContext, mockApi, mockRequestJson } = vi.hoisted(() => ({
   mockContext: {
     workbench: null as any,
     newsSnapshot: null as any,
@@ -16,19 +16,24 @@ const { mockContext, mockApi } = vi.hoisted(() => ({
     loadWorkbench: vi.fn(async () => {}),
     showToast: vi.fn((_type: string, _msg: string) => {}),
     loadSymbolDetail: vi.fn(async (_id: number) => {}),
+    // P1-05：capability 相关方法
+    getCapability: vi.fn((_key: string) => undefined),
+    isCapabilityBlocked: vi.fn((_key: string) => false),
+    loadCapabilities: vi.fn(async () => {}),
   },
   mockApi: {
-    getPositions: vi.fn(async () => []),
+    getPositions: vi.fn(async () => [] as any[]),
     getAllocation: vi.fn(async () => null),
-    getSymbols: vi.fn(async () => []),
+    getSymbols: vi.fn(async () => [] as any[]),
     createSymbol: vi.fn(async () => ({ id: 1 })),
     upsertPosition: vi.fn(async () => ({ ok: true })),
     deletePosition: vi.fn(async () => ({ ok: true })),
     upsertPortfolioRule: vi.fn(async () => ({ ok: true })),
     backupDatabase: vi.fn(async () => ({ backup_path: "/tmp/backup.db" })),
-    listBackups: vi.fn(async () => []),
+    listBackups: vi.fn(async () => [] as any[]),
     restoreDatabase: vi.fn(async () => ({ ok: true })),
   },
+  mockRequestJson: vi.fn(async (_url: string, _options?: any) => ({})),
 }));
 
 // Mock i18n: t 返回 key，template 返回拼接后的字符串
@@ -66,8 +71,24 @@ vi.mock("../../context/AppContext", () => ({
   useApp: () => mockContext,
 }));
 
+// Mock AIAssistantContext（ExplainButton 依赖 useAIAssistant，需提供 stub 避免渲染异常）
+vi.mock("../ai/AIAssistantContext", () => ({
+  useAIAssistant: () => ({
+    open: false,
+    context: null,
+    openAssistant: vi.fn(),
+    closeAssistant: vi.fn(),
+  }),
+}));
+
 // Mock api/client
-vi.mock("../../api/client", () => ({ api: mockApi }));
+vi.mock("../../api/client", () => ({
+  api: mockApi,
+  requestJson: mockRequestJson,
+  ApiError: class ApiError extends Error {
+    constructor(msg: string) { super(msg); this.name = "ApiError"; }
+  },
+}));
 
 import PortfolioWorkbench from "../PortfolioWorkbench";
 
@@ -433,7 +454,172 @@ describe("PortfolioWorkbench 交互测试", () => {
     fireEvent.click(candidateRow!);
 
     await waitFor(() => {
-      expect(mockContext.loadSymbolDetail).toHaveBeenCalledWith(101, { focus: true });
+      expect(mockContext.loadSymbolDetail).toHaveBeenCalledWith(101, { focus: true, barLimit: 500 });
     });
+  });
+});
+
+// ============================================================================
+// P1-04 + P1-05：组合页面乱码与扫描错误中文化测试
+// ============================================================================
+
+describe("PortfolioWorkbench P1-04 空输入校验测试", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockContext.workbench = makeWorkbench();
+    mockContext.candidateSearch = "";
+    mockContext.activeSymbolId = null;
+    mockApi.getPositions.mockImplementation(async () => []);
+    mockApi.getAllocation.mockImplementation(async () => null);
+    mockApi.listBackups.mockImplementation(async () => []);
+  });
+
+  it("should show symbol code required error when clicking add with empty symbol", async () => {
+    render(<PortfolioWorkbench openMetricModal={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getAllByText("addPosition").length).toBeGreaterThan(0);
+    });
+
+    // Click add button without filling any fields
+    const addBtn = screen.getByRole("button", { name: "addPosition" });
+    fireEvent.click(addBtn);
+
+    // P1-04：应显示中文错误提示"请输入标的代码"
+    await waitFor(() => {
+      expect(screen.getByText("symbolCodeRequired")).toBeInTheDocument();
+    });
+    // 不应调用 upsertPosition
+    expect(mockApi.upsertPosition).not.toHaveBeenCalled();
+  });
+
+  it("should show quantity required error when symbol is filled but quantity is empty", async () => {
+    const { container } = render(<PortfolioWorkbench openMetricModal={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getAllByText("addPosition").length).toBeGreaterThan(0);
+    });
+
+    // Fill only symbol code
+    const symbolInput = screen.getByPlaceholderText("searchSymbolPlaceholder");
+    fireEvent.change(symbolInput, { target: { value: "000001" } });
+
+    // Click add button
+    const addBtn = screen.getByRole("button", { name: "addPosition" });
+    fireEvent.click(addBtn);
+
+    // P1-04：应显示中文错误提示"请输入数量"
+    await waitFor(() => {
+      expect(screen.getByText("quantityRequired")).toBeInTheDocument();
+    });
+    expect(mockApi.upsertPosition).not.toHaveBeenCalled();
+  });
+
+  it("should clear error when user starts typing in the field", async () => {
+    render(<PortfolioWorkbench openMetricModal={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getAllByText("addPosition").length).toBeGreaterThan(0);
+    });
+
+    // Click add button to trigger errors
+    const addBtn = screen.getByRole("button", { name: "addPosition" });
+    fireEvent.click(addBtn);
+    await waitFor(() => {
+      expect(screen.getByText("symbolCodeRequired")).toBeInTheDocument();
+    });
+
+    // Start typing in symbol field
+    const symbolInput = screen.getByPlaceholderText("searchSymbolPlaceholder");
+    fireEvent.change(symbolInput, { target: { value: "000001" } });
+
+    // Error should be cleared
+    await waitFor(() => {
+      expect(screen.queryByText("symbolCodeRequired")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("PortfolioWorkbench P1-05 扫描按钮与错误中文化测试", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockContext.workbench = makeWorkbench();
+    mockContext.candidateSearch = "";
+    mockContext.activeSymbolId = null;
+    mockApi.getPositions.mockImplementation(async () => []);
+    mockApi.getAllocation.mockImplementation(async () => null);
+    mockApi.listBackups.mockImplementation(async () => []);
+  });
+
+  it("should render scan button with capability gate", async () => {
+    render(<PortfolioWorkbench openMetricModal={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("todayOpportunities")).toBeInTheDocument();
+    });
+    // P1-05：扫描按钮应可见
+    expect(screen.getByText("portfolioScan")).toBeInTheDocument();
+  });
+
+  it("should call requestJson for fast-scan when scan button clicked", async () => {
+    mockRequestJson.mockImplementation(async () => ({ status: "ok" }));
+    render(<PortfolioWorkbench openMetricModal={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("portfolioScan")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("portfolioScan"));
+
+    await waitFor(() => {
+      expect(mockRequestJson).toHaveBeenCalled();
+    });
+    // 验证调用了 fast-scan 端点（PortfolioMembersPanel 也会调用 requestJson，需 find 定位）
+    const scanCall = mockRequestJson.mock.calls.find(
+      (args: any[]) => typeof args[0] === "string" && args[0].includes("/discovery/fast-scan"),
+    );
+    expect(scanCall).toBeDefined();
+    expect(scanCall![1].method).toBe("POST");
+  });
+
+  it("should show success toast after scan completes", async () => {
+    mockRequestJson.mockImplementation(async () => ({ status: "ok" }));
+    render(<PortfolioWorkbench openMetricModal={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("portfolioScan")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("portfolioScan"));
+
+    await waitFor(() => {
+      expect(mockContext.showToast).toHaveBeenCalledWith("success", "portfolioScanCompleted");
+    });
+  });
+
+  it("should show Chinese error message (not Service Unavailable) when scan fails with 503", async () => {
+    // P1-05：模拟 503 统一错误协议响应
+    const apiError = new Error("功能前置条件未满足，当前操作已被阻断") as Error & {
+      user_message?: string;
+      error_code?: string;
+      next_actions?: unknown[];
+    };
+    apiError.user_message = "功能前置条件未满足，当前操作已被阻断";
+    apiError.error_code = "CAPABILITY_BLOCKED";
+    apiError.next_actions = [{ label: "去基础数据", action_type: "redirect" }];
+    mockRequestJson.mockImplementation(async () => {
+      throw apiError;
+    });
+
+    render(<PortfolioWorkbench openMetricModal={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("portfolioScan")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("portfolioScan"));
+
+    // P1-05：应显示中文 user_message，而非 "Service Unavailable"
+    await waitFor(() => {
+      expect(mockContext.showToast).toHaveBeenCalledWith(
+        "error",
+        "功能前置条件未满足，当前操作已被阻断",
+      );
+    });
+    // 不应出现 "Service Unavailable"
+    expect(mockContext.showToast).not.toHaveBeenCalledWith("error", "Service Unavailable");
   });
 });

@@ -56,6 +56,12 @@ const { mockContext, mockApi, mockRequestJson } = vi.hoisted(() => {
       loadWorkbench: vi.fn(async () => undefined),
       generateTradeSetup: vi.fn(async () => undefined),
       showToast: vi.fn(),
+      // 能力门禁字段：WP9.4 渲染真实 PortfolioWorkbench，其 CapabilityGateButton 通过 useApp 读取
+      capabilities: null as any,
+      capabilitiesLoading: false,
+      getCapability: vi.fn((_: string) => undefined),
+      isCapabilityBlocked: vi.fn((_: string) => false),
+      loadCapabilities: vi.fn(async () => {}),
     },
     mockApi: {
       getSymbols: vi.fn(async (_q: string) => [] as any[]),

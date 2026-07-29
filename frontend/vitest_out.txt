@@ -1,0 +1,7 @@
+﻿
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+ [32m✓[39m src/utils/__tests__/format.test.ts [2m([22m[2m66 tests[22m[2m)[22m[90m 28[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/sourceContext.test.ts [2m([22m[2m30 tests[22m[2m)[22m[90m 27[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/indicators.test.ts [2m([22m[2m38 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+ [32m✓[39m src/utils/__tests__/trade-plan.test.ts [2m([22m[2m21 tests[22m[2m)[22m[90m 7[2mms[22m[39m

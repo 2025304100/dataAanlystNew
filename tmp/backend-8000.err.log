@@ -1,0 +1,10 @@
+INFO:     Started server process [35376]
+INFO:     Waiting for application startup.
+2026-07-27 21:31:40,533 [INFO] app.main: Initializing MySQL engine: 127.0.0.1:3306/gpfx
+2026-07-27 21:31:41,624 [INFO] app.db.init_db: Akshare API config cache loaded
+2026-07-27 21:31:41,625 [INFO] app.main: WP9.5: AUTO_TRADE_MEMBER_SOURCE_ENABLED=True（成员来源为默认）env_explicitly_set=False
+2026-07-27 21:31:41,626 [INFO] app.main: WP9.5: PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED=True（成员来源为默认）env_explicitly_set=False
+2026-07-27 21:31:41,759 [INFO] app.main: Startup cleanup: no expired results to remove
+2026-07-27 21:31:44,084 [INFO] app.main: Universe data already exists (symbols=7207, synced=7206), skip auto init
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)

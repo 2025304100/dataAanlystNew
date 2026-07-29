@@ -694,7 +694,7 @@ WP0 -> WP-S -> WP-P -------------------------┐
   - 在 `runSync` / `runScan` / `runDiscoveryMining` 等方法完成后主动刷新一次
   - 验证：App 启动后 `ctx.capabilities` 非空，`ctx.getCapability("market_data")` 返回正确状态
 
-- [ ] WP-S-FIX.2 CapabilityGateButton + CapabilityBlockModal 组件
+- [x] WP-S-FIX.2 CapabilityGateButton + CapabilityBlockModal 组件
   - 新建 `frontend/src/components/capability/CapabilityGateButton.tsx`
     - 接收 props：`capabilityKey: string` + 标准 antd Button props（`children`/`onClick`/`type`/`icon` 等）
     - 从 `useApp()` 读取对应 capability 状态
@@ -717,7 +717,7 @@ WP0 -> WP-S -> WP-P -------------------------┐
     - 未知 `reason_code` 回退到 `user_message`
   - 验证：blocked 按钮禁用 + Tooltip 显示原因 + 点击打开 Modal + 前置条件列表展示 + 推荐操作按钮跳转
 
-- [ ] WP-S-FIX.3 首次扫描向导组件
+- [x] WP-S-FIX.3 首次扫描向导组件
   - 新建 `frontend/src/components/capability/FirstScanWizard.tsx`
     - 当 `ctx.capabilities?.overall_status === "blocked"` 且用户在 Discovery/Opportunity 页时自动弹出
     - 向导步骤（基于 capabilities 检查结果动态生成）：
@@ -730,7 +730,7 @@ WP0 -> WP-S -> WP-P -------------------------┐
   - 在 `Discovery.tsx` 的 `handleStart` 前检查：如果 overall blocked，打开向导而非直接执行
   - 验证：新用户（空库）进入 Discovery 页时看到向导 → 按步骤完成 → 自动开始扫描
 
-- [ ] WP-S-FIX.4 阻断操作就地处理
+- [x] WP-S-FIX.4 阻断操作就地处理
   - 在以下按钮替换为 `CapabilityGateButton`：
     - `App.tsx` 顶部 toolbar：同步按钮（`market_data`）、扫描按钮（`discovery`）
     - `Discovery.tsx`：开始挖掘按钮（`discovery`）
@@ -795,4 +795,232 @@ WP0 -> WP-S -> WP-P -------------------------┐
 - [x] WP4-FIX.3 复核 checklist 第 15 项
   - 全部子项完成后，将 `checklist.md` WP4 段第 15 项从 `[ ]` 改回 `[x]`，移除 PARTIAL 注释
   - 验证：checklist 勾选状态与代码实际状态一致
+
+## Phase 5：WP-P 收尾补全（checklist L53/L63）
+
+### Task WP-P-FIX: 机会中心联动入口 + 无快照处理增强
+
+> 来源：WP-P 挖掘性能与 5 分钟扫描 SLA checklist 验证（2026-07-22）发现 2 项未完成：
+> - L53：机会中心未提供"前往基础数据""运行现有增量同步""数据就绪后自动扫描"三个联动入口
+> - L63：无可用快照时已实现"10 秒内返回 degraded_reason"，但未自动启动准备任务、未返回上一快照
+>
+> 后端 `app/services/discovery_data_prep.py:start_data_prep_task` 已实现数据准备任务触发（含 `trigger_fast_scan_after_ready` 选项）；`discovery_fast_scan.py:get_ready_snapshot` 仅查询 ready 快照，无历史回退逻辑。
+
+- [x] WP-P-FIX.1 机会中心三个联动入口（L53，纯前端）
+  - 在 `frontend/src/components/OpportunityCenter.tsx` 的 Alert 与 Tabs 之间新增"数据准备"操作区
+  - 新增 `DataPrepActions.tsx` 子组件（位于 `frontend/src/components/opportunity/DataPrepActions.tsx`），展示三个按钮：
+    1. "前往基础数据" → `ctx.setActiveTab("macro")` 跳转至宏观/基础数据页
+    2. "运行现有增量同步" → `ctx.runSync()` 触发增量同步
+    3. "数据就绪后自动扫描" → 调用后端启动数据准备任务（`POST /api/v1/discovery/data-prep`，`trigger_fast_scan_after_ready=true`），任务启动后提示"数据准备中，完成后将自动扫描"
+  - 展示最近数据准备任务状态：从 `ctx.capabilities` 或新增轮询读取最近 data_prep 任务状态（building/ready/failed），ready 时显示快照日期
+  - i18n：新增 `opportunity.dataPrepTitle`、`opportunity.goToMarketData`、`opportunity.runIncrementalSync`、`opportunity.autoScanWhenReady`、`opportunity.dataPrepRunning`、`opportunity.dataPrepReady` 双语 key
+  - 验证：三个按钮可见可点击；点击后跳转或触发对应操作；数据准备状态正确展示
+
+- [x] WP-P-FIX.2 无快照时返回上一快照 + 自动启动准备任务（L63，后端逻辑增强）
+  - 修改 `app/services/discovery_fast_scan.py` 的 `run_fast_scan` 无快照分支（L963-986）：
+    1. 新增 `get_latest_historical_snapshot(db, scope)` 函数：查询最近一个非 building 状态快照（优先 ready，其次 superseded/failed），用于"返回上一快照"
+    2. 无当前 ready 快照时，先尝试返回上一历史快照（标注 `degraded_reason="using_stale_snapshot"` + `data_cutoff_at`），允许只读查看旧候选
+    3. 同时自动启动数据准备任务：调用 `start_data_prep_task(scope=normalized, trigger_fast_scan_after_ready=True, fast_scan_params=<当前请求参数>)`，返回响应中新增 `data_prep_task_id` 字段供前端轮询
+    4. 若上一快照也不存在（首次使用），保持当前"no_ready_snapshot"响应，但 `recommended_action` 改为"正在为您准备数据，完成后将自动扫描"+ 附 `data_prep_task_id`
+  - 修改 `app/api/routes/discovery.py` 的快速扫描端点：透传 `data_prep_task_id` 到响应
+  - 新增 `app/services/discovery_data_prep.py` 的 `get_latest_data_prep_task(db, scope)` 查询最近 data_prep 任务（供前端轮询状态，若 WP-P-FIX.1 需要）
+  - 验证：无 ready 快照时返回上一快照（若有）+ 自动启动准备任务；首次无任何快照时启动准备任务并提示
+  - 约束：不破坏现有"10 秒内返回"SLA（启动准备任务为 fire-and-forget，不阻塞响应）；遵循 project_memory 硬约束（并发保护、不重复启动）
+
+- [x] WP-P-FIX.3 后端测试 + 验收勾选
+  - 扩展 `tests/test_whitebox_discovery_fast_scan.py`：
+    - `test_no_ready_snapshot_returns_stale_snapshot` — 无 ready 快照时返回上一历史快照
+    - `test_no_ready_snapshot_auto_starts_data_prep` — 无快照时自动启动 data_prep 任务
+    - `test_no_snapshot_at_all_starts_data_prep` — 首次无任何快照时启动准备任务并返回 data_prep_task_id
+    - `test_data_prep_concurrency_protection` — 已有 data_prep 运行时不重复启动
+  - 新增前端测试 `DataPrepActions.test.tsx`（至少 4 个测试）：三个按钮点击触发对应操作 + 数据准备状态展示
+  - 验证：后端 4 个测试 + 前端 4 个测试全部通过
+  - 全部子任务完成后，将 `checklist.md` L53、L63 从 `[ ]` 改为 `[x]`，更新复验结果为 PASS
+  - 验证：checklist 勾选状态与代码实际状态一致
+
+## Phase 9：UAT 修复（前端用户视角完整测试报告 2026-07-23）
+
+> 来源：`docs/frontend-user-acceptance-test-report-2026-07-23.md` 黑盒测试发现当前版本"不具备发布验收条件"，3 个 P0 阻断项 + 9 个 P1 主要功能与稳定性问题。本 Phase 按报告第 15.6 节建议的修复顺序拆解，目标是把 42 个 Spec Scenario 从"组件存在/Mock 通过"推进到"真实集成/数据库/性能/故障恢复证据齐全"。
+>
+> 硬约束（参照 project_memory）：
+> - 所有修复不得破坏已验收的 P0/P1/P2/P3 功能（WP0-WP9 + Final 全部保持 [x]）
+> - 统一用户错误协议（WP-S.6）：禁止裸露 `Service Unavailable`、`NoneType`、HTTP 状态文案
+> - 数据库迁移：禁止只依赖启动时临时补字段，必须建立完整 Alembic 迁移链
+> - 异步任务：并发保护 + 终态不被 worker 覆盖 + 取消释放 DuckDB/MySQL 连接
+> - 错误信息：catch 块必须使用统一错误协议，中文文案 + 下一步动作
+
+### Task UAT-P0: P0 阻断项修复（消息管理 API + AI 创建会话 + 因子流水线异常）
+
+> 三个 P0 相互独立，可并行委派 3 个子代理实现。
+
+- [x] UAT-P0.1 注册消息管理 HTTP API 路由（P0-01）
+  - 定位：前端 `frontend/src/components/notifications/ChannelConfig.tsx` 已调用 `/api/v1/notifications/channels|policies|templates|deliveries`，但 FastAPI 未注册对应路由，四个页签全部返回 404 Not Found
+  - 已完成部分：`app/models/notification.py`（数据模型）、`app/services/notifications/`（渠道适配器 + Outbox + dispatcher + 策略/模板服务层）、`tests/test_whitebox_notification_*.py`（白盒测试）均已存在
+  - 未完成部分：HTTP API 路由注册
+  - 新建 `app/api/routes/notifications.py`，注册以下端点（路由前缀 `/api/v1/notifications`）：
+    - 渠道：`GET /channels`（列表）、`POST /channels`（创建）、`PATCH /channels/{id}`（更新，含启用/禁用）、`DELETE /channels/{id}`（删除）、`POST /channels/{id}/test`（测试发送，返回发送结果与脱敏响应）
+    - 策略：`GET /policies`、`POST /policies`、`PATCH /policies/{id}`、`DELETE /policies/{id}`
+    - 模板：`GET /templates`、`POST /templates`、`PATCH /templates/{id}`、`DELETE /templates/{id}`、`POST /templates/{id}/preview`（变量替换预览）
+    - 发送记录：`GET /deliveries`（分页 + 按 source_type/channel_id/status/时间区间筛选）
+  - 在 `app/api/routes/__init__.py` 或 `app/main.py` 注册 notifications router
+  - 端点实现复用现有服务层（`app/services/notifications/dispatcher.py`、`policies`、`templates`），不在路由层重复业务逻辑
+  - 参数校验：用 Pydantic schema（`app/schemas/notification.py`，若不存在则新建），定义 `ChannelCreate/Update`、`PolicyCreate/Update`、`TemplateCreate/Update`
+  - 敏感字段：渠道 config 返回时必须走 `mask_config`（已在适配器 base.py 实现），禁止返回明文 Token/Webhook Secret/SMTP 密码（参照 project_memory 硬约束）
+  - 错误处理：catch 块使用统一错误协议（`app/schemas/errors.py`），中文 user_message + next_actions
+  - 验证：四个页签不再 404；增删改查成功；测试发送可追踪（写入 notification_deliveries）；单渠道失败不影响其他渠道（由 dispatcher 保证）；重启后 Outbox 继续发送
+  - 测试：扩展 `tests/test_blackbox_api.py` 或新建 `tests/test_blackbox_notifications_api.py` 覆盖 CRUD + 测试发送 + 脱敏 + 错误协议
+
+- [x] UAT-P0.2 实现 `POST /api/v1/ai/sessions` 创建会话 API（P0-02）
+  - 定位：前端 `frontend/src/components/ai/AIAssistant.tsx` 配置 Profile 后调用 `POST /api/v1/ai/sessions`，但 `app/api/routes/ai_sessions.py` 只有查询/删除/审计/清理，缺创建入口
+  - 已完成部分：`app/models/ai_session.py`（会话/消息/审计模型）、`app/services/ai/`（Profile、上下文、工具、草稿、审计、主备降级服务）、`tests/test_whitebox_ai_*.py`（白盒测试）
+  - 未完成部分：创建会话 API + 模型调用编排 + 消息落库 + 引用依据返回 + 异常降级响应
+  - 在 `app/api/routes/ai_sessions.py` 新增 `POST /sessions` 端点：
+    - 请求体：`{ profile_id?: int, title?: str, source_page?: str, context?: dict, first_message?: str }`（`first_message` 可选，若提供则创建会话同时发送首条消息）
+    - 响应：`{ session_id, title, created_at, messages?: [AiMessageRead] }`（若发送首条消息则返回 AI 回复）
+    - 流程：创建 `AiSession` → 若有 `first_message` → 构造受控上下文包（`app/services/ai/context.py`，去除敏感信息）→ 调用模型（主备降级 `app/services/ai/failover.py`）→ 落库 `AiMessage`（user + assistant）→ 返回结构化响应（answer/evidence/warnings/suggested_actions/可选 draft）
+    - 凭据脱敏：响应与审计记录只保存上下文摘要，不重复存完整 K 线和敏感配置（参照 project_memory）
+    - 错误处理：Profile 未配置 → 400 + 中文"AI 助手未配置，请前往设置"；模型超时/限流 → 503 + 降级响应（主备切换在 reply 中标注）；格式异常 → 500 + 统一错误协议
+    - 三步确认：副作用操作只能生成草稿（`draft` 字段），不直接写业务状态（参照 WP-AI.5）
+  - 同步新增 `app/schemas/ai_session.py` 的 `AiSessionCreateRequest` / `AiSessionCreateResponse`（若不存在）
+  - 验证：配置 Profile 后可真实对话；历史会话可查询；失败自动降级；副作用操作只生成草稿；凭据全程脱敏
+  - 测试：扩展 `tests/test_blackbox_api.py` 或新建 `tests/test_blackbox_ai_sessions_api.py` 覆盖创建会话 + 首条消息 + 未配置错误 + 降级响应
+
+- [x] UAT-P0.3 修复因子流水线 `cannot unpack non-iterable NoneType object` 异常（P0-03）
+  - 定位：设置 → 因子模型 → 运行流水线，任务先显示"已启动/排队中"，数秒后失败，任务中心显示 `Factor pipeline failed: cannot unpack non-iterable NoneType object`
+  - 根因：后端启动任务心跳时返回契约异常，调用方尝试解包 `None`；这不是进度条显示问题，而是任务没有进入正常计算阶段
+  - 排查路径：
+    1. 定位 `app/services/factors/pipeline_task.py` 的任务启动与心跳处理函数（`_touch_task_heartbeat` / `_set_task` 等）
+    2. 找到返回 `None` 但被调用方尝试解包的位置（可能是 `return` 语句缺失、异常分支返回 None、或元组解包 `a, b = func()` 中 func 返回 None）
+    3. 修复：确保所有分支返回正确契约（元组或明确 None 检查）；异常分支使用统一错误协议记录 `error_code`/`user_message`
+  - 验证任务状态机（WP-S.5）：启动 → running → 心跳更新 → 成功 done 或失败 failed；取消后释放 DuckDB 锁（参照 project_memory 硬约束"取消后释放连接"）
+  - 错误处理：失败提示中文且可操作（"因子流水线启动失败：原因 + 下一步"，不裸露 NoneType）
+  - 验证：默认参数流水线成功完成；进度持续更新；失败提示中文；取消/重启后无假运行和 DuckDB 锁残留
+  - 测试：新增 `tests/test_whitebox_factor_pipeline_startup.py` 覆盖启动契约 + 心跳 + 取消释放 + 异常降级；补一条真实成功验收链路（小规模 universe 跑通计算→训练→快照）
+
+### Task UAT-DB: MySQL schema 漂移与完整 Alembic 迁移补全（P1-01）
+
+> 依赖：UAT-P0 完成后可并行。报告第 15.3 P1-01 节明确"新增字段主要依赖运行时补丁，Alembic revision 不完整"。
+
+- [x] UAT-DB.1 排查 MySQL schema 漂移字段
+  - 定位启动日志 `Unknown column 'scan_runs.snapshot_id' in 'field list'`
+  - 排查所有 SQLAlchemy 模型与 MySQL 实际表结构的差异，重点表：`scan_runs`（snapshot_id）、`discovery_score_snapshots`、`notification_*`、`ai_sessions/ai_messages/ai_action_audits`、`portfolio_members`、`backtest_runs` 快照字段、`watchlist_items` 扩展字段、`opportunity_transition_events`、`api_deprecation_logs`、`portfolio_reviews`、`external_endpoint_runtime`
+  - 输出差异清单（哪些字段/索引在 `init_db.py` 有兼容补丁但 Alembic 缺失 revision）
+  - 验证：差异清单可追溯每个字段的模型定义位置与迁移状态
+
+- [x] UAT-DB.2 建立完整 Alembic 迁移链
+  - 为所有差异字段/表建立 Alembic revision（按时间顺序链式依赖，不跳跃）
+  - 每个 revision 包含 `upgrade()` 和 `downgrade()`，支持回滚
+  - SQLite/MySQL 双库 DDL 兼容（MySQL 5.7 语法，SQLite 类型映射）
+  - 保留 `init_db.py` 的轻量兼容迁移能力（启动时幂等检查，作为 Alembic 未应用时的兜底，但不作为唯一手段）
+  - 验证：全新 SQLite、旧 SQLite、全新 MySQL、旧 MySQL 四套环境升级通过；重复升级幂等；迁移失败可回滚
+
+- [x] UAT-DB.3 迁移测试
+  - 新增 `tests/test_migration_alembic_chain.py`：验证 revision 链完整、upgrade/downgrade 可逆、四套环境启动无 unknown column
+  - 扩展 `tests/test_blackbox_data_migration_audit.py`：对账覆盖新迁移字段
+  - 验证：启动日志无 `Unknown column`；历史数据和 ID 保持不变
+
+### Task UAT-PAGES: 机会池与组合页面修复（P1-02/03/04/05）
+
+> 依赖：UAT-DB 完成后可并行（部分修复依赖 schema 字段）。
+
+- [x] UAT-PAGES.1 观察池真实加载修复（P1-02）
+  - 定位：机会中心 → 观察池，页面只显示筛选控件、数量 0 和"重试"，没有具体失败原因
+  - 排查：真实加载请求失败或响应不符合页面契约；页面吞掉了技术细节，也没有给用户下一步动作
+  - 修复：真实 API 契约对齐（`GET /api/v1/watchlists/{id}/observations` 返回 `ObservationRead` 完整字段）；失败时展示可理解错误（接口名/状态码/原因/下一步动作，走 WP-S.6 统一错误协议）
+  - 跑通候选加入观察、编辑、归档、恢复、详情、批量操作
+  - 验证：真实数据可加载；筛选和详情正确；候选双击加入不重复；归档/恢复可审计；错误明确说明原因和修复入口
+  - 测试：扩展 `tests/test_whitebox_observations.py` + 前端 `ObservationPool.test.tsx` 覆盖真实契约 + 错误展示
+
+- [x] UAT-PAGES.2 已排除池与扫描记录页完成（P1-03）
+  - 定位：机会中心 → 已排除 / 扫描记录，页面明确显示"建设中"
+  - 已排除池：新增 `frontend/src/components/opportunity/ExcludedPool.tsx`，展示已排除候选及原因（来自 `discovery_candidates.status=excluded` 或 `opportunity_transition_events` 的 exclude 事件），支持筛选、恢复操作
+  - 扫描记录：新增 `frontend/src/components/opportunity/ScanHistory.tsx`，展示扫描快照（`scan_runs` + `discovery_score_snapshots`）、阶段耗时（`stage_durations_json`）、参数、缓存命中（`cache_hit`）、差异摘要、错误详情
+  - 移除"建设中"占位，使用真实数据
+  - 验证：两个页签使用真实数据；支持筛选和详情；扫描记录可追溯快照、参数、版本、耗时、结果差异
+  - 测试：新增前端 `ExcludedPool.test.tsx` + `ScanHistory.test.tsx` 各至少 4 个测试
+
+- [x] UAT-PAGES.3 组合页面乱码与无反馈操作修复（P1-04）
+  - 定位：组合交易，默认组合名称显示为 `????`；空代码点击"添加标的"没有错误提示；齿轮按钮点击后无可见反馈
+  - 乱码排查：定位乱码产生层（历史入库字符集 / 连接字符集 / 接口响应编码），数据库取值与接口响应对照；修复 MySQL 连接 `charset=utf8mb4` 或数据修复脚本
+  - 空输入校验：添加标的表单补输入校验（antd Form rules + 中文提示"请输入标的代码"）
+  - 无反馈按钮：齿轮按钮点击后产生明确反馈（弹窗/抽屉/禁用原因），不出现无响应按钮
+  - 空组合引导：为空组合提供引导（"暂无成员，前往机会中心添加"）
+  - 验证：中文名称端到端正确；空输入有中文提示；所有可点击按钮产生明确页面/弹窗/任务或禁用原因
+  - 测试：扩展 `PortfolioWorkbench.test.tsx` 覆盖空输入校验 + 空组合引导
+
+- [x] UAT-PAGES.4 组合扫描错误中文化（P1-05）
+  - 定位：组合交易 → 扫描，只弹出英文 `Service Unavailable`
+  - 根因：后端前置能力不足时返回 503，前端直接暴露 HTTP 状态文案，没有转换为统一用户错误协议
+  - 修复：按钮点击前执行能力检查（复用 WP-S-FIX CapabilityGateButton + CapabilityBlockModal）；说明缺少评分/数据/快照中的哪一项；提供"去基础数据""运行增量同步""数据就绪后自动扫描"入口（复用 WP-P-FIX.1 DataPrepActions）
+  - 后端 503 响应改为统一错误协议（`error_code: "capability_blocked"` + `user_message` + `next_actions`）
+  - 验证：不再出现裸英文错误；错误包含原因、影响和下一步；修复完成后能自动恢复扫描
+  - 测试：扩展前端 `PortfolioWorkbench.test.tsx` + 后端 `tests/test_whitebox_unified_errors.py` 覆盖 503 → 统一错误协议转换
+
+### Task UAT-FE: 前端测试工厂统一与 TypeScript 修复（P1-07）
+
+> 依赖：UAT-P0/PAGES 完成后可并行。报告第 5/6 节明确 90/428 测试失败 + 40 个 TS 错误，主因是测试工厂未同步能力接口。
+
+- [x] UAT-FE.1 统一 AppContext 测试工厂
+  - 定位：`frontend/src/test/factories.ts` 缺少 `getCapability`/`isCapabilityBlocked`/`capabilities`/`capabilitiesLoading`，导致 `CapabilityGateButton` 和 `FirstScanWizard` 直接抛异常（报告第 5 节典型原因 1）
+  - 修复：在测试工厂补齐 `AppContextValue` 全部字段与方法（`capabilities`、`capabilitiesLoading`、`loadCapabilities`、`getCapability`、`isCapabilityBlocked`），导出 `AppContextValue` 类型（报告第 6 节 TS 错误之一）
+  - 统一测试渲染器：新建 `frontend/src/test/renderWithApp.tsx`，默认包裹 `AppContextProvider` + `AIAssistantProvider`（解决报告典型原因 3 `ExplainButton` 测试未包裹 Provider）
+  - 修复 `AutoTradePanel` 测试上下文 `portfolios` 未定义（报告典型原因 2）
+  - 验证：所有调用 `useApp()` 的组件测试默认有完整上下文
+
+- [x] UAT-FE.2 修复 90 个失败测试
+  - 失败集中在：`Discovery*.test.tsx`、`PortfolioWorkbench*.test.tsx`、`Trading.test.tsx`、`PortfolioBacktestPanel.test.tsx`、`MacroData.test.tsx`、`ScoringConfigSettings.test.tsx`
+  - 按报告典型原因分类修复：
+    1. 能力上下文缺失 → UAT-FE.1 统一工厂解决
+    2. `portfolios` 未定义 → UAT-FE.1 补齐
+    3. `ExplainButton` 缺 `AIAssistantProvider` → UAT-FE.1 统一渲染器解决
+    4. 宏观数据后台任务测试超时 → 增加 `vi.useFakeTimers` 或调大 timeout
+    5. 评分配置复制预设测试期望值与当前实现名称规则不一致 → 更新断言匹配当前实现
+    6. Mock 类型过窄（`never[]` 推断）→ 修正 Mock 类型为 `as unknown as T[]`
+  - 清理 jsdom/Ant Design 警告噪声（`window.getComputedStyle`、`Spin tip`、`Modal destroyOnClose`）
+  - 验证：`npx vitest run --reporter=dot` 全部 35 个测试文件通过，0 失败
+
+- [x] UAT-FE.3 修复 40 个 TypeScript 错误
+  - 执行 `cd frontend && npx tsc -b --pretty false` 定位全部错误
+  - 错误集中在：`never[]` 推断、能力上下文 Mock、HTML 元素类型、可选函数调用、`AppContextValue` 未导出
+  - 修复策略：
+    1. `AppContextValue` 未导出 → 从 `AppContext.tsx` 导出类型
+    2. `never[]` 推断 → Mock 数据显式标注类型
+    3. HTMLElement 类型 → 测试中用 `as HTMLElement` 或正确类型断言
+    4. 可选函数调用 → `optionalFn?.()` 或显式 `if (optionalFn) optionalFn()`
+  - 验证：`npx tsc -b --pretty false` 零错误，生产构建成功
+
+### Task UAT-LOOP: 数据新鲜度闭环与机会中心职责统一（P1-08/09）
+
+> 依赖：UAT-FE 完成后推进。
+
+- [x] UAT-LOOP.1 数据新鲜度闭环（P1-08）
+  - 定位：首页显示 7 个标的 K 线过期、1998 条机会结果过期、因子覆盖率 13.2%、模型 degraded；系统能提示但无法把"数据不新鲜"自动转化为稳定可完成的补数闭环
+  - 增强：缓存优先 + fallback + 熔断 + 失败批次续跑 + 错峰调度 + 数据就绪后自动恢复评分/扫描
+  - 补数任务受第三方接口和任务稳定性影响时，提供可完成的修复流程（失败批次可重试，不卡住）
+  - 验证：日常刷新在预算内完成；失败不会卡住；补数后健康度、因子覆盖和扫描快照自动更新
+  - 测试：扩展 `tests/test_whitebox_external_data_gateway.py` 覆盖失败续跑 + 错峰调度
+
+- [x] UAT-LOOP.2 机会中心与机会挖掘职责统一（P1-09）
+  - 定位：一级导航"机会中心"和"机会挖掘"内容重复，机会中心候选池基本嵌入了完整机会挖掘页
+  - 统一入口：机会中心负责候选/观察/排除/扫描历史，成为唯一主入口
+  - 旧入口"机会挖掘"改为兼容跳转（保留旧链接，显示"已迁移至机会中心"提示，WP9 模式）
+  - 避免重复状态和重复操作：同一对象只维护一份状态
+  - 验证：一级导航不重复；旧链接可跳转；同一对象只维护一份状态
+  - 测试：扩展 `OpportunityCenter.test.tsx` + 新增导航去重测试
+
+### Task UAT-PERF: 五分钟扫描 SLA 真实性能测试（P1-06）
+
+> 依赖：UAT-LOOP 完成后推进；需真实数据环境（A 股 5,500 只 / ETF 1,600 只 ready 快照），无法在开发环境完成，作为发布前最终门槛。
+
+- [x] UAT-PERF.1 替换 `tests/performance/test_discovery_5500_sla.py` 的 `pytest.skip()`
+  - 当前：3 个测试用例函数体仅 `pytest.skip(_SKIP_REASON)`，无 P95 断言逻辑
+  - 实现：
+    - `test_a_stock_5500_p95_under_300s` — 准备 A 股 5,500 只 ready 快照基准数据，计时循环跑多次扫描，断言 P50 ≤ 60 秒、P95 ≤ 300 秒
+    - `test_etf_1600_p95_under_300s` — ETF 1,600 只，断言 P95 ≤ 300 秒
+    - `test_no_filters_target_under_60s` — 无高级指标/组合过滤时断言 ≤ 60 秒
+    - `test_same_params_second_scan_under_10s` — 相同参数二次扫描断言 ≤ 10 秒（缓存命中）
+    - `test_no_ready_snapshot_under_10s` — 无 ready 快照时断言 10 秒内返回 degraded_reason + data_prep_task_id
+  - 资源指标记录：CPU、内存、DuckDB 大小、MySQL 慢查询、第三方请求数、缓存命中率
+  - 验证：发布环境运行全部通过（非 SKIP）；P95 指标达标
+  - 约束：标记 `slow`+`performance`，仅在发布环境运行；基准数据可重复构造
 

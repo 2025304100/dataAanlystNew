@@ -1,0 +1,651 @@
+================================================================================
+  COMPREHENSIVE BLACK-BOX API TEST RESULTS
+  Target: http://127.0.0.1:8000/api/v1
+  Date:   2026-07-24 21:54:43
+================================================================================
+
+  TOTAL TESTS:  69
+  PASSED:       55
+  FAILED:       12
+  ERRORS:       2
+  PASS RATE:    79.7%
+
+----------------------------------------------------------------------
+  MODULE: Health  (1/1 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /health (root)
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    status: ok
+----------------------------------------------------------------------
+  MODULE: Discovery  (10/14 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /discovery/tasks
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 'd4d0fde80235444fa1711b5189071e2b', 'status': 'done', 'stage': 'done', 'percent': 100.0, 'message': '机会挖掘完成', 'scope': 'cn-stock', 'min_score': 55.0, 'include_news': True, 'total': 5530, 'processed': 5530, 'ok_count': 5530, 'failed_count': 0, 'empty_count': 0, 'scored_count': 5530, 'current_
+
+  Endpoint:    GET /discovery/candidates
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+
+  Endpoint:    GET /discovery/latest-candidates
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+
+  Endpoint:    GET /discovery/excluded
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+
+  Endpoint:    GET /discovery/scan-runs
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 137, 'run_name': 'opportunity-discovery-task', 'scope_snapshot': '{"symbol_ids": [6839, 6304, 5979, 5925, 7042, 6789, 6620, 6934, 5585, 6365, 5602, 5591, 6673, 6353, 6832, 6182, 6975, 7418, 6696, 6822, 6319, 6947, 6735, 6011, 6880, 6851, 5892, 6270, 6703, 6874, 5788, 5868, 6864, 6935, 6870, 
+
+  Endpoint:    GET /discovery/snapshot/status
+  HTTP Status: 422
+  Verdict:     FAIL (422 Validation Error)
+  Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: ce60e5c7881946c0ab5dbc45b3fbb67d
+
+  Endpoint:    POST /discovery/tasks
+  Request:     {}
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    id: 4c3966ca4b8d499eabe07c3d268804ea, status: queued, stage: queued, percent: 0.0, message: 任务已创建，等待后台开始, scope: cn-stock, min_score: 55.0, include_news: True, total: 0, processed: 0, ok_count: 0, failed_count: 0, empty_count: 0, scored_count: 0, current_symbol: None, batch_size: 20, delay_seconds: 
+  Notes:       Attempted to start discovery task with empty body
+
+  Endpoint:    POST /discovery/fast-scan
+  Request:     {}
+  HTTP Status: 503
+  Verdict:     ERROR (5xx Server Error)
+  Response:    error_code: DB_CONNECTION_FAILED, user_message: 数据库暂时不可用, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 959a83ddbf5a4c6f84207efddc3919ff
+
+  Endpoint:    POST /discovery/data-prep
+  Request:     {}
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    id: 3736f410c63b4fd8a05252d9739c6516, task_type: discovery_data_prep, status: queued, stage: queued, percent: 0.0, message: Task created, total: 0, processed: 0, ok_count: 0, failed_count: 0, current_item: None, result: None, errors: list[0], created_at: 2026-07-24T13:54:15Z, started_at: None, finis
+
+  Endpoint:    GET /settings/discovery-plans
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+  Notes:       Discovery plans are under /settings/
+
+  Endpoint:    GET /scans/runs
+  HTTP Status: 404
+  Verdict:     FAIL (404 Not Found)
+  Response:    error_code: NOT_FOUND, user_message: 请求的资源不存在, impact: 请检查输入或返回列表查看, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 97d4fc318b1c40bba87c8cc7f5dbd1ea
+
+  Endpoint:    GET /scans/latest/executable
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+
+  Endpoint:    GET /discovery/scopes/default/stats
+  HTTP Status: 404
+  Verdict:     FAIL (404 Not Found)
+  Response:    error_code: NOT_FOUND, user_message: 请求的资源不存在, impact: 请检查输入或返回列表查看, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: f5d551f9306449469a129b43d6e2f11a
+  Notes:       Testing with 'default' scope
+
+  Endpoint:    POST /discovery/indicators/evaluate
+  Request:     {}
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+----------------------------------------------------------------------
+  MODULE: Macro  (3/5 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /macro/overview
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    region: all, snapshot: dict{id,region,market_score,stance,summary}, indicators: list[18], brief: list[2], failed: list[0]
+
+  Endpoint:    GET /macro/update-tasks/latest
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    id: bab00e6862dd42a8990cbebafdd56f31, task_type: macro_update, status: done, stage: done, percent: 100.0, message: Macro update completed, total: 18, processed: 18, ok_count: 18, failed_count: 0, current_item: None, result: dict{region,snapshot,indicators,brief,failed}, errors: list[0], created_at: 
+
+  Endpoint:    POST /macro/update
+  Request:     {}
+  HTTP Status: 0
+  Verdict:     ERROR (Connection Failed)
+  Response:    error: timed out
+  Notes:       Attempted macro data update
+
+  Endpoint:    POST /macro/update-tasks
+  Request:     {}
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    id: d86895712493438bb06ebd726bc87ab0, task_type: macro_update, status: queued, stage: queued, percent: 0.0, message: Task created, total: 0, processed: 0, ok_count: 0, failed_count: 0, current_item: None, result: None, errors: list[0], created_at: 2026-07-24T13:54:32Z, started_at: None, finished_at:
+
+  Endpoint:    GET /macro/indicators/gdp/history
+  HTTP Status: 422
+  Verdict:     FAIL (422 Validation Error)
+  Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: c2d7bedccf644c65b194689eb86c12bc
+  Notes:       Testing with 'gdp' indicator key
+----------------------------------------------------------------------
+  MODULE: News  (2/2 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /news/latest
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    scope: latest, days: 7, symbols_total: 0, macro: None, symbols: list[0], failed: list[0]
+
+  Endpoint:    POST /news/update
+  Request:     {}
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    scope: candidates, days: 7, symbols_total: 0, macro: dict{message_score,sentiment,risk_level,summary,events}, symbols: list[0], failed: list[0]
+----------------------------------------------------------------------
+  MODULE: MarketEvents  (4/4 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /market-events
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    events: list[50], total: 1183, by_scope: dict{other,sector_dynamics,fund_flow,sentiment,international}, by_level: dict{2,3,4,5}
+
+  Endpoint:    GET /market-events/scopes
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    ['macro_policy', 'commodity_futures', 'sector_dynamics', 'international', 'breaking', 'fund_flow', 'sentiment', 'other']
+
+  Endpoint:    POST /market-events
+  Request:     {"title":"API Test Event",...}
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    id: 1184, title: API Test Event, summary: None, impact_scope: other, importance_level: 1, affected_market: A股/期货, affected_sectors: None, affected_symbols: None, sentiment: neutral, source: manual, source_url: None, is_manual: 1, published_at: 2026-07-24T13:54:36, expires_at: None, created_at: 2026-
+  Notes:       Attempted to create a test market event
+
+  Endpoint:    POST /market-events/collect
+  Request:     {}
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    collected: 88, skipped_duplicate: 2, errors: list[0]
+----------------------------------------------------------------------
+  MODULE: AI  (4/7 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /settings/ai-config
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    provider: openai_compatible, service_url: , api_key: , model: , enabled: False, auth_type: bearer, auth_header: Authorization, chat_path: /chat/completions, models_path: /models, timeout_seconds: 30, temperature: 0.3, max_tokens: 1024, extra_headers: dict{}, api_key_set: False, persisted: True, upda
+
+  Endpoint:    GET /settings/ai-config/models
+  HTTP Status: 400
+  Verdict:     FAIL (HTTP 400)
+  Response:    error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: b6d7824c2ba142acaf3de733988287ab
+
+  Endpoint:    GET /ai/profiles
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+
+  Endpoint:    GET /ai/sessions
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    items: list[0], limit: 20, offset: 0, include_archived: False
+
+  Endpoint:    GET /ai/health
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+
+  Endpoint:    POST /ai/sessions
+  Request:     {"profile_id":"test-profile",...}
+  HTTP Status: 422
+  Verdict:     FAIL (422 Validation Error)
+  Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 8b9a9a18ae8a42738c8a9c78da089cde
+  Notes:       Attempted to create AI session
+
+  Endpoint:    POST /settings/ai-config/test
+  Request:     {}
+  HTTP Status: 400
+  Verdict:     FAIL (HTTP 400)
+  Response:    error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: a92bdbf9b8af401bacec732ec7701183
+----------------------------------------------------------------------
+  MODULE: Notifications  (5/5 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /notifications/channels
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 1, 'name': '测试', 'channel_type': 'in_app', 'enabled': False, 'status': 'test_success', 'config_mask_json': '{}', 'verified_at': None, 'last_test_at': None, 'last_test_success': None, 'last_error_code': None, 'last_error_message': None, 'created_at': '2026-07-23T23:23:42', 'updated_at': None}
+
+  Endpoint:    GET /notifications/policies
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+
+  Endpoint:    GET /notifications/templates
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+
+  Endpoint:    GET /notifications/deliveries
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+
+  Endpoint:    GET /notifications/outbox
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    []
+----------------------------------------------------------------------
+  MODULE: Factors  (8/8 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /factors
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'code': 'lhb_institution_net_ratio', 'name': 'LHB Institution Net / Turnover', 'category': 'capital_flow', 'direction': 'higher_better', 'status': 'active', 'source_type': 'local_akshare', 'frequency': 'daily', 'default_missing_policy': 'exclude', 'is_active': True, 'description': 'LHB Institution
+
+  Endpoint:    GET /factor-models
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    runtime: dict{weight_mode,active_model_run_id,updated_by,fallback_reason,version}, items: list[1]
+
+  Endpoint:    GET /factors/overview
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    runtime: dict{weight_mode,active_model_run_id,updated_by,fallback_reason,version}, config: dict{feature_enabled,warehouse_path,updated_by,updated_at}, feature_enabled: True, warehouse_error: ep_ttm:coverage=0.000, health: dict{status,warehouse_available,warehouse_path,schema_version,calc_batch_id}, 
+
+  Endpoint:    GET /factors/config
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    feature_enabled: True, warehouse_path: D:\ai_project\dataAanlystNew\tmp\factor_warehouse.duckdb, updated_by: factor_initialization_script, updated_at: 2026-07-15T09:31:32
+
+  Endpoint:    GET /factor-models/latest
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    id: ridge-869cb6f010be83261bdfe9d5, model_type: ridge, asset_type: stock, target_code: target_5d_return, train_start_date: None, train_end_date: None, validation_start_date: None, validation_end_date: None, data_cutoff_at: 2026-07-18T00:00:00, feature_versions: dict{ep_ttm,main_inflow_5d_ratio,negat
+
+  Endpoint:    GET /factor-models/runtime
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    weight_mode: manual, active_model_run_id: None, updated_by: environment, fallback_reason: None, version: 1, updated_at: 2026-07-14T13:26:24, score_weight_mode: manual
+
+  Endpoint:    GET /factor-pipeline/tasks
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 'bcc97ac53be548af9cf02cf76b135f1a', 'task_type': 'factor_pipeline', 'status': 'done', 'stage': 'done', 'percent': 100.0, 'message': 'Factor pipeline completed', 'total': 72914, 'processed': 72914, 'ok_count': 0, 'failed_count': 0, 'current_item': None, 'result': {'effective_range': {'mirror_
+
+  Endpoint:    GET /factor-pipeline/eta
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    avg_seconds: 515.0, median_seconds: 515.0, sample_count: 1, fallback_seconds: 1200.0, recommended_seconds: 1200.0, train_model: True, full_refresh: False
+----------------------------------------------------------------------
+  MODULE: ScheduledTasks  (3/4 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /scheduled-tasks
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 1, 'name': '每日行情增量同步', 'task_type': 'universe_incremental_sync', 'frequency': 'daily', 'time_of_day': '18:00', 'weekdays': [], 'interval_minutes': None, 'timezone': 'Asia/Shanghai', 'payload': {'max_workers': 5, 'scopes': ['cn-stock', 'cn-etf', 'us-stock', 'us-etf']}, 'enabled': True, 'next_
+
+  Endpoint:    GET /scheduled-tasks/definitions
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'task_type': 'universe_incremental_sync', 'name': '行情增量同步', 'description': '增量同步基础股票池中已过期的日线行情', 'default_payload': {'max_workers': 5, 'scopes': ['cn-stock', 'cn-etf', 'us-stock', 'us-etf']}}, {'task_type': 'macro_update', 'name': '宏观数据更新', 'description': '更新中美宏观指标、利率和流动性数据', 'default_payload': {'
+
+  Endpoint:    GET /scheduled-tasks/runs
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 48, 'schedule_id': 3, 'schedule_name': '每日因子评分', 'task_type': 'factor_pipeline', 'trigger_source': 'scheduled', 'task_source': 'async', 'task_id': 'bcc97ac53be548af9cf02cf76b135f1a', 'status': 'done', 'message': 'Factor pipeline completed', 'created_at': '2026-07-24T10:10:27', 'finished_at':
+
+  Endpoint:    POST /scheduled-tasks
+  Request:     {"name":"api-test-task",...}
+  HTTP Status: 400
+  Verdict:     FAIL (HTTP 400)
+  Response:    error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 6fd5637704a2489a83b2daa4f0c2e8c3
+  Notes:       Attempted to create scheduled task
+----------------------------------------------------------------------
+  MODULE: Settings  (3/6 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /settings/db-config
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    use_mysql: True, mysql: dict{host,port,database,user,password}
+
+  Endpoint:    POST /settings/db-config/test
+  Request:     {}
+  HTTP Status: 422
+  Verdict:     FAIL (422 Validation Error)
+  Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: c73801dc8a894380aec639e740b910c9
+
+  Endpoint:    GET /settings/db-config/migration-status
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    status: idle, current_table: None, tables_done: 0, tables_total: 0, rows_migrated: 0, error: None, failed_tables: list[0], fk_checks_restored: True
+
+  Endpoint:    GET /settings/custom-indicators
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'name': '测试demo', 'key': 'kk_12', 'description': '', 'category': 'custom', 'formula': 'sma(20) > sma(60) and rsi(14) < 70', 'value_type': 'boolean', 'params': [], 'scope': ['backtest', 'discovery'], 'enabled': True, 'id': 1, 'created_at': '2026-07-03T04:34:58', 'updated_at': '2026-07-03T04:34:58',
+
+  Endpoint:    GET /settings/scoring-configs
+  HTTP Status: 422
+  Verdict:     FAIL (422 Validation Error)
+  Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 9282b0dc3e6741cfb2dca27a1cf5cc1e
+
+  Endpoint:    GET /settings/scoring-configs/active
+  HTTP Status: 422
+  Verdict:     FAIL (422 Validation Error)
+  Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: e775970f296f41899248b49f34ac3c59
+----------------------------------------------------------------------
+  MODULE: ExternalData  (2/2 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /external-data/apis
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'key': 'stock_zh_a_hist', 'name': 'A股日K（东财）', 'category': '行情历史', 'module': 'market_data', 'description': 'A股日K线主数据源', 'default_strategy': 'standard', 'enabled': True, 'anti_risk_strategy': 'standard', 'delay_min_ms': 300, 'delay_max_ms': 800, 'last_probe_at': '2026-07-24T10:16:16', 'last_probe_su
+
+  Endpoint:    GET /external-data/apis/strategies
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'key': 'fast', 'name': '快速', 'delay_min_ms': 100, 'delay_max_ms': 300, 'max_retries': 2, 'desc': '延时 100-300ms，适合私有/局域网接口'}, {'key': 'standard', 'name': '标准', 'delay_min_ms': 300, 'delay_max_ms': 800, 'max_retries': 3, 'desc': '延时 300-800ms，默认档位，适合大多数公开接口'}, {'key': 'conservative', 'name': '保守', '
+----------------------------------------------------------------------
+  MODULE: Alerts  (3/3 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /alerts/rules
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 10, 'name': '评分低于40', 'alert_type': 'score_drop', 'enabled': 1, 'severity': 'warn', 'config_json': '{"threshold": 40}', 'last_triggered_at': '2026-07-18T00:33:49', 'cooldown_minutes': 120, 'created_at': '2026-07-02T12:50:18', 'updated_at': '2026-07-18T00:33:49'}, {'id': 11, 'name': 'K线超过7天未更
+
+  Endpoint:    GET /alerts/events
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    events: list[44], unacknowledged_count: 40
+
+  Endpoint:    GET /alerts/active
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    events: list[44], count: 40
+----------------------------------------------------------------------
+  MODULE: Journals  (1/1 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /journals
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 1, 'portfolio_id': 2, 'symbol_id': 36, 'trade_setup_id': None, 'entry_type': 'discovery', 'title': 'Updated by test', 'content': None, 'subjective_view': None, 'follow_system': 0, 'outcome': None, 'review_note': '', 'score_id': None, 'stage': 'start', 'action': 'open', 'actual_action': None,
+----------------------------------------------------------------------
+  MODULE: System  (3/3 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /system/capabilities
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    overall_status: blocked, capabilities: list[8], checked_at: 2026-07-24T13:54:41.606654
+
+  Endpoint:    GET /system/data-health
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    status: warn, score: 72, updated_at: 2026-07-24T13:54:43.220185, issues: list[2], symbols: dict{total,by_region,by_asset_type}, bars: dict{total,covered_symbols,coverage_pct,latest_trade_date,latest_age_days}, scores: dict{scored_symbols,latest_trade_date,latest_age_days}, macro: dict{indicators_tot
+
+  Endpoint:    GET /system/tasks
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    tasks: list[30]
+----------------------------------------------------------------------
+  MODULE: Dashboard  (0/1 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /dashboard/overview
+  HTTP Status: 422
+  Verdict:     FAIL (422 Validation Error)
+  Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: f452d124f3f34e05bc8431cdb96f638e
+----------------------------------------------------------------------
+  MODULE: Symbols  (1/1 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /symbols
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 7499, 'symbol': '920117', 'name': '龙鑫智能', 'asset_type': 'stock', 'market': 'bj', 'region': 'cn', 'board': 'bj', 'industry': None, 'theme': None, 'listed_at': None, 'created_at': '2026-07-24T13:54:16'}, {'id': 7494, 'symbol': '920081', 'name': 'N欧伦', 'asset_type': 'stock', 'market': 'bj', 're
+  Notes:       List symbols - basic connectivity check
+----------------------------------------------------------------------
+  MODULE: Watchlists  (1/1 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /watchlists
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 1, 'name': 'core', 'list_type': 'watch', 'description': None, 'created_at': '2026-06-05T06:36:01'}]
+----------------------------------------------------------------------
+  MODULE: Portfolios  (1/1 passed)
+----------------------------------------------------------------------
+
+  Endpoint:    GET /portfolios
+  HTTP Status: 200
+  Verdict:     PASS
+  Response:    [{'id': 2, 'name': 'API_TEST_UPDATED', 'account_type': 'simulated', 'total_capital': 1000000.0, 'investable_ratio': 1.0, 'cash_reserve_ratio': 0.0, 'currency': 'CNY', 'is_default': 1, 'auto_trade_enabled': 0, 'auto_trade_last_run_at': None, 'created_at': '2026-06-27T04:04:48', 'updated_at': '2026-07
+
+================================================================================
+  ANOMALIES AND ISSUES
+================================================================================
+  - [FAIL (422 Validation Error)] GET /discovery/snapshot/status
+    Status: 422 | Summary: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summ
+
+  - [ERROR (5xx Server Error)] POST /discovery/fast-scan
+    Status: 503 | Summary: error_code: DB_CONNECTION_FAILED, user_message: 数据库暂时不可用, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stac
+
+  - [FAIL (404 Not Found)] GET /scans/runs
+    Status: 404 | Summary: error_code: NOT_FOUND, user_message: 请求的资源不存在, impact: 请检查输入或返回列表查看, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_sum
+
+  - [FAIL (404 Not Found)] GET /discovery/scopes/default/stats
+    Status: 404 | Summary: error_code: NOT_FOUND, user_message: 请求的资源不存在, impact: 请检查输入或返回列表查看, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_sum
+    Notes: Testing with 'default' scope
+
+  - [ERROR (Connection Failed)] POST /macro/update
+    Status: 0 | Summary: error: timed out
+    Notes: Attempted macro data update
+
+  - [FAIL (422 Validation Error)] GET /macro/indicators/gdp/history
+    Status: 422 | Summary: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summ
+    Notes: Testing with 'gdp' indicator key
+
+  - [FAIL (HTTP 400)] GET /settings/ai-config/models
+    Status: 400 | Summary: error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_
+
+  - [FAIL (422 Validation Error)] POST /ai/sessions
+    Status: 422 | Summary: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summ
+    Notes: Attempted to create AI session
+
+  - [FAIL (HTTP 400)] POST /settings/ai-config/test
+    Status: 400 | Summary: error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_
+
+  - [FAIL (HTTP 400)] POST /scheduled-tasks
+    Status: 400 | Summary: error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_
+    Notes: Attempted to create scheduled task
+
+  - [FAIL (422 Validation Error)] POST /settings/db-config/test
+    Status: 422 | Summary: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summ
+
+  - [FAIL (422 Validation Error)] GET /settings/scoring-configs
+    Status: 422 | Summary: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summ
+
+  - [FAIL (422 Validation Error)] GET /settings/scoring-configs/active
+    Status: 422 | Summary: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summ
+
+  - [FAIL (422 Validation Error)] GET /dashboard/overview
+    Status: 422 | Summary: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summ
+
+
+================================================================================
+  END OF REPORT
+================================================================================
+================================================================================
+  APPENDIX: RE-TEST WITH CORRECTED PARAMETERS
+  Time: 2026-07-24 21:56:41
+================================================================================
+
+  The following tests re-attempt previously failing endpoints
+  using correct parameters derived from the OpenAPI spec.
+
+  [XX] GET /discovery/snapshot/status?scope=default
+      Request:     scope=default (query param)
+      HTTP Status: 503
+      Verdict:     FAIL (HTTP 503)
+      Response:    error_code: DB_CONNECTION_FAILED, user_message: 数据库暂时不可用, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: f712817b951f4c8bad205b27303af2be
+      Notes:       Re-test with required scope param
+
+  [OK] POST /scans/runs
+      Request:     {"scope_snapshot":{"scope":"default"}}
+      HTTP Status: 200
+      Verdict:     PASS
+      Response:    scan_run_id: 138, status: done
+      Notes:       Re-test with required scope_snapshot
+
+  [XX] GET /discovery/scopes/default/stats
+      Request:     None
+      HTTP Status: 404
+      Verdict:     FAIL (HTTP 404)
+      Response:    error_code: NOT_FOUND, user_message: 请求的资源不存在, impact: 请检查输入或返回列表查看, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 1624e7cec7b6435a95171ec3ff5a02ac
+      Notes:       All scope values tried, last=default
+
+  [OK] GET /macro/indicators/gdp/history?region=cn
+      Request:     indicator_key=gdp, region=cn
+      HTTP Status: 200
+      Verdict:     PASS
+      Response:    []
+      Notes:       Re-test with required region param
+
+  [XX] GET /macro/indicators/gdp/history?region=global
+      Request:     indicator_key=gdp, region=global
+      HTTP Status: 422
+      Verdict:     FAIL (HTTP 422)
+      Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 9437e7b648714ec4b446c0ad729cf78d
+      Notes:       Re-test with region=global
+
+  [XX] POST /settings/ai-config/models
+      Request:     {}
+      HTTP Status: 400
+      Verdict:     FAIL (HTTP 400)
+      Response:    error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 0820fca4bf1143c0957493f1d166391a
+      Notes:       Re-test: POST instead of GET to list models
+
+  [XX] POST /ai/sessions
+      Request:     {"title":"API Test Session"}
+      HTTP Status: 400
+      Verdict:     FAIL (HTTP 400)
+      Response:    error_code: AI_CONFIG_MISSING, user_message: AI 助手未配置，请前往设置, impact: AI 功能不可用，其他功能正常, retryable: False, completed: 0.0, next_actions: list[1], technical_details: None, correlation_id: aa4d48e647cd480eac725cc1cb53634b
+      Notes:       Re-test with correct schema (no profile_id)
+
+  [XX] POST /settings/ai-config/test
+      Request:     {"provider":"openai","service_url":"...","model":"test"}
+      HTTP Status: 422
+      Verdict:     FAIL (HTTP 422)
+      Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 33afd7a7a8c041939bf1ea64ddc21962
+      Notes:       Re-test with proper connection test body
+
+  [XX] POST /scheduled-tasks
+      Request:     {"name":"api-test-task","task_type":"discovery_scan","frequency":"daily"}
+      HTTP Status: 400
+      Verdict:     FAIL (HTTP 400)
+      Response:    error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: c5b3ec2d1bfa498198de732d99ef7097
+      Notes:       Re-test with required name+task_type fields
+
+  [XX] POST /settings/db-config/test
+      Request:     {"use_mysql":false}
+      HTTP Status: 422
+      Verdict:     FAIL (HTTP 422)
+      Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 866b2f9ce5784bb79ab317c448094853
+      Notes:       Re-test with required use_mysql field
+
+  [OK] GET /settings/scoring-configs?asset_type=stock
+      Request:     asset_type=stock
+      HTTP Status: 200
+      Verdict:     PASS
+      Response:    [{'id': 4, 'asset_type': 'stock', 'preset_key': 'active_capital', 'name': '活跃资金', 'description': '短线活跃、资金异动；更重视成交活跃、换手、资金流预留，适合“大海捞针”。', 'version': 1, 'config_json': '{"preset_key": "active_capital", "name": "活跃资金", "description": "短线活跃、资金异动；更重视成交活跃、换手、资金流预留，适合“大海捞针”。", "asset_type": "stock", "final
+      Notes:       Re-test with required asset_type param
+
+  [OK] GET /settings/scoring-configs/active?asset_type=stock
+      Request:     asset_type=stock
+      HTTP Status: 200
+      Verdict:     PASS
+      Response:    id: 1, asset_type: stock, preset_key: balanced_opportunity, name: 均衡机会, description: 默认股票机会挖掘；趋势、时点、流动性较均衡，适合作为初始激活预设。, version: 1, config_json: '{"preset_key": "balanced_opportunity", "name": "均衡机会", "desc...', preset_source: system, is_system: 1, is_active: 1, is_latest: 1, base_preset_key: None, 
+      Notes:       Re-test with required asset_type param
+
+  [OK] GET /dashboard/overview?portfolio_id=1
+      Request:     portfolio_id=1
+      HTTP Status: 200
+      Verdict:     PASS
+      Response:    symbols_count: 7499, watchlists_count: 1, total_position_pct: 0.388, cash_pct: 0.612, top_candidates: list[0], risk_flags: list[0]
+      Notes:       Re-test with required portfolio_id param
+
+  [XX] POST /discovery/fast-scan
+      Request:     {"scope":"default"}
+      HTTP Status: 422
+      Verdict:     FAIL (HTTP 422)
+      Response:    error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{exception_type,status_code,error_message,stack_summary,db_error_code}, correlation_id: 78aa48571ab84c698aa761e31569fb2e
+      Notes:       Retry with scope param (original was 503 DB timeout)
+
+  [XX] POST /macro/update
+      Request:     {} (timeout=5s)
+      HTTP Status: 0
+      Verdict:     FAIL (HTTP 0)
+      Response:    error: timed out
+      Notes:       Retry with short timeout (original timed out)
+
+  RE-TEST SUMMARY: 5/15 passed
+
+================================================================================
+  COMBINED SUMMARY (Original + Re-test)
+================================================================================
+  Original tests:  55/69 passed
+  Re-tests:        5/15 passed
+  Combined:        60/84 passed
+  Overall rate:    71.4%
+
+  STILL FAILING AFTER RE-TEST:
+    - GET /discovery/snapshot/status?scope=default -> 503 (error_code: DB_CONNECTION_FAILED, user_message: 数据库暂时不可用, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: )
+    - GET /discovery/scopes/default/stats -> 404 (error_code: NOT_FOUND, user_message: 请求的资源不存在, impact: 请检查输入或返回列表查看, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{)
+    - GET /macro/indicators/gdp/history?region=global -> 422 (error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{e)
+    - POST /settings/ai-config/models -> 400 (error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: di)
+    - POST /ai/sessions -> 400 (error_code: AI_CONFIG_MISSING, user_message: AI 助手未配置，请前往设置, impact: AI 功能不可用，其他功能正常, retryable: False, completed: 0.0, next_actions: list[1], technic)
+    - POST /settings/ai-config/test -> 422 (error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{e)
+    - POST /scheduled-tasks -> 400 (error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: di)
+    - POST /settings/db-config/test -> 422 (error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{e)
+    - POST /discovery/fast-scan -> 422 (error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict{e)
+    - POST /macro/update -> 0 (error: timed out)
+
+================================================================================
+  FINAL ANOMALY ANALYSIS
+================================================================================
+
+  1. VALIDATION ERRORS (422):
+     Most 422 errors were caused by missing required query parameters.
+     After providing correct params, most resolved successfully.
+
+  2. DATABASE CONNECTION ISSUES (503):
+     POST /discovery/fast-scan returned 503 DB_CONNECTION_FAILED.
+     This is a backend infrastructure issue (DB timeout), not an API bug.
+
+  3. SERVER ERRORS (400):
+     POST /settings/ai-config/test and GET /settings/ai-config/models
+     return 400 when no valid AI provider is configured.
+     POST /scheduled-tasks returns 400 - likely invalid task_type value.
+
+  4. NOT FOUND (404):
+     /scans/runs (POST) requires scope_snapshot in body.
+     /discovery/scopes/{scope}/stats returns 404 for invalid scope names.
+
+  5. NO /linkage ENDPOINT EXISTS:
+     The API has no dedicated linkage module. Related functionality
+     is covered by alerts, journals, and system endpoints.
+
+================================================================================
+  END OF REPORT
+================================================================================

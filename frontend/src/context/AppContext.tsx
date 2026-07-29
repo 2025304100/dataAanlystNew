@@ -69,7 +69,7 @@ interface AppState {
   capabilitiesLoading: boolean;
 }
 
-interface AppContextValue extends AppState {
+export interface AppContextValue extends AppState {
   setLocaleValue: (locale: "zh-CN" | "en-US") => void;
   setMarketGroup: (market: string) => void;
   setActiveTab: (tab: string) => void;
@@ -153,7 +153,7 @@ interface AppContextValue extends AppState {
   isCapabilityBlocked: (key: string) => boolean;
 }
 
-const AppContext = createContext<AppContextValue | null>(null);
+export const AppContext = createContext<AppContextValue | null>(null);
 
 export function useApp() {
   const ctx = useContext(AppContext);

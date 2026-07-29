@@ -13,6 +13,10 @@ from sqlalchemy import select
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
 from app.schemas.async_task import FactorPipelineCreate
+from app.schemas.errors import (
+    TechnicalDetails,
+    build_user_error,
+)
 from app.services.async_tasks import (
     _now,
     _set_task,
@@ -127,6 +131,10 @@ def _start_task_heartbeat(
         daemon=True,
     )
     thread.start()
+    # 契约：必须返回 (stop_event, thread)，否则调用方
+    # `heartbeat_stop, heartbeat_thread = _start_task_heartbeat(...)`
+    # 解包 None 会抛 `cannot unpack non-iterable NoneType object`
+    return stop_event, thread
 
 # mirror 阶段子阶段的 percent 映射
 # metadata: 5% → 8%（通常很快）
@@ -269,11 +277,54 @@ def create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
     return task.model_dump()
 
 
+def _classify_pipeline_error(exc: Exception, stage: str):
+    """将异常映射到统一错误协议 error_code，返回 (error_code, override_user_message)。
+
+    避免向用户裸露 `NoneType`/原始异常文本，统一返回中文可操作文案。
+    """
+    msg = str(exc) or type(exc).__name__
+    lower = msg.lower()
+    # 参数/配置校验类（不可重试）
+    if isinstance(exc, (ValueError,)):
+        if 'disabled' in lower or 'enable' in lower:
+            return (
+                'FACTOR_PIPELINE_DISABLED',
+                '因子模型未启用，请在「设置 → 因子模型」中开启后再运行流水线',
+            )
+        if 'validation_days' in lower or 'window_days' in lower:
+            return (
+                'VALIDATION_ERROR',
+                '因子流水线启动失败：训练/验证窗口参数不合法，请调整后重试',
+            )
+        return (
+            'VALIDATION_ERROR',
+            '因子流水线启动失败：参数校验未通过，请检查配置后重试',
+        )
+    # DuckDB 锁/连接类（可重试）
+    if (
+        'duckdb' in lower
+        or 'lock' in lower
+        or 'concurrent' in lower
+        or 'different configuration' in lower
+        or ('database' in lower and ('lock' in lower or 'busy' in lower))
+    ):
+        return (
+            'DB_LOCK_TIMEOUT',
+            '因子仓库被占用或繁忙，请稍后重试；若持续失败可重启后端释放残留连接',
+        )
+    # 通用兜底（可重试）
+    return (
+        'UNKNOWN_ERROR',
+        f'因子流水线在「{stage}」阶段失败，请稍后重试；若持续失败请查看技术详情',
+    )
+
+
 def _run_factor_pipeline(task_id: str) -> None:
     heartbeat_stop: threading.Event | None = None
     heartbeat_thread: threading.Thread | None = None
     SessionLocal = get_session_local()
     db = SessionLocal()
+    current_stage = 'initializing'
     try:
         task = db.get(AsyncTaskRecord, task_id)
         if task is None:
@@ -337,6 +388,7 @@ def _run_factor_pipeline(task_id: str) -> None:
             message='Mirroring local market and factor inputs',
             started_at=_now(),
         )
+        current_stage = 'mirror'
         # Release the configuration-read transaction before long local
         # warehouse writes. All bar reads below use short sessions, so MySQL
         # connections are returned to the pool between DuckDB batches.
@@ -384,6 +436,7 @@ def _run_factor_pipeline(task_id: str) -> None:
             percent=35,
             message='Calculating cross-sectional factors',
         )
+        current_stage = 'factors'
         factors = calculate_stock_factors(
             warehouse,
             start_date=calculation_start_date,
@@ -400,6 +453,7 @@ def _run_factor_pipeline(task_id: str) -> None:
             percent=55,
             message='Generating T+1 to T+5 labels',
         )
+        current_stage = 'targets'
         targets = calculate_targets(
             warehouse,
             start_date=calculation_start_date,
@@ -418,6 +472,7 @@ def _run_factor_pipeline(task_id: str) -> None:
                 percent=70,
                 message='Training and validating Ridge candidate',
             )
+            current_stage = 'train'
             model_result = train_rolling_ridge(
                 db,
                 warehouse,
@@ -449,6 +504,7 @@ def _run_factor_pipeline(task_id: str) -> None:
                 percent=88,
                 message='Materializing active factor score batch',
             )
+            current_stage = 'score'
             latest_date = _latest_factor_date(
                 warehouse, factors.calc_batch_id
             )
@@ -483,15 +539,33 @@ def _run_factor_pipeline(task_id: str) -> None:
         db.rollback()
         logger.exception('Factor pipeline task %s failed', task_id)
         try:
+            # 终态保护：若任务已被取消，不覆盖为 failed（硬约束：
+            # cancelled 终态不得被 worker 线程覆盖）
+            existing = db.get(AsyncTaskRecord, task_id)
+            if existing is not None and existing.status == 'cancelled':
+                return
+            # 统一错误协议：避免裸露 NoneType/原始异常文本，返回中文可操作文案
+            error_code, override_message = _classify_pipeline_error(
+                exc, current_stage
+            )
+            user_error = build_user_error(
+                error_code,
+                override_user_message=override_message,
+                technical_details=TechnicalDetails(
+                    exception_type=type(exc).__name__,
+                    error_message=str(exc),
+                ),
+            )
             _set_task(
                 db,
                 task_id,
                 status='failed',
                 stage='failed',
-                message=f'Factor pipeline failed: {exc}',
+                message=user_error.user_message,
                 errors_json=json.dumps(
-                    [{'stage': 'pipeline', 'error': str(exc)}],
+                    [user_error.model_dump(mode='json')],
                     ensure_ascii=False,
+                    default=str,
                 ),
                 finished_at=_now(),
             )

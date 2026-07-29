@@ -31,7 +31,7 @@ import {
   type FactorWeightMode,
 } from "../api/client";
 import { useApp } from "../context/AppContext";
-import { t, template } from "../i18n";
+import { enumLabel, t, template } from "../i18n";
 
 const TERMINAL_TASK_STATES = new Set(["done", "completed", "failed", "cancelled"]);
 
@@ -327,7 +327,7 @@ export default function FactorModelSettings() {
         <div className="factor-model-id">
           <Tooltip title={value}><strong>{shortId(value)}</strong></Tooltip>
           {runtime?.active_model_run_id === record.id && (
-            <Tag color={modeColor(runtime.weight_mode)}>{runtime.weight_mode}</Tag>
+            <Tag color={modeColor(runtime.weight_mode)}>{enumLabel("factorMode", runtime.weight_mode)}</Tag>
           )}
         </div>
       ),
@@ -458,8 +458,8 @@ export default function FactorModelSettings() {
 
       <div className="factor-runtime-grid">
         <div><span>{t("factorModelFeatureStatus")}</span><strong><Tag color={featureEnabled ? "green" : "default"}>{featureEnabled ? t("factorModelFeatureEnabled") : t("factorModelFeatureDisabled")}</Tag></strong></div>
-        <div><span>{t("factorModelRuntime")}</span><strong><Tag color={modeColor(runtime?.weight_mode ?? "manual")}>{runtime?.weight_mode ?? "manual"}</Tag></strong></div>
-        <div><span>{t("factorModelScoreMode")}</span><strong>{runtime?.score_weight_mode ?? "manual"}</strong></div>
+        <div><span>{t("factorModelRuntime")}</span><strong><Tag color={modeColor(runtime?.weight_mode ?? "manual")}>{enumLabel("factorMode", runtime?.weight_mode ?? "manual")}</Tag></strong></div>
+        <div><span>{t("factorModelScoreMode")}</span><strong>{enumLabel("factorMode", runtime?.score_weight_mode ?? "manual")}</strong></div>
         <div><span>{t("factorModelActiveModel")}</span><Tooltip title={runtime?.active_model_run_id || undefined}><strong>{runtime?.active_model_run_id ? shortId(runtime.active_model_run_id) : t("factorModelNoModel")}</strong></Tooltip></div>
         <div><span>{t("factorModelWarehouse")}</span><strong>{overview?.health.warehouse_available ? t("factorModelHealthy") : t("factorModelUnavailable")}</strong></div>
         <div><span>{t("factorModelLatestDate")}</span><strong>{overview?.latest_trade_date ?? "-"}</strong></div>

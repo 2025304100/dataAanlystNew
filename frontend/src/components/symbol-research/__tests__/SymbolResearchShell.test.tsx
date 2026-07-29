@@ -40,7 +40,7 @@ const { mockContext, mockApi } = vi.hoisted(() => {
       setFuturePlanCustom: vi.fn(),
       setSimPrice: vi.fn(),
       setSimQuantity: vi.fn(),
-      loadSymbolDetail: vi.fn(async () => undefined),
+      loadSymbolDetail: vi.fn(async (_id: number, _options?: any) => undefined),
       loadWorkbench: vi.fn(async () => undefined),
       generateTradeSetup: vi.fn(async () => undefined),
       showToast: vi.fn(),

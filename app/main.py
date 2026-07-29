@@ -436,6 +436,9 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         error_code = "UNAUTHORIZED"
     elif exc.status_code == 429:
         error_code = "RATE_LIMITED"
+    elif exc.status_code == 503:
+        # P1-05：503 统一映射为 CAPABILITY_BLOCKED，前端可据此展示中文 + next_actions
+        error_code = "CAPABILITY_BLOCKED"
     user_error = build_user_error(
         error_code,
         correlation_id=correlation_id,

@@ -5,16 +5,18 @@ import {
   ArrowRightOutlined,
   BarChartOutlined,
   CheckCircleOutlined,
+  ClearOutlined,
   DatabaseOutlined,
   ExperimentOutlined,
   FireOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
+  PlayCircleOutlined,
   ReloadOutlined,
   SafetyOutlined,
 } from "@ant-design/icons";
 import { api, type FactorOverview } from "../api/client";
-import { actionLabel, stageLabel, t, template } from "../i18n";
+import { actionLabel, enumLabel, stageLabel, t, template } from "../i18n";
 import { useApp } from "../context/AppContext";
 import { navigateToResearch } from "../utils/sourceContext";
 import { baseOpportunityScoreValue, formatRelativeTime, opportunityScoreValue, score, withFinalOpportunityScore } from "../utils/format";
@@ -103,6 +105,10 @@ export default function TodayDecision() {
   const [openingSymbolId, setOpeningSymbolId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [repairAllLoading, setRepairAllLoading] = useState(false);
+  const [repairModalOpen, setRepairModalOpen] = useState(false);
+  const [discoveryCleanupLoading, setDiscoveryCleanupLoading] = useState(false);
+  const [discoveryRescanLoading, setDiscoveryRescanLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -145,11 +151,13 @@ export default function TodayDecision() {
       .slice(0, 5);
   }, [workbench, ctx.newsSnapshot]);
 
-  const repairSamples = useMemo(() => {
+  const allRepairSamples = useMemo(() => {
     const missing = (health?.bars.missing_samples ?? []).map((item) => ({ ...item, repairKind: t("tdMissingBars"), tagColor: "red" }));
     const stale = (health?.bars.stale_samples ?? []).map((item) => ({ ...item, repairKind: t("tdOutdatedBars"), tagColor: "orange" }));
-    return [...missing, ...stale].slice(0, 6);
+    return [...missing, ...stale];
   }, [health]);
+  const visibleRepairSamples = useMemo(() => allRepairSamples.slice(0, 6), [allRepairSamples]);
+  const hasMoreRepairSamples = allRepairSamples.length > 6;
 
   const factorCoverage = useMemo(() => {
     const rows = factorOverview?.factor_coverage ?? [];
@@ -167,6 +175,65 @@ export default function TodayDecision() {
       ctx.showToast("error", `${t("tdRepairFailed")}: ${err.message || err}`);
     } finally {
       setRepairingSymbolId(null);
+    }
+  };
+
+  const repairAllSamples = async (items: DataHealthBarIssue[]) => {
+    if (items.length === 0) return;
+    setRepairAllLoading(true);
+    try {
+      const result = (await api.repairAllSymbolMarketData({
+        symbol_ids: items.map((item) => item.symbol_id),
+        auto_score: true,
+      })) as {
+        success: boolean;
+        total: number;
+        ok_count: number;
+        empty_count: number;
+        failed_count: number;
+        missing_count: number;
+      };
+      ctx.showToast(
+        result.success ? "success" : "info",
+        template("tdRepairAllSummary", {
+          total: result.total,
+          ok: result.ok_count,
+          empty: result.empty_count,
+          failed: result.failed_count,
+          missing: result.missing_count,
+        }),
+      );
+      await load();
+    } catch (err: any) {
+      ctx.showToast("error", `${t("tdRepairAllFailed")}: ${err.message || err}`);
+    } finally {
+      setRepairAllLoading(false);
+    }
+  };
+
+  const cleanupExpiredResults = async () => {
+    setDiscoveryCleanupLoading(true);
+    try {
+      const result = (await api.cleanupDiscoveryResults()) as { deleted: number };
+      ctx.showToast("success", template("tdCleanupExpiredResultsSummary", { deleted: result.deleted }));
+      await load();
+    } catch (err: any) {
+      ctx.showToast("error", `${t("tdCleanupExpiredResultsFailed")}: ${err.message || err}`);
+    } finally {
+      setDiscoveryCleanupLoading(false);
+    }
+  };
+
+  const rescanDiscovery = async () => {
+    setDiscoveryRescanLoading(true);
+    try {
+      await api.createDiscoveryTask({ scope: "cn-stock", min_score: 55, include_news: true });
+      ctx.showToast("success", t("tdRescanDiscoveryStarted"));
+      await load();
+    } catch (err: any) {
+      ctx.showToast("error", `${t("tdRescanDiscoveryFailed")}: ${err.message || err}`);
+    } finally {
+      setDiscoveryRescanLoading(false);
     }
   };
 
@@ -264,26 +331,67 @@ export default function TodayDecision() {
             <Tag key={index} color={issue.level === "error" ? "red" : issue.level === "warn" ? "orange" : "green"}>{issue.message}</Tag>
           ))}
         </div>
-        {repairSamples.length > 0 && (
-          <div className="decision-health-repair">
-            <div className="decision-health-repair-head">
+        <div className="decision-health-repair">
+          <div className="decision-health-repair-head">
+            <Space>
               <Text type="secondary">{t("tdRepairSamples")}</Text>
+              <Tag>{allRepairSamples.length}</Tag>
+            </Space>
+            <Space>
               <Text type="secondary">{health?.bars.repair_hint}</Text>
-            </div>
-            <div className="decision-health-repair-list">
-              {repairSamples.map((item) => (
-                <div key={`${item.reason}-${item.symbol_id}`} className="decision-health-repair-row">
-                  <div>
-                    <Tag color={item.tagColor}>{item.repairKind}</Tag>
-                    <strong>{item.symbol}</strong>
-                    <span>{item.name}</span>
-                    <Text type="secondary">
-                      {item.latest_trade_date ? `${t("tdLatestBar")}: ${item.latest_trade_date} / ${ageText(item.latest_age_days)}` : t("tdMissingReason")}
-                    </Text>
+              <Button type="primary" size="small" icon={<ReloadOutlined />} loading={repairAllLoading} disabled={allRepairSamples.length === 0} onClick={() => repairAllSamples(allRepairSamples)}>
+                {t("tdRepairAll")}
+              </Button>
+            </Space>
+          </div>
+          {allRepairSamples.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("tdNoRepairSamples")} style={{ margin: "16px 0" }} />
+          ) : (
+            <>
+              <div className="decision-health-repair-list">
+                {visibleRepairSamples.map((item) => (
+                  <div key={`${item.reason}-${item.symbol_id}`} className="decision-health-repair-row">
+                    <div>
+                      <Tag color={item.tagColor}>{item.repairKind}</Tag>
+                      <strong>{item.symbol}</strong>
+                      <span>{item.name}</span>
+                      <Text type="secondary">
+                        {item.latest_trade_date ? `${t("tdLatestBar")}: ${item.latest_trade_date} / ${ageText(item.latest_age_days)}` : t("tdMissingReason")}
+                      </Text>
+                    </div>
+                    <Button size="small" icon={<ReloadOutlined />} loading={repairingSymbolId === item.symbol_id} onClick={() => repairSymbol(item)}>{t("tdRepair")}</Button>
                   </div>
-                  <Button size="small" icon={<ReloadOutlined />} loading={repairingSymbolId === item.symbol_id} onClick={() => repairSymbol(item)}>{t("tdRepair")}</Button>
+                ))}
+              </div>
+              {hasMoreRepairSamples && (
+                <div style={{ marginTop: 12, textAlign: "center" }}>
+                  <Button type="link" onClick={() => setRepairModalOpen(true)}>
+                    {template("tdRepairViewMore", { count: allRepairSamples.length - 6 })}
+                  </Button>
                 </div>
-              ))}
+              )}
+            </>
+          )}
+        </div>
+
+        {(!!health?.discovery.expired_results || ["failed", "expired"].includes(health?.discovery.latest_task?.status ?? "")) && (
+          <div className="decision-health-repair" style={{ marginTop: 16 }}>
+            <div className="decision-health-repair-head">
+              <Space>
+                <Text type="secondary">{t("tdDiscoveryActions")}</Text>
+              </Space>
+              <Space>
+                {!!health?.discovery.expired_results && (
+                  <Button size="small" icon={<ClearOutlined />} loading={discoveryCleanupLoading} onClick={cleanupExpiredResults}>
+                    {t("tdCleanupExpiredResults")} ({health.discovery.expired_results})
+                  </Button>
+                )}
+                {["failed", "expired"].includes(health?.discovery.latest_task?.status ?? "") && (
+                  <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={discoveryRescanLoading} onClick={rescanDiscovery}>
+                    {t("tdRescanDiscovery")}
+                  </Button>
+                )}
+              </Space>
             </div>
           </div>
         )}
@@ -302,8 +410,8 @@ export default function TodayDecision() {
         }
       >
         <div className="decision-factor-grid">
-          <span><b>{t("tdFactorMode")}</b><Tag color={factorOverview?.runtime.weight_mode === "ridge" ? "green" : factorOverview?.runtime.weight_mode === "shadow" ? "blue" : "default"}>{factorOverview?.runtime.weight_mode ?? "manual"}</Tag></span>
-          <span><b>{t("tdFactorScoreSource")}</b><strong>{factorOverview?.runtime.score_weight_mode ?? "manual"}</strong></span>
+          <span><b>{t("tdFactorMode")}</b><Tag color={factorOverview?.runtime.weight_mode === "ridge" ? "green" : factorOverview?.runtime.weight_mode === "shadow" ? "blue" : "default"}>{enumLabel("factorMode", factorOverview?.runtime.weight_mode ?? "manual")}</Tag></span>
+          <span><b>{t("tdFactorScoreSource")}</b><strong>{enumLabel("factorMode", factorOverview?.runtime.score_weight_mode ?? "manual")}</strong></span>
           <span title={factorOverview?.runtime.active_model_run_id ?? undefined}><b>{t("tdFactorModel")}</b><strong>{factorOverview?.runtime.active_model_run_id ? factorOverview.runtime.active_model_run_id.slice(0, 16) : "-"}</strong></span>
           <span><b>{t("tdFactorLatest")}</b><strong>{factorOverview?.latest_trade_date ?? "-"}</strong></span>
           <span><b>{t("tdFactorCoverage")}</b><strong>{factorCoverage == null ? "-" : `${(factorCoverage * 100).toFixed(1)}%`}</strong></span>
@@ -341,6 +449,39 @@ export default function TodayDecision() {
               <strong>{value}</strong>
             </div>
           ))}
+        </div>
+      </Modal>
+
+      <Modal
+        open={repairModalOpen}
+        title={t("tdRepairModalTitle")}
+        onCancel={() => setRepairModalOpen(false)}
+        footer={(
+          <Space>
+            <Button onClick={() => setRepairModalOpen(false)}>{t("tdClose")}</Button>
+            <Button type="primary" icon={<ReloadOutlined />} loading={repairAllLoading} onClick={() => repairAllSamples(allRepairSamples)}>
+              {t("tdRepairAll")}
+            </Button>
+          </Space>
+        )}
+        width={720}
+      >
+        <div style={{ maxHeight: 480, overflowY: "auto" }}>
+          <div className="decision-health-repair-list">
+            {allRepairSamples.map((item) => (
+              <div key={`modal-${item.reason}-${item.symbol_id}`} className="decision-health-repair-row">
+                <div>
+                  <Tag color={item.tagColor}>{item.repairKind}</Tag>
+                  <strong>{item.symbol}</strong>
+                  <span>{item.name}</span>
+                  <Text type="secondary">
+                    {item.latest_trade_date ? `${t("tdLatestBar")}: ${item.latest_trade_date} / ${ageText(item.latest_age_days)}` : t("tdMissingReason")}
+                  </Text>
+                </div>
+                <Button size="small" icon={<ReloadOutlined />} loading={repairingSymbolId === item.symbol_id} onClick={() => repairSymbol(item)}>{t("tdRepair")}</Button>
+              </div>
+            ))}
+          </div>
         </div>
       </Modal>
     </div>

@@ -13,6 +13,7 @@ from app.schemas.market_data import (
     HistoryInitializationRequest,
     HistoryInitializationRetryRequest,
     HistoryInitializationStatus,
+    MarketDataBatchRepairRequest,
     MarketDataRepairRequest,
     MarketDataUpdateRequest,
 )
@@ -27,7 +28,10 @@ from app.services.market_data import (
     sync_market_data,
     sync_symbol_daily_bars,
 )
-from app.services.market_data_sync_task import create_market_data_sync_task
+from app.services.market_data_sync_task import (
+    create_market_data_sync_task,
+    retry_sync_failed_symbols,
+)
 
 
 router = APIRouter()
@@ -82,6 +86,19 @@ def get_sync_task(task_id: str) -> dict:
 def cancel_sync_task(task_id: str) -> dict:
     try:
         return cancel_async_task(task_id).model_dump()
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/market-data/sync-tasks/{task_id}/retry-failed")
+def retry_sync_failed(task_id: str) -> dict:
+    """重试指定同步任务中失败的标的（P1-08 失败批次续跑）。
+
+    从原任务的 errors_json 中提取失败标的，创建一个新的同步任务仅同步这些标的。
+    失败批次不阻塞其他标的：原任务已完成的标的不会重复同步。
+    """
+    try:
+        return retry_sync_failed_symbols(task_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -172,6 +189,63 @@ async def repair_symbol_market_data(symbol_id: int, payload: MarketDataRepairReq
         "message": "Symbol market data repair completed",
         "data": result,
         "latest_score": latest_score,
+    }
+
+
+@router.post("/market-data/repair/batch")
+async def repair_batch_market_data(payload: MarketDataBatchRepairRequest, db: Session = Depends(get_db)) -> dict:
+    symbols = db.execute(select(Symbol).where(Symbol.id.in_(payload.symbol_ids), Symbol.is_active == 1)).scalars().all()
+    found_ids = {s.id for s in symbols}
+    missing_ids = [sid for sid in payload.symbol_ids if sid not in found_ids]
+
+    ok_count = 0
+    empty_count = 0
+    failed_count = 0
+    failed_symbols: list[dict] = []
+    results: list[dict] = []
+
+    for symbol in symbols:
+        try:
+            result = await run_sync(
+                sync_symbol_daily_bars,
+                db=db,
+                symbol=symbol,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                adjust=payload.adjust,
+            )
+            if result.get("status") == "ok":
+                ok_count += 1
+            elif result.get("status") == "empty":
+                empty_count += 1
+            else:
+                failed_count += 1
+                failed_symbols.append({"symbol_id": symbol.id, "symbol": symbol.symbol, "reason": result.get("status")})
+            results.append(result)
+
+            if payload.auto_score and result.get("status") == "ok":
+                latest_bar = db.execute(
+                    select(DailyBar)
+                    .where(DailyBar.symbol_id == symbol.id)
+                    .order_by(DailyBar.trade_date.desc())
+                ).scalars().first()
+                if latest_bar is not None:
+                    calculate_symbol_score(db=db, symbol=symbol, trade_date=latest_bar.trade_date)
+        except Exception as exc:
+            failed_count += 1
+            failed_symbols.append({"symbol_id": symbol.id, "symbol": symbol.symbol, "reason": str(exc)})
+
+    db.commit()
+    return {
+        "success": failed_count == 0 and len(missing_ids) == 0,
+        "total": len(payload.symbol_ids),
+        "ok_count": ok_count,
+        "empty_count": empty_count,
+        "failed_count": failed_count,
+        "missing_count": len(missing_ids),
+        "missing_ids": missing_ids,
+        "failed_symbols": failed_symbols,
+        "results": results,
     }
 
 

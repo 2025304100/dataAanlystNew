@@ -16,8 +16,8 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 const { mockContext } = vi.hoisted(() => ({
   mockContext: {
     capabilities: null as any,
-    isCapabilityBlocked: vi.fn(() => false),
-    getCapability: vi.fn(() => undefined),
+    isCapabilityBlocked: vi.fn((_key: string) => false),
+    getCapability: vi.fn((_key: string): any => undefined),
     setActiveTab: vi.fn(),
     runScan: vi.fn(),
     loadCapabilities: vi.fn(),

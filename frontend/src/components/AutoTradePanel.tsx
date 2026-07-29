@@ -17,7 +17,7 @@ import { QuestionCircleOutlined, RollbackOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
-import { t } from "../i18n";
+import { enumLabel, sideLabel, t } from "../i18n";
 import { money, formatRelativeTime } from "../utils/format";
 import type { AutoTradePlanItem, AutoTradeResult } from "../types";
 // WP-S-FIX.4：阻断操作就地处理（按钮替换为 CapabilityGateButton）
@@ -579,15 +579,15 @@ export default function AutoTradePanel() {
           <Tooltip
             title={
               <div style={{ fontSize: 12 }}>
-                <div>order_id: {record.latest_order.order_id}</div>
-                <div>side: {record.latest_order.side}</div>
-                <div>status: {record.latest_order.status}</div>
-                <div>source_type: {record.latest_order.source_type ?? "-"}</div>
-                <div>signal_id: {record.latest_order.signal_id ?? "-"}</div>
-                <div>client_order_key: {record.latest_order.client_order_key ?? "-"}</div>
+                <div>{t("autoTradeMember.orderId")}: {record.latest_order.order_id}</div>
+                <div>{t("autoTradeMember.orderSide")}: {sideLabel(record.latest_order.side)}</div>
+                <div>{t("autoTradeMember.orderStatus")}: {enumLabel("orderStatus", record.latest_order.status)}</div>
+                <div>{t("autoTradeMember.orderSourceType")}: {enumLabel("sourceType", record.latest_order.source_type)}</div>
+                <div>{t("autoTradeMember.orderSignalId")}: {record.latest_order.signal_id ?? "-"}</div>
+                <div>{t("autoTradeMember.orderClientKey")}: {record.latest_order.client_order_key ?? "-"}</div>
                 {record.latest_order.rejection_code && (
                   <div style={{ color: "#ffccc7" }}>
-                    rejection: {record.latest_order.rejection_code}
+                    {t("autoTradeMember.orderRejection")}: {record.latest_order.rejection_code}
                     {record.latest_order.rejection_detail ? ` - ${record.latest_order.rejection_detail}` : ""}
                   </div>
                 )}

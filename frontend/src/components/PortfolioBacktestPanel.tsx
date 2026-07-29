@@ -16,7 +16,7 @@ import { QuestionCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
-import { t, template } from "../i18n";
+import { enumLabel, t, template } from "../i18n";
 import { money } from "../utils/format";
 import type { BacktestRun, PortfolioBacktestResult } from "../types";
 import BacktestResult from "./BacktestResult";
@@ -467,11 +467,11 @@ export default function PortfolioBacktestPanel() {
                             rowKey={(r: any) => `${r.member_id}-${r.symbol_id}`}
                             dataSource={memberSnapshot}
                             columns={[
-                              { title: "member_id", dataIndex: "member_id", key: "member_id" },
-                              { title: "symbol_id", dataIndex: "symbol_id", key: "symbol_id" },
-                              { title: "effective_from", dataIndex: "effective_from", key: "effective_from" },
-                              { title: "effective_to", dataIndex: "effective_to", key: "effective_to" },
-                              { title: "execution_mode", dataIndex: "execution_mode", key: "execution_mode" },
+                              { title: t("portfolioBacktest.memberId"), dataIndex: "member_id", key: "member_id" },
+                              { title: t("portfolioBacktest.symbolId"), dataIndex: "symbol_id", key: "symbol_id" },
+                              { title: t("portfolioBacktest.effectiveFrom"), dataIndex: "effective_from", key: "effective_from" },
+                              { title: t("portfolioBacktest.effectiveTo"), dataIndex: "effective_to", key: "effective_to" },
+                              { title: t("portfolioBacktest.executionMode"), dataIndex: "execution_mode", key: "execution_mode", render: (value: string) => enumLabel("executionMode", value) },
                               {
                                 title: t("portfolioBacktest.ruleVersion"),
                                 dataIndex: "entry_rule_version_id",
@@ -484,7 +484,7 @@ export default function PortfolioBacktestPanel() {
                       )}
                       {detail.score_mode && (
                         <div style={{ marginBottom: 4 }} data-testid="snapshot-score-mode">
-                          <strong>{t("portfolioBacktest.scoreMode")}:</strong> {detail.score_mode}
+                          <strong>{t("portfolioBacktest.scoreMode")}:</strong> {enumLabel("factorMode", detail.score_mode)}
                         </div>
                       )}
                       {detail.portfolio_rule_version_id != null && (

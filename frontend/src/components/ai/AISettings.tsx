@@ -44,26 +44,26 @@ import type {
 
 const { Text } = Typography;
 
-const PROVIDER_OPTIONS = [
+const getProviderOptions = () => [
   { label: "OpenAI", value: "openai" },
   { label: "Anthropic", value: "anthropic" },
   { label: "Ollama", value: "ollama" },
   { label: "Azure", value: "azure" },
-  { label: "OpenAI Compatible", value: "openai_compatible" },
+  { label: t("aiProviderOpenAICompatible"), value: "openai_compatible" },
 ];
 
-const AUTH_TYPE_OPTIONS = [
-  { label: "Bearer", value: "bearer" },
-  { label: "API Key", value: "api_key" },
-  { label: "OAuth", value: "oauth" },
-  { label: "None", value: "none" },
+const getAuthTypeOptions = () => [
+  { label: t("aiAuthBearer"), value: "bearer" },
+  { label: t("aiAuthApiKey"), value: "api_key" },
+  { label: t("aiAuthOAuth"), value: "oauth" },
+  { label: t("aiAuthNone"), value: "none" },
 ];
 
-const PURPOSE_OPTIONS = [
-  { label: "All", value: "all" },
-  { label: "Explanation", value: "explanation" },
-  { label: "Draft", value: "draft" },
-  { label: "Chat", value: "chat" },
+const getPurposeOptions = () => [
+  { label: t("aiPurposeAll"), value: "all" },
+  { label: t("aiPurposeExplanation"), value: "explanation" },
+  { label: t("aiPurposeDraft"), value: "draft" },
+  { label: t("aiPurposeChat"), value: "chat" },
 ];
 
 function healthTag(status: string): { color: string; label: string } {
@@ -308,7 +308,7 @@ export default function AISettings() {
         <Space direction="vertical" size={0}>
           <strong>{name}</strong>
           <Space size={4}>
-            {record.is_enabled ? <Tag color="green">ON</Tag> : <Tag>OFF</Tag>}
+            {record.is_enabled ? <Tag color="green">{t("aiEnabled")}</Tag> : <Tag>{t("aiDisabled")}</Tag>}
             {record.is_fallback && <Tag color="purple">{t("aiSettings.isFallback")}</Tag>}
           </Space>
         </Space>
@@ -542,7 +542,7 @@ export default function AISettings() {
             label={t("aiSettings.provider")}
             rules={[{ required: true }]}
           >
-            <Select options={PROVIDER_OPTIONS} />
+            <Select options={getProviderOptions()} />
           </Form.Item>
           <Form.Item name="base_url" label={t("aiSettings.baseUrl")}>
             <Input placeholder="https://api.openai.com/v1" />
@@ -555,7 +555,7 @@ export default function AISettings() {
             <Input placeholder="gpt-4o-mini" />
           </Form.Item>
           <Form.Item name="auth_type" label={t("aiSettings.authType")}>
-            <Select options={AUTH_TYPE_OPTIONS} />
+            <Select options={getAuthTypeOptions()} />
           </Form.Item>
           <Form.Item
             name="secret_value"
@@ -586,7 +586,7 @@ export default function AISettings() {
               <InputNumber min={0} max={1000} />
             </Form.Item>
             <Form.Item name="purpose" label={t("aiSettings.purpose")}>
-              <Select options={PURPOSE_OPTIONS} style={{ width: 120 }} />
+              <Select options={getPurposeOptions()} style={{ width: 120 }} />
             </Form.Item>
           </Space>
           <Space>

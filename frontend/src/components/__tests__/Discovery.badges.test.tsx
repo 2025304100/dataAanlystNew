@@ -38,13 +38,19 @@ const { mockContext, mockApi, mockHook } = vi.hoisted(() => ({
     loadDiscoveryScopeStats: vi.fn(async () => {}),
     fetchDiscoveryTasks: vi.fn(async () => null),
     showToast: vi.fn((_type: string, _msg: string) => {}),
+    // 能力门禁字段：CapabilityGateButton 通过 useApp 读取这些方法
+    capabilities: null as any,
+    capabilitiesLoading: false,
+    getCapability: vi.fn((_: string) => undefined),
+    isCapabilityBlocked: vi.fn((_: string) => false),
+    loadCapabilities: vi.fn(async () => {}),
   },
   mockApi: {
-    getLatestDiscoveryCandidates: vi.fn(async () => []),
+    getLatestDiscoveryCandidates: vi.fn(async () => [] as any[]),
     getDataHealth: vi.fn(async () => ({ bars: { coverage_pct: 95 } })),
-    getCustomIndicators: vi.fn(async () => []),
-    getDiscoveryPlans: vi.fn(async () => []),
-    evaluateDiscoveryIndicators: vi.fn(async () => []),
+    getCustomIndicators: vi.fn(async () => [] as any[]),
+    getDiscoveryPlans: vi.fn(async () => [] as any[]),
+    evaluateDiscoveryIndicators: vi.fn(async () => [] as any[]),
     createDiscoveryPlan: vi.fn(async () => ({ id: 1 })),
     updateDiscoveryPlan: vi.fn(async () => ({ id: 1 })),
     deleteDiscoveryPlan: vi.fn(async () => ({ ok: true })),
@@ -55,7 +61,7 @@ const { mockContext, mockApi, mockHook } = vi.hoisted(() => ({
   },
   // useSymbolRelationships mock：默认返回空关联（所有 has_*=false）
   mockHook: {
-    useSymbolRelationships: vi.fn((_id: number | null | undefined) => ({
+    useSymbolRelationships: vi.fn((_id: number | null | undefined): any => ({
       data: null,
       loading: false,
       error: null,
@@ -73,6 +79,7 @@ vi.mock("../../i18n", () => ({
   DOT: " | ",
   stageLabel: (v: string | null | undefined) => v ?? "-",
   actionLabel: (v: string | null | undefined) => v ?? "-",
+  enumLabel: (_prefix: string, v: string | null | undefined) => v ?? "-",
   assetTypeLabel: (v: string | null | undefined) => v ?? "unknown",
   regionShortLabel: (v: string | null | undefined) => v ?? "-",
   getLocale: () => "zh-CN",
@@ -113,6 +120,12 @@ vi.mock("../../context/AppContext", () => ({
 
 // Mock api/client：避免真实请求
 vi.mock("../../api/client", () => ({ api: mockApi }));
+
+// Mock ExplainButton：避免渲染依赖 useAIAssistant 的真实组件
+vi.mock("../ai/ExplainButton", () => ({
+  __esModule: true,
+  default: () => <div data-testid="explain-button-mock" />,
+}));
 
 // Mock useSymbolRelationships hook：直接控制徽标组件数据来源
 vi.mock("../../hooks/useSymbolRelationships", () => ({

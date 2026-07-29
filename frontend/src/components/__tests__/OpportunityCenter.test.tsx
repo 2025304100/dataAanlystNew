@@ -3,7 +3,7 @@
 // 覆盖：
 // - 默认显示候选池页签
 // - 点击观察池/已排除/扫描记录 tab 切换
-// - 未完成页签显示建设状态，不伪造数据
+// - 已排除/扫描记录 tab 渲染真实组件（UAT-PAGES.2 移除建设占位）
 // - 显示"机会中心"标题
 //
 // 约束：
@@ -76,7 +76,26 @@ vi.mock("../opportunity/ObservationPool", () => ({
   ),
 }));
 
-// 注意：ExcludedPool 与 ScanHistory 不 mock，验证真实建设状态文案
+// Mock ExcludedPool（UAT-PAGES.2 已替换建设占位为真实组件，测试验证组件渲染）
+vi.mock("../opportunity/ExcludedPool", () => ({
+  __esModule: true,
+  default: () => (
+    <div data-opportunity-tab="excluded" data-testid="excluded-pool-mock">
+      ExcludedPool Mock
+    </div>
+  ),
+}));
+
+// Mock ScanHistory（UAT-PAGES.2 已替换建设占位为真实组件，测试验证组件渲染）
+vi.mock("../opportunity/ScanHistory", () => ({
+  __esModule: true,
+  default: () => (
+    <div data-opportunity-tab="scan-history" data-testid="scan-history-mock">
+      ScanHistory Mock
+    </div>
+  ),
+}));
+
 import OpportunityCenter from "../OpportunityCenter";
 
 describe("OpportunityCenter 组件测试", () => {
@@ -120,65 +139,66 @@ describe("OpportunityCenter 组件测试", () => {
     expect(container?.getAttribute("data-active-tab")).toBe("observation");
   });
 
-  // 3. 点击已排除 tab 显示建设状态，不伪造数据
-  it("点击已排除 tab 应显示建设状态且不伪造数据", async () => {
+  // 3. 点击已排除 tab 渲染 ExcludedPool 真实组件（UAT-PAGES.2 移除建设占位）
+  it("点击已排除 tab 应渲染 ExcludedPool 组件而非建设占位", async () => {
     const user = userEvent.setup();
     render(<OpportunityCenter />);
     const excludedTab = screen.getByRole("tab", { name: /opportunityTabExcluded/ });
     await user.click(excludedTab);
-    // 应显示建设状态提示
+    // 应渲染 ExcludedPool mock（真实组件已在 ExcludedPool.test.tsx 单独覆盖）
     await waitFor(() => {
-      expect(screen.getByText("opportunityExcludedConstructingTitle")).toBeInTheDocument();
+      expect(screen.getByTestId("excluded-pool-mock")).toBeInTheDocument();
     });
-    expect(screen.getByText("opportunityExcludedConstructingDesc")).toBeInTheDocument();
-    // 应显示"建设中"占位
-    expect(screen.getByText("opportunityUnderConstruction")).toBeInTheDocument();
+    // 不应再显示"建设中"占位文案
+    expect(screen.queryByText("opportunityExcludedConstructingTitle")).not.toBeInTheDocument();
+    expect(screen.queryByText("opportunityUnderConstruction")).not.toBeInTheDocument();
     // 容器 data-active-tab 应为 excluded
     const container = document.querySelector(".opportunity-center");
     expect(container?.getAttribute("data-active-tab")).toBe("excluded");
-    // 关键约束：不伪造数据 —— 不应出现候选/观察池的 mock 内容在已排除 tab 下
-    // （mock 内容仍可能存在于 DOM 中但隐藏，这里只验证当前 active tab 不是 candidate/observation）
-    expect(container?.getAttribute("data-active-tab")).not.toBe("candidate");
   });
 
-  // 4. 点击扫描记录 tab 显示建设状态
-  it("点击扫描记录 tab 应显示建设状态", async () => {
+  // 4. 点击扫描记录 tab 渲染 ScanHistory 真实组件（UAT-PAGES.2 移除建设占位）
+  it("点击扫描记录 tab 应渲染 ScanHistory 组件而非建设占位", async () => {
     const user = userEvent.setup();
     render(<OpportunityCenter />);
     const scanHistoryTab = screen.getByRole("tab", { name: /opportunityTabScanHistory/ });
     await user.click(scanHistoryTab);
+    // 应渲染 ScanHistory mock（真实组件已在 ScanHistory.test.tsx 单独覆盖）
     await waitFor(() => {
-      expect(screen.getByText("opportunityScanHistoryConstructingTitle")).toBeInTheDocument();
+      expect(screen.getByTestId("scan-history-mock")).toBeInTheDocument();
     });
-    expect(screen.getByText("opportunityScanHistoryConstructingDesc")).toBeInTheDocument();
-    expect(screen.getByText("opportunityUnderConstruction")).toBeInTheDocument();
+    // 不应再显示"建设中"占位文案
+    expect(screen.queryByText("opportunityScanHistoryConstructingTitle")).not.toBeInTheDocument();
+    expect(screen.queryByText("opportunityUnderConstruction")).not.toBeInTheDocument();
     // 容器 data-active-tab 应为 scan-history
     const container = document.querySelector(".opportunity-center");
     expect(container?.getAttribute("data-active-tab")).toBe("scan-history");
   });
 
-  // 5. 未完成页签显示建设标记（"建设中"）
-  it("已排除与扫描记录 tab 应显示建设标记", async () => {
+  // 5. 已排除与扫描记录 tab 渲染真实组件而非建设占位（UAT-PAGES.2）
+  it("已排除与扫描记录 tab 应渲染真实组件且无建设占位标记", async () => {
     const user = userEvent.setup();
     render(<OpportunityCenter />);
 
-    // 切到已排除 tab，验证建设标记
+    // 切到已排除 tab，验证真实组件渲染且无建设占位
     await user.click(screen.getByRole("tab", { name: /opportunityTabExcluded/ }));
     await waitFor(() => {
-      // antd Tabs 默认渲染所有 pane（隐藏非 active），所以"建设中"可能多次出现
-      expect(screen.getAllByText("opportunityUnderConstruction").length).toBeGreaterThan(0);
+      expect(screen.getByTestId("excluded-pool-mock")).toBeInTheDocument();
     });
-    // 已排除 tab 内容容器应有 data-state="under-construction"
+    // 不应存在"建设中"文案
+    expect(screen.queryByText("opportunityUnderConstruction")).not.toBeInTheDocument();
+    // 已排除 tab 内容容器不应有 data-state="under-construction"
     const excludedContainer = document.querySelector('[data-opportunity-tab="excluded"]');
-    expect(excludedContainer?.getAttribute("data-state")).toBe("under-construction");
+    expect(excludedContainer?.getAttribute("data-state")).not.toBe("under-construction");
 
-    // 切到扫描记录 tab，验证建设标记
+    // 切到扫描记录 tab，验证真实组件渲染且无建设占位
     await user.click(screen.getByRole("tab", { name: /opportunityTabScanHistory/ }));
     await waitFor(() => {
-      expect(screen.getAllByText("opportunityUnderConstruction").length).toBeGreaterThan(0);
+      expect(screen.getByTestId("scan-history-mock")).toBeInTheDocument();
     });
+    expect(screen.queryByText("opportunityUnderConstruction")).not.toBeInTheDocument();
     const scanContainer = document.querySelector('[data-opportunity-tab="scan-history"]');
-    expect(scanContainer?.getAttribute("data-state")).toBe("under-construction");
+    expect(scanContainer?.getAttribute("data-state")).not.toBe("under-construction");
   });
 
   // 6. 显示机会中心标题
@@ -217,5 +237,61 @@ describe("OpportunityCenter 组件测试", () => {
     // 隐藏 span 的 data-portfolio-id 应为空字符串
     const hiddenSpan = document.querySelector("[data-portfolio-id]");
     expect(hiddenSpan?.getAttribute("data-portfolio-id")).toBe("");
+  });
+
+  // ============================================================================
+  // P1-09：discovery → opportunity 兼容跳转后的落地行为 + 导航去重
+  // ============================================================================
+
+  // 10. P1-09 跳转后默认显示候选池页签（discovery → opportunity 兼容跳转落地页）
+  it("P1-09：discovery → opportunity 兼容跳转后应默认落地候选池页签", async () => {
+    // 模拟旧"机会挖掘"入口点击后兼容跳转到"机会中心"的落地状态
+    // App.tsx 中点击 discovery 按钮会 setActiveTab("opportunity")，此处渲染 OpportunityCenter
+    render(<OpportunityCenter />);
+    // 落地后候选池 mock 应被渲染
+    await waitFor(() => {
+      expect(screen.getByTestId("candidate-pool-mock")).toBeInTheDocument();
+    });
+    // 候选池 tab 应为 active（aria-selected="true"）
+    const candidateTab = screen.getByRole("tab", { name: /opportunityTabCandidate/ });
+    expect(candidateTab).toHaveAttribute("aria-selected", "true");
+    // 容器 data-active-tab 应为 candidate（跳转后默认候选池，而非其他页签）
+    const container = document.querySelector(".opportunity-center");
+    expect(container?.getAttribute("data-active-tab")).toBe("candidate");
+  });
+
+  // 11. 导航去重：不应渲染 discovery 相关页签（机会中心统一承接，无重复入口）
+  it("P1-09：导航去重——不应渲染 tabDiscovery 页签或重复的 discovery 入口", () => {
+    render(<OpportunityCenter />);
+    // 不应存在名为 tabDiscovery 的 tab（机会挖掘已统一到机会中心）
+    expect(screen.queryByRole("tab", { name: /tabDiscovery/ })).not.toBeInTheDocument();
+    // 四个页签均为 opportunity 专属，无 discovery 重复
+    const allTabs = screen.getAllByRole("tab");
+    const tabNames = allTabs.map(tab => tab.textContent);
+    // 不应包含 tabDiscovery 文案
+    expect(tabNames).not.toContain("tabDiscovery");
+  });
+
+  // 12. 导航去重：四个页签 key 应唯一（无重复导航项）
+  it("P1-09：导航去重——四个页签应唯一且无重复 key", () => {
+    render(<OpportunityCenter />);
+    const allTabs = screen.getAllByRole("tab");
+    // 应恰好 4 个页签
+    expect(allTabs).toHaveLength(4);
+    // 页签文案应唯一（无重复导航项）
+    const tabNames = allTabs.map(tab => tab.textContent);
+    const uniqueNames = new Set(tabNames);
+    expect(uniqueNames.size).toBe(4);
+  });
+
+  // 13. 导航去重：机会中心不应渲染 discovery 组件内容（同一对象只维护一份状态）
+  it("P1-09：导航去重——机会中心容器不应包含 discovery 标记内容", () => {
+    render(<OpportunityCenter />);
+    const container = document.querySelector(".opportunity-center");
+    expect(container).not.toBeNull();
+    // 容器 data-active-tab 应为四个有效页签之一，不应为 discovery
+    const activeTab = container?.getAttribute("data-active-tab");
+    expect(["candidate", "observation", "excluded", "scan-history"]).toContain(activeTab);
+    expect(activeTab).not.toBe("discovery");
   });
 });

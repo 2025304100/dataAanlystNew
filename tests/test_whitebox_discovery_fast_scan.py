@@ -904,3 +904,131 @@ def test_scan_returns_timings_with_all_stages(db_session, monkeypatch):
     for stage in expected_stages:
         assert stage in stage_names
     assert timings["total_budget_ms"] == TOTAL_BUDGET_SECONDS * 1000
+
+
+# ============================================================================
+# WP-P-FIX.2: 无 ready 快照时的降级与自动数据准备
+# ============================================================================
+# 关键：run_fast_scan 内部用延迟导入 `from app.services.discovery_data_prep
+# import start_data_prep_task, _is_data_prep_running`，因此 mock 需 patch
+# discovery_data_prep 模块上的同名属性，避免真正启动 worker 线程。
+
+
+def test_no_ready_snapshot_returns_stale_snapshot(db_session, monkeypatch):
+    """WP-P-FIX.2: 无 ready 快照时返回上一历史快照（using_stale_snapshot）。"""
+    monkeypatch.setattr(discovery_fast_scan, "_assert_no_http_request", lambda: None)
+    # mock data_prep 避免真正启动 worker
+    monkeypatch.setattr(
+        discovery_data_prep, "start_data_prep_task",
+        lambda **kw: type("T", (), {"id": "fake"})(),
+    )
+    monkeypatch.setattr(
+        discovery_data_prep, "_is_data_prep_running", lambda db, scope: None,
+    )
+
+    # 1. 先构建一个 ready 快照（准备数据 + 构建）
+    sym = _make_symbol(db_session, symbol="000001")
+    _make_universe_symbol(db_session, symbol="000001")
+    db_session.add(Score(
+        symbol_id=sym.id, trade_date=date(2026, 7, 19),
+        quality_score=70.0, quality_grade="B",
+        timing_score=65.0, priority_score=75.0,
+        stage="accumulate", action="buy",
+        scoring_config_id=1, scoring_config_version=1, weight_mode="manual",
+        created_at=datetime(2026, 7, 19, 9, 0, 0),
+    ))
+    db_session.commit()
+    old_snap_id = discovery_data_prep._build_ready_snapshot(
+        db_session, scope="cn_stock", trade_date=date(2026, 7, 19),
+        trigger_full_rebuild=False, full_rebuild_reason=None,
+        dirty_symbols=[], source_task_id="task-old",
+    )
+
+    # 2. 手动将旧快照标记为 superseded（模拟新快照生成后旧快照被取代）
+    old_snap = db_session.get(DiscoveryScoreSnapshot, old_snap_id)
+    old_snap.status = "superseded"
+    db_session.commit()
+
+    # 3. 无 ready 快照时扫描，应返回历史 superseded 快照
+    result = discovery_fast_scan.run_fast_scan(
+        scope="cn_stock", min_score=55, db=db_session,
+    )
+    assert result["degraded_reason"] == "using_stale_snapshot"
+    assert result["snapshot_id"] == old_snap_id
+    assert result["data_prep_task_id"] == "fake"
+    assert "data_cutoff_at" in result
+
+
+def test_no_ready_snapshot_auto_starts_data_prep(db_session, monkeypatch):
+    """WP-P-FIX.2: 无快照时自动启动 data_prep 任务。"""
+    monkeypatch.setattr(discovery_fast_scan, "_assert_no_http_request", lambda: None)
+    started_tasks = []
+
+    def _fake_start(**kwargs):
+        started_tasks.append(kwargs)
+        return type("T", (), {"id": "task-started-123"})()
+
+    monkeypatch.setattr(discovery_data_prep, "start_data_prep_task", _fake_start)
+    monkeypatch.setattr(
+        discovery_data_prep, "_is_data_prep_running", lambda db, scope: None,
+    )
+
+    # 空库扫描（无任何快照）
+    result = discovery_fast_scan.run_fast_scan(
+        scope="cn_stock", min_score=55, db=db_session,
+    )
+    assert result["degraded_reason"] == "no_ready_snapshot"
+    assert result["data_prep_task_id"] == "task-started-123"
+    assert len(started_tasks) == 1
+    assert started_tasks[0]["scope"] == "cn_stock"
+    assert started_tasks[0]["trigger_fast_scan_after_ready"] is True
+
+
+def test_no_snapshot_at_all_starts_data_prep(db_session, monkeypatch):
+    """WP-P-FIX.2: 首次无任何快照时启动准备任务并返回 data_prep_task_id。"""
+    monkeypatch.setattr(discovery_fast_scan, "_assert_no_http_request", lambda: None)
+    monkeypatch.setattr(
+        discovery_data_prep, "start_data_prep_task",
+        lambda **kw: type("T", (), {"id": "first-prep-task"})(),
+    )
+    monkeypatch.setattr(
+        discovery_data_prep, "_is_data_prep_running", lambda db, scope: None,
+    )
+
+    result = discovery_fast_scan.run_fast_scan(
+        scope="cn_stock", min_score=55, db=db_session,
+    )
+    assert result["snapshot_id"] is None
+    assert result["degraded_reason"] == "no_ready_snapshot"
+    assert result["data_prep_task_id"] == "first-prep-task"
+    assert "正在为您准备数据" in result["recommended_action"]
+
+
+def test_data_prep_concurrency_protection(db_session, monkeypatch):
+    """WP-P-FIX.2: 已有 data_prep 运行时不重复启动。"""
+    monkeypatch.setattr(discovery_fast_scan, "_assert_no_http_request", lambda: None)
+    started_tasks = []
+
+    def _fake_start(**kwargs):
+        started_tasks.append(kwargs)
+        return type("T", (), {"id": "should-not-be-called"})()
+
+    monkeypatch.setattr(discovery_data_prep, "start_data_prep_task", _fake_start)
+    # 模拟已有任务运行中
+    from app.services.async_tasks import AsyncTaskRecord
+    fake_running = AsyncTaskRecord(
+        id="running-task", task_type="discovery_data_prep",
+        status="running", payload_json='{"scope":"cn_stock"}',
+        created_at=datetime.now(timezone.utc),
+    )
+    monkeypatch.setattr(
+        discovery_data_prep, "_is_data_prep_running",
+        lambda db, scope: fake_running,
+    )
+
+    result = discovery_fast_scan.run_fast_scan(
+        scope="cn_stock", min_score=55, db=db_session,
+    )
+    # data_prep_task_id 应为 None（未启动新任务）
+    assert result["data_prep_task_id"] is None
+    assert len(started_tasks) == 0

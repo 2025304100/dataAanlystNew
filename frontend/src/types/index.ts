@@ -1540,3 +1540,36 @@ export interface CapabilitiesResponse {
   checked_at: string;
 }
 
+// WP-P-FIX.1: 数据准备任务与快照状态类型
+export interface AsyncTaskRead {
+  id: string;
+  task_type: string;
+  status: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  progress: number | null;
+  message: string | null;
+  error: string | null;
+  result_json: Record<string, unknown> | null;
+}
+
+export interface SnapshotStatusRead {
+  scope: string;
+  has_ready_snapshot: boolean;
+  ready_snapshot_id: number | null;
+  ready_snapshot_generated_at: string | null;
+  ready_snapshot_trade_date: string | null;
+  ready_snapshot_symbol_count: number | null;
+  ready_snapshot_dirty_symbol_count: number | null;
+  has_building_snapshot: boolean;
+  building_snapshot_id: number | null;
+  building_snapshot_created_at: string | null;
+  last_data_prep_task_id: string | null;
+  last_data_prep_status: string | null;
+  recommended_action: string | null;
+  last_fast_scan_timings: Record<string, unknown> | null;
+  last_fast_scan_status: string | null;
+}
+

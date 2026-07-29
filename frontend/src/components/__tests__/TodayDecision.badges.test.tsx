@@ -37,7 +37,7 @@ const { mockContext, mockApi, mockHook } = vi.hoisted(() => ({
   },
   // useSymbolRelationships mock：返回空关联（所有 has_*=false）作为默认
   mockHook: {
-    useSymbolRelationships: vi.fn((_id: number | null | undefined) => ({
+    useSymbolRelationships: vi.fn((_id: number | null | undefined): any => ({
       data: null,
       loading: false,
       error: null,
@@ -55,6 +55,7 @@ vi.mock("../../i18n", () => ({
   DOT: " | ",
   stageLabel: (v: string | null | undefined) => v ?? "-",
   actionLabel: (v: string | null | undefined) => v ?? "-",
+  enumLabel: (_prefix: string, v: string | null | undefined) => v ?? "-",
   assetTypeLabel: (v: string | null | undefined) => v ?? "unknown",
   regionShortLabel: (v: string | null | undefined) => v ?? "-",
   getLocale: () => "zh-CN",

@@ -49,6 +49,7 @@ vi.mock("../../i18n", () => ({
   DOT: " | ",
   stageLabel: (v: string | null | undefined) => v ?? "-",
   actionLabel: (v: string | null | undefined) => v ?? "-",
+  enumLabel: (_prefix: string, v: string | null | undefined) => v ?? "-",
   assetTypeLabel: (v: string | null | undefined) => v ?? "unknown",
   regionShortLabel: (v: string | null | undefined) => v ?? "-",
   getLocale: () => "zh-CN",
@@ -86,6 +87,12 @@ vi.mock("../BacktestResult", () => ({
   default: ({ result }: { result: { id: number } }) => (
     <div data-testid="backtest-result-stub">BacktestResult #{result.id}</div>
   ),
+}));
+
+// Mock ExplainButton：避免渲染依赖 useAIAssistant 的真实组件
+vi.mock("../ai/ExplainButton", () => ({
+  __esModule: true,
+  default: () => <div data-testid="explain-button-mock" />,
 }));
 
 import PortfolioBacktestPanel from "../PortfolioBacktestPanel";

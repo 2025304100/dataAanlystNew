@@ -43,6 +43,16 @@ from app.services.discovery_data_prep import (
     start_data_prep_task,
 )
 from app.services.discovery_dirty_set import is_snapshot_building_for_scope
+from app.services.discovery_history import (
+    get_scan_run_detail,
+    list_excluded_candidates,
+    list_scan_runs,
+)
+from app.services.opportunity_transitions import (
+    exclude_candidate as exclude_candidate_service,
+    restore_candidate as restore_candidate_service,
+    transition_candidate_to_observation,
+)
 from app.services.discovery_fast_scan import (
     TASK_TYPE_FAST_SCAN,
     get_ready_snapshot,
@@ -397,3 +407,207 @@ def get_discovery_snapshot_status(
         last_fast_scan_timings=last_fast_scan_timings,
         last_fast_scan_status=last_fast_scan_status,
     ).model_dump()
+
+
+# ── UAT-PAGES.2：已排除池 / 扫描记录 / 排除恢复 API ──────────────────────
+
+
+@router.get("/discovery/excluded")
+def list_excluded(
+    symbol: str | None = Query(default=None, description="标的代码/名称子串筛选"),
+    name: str | None = Query(default=None, description="标的名称子串筛选"),
+    exclude_date_from: str | None = Query(
+        default=None, description="排除时间下界（ISO 日期，UTC）"
+    ),
+    exclude_date_to: str | None = Query(
+        default=None, description="排除时间上界（ISO 日期，UTC）"
+    ),
+    reason_type: str | None = Query(
+        default=None, description="排除原因子串筛选（不区分大小写）"
+    ),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """查询已排除候选列表。
+
+    数据来源：opportunity_transition_events 中 event_type='exclude' 的记录，
+    LEFT JOIN discovery_candidates 获取候选基础信息。
+
+    支持筛选：标的代码/名称、排除时间区间、排除原因类型。
+    """
+    return list_excluded_candidates(
+        db,
+        symbol=symbol,
+        name=name,
+        exclude_date_from=exclude_date_from,
+        exclude_date_to=exclude_date_to,
+        reason_type=reason_type,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("/discovery/candidates/{candidate_id}/exclude")
+def exclude_candidate_route(
+    candidate_id: int,
+    payload: dict | None = None,
+    db: Session = Depends(get_db),
+):
+    """排除候选（写 opportunity_transition_events 审计事件，幂等）。
+
+    Body（可选）：{"reason": "排除原因文本", "actor_type": "user"}
+    """
+    reason = None
+    actor_type = "user"
+    if payload:
+        reason = payload.get("reason")
+        actor_type = payload.get("actor_type") or "user"
+    try:
+        event = exclude_candidate_service(
+            db,
+            candidate_id=candidate_id,
+            reason=reason,
+            actor_type=actor_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if event is None:
+        # 幂等：同幂等键已存在事件，返回已存在标记
+        return {"ok": True, "candidate_id": candidate_id, "already_excluded": True}
+    return {
+        "ok": True,
+        "candidate_id": candidate_id,
+        "event_id": event.id,
+        "excluded_at": event.created_at.isoformat() if event.created_at else None,
+        "already_excluded": False,
+    }
+
+
+@router.post("/discovery/candidates/{candidate_id}/restore")
+def restore_candidate_route(
+    candidate_id: int,
+    payload: dict | None = None,
+    db: Session = Depends(get_db),
+):
+    """恢复已排除候选（写 opportunity_transition_events 审计事件，幂等）。
+
+    支持两种恢复目标：
+    - target="candidate"（默认）：仅写 EVENT_RESTORE 审计事件，候选回到候选池
+    - target="observation"：除审计事件外，调用 transition_candidate_to_observation
+                            将候选加入指定 watchlist_id 的观察池
+
+    Body（可选）：
+    {
+        "target": "candidate" | "observation",
+        "watchlist_id": 123,   // target=observation 时必填
+        "note": "恢复原因",
+        "priority": 0,
+        "tags": ["tag1"],
+        "target_portfolio_id": null,
+        "actor_type": "user"
+    }
+    """
+    target = "candidate"
+    watchlist_id: int | None = None
+    note: str | None = None
+    priority = 0
+    tags: list[str] | None = None
+    target_portfolio_id: int | None = None
+    actor_type = "user"
+    if payload:
+        target = payload.get("target") or "candidate"
+        watchlist_id = payload.get("watchlist_id")
+        note = payload.get("note")
+        priority = int(payload.get("priority") or 0)
+        tags = payload.get("tags")
+        target_portfolio_id = payload.get("target_portfolio_id")
+        actor_type = payload.get("actor_type") or "user"
+
+    if target not in ("candidate", "observation"):
+        raise HTTPException(
+            status_code=400,
+            detail="target 必须为 candidate 或 observation",
+        )
+    if target == "observation" and watchlist_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="恢复到观察池时 watchlist_id 不能为空",
+        )
+
+    try:
+        event = restore_candidate_service(
+            db,
+            candidate_id=candidate_id,
+            actor_type=actor_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    observation_item_id: int | None = None
+    if target == "observation" and watchlist_id is not None:
+        try:
+            item, _obs_event = transition_candidate_to_observation(
+                db,
+                candidate_id=candidate_id,
+                watchlist_id=watchlist_id,
+                note=note,
+                priority=priority,
+                tags=tags,
+                target_portfolio_id=target_portfolio_id,
+                actor_type=actor_type,
+            )
+            observation_item_id = item.id if item else None
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "ok": True,
+        "candidate_id": candidate_id,
+        "event_id": event.id if event else None,
+        "restored_at": event.created_at.isoformat() if event else None,
+        "target": target,
+        "observation_item_id": observation_item_id,
+        "already_restored": event is None,
+    }
+
+
+@router.get("/discovery/scan-runs")
+def list_scan_runs_route(
+    scope: str | None = Query(default=None, description="按 scope 过滤（cn-stock/cn-etf/us-stock/us-etf）"),
+    trade_date: str | None = Query(default=None, description="按 trade_date 过滤（ISO 日期）"),
+    status: str | None = Query(default=None, description="按扫描状态过滤（done/running/failed/cancelled）"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """查询扫描记录列表（ScanRun LEFT JOIN DiscoveryTaskRecord + DiscoveryScoreSnapshot）。
+
+    展示字段：
+    - 快照：snapshot_id/scope/trade_date/status/generated_at
+    - 阶段耗时：stage_durations（来自 DiscoveryTaskRecord.stage_durations_json）
+    - 参数：min_score/cache_key/portfolio_id/portfolio_rule_id
+    - 缓存命中：cache_hit
+    - 差异摘要：dirty_symbol_count/reused_score_count/rescored_count
+    - 错误详情：snapshot_error_summary（来自 DiscoveryScoreSnapshot.error_summary_json）
+    """
+    return list_scan_runs(
+        db,
+        scope=scope,
+        trade_date=trade_date,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/discovery/scan-runs/{scan_run_id}")
+def get_scan_run_detail_route(
+    scan_run_id: int,
+    db: Session = Depends(get_db),
+):
+    """查询单条扫描记录详情（含 task_record 与 snapshot_record 完整信息）。"""
+    detail = get_scan_run_detail(db, scan_run_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+    return detail

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { Button, Input, Select, Spin, Modal, Form, InputNumber, Switch, Dropdown, Tag, Popconfirm } from "antd";
+import { Button, Input, Select, Spin, Modal, Form, InputNumber, Switch, Dropdown, Tag, Popconfirm, Alert } from "antd";
 import type { InputRef } from "antd";
 import { useApp } from "./context/AppContext";
 import { t, template } from "./i18n";
@@ -7,7 +7,6 @@ import PortfolioWorkbench from "./components/PortfolioWorkbench";
 import Trading from "./components/Trading";
 import InvestmentCenter from "./components/InvestmentCenter";
 import TodayDecision from "./components/TodayDecision";
-import Discovery from "./components/Discovery";
 // WP1.1：机会中心主入口（信息架构壳层，四页签：候选池/观察池/已排除/扫描记录）
 import OpportunityCenter from "./components/OpportunityCenter";
 import MacroData from "./components/MacroData";
@@ -33,6 +32,9 @@ export default function App() {
   const symbolCodeRef = useRef<InputRef>(null);
   // 记录已处理过的 detailFocusRequest 编号，避免切换标签回来时重复弹窗
   const lastHandledFocusRef = useRef(0);
+  // P1-09：机会挖掘 → 机会中心 兼容跳转迁移提示标记
+  // 仅在用户点击旧"机会挖掘"入口时置 true，渲染迁移 Alert；关闭或直接进入机会中心时清除
+  const [showDiscoveryMigration, setShowDiscoveryMigration] = useState(false);
 
   // WP0.4：应用启动时读取 URL 中的 ?tab=... 并解析为有效 tab（旧深链接兼容）
   // 仅在挂载时执行一次，不修改用户后续手动切换 tab 的行为
@@ -128,7 +130,7 @@ export default function App() {
       && ctx.detail
       && ctx.detailFocusRequest > 0
       && ctx.detailFocusRequest !== lastHandledFocusRef.current
-      && ["portfolio", "discovery", "opportunity"].includes(ctx.activeTab)
+      && ["portfolio", "opportunity"].includes(ctx.activeTab)
     ) {
       lastHandledFocusRef.current = ctx.detailFocusRequest;
       setDetailModalOpen(true);
@@ -249,16 +251,17 @@ export default function App() {
         {/* WP1.1：新增"机会中心"一级入口（信息架构壳层：候选池/观察池/已排除/扫描记录） */}
         <button
           className={`view-tab${ctx.activeTab === "opportunity" ? " active" : ""}`}
-          onClick={() => ctx.setActiveTab("opportunity")}
+          onClick={() => {
+            ctx.setActiveTab("opportunity");
+            // P1-09：直接进入机会中心时清除迁移提示（仅旧入口跳转时显示）
+            setShowDiscoveryMigration(false);
+          }}
         >
           {t("tabOpportunity")}
         </button>
-        <button
-          className={`view-tab${ctx.activeTab === "discovery" ? " active" : ""}`}
-          onClick={() => ctx.setActiveTab("discovery")}
-        >
-          {t("tabDiscovery")}
-        </button>
+        {/* P1-09：旧"机会挖掘"入口已移除（2026-07-24）。
+            功能已统一到"机会中心"，保留旧入口会造成用户困扰。
+            旧深链接 ?tab=discovery 仍通过 tabCompatibility 兼容路由到 opportunity。 */}
         <button
           className={`view-tab${ctx.activeTab === "macro" ? " active" : ""}`}
           onClick={() => ctx.setActiveTab("macro")}
@@ -444,10 +447,25 @@ export default function App() {
           </div>
         )}
 
-        {ctx.activeTab === "discovery" && <Discovery />}
-
         {/* WP1.1：机会中心主入口（信息架构壳层） */}
-        {ctx.activeTab === "opportunity" && <OpportunityCenter />}
+        {/* P1-09：旧"机会挖掘"入口已移除，?tab=discovery 深链接通过 tabCompatibility 路由到 opportunity。
+            候选池统一由 OpportunityCenter 承接，Discovery 组件在 CandidatePool 中渲染。 */}
+        {ctx.activeTab === "opportunity" && (
+          <div className="tab-container" data-tab-content="opportunity">
+            {showDiscoveryMigration && (
+              <Alert
+                type="info"
+                showIcon
+                message={t("discoveryMigrationTitle")}
+                description={t("discoveryMigrationDesc")}
+                closable
+                onClose={() => setShowDiscoveryMigration(false)}
+                style={{ margin: "8px 0" }}
+              />
+            )}
+            <OpportunityCenter />
+          </div>
+        )}
 
         {ctx.activeTab === "macro" && <MacroData />}
 

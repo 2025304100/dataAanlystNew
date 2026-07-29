@@ -57,6 +57,14 @@ class MarketDataRepairRequest(BaseModel):
     auto_score: bool = True
 
 
+class MarketDataBatchRepairRequest(BaseModel):
+    symbol_ids: list[int] = Field(..., min_length=1)
+    start_date: date | None = None
+    end_date: date | None = None
+    adjust: str = "qfq"
+    auto_score: bool = True
+
+
 HistoryInitializationPreset = Literal["1m", "1q", "1y", "3y"]
 HistoryInitializationStageStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 HistoryInitializationTaskStatus = Literal["idle", "running", "completed", "failed", "cancelled"]

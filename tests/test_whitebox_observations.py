@@ -23,15 +23,26 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from sqlalchemy import select
+
 from app.models.daily_bar import DailyBar
 from app.models.discovery_candidate import DiscoveryCandidate
+from app.models.opportunity_transition_event import (
+    EVENT_CANDIDATE_TO_OBSERVATION,
+    EVENT_EXCLUDE,
+    EVENT_RESTORE,
+    OpportunityTransitionEvent,
+    TYPE_OBSERVATION,
+)
 from app.models.portfolio import Portfolio, Position
 from app.models.score import Score
 from app.models.scan import ScanRun
 from app.models.symbol import Symbol
 from app.models.universe import UniverseSymbol
 from app.models.watchlist import Watchlist, WatchlistItem
+from app.schemas.watchlist import ObservationRead
 from app.services import observations as obs_svc
+from app.services import opportunity_transitions as trans_svc
 
 
 pytestmark = pytest.mark.whitebox
@@ -1021,7 +1032,7 @@ def test_observation_rich_to_dict_none_fields(db_session):
     assert d["latest_timing_score"] is None
     assert d["latest_score_date"] is None
     assert d["bar_count"] == 0
-    assert d["data_credibility"] == "low"
+    assert d["data_credibility"] is None  # 无 DailyBar 时为 None（不可评估）
     assert d["has_position"] is False
     assert d["position_portfolio_name"] is None
     assert d["target_portfolio_id"] is None
@@ -1180,3 +1191,415 @@ def test_candidate_then_manual_add_after_archive_restores(db_session):
     assert item2.id == item1.id
     assert item2.status == "watching"
     assert item2.archived_at is None
+
+
+# ============================================================================
+# UAT-PAGES.1 P1-02：真实契约 + 审计事件 + 幂等（候选加入 / 归档 / 恢复）
+#
+# 覆盖：
+# 1. ObservationRead 真实契约：ObservationRich.to_dict() 能构造出含全部字段的 ObservationRead
+# 2. transition_candidate_to_observation（路由 from-candidate 现调用此服务）写入审计事件
+# 3. 候选双击加入只产生 1 个观察项 + 1 个审计事件（幂等）
+# 4. exclude_observation（路由 archive 现追加调用）写入审计事件
+# 5. restore_observation（路由 restore 现追加调用）写入审计事件
+# ============================================================================
+
+
+def test_observation_read_contract_complete_fields(db_session):
+    """【UAT-PAGES.1 P1-02 真实契约】ObservationRich.to_dict() 构造的 ObservationRead 含全部字段。
+
+    前后端字段一致：前端 ObservationItem 接口与后端 ObservationRead 对齐，
+    缺字段会导致前端渲染 undefined。本测试确保所有字段在响应中存在。
+    """
+    wl = _make_watchlist(db_session, name="QA-Contract")
+    sym = _make_symbol(db_session, symbol="600900")
+    pf = _make_portfolio(db_session, name="QA-Contract-PF")
+    _make_position(db_session, portfolio_id=pf.id, symbol_id=sym.id)
+
+    # 写入足够 DailyBar 以满足 credibility
+    base_date = date(2024, 1, 1)
+    for i in range(65):
+        _make_daily_bar(
+            db_session,
+            symbol_id=sym.id,
+            trade_date=base_date + timedelta(days=i),
+            close=10.0 + i * 0.1,
+        )
+    _make_score(
+        db_session,
+        symbol_id=sym.id,
+        trade_date=base_date + timedelta(days=64),
+        quality_score=80.0,
+        timing_score=75.0,
+        priority_score=85.0,
+    )
+
+    item = obs_svc.idempotent_add_observation(
+        db_session,
+        watchlist_id=wl.id,
+        symbol_id=sym.id,
+        origin_type="manual",
+        priority=50,
+        tags=["契约", "测试"],
+        target_portfolio_id=pf.id,
+        note="契约测试",
+    )
+
+    rich = obs_svc.get_observation_rich(db_session, watchlist_item_id=item.id)
+    data = rich.to_dict()
+
+    # 构造 ObservationRead 不抛异常即证明字段齐全
+    read = ObservationRead(**data)
+
+    # 断言所有 ObservationRead 字段均存在（不缺字段，前端不会拿到 undefined）
+    expected_fields = {
+        "watchlist_item_id", "watchlist_id", "watchlist_name", "symbol_id",
+        "symbol", "added_at", "updated_at", "archived_at", "origin_type",
+        "origin_id", "reason", "score_snapshot", "status", "priority",
+        "tags", "note", "target_portfolio_id", "target_portfolio_name",
+        "latest_price", "latest_price_date", "price_change_pct",
+        "latest_total_score", "latest_quality_score", "latest_timing_score",
+        "latest_score_date", "data_credibility", "bar_count", "has_position",
+        "position_portfolio_name", "degraded", "degraded_reason",
+    }
+    for field in expected_fields:
+        assert hasattr(read, field), f"ObservationRead 缺少字段: {field}"
+
+    # 关键字段值正确
+    assert read.watchlist_item_id == item.id
+    assert read.symbol == "600900"
+    assert read.origin_type == "manual"
+    assert read.priority == 50
+    assert read.tags == ["契约", "测试"]
+    assert read.target_portfolio_id == pf.id
+    assert read.has_position is True
+    assert read.position_portfolio_name == "QA-Contract-PF"
+    assert read.latest_price is not None
+    assert read.data_credibility is not None
+    assert read.latest_total_score is not None
+
+
+def test_transition_candidate_to_observation_writes_audit_event(db_session):
+    """【UAT-PAGES.1 P1-02 审计】候选加入观察池写入 OpportunityTransitionEvent 审计事件。
+
+    路由 POST /from-candidate 现调用 transition_candidate_to_observation，
+    必须单事务写来源 + 评分快照 + 审计事件。
+    """
+    wl = _make_watchlist(db_session, name="QA-Audit-Cand")
+    sym = _make_symbol(db_session, symbol="600901")
+    run = _make_scan_run(db_session, name="QA-ScanRun-Audit")
+    u = _make_universe_symbol(db_session, symbol="600901")
+    candidate = _make_candidate(
+        db_session,
+        scan_run_id=run.id,
+        universe_symbol_id=u.id,
+        symbol="600901",
+        quality_score=80.0,
+        timing_score=74.0,
+        priority_score=86.0,
+    )
+
+    item, event = trans_svc.transition_candidate_to_observation(
+        db_session,
+        candidate_id=candidate.id,
+        watchlist_id=wl.id,
+        note="审计测试",
+        priority=5,
+    )
+
+    # 观察项已创建
+    assert item.origin_type == "candidate"
+    assert item.origin_id == candidate.id
+    assert item.status == "watching"
+
+    # 审计事件已创建
+    assert event is not None
+    assert event.event_type == EVENT_CANDIDATE_TO_OBSERVATION
+    assert event.source_type == "candidate"
+    assert event.source_id == candidate.id
+    assert event.target_type == TYPE_OBSERVATION
+    assert event.target_id == wl.id
+    assert event.to_status == "observation"
+    assert event.idempotency_key is not None
+
+    # DB 中存在该审计事件
+    events = db_session.execute(
+        select(OpportunityTransitionEvent).where(
+            OpportunityTransitionEvent.event_type == EVENT_CANDIDATE_TO_OBSERVATION,
+            OpportunityTransitionEvent.source_id == candidate.id,
+        )
+    ).scalars().all()
+    assert len(events) == 1
+
+
+def test_transition_candidate_to_observation_double_click_idempotent(db_session):
+    """【UAT-PAGES.1 P1-02 幂等】候选双击加入只产生 1 个观察项 + 1 个审计事件。
+
+    前端双击"加入观察"按钮不应产生重复数据。
+    """
+    wl = _make_watchlist(db_session, name="QA-Double-Click")
+    sym = _make_symbol(db_session, symbol="600902")
+    run = _make_scan_run(db_session, name="QA-ScanRun-DBL")
+    u = _make_universe_symbol(db_session, symbol="600902")
+    candidate = _make_candidate(
+        db_session,
+        scan_run_id=run.id,
+        universe_symbol_id=u.id,
+        symbol="600902",
+    )
+
+    # 第一次点击
+    item1, event1 = trans_svc.transition_candidate_to_observation(
+        db_session, candidate_id=candidate.id, watchlist_id=wl.id
+    )
+    assert event1 is not None
+
+    # 第二次点击（双击）
+    item2, event2 = trans_svc.transition_candidate_to_observation(
+        db_session, candidate_id=candidate.id, watchlist_id=wl.id
+    )
+
+    # 返回同一观察项，无新事件
+    assert item2.id == item1.id
+    assert event2 is None
+
+    # DB 中只有 1 个观察项
+    items = db_session.execute(
+        select(WatchlistItem).where(WatchlistItem.watchlist_id == wl.id)
+    ).scalars().all()
+    assert len(items) == 1
+
+    # DB 中只有 1 个候选→观察审计事件
+    events = db_session.execute(
+        select(OpportunityTransitionEvent).where(
+            OpportunityTransitionEvent.event_type == EVENT_CANDIDATE_TO_OBSERVATION
+        )
+    ).scalars().all()
+    assert len(events) == 1
+
+
+def test_exclude_observation_writes_audit_event(db_session):
+    """【UAT-PAGES.1 P1-02 审计】归档观察项写入 exclude 审计事件。
+
+    路由 POST /archive 现追加调用 _audit_exclude_observation 写审计事件。
+    """
+    wl = _make_watchlist(db_session, name="QA-Audit-Archive")
+    sym = _make_symbol(db_session, symbol="600903")
+    run = _make_scan_run(db_session, name="QA-ScanRun-Arch")
+    u = _make_universe_symbol(db_session, symbol="600903")
+    candidate = _make_candidate(
+        db_session,
+        scan_run_id=run.id,
+        universe_symbol_id=u.id,
+        symbol="600903",
+    )
+
+    # 候选加入观察池
+    item, _ = trans_svc.transition_candidate_to_observation(
+        db_session, candidate_id=candidate.id, watchlist_id=wl.id
+    )
+    assert item.status == "watching"
+
+    # 归档（路由层调用的审计服务）
+    event = trans_svc.exclude_observation(
+        db_session, watchlist_item_id=item.id, reason="手动归档"
+    )
+
+    # 审计事件已创建
+    assert event is not None
+    assert event.event_type == EVENT_EXCLUDE
+    assert event.source_type == TYPE_OBSERVATION
+    assert event.source_id == item.id
+
+    # 观察项已归档
+    db_session.refresh(item)
+    assert item.status == "archived"
+    assert item.archived_at is not None
+
+
+def test_restore_observation_writes_audit_event(db_session):
+    """【UAT-PAGES.1 P1-02 审计】恢复归档观察项写入 restore 审计事件。
+
+    路由 POST /restore 现追加调用 _audit_restore_observation 写审计事件。
+    """
+    wl = _make_watchlist(db_session, name="QA-Audit-Restore")
+    sym = _make_symbol(db_session, symbol="600904")
+    run = _make_scan_run(db_session, name="QA-ScanRun-Rst")
+    u = _make_universe_symbol(db_session, symbol="600904")
+    candidate = _make_candidate(
+        db_session,
+        scan_run_id=run.id,
+        universe_symbol_id=u.id,
+        symbol="600904",
+    )
+
+    # 候选加入观察池
+    item, _ = trans_svc.transition_candidate_to_observation(
+        db_session, candidate_id=candidate.id, watchlist_id=wl.id
+    )
+
+    # 先归档
+    trans_svc.exclude_observation(
+        db_session, watchlist_item_id=item.id, reason="临时归档"
+    )
+    db_session.refresh(item)
+    assert item.status == "archived"
+
+    # 恢复（路由层调用的审计服务）
+    event = trans_svc.restore_observation(
+        db_session, watchlist_item_id=item.id
+    )
+
+    # 审计事件已创建
+    assert event is not None
+    assert event.event_type == EVENT_RESTORE
+    assert event.source_type == TYPE_OBSERVATION
+    assert event.source_id == item.id
+
+    # 观察项已恢复
+    db_session.refresh(item)
+    assert item.status == "watching"
+    assert item.archived_at is None
+
+
+def test_observation_service_errors_mapped_to_404(db_session):
+    """【UAT-PAGES.1 P1-02 错误展示】服务层抛 ValueError 时路由映射为 404 + NOT_FOUND 错误码。
+
+    服务层对"对象不存在"抛 ValueError，路由层捕获并转为 HTTPException(404)，
+    全局异常处理器包装为 WP-S.6 统一错误协议（error_code=NOT_FOUND）。
+    本测试验证服务层错误行为，API 层映射见 test_whitebox_observations_api.py。
+    """
+    wl = _make_watchlist(db_session, name="QA-Err-404")
+
+    # 候选不存在 → ValueError
+    with pytest.raises(ValueError, match="not found"):
+        trans_svc.transition_candidate_to_observation(
+            db_session, candidate_id=99999, watchlist_id=wl.id
+        )
+
+    # 归档不存在的观察项 → 服务返回 None（路由层转 404）
+    result = obs_svc.archive_observation(db_session, watchlist_item_id=99999)
+    assert result is None
+
+    # 恢复不存在的观察项 → 服务返回 None（路由层转 404）
+    result = obs_svc.restore_observation(db_session, watchlist_item_id=99999)
+    assert result is None
+
+
+# ============================================================================
+# UAT-PAGES.1 P1-02：统一错误协议 ERROR_CODE_LIBRARY 完整性 + next_actions
+#
+# 覆盖：
+# 1. NOT_FOUND 错误码含 next_actions（不再只显示"重试"按钮，提供"返回观察池"动作）
+# 2. DATA_NOT_READY 错误码存在于字典，含 redirect + sync + retry 三个 next_actions
+# 3. build_user_error 对 DATA_NOT_READY 不再降级到 UNKNOWN_ERROR 文案
+# ============================================================================
+
+
+def test_error_code_library_not_found_has_next_actions():
+    """【UAT-PAGES.1 P1-02 错误展示】NOT_FOUND 错误码含 next_actions。
+
+    修复前：NOT_FOUND 仅含 user_message/impact/retryable，无 next_actions，
+    前端只能显示"重试"按钮（retryable=False 时连重试都没有），用户无下一步动作。
+    修复后：NOT_FOUND 含 dismiss next_action（"返回观察池"），用户可关闭错误返回列表。
+    """
+    from app.schemas.errors import ERROR_CODE_LIBRARY, build_user_error
+
+    template = ERROR_CODE_LIBRARY["NOT_FOUND"]
+    assert "next_actions" in template, "NOT_FOUND 必须含 next_actions"
+    assert len(template["next_actions"]) >= 1
+    # 至少包含一个 dismiss 动作（用户可关闭错误返回列表）
+    action_types = [na["action_type"] for na in template["next_actions"]]
+    assert "dismiss" in action_types, "NOT_FOUND 应提供 dismiss 动作关闭错误"
+
+    # build_user_error 构造的 UserError 含 next_actions
+    user_error = build_user_error("NOT_FOUND")
+    assert user_error.error_code == "NOT_FOUND"
+    assert user_error.retryable is False
+    assert len(user_error.next_actions) >= 1
+    assert any(a.action_type == "dismiss" for a in user_error.next_actions)
+
+
+def test_error_code_library_data_not_ready_has_full_next_actions():
+    """【UAT-PAGES.1 P1-02 错误展示】DATA_NOT_READY 错误码含完整 next_actions。
+
+    修复前：DATA_NOT_READY 不在 ERROR_CODE_LIBRARY，build_user_error 降级到
+    UNKNOWN_ERROR 文案（"服务暂时不可用，请稍后重试"），用户看到通用错误无下一步。
+    修复后：DATA_NOT_READY 在字典中，含 redirect(前往基础数据) + sync(运行增量同步)
+    + retry(数据就绪后重试) 三个具体动作，前端无需硬编码按钮即可展示完整下一步。
+    """
+    from app.schemas.errors import ERROR_CODE_LIBRARY, build_user_error
+
+    template = ERROR_CODE_LIBRARY["DATA_NOT_READY"]
+    assert template["retryable"] is True
+    assert "next_actions" in template
+    action_types = {na["action_type"] for na in template["next_actions"]}
+    # 必须包含 redirect（前往基础数据）、sync（运行增量同步）、retry（重试）
+    assert "redirect" in action_types, "DATA_NOT_READY 应提供 redirect 动作"
+    assert "sync" in action_types, "DATA_NOT_READY 应提供 sync 动作"
+    assert "retry" in action_types, "DATA_NOT_READY 应提供 retry 动作"
+
+    # build_user_error 构造的 UserError 不降级到 UNKNOWN_ERROR 文案
+    user_error = build_user_error("DATA_NOT_READY")
+    assert user_error.error_code == "DATA_NOT_READY"
+    # user_message 应为 DATA_NOT_READY 专属文案，而非 UNKNOWN_ERROR 的通用文案
+    assert "数据未准备好" in user_error.user_message
+    assert len(user_error.next_actions) >= 3
+
+
+def test_error_code_library_unknown_error_still_fallback_for_missing_code():
+    """【UAT-PAGES.1 P1-02 错误展示】未知 error_code 仍降级到 UNKNOWN_ERROR 文案。
+
+    防御性：若后端误传未定义的 error_code，build_user_error 不抛 KeyError，
+    降级到 UNKNOWN_ERROR 文案但保留原始 error_code 字段供排查。
+    """
+    from app.schemas.errors import build_user_error
+
+    user_error = build_user_error("THIS_CODE_DOES_NOT_EXIST")
+    # 保留原始 error_code（便于排查），但文案使用 UNKNOWN_ERROR
+    assert user_error.error_code == "THIS_CODE_DOES_NOT_EXIST"
+    assert "服务暂时不可用" in user_error.user_message
+    assert user_error.retryable is True
+
+
+def test_observation_read_contract_optional_fields_safe_for_frontend(db_session):
+    """【UAT-PAGES.1 P1-02 真实契约】ObservationRead 可选字段为 None 时前端不会拿到 undefined。
+
+    前端 ObservationItem 接口中所有富读字段（latest_price / latest_total_score /
+    target_portfolio_name / has_position / degraded 等）均允许 null，
+    后端 ObservationRead 必须显式返回这些字段（即使值为 None），
+    不能省略字段，否则前端拿到 undefined 导致 .toFixed() 等调用崩溃。
+    """
+    wl = _make_watchlist(db_session, name="QA-Contract-None")
+    sym = _make_symbol(db_session, symbol="600910")
+    # 不创建 DailyBar / Score / Position → 所有富读字段应为 None / 默认值
+    item = obs_svc.idempotent_add_observation(
+        db_session, watchlist_id=wl.id, symbol_id=sym.id
+    )
+
+    rich = obs_svc.get_observation_rich(db_session, watchlist_item_id=item.id)
+    data = rich.to_dict()
+
+    # 构造 ObservationRead 不抛异常
+    read = ObservationRead(**data)
+
+    # 所有可能为 None 的字段在响应中显式存在（前端不会拿到 undefined）
+    noneable_fields = [
+        "watchlist_name", "symbol", "added_at", "updated_at", "archived_at",
+        "origin_id", "reason", "score_snapshot", "note",
+        "target_portfolio_id", "target_portfolio_name",
+        "latest_price", "latest_price_date", "price_change_pct",
+        "latest_total_score", "latest_quality_score", "latest_timing_score",
+        "latest_score_date", "data_credibility", "bar_count",
+        "position_portfolio_name", "degraded_reason",
+    ]
+    for field in noneable_fields:
+        assert hasattr(read, field), f"ObservationRead 缺少字段: {field}"
+
+    # 关键富读字段在无数据时为 None（前端用 != null 判断后渲染 "-"）
+    assert read.latest_price is None
+    assert read.latest_total_score is None
+    assert read.target_portfolio_name is None
+    assert read.data_credibility is None  # 无 DailyBar 时为 None
+    assert read.has_position is False  # 默认 False
+    assert read.degraded is False

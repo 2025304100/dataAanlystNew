@@ -1,0 +1,8 @@
+
+> quant-workbench-frontend@0.1.0 dev
+> vite --host 127.0.0.1 --port 5173
+
+
+  VITE v5.4.21  ready in 675 ms
+
+  ➜  Local:   http://127.0.0.1:5173/

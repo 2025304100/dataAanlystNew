@@ -23,13 +23,23 @@ const { mockContext, mockApi } = vi.hoisted(() => ({
     setActiveSymbolId: vi.fn((_id: number) => {}),
     setActiveTab: vi.fn((_tab: string) => {}),
     showToast: vi.fn((_type: string, _msg: string) => {}),
+    // Discovery 组件渲染时会调用 scope 切换 / 统计加载 / 任务拉取
+    setDiscoveryScope: vi.fn(async (_scope: string) => {}),
+    loadDiscoveryScopeStats: vi.fn(async () => {}),
+    fetchDiscoveryTasks: vi.fn(async () => null),
+    // 能力门禁字段：CapabilityGateButton 通过 useApp 读取这些方法
+    capabilities: null as any,
+    capabilitiesLoading: false,
+    getCapability: vi.fn((_: string) => undefined),
+    isCapabilityBlocked: vi.fn((_: string) => false),
+    loadCapabilities: vi.fn(async () => {}),
   },
   mockApi: {
-    getLatestDiscoveryCandidates: vi.fn(async () => []),
+    getLatestDiscoveryCandidates: vi.fn(async () => [] as any[]),
     getDataHealth: vi.fn(async () => ({ bars: { coverage_pct: 95 } })),
-    getCustomIndicators: vi.fn(async () => []),
-    getDiscoveryPlans: vi.fn(async () => []),
-    evaluateDiscoveryIndicators: vi.fn(async () => []),
+    getCustomIndicators: vi.fn(async () => [] as any[]),
+    getDiscoveryPlans: vi.fn(async () => [] as any[]),
+    evaluateDiscoveryIndicators: vi.fn(async () => [] as any[]),
     createDiscoveryPlan: vi.fn(async () => ({ id: 1 })),
     updateDiscoveryPlan: vi.fn(async () => ({ id: 1 })),
     deleteDiscoveryPlan: vi.fn(async () => ({ ok: true })),
@@ -49,6 +59,7 @@ vi.mock("../../i18n", () => ({
   DOT: " | ",
   stageLabel: (v: string | null | undefined) => v ?? "-",
   actionLabel: (v: string | null | undefined) => v ?? "-",
+  enumLabel: (_prefix: string, v: string | null | undefined) => v ?? "-",
   assetTypeLabel: (v: string | null | undefined) => v ?? "unknown",
   regionShortLabel: (v: string | null | undefined) => v ?? "-",
   getLocale: () => "zh-CN",
@@ -90,11 +101,20 @@ vi.mock("../../context/AppContext", () => ({
 // Mock api/client
 vi.mock("../../api/client", () => ({ api: mockApi }));
 
+// Mock ExplainButton：避免渲染依赖 useAIAssistant 的真实组件
+vi.mock("../ai/ExplainButton", () => ({
+  __esModule: true,
+  default: () => <div data-testid="explain-button-mock" />,
+}));
+
 import Discovery from "../Discovery";
 
 describe("Discovery 组件渲染测试", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 清空 localStorage：防止 DRAFT_STORAGE_KEY / ADVANCED_CONFIG_KEY 在测试间泄漏
+    // （DRAFT 含 pool_tab，若上一用例切到 highQuality，后续用例候选会被过滤掉）
+    localStorage.clear();
     // 重置 mock context 到默认空状态
     mockContext.discoveryTask = null;
     mockContext.discoveryScopeStats = null;
@@ -134,9 +154,10 @@ describe("Discovery 组件渲染测试", () => {
     expect(screen.getByText("minOpportunityScore")).toBeInTheDocument();
   });
 
-  it("should render cached data mode helper by default", () => {
+  it("should render sync data mode helper by default", () => {
     render(<Discovery />);
-    expect(screen.getByText("discoveryModeCachedAlert")).toBeInTheDocument();
+    // 默认 dataMode="sync"，Alert description 渲染 discoveryModeSyncAlert
+    expect(screen.getByText("discoveryModeSyncAlert")).toBeInTheDocument();
   });
 
   it("should render includeNewsScore checkbox", () => {
@@ -182,13 +203,14 @@ describe("Discovery 组件渲染测试", () => {
 
   it("should render pool tabs with all labels", () => {
     render(<Discovery />);
-    // POOL_TABS 渲染中文 label（locale=zh-CN）
-    expect(screen.getByText("全部候选")).toBeInTheDocument();
-    expect(screen.getByText("高股质")).toBeInTheDocument();
-    expect(screen.getByText("高时点")).toBeInTheDocument();
-    expect(screen.getByText("可执行")).toBeInTheDocument();
-    expect(screen.getByText("过热风险")).toBeInTheDocument();
-    expect(screen.getByText("低可信度")).toBeInTheDocument();
+    // POOL_TABS 通过 t("discoveryPool" + pascalCaseKey(key)) 渲染 label
+    // mock i18n 的 t(key) 返回 key，因此断言 i18n key
+    expect(screen.getByText("discoveryPoolAll")).toBeInTheDocument();
+    expect(screen.getByText("discoveryPoolHighQuality")).toBeInTheDocument();
+    expect(screen.getByText("discoveryPoolHighTiming")).toBeInTheDocument();
+    expect(screen.getByText("discoveryPoolActionable")).toBeInTheDocument();
+    expect(screen.getByText("discoveryPoolOverheatRisk")).toBeInTheDocument();
+    expect(screen.getByText("discoveryPoolLowCredibility")).toBeInTheDocument();
   });
 
   it("should render discovery results header", () => {
@@ -293,6 +315,9 @@ function makeCandidate(over: Partial<any> = {}): any {
 describe("Discovery 交互测试", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 清空 localStorage：防止 DRAFT_STORAGE_KEY / ADVANCED_CONFIG_KEY 在测试间泄漏
+    // （DRAFT 含 pool_tab，若上一用例切到 highQuality，后续用例候选会被过滤掉）
+    localStorage.clear();
     mockContext.discoveryTask = null;
     mockContext.discoveryScopeStats = null;
     mockContext.newsSnapshot = null;
@@ -319,7 +344,7 @@ describe("Discovery 交互测试", () => {
         expect.objectContaining({
           scope: "cn-stock",
           minScore: 55,
-          dataMode: "cached",
+          dataMode: "sync",
           batchSize: 20,
           delaySeconds: 0.25,
           warningDays: 3,
@@ -403,7 +428,8 @@ describe("Discovery 交互测试", () => {
       expect(screen.getByText("600002")).toBeInTheDocument();
     });
     // 切到 "高股质" tab —— quality_score >= 70 的才显示
-    const highQualityTab = screen.getByText("高股质");
+    // mock i18n 的 t(key) 返回 key，label 为 discoveryPoolHighQuality
+    const highQualityTab = screen.getByText("discoveryPoolHighQuality");
     await user.click(highQualityTab);
     await waitFor(() => {
       expect(screen.getByText("600001")).toBeInTheDocument();
@@ -445,7 +471,8 @@ describe("Discovery 交互测试", () => {
     expect(rows.length).toBeGreaterThan(0);
     fireEvent.click(rows[0]);
     await waitFor(() => {
-      expect(mockContext.loadSymbolDetail).toHaveBeenCalledWith(101, { focus: true });
+      // handleRowClick 调用 loadSymbolDetail(id, { focus: true, barLimit: 500 })
+      expect(mockContext.loadSymbolDetail).toHaveBeenCalledWith(101, { focus: true, barLimit: 500 });
     });
   });
 
@@ -462,7 +489,8 @@ describe("Discovery 交互测试", () => {
     expect(detailButton).not.toBeNull();
     await user.click(detailButton!);
     await waitFor(() => {
-      expect(mockContext.loadSymbolDetail).toHaveBeenCalledWith(105, { focus: true });
+      // handleRowClick 调用 loadSymbolDetail(id, { focus: true, barLimit: 500 })
+      expect(mockContext.loadSymbolDetail).toHaveBeenCalledWith(105, { focus: true, barLimit: 500 });
     });
   });
 });

@@ -10,11 +10,19 @@ const { mockContext } = vi.hoisted(() => ({
     simQuantity: "",
     simPrice: "",
     activeSymbolId: null as number | null,
+    // 子组件 PortfolioBacktestPanel / AutoTradePanel 调用 ctx.portfolios.find(...)
+    portfolios: [] as any[],
     setSimQuantity: vi.fn((v: string) => {}),
     setSimPrice: vi.fn((v: string) => {}),
     submitSimOrder: vi.fn(async (_side: string) => {}),
     showToast: vi.fn((_type: string, _msg: string) => {}),
     loadSymbolDetail: vi.fn(async (_id: number) => {}),
+    // 能力门禁字段：CapabilityGateButton 通过 useApp 读取这些方法
+    capabilities: null as any,
+    capabilitiesLoading: false,
+    getCapability: vi.fn((_: string) => undefined),
+    isCapabilityBlocked: vi.fn((_: string) => false),
+    loadCapabilities: vi.fn(async () => {}),
   },
 }));
 
