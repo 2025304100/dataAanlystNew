@@ -18,6 +18,15 @@ class UniverseSymbol(Base):
     __table_args__ = (
         Index("ix_universe_symbol_asset", "asset_type", "region"),
         Index("ix_universe_symbol_synced", "is_synced", "last_bar_date"),
+        Index(
+            "ix_universe_incremental_pending",
+            "region",
+            "asset_type",
+            "is_synced",
+            "last_bar_date",
+            "last_synced_at",
+            "sync_failed",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

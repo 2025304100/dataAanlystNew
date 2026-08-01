@@ -83,6 +83,25 @@ def _ensure_sqlite_columns(engine, table_name: str, additions: dict[str, str]) -
                 conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN "{name}" {ddl}'))
 
 
+def _ensure_universe_incremental_index(engine: Engine) -> None:
+    """Ensure existing databases get the covering incremental-sync index."""
+    inspector = inspect(engine)
+    if "universe_symbols" not in inspector.get_table_names():
+        return
+    index_name = "ix_universe_incremental_pending"
+    existing_indexes = {
+        item["name"] for item in inspector.get_indexes("universe_symbols")
+    }
+    if index_name in existing_indexes:
+        return
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE INDEX ix_universe_incremental_pending "
+            "ON universe_symbols "
+            "(region, asset_type, is_synced, last_bar_date, last_synced_at, sync_failed)"
+        ))
+
+
 def _ensure_sqlite_scan_result_columns(engine) -> None:
     _ensure_sqlite_columns(
         engine,
@@ -1429,6 +1448,7 @@ def init_db() -> None:
         _convert_myisam_to_innodb(eng)
 
     Base.metadata.create_all(bind=eng)
+    _ensure_universe_incremental_index(eng)
 
     if mgr.is_sqlite:
         _ensure_sqlite_scan_result_columns(eng)

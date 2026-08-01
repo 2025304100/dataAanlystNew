@@ -63,18 +63,18 @@ describe("UniverseDataPanel sync panel interaction", () => {
     localStorage.clear();
   });
 
-  it("defaults to smart sync and only renders the smart panel", async () => {
+  it("defaults to incremental sync and only renders the incremental panel", async () => {
     render(<UniverseDataPanel />);
 
     await waitFor(() => {
       expect(mockApi.getUniverseStats).toHaveBeenCalled();
-      expect(mockApi.getUniverseSmartSyncStatus).toHaveBeenCalled();
+      expect(mockApi.getUniverseIncrementalSyncStatus).toHaveBeenCalled();
     });
 
     expect(screen.getByText("universeViewingNow")).toBeInTheDocument();
     expect(screen.getByText("universeCurrentSelection")).toBeInTheDocument();
-    expect(screen.getByText("universeSmartTitle")).toBeInTheDocument();
-    expect(screen.queryByText("universeIncrementalTitle")).not.toBeInTheDocument();
+    expect(screen.getByText("universeIncrementalTitle")).toBeInTheDocument();
+    expect(screen.queryByText("universeSmartTitle")).not.toBeInTheDocument();
     expect(screen.queryByText("universeBackfillTitle")).not.toBeInTheDocument();
     expect(screen.queryByText("universeRangeRepairTitle")).not.toBeInTheDocument();
   });
@@ -84,16 +84,37 @@ describe("UniverseDataPanel sync panel interaction", () => {
     render(<UniverseDataPanel />);
 
     await waitFor(() => {
+      expect(screen.getByText("universeIncrementalTitle")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("universeQuickSmartTitle"));
+
+    await waitFor(() => {
       expect(screen.getByText("universeSmartTitle")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("universeQuickIncrementalTitle"));
+    expect(screen.queryByText("universeIncrementalTitle")).not.toBeInTheDocument();
+  });
+
+  it("starts incremental sync with the selected scope and rejects an empty scope", async () => {
+    const user = userEvent.setup();
+    render(<UniverseDataPanel />);
 
     await waitFor(() => {
       expect(screen.getByText("universeIncrementalTitle")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText("universeSmartTitle")).not.toBeInTheDocument();
+    const cnStockScope = screen.getByRole("checkbox", { name: "universeScopeCnStock" });
+    const startButton = screen.getByRole("button", { name: /universeIncrementalStart/ });
+    expect(cnStockScope).toBeChecked();
+
+    await user.click(startButton);
+    await waitFor(() => {
+      expect(mockApi.startUniverseIncrementalSync).toHaveBeenCalledWith(5, ["cn-stock"]);
+    });
+
+    await user.click(cnStockScope);
+    expect(startButton).toBeDisabled();
   });
 
   it("defaults to init on history tab and switches to backfill when the backfill card is clicked", async () => {

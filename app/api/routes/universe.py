@@ -44,6 +44,10 @@ class UniverseIncrementalRequest(BaseModel):
     """基础数据增量同步请求。"""
 
     max_workers: int = Field(default=5, ge=1, le=8, description="并发线程数（1-8）")
+    scopes: list[str] | None = Field(
+        default=None,
+        description="要增量同步的 scope 列表（cn-stock/cn-etf/us-stock/us-etf），None=全部",
+    )
 
 
 class UniverseRangeRepairRequest(BaseModel):
@@ -134,13 +138,15 @@ def get_stats(db: Session = Depends(get_db)):
 
 @router.post("/universe/incremental-sync", response_model=AsyncTaskRead)
 def start_incremental_sync(payload: UniverseIncrementalRequest):
-    """触发基础数据增量同步（只同步 last_bar_date < today 的标的）。
+    """触发指定范围内的基础数据增量同步。
 
     适合每日定时执行，保持数据新鲜。
     若已有运行中的同步任务（init 或 incremental）则返回该任务。
     """
+    scopes = _normalize_scopes(payload.scopes)
     return universe_sync_task.start_universe_incremental_sync(
         max_workers=payload.max_workers,
+        scopes=scopes,
     )
 
 

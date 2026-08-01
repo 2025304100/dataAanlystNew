@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+import threading
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 import pytest
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
+from app.api.routes import universe as universe_routes
 from app.models.async_task import AsyncTaskRecord
 from app.models.daily_bar import DailyBar
 from app.models.symbol import Symbol
@@ -15,6 +17,22 @@ from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.services import market_data, universe_sync, universe_sync_task
 
 pytestmark = pytest.mark.whitebox
+
+
+def test_universe_incremental_pending_index_covers_sync_metadata(db_session):
+    indexes = {
+        item["name"]: item["column_names"]
+        for item in inspect(db_session.get_bind()).get_indexes("universe_symbols")
+    }
+
+    assert indexes["ix_universe_incremental_pending"] == [
+        "region",
+        "asset_type",
+        "is_synced",
+        "last_bar_date",
+        "last_synced_at",
+        "sync_failed",
+    ]
 
 
 def test_upsert_bars_dedupes_duplicate_trade_dates_within_frame(db_session):
@@ -106,8 +124,22 @@ def test_backfill_batch_prefilters_symbols_already_covering_target_range(monkeyp
     assert result["skipped"] == 2
 
 
+@pytest.mark.parametrize(
+    ("as_of", "region", "expected"),
+    [
+        (datetime(2026, 8, 1, 12, 0), "cn", date(2026, 7, 31)),
+        (datetime(2026, 8, 3, 10, 0), "cn", date(2026, 7, 31)),
+        (datetime(2026, 8, 3, 18, 0), "cn", date(2026, 8, 3)),
+        (datetime(2026, 8, 3, 18, 0), "us", date(2026, 7, 31)),
+        (datetime(2026, 8, 4, 10, 0), "us", date(2026, 8, 3)),
+    ],
+)
+def test_latest_completed_trading_date_uses_market_timezone(as_of, region, expected):
+    assert universe_sync._latest_completed_trading_date(as_of, region) == expected
+
+
 def test_incremental_sync_filters_pending_symbols_by_scope(monkeypatch, db_session):
-    today = date.today()
+    target_date = date(2026, 7, 31)
 
     cn_stock_stale = UniverseSymbol(
         symbol="600010",
@@ -116,7 +148,7 @@ def test_incremental_sync_filters_pending_symbols_by_scope(monkeypatch, db_sessi
         market="sh",
         region="cn",
         is_synced=1,
-        last_bar_date=today - timedelta(days=1),
+        last_bar_date=target_date - timedelta(days=1),
     )
     cn_etf_stale = UniverseSymbol(
         symbol="510300",
@@ -125,7 +157,7 @@ def test_incremental_sync_filters_pending_symbols_by_scope(monkeypatch, db_sessi
         market="sh",
         region="cn",
         is_synced=1,
-        last_bar_date=today - timedelta(days=1),
+        last_bar_date=target_date - timedelta(days=1),
     )
     cn_stock_uptodate = UniverseSymbol(
         symbol="600011",
@@ -134,7 +166,7 @@ def test_incremental_sync_filters_pending_symbols_by_scope(monkeypatch, db_sessi
         market="sh",
         region="cn",
         is_synced=1,
-        last_bar_date=today,
+        last_bar_date=target_date,
     )
     db_session.add_all([cn_stock_stale, cn_etf_stale, cn_stock_uptodate])
     db_session.commit()
@@ -144,15 +176,17 @@ def test_incremental_sync_filters_pending_symbols_by_scope(monkeypatch, db_sessi
 
     called_ids: list[int] = []
 
-    def fake_sync_one(universe_symbol_id: int, history_days: int) -> dict:
+    def fake_sync_one(universe_symbol_id: int, incremental_target: date) -> dict:
         called_ids.append(universe_symbol_id)
+        assert incremental_target == target_date
         return {"symbol": str(universe_symbol_id), "status": "ok", "inserted": 1, "updated": 0}
 
-    monkeypatch.setattr(universe_sync, "_sync_one_concurrent", fake_sync_one)
+    monkeypatch.setattr(universe_sync, "_sync_one_incremental_concurrent", fake_sync_one)
 
     result = universe_sync.incremental_sync(
         max_workers=1,
         scopes=["cn-stock"],
+        as_of=datetime(2026, 8, 1, 12, 0),
     )
 
     assert called_ids == [cn_stock_stale.id]
@@ -160,6 +194,266 @@ def test_incremental_sync_filters_pending_symbols_by_scope(monkeypatch, db_sessi
     assert result["processed"] == 1
     assert result["ok"] == 1
     assert result["failed"] == 0
+
+
+def test_incremental_sync_uses_market_specific_target_dates(monkeypatch, db_session):
+    cn_stock = UniverseSymbol(
+        symbol="600015",
+        name="CN Monday",
+        asset_type="stock",
+        market="sh",
+        region="cn",
+        is_synced=1,
+        last_bar_date=date(2026, 7, 31),
+    )
+    us_etf = UniverseSymbol(
+        symbol="SPY",
+        name="US Friday",
+        asset_type="etf",
+        market="us",
+        region="us",
+        is_synced=1,
+        last_bar_date=date(2026, 7, 30),
+    )
+    db_session.add_all([cn_stock, us_etf])
+    db_session.commit()
+
+    targets: dict[int, date] = {}
+
+    def fake_sync_one(universe_symbol_id: int, target_date: date) -> dict:
+        targets[universe_symbol_id] = target_date
+        return {"symbol": str(universe_symbol_id), "status": "ok", "inserted": 1, "updated": 0}
+
+    monkeypatch.setattr(universe_sync, "_sync_one_incremental_concurrent", fake_sync_one)
+
+    result = universe_sync.incremental_sync(
+        max_workers=1,
+        scopes=["cn-stock", "us-etf"],
+        as_of=datetime(2026, 8, 3, 18, 0),
+    )
+
+    assert targets == {
+        cn_stock.id: date(2026, 8, 3),
+        us_etf.id: date(2026, 7, 31),
+    }
+    assert result["ok"] == 2
+
+
+def test_incremental_sync_skips_symbols_already_attempted_that_day(monkeypatch, db_session):
+    attempted = UniverseSymbol(
+        symbol="600012",
+        name="Already Attempted",
+        asset_type="stock",
+        market="sh",
+        region="cn",
+        is_synced=1,
+        last_bar_date=date(2026, 7, 30),
+        last_synced_at=datetime(2026, 8, 1, 1, 0),
+    )
+    pending = UniverseSymbol(
+        symbol="600013",
+        name="Pending",
+        asset_type="stock",
+        market="sh",
+        region="cn",
+        is_synced=1,
+        last_bar_date=date(2026, 7, 30),
+        last_synced_at=datetime(2026, 7, 31, 23, 0),
+    )
+    db_session.add_all([attempted, pending])
+    db_session.commit()
+    db_session.refresh(pending)
+
+    called_ids: list[int] = []
+
+    def fake_sync_one(universe_symbol_id: int, target_date: date) -> dict:
+        called_ids.append(universe_symbol_id)
+        return {"symbol": str(universe_symbol_id), "status": "empty", "inserted": 0, "updated": 0}
+
+    monkeypatch.setattr(universe_sync, "_sync_one_incremental_concurrent", fake_sync_one)
+
+    result = universe_sync.incremental_sync(
+        max_workers=1,
+        scopes=["cn-stock"],
+        as_of=datetime(2026, 8, 1, 12, 0),
+    )
+
+    assert called_ids == [pending.id]
+    assert result["total"] == 1
+    assert result["uptodate"] == 1
+    assert result["failed"] == 0
+
+
+def test_incremental_worker_uses_metadata_and_increments_cached_bar_count(monkeypatch, db_session):
+    universe_symbol = UniverseSymbol(
+        symbol="600014",
+        name="Metadata Tail",
+        asset_type="stock",
+        market="sh",
+        region="cn",
+        is_synced=1,
+        last_bar_date=date(2026, 7, 30),
+        bar_count=100,
+    )
+    db_session.add(universe_symbol)
+    db_session.commit()
+    db_session.refresh(universe_symbol)
+
+    calls: list[tuple[date, date]] = []
+
+    def fake_fetch(symbol: UniverseSymbol, start_date: date, end_date: date) -> pd.DataFrame:
+        calls.append((start_date, end_date))
+        return pd.DataFrame([{"trade_date": date(2026, 7, 31), "close": 10.5}])
+
+    monkeypatch.setattr(universe_sync, "_fetch_universe_history", fake_fetch)
+
+    result = universe_sync.sync_one_universe_symbol_incremental(
+        db_session,
+        universe_symbol,
+        date(2026, 7, 31),
+    )
+    db_session.refresh(universe_symbol)
+
+    assert result["status"] == "ok"
+    assert calls == [(date(2026, 7, 31), date(2026, 7, 31))]
+    assert universe_symbol.last_bar_date == date(2026, 7, 31)
+    assert universe_symbol.bar_count == 101
+
+
+def test_incremental_sync_replenishes_worker_before_slowest_finishes(monkeypatch, db_session):
+    symbols = [
+        UniverseSymbol(
+            symbol=f"60002{index}",
+            name=f"Sliding {index}",
+            asset_type="stock",
+            market="sh",
+            region="cn",
+            is_synced=1,
+            last_bar_date=date(2026, 7, 30),
+        )
+        for index in range(3)
+    ]
+    db_session.add_all(symbols)
+    db_session.commit()
+    for symbol in symbols:
+        db_session.refresh(symbol)
+
+    first_can_finish = threading.Event()
+    third_started = threading.Event()
+
+    def fake_sync_one(universe_symbol_id: int, target_date: date) -> dict:
+        if universe_symbol_id == symbols[0].id:
+            if not first_can_finish.wait(timeout=2):
+                return {"symbol": str(universe_symbol_id), "status": "failed", "error": "window stalled"}
+        elif universe_symbol_id == symbols[2].id:
+            third_started.set()
+            first_can_finish.set()
+        return {"symbol": str(universe_symbol_id), "status": "ok", "inserted": 1, "updated": 0}
+
+    monkeypatch.setattr(universe_sync, "_sync_one_incremental_concurrent", fake_sync_one)
+
+    result = universe_sync.incremental_sync(
+        max_workers=2,
+        scopes=["cn-stock"],
+        as_of=datetime(2026, 8, 1, 12, 0),
+    )
+
+    assert third_started.is_set()
+    assert result["processed"] == 3
+    assert result["ok"] == 3
+
+
+def test_incremental_route_forwards_selected_scopes(monkeypatch):
+    captured: dict = {}
+    sentinel = object()
+
+    def fake_start(**kwargs):
+        captured.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(
+        universe_routes.universe_sync_task,
+        "start_universe_incremental_sync",
+        fake_start,
+    )
+
+    result = universe_routes.start_incremental_sync(
+        universe_routes.UniverseIncrementalRequest(
+            max_workers=6,
+            scopes=["cn-stock"],
+        )
+    )
+
+    assert result is sentinel
+    assert captured == {"max_workers": 6, "scopes": ["cn-stock"]}
+
+
+def test_incremental_task_throttles_progress_persistence(monkeypatch, db_session):
+    task_id = "incremental-progress-throttle"
+    db_session.add(AsyncTaskRecord(
+        id=task_id,
+        task_type=universe_sync_task.UNIVERSE_INCREMENTAL_TASK_TYPE,
+        status="queued",
+        stage="queued",
+    ))
+    db_session.commit()
+
+    updates: list[dict] = []
+    original_set_task = universe_sync_task._set_task
+
+    def recording_set_task(db, current_task_id: str, **kwargs):
+        updates.append(dict(kwargs))
+        return original_set_task(db, current_task_id, **kwargs)
+
+    def fake_incremental(**kwargs):
+        callback = kwargs["progress_callback"]
+        for processed in range(1, 21):
+            callback(processed, 20, processed, 0)
+        return {
+            "total": 20,
+            "processed": 20,
+            "ok": 20,
+            "failed": 0,
+            "skipped": 0,
+            "uptodate": 0,
+        }
+
+    monkeypatch.setattr(universe_sync_task, "_set_task", recording_set_task)
+    monkeypatch.setattr(universe_sync_task, "_is_cancelled", lambda task_id: False)
+    monkeypatch.setattr(universe_sync_task.universe_sync, "incremental_sync", fake_incremental)
+
+    universe_sync_task._run_universe_incremental_sync(task_id, 5, ["cn-stock"])
+
+    progress_updates = [item for item in updates if "processed" in item]
+    assert len(progress_updates) == 2
+    assert progress_updates[0]["processed"] == 1
+    assert progress_updates[-1]["processed"] == 20
+
+
+def test_incremental_task_marks_sync_exception_failed(monkeypatch, db_session):
+    task_id = "incremental-worker-failure"
+    db_session.add(AsyncTaskRecord(
+        id=task_id,
+        task_type=universe_sync_task.UNIVERSE_INCREMENTAL_TASK_TYPE,
+        status="queued",
+        stage="queued",
+    ))
+    db_session.commit()
+
+    def fake_incremental(**kwargs):
+        raise RuntimeError("upstream unavailable")
+
+    monkeypatch.setattr(universe_sync_task, "_is_cancelled", lambda task_id: False)
+    monkeypatch.setattr(universe_sync_task.universe_sync, "incremental_sync", fake_incremental)
+
+    universe_sync_task._run_universe_incremental_sync(task_id, 5, ["cn-stock"])
+    db_session.expire_all()
+    task = db_session.get(AsyncTaskRecord, task_id)
+
+    assert task is not None
+    assert task.status == "failed"
+    assert task.stage == "failed"
+    assert "upstream unavailable" in task.message
 
 
 

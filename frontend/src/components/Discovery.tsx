@@ -1432,7 +1432,7 @@ export default function Discovery({
 
       <section className="band metrics-band">
         <div className="metric-grid discovery-metrics">
-          <div className="metric-card"><span className="metric-label">{t("discoveryScope")}</span><span className="metric-value">{scopeLabel(scope)}</span><span className="metric-note">{scope}</span></div>
+          <div className="metric-card"><span className="metric-label">{t("discoveryScope")}</span><span className="metric-value">{scopeLabel(scope)}</span></div>
           <div className="metric-card"><span className="metric-label">{t("discoveryUniverseTotal")}</span><span className="metric-value">{scopeStats?.total_symbols ?? "-"}</span><span className="metric-note">{t("items")}</span></div>
           <div className="metric-card"><span className="metric-label">{t("discoveryCachedPool")}</span><span className="metric-value">{scopeStats?.cached_symbols ?? "-"}</span><span className="metric-note">{t("items")}</span></div>
           <div className="metric-card"><span className="metric-label">{t("candidates")}</span><span className="metric-value">{discoveryCandidates.length}</span><span className="metric-note">{t("items")}</span></div>
@@ -1594,7 +1594,7 @@ export default function Discovery({
               return (
                 <div key={idx} style={{ border: "1px solid #f0f0f0", borderRadius: 6, padding: 12 }}>
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
-                    {item.scope && <Tag color="blue">{t("discoveryErrorScope")}: {item.scope}</Tag>}
+                    {item.scope && <Tag color="blue">{t("discoveryErrorScope")}: {scopeLabel(item.scope)}</Tag>}
                     {item.time && <Tag>{t("discoveryErrorTime")}: {item.time}</Tag>}
                   </div>
                   <div style={{ fontWeight: 600, color: "#b42318", wordBreak: "break-word" }}>
@@ -1620,4 +1620,3 @@ export default function Discovery({
     </div>
   );
 }
-

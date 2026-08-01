@@ -158,7 +158,7 @@ type SyncTabKey = "daily" | "history" | "advanced";
 type SyncPanelKey = "smart" | "incremental" | "init" | "backfill" | "repair";
 
 const DEFAULT_SYNC_PANEL_SELECTION: Record<SyncTabKey, SyncPanelKey> = {
-  daily: "smart",
+  daily: "incremental",
   history: "init",
   advanced: "repair",
 };
@@ -532,9 +532,14 @@ export default function UniverseDataPanel() {
 
   // P2：增量同步处理函数
   const handleIncrStart = async () => {
+    if (initScopes.length === 0) {
+      showToast("error", t("universeIncrementalNeedScope"));
+      return;
+    }
     setIncrStarting(true);
     try {
-      await api.startUniverseIncrementalSync(maxWorkers);
+      const scopes = initScopes.length === 4 ? null : initScopes;
+      await api.startUniverseIncrementalSync(maxWorkers, scopes);
       await refreshIncrTask();
       showToast("success", t("universeIncrementalStart"));
     } catch (e: any) {
@@ -722,18 +727,18 @@ export default function UniverseDataPanel() {
   > = {
     daily: [
       {
-        key: "smart",
-        titleKey: "universeQuickSmartTitle",
-        descKey: "universeQuickDailySmart",
-        badgeKey: "universeSmartRecommended",
-        badgeColor: "gold",
-      },
-      {
         key: "incremental",
         titleKey: "universeQuickIncrementalTitle",
         descKey: "universeQuickDailyIncremental",
         badgeKey: "universeIncrementalBadge",
         badgeColor: "blue",
+      },
+      {
+        key: "smart",
+        titleKey: "universeQuickSmartTitle",
+        descKey: "universeQuickDailySmart",
+        badgeKey: "universeSmartRecommended",
+        badgeColor: "gold",
       },
     ],
     history: [
@@ -1220,6 +1225,20 @@ export default function UniverseDataPanel() {
             <div style={{ marginTop: 16, borderTop: "1px solid var(--border-color, #f0f0f0)", paddingTop: 16 }}>
               <Space direction="vertical" style={{ width: "100%" }} size="middle">
                 <Space wrap>
+                  <span>
+                    {t("universeInitScopes")}：
+                    <Tooltip title={t("universeIncrementalScopesHint")}>
+                      <QuestionCircleOutlined style={{ marginLeft: 4, color: "var(--text-muted, #999)" }} />
+                    </Tooltip>
+                  </span>
+                  <Checkbox.Group
+                    options={i18nInitScopeOptions}
+                    value={initScopes}
+                    onChange={(values) => setInitScopes(values as string[])}
+                    disabled={anyRunning}
+                  />
+                </Space>
+                <Space wrap>
                   <span>{t("universeWorkers")}：</span>
                   <InputNumber
                     min={1}
@@ -1235,7 +1254,7 @@ export default function UniverseDataPanel() {
                       icon={<PlayCircleOutlined />}
                       onClick={handleIncrStart}
                       loading={incrStarting}
-                      disabled={anyRunning}
+                      disabled={anyRunning || initScopes.length === 0}
                     >
                       {t("universeIncrementalStart")}
                     </Button>

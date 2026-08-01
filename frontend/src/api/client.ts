@@ -795,11 +795,11 @@ export const api = {
   getUniverseRangeRepairStatus: () => requestJson<any | null>(`${API}/universe/range-repair/status`),
   cancelUniverseRangeRepair: () =>
     requestJson<any>(`${API}/universe/range-repair/cancel`, { method: "POST" }),
-  startUniverseIncrementalSync: (maxWorkers = 5) =>
+  startUniverseIncrementalSync: (maxWorkers = 5, scopes: string[] | null = null) =>
     requestJson<any>(`${API}/universe/incremental-sync`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ max_workers: maxWorkers }),
+      body: JSON.stringify({ max_workers: maxWorkers, scopes }),
     }),
   getUniverseIncrementalSyncStatus: () => requestJson<any | null>(`${API}/universe/incremental-sync/status`),
   cancelUniverseIncrementalSync: () =>

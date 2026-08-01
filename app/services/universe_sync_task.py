@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -726,6 +727,17 @@ def _run_universe_incremental_sync(
     """worker 线程主函数：执行增量同步。"""
     SessionFactory = get_session_local()
     result_summary: dict[str, Any] = {}
+    sync_error: Exception | None = None
+    last_cancel_check_at = 0.0
+    cached_cancelled = False
+
+    def is_cancelled_cached(force: bool = False) -> bool:
+        nonlocal last_cancel_check_at, cached_cancelled
+        now = time.monotonic()
+        if force or now - last_cancel_check_at >= 0.75:
+            cached_cancelled = _is_cancelled(task_id)
+            last_cancel_check_at = now
+        return cached_cancelled
 
     try:
         # 标记 running
@@ -742,13 +754,32 @@ def _run_universe_incremental_sync(
         finally:
             db.close()
 
-        if _is_cancelled(task_id):
+        if is_cancelled_cached(force=True):
             return
 
         # 增量同步：单一阶段 0-100%
-        def progress_cb(processed: int, total: int, ok: int, failed: int) -> None:
+        last_progress_flush_at = 0.0
+        last_persisted_progress: tuple[int, int, int, int] | None = None
+
+        def persist_progress(
+            processed: int,
+            total: int,
+            ok: int,
+            failed: int,
+            *,
+            force: bool = False,
+        ) -> None:
+            nonlocal last_progress_flush_at, last_persisted_progress
             if total <= 0:
                 return
+            progress_state = (processed, total, ok, failed)
+            if force and progress_state == last_persisted_progress:
+                return
+            now = time.monotonic()
+            if not force and processed < total and now - last_progress_flush_at < 1.0:
+                return
+            last_progress_flush_at = now
+            last_persisted_progress = progress_state
             pct = round(min(100, processed / total * 100), 1)
             try:
                 d = SessionFactory()
@@ -767,15 +798,26 @@ def _run_universe_incremental_sync(
             except Exception:
                 logger.debug("incremental_sync progress callback failed", exc_info=True)
 
+        def progress_cb(processed: int, total: int, ok: int, failed: int) -> None:
+            persist_progress(processed, total, ok, failed)
+
         try:
             sync_result = universe_sync.incremental_sync(
                 max_workers=max_workers,
                 progress_callback=progress_cb,
-                is_cancelled=lambda: _is_cancelled(task_id),
+                is_cancelled=is_cancelled_cached,
                 scopes=scopes,
             )
             result_summary = sync_result
+            persist_progress(
+                int(sync_result.get("processed", 0)),
+                int(sync_result.get("total", 0)),
+                int(sync_result.get("ok", 0)),
+                int(sync_result.get("failed", 0)),
+                force=True,
+            )
         except Exception as exc:
+            sync_error = exc
             logger.exception("incremental sync failed")
             db = SessionFactory()
             try:
@@ -787,16 +829,22 @@ def _run_universe_incremental_sync(
         # 完成
         db = SessionFactory()
         try:
-            final_status = "cancelled" if _is_cancelled(task_id) else "done"
-            final_stage = "cancelled" if final_status == "cancelled" else "done"
+            if is_cancelled_cached(force=True):
+                final_status = "cancelled"
+            elif sync_error is not None:
+                final_status = "failed"
+            else:
+                final_status = "done"
+            final_stage = final_status
             ok = result_summary.get("ok", 0)
             failed = result_summary.get("failed", 0)
             uptodate = result_summary.get("uptodate", 0)
-            final_message = (
-                f"增量同步完成：更新 {ok} 个，已是最新 {uptodate} 个，失败 {failed} 个"
-                if final_status == "done"
-                else "增量同步任务已取消"
-            )
+            if final_status == "done":
+                final_message = f"增量同步完成：更新 {ok} 个，无新增 {uptodate} 个，失败 {failed} 个"
+            elif final_status == "failed":
+                final_message = f"增量同步失败：{sync_error}"
+            else:
+                final_message = "增量同步任务已取消"
             final_updates: dict[str, Any] = {
                 "status": final_status,
                 "stage": final_stage,

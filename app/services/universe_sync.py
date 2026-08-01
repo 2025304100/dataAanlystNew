@@ -10,6 +10,7 @@ import logging
 import time
 from types import SimpleNamespace
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 import akshare as ak
 import pandas as pd
@@ -33,6 +34,30 @@ DEFAULT_HISTORY_DAYS = 365
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _latest_completed_trading_date(
+    as_of: date | datetime | None = None,
+    region: str = "cn",
+) -> date:
+    """Return the latest completed weekday in the selected market timezone."""
+    app_timezone = ZoneInfo("Asia/Shanghai")
+    if as_of is None:
+        app_now = datetime.now(app_timezone)
+    elif isinstance(as_of, datetime):
+        app_now = as_of.replace(tzinfo=app_timezone) if as_of.tzinfo is None else as_of
+    else:
+        app_now = datetime.combine(as_of, datetime.max.time(), tzinfo=app_timezone)
+
+    market_timezone = app_timezone if region == "cn" else ZoneInfo("America/New_York")
+    current = app_now.astimezone(market_timezone)
+
+    candidate = current.date()
+    if candidate.weekday() < 5 and current.hour < 16:
+        candidate -= timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate -= timedelta(days=1)
+    return candidate
 
 
 # ── 市场判断（与 discovery_tasks 保持一致）──────────────────────────
@@ -575,6 +600,99 @@ def _sync_one_concurrent(universe_symbol_id: int, history_days: int) -> dict:
             return sync_one_universe_symbol(sub_db2, us, history_days)
         finally:
             sub_db2.close()
+    finally:
+        sub_db.close()
+
+
+def sync_one_universe_symbol_incremental(
+    db: Session,
+    universe_symbol: UniverseSymbol,
+    target_date: date,
+) -> dict:
+    """Sync only the missing tail represented by UniverseSymbol metadata."""
+    if universe_symbol.sync_failed >= SYNC_FAILED_THRESHOLD:
+        return {
+            "symbol": universe_symbol.symbol,
+            "status": "skipped",
+            "reason": "sync_failed threshold reached",
+        }
+
+    if universe_symbol.last_bar_date is not None:
+        start_date = universe_symbol.last_bar_date + timedelta(days=1)
+        if start_date > target_date:
+            return {
+                "symbol": universe_symbol.symbol,
+                "status": "uptodate",
+                "inserted": 0,
+                "updated": 0,
+            }
+    else:
+        # is_synced without a last bar usually means suspended/delisted.
+        start_date = target_date
+
+    db.commit()
+    try:
+        frame = _fetch_universe_history(universe_symbol, start_date, target_date)
+    except Exception as exc:
+        logger.warning(
+            "fetch incremental universe history failed: %s: %s",
+            universe_symbol.symbol,
+            exc,
+        )
+        universe_symbol.sync_failed += 1
+        universe_symbol.last_synced_at = _now()
+        db.commit()
+        return {"symbol": universe_symbol.symbol, "status": "failed", "error": str(exc)}
+
+    universe_symbol.last_synced_at = _now()
+    universe_symbol.is_synced = 1
+    if frame.empty:
+        db.commit()
+        return {"symbol": universe_symbol.symbol, "status": "empty", "inserted": 0, "updated": 0}
+
+    inserted, updated = _upsert_universe_bars(db, universe_symbol.id, frame)
+    universe_symbol.sync_failed = 0
+    universe_symbol.last_bar_date = max(
+        _normalize_trade_date(value) for value in frame["trade_date"]
+    )
+    universe_symbol.bar_count = int(universe_symbol.bar_count or 0) + inserted
+    db.commit()
+    return {
+        "symbol": universe_symbol.symbol,
+        "status": "ok",
+        "inserted": inserted,
+        "updated": updated,
+    }
+
+
+def _sync_one_incremental_concurrent(universe_symbol_id: int, target_date: date) -> dict:
+    """Concurrent incremental worker with its own short-lived DB session."""
+    from sqlalchemy.exc import OperationalError
+
+    def _run(db: Session) -> dict:
+        universe_symbol = db.get(UniverseSymbol, universe_symbol_id)
+        if universe_symbol is None:
+            return {"symbol": str(universe_symbol_id), "status": "failed", "error": "not found"}
+        return sync_one_universe_symbol_incremental(db, universe_symbol, target_date)
+
+    sub_db = SessionLocal()
+    try:
+        return _run(sub_db)
+    except OperationalError as exc:
+        logger.warning(
+            "incremental universe sync %s OperationalError, retrying: %s",
+            universe_symbol_id,
+            exc,
+        )
+        try:
+            sub_db.rollback()
+        except Exception:
+            pass
+        retry_db = SessionLocal()
+        try:
+            return _run(retry_db)
+        finally:
+            retry_db.close()
     finally:
         sub_db.close()
 
@@ -1675,20 +1793,22 @@ def incremental_sync(
     progress_callback: Callable[[int, int, int, int], None] | None = None,
     is_cancelled: Callable[[], bool] | None = None,
     scopes: list[str] | None = None,
+    as_of: date | datetime | None = None,
 ) -> dict:
-    """增量同步：只同步 last_bar_date < today 且未熔断的标的。
+    """增量同步：只同步早于最近已完成交易日且当天未尝试的标的。
 
     与全量初始化 sync_universe_bars_batch 的区别：
     - 全量初始化：is_synced=0 的标的（从未同步过）
     - 增量同步：is_synced=1 但 last_bar_date < today 的标的（已有数据但不最新）
 
-    复用 sync_one_universe_symbol 的断点续传逻辑（从 last_bar_date + 1 增量拉取）。
+    使用元数据中的 last_bar_date 断点续传，避免逐标的重复查询最新 K 线。
 
     Args:
         max_workers: 并发线程数（1-8，默认 5）
         progress_callback: 进度回调 (processed, total, ok_count, failed_count)
         is_cancelled: 取消检查函数，返回 True 时停止
         scopes: 可选 scope 过滤，仅同步指定范围
+        as_of: 可选运行日期/时间，用于确定最近已完成交易日
 
     优化点：
     - 分批限速：每 BATCH_SIZE 个标的一批，批次间隔 BATCH_INTERVAL_SECONDS 秒（与初始化同步一致）
@@ -1696,55 +1816,77 @@ def incremental_sync(
     Returns:
         {"total": int, "processed": int, "ok": int, "failed": int, "skipped": int, "uptodate": int}
     """
-    from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 
     # 分批限速配置：与初始化同步一致
     BATCH_SIZE = 50
     BATCH_INTERVAL_SECONDS = 1.0
 
-    today = date.today()
+    run_date = as_of.date() if isinstance(as_of, datetime) else (as_of or date.today())
+    attempted_since = datetime.combine(run_date, datetime.min.time())
+    selected_scopes = scopes or ["cn-stock", "cn-etf", "us-stock", "us-etf"]
+    selected_regions = {_scope_config(scope)["region"] for scope in selected_scopes}
+    target_dates = {
+        region: _latest_completed_trading_date(as_of, region)
+        for region in selected_regions
+    }
     db = SessionLocal()
     try:
-        # 查询需要增量同步的标的：已同步但 last_bar_date < today 且未熔断
-        # last_bar_date 为 NULL 的情况（is_synced=1 但无数据，如退市/停牌）也包含
+        # SQL 层直接筛出目标范围，避免将全市场记录加载后再用 Python 过滤。
+        staleness_filters = [
+            (UniverseSymbol.region == region)
+            & or_(
+                UniverseSymbol.last_bar_date.is_(None),
+                UniverseSymbol.last_bar_date < target_date,
+            )
+            for region, target_date in target_dates.items()
+        ]
         query = select(UniverseSymbol).where(
             UniverseSymbol.is_synced == 1,
             UniverseSymbol.sync_failed < SYNC_FAILED_THRESHOLD,
+            or_(*staleness_filters),
+            or_(
+                UniverseSymbol.last_synced_at.is_(None),
+                UniverseSymbol.last_synced_at < attempted_since,
+            ),
         )
-        if scopes:
-            scope_filters = []
-            for scope in scopes:
-                config = _scope_config(scope)
-                scope_filters.append(
-                    (UniverseSymbol.region == config["region"])
-                    & (UniverseSymbol.asset_type == config["asset_type"])
-                )
-            query = query.where(or_(*scope_filters))
-        pending = db.execute(query.order_by(UniverseSymbol.id.asc())).scalars().all()
-        # 过滤：last_bar_date < today 或 last_bar_date 为 None
-        pending = [
-            us for us in pending
-            if us.last_bar_date is None or us.last_bar_date < today
+        scope_filters = []
+        for scope in selected_scopes:
+            config = _scope_config(scope)
+            scope_filters.append(
+                (UniverseSymbol.region == config["region"])
+                & (UniverseSymbol.asset_type == config["asset_type"])
+            )
+        query = query.where(or_(*scope_filters))
+        pending_rows = db.execute(
+            query.with_only_columns(
+                UniverseSymbol.id,
+                UniverseSymbol.region,
+            )
+        ).all()
+        pending_items = [
+            (universe_symbol_id, target_dates[region])
+            for universe_symbol_id, region in pending_rows
         ]
-        pending_ids = [us.id for us in pending]
-        total = len(pending_ids)
+        target_date_by_id = dict(pending_items)
+        total = len(pending_items)
     finally:
         db.close()
 
     if total == 0:
         logger.info(
             "incremental_sync: no stale symbols (all up-to-date as of %s, scopes=%s)",
-            today,
+            target_dates,
             scopes or "all",
         )
         return {"total": 0, "processed": 0, "ok": 0, "failed": 0, "skipped": 0, "uptodate": 0}
 
     logger.info(
-        "incremental_sync start: total=%d workers=%d scopes=%s (date=%s)",
+        "incremental_sync start: total=%d workers=%d scopes=%s (target_dates=%s)",
         total,
         max_workers,
         scopes or "all",
-        today,
+        target_dates,
     )
     processed = 0
     ok_count = 0
@@ -1766,7 +1908,7 @@ def incremental_sync(
         if status == "ok":
             ok_count += 1
             consecutive_failures = 0
-        elif status == "uptodate":
+        elif status in ("empty", "uptodate"):
             uptodate_count += 1
             consecutive_failures = 0
         elif status == "skipped":
@@ -1781,7 +1923,7 @@ def incremental_sync(
 
     if max_workers <= 1:
         # 串行模式
-        for idx, uid in enumerate(pending_ids):
+        for idx, (uid, target_date) in enumerate(pending_items):
             if is_cancelled and is_cancelled():
                 logger.info("incremental_sync cancelled at %d/%d", processed, total)
                 break
@@ -1792,81 +1934,63 @@ def incremental_sync(
                     consecutive_failures,
                 )
                 break
-            # 复用 _sync_one_concurrent（它创建独立 Session，适合串行和并发）
-            result = _sync_one_concurrent(uid, DEFAULT_HISTORY_DAYS)
+            result = _sync_one_incremental_concurrent(uid, target_date)
             _handle_result(result, uid)
             # 分批限速：每 BATCH_SIZE 个标的后 sleep
             if (idx + 1) % BATCH_SIZE == 0 and (idx + 1) < total and not (is_cancelled and is_cancelled()):
                 time.sleep(BATCH_INTERVAL_SECONDS)
     else:
-        # 并发模式：滑动窗口 + 分批限速
-        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="universe-incr") as executor:
-            future_to_uid: dict = {}
-            circuit_broken = False
-            for uid in pending_ids:
-                if not future_to_uid:
-                    if is_cancelled and is_cancelled():
-                        logger.info("incremental_sync cancelled before batch submit")
-                        break
-                future = executor.submit(_sync_one_concurrent, uid, DEFAULT_HISTORY_DAYS)
-                future_to_uid[future] = uid
+        # Keep every worker occupied: replenish one slot as soon as any request
+        # completes instead of waiting for the slowest request in a fixed batch.
+        executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="universe-incr")
+        future_to_uid: dict = {}
+        pending_iter = iter(pending_items)
+        next_pause_at = BATCH_SIZE
 
-                if len(future_to_uid) >= max_workers:
-                    for f in as_completed(future_to_uid):
-                        try:
-                            result = f.result(timeout=SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
-                            _handle_result(result, future_to_uid[f])
-                        except FuturesTimeoutError:
-                            logger.warning("incremental_sync %s TIMEOUT after %ds", future_to_uid[f], SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
-                            processed += 1
-                            failed_count += 1
-                            failed_ids.append(future_to_uid[f])
-                            consecutive_failures += 1
-                            if progress_callback:
-                                progress_callback(processed, total, ok_count, failed_count)
-                        except Exception as exc:
-                            logger.warning("incremental_sync %s failed: %s", future_to_uid[f], exc)
-                            processed += 1
-                            failed_count += 1
-                            failed_ids.append(future_to_uid[f])
-                            consecutive_failures += 1
-                            if progress_callback:
-                                progress_callback(processed, total, ok_count, failed_count)
-                    future_to_uid.clear()
-                    # P2.2：连续失败熔断检查
-                    if consecutive_failures >= CIRCUIT_BREAKER_CONSECUTIVE_FAILS:
+        def _submit_one() -> bool:
+            try:
+                uid, target_date = next(pending_iter)
+            except StopIteration:
+                return False
+            future = executor.submit(_sync_one_incremental_concurrent, uid, target_date)
+            future_to_uid[future] = uid
+            return True
+
+        try:
+            for _ in range(max_workers):
+                if not _submit_one():
+                    break
+
+            while future_to_uid:
+                completed, _ = wait(tuple(future_to_uid), return_when=FIRST_COMPLETED)
+                for future in completed:
+                    uid = future_to_uid.pop(future)
+                    try:
+                        _handle_result(future.result(), uid)
+                    except Exception as exc:
+                        logger.warning("incremental_sync %s failed: %s", uid, exc)
+                        _handle_result({"status": "failed", "error": str(exc)}, uid)
+
+                cancelled = bool(is_cancelled and is_cancelled())
+                circuit_broken = consecutive_failures >= CIRCUIT_BREAKER_CONSECUTIVE_FAILS
+                if cancelled or circuit_broken:
+                    if circuit_broken:
                         logger.error(
-                            "incremental_sync CIRCUIT BREAK: %d consecutive failures, abort (data source may be down)",
+                            "incremental_sync CIRCUIT BREAK: %d consecutive failures, abort",
                             consecutive_failures,
                         )
-                        circuit_broken = True
-                        break
-                    # 分批限速：每处理完 max_workers 个 future 后检查是否到 BATCH_SIZE
-                    if processed % BATCH_SIZE == 0 and processed < total and not (is_cancelled and is_cancelled()):
-                        time.sleep(BATCH_INTERVAL_SECONDS)
+                    for future in future_to_uid:
+                        future.cancel()
+                    break
 
-            if not circuit_broken:
-                # 处理剩余 future
-                for f in as_completed(future_to_uid):
-                    try:
-                        result = f.result(timeout=SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
-                        _handle_result(result, future_to_uid[f])
-                    except FuturesTimeoutError:
-                        logger.warning("incremental_sync %s TIMEOUT after %ds", future_to_uid[f], SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
-                        processed += 1
-                        failed_count += 1
-                        failed_ids.append(future_to_uid[f])
-                        consecutive_failures += 1
-                        if progress_callback:
-                            progress_callback(processed, total, ok_count, failed_count)
-                    except Exception as exc:
-                        logger.warning("incremental_sync %s failed: %s", future_to_uid[f], exc)
-                        processed += 1
-                        failed_count += 1
-                        failed_ids.append(future_to_uid[f])
-                        consecutive_failures += 1
-                        if progress_callback:
-                            progress_callback(processed, total, ok_count, failed_count)
+                if processed >= next_pause_at and processed < total:
+                    time.sleep(BATCH_INTERVAL_SECONDS)
+                    next_pause_at += BATCH_SIZE
+
+                while len(future_to_uid) < max_workers and _submit_one():
+                    pass
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
 
     # P2.1：失败标的重试 1 轮（与初始化同步 sync_universe_bars_batch 对称）
     # 重新查询仍可重试的失败标的（sync_failed < 阈值），避免临时网络问题导致的数据缺失
@@ -1894,11 +2018,14 @@ def incremental_sync(
                 for uid in retryable_ids:
                     if is_cancelled and is_cancelled():
                         break
-                    result = _sync_one_concurrent(uid, DEFAULT_HISTORY_DAYS)
+                    result = _sync_one_incremental_concurrent(uid, target_date_by_id[uid])
                     status = result.get("status")
-                    if status in ("ok", "empty", "uptodate"):
+                    if status == "ok":
                         ok_count += 1
                         failed_count -= 1  # 从失败移到成功
+                    elif status in ("empty", "uptodate"):
+                        uptodate_count += 1
+                        failed_count -= 1
                     elif status == "skipped":
                         skipped_count += 1
                         failed_count -= 1
@@ -1907,22 +2034,32 @@ def incremental_sync(
                         progress_callback(processed, total, ok_count, failed_count)
             else:
                 with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="universe-incr-retry") as executor:
-                    futures = {executor.submit(_sync_one_concurrent, uid, DEFAULT_HISTORY_DAYS): uid for uid in retryable_ids}
+                    futures = {
+                        executor.submit(
+                            _sync_one_incremental_concurrent,
+                            uid,
+                            target_date_by_id[uid],
+                        ): uid
+                        for uid in retryable_ids
+                    }
                     for future in as_completed(futures):
                         if is_cancelled and is_cancelled():
                             for f in futures:
                                 f.cancel()
                             break
                         try:
-                            result = future.result(timeout=SYNC_ONE_SYMBOL_TIMEOUT_SECONDS)
+                            result = future.result()
                             status = result.get("status")
-                            if status in ("ok", "empty", "uptodate"):
+                            if status == "ok":
                                 ok_count += 1
+                                failed_count -= 1
+                            elif status in ("empty", "uptodate"):
+                                uptodate_count += 1
                                 failed_count -= 1
                             elif status == "skipped":
                                 skipped_count += 1
                                 failed_count -= 1
-                        except (FuturesTimeoutError, Exception) as exc:
+                        except Exception as exc:
                             logger.warning("incremental_sync retry %s failed: %s", futures[future], exc)
                             # 仍失败，failed_count 不变
                         if progress_callback:
