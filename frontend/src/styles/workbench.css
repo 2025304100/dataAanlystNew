@@ -6748,6 +6748,188 @@ td .symbol-name {
   font-weight: 700;
 }
 
+/* ============ FACTOR CENTER (WP3) ============ */
+.factor-center {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.factor-center-header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.factor-center-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Factor editor two-column layout: collapses to single column on narrow screens */
+.factor-editor-layout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.factor-editor-main {
+  flex: 1 1 60%;
+  min-width: 0;
+}
+
+.factor-editor-side {
+  flex: 1 1 40%;
+  min-width: 0;
+}
+
+.factor-editor-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.factor-detail-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Two-column form grid inside factor editor cards */
+.factor-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+
+/* WP3-06: responsive — prevent overlap on 1366×768 and 390×844 */
+@media (max-width: 1024px) {
+  .factor-editor-layout {
+    flex-direction: column;
+  }
+
+  .factor-editor-main,
+  .factor-editor-side {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .factor-center-header h2 {
+    font-size: 16px;
+  }
+
+  .factor-editor-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .factor-editor-actions .ant-space {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .factor-editor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============ WP5-07: EVALUATION LAB ============ */
+.factor-eval-lab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.factor-eval-lab-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.factor-eval-lab-header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.factor-eval-lab-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.factor-eval-lab-layout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.factor-eval-lab-main {
+  flex: 1 1 55%;
+  min-width: 0;
+}
+
+.factor-eval-lab-side {
+  flex: 1 1 45%;
+  min-width: 0;
+}
+
+.factor-eval-lab-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.factor-eval-lab-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.factor-eval-lab-field label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.factor-eval-lab-submit {
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Responsive: collapse to single column on narrow screens */
+@media (max-width: 1024px) {
+  .factor-eval-lab-layout {
+    flex-direction: column;
+  }
+
+  .factor-eval-lab-main,
+  .factor-eval-lab-side {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .factor-eval-lab-header h2 {
+    font-size: 16px;
+  }
+
+  .factor-eval-lab-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
 .table-wrap td {
   vertical-align: middle;
 }

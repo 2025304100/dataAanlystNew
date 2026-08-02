@@ -21,6 +21,8 @@ class AsyncTaskRead(BaseModel):
     current_item: str | None = None
     result: dict | None = None
     errors: list[dict] = Field(default_factory=list)
+    # WPD-05: 顶层 error_code，从 errors_json[0].error_code 提取，作为前端 i18n 映射的稳定事实来源
+    error_code: str | None = None
     created_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -62,6 +64,8 @@ class FactorPipelineCreate(BaseModel):
     materialize_scores: bool = True
     window_days: int = Field(default=250, ge=60, le=1000)
     validation_days: int = Field(default=50, ge=20, le=250)
+    # WP7-03: 指定 FactorSet 进行 Ridge 训练（不传则回退到静态 FEATURE_CODES）
+    factor_set_id: str | None = None
 
     @model_validator(mode='after')
     def validate_training_windows(self):

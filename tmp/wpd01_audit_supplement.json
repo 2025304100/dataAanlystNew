@@ -1,0 +1,296 @@
+{
+  "factor_runtime_state": {
+    "id": 1,
+    "weight_mode": "manual",
+    "active_model_run_id": null,
+    "updated_by": "environment",
+    "fallback_reason": null,
+    "version": 1,
+    "updated_at": "2026-07-14 13:26:24"
+  },
+  "async_tasks_columns": [
+    {
+      "column": "id",
+      "type": "varchar",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "task_type",
+      "type": "varchar",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "status",
+      "type": "varchar",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "stage",
+      "type": "varchar",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "percent",
+      "type": "float",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "message",
+      "type": "text",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "total",
+      "type": "int",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "processed",
+      "type": "int",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "ok_count",
+      "type": "int",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "failed_count",
+      "type": "int",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "current_item",
+      "type": "varchar",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "payload_json",
+      "type": "text",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "result_json",
+      "type": "text",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "errors_json",
+      "type": "text",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "created_at",
+      "type": "datetime",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "started_at",
+      "type": "datetime",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "finished_at",
+      "type": "datetime",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "updated_at",
+      "type": "datetime",
+      "nullable": "NO",
+      "default": null
+    },
+    {
+      "column": "heartbeat_at",
+      "type": "datetime",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "stage_budget_seconds",
+      "type": "int",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "stage_started_at",
+      "type": "datetime",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "last_progress_at",
+      "type": "datetime",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "last_progress_percent",
+      "type": "double",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "current_step_description",
+      "type": "text",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "suggested_action",
+      "type": "text",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "batch_recovery_json",
+      "type": "text",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "last_patrol_at",
+      "type": "datetime",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "worker_thread_id",
+      "type": "varchar",
+      "nullable": "YES",
+      "default": null
+    },
+    {
+      "column": "cancel_requested",
+      "type": "int",
+      "nullable": "NO",
+      "default": "0"
+    }
+  ],
+  "factor_model_runs": [
+    {
+      "id": "ridge-869cb6f010be83261bdfe9d5",
+      "model_type": "ridge",
+      "status": "rejected",
+      "sample_count": 0,
+      "symbol_count": 0,
+      "trade_date_count": 0,
+      "rejection_reason": "sample_count:0<500;symbol_count:0<20;trade_date_count:0<60;validation_date_count:0<20;validation_ic:non_finite;coefficients:missing",
+      "data_cutoff_at": "2026-07-18 00:00:00",
+      "train_start_date": null,
+      "train_end_date": null,
+      "created_at": "2026-07-17 13:17:14",
+      "activated_at": null
+    }
+  ],
+  "factor_model_audit_logs": [],
+  "recent_factor_tasks": [
+    {
+      "id": "66c0c4e6b2f640878e64314dadafd933",
+      "task_type": "factor_pipeline",
+      "status": "done",
+      "percent": 100.0,
+      "message": "Factor pipeline completed",
+      "created_at": "2026-08-01 10:10:28",
+      "updated_at": "2026-08-01 10:11:57"
+    },
+    {
+      "id": "bfb9956baeb2465a8f9c88af1dbf539e",
+      "task_type": "factor_pipeline",
+      "status": "failed",
+      "percent": 8.8,
+      "message": "因子仓库被占用或繁忙，请稍后重试；若持续失败可重启后端释放残留连接",
+      "created_at": "2026-08-01 07:17:16",
+      "updated_at": "2026-08-01 07:17:23"
+    },
+    {
+      "id": "937e0375249841f98fbd35da567a8faa",
+      "task_type": "factor_pipeline",
+      "status": "failed",
+      "percent": 19.0,
+      "message": "因子仓库被占用或繁忙，请稍后重试；若持续失败可重启后端释放残留连接",
+      "created_at": "2026-07-29 14:16:43",
+      "updated_at": "2026-07-29 14:19:37"
+    },
+    {
+      "id": "9c88166a815a4518ba359e2d55c87531",
+      "task_type": "factor_pipeline",
+      "status": "failed",
+      "percent": 11.3,
+      "message": "因子仓库被占用或繁忙，请稍后重试；若持续失败可重启后端释放残留连接",
+      "created_at": "2026-07-29 14:09:17",
+      "updated_at": "2026-07-29 14:09:35"
+    },
+    {
+      "id": "eb013c543af24237b754af063b33236e",
+      "task_type": "factor_pipeline",
+      "status": "done",
+      "percent": 100.0,
+      "message": "Factor pipeline completed",
+      "created_at": "2026-07-27 10:10:18",
+      "updated_at": "2026-07-27 10:11:16"
+    },
+    {
+      "id": "ded0c0be297948d7820a7b4cd0fa09bd",
+      "task_type": "factor_pipeline",
+      "status": "done",
+      "percent": 100.0,
+      "message": "Factor pipeline completed",
+      "created_at": "2026-07-27 07:11:45",
+      "updated_at": "2026-07-27 07:13:18"
+    },
+    {
+      "id": "0dcdbe8fef5c486a9c87af6f8212914c",
+      "task_type": "factor_pipeline",
+      "status": "done",
+      "percent": 100.0,
+      "message": "Factor pipeline completed",
+      "created_at": "2026-07-25 10:10:13",
+      "updated_at": "2026-07-25 10:11:41"
+    },
+    {
+      "id": "1774829050ec4090bef0555f4bf85d9d",
+      "task_type": "factor_pipeline",
+      "status": "failed",
+      "percent": 35.0,
+      "message": "因子流水线在「factors」阶段失败，请稍后重试；若持续失败请查看技术详情",
+      "created_at": "2026-07-24 14:25:39",
+      "updated_at": "2026-07-24 14:35:19"
+    },
+    {
+      "id": "bcc97ac53be548af9cf02cf76b135f1a",
+      "task_type": "factor_pipeline",
+      "status": "done",
+      "percent": 100.0,
+      "message": "Factor pipeline completed",
+      "created_at": "2026-07-24 10:10:27",
+      "updated_at": "2026-07-24 10:11:43"
+    },
+    {
+      "id": "a87fb0884486403aa80b6d56af856f7f",
+      "task_type": "factor_pipeline",
+      "status": "cancelled",
+      "percent": 10.2,
+      "message": "Mirroring universe bars by symbol: 1225/5532",
+      "created_at": "2026-07-24 10:09:33",
+      "updated_at": "2026-07-24 10:10:05"
+    }
+  ]
+}

@@ -68,6 +68,7 @@ ACTION_DRAFT_ALERT = "draft_alert"
 ACTION_DRAFT_NOTE = "draft_note"
 ACTION_DRAFT_REVIEW = "draft_review"
 ACTION_DRAFT_ORDER = "draft_order"
+ACTION_DRAFT_FACTOR = "draft_factor"  # WP4-04 新增：AI 因子草案
 
 ACTION_TYPES = (
     ACTION_DRAFT_INDICATOR,
@@ -76,6 +77,7 @@ ACTION_TYPES = (
     ACTION_DRAFT_NOTE,
     ACTION_DRAFT_REVIEW,
     ACTION_DRAFT_ORDER,
+    ACTION_DRAFT_FACTOR,
 )
 
 
@@ -303,7 +305,7 @@ class AIActionAudit(Base):
     action_type: Mapped[str] = mapped_column(
         String(64), nullable=False, index=True,
         comment="动作类型：draft_indicator/draft_filter/draft_alert/"
-                "draft_note/draft_review/draft_order",
+                "draft_note/draft_review/draft_order/draft_factor",
     )
 
     suggested_payload: Mapped[str] = mapped_column(
@@ -386,5 +388,6 @@ __all__ = [
     "ACTION_DRAFT_NOTE",
     "ACTION_DRAFT_REVIEW",
     "ACTION_DRAFT_ORDER",
+    "ACTION_DRAFT_FACTOR",
     "ACTION_TYPES",
 ]

@@ -1,12 +1,13 @@
 """Alembic 迁移链完整性测试（UAT-DB.3）。
 
 验证内容：
-1. 20 个 revision 文件链式依赖完整（从 wps_001_external_endpoint 到 head 无断链）
+1. 24 个 revision 文件链式依赖完整（从 wps_001_external_endpoint 到 head 无断链）
 2. 每个 revision 有 upgrade() 和 downgrade() 函数
 3. 全链 upgrade 在 SQLite 上可执行且幂等（重复执行不报错）
 4. 全链 downgrade 可逆（回滚后新建表被删除、新增列被移除）
 5. 迁移后所有漂移字段/表存在（无 Unknown column 风险）
 6. 迁移不影响历史数据（新字段允许为空，旧记录可正常读取）
+7. WP1-06: 0021 迁移系统因子回填与幂等性验证
 """
 from __future__ import annotations
 
@@ -40,7 +41,7 @@ def _load_revision_modules() -> dict:
     `import alembic.versions.xxx` 失败。
     """
     modules = {}
-    for pyfile in sorted(VERSIONS_DIR.glob("2026_07_*.py")):
+    for pyfile in sorted(VERSIONS_DIR.glob("2026_*.py")):
         modname = pyfile.stem
         spec = importlib.util.spec_from_file_location(
             f"_test_rev_{modname}", pyfile
@@ -86,7 +87,7 @@ def _walk_chain(chain: dict, head: str) -> list:
 
 
 class TestRevisionChainStructure:
-    """验证 20 个 revision 文件的链式依赖结构。"""
+    """验证 24 个 revision 文件的链式依赖结构。"""
 
     def test_all_revisions_importable(self):
         """所有 revision 文件可正常导入。"""
@@ -124,23 +125,23 @@ class TestRevisionChainStructure:
         assert chain[ordered[-1]] is None, \
             f"Chain tail {ordered[-1]} should have down_revision=None"
 
-    def test_head_is_wps_0023_020(self):
-        """head revision 应为 wps_0023_020_api_deprecation_logs。"""
+    def test_head_is_wps_0023_023(self):
+        """head revision 应为 wps_0023_023_score_traceability。"""
         modules = _load_revision_modules()
         chain = _build_chain(modules)
         head = _find_head(chain)
-        assert head == "wps_0023_020_api_deprecation_logs", \
-            f"Head should be wps_0023_020_api_deprecation_logs, got {head}"
+        assert head == "wps_0023_023_score_traceability", \
+            f"Head should be wps_0023_023_score_traceability, got {head}"
 
-    def test_chain_has_exactly_20_revisions_after_base(self):
-        """链中 base 之外应有 20 个 revision（0001-0020）。"""
+    def test_chain_has_exactly_24_revisions_after_base(self):
+        """链中 base 之外应有 24 个 revision（0001-0020 + 0801_001 + 0021 + 0022 + 0023）。"""
         modules = _load_revision_modules()
         chain = _build_chain(modules)
         head = _find_head(chain)
         ordered = _walk_chain(chain, head)
-        # ordered 包含 base + 20 个新 revision = 21
-        assert len(ordered) == 21, \
-            f"Expected 21 revisions in chain (1 base + 20 new), got {len(ordered)}"
+        # ordered 包含 base + 24 个新 revision = 25
+        assert len(ordered) == 25, \
+            f"Expected 25 revisions in chain (1 base + 24 new), got {len(ordered)}"
 
     def test_specific_revision_links(self):
         """验证关键链式依赖关系。"""
@@ -157,6 +158,10 @@ class TestRevisionChainStructure:
             "wps_0023_018_discovery_score_snapshots": "wps_0023_017_ai_profiles",
             "wps_0023_019_async_tasks_state_machine": "wps_0023_018_discovery_score_snapshots",
             "wps_0023_020_api_deprecation_logs": "wps_0023_019_async_tasks_state_machine",
+            "wps_0801_001_universe_incremental_index": "wps_0023_020_api_deprecation_logs",
+            "wps_0023_021_factor_library_lifecycle": "wps_0801_001_universe_incremental_index",
+            "wps_0023_022_shadow_observations": "wps_0023_021_factor_library_lifecycle",
+            "wps_0023_023_score_traceability": "wps_0023_022_shadow_observations",
         }
         for rev, expected_down in expected_links.items():
             assert rev in chain, f"Revision {rev} not found in modules"
@@ -219,6 +224,13 @@ class TestMigrationExecution:
             "discovery_score_snapshots",
             "discovery_score_snapshot_items",
             "api_deprecation_logs",
+            # WP1-06: 0021 迁移新建表
+            "factor_evaluation_runs",
+            "factor_transition_audits",
+            "factor_sets",
+            "factor_set_members",
+            # WP6-03: 0022 迁移新建表
+            "factor_shadow_observations",
         ]
         for table_name in expected_new_tables:
             assert table_name in tables, \
@@ -288,6 +300,13 @@ class TestMigrationExecution:
             "portfolio_members",
             "opportunity_transition_events",
             "external_endpoint_runtime",
+            # WP1-06: 0021 迁移新建表（downgrade 后应被删除）
+            "factor_set_members",
+            "factor_sets",
+            "factor_transition_audits",
+            "factor_evaluation_runs",
+            # WP6-03: 0022 迁移新建表（downgrade 后应被删除）
+            "factor_shadow_observations",
         ]
         for table_name in dropped_tables:
             assert table_name not in tables, \
@@ -421,6 +440,31 @@ class TestDriftFieldsExist:
         ]:
             assert table_name in tables, f"Missing notification table {table_name}"
 
+    def test_factor_lifecycle_tables_exist(self, migrated_engine):
+        """WP1-06: 0021 迁移新建的 4 张因子生命周期表全部存在。"""
+        inspector = inspect(migrated_engine)
+        tables = set(inspector.get_table_names())
+        for table_name in [
+            "factor_evaluation_runs",
+            "factor_transition_audits",
+            "factor_sets",
+            "factor_set_members",
+        ]:
+            assert table_name in tables, \
+                f"Missing factor lifecycle table {table_name}"
+
+    def test_factors_has_lifecycle_columns(self, migrated_engine):
+        """WP1-06: factors 表有 lifecycle_status / origin / factor_kind 列。"""
+        cols = self._get_columns(migrated_engine, "factors")
+        for field in ["lifecycle_status", "origin", "factor_kind"]:
+            assert field in cols, f"factors missing column {field}"
+
+    def test_factor_versions_has_governance_columns(self, migrated_engine):
+        """WP1-06: factor_versions 表有 execution_plan_hash / validation_status 列。"""
+        cols = self._get_columns(migrated_engine, "factor_versions")
+        for field in ["execution_plan_hash", "validation_status"]:
+            assert field in cols, f"factor_versions missing column {field}"
+
 
 # ============================================================================
 # 4. 历史数据保护验证
@@ -505,5 +549,120 @@ class TestHistoricalDataProtection:
             # cancel_requested: 迁移路径有 server_default=0，但 metadata.create_all
             # 路径取决于 ORM 模型定义。两者均允许（测试重点是旧记录可读，非默认值验证）
             assert result[3] is None or result[3] == 0
+
+        engine.dispose()
+
+
+# ============================================================================
+# 5. WP1-06: 0021 迁移系统因子回填与幂等性验证
+# ============================================================================
+
+
+class TestFactorLibraryLifecycleMigration:
+    """WP1-06: 验证 wps_0023_021_factor_library_lifecycle 迁移的回填与幂等性。"""
+
+    def test_0021_migration_backfills_system_factors(self, fresh_sqlite_url):
+        """0021 迁移幂等回填 8 个系统因子的生命周期/治理字段。"""
+        from alembic import command
+        from sqlalchemy.orm import Session
+
+        from app.services.factors.definitions import seed_factor_definitions
+
+        # 1. 用 ORM metadata 创建全部表（含新列）
+        engine = create_engine(fresh_sqlite_url)
+        Base.metadata.create_all(engine)
+
+        # 2. 种子 8 个系统因子及其版本（lifecycle_status 等新字段为 NULL）
+        with Session(engine) as session:
+            seed_factor_definitions(session)
+            session.commit()
+        engine.dispose()
+
+        # 3. 执行 alembic upgrade head（0021 迁移回填系统因子）
+        cfg = _make_alembic_config(fresh_sqlite_url)
+        command.upgrade(cfg, "head")
+
+        # 4. 验证 8 个因子回填结果
+        engine = create_engine(fresh_sqlite_url)
+        with engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT code, lifecycle_status, origin, factor_kind, "
+                "active_version_id FROM factors ORDER BY code"
+            )).fetchall()
+            assert len(rows) == 8, f"Expected 8 factors, got {len(rows)}"
+            for code, ls, origin, kind, avid in rows:
+                assert ls == "active", \
+                    f"Factor {code} lifecycle_status should be 'active', got {ls}"
+                assert origin == "system", \
+                    f"Factor {code} origin should be 'system', got {origin}"
+                assert kind is not None, \
+                    f"Factor {code} factor_kind should not be NULL"
+                assert avid is not None, \
+                    f"Factor {code} active_version_id should not be NULL"
+
+            # 5. 验证 factor_transition_audits 有 8 条 actor='system_migration' 记录
+            audit_count = conn.execute(text(
+                "SELECT COUNT(*) FROM factor_transition_audits "
+                "WHERE actor = 'system_migration'"
+            )).scalar()
+            assert audit_count == 8, \
+                f"Expected 8 audit records with actor='system_migration', got {audit_count}"
+
+            # 6. 验证 factor_sets 有 legacy-system-v1 且 status='frozen'
+            fs = conn.execute(text(
+                "SELECT status FROM factor_sets WHERE id = 'legacy-system-v1'"
+            )).fetchone()
+            assert fs is not None, "legacy-system-v1 factor set should exist"
+            assert fs[0] == "frozen", \
+                f"Factor set status should be 'frozen', got {fs[0]}"
+
+            # 7. 验证 factor_set_members 有 8 条 legacy-system-v1 成员
+            member_count = conn.execute(text(
+                "SELECT COUNT(*) FROM factor_set_members "
+                "WHERE factor_set_id = 'legacy-system-v1'"
+            )).scalar()
+            assert member_count == 8, \
+                f"Expected 8 factor set members for legacy-system-v1, got {member_count}"
+
+        engine.dispose()
+
+    def test_0021_migration_is_idempotent(self, fresh_sqlite_url):
+        """0021 迁移幂等性：重复 upgrade 不会重复回填审计记录或因子集成员。"""
+        from alembic import command
+        from sqlalchemy.orm import Session
+
+        from app.services.factors.definitions import seed_factor_definitions
+
+        # 1. 用 ORM metadata 创建全部表 + 种子 8 个系统因子
+        engine = create_engine(fresh_sqlite_url)
+        Base.metadata.create_all(engine)
+        with Session(engine) as session:
+            seed_factor_definitions(session)
+            session.commit()
+        engine.dispose()
+
+        # 2. 第一次 upgrade head（0021 迁移回填，产生 8 审计 + 8 成员）
+        cfg = _make_alembic_config(fresh_sqlite_url)
+        command.upgrade(cfg, "head")
+
+        # 3. 第二次 upgrade head（应无错误，alembic 已在 head，不重复执行）
+        command.upgrade(cfg, "head")
+
+        # 4. 验证审计记录仍为 8 条（非 16）
+        engine = create_engine(fresh_sqlite_url)
+        with engine.connect() as conn:
+            audit_count = conn.execute(text(
+                "SELECT COUNT(*) FROM factor_transition_audits"
+            )).scalar()
+            assert audit_count == 8, \
+                f"Expected 8 audit records (idempotent), got {audit_count}"
+
+            # 5. 验证因子集成员仍为 8 条（非 16）
+            member_count = conn.execute(text(
+                "SELECT COUNT(*) FROM factor_set_members "
+                "WHERE factor_set_id = 'legacy-system-v1'"
+            )).scalar()
+            assert member_count == 8, \
+                f"Expected 8 factor set members (idempotent), got {member_count}"
 
         engine.dispose()

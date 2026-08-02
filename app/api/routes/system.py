@@ -485,6 +485,11 @@ def list_unified_tasks(
         if row.started_at and row.finished_at:
             duration_sec = round((row.finished_at - row.started_at).total_seconds(), 1)
 
+        # WPD-05: 从 errors[0] 提取顶层 error_code，作为前端 i18n 映射的稳定事实来源
+        top_error_code = None
+        if errors and isinstance(errors[0], dict):
+            top_error_code = errors[0].get("error_code")
+
         items.append({
             "id": row.id,
             "source": "async",
@@ -501,6 +506,7 @@ def list_unified_tasks(
             "payload": payload,
             "result": result,
             "errors": errors[:10],
+            "error_code": top_error_code,
             "duration_sec": duration_sec,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "started_at": row.started_at.isoformat() if row.started_at else None,
@@ -527,6 +533,11 @@ def list_unified_tasks(
         duration_sec = None
         if row.started_at and row.finished_at:
             duration_sec = round((row.finished_at - row.started_at).total_seconds(), 1)
+
+        # WPD-05: 从 errors[0] 提取顶层 error_code
+        top_error_code = None
+        if errors and isinstance(errors[0], dict):
+            top_error_code = errors[0].get("error_code")
 
         items.append({
             "id": row.id,
@@ -555,6 +566,7 @@ def list_unified_tasks(
                 "news_symbols_total": row.news_symbols_total,
             },
             "errors": errors[:10],
+            "error_code": top_error_code,
             "duration_sec": duration_sec,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "started_at": row.started_at.isoformat() if row.started_at else None,

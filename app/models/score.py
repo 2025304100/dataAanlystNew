@@ -53,6 +53,16 @@ class Score(Base):
     factor_data_cutoff_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True
     )
+    # WP7-05: Score 解释追溯字段
+    # factor_set_id: 该 Score 对应的 FactorSet ID（manual 模式为 None）
+    factor_set_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    # factor_member_versions_json: 成员版本快照
+    # {"factor_code": {"version": 1, "role": "feature", "missing_policy": "exclude"}}
+    factor_member_versions_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
     factor_quality_score: Mapped[float | None] = mapped_column(
         Float, nullable=True
     )

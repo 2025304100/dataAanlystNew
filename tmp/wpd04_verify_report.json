@@ -1,0 +1,368 @@
+{
+  "generated_at": "2026-08-01T16:43:59.646449+00:00",
+  "warehouse_available": false,
+  "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb",
+  "complete_trade_day": "2026-07-31",
+  "complete_trade_day_evidence": {
+    "selected_trade_date": "2026-07-31",
+    "observed_symbols": 5520,
+    "expected_symbols": 5521,
+    "completeness_ratio": 0.999819,
+    "fallback_reason": null,
+    "median_baseline": 5521,
+    "evaluated_candidate_dates": [
+      "2026-07-31"
+    ],
+    "candidate_ratios": {
+      "2026-07-31": 0.999819
+    }
+  },
+  "factors": [
+    {
+      "factor_code": "ep_ttm",
+      "factor_name": "E/P (TTM)",
+      "category": "fundamental",
+      "layer": "C_blocked",
+      "status": "blocked",
+      "coverage": 0.0,
+      "latest_factor_date": null,
+      "latest_source_date": null,
+      "universe_symbols": 5521,
+      "eligible_symbols": 0,
+      "evidence": {
+        "layer": "C_blocked",
+        "source_tables": [
+          "raw_valuation_snapshots"
+        ],
+        "source_mapping": {
+          "table": "raw_valuation_snapshots",
+          "field": "pe_ttm"
+        },
+        "coverage": 0.0,
+        "eligible_symbols": 0,
+        "universe_symbols": 5521,
+        "source_table_rows": {
+          "raw_valuation_snapshots": 0
+        },
+        "source_table_stats": {
+          "raw_valuation_snapshots": {}
+        },
+        "warehouse_available": false,
+        "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb"
+      },
+      "blocking_reasons": [
+        "warehouse_unavailable"
+      ],
+      "recommended_action": "blocked",
+      "complete_trade_day_evidence": null
+    },
+    {
+      "factor_code": "negative_pb",
+      "factor_name": "Negative PB",
+      "category": "fundamental",
+      "layer": "C_blocked",
+      "status": "blocked",
+      "coverage": 0.0,
+      "latest_factor_date": null,
+      "latest_source_date": null,
+      "universe_symbols": 5521,
+      "eligible_symbols": 0,
+      "evidence": {
+        "layer": "C_blocked",
+        "source_tables": [
+          "raw_valuation_snapshots"
+        ],
+        "source_mapping": {
+          "table": "raw_valuation_snapshots",
+          "field": "pb"
+        },
+        "coverage": 0.0,
+        "eligible_symbols": 0,
+        "universe_symbols": 5521,
+        "source_table_rows": {
+          "raw_valuation_snapshots": 0
+        },
+        "source_table_stats": {
+          "raw_valuation_snapshots": {}
+        },
+        "warehouse_available": false,
+        "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb"
+      },
+      "blocking_reasons": [
+        "warehouse_unavailable"
+      ],
+      "recommended_action": "blocked",
+      "complete_trade_day_evidence": null
+    },
+    {
+      "factor_code": "roe_yoy_growth",
+      "factor_name": "ROE YoY Growth (ppt)",
+      "category": "fundamental",
+      "layer": "C_blocked",
+      "status": "blocked",
+      "coverage": 0.0,
+      "latest_factor_date": null,
+      "latest_source_date": null,
+      "universe_symbols": 5521,
+      "eligible_symbols": 0,
+      "evidence": {
+        "layer": "C_blocked",
+        "source_tables": [
+          "raw_financial_reports"
+        ],
+        "source_mapping": {
+          "table": "raw_financial_reports",
+          "fields": [
+            "report_period",
+            "announcement_date",
+            "roe_ttm"
+          ],
+          "point_in_time": true
+        },
+        "coverage": 0.0,
+        "eligible_symbols": 0,
+        "universe_symbols": 5521,
+        "source_table_rows": {
+          "raw_financial_reports": 0
+        },
+        "source_table_stats": {
+          "raw_financial_reports": {}
+        },
+        "warehouse_available": false,
+        "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb"
+      },
+      "blocking_reasons": [
+        "warehouse_unavailable"
+      ],
+      "recommended_action": "blocked",
+      "complete_trade_day_evidence": null
+    },
+    {
+      "factor_code": "main_inflow_5d_ratio",
+      "factor_name": "5-day Main Inflow / Turnover",
+      "category": "capital_flow",
+      "layer": "C_blocked",
+      "status": "blocked",
+      "coverage": 0.0,
+      "latest_factor_date": null,
+      "latest_source_date": null,
+      "universe_symbols": 5521,
+      "eligible_symbols": 0,
+      "evidence": {
+        "layer": "C_blocked",
+        "source_tables": [
+          "raw_fund_flows",
+          "raw_daily_bars"
+        ],
+        "source_mapping": {
+          "tables": [
+            "raw_fund_flows",
+            "raw_daily_bars"
+          ],
+          "fields": [
+            "main_net_inflow",
+            "amount"
+          ]
+        },
+        "coverage": 0.0,
+        "eligible_symbols": 0,
+        "universe_symbols": 5521,
+        "source_table_rows": {
+          "raw_fund_flows": 0,
+          "raw_daily_bars": 0
+        },
+        "source_table_stats": {
+          "raw_fund_flows": {},
+          "raw_daily_bars": {}
+        },
+        "warehouse_available": false,
+        "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb"
+      },
+      "blocking_reasons": [
+        "warehouse_unavailable"
+      ],
+      "recommended_action": "blocked",
+      "complete_trade_day_evidence": null
+    },
+    {
+      "factor_code": "lhb_institution_net_ratio",
+      "factor_name": "LHB Institution Net / Turnover",
+      "category": "capital_flow",
+      "layer": "B_event",
+      "status": "blocked",
+      "coverage": 0.0,
+      "latest_factor_date": null,
+      "latest_source_date": null,
+      "universe_symbols": 5521,
+      "eligible_symbols": 0,
+      "evidence": {
+        "layer": "B_event",
+        "source_tables": [
+          "raw_sentiment",
+          "raw_daily_bars"
+        ],
+        "source_mapping": {
+          "tables": [
+            "raw_sentiment",
+            "raw_daily_bars"
+          ],
+          "fields": [
+            "has_lhb",
+            "lhb_institution_net",
+            "amount"
+          ],
+          "provider_scope": "institution_seats_only"
+        },
+        "coverage": 0.0,
+        "eligible_symbols": 0,
+        "universe_symbols": 5521,
+        "source_table_rows": {
+          "raw_sentiment": 0,
+          "raw_daily_bars": 0
+        },
+        "source_table_stats": {
+          "raw_sentiment": {},
+          "raw_daily_bars": {}
+        },
+        "warehouse_available": false,
+        "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb"
+      },
+      "blocking_reasons": [
+        "warehouse_unavailable"
+      ],
+      "recommended_action": "blocked",
+      "complete_trade_day_evidence": null
+    },
+    {
+      "factor_code": "turnover_z20",
+      "factor_name": "20-day Turnover Z-Score",
+      "category": "sentiment",
+      "layer": "A_continuous",
+      "status": "blocked",
+      "coverage": 0.0,
+      "latest_factor_date": null,
+      "latest_source_date": null,
+      "universe_symbols": 5521,
+      "eligible_symbols": 0,
+      "evidence": {
+        "layer": "A_continuous",
+        "source_tables": [
+          "raw_daily_bars"
+        ],
+        "source_mapping": {
+          "table": "raw_daily_bars",
+          "field": "turnover_rate"
+        },
+        "coverage": 0.0,
+        "eligible_symbols": 0,
+        "universe_symbols": 5521,
+        "source_table_rows": {
+          "raw_daily_bars": 0
+        },
+        "source_table_stats": {
+          "raw_daily_bars": {}
+        },
+        "warehouse_available": false,
+        "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb"
+      },
+      "blocking_reasons": [
+        "warehouse_unavailable"
+      ],
+      "recommended_action": "blocked",
+      "complete_trade_day_evidence": null
+    },
+    {
+      "factor_code": "hot_rank_attention",
+      "factor_name": "EastMoney Hot-Rank Attention",
+      "category": "sentiment",
+      "layer": "B_event",
+      "status": "blocked",
+      "coverage": 0.0,
+      "latest_factor_date": null,
+      "latest_source_date": null,
+      "universe_symbols": 5521,
+      "eligible_symbols": 0,
+      "evidence": {
+        "layer": "B_event",
+        "source_tables": [
+          "raw_sentiment"
+        ],
+        "source_mapping": {
+          "table": "raw_sentiment",
+          "fields": [
+            "hot_rank",
+            "hot_rank_total",
+            "hot_rank_pct"
+          ],
+          "provider_scope": "current_top_100_only"
+        },
+        "coverage": 0.0,
+        "eligible_symbols": 0,
+        "universe_symbols": 5521,
+        "source_table_rows": {
+          "raw_sentiment": 0
+        },
+        "source_table_stats": {
+          "raw_sentiment": {}
+        },
+        "warehouse_available": false,
+        "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb"
+      },
+      "blocking_reasons": [
+        "warehouse_unavailable"
+      ],
+      "recommended_action": "blocked",
+      "complete_trade_day_evidence": null
+    },
+    {
+      "factor_code": "tail_accumulation_proxy",
+      "factor_name": "Tail-session Accumulation Proxy",
+      "category": "capital_flow",
+      "layer": "C_blocked",
+      "status": "blocked",
+      "coverage": 0.0,
+      "latest_factor_date": null,
+      "latest_source_date": null,
+      "universe_symbols": 5521,
+      "eligible_symbols": 0,
+      "evidence": {
+        "layer": "C_blocked",
+        "source_tables": [
+          "raw_tail_proxy"
+        ],
+        "source_mapping": {
+          "table": "raw_tail_proxy",
+          "fields": [
+            "tail_activity_ratio",
+            "tail_return",
+            "close_location",
+            "proxy_score"
+          ],
+          "provider_scope": "candidate_pool_only"
+        },
+        "coverage": 0.0,
+        "eligible_symbols": 0,
+        "universe_symbols": 5521,
+        "source_table_rows": {
+          "raw_tail_proxy": 0
+        },
+        "source_table_stats": {
+          "raw_tail_proxy": {}
+        },
+        "warehouse_available": false,
+        "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb"
+      },
+      "blocking_reasons": [
+        "warehouse_unavailable"
+      ],
+      "recommended_action": "blocked",
+      "complete_trade_day_evidence": null
+    }
+  ],
+  "summary": {
+    "available": 0,
+    "degraded": 0,
+    "blocked": 8
+  },
+  "source_table_stats": {}
+}

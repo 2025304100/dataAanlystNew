@@ -75,10 +75,13 @@ class DatabaseManager:
                 engine_kwargs.setdefault("max_overflow", int(os.environ.get("DB_MAX_OVERFLOW", "20")))
                 # pymysql 连接超时：防止 DB 操作永久卡住（Lost connection / 连接被 MySQL 关闭）
                 # Defaults: connect_timeout=10s, read/write timeout=60s.
+                # WPD-05: charset=utf8mb4 确保 pymysql 连接级字符集正确，
+                # 配合下方 SET NAMES utf8mb4 事件监听双重保障中文不乱码。
                 engine_kwargs.setdefault("connect_args", {
                     "connect_timeout": int(os.environ.get("DB_CONNECT_TIMEOUT", "10")),
                     "read_timeout": int(os.environ.get("DB_READ_TIMEOUT", "60")),
                     "write_timeout": int(os.environ.get("DB_WRITE_TIMEOUT", "60")),
+                    "charset": "utf8mb4",
                 })
 
             self._engine = create_engine(url, **engine_kwargs)

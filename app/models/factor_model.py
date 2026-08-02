@@ -41,6 +41,19 @@ class FactorVersion(Base):
     )
     change_note: Mapped[str] = mapped_column(Text, default="")
     is_latest: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    # --- WP1-01: 编译与校验字段 ---
+    formula_ast_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    postprocess_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # winsorize/rank/zscore/neutralize/missing policy
+    parameter_schema_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data_dependencies_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    compiler_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    execution_plan_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    complexity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_via: Mapped[str | None] = mapped_column(String(32), nullable=True)  # manual/template/ai/import
+    ai_provenance_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # model/prompt_hash/output_hash (NO API keys)
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # pending/valid/invalid
+    validation_errors_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow_naive)
 
 

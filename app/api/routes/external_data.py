@@ -16,16 +16,23 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.symbol import Symbol
+from app.schemas.async_task import AsyncTaskRead
+from app.services.external_data_sync_task import (
+    ExternalDataset,
+    get_external_data_overview,
+    get_external_sync_task,
+    resolve_external_symbols,
+    start_external_data_sync,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,34 +52,63 @@ class SyncResult(BaseModel):
     errors: list[str] = []  # 前 N 条错误信息
 
 
+class ExternalSyncTaskCreate(BaseModel):
+    """Create an observable external-data synchronization task."""
+
+    dataset: ExternalDataset
+    source: Literal["watchlist", "positions", "all"] = "watchlist"
+    include_northbound: bool = True
+    lookback_days: int = Field(default=30, ge=1, le=31)
+    limit: int = Field(default=20, ge=1, le=50)
+
+
+class ExternalDatasetOverview(BaseModel):
+    dataset: ExternalDataset
+    records: int
+    symbols: int
+    latest_date: date | None = None
+    last_updated_at: datetime | None = None
+    latest_task: AsyncTaskRead | None = None
+
+
+class ExternalDataOverview(BaseModel):
+    datasets: list[ExternalDatasetOverview]
+    total_records: int
+    covered_symbols: int
+    available_datasets: int
+    running_tasks: int
+    refreshed_at: datetime
+
+
 def _resolve_symbols(db: Session, source: Literal["watchlist", "positions", "all"], asset_type: str | None) -> list[Symbol]:
     """解析目标 symbol 列表。"""
-    if source == "all":
-        stmt = select(Symbol).where(Symbol.is_active == 1)
-        if asset_type:
-            stmt = stmt.where(Symbol.asset_type == asset_type)
-        return list(db.execute(stmt).scalars().all())
-    if source == "watchlist":
-        from app.models.watchlist import WatchlistItem
-        stmt = (
-            select(Symbol)
-            .join(WatchlistItem, WatchlistItem.symbol_id == Symbol.id)
-            .where(Symbol.is_active == 1)
+    return resolve_external_symbols(db, source, asset_type)
+
+
+@router.get("/external-data/overview", response_model=ExternalDataOverview)
+def external_data_overview(db: Session = Depends(get_db)):
+    """Return real inventory and latest task status for all external datasets."""
+    return get_external_data_overview(db)
+
+
+@router.post("/external-data/sync-tasks", response_model=AsyncTaskRead)
+def create_external_data_sync_task(payload: ExternalSyncTaskCreate):
+    """Start a background task so callers can poll real synchronization progress."""
+    try:
+        return start_external_data_sync(
+            payload.dataset,
+            payload.model_dump(exclude={"dataset"}),
         )
-        if asset_type:
-            stmt = stmt.where(Symbol.asset_type == asset_type)
-        return list(db.execute(stmt).scalars().all())
-    if source == "positions":
-        from app.models.portfolio import Position
-        stmt = (
-            select(Symbol)
-            .join(Position, Position.symbol_id == Symbol.id)
-            .where(Symbol.is_active == 1)
-        )
-        if asset_type:
-            stmt = stmt.where(Symbol.asset_type == asset_type)
-        return list(db.execute(stmt).scalars().all())
-    return []
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/external-data/sync-tasks/{task_id}", response_model=AsyncTaskRead)
+def external_data_sync_task_status(task_id: str):
+    task = get_external_sync_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="External-data sync task not found")
+    return task
 
 
 @router.post("/external-data/fundamental/sync", response_model=SyncResult)

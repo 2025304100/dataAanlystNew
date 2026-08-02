@@ -19,7 +19,6 @@ from app.services.factors.definitions import (
     FACTOR_DEFINITIONS,
 )
 from app.services.factors.macro import MacroRegime, calculate_macro_regime
-from app.services.factors.ridge_model import FEATURE_CODES
 from app.services.factors.runtime import get_factor_runtime_snapshot
 from app.services.factors.store import FactorWarehouse
 
@@ -28,9 +27,12 @@ _VALID_MODES = {'manual', 'shadow', 'ridge'}
 _QUALITY_CATEGORIES = {'fundamental'}
 _TIMING_CATEGORIES = {'capital_flow', 'sentiment'}
 _DYNAMIC_DETAIL_KEY = '_dynamic_model'
+# 所有系统定义因子代码（用于解释层数据加载，包含非特征因子如事件因子）
 _EXPLANATION_FACTOR_CODES = tuple(
     item.code for item in FACTOR_DEFINITIONS
 )
+# 自定义因子的默认分类（不匹配 quality/timing，只贡献到 alpha 总分）
+_DEFAULT_FACTOR_CATEGORY = 'custom'
 _COPY_EXCLUDED_COLUMNS = {
     'id',
     'calc_batch_id',
@@ -44,6 +46,14 @@ _COPY_EXCLUDED_COLUMNS = {
     'macro_regime',
     'macro_position_multiplier',
 }
+
+
+def _get_factor_category(code: str) -> str:
+    """获取因子分类（WP7-03: 支持自定义因子，不在 FACTOR_BY_CODE 中时返回默认分类）。"""
+    definition = FACTOR_BY_CODE.get(code)
+    if definition is not None:
+        return definition.category
+    return _DEFAULT_FACTOR_CATEGORY
 
 
 @dataclass(frozen=True)
@@ -179,8 +189,20 @@ def _load_factor_rows(
     *,
     trade_date: date,
     factor_calc_batch_id: str,
+    extra_factor_codes: tuple[str, ...] | None = None,
 ) -> tuple[dict[str, dict[str, dict[str, Any]]], datetime | None]:
-    placeholders = ', '.join('?' for _ in _EXPLANATION_FACTOR_CODES)
+    """加载因子值行（WP7-03: 支持动态特征代码）。
+
+    extra_factor_codes: 模型使用的特征代码（可能包含自定义因子），
+    与 _EXPLANATION_FACTOR_CODES 合并后查询。
+    """
+    # 合并系统定义因子和模型特征代码（去重）
+    all_codes_set = set(_EXPLANATION_FACTOR_CODES)
+    if extra_factor_codes:
+        all_codes_set.update(extra_factor_codes)
+    all_codes = tuple(sorted(all_codes_set))
+
+    placeholders = ', '.join('?' for _ in all_codes)
     with warehouse.connection(read_only=True) as conn:
         rows = conn.execute(
             f'''
@@ -198,7 +220,7 @@ def _load_factor_rows(
             [
                 trade_date,
                 factor_calc_batch_id,
-                *_EXPLANATION_FACTOR_CODES,
+                *all_codes,
             ],
         ).fetchall()
     grouped: dict[str, dict[str, dict[str, Any]]] = {}
@@ -294,6 +316,8 @@ def _clone_manual_score(
     factor_detail: dict[str, Any],
     quality_mix: float,
     timing_mix: float,
+    factor_set_id: str | None = None,
+    factor_member_versions_json: str | None = None,
 ) -> Score:
     payload = {
         column.name: getattr(manual, column.name)
@@ -311,6 +335,9 @@ def _clone_manual_score(
             'model_alpha_score': alpha_score,
             'macro_regime': macro_state.regime,
             'macro_position_multiplier': macro_state.position_multiplier,
+            # WP7-05: Score 解释追溯字段
+            'factor_set_id': factor_set_id,
+            'factor_member_versions_json': factor_member_versions_json,
             'created_at': _utcnow_naive(),
         }
     )
@@ -403,10 +430,33 @@ def materialize_factor_scores(
         weight.factor_code: float(weight.normalized_weight)
         for weight in model.weights
     }
-    if set(coefficients) != set(FEATURE_CODES) or not all(
+    # WP7-03: 从 model.weights 动态派生特征列表（替代静态 FEATURE_CODES）
+    feature_codes = tuple(
+        weight.factor_code for weight in
+        sorted(model.weights, key=lambda w: w.factor_code)
+    )
+    if not feature_codes or set(coefficients) != set(feature_codes) or not all(
         math.isfinite(value) for value in coefficients.values()
     ):
         raise ValueError('validated model has incomplete or invalid coefficients')
+
+    # WP7-05: 从模型记录解析 factor_set_id 和成员版本快照，用于 Score 解释追溯
+    hyperparams = _json_object(model.hyperparameters_json)
+    factor_set_id = hyperparams.get('factor_set_id')
+    # 构造成员版本快照：{factor_code: {"version": int, "coefficient": float, "normalized_weight": float}}
+    member_versions_snapshot = {
+        weight.factor_code: {
+            'version': weight.factor_version,
+            'coefficient': float(weight.coefficient),
+            'normalized_weight': float(weight.normalized_weight),
+        }
+        for weight in model.weights
+    }
+    factor_member_versions_json = (
+        json.dumps(member_versions_snapshot, sort_keys=True)
+        if member_versions_snapshot
+        else None
+    )
 
     manual_scores, symbols_by_code = _load_manual_scores(
         db,
@@ -418,12 +468,13 @@ def materialize_factor_scores(
         warehouse,
         trade_date=trade_date,
         factor_calc_batch_id=factor_calc_batch_id,
+        extra_factor_codes=feature_codes,
     )
     manual_by_symbol_id = {score.symbol_id: score for score in manual_scores}
     complete: dict[str, dict[str, dict[str, Any]]] = {
         symbol: values
         for symbol, values in factor_rows.items()
-        if set(FEATURE_CODES).issubset(values)
+        if set(feature_codes).issubset(values)
         and symbol in symbols_by_code
         and symbols_by_code[symbol].id in manual_by_symbol_id
     }
@@ -435,18 +486,18 @@ def materialize_factor_scores(
     for symbol, values in complete.items():
         per_factor = {
             code: coefficients[code] * values[code]['normalized_value']
-            for code in FEATURE_CODES
+            for code in feature_codes
         }
         contributions[symbol] = per_factor
         quality_raw[symbol] = sum(
             value
             for code, value in per_factor.items()
-            if FACTOR_BY_CODE[code].category in _QUALITY_CATEGORIES
+            if _get_factor_category(code) in _QUALITY_CATEGORIES
         )
         timing_raw[symbol] = sum(
             value
             for code, value in per_factor.items()
-            if FACTOR_BY_CODE[code].category in _TIMING_CATEGORIES
+            if _get_factor_category(code) in _TIMING_CATEGORIES
         )
         alpha_raw[symbol] = sum(per_factor.values())
 
@@ -482,26 +533,28 @@ def materialize_factor_scores(
                 if factor_data_cutoff_at
                 else None
             ),
+            # WP7-05: 追溯字段写入解释 JSON
+            'factor_set_id': factor_set_id,
             'factors': {
                 code: {
                     **complete[symbol_code][code],
-                    'category': FACTOR_BY_CODE[code].category,
+                    'category': _get_factor_category(code),
                     'coefficient': coefficients[code],
                     'normalized_weight': normalized_weights.get(code),
                     'contribution': contributions[symbol_code][code],
                 }
-                for code in FEATURE_CODES
+                for code in feature_codes
             },
             'event_factors': {
                 code: {
                     **factor_rows[symbol_code][code],
-                    'category': FACTOR_BY_CODE[code].category,
+                    'category': _get_factor_category(code),
                     'coefficient': None,
                     'normalized_weight': None,
                     'contribution': None,
                 }
                 for code in sorted(
-                    set(factor_rows[symbol_code]) - set(FEATURE_CODES)
+                    set(factor_rows[symbol_code]) - set(feature_codes)
                 )
             },
             'factor_quality_raw': quality_raw[symbol_code],
@@ -529,6 +582,9 @@ def materialize_factor_scores(
             factor_detail=factor_explanation,
             quality_mix=quality_factor_weight,
             timing_mix=timing_factor_weight,
+            # WP7-05: Score 解释追溯字段
+            factor_set_id=factor_set_id,
+            factor_member_versions_json=factor_member_versions_json,
         )
         if active_mode == 'ridge':
             score.quality_score = _clamp_score(

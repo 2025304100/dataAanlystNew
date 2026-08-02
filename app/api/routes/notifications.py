@@ -808,9 +808,11 @@ def update_template(
         template.title_template = payload.title_template
     if payload.body_template is not None:
         template.body_template = payload.body_template
-    if payload.body_text_template is not None:
+    # Nullable fields need to distinguish omitted from an explicit null,
+    # otherwise clients cannot clear an existing value.
+    if "body_text_template" in payload.model_fields_set:
         template.body_text_template = payload.body_text_template
-    if payload.variables_json is not None:
+    if "variables_json" in payload.model_fields_set:
         template.variables_json = payload.variables_json
     if payload.is_active is not None:
         template.is_active = payload.is_active

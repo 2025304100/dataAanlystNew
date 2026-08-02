@@ -1,0 +1,108 @@
+{
+  "failed_tasks": [
+    {
+      "task_id": "bfb9956baeb2465a8f9c88af1dbf539e",
+      "task_type": "factor_pipeline",
+      "error_code": "DB_LOCK_TIMEOUT",
+      "message_preview": "因子仓库被占用或繁忙，请稍后重试；若持续失败可重启后端释放残留连接",
+      "message_is_mojibake": false,
+      "errors_json_has_escaped_unicode": false
+    },
+    {
+      "task_id": "937e0375249841f98fbd35da567a8faa",
+      "task_type": "factor_pipeline",
+      "error_code": "DB_LOCK_TIMEOUT",
+      "message_preview": "因子仓库被占用或繁忙，请稍后重试；若持续失败可重启后端释放残留连接",
+      "message_is_mojibake": false,
+      "errors_json_has_escaped_unicode": false
+    },
+    {
+      "task_id": "9c88166a815a4518ba359e2d55c87531",
+      "task_type": "factor_pipeline",
+      "error_code": "DB_LOCK_TIMEOUT",
+      "message_preview": "因子仓库被占用或繁忙，请稍后重试；若持续失败可重启后端释放残留连接",
+      "message_is_mojibake": false,
+      "errors_json_has_escaped_unicode": false
+    },
+    {
+      "task_id": "2aa0f5fa56654db7835f7a1ffd179c00",
+      "task_type": "lhb_institution_sync",
+      "error_code": null,
+      "message_preview": "'NoneType' object is not subscriptable",
+      "message_is_mojibake": false,
+      "errors_json_has_escaped_unicode": false
+    },
+    {
+      "task_id": "1774829050ec4090bef0555f4bf85d9d",
+      "task_type": "factor_pipeline",
+      "error_code": "UNKNOWN_ERROR",
+      "message_preview": "因子流水线在「factors」阶段失败，请稍后重试；若持续失败请查看技术详情",
+      "message_is_mojibake": false,
+      "errors_json_has_escaped_unicode": false
+    },
+    {
+      "task_id": "d86895712493438bb06ebd726bc87ab0",
+      "task_type": "macro_update",
+      "error_code": null,
+      "message_preview": "This Session's transaction has been rolled back due to a previous exception duri",
+      "message_is_mojibake": false,
+      "errors_json_has_escaped_unicode": false
+    },
+    {
+      "task_id": "3736f410c63b4fd8a05252d9739c6516",
+      "task_type": "discovery_data_prep",
+      "error_code": null,
+      "message_preview": "数据准备失败（不影响已 ready 的旧快照）",
+      "message_is_mojibake": false,
+      "errors_json_has_escaped_unicode": false
+    },
+    {
+      "task_id": "7f8e818bc4984781bd122c1815072a1e",
+      "task_type": "universe_incremental_sync",
+      "error_code": null,
+      "message_preview": "Backend restarted before task completed",
+      "message_is_mojibake": false,
+      "errors_json_has_escaped_unicode": false
+    },
+    {
+      "task_id": "c8ffedf971d749e2b61fa88f213f80c0",
+      "task_type": "universe_incremental_sync",
+      "error_code": null,
+      "message_preview": "Backend restarted before task completed",
+      "message_is_mojibake": false,
+      "errors_json_has_escaped_unicode": false
+    },
+    {
+      "task_id": "e17dea60eb2c4201a28a385da7f8717b",
+      "task_type": "factor_pipeline",
+      "error_code": "DB_LOCK_TIMEOUT",
+      "message_preview": "因子仓库被占用或繁忙，请稍后重试；若持续失败可重启后端释放残留连接",
+      "message_is_mojibake": false,
+      "errors_json_has_escaped_unicode": false
+    }
+  ],
+  "db_charset": {
+    "connect_args_charset": null,
+    "set_names_utf8mb4": true,
+    "mysql_charset_variable": "utf8mb4",
+    "db_type": "mysql",
+    "mysql_client_charset": "utf8mb4",
+    "connect_args_has_charset": true
+  },
+  "errors_json_encoding": {
+    "total_checked": 20,
+    "has_escaped_unicode": 0,
+    "has_chinese_raw": 7
+  },
+  "async_task_read_schema": {
+    "has_error_code_field": true,
+    "error_code_default": "None",
+    "task_to_dict_extracts_error_code": true
+  },
+  "summary": {
+    "total_failed": 10,
+    "with_error_code": 5,
+    "with_mojibake": 0,
+    "with_escaped_unicode": 0
+  }
+}

@@ -17,8 +17,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# 变量名：字母数字下划线
-_VAR_PATTERN = re.compile(r"\{(\w+)\}")
+# 变量名：字母数字下划线。兼容历史模板的 {name} 与 {{name}} 两种写法。
+_VAR_PATTERN = re.compile(r"\{\{\s*(\w+)\s*\}\}|\{(\w+)\}")
 
 # 需要转义的特殊字符（含 Markdown 与 HTML）
 _ESCAPE_CHARS = ("\\", "*", "_", "`", "[", "]", "#", "<", ">", "&")
@@ -43,7 +43,7 @@ def render_template(template: str, variables: dict[str, Any]) -> str:
         return ""
 
     def replacer(match: re.Match[str]) -> str:
-        var_name = match.group(1)
+        var_name = match.group(1) or match.group(2)
         if var_name not in variables:
             # 未提供变量：保留原占位符
             return match.group(0)

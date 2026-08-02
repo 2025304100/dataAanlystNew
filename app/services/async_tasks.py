@@ -46,6 +46,11 @@ def _as_utc(value: datetime | None) -> datetime | None:
 
 def _task_to_dict(task: AsyncTaskRecord) -> dict:
     """将 ORM 对象转为前端可用的字典，用于 AsyncTaskRead 构建。"""
+    errors = _json_loads(task.errors_json, [])
+    # WPD-05: 从第一条 error 提取 error_code 到顶层，作为前端 i18n 映射的稳定事实来源
+    top_error_code = None
+    if errors and isinstance(errors[0], dict):
+        top_error_code = errors[0].get("error_code")
     return {
         "id": task.id,
         "task_type": task.task_type,
@@ -59,7 +64,8 @@ def _task_to_dict(task: AsyncTaskRecord) -> dict:
         "failed_count": task.failed_count,
         "current_item": task.current_item,
         "result": _json_loads(task.result_json, None),
-        "errors": _json_loads(task.errors_json, [])[-20:],
+        "errors": errors[-20:],
+        "error_code": top_error_code,
         "created_at": _as_utc(task.created_at),
         "started_at": _as_utc(task.started_at),
         "finished_at": _as_utc(task.finished_at),

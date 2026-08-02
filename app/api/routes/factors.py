@@ -91,24 +91,55 @@ def initialize_factor_warehouse(db: Session = Depends(get_db)):
 
 
 @router.get('/factors')
-def list_factors(db: Session = Depends(get_db)):
-    rows = db.execute(select(Factor).order_by(Factor.category, Factor.code)).scalars().all()
-    return [
-        {
-            'code': row.code,
-            'name': row.name,
-            'category': row.category,
-            'direction': row.direction,
-            'status': row.status,
-            'source_type': row.source_type,
-            'frequency': row.frequency,
-            'default_missing_policy': row.default_missing_policy,
-            'is_active': bool(row.is_active),
-            'description': row.description,
-            'formula_expr': row.formula_expr,
-        }
-        for row in rows
-    ]
+def list_factors(
+    lifecycle_status: str | None = Query(default=None),
+    origin: str | None = Query(default=None),
+    factor_kind: str | None = Query(default=None),
+    category: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """列出因子（支持筛选与分页，WP2-05）。
+
+    向后兼容：不传任何参数时返回全部因子（仍用新分页结构）。
+    """
+    from app.schemas.factor_library import FactorRead
+    from app.services.factors.factor_registry import list_factors as _list_factors
+
+    no_params = (
+        lifecycle_status is None
+        and origin is None
+        and factor_kind is None
+        and category is None
+        and search is None
+        and page == 1
+        and page_size == 20
+    )
+    if no_params:
+        items, total = _list_factors(db, page=1, page_size=10**9)
+        page_size = total
+    else:
+        items, total = _list_factors(
+            db,
+            lifecycle_status=lifecycle_status,
+            origin=origin,
+            factor_kind=factor_kind,
+            category=category,
+            search=search,
+            page=page,
+            page_size=page_size,
+        )
+
+    return {
+        'items': [
+            FactorRead.model_validate(row).model_dump(mode='json') for row in items
+        ],
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+    }
 
 
 @router.get('/factors/{factor_code}/versions')
@@ -198,3 +229,473 @@ def get_symbol_factor_explanation(
         'macro_position_multiplier': score.macro_position_multiplier,
         'explanation': explanation,
     }
+
+
+@router.get('/factors/readiness')
+def get_factors_readiness(db: Session = Depends(get_db)):
+    """返回 8 因子的 readiness 报告，含完整交易日证据和源表统计。"""
+    from app.services.factors.readiness import get_factor_readiness_report
+    try:
+        report = get_factor_readiness_report(db)
+        return report.to_dict()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f'readiness_unavailable: {exc}',
+        ) from exc
+
+
+@router.get('/factors/{factor_code}/readiness')
+def get_factor_readiness_detail(
+    factor_code: str,
+    db: Session = Depends(get_db),
+):
+    """返回单个因子的 readiness 详情。"""
+    from dataclasses import asdict
+
+    from app.services.factors.readiness import get_factor_readiness_report
+    report = get_factor_readiness_report(db)
+    factor = report.get_factor(factor_code)
+    if factor is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f'factor_not_found: {factor_code}',
+        )
+    return factor.to_dict() if hasattr(factor, 'to_dict') else asdict(factor)
+
+
+# ---------------------------------------------------------------------------
+# WPD-06: Batch audit endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get('/factors/batches')
+def list_factor_batches(
+    source_key: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """返回最近 N 条 ingestion_batches 记录。"""
+    from app.services.factors.batch_audit import list_recent_batches
+
+    config = get_factor_system_config(db)
+    warehouse = FactorWarehouse(config.warehouse_path)
+    health = warehouse.health()
+    if not health.available:
+        return {
+            'warehouse_available': False,
+            'warehouse_path': str(warehouse.path),
+            'batches': [],
+            'error': health.error or 'warehouse_unavailable',
+        }
+    try:
+        records = list_recent_batches(
+            warehouse, source_key=source_key, limit=limit
+        )
+        return {
+            'warehouse_available': True,
+            'warehouse_path': str(warehouse.path),
+            'batches': [record.to_dict() for record in records],
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f'batch_list_unavailable: {exc}',
+        ) from exc
+
+
+@router.get('/factors/batches/audit')
+def get_batch_audit_report(db: Session = Depends(get_db)):
+    """返回完整批次审计报告，含原子提交证据和落后诊断。"""
+    from app.services.factors.batch_audit import (
+        get_batch_audit_report as _build_report,
+    )
+
+    config = get_factor_system_config(db)
+    warehouse = FactorWarehouse(config.warehouse_path)
+    try:
+        report = _build_report(warehouse)
+        return report.to_dict()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f'batch_audit_unavailable: {exc}',
+        ) from exc
+
+
+@router.get('/factors/batches/{batch_id}')
+def get_batch_detail(
+    batch_id: str,
+    db: Session = Depends(get_db),
+):
+    """返回单个批次的审计详情。"""
+    from app.services.factors.batch_audit import audit_batch_atomicity
+
+    config = get_factor_system_config(db)
+    warehouse = FactorWarehouse(config.warehouse_path)
+    health = warehouse.health()
+    if not health.available:
+        raise HTTPException(
+            status_code=503,
+            detail=health.error or 'warehouse_unavailable',
+        )
+    try:
+        entry = audit_batch_atomicity(warehouse, batch_id=batch_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f'batch_audit_unavailable: {exc}',
+        ) from exc
+    if entry is None:
+        raise HTTPException(status_code=404, detail='batch_not_found')
+    return entry.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# WPD-07: Data source roadmap endpoint
+# ---------------------------------------------------------------------------
+
+@router.get('/factors/data-source-roadmap')
+def get_data_source_roadmap(db: Session = Depends(get_db)):
+    """返回 7 类数据源的补齐路线报告，含策略、限流预算、可达覆盖说明。"""
+    from app.services.factors.data_source_roadmap import get_data_source_roadmap as _build_roadmap
+    try:
+        report = _build_roadmap(db)
+        return report.to_dict()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f'data_source_roadmap_unavailable: {exc}',
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# WP2-05: 公式校验与预览 API
+# ---------------------------------------------------------------------------
+
+@router.post('/factors/validate')
+def validate_factor_formula(
+    payload: 'FactorValidateRequest',
+):
+    """校验因子公式，返回编译结果和错误码（WP2-05）。
+
+    校验内容：
+    - AST 节点白名单（禁止属性访问/导入/lambda/推导式等）
+    - 深度/节点数/函数调用数限制
+    - 函数白名单和参数范围
+    - 字段目录校验（未知字段报错）
+    - 回看窗口限制
+    - 后处理配置校验
+
+    不访问数据库，纯静态校验。
+    """
+    from app.schemas.factor_library import FactorValidateResponse
+    from app.services.factors.factor_compiler import compile_formula
+
+    result = compile_formula(
+        formula=payload.formula_expr,
+        params=payload.params,
+        direction=payload.direction,
+        postprocess=payload.postprocess,
+        strict_fields=True,
+    )
+
+    return FactorValidateResponse(
+        is_valid=result.is_valid,
+        execution_plan=result.execution_plan.to_dict() if result.execution_plan else None,
+        errors=[e.to_dict() for e in result.errors],
+        data_dependencies=(
+            result.execution_plan.data_dependencies if result.execution_plan else None
+        ),
+    ).model_dump()
+
+
+@router.post('/factors/preview')
+def preview_factor_formula(
+    payload: 'FactorPreviewRequest',
+    db: Session = Depends(get_db),
+):
+    """预览因子公式，返回执行计划、数据 readiness 和完整交易日证据（WP2-05）。
+
+    预览默认选择最近完整交易日，不选择残缺横截面。
+    返回数据来源、缺失原因和 data_cutoff_at。
+    """
+    from app.schemas.factor_library import (
+        FactorPreviewResponse,
+        FactorPreviewValueItem,
+    )
+    from app.services.factors.factor_compiler import compile_formula
+    from app.services.factors.trade_calendar import latest_complete_trade_date
+    from app.services.factors.readiness import _get_source_table_stats
+    from app.services.factors.config import get_factor_system_config
+
+    # 1. 编译公式
+    result = compile_formula(
+        formula=payload.formula_expr,
+        params=payload.params,
+        direction=payload.direction,
+        postprocess=payload.postprocess,
+        strict_fields=False,  # 预览允许未知字段（可能是参数引用）
+    )
+
+    if not result.is_valid:
+        return FactorPreviewResponse(
+            is_valid=False,
+            errors=[e.to_dict() for e in result.errors],
+        ).model_dump()
+
+    plan = result.execution_plan
+    deps = plan.data_dependencies
+
+    # 2. 获取完整交易日证据
+    evidence = None
+    selected_trade_date = None
+    data_cutoff_at = None
+    try:
+        ctd_evidence = latest_complete_trade_date(db)
+        selected_trade_date = str(ctd_evidence.selected_trade_date)
+        data_cutoff_at = selected_trade_date
+        evidence = {
+            'selected_trade_date': str(ctd_evidence.selected_trade_date),
+            'observed_symbols': ctd_evidence.observed_symbols,
+            'expected_symbols': ctd_evidence.expected_symbols,
+            'completeness_ratio': ctd_evidence.completeness_ratio,
+            'fallback_reason': ctd_evidence.fallback_reason,
+        }
+    except Exception:
+        pass
+
+    # 3. 评估数据 readiness（基于依赖的源表）
+    data_readiness = None
+    missing_reasons: dict[str, str] = {}
+    try:
+        config = get_factor_system_config(db)
+        warehouse = FactorWarehouse(config.warehouse_path)
+        source_tables = deps.get('source_tables', [])
+        if source_tables:
+            with warehouse.connection(read_only=True) as conn:
+                table_stats = _get_source_table_stats(conn)
+            readiness_fields = {}
+            for table in source_tables:
+                stats = table_stats.get(table, {})
+                rows = int(stats.get('rows', 0))
+                readiness_fields[table] = {
+                    'rows': rows,
+                    'latest_date': stats.get('latest_date'),
+                    'has_data': rows > 0,
+                }
+                if rows == 0:
+                    missing_reasons[table] = 'source_table_empty'
+            data_readiness = {
+                'source_tables': readiness_fields,
+                'point_in_time_fields': deps.get('point_in_time_fields', []),
+                'max_lookback': deps.get('max_lookback', 1),
+            }
+    except Exception:
+        pass
+
+    # 4. 构建预览值（WP2-06：接入 DuckDB 兼容执行）
+    values: list[FactorPreviewValueItem] = []
+    try:
+        from app.services.factors.factor_executor import FactorExecutor
+
+        executor = FactorExecutor(warehouse)
+        preview_td = (
+            date.fromisoformat(selected_trade_date)
+            if selected_trade_date
+            else None
+        )
+        preview_outcome = executor.preview(
+            plan, trade_date=preview_td, limit=20
+        )
+        for v in preview_outcome.values:
+            values.append(FactorPreviewValueItem(
+                symbol=v.get("symbol"),
+                trade_date=v.get("trade_date"),
+                raw_value=v.get("raw_value"),
+                winsorized_value=v.get("winsorized_value"),
+                normalized_value=v.get("normalized_value"),
+                eligible=v.get("eligible", False),
+            ))
+        # 补充执行错误到 missing_reasons
+        for err in preview_outcome.errors:
+            missing_reasons[f"preview_error_{len(missing_reasons)}"] = err
+    except Exception:
+        pass  # 预览失败不阻断响应，返回已有信息
+
+    return FactorPreviewResponse(
+        is_valid=True,
+        execution_plan=plan.to_dict(),
+        errors=[],
+        data_cutoff_at=data_cutoff_at,
+        selected_trade_date=selected_trade_date,
+        complete_trade_day_evidence=evidence,
+        data_readiness=data_readiness,
+        data_dependencies=deps,
+        values=values,
+        missing_reasons=missing_reasons,
+    ).model_dump()
+
+
+# ---------------------------------------------------------------------------
+# WP2-05: 因子库 CRUD API（因子详情/草稿/版本/引用/状态迁移）
+# ---------------------------------------------------------------------------
+
+
+@router.get('/factors/{factor_code}')
+def get_factor_detail(
+    factor_code: str,
+    db: Session = Depends(get_db),
+):
+    """获取单个因子详情。"""
+    from app.schemas.factor_library import FactorRead
+    from app.services.factors.factor_registry import get_factor_by_code
+
+    factor = get_factor_by_code(db, factor_code)
+    if factor is None:
+        raise HTTPException(status_code=404, detail='factor_not_found')
+    return FactorRead.model_validate(factor).model_dump(mode='json')
+
+
+def _require_feature_enabled(db: Session):
+    """R1-GATE 回滚门禁：新写入口端点必须检查 feature_enabled，确保可通过单一开关关闭。"""
+    config = get_factor_system_config(db)
+    if not config.feature_enabled:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                'error_code': 'factor_feature_disabled',
+                'user_message': '因子功能未启用，写入口已关闭',
+                'retryable': False,
+            },
+        )
+
+
+@router.post('/factors', status_code=201)
+def create_factor(
+    payload: 'FactorDraftCreate',
+    db: Session = Depends(get_db),
+):
+    """创建因子草稿。"""
+    _require_feature_enabled(db)
+    from app.schemas.factor_library import FactorDraftCreate, FactorRead
+    from app.services.factors.factor_registry import create_factor_draft
+
+    try:
+        factor = create_factor_draft(db, draft=payload)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        msg = str(exc)
+        if msg.startswith('factor_code_conflict'):
+            raise HTTPException(status_code=409, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+    db.refresh(factor)
+    return FactorRead.model_validate(factor).model_dump(mode='json')
+
+
+@router.post('/factors/{factor_code}/versions', status_code=201)
+def create_factor_version_endpoint(
+    factor_code: str,
+    payload: 'FactorVersionCreate',
+    db: Session = Depends(get_db),
+):
+    """创建因子版本。"""
+    _require_feature_enabled(db)
+    from app.schemas.factor_library import FactorVersionCreate, FactorVersionRead
+    from app.services.factors.factor_registry import (
+        create_factor_version,
+        get_factor_by_code,
+    )
+
+    factor = get_factor_by_code(db, factor_code)
+    if factor is None:
+        raise HTTPException(status_code=404, detail='factor_not_found')
+    try:
+        version = create_factor_version(
+            db, factor_id=factor.id, request=payload,
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        msg = str(exc)
+        if msg.startswith('version_immutable') or msg.startswith('factor_code_conflict'):
+            raise HTTPException(status_code=409, detail=msg) from exc
+        if msg.startswith('factor_not_found'):
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+    db.refresh(version)
+    return FactorVersionRead.model_validate(version).model_dump(mode='json')
+
+
+@router.get('/factors/{factor_code}/references')
+def get_factor_references_endpoint(
+    factor_code: str,
+    version_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """获取因子版本引用信息。"""
+    from app.services.factors.factor_registry import (
+        get_factor_by_code,
+        get_factor_references,
+    )
+
+    factor = get_factor_by_code(db, factor_code)
+    if factor is None:
+        raise HTTPException(status_code=404, detail='factor_not_found')
+    try:
+        result = get_factor_references(db, factor.id, version_id)
+    except ValueError as exc:
+        db.rollback()
+        msg = str(exc)
+        if msg == 'version_not_found' or msg == 'factor_not_found':
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+    return result.model_dump(mode='json')
+
+
+@router.post('/factors/{factor_code}/transitions')
+def execute_factor_transition(
+    factor_code: str,
+    payload: 'FactorTransitionRequest',
+    db: Session = Depends(get_db),
+):
+    """执行因子状态迁移。"""
+    _require_feature_enabled(db)
+    from dataclasses import asdict
+
+    from app.services.factors.factor_lifecycle import execute_transition
+    from app.services.factors.factor_registry import get_factor_by_code
+
+    factor = get_factor_by_code(db, factor_code)
+    if factor is None:
+        raise HTTPException(status_code=404, detail='factor_not_found')
+    try:
+        result = execute_transition(
+            db, factor_id=factor.id, request=payload,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.commit()
+    return asdict(result)
+
+
+@router.get('/factors/{factor_code}/transitions')
+def get_factor_transition_history(
+    factor_code: str,
+    db: Session = Depends(get_db),
+):
+    """获取因子状态迁移历史。"""
+    from app.schemas.factor_library import TransitionAuditRead
+    from app.services.factors.factor_lifecycle import get_transition_history
+    from app.services.factors.factor_registry import get_factor_by_code
+
+    factor = get_factor_by_code(db, factor_code)
+    if factor is None:
+        raise HTTPException(status_code=404, detail='factor_not_found')
+    audits = get_transition_history(db, factor_id=factor.id)
+    return [
+        TransitionAuditRead.model_validate(a).model_dump(mode='json')
+        for a in audits
+    ]

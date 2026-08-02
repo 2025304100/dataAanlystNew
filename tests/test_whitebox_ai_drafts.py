@@ -662,7 +662,7 @@ def test_order_draft_revalidates(db_session):
 
 
 def test_draft_registry_complete():
-    """【WP-AI.5】DRAFT_REGISTRY 包含 6 种草稿，每项为 (draft_fn, preview_fn, execute_fn) 三元组。"""
+    """【WP-AI.5】DRAFT_REGISTRY 包含 7 种草稿（WP4 新增 draft_factor），每项为 (draft_fn, preview_fn, execute_fn) 三元组。"""
     expected_drafts = {
         "draft_indicator",
         "draft_filter",
@@ -670,6 +670,7 @@ def test_draft_registry_complete():
         "draft_note",
         "draft_review",
         "draft_order",
+        "draft_factor",  # WP4-04 新增
     }
     assert set(DRAFT_REGISTRY.keys()) == expected_drafts
     for name, triple in DRAFT_REGISTRY.items():

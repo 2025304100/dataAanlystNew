@@ -262,6 +262,8 @@ export interface UnifiedTask {
   payload: Record<string, any>;
   result: Record<string, any>;
   errors: any[];
+  // WPD-05: 顶层 error_code，从 errors_json[0].error_code 提取（可能为 null/undefined）
+  error_code?: string | null;
   duration_sec?: number;
   created_at: string;
   started_at?: string;
@@ -994,6 +996,27 @@ export interface CustomIndicator {
   updated_at: string;
 }
 
+/** WP4-01: 数值指标提升为因子草稿的响应。 */
+export interface CustomIndicatorPromoteResponse {
+  success: boolean;
+  factor_id: number;
+  factor_code: string;
+  factor_version_id: number;
+  factor_version: number;
+  lifecycle_status: string;
+  origin: string;
+  source_mapping: {
+    source_type?: string;
+    indicator_id?: number;
+    indicator_key?: string;
+    indicator_version?: number;
+    promoted_at?: string;
+    [key: string]: unknown;
+  };
+  message?: string;
+  request_id?: string;
+}
+
 export type CustomIndicatorPayload = Omit<CustomIndicator, "id" | "version" | "created_at" | "updated_at"> & {
   change_note?: string;
 };
@@ -1507,6 +1530,47 @@ export interface AIAssistantContext {
   initial_question?: string;
 }
 
+/** WP4-05: AI 草案审计详情（含原始建议与当前 payload 用于差异对比）。 */
+export interface AIDraftDetail {
+  audit_id: number;
+  message_id: number;
+  action_type: string;
+  original_suggested_payload: Record<string, unknown>;
+  current_payload: Record<string, unknown>;
+  was_modified: boolean;
+  user_confirmed: boolean;
+  confirmed_at: string | null;
+  final_result: Record<string, unknown> | null;
+  rejected_reason: string | null;
+  created_at: string;
+}
+
+/** WP4-05: AI 草案预览结果（dry-run 校验）。 */
+export interface AIDraftPreviewResult {
+  is_valid: boolean;
+  errors: string[];
+  changes: Array<{
+    field: string;
+    old_value: unknown;
+    new_value: unknown;
+    description: string;
+  }>;
+  extra?: Record<string, unknown>;
+}
+
+/** WP4-05: AI 草案执行结果。 */
+export interface AIDraftExecuteResult {
+  success: boolean;
+  factor_id?: number;
+  factor_code?: string;
+  factor_version_id?: number;
+  factor_version?: number;
+  lifecycle_status?: string;
+  message?: string;
+  error?: string;
+  idempotent?: boolean;
+}
+
 // WP-S-FIX.1: 能力门禁类型（对应后端 app/schemas/capability.py）
 export interface CapabilityPrerequisite {
   key: string;
@@ -1553,6 +1617,8 @@ export interface AsyncTaskRead {
   message: string | null;
   error: string | null;
   result_json: Record<string, unknown> | null;
+  // WPD-05: 顶层 error_code，从 errors_json[0].error_code 提取
+  error_code?: string | null;
 }
 
 export interface SnapshotStatusRead {

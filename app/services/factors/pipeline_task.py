@@ -6,7 +6,9 @@ import logging
 from dataclasses import asdict
 import threading
 from datetime import date, timedelta
+from pathlib import Path
 from statistics import median
+from uuid import uuid4
 
 from sqlalchemy import select
 
@@ -25,6 +27,7 @@ from app.services.async_tasks import (
     list_async_tasks,
 )
 from app.services.factors.bar_mirror import mirror_daily_bars
+from app.services.factors.batch_audit import batch_context
 from app.services.factors.config import (
     get_current_factor_system_config,
     get_factor_system_config,
@@ -437,11 +440,27 @@ def _run_factor_pipeline(task_id: str) -> None:
             message='Calculating cross-sectional factors',
         )
         current_stage = 'factors'
-        factors = calculate_stock_factors(
+        # WPD-06: wrap factor calculation in a batch audit context. The
+        # calc_batch_id is pre-generated so ingestion_batches and
+        # factor_values share the same identifier for atomicity checks.
+        # batch_context swallows begin/finalize errors so it never blocks
+        # the main pipeline.
+        factor_calc_batch_id = f'factors-{uuid4().hex}'
+        with batch_context(
             warehouse,
-            start_date=calculation_start_date,
-            end_date=effective_end_date,
-        )
+            batch_id=factor_calc_batch_id,
+            source_key='factor.calculation',
+            scope={
+                'start_date': calculation_start_date.isoformat(),
+                'end_date': effective_end_date.isoformat(),
+            },
+        ):
+            factors = calculate_stock_factors(
+                warehouse,
+                start_date=calculation_start_date,
+                end_date=effective_end_date,
+                calc_batch_id=factor_calc_batch_id,
+            )
         results['factors'] = asdict(factors)
         if should_cancel():
             return
@@ -454,11 +473,22 @@ def _run_factor_pipeline(task_id: str) -> None:
             message='Generating T+1 to T+5 labels',
         )
         current_stage = 'targets'
-        targets = calculate_targets(
+        target_calc_batch_id = f'targets-{uuid4().hex}'
+        with batch_context(
             warehouse,
-            start_date=calculation_start_date,
-            end_date=effective_end_date,
-        )
+            batch_id=target_calc_batch_id,
+            source_key='target.generation',
+            scope={
+                'start_date': calculation_start_date.isoformat(),
+                'end_date': effective_end_date.isoformat(),
+            },
+        ):
+            targets = calculate_targets(
+                warehouse,
+                start_date=calculation_start_date,
+                end_date=effective_end_date,
+                calc_batch_id=target_calc_batch_id,
+            )
         results['targets'] = asdict(targets)
         if should_cancel():
             return
@@ -478,6 +508,7 @@ def _run_factor_pipeline(task_id: str) -> None:
                 warehouse,
                 factor_calc_batch_id=factors.calc_batch_id,
                 target_calc_batch_id=targets.calc_batch_id,
+                factor_set_id=getattr(payload, 'factor_set_id', None),
                 data_cutoff_date=(
                     payload.data_cutoff_date
                     or effective_end_date
@@ -579,10 +610,161 @@ def _run_factor_pipeline(task_id: str) -> None:
         db.close()
 
 
+# ---------------------------------------------------------------------------
+# WPD-03: stale task recovery and lock diagnostics
+# ---------------------------------------------------------------------------
+
+
+def recover_stale_pipeline_tasks(db_session) -> list[dict]:
+    """Recover zombie ``factor_pipeline`` tasks on service startup.
+
+    Scans ``status='running'`` tasks whose heartbeat has expired and
+    marks them ``failed`` so they no longer block single-flight
+    scheduling.  Also releases the warehouse lock left behind by the
+    dead process (best-effort).
+
+    Should be called from the FastAPI startup hook (see ``app.main``).
+    """
+    from app.services.factors.warehouse_locks import recover_stale_tasks
+
+    return recover_stale_tasks(
+        db_session,
+        task_types=('factor_pipeline',),
+    )
+
+
+def diagnose_pipeline_lock_state() -> dict:
+    """Diagnose the current pipeline lock and task state.
+
+    Returns a JSON-serialisable dict with:
+
+    * ``active_running_tasks`` — running factor_pipeline tasks with
+      heartbeat age.
+    * ``warehouse_lock`` — :class:`WarehouseLockInfo` serialised.
+    * ``stale_tasks`` — stale factor_pipeline task diagnostics.
+    * ``recovery_recommendation`` — ``'ok'`` / ``'recover_stale'`` /
+      ``'force_release_lock'``.
+    """
+    from sqlalchemy import select
+
+    from app.services.factors.warehouse_locks import (
+        diagnose_stale_tasks,
+        diagnose_warehouse_lock,
+    )
+
+    # Resolve warehouse path from config.
+    try:
+        config = get_current_factor_system_config()
+        warehouse_path = Path(config.warehouse_path)
+    except Exception:
+        return {
+            'active_running_tasks': [],
+            'warehouse_lock': None,
+            'stale_tasks': [],
+            'recovery_recommendation': 'ok',
+            'error': 'config_unavailable',
+        }
+
+    SessionLocal = get_session_local()
+    db = SessionLocal()
+    try:
+        now = _now()
+        stmt = select(AsyncTaskRecord).where(
+            AsyncTaskRecord.task_type == TASK_TYPE,
+            AsyncTaskRecord.status == 'running',
+        )
+        running_tasks = db.execute(stmt).scalars().all()
+        active_running_tasks: list[dict] = []
+        for t in running_tasks:
+            last_alive = (
+                t.heartbeat_at or t.updated_at or t.started_at or t.created_at
+            )
+            age = (
+                (now - last_alive).total_seconds()
+                if last_alive is not None
+                else None
+            )
+            active_running_tasks.append(
+                {
+                    'task_id': t.id,
+                    'status': t.status,
+                    'heartbeat_at': (
+                        t.heartbeat_at.isoformat()
+                        if t.heartbeat_at
+                        else None
+                    ),
+                    'age_seconds': age,
+                }
+            )
+
+        # Diagnose stale tasks, then filter to factor_pipeline.
+        all_stale = diagnose_stale_tasks(db)
+        stale_ids = {s.task_id for s in all_stale if s.is_stale}
+        stale_pipeline: list[dict] = []
+        if stale_ids:
+            type_stmt = select(
+                AsyncTaskRecord.id, AsyncTaskRecord.task_type
+            ).where(AsyncTaskRecord.id.in_(stale_ids))
+            type_map = dict(db.execute(type_stmt).all())
+            for diag in all_stale:
+                if (
+                    diag.is_stale
+                    and type_map.get(diag.task_id) == TASK_TYPE
+                ):
+                    stale_pipeline.append(
+                        {
+                            'task_id': diag.task_id,
+                            'is_stale': diag.is_stale,
+                            'stale_reason': diag.stale_reason,
+                            'heartbeat_at': (
+                                diag.heartbeat_at.isoformat()
+                                if diag.heartbeat_at
+                                else None
+                            ),
+                            'stage_started_at': (
+                                diag.stage_started_at.isoformat()
+                                if diag.stage_started_at
+                                else None
+                            ),
+                            'stage_budget_seconds': diag.stage_budget_seconds,
+                        }
+                    )
+
+        # Warehouse lock diagnosis.
+        lock_info = diagnose_warehouse_lock(warehouse_path)
+
+        # Recommendation.
+        if stale_pipeline:
+            recommendation = 'recover_stale'
+        elif lock_info.is_locked:
+            recommendation = 'force_release_lock'
+        else:
+            recommendation = 'ok'
+
+        return {
+            'active_running_tasks': active_running_tasks,
+            'warehouse_lock': {
+                'path': lock_info.path,
+                'is_locked': lock_info.is_locked,
+                'lock_owner_pid': lock_info.lock_owner_pid,
+                'lock_owner_process': lock_info.lock_owner_process,
+                'lock_age_seconds': lock_info.lock_age_seconds,
+                'diagnostic_method': lock_info.diagnostic_method,
+                'notes': list(lock_info.notes),
+            },
+            'stale_tasks': stale_pipeline,
+            'recovery_recommendation': recommendation,
+        }
+    finally:
+        db.close()
+
+
 __all__ = [
     'TASK_TYPE',
     'create_factor_pipeline_task',
+    'diagnose_pipeline_lock_state',
     'get_pipeline_eta',
+    'recover_stale_pipeline_tasks',
     'resolve_calculation_start',
     'resolve_pipeline_dates',
 ]

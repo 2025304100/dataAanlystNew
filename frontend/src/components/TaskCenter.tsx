@@ -15,6 +15,8 @@ import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { enumLabel, t } from "../i18n";
 import type { UnifiedTask } from "../types";
+// WPD-05：任务错误消息显示工具（优先 error_code → i18n，兜底乱码检测）
+import { getTaskErrorMessage } from "../utils/taskErrorDisplay";
 // WP-AI.7：让 AI 解释按钮
 import ExplainButton from "./ai/ExplainButton";
 
@@ -176,6 +178,8 @@ export default function TaskCenter() {
     const duration = task.duration_sec;
     const abortable = canAbort(task);
     const isAborting = abortingId === task.id;
+    // WPD-05：优先用 error_code → i18n 翻译，兜底历史乱码 message
+    const displayMessage = getTaskErrorMessage(task, t);
 
     return (
       <div className="task-detail-panel">
@@ -275,11 +279,11 @@ export default function TaskCenter() {
           </div>
         )}
 
-        {/* Message */}
-        {task.message && (
+        {/* Message (WPD-05: 优先 error_code → i18n 翻译，兜底乱码检测) */}
+        {displayMessage && (
           <div className="task-detail-section">
             <span className="task-detail-label">{t("taskMessage")}</span>
-            <span style={{ marginLeft: 8 }}>{task.message}</span>
+            <span style={{ marginLeft: 8 }}>{displayMessage}</span>
           </div>
         )}
       </div>

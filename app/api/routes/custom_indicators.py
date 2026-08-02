@@ -456,3 +456,113 @@ def delete_custom_indicator(indicator_id: int, db: Session = Depends(get_db)):
     db.delete(row)
     db.commit()
     return {"success": True}
+
+
+# ── WP4-01: 数值指标提升为候选因子 ────────────────────────
+
+@router.post(
+    "/settings/custom-indicators/{indicator_id}/promote-to-factor",
+    response_model=None,  # 手动构造响应以便控制状态码
+    status_code=201,
+)
+def promote_indicator_to_factor(
+    indicator_id: int,
+    payload: dict | None = None,
+    db: Session = Depends(get_db),
+):
+    """将 value_type=number 的自定义指标提升为因子草稿（WP4-01）。
+
+    约束：
+    - boolean 指标被拒绝（422）
+    - 重复提交用幂等键（execution_plan_hash），不产生两个候选
+    - 原指标不被改写或删除
+    - 创建的 Factor 默认 lifecycle_status='draft'，需后续走 transition 进入 candidate
+    """
+    from app.schemas.factor_library import CustomIndicatorPromoteRequest, CustomIndicatorPromoteResponse
+    from app.services.factors.factor_registry import promote_factor_from_indicator
+
+    # 解析请求体（允许空 body 使用默认值）
+    try:
+        req = CustomIndicatorPromoteRequest(**(payload or {}))
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"invalid_request:{exc}")
+
+    # 预取指标，提前校验存在性和 value_type
+    indicator = db.get(CustomIndicator, indicator_id)
+    if indicator is None:
+        raise HTTPException(status_code=404, detail="indicator_not_found")
+
+    if indicator.value_type != "number":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error_code": "indicator_not_number",
+                "user_message": "仅数值型（number）指标可提升为因子，布尔型指标不支持",
+                "impact": "无法将该指标转换为因子",
+                "retryable": False,
+            },
+        )
+
+    # 获取当前指标版本号（用于溯源）
+    current_version = db.execute(
+        select(func.max(CustomIndicatorVersion.version))
+        .where(CustomIndicatorVersion.indicator_id == indicator_id)
+    ).scalar_one()
+
+    # 执行提升
+    try:
+        factor, version, source_mapping = promote_factor_from_indicator(
+            db,
+            indicator_id=indicator_id,
+            request=req,
+            indicator_row=indicator,
+            indicator_version=int(current_version) if current_version else None,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if msg == "indicator_not_found":
+            raise HTTPException(status_code=404, detail="indicator_not_found")
+        if msg == "indicator_not_number":
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "indicator_not_number",
+                    "user_message": "仅数值型（number）指标可提升为因子",
+                    "retryable": False,
+                },
+            )
+        if msg == "invalid_factor_code":
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "invalid_factor_code",
+                    "user_message": "无法从指标 key 生成合法的因子代码，请手动指定 code",
+                    "retryable": True,
+                },
+            )
+        if msg.startswith("factor_code_conflict"):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "factor_code_conflict",
+                    "user_message": f"因子代码已存在：{msg.split(':', 1)[-1]}",
+                    "retryable": False,
+                },
+            )
+        raise HTTPException(status_code=500, detail=f"promote_failed:{msg}")
+
+    db.commit()
+    db.refresh(factor)
+    db.refresh(version)
+
+    return CustomIndicatorPromoteResponse(
+        success=True,
+        factor_id=factor.id,
+        factor_code=factor.code,
+        factor_version_id=version.id,
+        factor_version=version.version,
+        lifecycle_status=factor.lifecycle_status or "draft",
+        origin=factor.origin or "user",
+        source_mapping=source_mapping,
+        message="指标已提升为因子草稿，可在因子中心查看",
+    ).model_dump(mode="json")

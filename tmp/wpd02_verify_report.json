@@ -1,0 +1,17 @@
+{
+  "mysql_enabled": true,
+  "evidence": {
+    "selected_trade_date": "2026-07-31",
+    "observed_symbols": 4887,
+    "expected_symbols": 4890,
+    "completeness_ratio": 0.999387,
+    "fallback_reason": null,
+    "median_baseline": 4890,
+    "evaluated_candidate_dates": [
+      "2026-07-31"
+    ],
+    "candidate_ratios": {
+      "2026-07-31": 0.999387
+    }
+  }
+}

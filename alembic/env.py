@@ -29,6 +29,7 @@ from app.models import (
     # WP-S：外部接口运行时状态（熔断器 + 计数器）
     external_endpoint_runtime,
 )
+from app.models import factor_evaluation  # noqa: F401
 
 config = context.config
 

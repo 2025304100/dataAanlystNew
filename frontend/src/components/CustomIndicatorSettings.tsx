@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Checkbox, DatePicker, Empty, Form, Input, InputNumber, Popconfirm, Radio, Select, Space, Table, Tag, message } from "antd";
-import { DeleteOutlined, EyeOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, RobotOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Checkbox, DatePicker, Descriptions, Empty, Form, Input, InputNumber, Modal, Popconfirm, Radio, Select, Space, Table, Tag, message } from "antd";
+import { DeleteOutlined, EyeOutlined, PlusOutlined, ReloadOutlined, RiseOutlined, SaveOutlined, RobotOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
@@ -223,6 +223,14 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
   const [changeNote, setChangeNote] = useState("");
   const [expandedVersionId, setExpandedVersionId] = useState<number | null>(null);
   const [aiChatOpen, setAiChatOpen] = useState(false);
+  // WP4-02: 数值指标提升为因子草稿
+  const [promoteOpen, setPromoteOpen] = useState(false);
+  const [promoteLoading, setPromoteLoading] = useState(false);
+  const [promoteCode, setPromoteCode] = useState("");
+  const [promoteName, setPromoteName] = useState("");
+  const [promoteDirection, setPromoteDirection] = useState<"higher_better" | "lower_better" | "nonlinear">("higher_better");
+  const [promoteRiskLevel, setPromoteRiskLevel] = useState<"low" | "medium" | "high">("medium");
+  const [promoteChangeNote, setPromoteChangeNote] = useState("");
 
   const categoryOptions = useMemo(() => [
     { label: t("ciCatTrend"), value: "trend" },
@@ -581,6 +589,49 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
     }
   };
 
+  // WP4-02: 数值指标提升为因子草稿
+  const openPromote = () => {
+    if (!selected) return;
+    if (form.value_type !== "number") {
+      message.warning(t("ciPromoteOnlyNumber"));
+      return;
+    }
+    // 预填映射：code 由 key 自动生成（小写蛇形），name 用指标名
+    setPromoteCode((form.key || "").toLowerCase().replace(/[^a-z0-9_]/g, "_"));
+    setPromoteName(form.name || "");
+    setPromoteDirection("higher_better");
+    setPromoteRiskLevel("medium");
+    setPromoteChangeNote("promoted from custom indicator");
+    setPromoteOpen(true);
+  };
+
+  const confirmPromote = async () => {
+    if (!selectedId) return;
+    setPromoteLoading(true);
+    try {
+      const resp = await api.promoteIndicatorToFactor(selectedId, {
+        code: promoteCode.trim() || undefined,
+        name: promoteName.trim() || undefined,
+        direction: promoteDirection,
+        risk_level: promoteRiskLevel,
+        change_note: promoteChangeNote.trim() || undefined,
+      });
+      message.success(template("ciPromoteSuccess", { code: resp.factor_code }));
+      setPromoteOpen(false);
+    } catch (error: any) {
+      const detail = error?.details?.detail;
+      if (detail && typeof detail === "object" && detail.error_code === "indicator_not_number") {
+        message.error(t("ciPromoteOnlyNumber"));
+      } else if (detail && typeof detail === "object" && detail.error_code === "factor_code_conflict") {
+        message.error(`${t("ciPromoteFailed")}: ${detail.user_message || detail.error_code}`);
+      } else {
+        message.error(error?.message || t("ciPromoteFailed"));
+      }
+    } finally {
+      setPromoteLoading(false);
+    }
+  };
+
   const insertFormulaFromAi = (newFormula: string) => {
     setForm((prev) => ({ ...prev, formula: newFormula }));
     setAiChatOpen(false);
@@ -709,7 +760,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
                     <Form.Item label={t("ciEnabled")}><Checkbox checked={form.enabled} onChange={(event) => setForm((prev) => ({ ...prev, enabled: event.target.checked }))}>{form.enabled ? t("ciActiveAfterSave") : t("ciSaveAsDisabled")}</Checkbox></Form.Item>
                   </div>
                   {selectedId && <Form.Item label={t("ciChangeNote")}><Input value={changeNote} onChange={(event) => setChangeNote(event.target.value)} placeholder={t("ciChangeNotePlaceholder")} /></Form.Item>}
-                  <Space wrap className="indicator-action-row"><Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>{t("ciSaveIndicator")}</Button>{selectedId && <Popconfirm title={t("ciConfirmDeleteIndicator")} onConfirm={() => remove(selectedId)}><Button danger icon={<DeleteOutlined />}>{t("ciDelete")}</Button></Popconfirm>}</Space>
+                  <Space wrap className="indicator-action-row"><Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>{t("ciSaveIndicator")}</Button>{selectedId && form.value_type === "number" && <Button type="primary" ghost icon={<RiseOutlined />} onClick={openPromote} title={t("ciPromoteToFactorTip")}>{t("ciPromoteToFactor")}</Button>}{selectedId && <Popconfirm title={t("ciConfirmDeleteIndicator")} onConfirm={() => remove(selectedId)}><Button danger icon={<DeleteOutlined />}>{t("ciDelete")}</Button></Popconfirm>}</Space>
                 </div>
               </Card>
             </div>
@@ -957,6 +1008,77 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
         onClose={() => setAiChatOpen(false)}
         onInsertFormula={insertFormulaFromAi}
       />
+
+      {/* WP4-02: 提升为因子草稿 Modal（仅数值型指标显示入口） */}
+      <Modal
+        title={t("ciPromoteTitle")}
+        open={promoteOpen}
+        onOk={confirmPromote}
+        onCancel={() => setPromoteOpen(false)}
+        okText={t("ciPromoteConfirm")}
+        cancelText={t("ciPromoteCancel")}
+        okButtonProps={{ loading: promoteLoading }}
+        destroyOnClose
+        width={520}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message={t("ciPromoteMappingHint")}
+          style={{ marginBottom: 12 }}
+        />
+        <Descriptions
+          size="small"
+          column={1}
+          bordered
+          style={{ marginBottom: 12 }}
+        >
+          <Descriptions.Item label={t("ciPromoteFieldIndicatorName")}>{form.name || "—"}</Descriptions.Item>
+          <Descriptions.Item label={t("ciPromoteFieldIndicatorKey")}>{form.key || "—"}</Descriptions.Item>
+          <Descriptions.Item label={t("ciPromoteFieldIndicatorVersion")}>{selected?.version ?? "—"}</Descriptions.Item>
+          <Descriptions.Item label={t("ciPromoteFieldFormula")}><code style={{ fontSize: 12 }}>{form.formula || "—"}</code></Descriptions.Item>
+          <Descriptions.Item label={t("ciPromoteFieldCategory")}>{form.category || "—"}</Descriptions.Item>
+        </Descriptions>
+        <Form layout="vertical" size="small">
+          <div className="indicator-form-grid compact">
+            <Form.Item label={t("ciPromoteFactorCode")}>
+              <Input
+                value={promoteCode}
+                onChange={(e) => setPromoteCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))}
+                placeholder={t("ciPromoteFactorCodePlaceholder")}
+              />
+            </Form.Item>
+            <Form.Item label={t("ciPromoteFactorName")}>
+              <Input value={promoteName} onChange={(e) => setPromoteName(e.target.value)} placeholder={form.name} />
+            </Form.Item>
+            <Form.Item label={t("ciPromoteDirection")}>
+              <Select
+                value={promoteDirection}
+                onChange={(v: "higher_better" | "lower_better" | "nonlinear") => setPromoteDirection(v)}
+                options={[
+                  { label: t("factorDirection_higher_better"), value: "higher_better" },
+                  { label: t("factorDirection_lower_better"), value: "lower_better" },
+                  { label: t("factorDirection_nonlinear"), value: "nonlinear" },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item label={t("ciPromoteRiskLevel")}>
+              <Select
+                value={promoteRiskLevel}
+                onChange={(v: "low" | "medium" | "high") => setPromoteRiskLevel(v)}
+                options={[
+                  { label: t("factorRiskLevel_low"), value: "low" },
+                  { label: t("factorRiskLevel_medium"), value: "medium" },
+                  { label: t("factorRiskLevel_high"), value: "high" },
+                ]}
+              />
+            </Form.Item>
+          </div>
+          <Form.Item label={t("ciPromoteChangeNote")}>
+            <Input value={promoteChangeNote} onChange={(e) => setPromoteChangeNote(e.target.value)} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

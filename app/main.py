@@ -209,6 +209,23 @@ def _run_startup_cleanup() -> None:
                     stale_result["total_cleaned"],
                     stale_result["cleaned_task_ids"],
                 )
+            # WPD-03: 恢复僵尸 factor_pipeline 任务，释放残留 warehouse 锁
+            try:
+                from app.services.factors.pipeline_task import (
+                    recover_stale_pipeline_tasks,
+                )
+                recovered = recover_stale_pipeline_tasks(db)
+                if recovered:
+                    logger.warning(
+                        "Startup cleanup: recovered %d stale factor_pipeline "
+                        "tasks: %s",
+                        len(recovered),
+                        [r["task_id"] for r in recovered],
+                    )
+            except Exception:
+                logger.exception(
+                    "Startup cleanup: stale pipeline recovery failed (non-fatal)"
+                )
         finally:
             db.close()
     except Exception:

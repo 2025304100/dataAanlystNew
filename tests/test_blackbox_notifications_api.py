@@ -378,6 +378,15 @@ def test_template_crud(client):
     assert resp.json()["is_active"] is False
     assert resp.json()["version"] == 2
 
+    # Explicit null clears optional fields instead of meaning "not provided".
+    resp = client.patch(
+        f"/api/v1/notifications/templates/{tid}",
+        json={"body_text_template": None, "variables_json": None},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["body_text_template"] is None
+    assert resp.json()["variables_json"] is None
+
     # 删除
     resp = client.delete(f"/api/v1/notifications/templates/{tid}")
     assert resp.status_code == 200
@@ -409,6 +418,28 @@ def test_template_preview_variable_escaping(client):
     assert "<script>" not in out["title"], "HTML 注入未转义"
     # 转义后应包含反斜杠前缀
     assert "\\" in out["title"]
+
+
+def test_template_preview_supports_double_brace_placeholders(client):
+    """历史双大括号模板通过 API 预览时应正确渲染。"""
+    response = client.post(
+        "/api/v1/notifications/templates",
+        json={
+            "name": "qa-tpl-double-braces",
+            "title_template": "标题 {{symbol}}",
+            "body_template": "正文 {{ symbol }} / {price}",
+        },
+    )
+    template_id = response.json()["id"]
+
+    response = client.post(
+        f"/api/v1/notifications/templates/{template_id}/preview",
+        json={"variables": {"symbol": "000001", "price": "10.50"}},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["title"] == "标题 000001"
+    assert response.json()["body"] == "正文 000001 / 10.50"
 
 
 def test_template_preview_not_found(client):

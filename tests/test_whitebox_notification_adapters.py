@@ -811,6 +811,34 @@ def test_render_template_basic():
     assert "触发" in rendered
 
 
+def test_render_template_supports_legacy_double_braces():
+    """历史模板使用 {{name}} 时也应完整替换，不残留额外大括号。"""
+    rendered = render_template(
+        "{{ symbol }} 触发 {{price}}",
+        {"symbol": "000001", "price": "10.5"},
+    )
+    assert rendered == "000001 触发 10.5"
+    assert "{" not in rendered
+
+
+def test_render_template_mixed_placeholder_styles():
+    """同一模板可混用新旧占位符，便于平滑迁移。"""
+    rendered = render_template(
+        "{symbol} / {{ symbol }} / {{unknown}}",
+        {"symbol": "000001"},
+    )
+    assert rendered == "000001 / 000001 / {{unknown}}"
+
+
+def test_render_template_supports_historical_unicode_and_numeric_names():
+    """Historical variable names accepted by the renderer remain supported."""
+    rendered = render_template(
+        "{1foo} / {中文}",
+        {"1foo": "A", "中文": "B"},
+    )
+    assert rendered == "A / B"
+
+
 def test_render_template_unknown_var_preserved():
     """【WP-MSG.2】render_template：未提供的 {name} 占位符原样保留。"""
     rendered = render_template("{known} + {unknown}", {"known": "K"})

@@ -1,0 +1,55 @@
+{
+  "lock_state": {
+    "active_running_tasks": [],
+    "warehouse_lock": {
+      "path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb",
+      "is_locked": false,
+      "lock_owner_pid": null,
+      "lock_owner_process": null,
+      "lock_age_seconds": null,
+      "diagnostic_method": "lockfile",
+      "notes": [
+        "no lockfile present"
+      ]
+    },
+    "stale_tasks": [],
+    "recovery_recommendation": "ok"
+  },
+  "recovery": [],
+  "duckdb_stats": {
+    "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb",
+    "file_size_bytes": 3833344000,
+    "file_size_mb": 3655.76,
+    "file_size_gb": 3.57,
+    "duckdb_error": "duckdb not installed"
+  },
+  "full_diagnostics": {
+    "warehouse_path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb",
+    "file_size": 3833344000,
+    "file_mtime": "2026-08-01T18:11:56.690650",
+    "lock_info": {
+      "path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb",
+      "is_locked": false,
+      "lock_owner_pid": null,
+      "lock_owner_process": null,
+      "lock_acquired_at": null,
+      "lock_age_seconds": null,
+      "diagnostic_method": "lockfile",
+      "notes": [
+        "no lockfile present"
+      ]
+    },
+    "related_processes": [],
+    "duckdb_health": {
+      "available": false,
+      "path": "D:\\ai_project\\dataAanlystNew\\tmp\\factor_warehouse.duckdb",
+      "schema_version": null,
+      "raw_daily_bars": 0,
+      "latest_trade_date": null,
+      "error": "FactorWarehouseUnavailable: DuckDB is not installed. Install project requirements before enabling the factor warehouse."
+    },
+    "diagnostic_timestamp": "2026-08-01T16:33:25.087112",
+    "psutil_available": false
+  },
+  "psutil_available": false
+}

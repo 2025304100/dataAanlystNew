@@ -1,31 +1,70 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { message } from "antd";
 
-// 使用 vi.hoisted 提升 mock，使其可在 vi.mock factory 内引用
-// globals: true 配置下 vi 作为全局变量在 hoisted 回调中可用
-const { mockApi } = vi.hoisted(() => ({
-  mockApi: {
-    syncFundamental: vi.fn(async () => ({ total: 5, success: 4, skipped: 1, failed: 0, errors: [] })),
-    syncFinancialReports: vi.fn(async () => ({ total: 5, success: 5, skipped: 0, failed: 0, records: 100, errors: [] })),
-    syncLhbInstitution: vi.fn(async () => ({ total: 8, success: 8, skipped: 0, failed: 0, records: 8, errors: [] })),
-    syncHotRank: vi.fn(async () => ({ total: 100, success: 100, skipped: 0, failed: 0, records: 100, errors: [] })),
-    syncTailProxy: vi.fn(async () => ({ total: 20, success: 18, skipped: 2, failed: 0, records: 18, errors: [] })),
-    syncCapitalFlow: vi.fn(async () => ({ total: 5, success: 4, skipped: 1, failed: 0, errors: [] })),
-    syncEtfIndicators: vi.fn(async () => ({ total: 3, success: 3, skipped: 0, failed: 0, errors: [] })),
-  },
-}));
+const { mockApi, makeTask, mockOverview } = vi.hoisted(() => {
+  const datasets = ["fundamental", "financial", "lhb", "hot_rank", "tail_proxy", "capital_flow", "etf"] as const;
+  const makeTask = (dataset: typeof datasets[number], status: "running" | "done" = "done") => ({
+    id: `task-${dataset}`,
+    task_type: `external_sync_${dataset}`,
+    status,
+    stage: status === "done" ? "done" : "sync",
+    percent: status === "done" ? 100 : 25,
+    message: status === "done" ? "completed" : "syncing",
+    total: 8,
+    processed: status === "done" ? 8 : 2,
+    ok_count: status === "done" ? 7 : 2,
+    failed_count: status === "done" ? 0 : 0,
+    current_item: status === "running" ? "600000" : null,
+    result: status === "done" ? {
+      dataset,
+      total: 8,
+      success: 7,
+      skipped: 1,
+      failed: 0,
+      records: 7,
+      errors: [],
+    } : null,
+    errors: [],
+    created_at: "2026-08-02T08:00:00",
+    started_at: "2026-08-02T08:00:01",
+    finished_at: status === "done" ? "2026-08-02T08:00:05" : null,
+    updated_at: "2026-08-02T08:00:05",
+  });
+  const mockOverview = {
+    datasets: datasets.map((dataset, index) => ({
+      dataset,
+      records: (index + 1) * 10,
+      symbols: index + 1,
+      latest_date: "2026-08-02",
+      last_updated_at: "2026-08-02T08:00:00",
+      latest_task: null,
+    })),
+    total_records: 280,
+    covered_symbols: 28,
+    available_datasets: 7,
+    running_tasks: 0,
+    refreshed_at: "2026-08-02T08:00:00",
+  };
+  return {
+    makeTask,
+    mockOverview,
+    mockApi: {
+      getExternalDataOverview: vi.fn(async () => mockOverview),
+      startExternalDataSync: vi.fn(async (payload: { dataset: typeof datasets[number] }) => makeTask(payload.dataset)),
+      getExternalDataSyncTask: vi.fn(async () => makeTask("fundamental", "running")),
+    },
+  };
+});
 
-// Mock i18n: t(key) 返回 key，template 返回拼接后的字符串
 vi.mock("../../i18n", () => ({
   t: (key: string) => key,
   template: (key: string, params: Record<string, string | number> = {}) =>
-    key.replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? "")),
+    `${key}${Object.keys(params).length ? `:${JSON.stringify(params)}` : ""}`,
   DOT: " | ",
 }));
 
-// Mock antd message
 vi.mock("antd", async () => {
   const actual = await vi.importActual<typeof import("antd")>("antd");
   return {
@@ -35,47 +74,29 @@ vi.mock("antd", async () => {
       success: vi.fn(),
       error: vi.fn(),
       warning: vi.fn(),
-      info: vi.fn(),
     },
   };
 });
 
-// Mock api/client
-vi.mock("../../api/client", () => ({
-  api: mockApi,
-}));
+vi.mock("../../api/client", () => ({ api: mockApi }));
 
 import ExternalDataSync from "../ExternalDataSync";
 
-describe("ExternalDataSync 组件渲染测试", () => {
+describe("ExternalDataSync dashboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApi.getExternalDataOverview.mockResolvedValue(mockOverview);
+    mockApi.startExternalDataSync.mockImplementation(async (payload: any) => makeTask(payload.dataset));
+    mockApi.getExternalDataSyncTask.mockResolvedValue(makeTask("fundamental", "running"));
   });
 
-  it("should render section title and description", () => {
+  it("renders the real inventory dashboard for all seven datasets", async () => {
     render(<ExternalDataSync />);
-    expect(screen.getByText("extSectionTitle")).toBeInTheDocument();
-    expect(screen.getByText("extSectionDesc")).toBeInTheDocument();
-  });
+    await waitFor(() => expect(mockApi.getExternalDataOverview).toHaveBeenCalled());
 
-  it("should render source label and default select value", () => {
-    render(<ExternalDataSync />);
-    // 组件中文本为 "extSourceLabel:" (含冒号)，用 partial match
-    expect(screen.getByText(/extSourceLabel/)).toBeInTheDocument();
-    // antd Select 的默认值通过 combobox 渲染
-    const select = screen.getByRole("combobox");
-    expect(select).toBeInTheDocument();
-  });
-
-  it("should render includeNorthbound checkbox checked by default", () => {
-    render(<ExternalDataSync />);
-    const checkbox = screen.getByRole("checkbox", { name: "extIncludeNorthbound" });
-    expect(checkbox).toBeChecked();
-  });
-
-  it("should render seven sync sub-cards with titles", () => {
-    render(<ExternalDataSync />);
-    // 三个子 Card 标题（每个标题在 Card title 和 Button 中各出现一次）
+    expect(screen.getByText("280")).toBeInTheDocument();
+    expect(screen.getByText("28")).toBeInTheDocument();
+    expect(screen.getByText("7/7")).toBeInTheDocument();
     expect(screen.getAllByText("extSyncFundamental").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("extSyncFinancial").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("extSyncLhb").length).toBeGreaterThanOrEqual(1);
@@ -85,158 +106,64 @@ describe("ExternalDataSync 组件渲染测试", () => {
     expect(screen.getAllByText("extSyncEtf").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("should render descriptions for each sync card", () => {
+  it("starts valuation as an observable task with the selected scope", async () => {
     render(<ExternalDataSync />);
-    expect(screen.getByText("extSyncFundamentalDesc")).toBeInTheDocument();
-    expect(screen.getByText("extSyncFinancialDesc")).toBeInTheDocument();
-    expect(screen.getByText("extSyncLhbDesc")).toBeInTheDocument();
-    expect(screen.getByText("extSyncHotRankDesc")).toBeInTheDocument();
-    expect(screen.getByText("extSyncTailProxyDesc")).toBeInTheDocument();
-    expect(screen.getByText("extSyncCapitalFlowDesc")).toBeInTheDocument();
-    expect(screen.getByText("extSyncEtfDesc")).toBeInTheDocument();
+    const button = await screen.findByRole("button", { name: /extSyncFundamental/ });
+    fireEvent.click(button);
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith({
+      dataset: "fundamental",
+      source: "watchlist",
+      include_northbound: true,
+      lookback_days: 30,
+      limit: 20,
+    }));
   });
 
-  it("should call syncFundamental when sync button clicked", async () => {
-    render(<ExternalDataSync />);
-    // Button 内含 SyncOutlined 图标，accessible name 为 "sync extSyncFundamental"
-    const syncBtn = screen.getByRole("button", { name: /extSyncFundamental/ });
-    fireEvent.click(syncBtn);
-    await waitFor(() => {
-      expect(mockApi.syncFundamental).toHaveBeenCalledWith("watchlist");
-    });
-  });
-
-  it("should call syncCapitalFlow with includeNorthbound when clicked", async () => {
-    render(<ExternalDataSync />);
-    const syncBtn = screen.getByRole("button", { name: /extSyncCapitalFlow/ });
-    fireEvent.click(syncBtn);
-    await waitFor(() => {
-      expect(mockApi.syncCapitalFlow).toHaveBeenCalledWith("watchlist", true);
-    });
-  });
-
-  it("should call syncFinancialReports when sync button clicked", async () => {
-    render(<ExternalDataSync />);
-    const syncBtn = screen.getByRole("button", { name: /extSyncFinancial/ });
-    fireEvent.click(syncBtn);
-    await waitFor(() => {
-      expect(mockApi.syncFinancialReports).toHaveBeenCalledWith("watchlist");
-    });
-  });
-
-  it("should call syncLhbInstitution for the last 30 days", async () => {
-    render(<ExternalDataSync />);
-    const syncBtn = screen.getByRole("button", { name: /extSyncLhb/ });
-    fireEvent.click(syncBtn);
-    await waitFor(() => {
-      expect(mockApi.syncLhbInstitution).toHaveBeenCalledWith(30);
-    });
-  });
-
-  it("should call syncHotRank for the current snapshot", async () => {
-    render(<ExternalDataSync />);
-    const syncBtn = screen.getByRole("button", { name: /extSyncHotRank/ });
-    fireEvent.click(syncBtn);
-    await waitFor(() => {
-      expect(mockApi.syncHotRank).toHaveBeenCalledWith();
-    });
-  });
-
-  it("should call syncTailProxy for the top 20 candidates", async () => {
-    render(<ExternalDataSync />);
-    const syncBtn = screen.getByRole("button", { name: /extSyncTailProxy/ });
-    fireEvent.click(syncBtn);
-    await waitFor(() => {
-      expect(mockApi.syncTailProxy).toHaveBeenCalledWith(20);
-    });
-  });
-
-  it("should call syncEtfIndicators when sync button clicked", async () => {
-    render(<ExternalDataSync />);
-    const syncBtn = screen.getByRole("button", { name: /extSyncEtf/ });
-    fireEvent.click(syncBtn);
-    await waitFor(() => {
-      expect(mockApi.syncEtfIndicators).toHaveBeenCalledWith("watchlist");
-    });
-  });
-});
-
-describe("ExternalDataSync 交互测试", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("should call syncFundamental with selected source after Select changed", async () => {
+  it("passes the changed source to financial-report synchronization", async () => {
     const user = userEvent.setup();
     render(<ExternalDataSync />);
-    // 打开 source Select 下拉
     const selector = document.querySelector(".ant-select-selector") as HTMLElement;
     fireEvent.mouseDown(selector);
-    await waitFor(() => {
-      const opts = document.querySelectorAll(".ant-select-item-option");
-      expect(opts.length).toBeGreaterThan(0);
-    });
-    // 选择 "extSourcePositions" (value=positions)
-    const opts = Array.from(document.querySelectorAll(".ant-select-item-option"));
-    const target = opts.find((o) => o.textContent?.includes("extSourcePositions"));
-    expect(target).toBeDefined();
-    fireEvent.click(target!);
-    // 点击 fundamental sync 按钮
-    const syncBtn = screen.getByRole("button", { name: /extSyncFundamental/ });
-    await user.click(syncBtn);
-    await waitFor(() => {
-      expect(mockApi.syncFundamental).toHaveBeenCalledWith("positions");
-    });
+    await waitFor(() => expect(document.querySelectorAll(".ant-select-item-option").length).toBeGreaterThan(0));
+    const option = Array.from(document.querySelectorAll(".ant-select-item-option"))
+      .find((item) => item.textContent?.includes("extSourcePositions"));
+    expect(option).toBeDefined();
+    fireEvent.click(option!);
+
+    await user.click(screen.getByRole("button", { name: /extSyncFinancial/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
+      dataset: "financial",
+      source: "positions",
+    })));
   });
 
-  it("should call syncCapitalFlow with false after checkbox unchecked", async () => {
+  it("passes the northbound toggle to capital-flow synchronization", async () => {
     const user = userEvent.setup();
     render(<ExternalDataSync />);
-    // 初始 includeNorthbound=true，取消勾选
     const checkbox = screen.getByRole("checkbox", { name: "extIncludeNorthbound" });
     await user.click(checkbox);
-    expect(checkbox).not.toBeChecked();
-    // 点击 capital flow sync 按钮
-    const syncBtn = screen.getByRole("button", { name: /extSyncCapitalFlow/ });
-    await user.click(syncBtn);
-    await waitFor(() => {
-      expect(mockApi.syncCapitalFlow).toHaveBeenCalledWith("watchlist", false);
-    });
+    await user.click(screen.getByRole("button", { name: /extSyncCapitalFlow/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
+      dataset: "capital_flow",
+      include_northbound: false,
+    })));
   });
 
-  it("should show success toast and Alert after sync completes", async () => {
+  it("shows real task percent, counts and current symbol while running", async () => {
+    mockApi.startExternalDataSync.mockResolvedValue(makeTask("fundamental", "running"));
     render(<ExternalDataSync />);
-    const syncBtn = screen.getByRole("button", { name: /extSyncFundamental/ });
-    fireEvent.click(syncBtn);
-    await waitFor(() => {
-      expect(mockApi.syncFundamental).toHaveBeenCalled();
-    });
-    // API 解析完成后 message.success 应被调用
-    await waitFor(() => {
-      expect(message.success).toHaveBeenCalled();
-    });
-    // Alert 显示 lastResult（label: template）
-    await waitFor(() => {
-      expect(screen.getByText(/extSyncFundamental: extSyncResult/)).toBeInTheDocument();
-    });
+    fireEvent.click(await screen.findByRole("button", { name: /extSyncFundamental/ }));
+
+    await waitFor(() => expect(screen.getByText("25%")).toBeInTheDocument());
+    expect(screen.getByText("2/8")).toBeInTheDocument();
+    expect(screen.getByText(/600000/)).toBeInTheDocument();
   });
 
-  it("should show loading state on sync button during sync", async () => {
-    let resolveSync!: (v: any) => void;
-    mockApi.syncFundamental.mockImplementation(async () => {
-      return new Promise((resolve) => { resolveSync = resolve; });
-    });
+  it("shows completion feedback and the structured result", async () => {
     render(<ExternalDataSync />);
-    const syncBtn = screen.getByRole("button", { name: /extSyncFundamental/ });
-    fireEvent.click(syncBtn);
-    // 同步期间按钮应处于 loading 状态（antd loading 不设置 disabled，通过 class 判断）
-    await waitFor(() => {
-      expect(syncBtn.className).toContain("ant-btn-loading");
-    });
-    // 完成后恢复
-    resolveSync({ total: 5, success: 5, skipped: 0, failed: 0, errors: [] });
-    await waitFor(() => {
-      expect(syncBtn.className).not.toContain("ant-btn-loading");
-    });
+    fireEvent.click(await screen.findByRole("button", { name: /extSyncFundamental/ }));
+
+    await waitFor(() => expect(message.success).toHaveBeenCalledWith("extTaskCompleted"));
+    expect(screen.getByText(/extSyncFundamental: extSyncResult/)).toBeInTheDocument();
   });
 });

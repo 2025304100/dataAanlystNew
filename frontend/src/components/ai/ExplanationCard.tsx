@@ -80,24 +80,48 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
   }
 
   if (hasDraft) {
+    const draftObj = response.draft as Record<string, unknown> | null;
+    const draftType = String(draftObj?.draft_type ?? draftObj?.action_type ?? "");
+    const isFactorDraft = draftType === "draft_factor";
     collapseItems.push({
       key: "draft",
       label: (
         <Space>
           <ExperimentOutlined style={{ color: "#722ed1" }} />
           <span>{t("aiAssistant.draft")}</span>
+          {isFactorDraft && <Tag color="purple">factor</Tag>}
         </Space>
       ),
       children: (
-        <Alert
-          type="warning"
-          message={t("aiAssistant.draftNeedsConfirmation")}
-          description={
-            <pre style={{ fontSize: 12, maxHeight: 200, overflow: "auto", margin: 0 }}>
-              {JSON.stringify(response.draft, null, 2)}
-            </pre>
-          }
-        />
+        <>
+          <Alert
+            type="warning"
+            message={t("aiAssistant.draftNeedsConfirmation")}
+            style={{ marginBottom: 8 }}
+            description={
+              <pre style={{ fontSize: 12, maxHeight: 200, overflow: "auto", margin: 0 }}>
+                {JSON.stringify(response.draft, null, 2)}
+              </pre>
+            }
+          />
+          {isFactorDraft && (
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              icon={<ExperimentOutlined />}
+              onClick={() => {
+                // 派发自定义事件，由 FactorCenter 监听并打开确认 Modal
+                const payload = (draftObj?.suggested_payload ?? draftObj) as Record<string, unknown>;
+                window.dispatchEvent(
+                  new CustomEvent("open-factor-draft", { detail: { payload } }),
+                );
+              }}
+            >
+              {t("aiDraftApplyToEditor")}
+            </Button>
+          )}
+        </>
       ),
     });
   }

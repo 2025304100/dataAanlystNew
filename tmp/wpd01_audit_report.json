@@ -1,0 +1,4493 @@
+{
+  "mysql_connectable": true,
+  "repo_head_revision": "wps_0801_001_universe_incremental_index",
+  "repo_documented_head_in_plan": "wps_0023_020_api_deprecation_logs (底稿记录，已被 2026-08-01 18:30 新增的 universe 增量索引覆盖)",
+  "audit_date": "2026-08-01",
+  "mysql_version": "5.7.26",
+  "alembic_version_table_exists": false,
+  "alembic_version_rows": [],
+  "tables": [
+    {
+      "table_name": "ai_action_audits",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "ai_messages",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "ai_profiles",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "ai_sessions",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "akshare_api_config",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 24,
+      "comment": ""
+    },
+    {
+      "table_name": "alert_events",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 205,
+      "comment": ""
+    },
+    {
+      "table_name": "alert_rules",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 3,
+      "comment": ""
+    },
+    {
+      "table_name": "api_deprecation_logs",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "async_tasks",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 151,
+      "comment": ""
+    },
+    {
+      "table_name": "backtest_rule_templates",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 1,
+      "comment": ""
+    },
+    {
+      "table_name": "backtest_runs",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 25,
+      "comment": ""
+    },
+    {
+      "table_name": "backtest_trades",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "capital_flows",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "cash_ledger",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 12,
+      "comment": ""
+    },
+    {
+      "table_name": "custom_indicators",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 2,
+      "comment": ""
+    },
+    {
+      "table_name": "custom_indicator_versions",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "daily_bars",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 1416141,
+      "comment": ""
+    },
+    {
+      "table_name": "discovery_candidates",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "discovery_plans",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "discovery_result_states",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "discovery_score_snapshots",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "discovery_score_snapshot_items",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "discovery_tasks",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 88,
+      "comment": ""
+    },
+    {
+      "table_name": "etf_indicators",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 9,
+      "comment": ""
+    },
+    {
+      "table_name": "external_endpoint_runtime",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "factors",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 8,
+      "comment": ""
+    },
+    {
+      "table_name": "factor_model_audit_logs",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "factor_model_runs",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "factor_runtime_state",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "factor_system_config",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "factor_values",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "factor_versions",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 8,
+      "comment": ""
+    },
+    {
+      "table_name": "factor_weight_snapshots",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "index_prices",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 1211,
+      "comment": ""
+    },
+    {
+      "table_name": "journal_entries",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 5,
+      "comment": ""
+    },
+    {
+      "table_name": "lhb_institution_trades",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 1280,
+      "comment": ""
+    },
+    {
+      "table_name": "macro_indicator_values",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 1216,
+      "comment": ""
+    },
+    {
+      "table_name": "macro_snapshots",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 127,
+      "comment": ""
+    },
+    {
+      "table_name": "market_events",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 1252,
+      "comment": ""
+    },
+    {
+      "table_name": "news_events",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 26854,
+      "comment": ""
+    },
+    {
+      "table_name": "news_snapshots",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 3279,
+      "comment": ""
+    },
+    {
+      "table_name": "northbound_flows",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "notification_channels",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "notification_deliveries",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "notification_outbox",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "notification_policies",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "notification_policy_channels",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "notification_templates",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "opportunity_transition_events",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "portfolios",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 3,
+      "comment": ""
+    },
+    {
+      "table_name": "portfolio_equity_snapshots",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 27,
+      "comment": ""
+    },
+    {
+      "table_name": "portfolio_members",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "portfolio_reviews",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "portfolio_rules",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 5,
+      "comment": ""
+    },
+    {
+      "table_name": "positions",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 3,
+      "comment": ""
+    },
+    {
+      "table_name": "scan_presets",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "scan_results",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 18445,
+      "comment": ""
+    },
+    {
+      "table_name": "scan_runs",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 138,
+      "comment": ""
+    },
+    {
+      "table_name": "scheduled_tasks",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 11,
+      "comment": ""
+    },
+    {
+      "table_name": "scheduled_task_runs",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 85,
+      "comment": ""
+    },
+    {
+      "table_name": "scheduled_task_seed_state",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 4,
+      "comment": ""
+    },
+    {
+      "table_name": "scores",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 23921,
+      "comment": ""
+    },
+    {
+      "table_name": "scoring_configs",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 9,
+      "comment": ""
+    },
+    {
+      "table_name": "signal_rules",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "sim_orders",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 9,
+      "comment": ""
+    },
+    {
+      "table_name": "sim_trades",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 7,
+      "comment": ""
+    },
+    {
+      "table_name": "stock_financial_reports",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 230,
+      "comment": ""
+    },
+    {
+      "table_name": "stock_hot_rank_snapshots",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 947,
+      "comment": ""
+    },
+    {
+      "table_name": "stock_valuations",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 6,
+      "comment": ""
+    },
+    {
+      "table_name": "symbols",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 6992,
+      "comment": ""
+    },
+    {
+      "table_name": "tail_accumulation_snapshots",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "trade_setups",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 6912,
+      "comment": ""
+    },
+    {
+      "table_name": "trade_signals",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 0,
+      "comment": ""
+    },
+    {
+      "table_name": "universe_daily_bars",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 6511999,
+      "comment": ""
+    },
+    {
+      "table_name": "universe_symbols",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 7010,
+      "comment": ""
+    },
+    {
+      "table_name": "watchlists",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 3,
+      "comment": ""
+    },
+    {
+      "table_name": "watchlist_items",
+      "table_type": "BASE TABLE",
+      "engine": "InnoDB",
+      "collation": "utf8_general_ci",
+      "rows": 6,
+      "comment": ""
+    }
+  ],
+  "table_count": 77,
+  "columns_fingerprint": {
+    "factors": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "code",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "UNI",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "name",
+        "data_type": "varchar",
+        "column_type": "varchar(128)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "category",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "direction",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "status",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "description",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "formula_expr",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "updated_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "source_type",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "frequency",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "default_missing_policy",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "YES",
+        "default": "exclude",
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "is_active",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "YES",
+        "default": "1",
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "factor_versions": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "factor_id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "version",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "formula_expr",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "params_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "direction",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "source_mapping_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "effective_from",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "change_note",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "is_latest",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "factor_model_runs": [
+      {
+        "column": "id",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "model_type",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "asset_type",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "target_code",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "train_start_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "train_end_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "validation_start_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "validation_end_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "data_cutoff_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "feature_versions_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "hyperparameters_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "metrics_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "sample_count",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "symbol_count",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "trade_date_count",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "status",
+        "data_type": "varchar",
+        "column_type": "varchar(24)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "rejection_reason",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "artifact_path",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "activated_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "factor_weight_snapshots": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "model_run_id",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "factor_code",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "factor_version",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "coefficient",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "normalized_weight",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "train_ic",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "validation_ic",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "factor_runtime_state": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "weight_mode",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "active_model_run_id",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "YES",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "updated_by",
+        "data_type": "varchar",
+        "column_type": "varchar(128)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "fallback_reason",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "version",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "updated_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "factor_system_config": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "feature_enabled",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "warehouse_path",
+        "data_type": "varchar",
+        "column_type": "varchar(1024)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "updated_by",
+        "data_type": "varchar",
+        "column_type": "varchar(128)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "updated_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "custom_indicators": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "name",
+        "data_type": "varchar",
+        "column_type": "varchar(128)",
+        "nullable": "NO",
+        "default": null,
+        "key": "UNI",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "key",
+        "data_type": "varchar",
+        "column_type": "varchar(96)",
+        "nullable": "NO",
+        "default": null,
+        "key": "UNI",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "description",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "category",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "formula",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "value_type",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "params_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "scope_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "enabled",
+        "data_type": "tinyint",
+        "column_type": "tinyint(1)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "updated_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "scores": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "symbol_id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "trade_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "quality_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "quality_grade",
+        "data_type": "varchar",
+        "column_type": "varchar(1)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "timing_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "stage",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "action",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "priority_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "trend_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "momentum_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "volatility_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "liquidity_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "breadth_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "event_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "breakout_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "pullback_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "overheat_penalty",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "data_credibility",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "calc_batch_id",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "scoring_asset_type",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "scoring_config_id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "scoring_preset_key",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "scoring_preset_name",
+        "data_type": "varchar",
+        "column_type": "varchar(128)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "scoring_config_version",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "scoring_config_snapshot_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "dimension_scores_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "factor_scores_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "weight_mode",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "YES",
+        "default": "manual",
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "factor_model_run_id",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "factor_data_cutoff_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "factor_quality_score",
+        "data_type": "double",
+        "column_type": "double",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "factor_timing_score",
+        "data_type": "double",
+        "column_type": "double",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "model_alpha_score",
+        "data_type": "double",
+        "column_type": "double",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "macro_regime",
+        "data_type": "varchar",
+        "column_type": "varchar(24)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "macro_position_multiplier",
+        "data_type": "double",
+        "column_type": "double",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "async_tasks": [
+      {
+        "column": "id",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "task_type",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "status",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "stage",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "percent",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "message",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "total",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "processed",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "ok_count",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "failed_count",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "current_item",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "payload_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "result_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "errors_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "started_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "finished_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "updated_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "heartbeat_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "stage_budget_seconds",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "stage_started_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "last_progress_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "last_progress_percent",
+        "data_type": "double",
+        "column_type": "double",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "current_step_description",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "suggested_action",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "batch_recovery_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "last_patrol_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "worker_thread_id",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "cancel_requested",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": "0",
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "universe_symbols": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "symbol",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "UNI",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "name",
+        "data_type": "varchar",
+        "column_type": "varchar(128)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "asset_type",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "market",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "region",
+        "data_type": "varchar",
+        "column_type": "varchar(8)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "board",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "industry",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "listed_at",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "last_synced_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "last_bar_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "bar_count",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "is_synced",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "sync_failed",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "updated_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "universe_daily_bars": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "universe_symbol_id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "trade_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "open",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "high",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "low",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "close",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "volume",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "amount",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "turnover_rate",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "source",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "symbols": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "symbol",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "UNI",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "name",
+        "data_type": "varchar",
+        "column_type": "varchar(128)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "asset_type",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "market",
+        "data_type": "varchar",
+        "column_type": "varchar(16)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "board",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "industry",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "theme",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "YES",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "is_st",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "is_active",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "listed_at",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "updated_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "daily_bars": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "symbol_id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "trade_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "open",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "high",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "low",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "close",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "volume",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "amount",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "turnover_rate",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "source",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "stock_valuations": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "symbol_id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "trade_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "pe_ttm",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "pb",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "total_market_cap",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "circulating_market_cap",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "industry_pe_percentile",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "industry",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "pe_history_percentile",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "pe_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "source",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "raw_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "stock_financial_reports": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "symbol_id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "report_period",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "announcement_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "report_type",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "roe_ttm",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "net_profit",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "revenue",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "net_profit_yoy",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "revenue_yoy",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "source",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "raw_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "capital_flows": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "symbol_id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "trade_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "main_net_inflow",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "super_large_net_inflow",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "large_net_inflow",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "medium_net_inflow",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "small_net_inflow",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "main_net_inflow_pct",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "main_net_inflow_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "source",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "raw_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "stock_hot_rank_snapshots": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "symbol",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "trade_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "hot_rank",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "hot_rank_total",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "hot_rank_pct",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "source",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "raw_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "lhb_institution_trades": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "symbol",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "trade_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "buyer_institution_count",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "seller_institution_count",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "institution_buy",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "institution_sell",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "institution_net",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "market_amount",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "institution_net_pct",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "turnover_rate",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "reason",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "source",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "raw_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ],
+    "tail_accumulation_snapshots": [
+      {
+        "column": "id",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "PRI",
+        "extra": "auto_increment",
+        "comment": ""
+      },
+      {
+        "column": "symbol",
+        "data_type": "varchar",
+        "column_type": "varchar(32)",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "trade_date",
+        "data_type": "date",
+        "column_type": "date",
+        "nullable": "NO",
+        "default": null,
+        "key": "MUL",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "minute_count",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "tail_minute_count",
+        "data_type": "int",
+        "column_type": "int(11)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "day_amount",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "tail_amount",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "tail_amount_share",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "tail_activity_ratio",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "tail_return",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "close_location",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "proxy_score",
+        "data_type": "float",
+        "column_type": "float",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "source",
+        "data_type": "varchar",
+        "column_type": "varchar(64)",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "raw_json",
+        "data_type": "text",
+        "column_type": "text",
+        "nullable": "YES",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      },
+      {
+        "column": "created_at",
+        "data_type": "datetime",
+        "column_type": "datetime",
+        "nullable": "NO",
+        "default": null,
+        "key": "",
+        "extra": "",
+        "comment": ""
+      }
+    ]
+  },
+  "indexes_fingerprint": {
+    "factors": [
+      {
+        "index_name": "code",
+        "column": "code",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      }
+    ],
+    "factor_versions": [
+      {
+        "index_name": "ix_factor_versions_effective_from",
+        "column": "effective_from",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_factor_versions_factor_id",
+        "column": "factor_id",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_factor_versions_is_latest",
+        "column": "is_latest",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_factor_version",
+        "column": "factor_id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_factor_version",
+        "column": "version",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      }
+    ],
+    "factor_model_runs": [
+      {
+        "index_name": "ix_factor_model_runs_asset_type",
+        "column": "asset_type",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_factor_model_runs_created_at",
+        "column": "created_at",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_factor_model_runs_data_cutoff_at",
+        "column": "data_cutoff_at",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_factor_model_runs_model_type",
+        "column": "model_type",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_factor_model_runs_status",
+        "column": "status",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      }
+    ],
+    "factor_weight_snapshots": [
+      {
+        "index_name": "ix_factor_weight_snapshots_factor_code",
+        "column": "factor_code",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_factor_weight_snapshots_model_run_id",
+        "column": "model_run_id",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_factor_model_weight",
+        "column": "model_run_id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_factor_model_weight",
+        "column": "factor_code",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_factor_model_weight",
+        "column": "factor_version",
+        "non_unique": 0,
+        "seq": 3,
+        "type": "BTREE"
+      }
+    ],
+    "factor_runtime_state": [
+      {
+        "index_name": "ix_factor_runtime_state_active_model_run_id",
+        "column": "active_model_run_id",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_factor_runtime_state_weight_mode",
+        "column": "weight_mode",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      }
+    ],
+    "factor_system_config": [
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      }
+    ],
+    "custom_indicators": [
+      {
+        "index_name": "ix_custom_indicators_category",
+        "column": "category",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_custom_indicators_enabled",
+        "column": "enabled",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_custom_indicators_key",
+        "column": "key",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_custom_indicators_name",
+        "column": "name",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      }
+    ],
+    "scores": [
+      {
+        "index_name": "ix_scores_action",
+        "column": "action",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_scores_stage",
+        "column": "stage",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_scores_symbol_id",
+        "column": "symbol_id",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_scores_trade_date",
+        "column": "trade_date",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_score_symbol_date_batch",
+        "column": "symbol_id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_score_symbol_date_batch",
+        "column": "trade_date",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_score_symbol_date_batch",
+        "column": "calc_batch_id",
+        "non_unique": 0,
+        "seq": 3,
+        "type": "BTREE"
+      }
+    ],
+    "async_tasks": [
+      {
+        "index_name": "ix_async_tasks_created_at",
+        "column": "created_at",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_async_tasks_stage",
+        "column": "stage",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_async_tasks_status",
+        "column": "status",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_async_tasks_task_type",
+        "column": "task_type",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      }
+    ],
+    "universe_symbols": [
+      {
+        "index_name": "ix_universe_incremental_pending",
+        "column": "region",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_incremental_pending",
+        "column": "asset_type",
+        "non_unique": 1,
+        "seq": 2,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_incremental_pending",
+        "column": "is_synced",
+        "non_unique": 1,
+        "seq": 3,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_incremental_pending",
+        "column": "last_bar_date",
+        "non_unique": 1,
+        "seq": 4,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_incremental_pending",
+        "column": "last_synced_at",
+        "non_unique": 1,
+        "seq": 5,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_incremental_pending",
+        "column": "sync_failed",
+        "non_unique": 1,
+        "seq": 6,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_symbols_symbol",
+        "column": "symbol",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_symbol_asset",
+        "column": "asset_type",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_symbol_asset",
+        "column": "region",
+        "non_unique": 1,
+        "seq": 2,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_symbol_synced",
+        "column": "is_synced",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_symbol_synced",
+        "column": "last_bar_date",
+        "non_unique": 1,
+        "seq": 2,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      }
+    ],
+    "universe_daily_bars": [
+      {
+        "index_name": "ix_universe_bar_symbol_date",
+        "column": "universe_symbol_id",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_bar_symbol_date",
+        "column": "trade_date",
+        "non_unique": 1,
+        "seq": 2,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_universe_daily_bars_universe_symbol_id",
+        "column": "universe_symbol_id",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_universe_bar_symbol_date",
+        "column": "universe_symbol_id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_universe_bar_symbol_date",
+        "column": "trade_date",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      }
+    ],
+    "symbols": [
+      {
+        "index_name": "ix_symbols_asset_type",
+        "column": "asset_type",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_symbols_market",
+        "column": "market",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_symbols_symbol",
+        "column": "symbol",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_symbols_theme",
+        "column": "theme",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      }
+    ],
+    "daily_bars": [
+      {
+        "index_name": "ix_daily_bars_symbol_id",
+        "column": "symbol_id",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_daily_bars_trade_date",
+        "column": "trade_date",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_daily_bar_symbol_date",
+        "column": "symbol_id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_daily_bar_symbol_date",
+        "column": "trade_date",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      }
+    ],
+    "stock_valuations": [
+      {
+        "index_name": "ix_stock_valuations_symbol_id",
+        "column": "symbol_id",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_stock_valuations_trade_date",
+        "column": "trade_date",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_stock_valuation_symbol_date",
+        "column": "symbol_id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_stock_valuation_symbol_date",
+        "column": "trade_date",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      }
+    ],
+    "stock_financial_reports": [
+      {
+        "index_name": "ix_stock_financial_reports_announcement_date",
+        "column": "announcement_date",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_stock_financial_reports_report_period",
+        "column": "report_period",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_stock_financial_reports_symbol_id",
+        "column": "symbol_id",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_stock_financial_report_version",
+        "column": "symbol_id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_stock_financial_report_version",
+        "column": "report_period",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_stock_financial_report_version",
+        "column": "announcement_date",
+        "non_unique": 0,
+        "seq": 3,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_stock_financial_report_version",
+        "column": "report_type",
+        "non_unique": 0,
+        "seq": 4,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_stock_financial_report_version",
+        "column": "source",
+        "non_unique": 0,
+        "seq": 5,
+        "type": "BTREE"
+      }
+    ],
+    "capital_flows": [
+      {
+        "index_name": "ix_capital_flows_symbol_id",
+        "column": "symbol_id",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_capital_flows_trade_date",
+        "column": "trade_date",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_capital_flow_symbol_date",
+        "column": "symbol_id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_capital_flow_symbol_date",
+        "column": "trade_date",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      }
+    ],
+    "stock_hot_rank_snapshots": [
+      {
+        "index_name": "ix_stock_hot_rank_snapshots_symbol",
+        "column": "symbol",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_stock_hot_rank_snapshots_trade_date",
+        "column": "trade_date",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_stock_hot_rank_symbol_date_source",
+        "column": "symbol",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_stock_hot_rank_symbol_date_source",
+        "column": "trade_date",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_stock_hot_rank_symbol_date_source",
+        "column": "source",
+        "non_unique": 0,
+        "seq": 3,
+        "type": "BTREE"
+      }
+    ],
+    "lhb_institution_trades": [
+      {
+        "index_name": "ix_lhb_institution_trades_symbol",
+        "column": "symbol",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_lhb_institution_trades_trade_date",
+        "column": "trade_date",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_lhb_institution_trade_symbol_date_source",
+        "column": "symbol",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_lhb_institution_trade_symbol_date_source",
+        "column": "trade_date",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_lhb_institution_trade_symbol_date_source",
+        "column": "source",
+        "non_unique": 0,
+        "seq": 3,
+        "type": "BTREE"
+      }
+    ],
+    "tail_accumulation_snapshots": [
+      {
+        "index_name": "ix_tail_accumulation_snapshots_symbol",
+        "column": "symbol",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "ix_tail_accumulation_snapshots_trade_date",
+        "column": "trade_date",
+        "non_unique": 1,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "PRIMARY",
+        "column": "id",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_tail_accumulation_symbol_date_source",
+        "column": "symbol",
+        "non_unique": 0,
+        "seq": 1,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_tail_accumulation_symbol_date_source",
+        "column": "trade_date",
+        "non_unique": 0,
+        "seq": 2,
+        "type": "BTREE"
+      },
+      {
+        "index_name": "uq_tail_accumulation_symbol_date_source",
+        "column": "source",
+        "non_unique": 0,
+        "seq": 3,
+        "type": "BTREE"
+      }
+    ]
+  },
+  "factors_snapshot": [
+    {
+      "id": 1,
+      "code": "ep_ttm",
+      "name": "E/P (TTM)",
+      "category": "fundamental",
+      "direction": "higher_better",
+      "status": "active",
+      "source_type": "local_akshare",
+      "frequency": "daily",
+      "default_missing_policy": "exclude",
+      "is_active": 1,
+      "description": "E/P (TTM)",
+      "formula_expr": "1 / pe_ttm, pe_ttm > 0"
+    },
+    {
+      "id": 2,
+      "code": "negative_pb",
+      "name": "Negative PB",
+      "category": "fundamental",
+      "direction": "higher_better",
+      "status": "active",
+      "source_type": "local_akshare",
+      "frequency": "daily",
+      "default_missing_policy": "exclude",
+      "is_active": 1,
+      "description": "Negative PB",
+      "formula_expr": "-pb, pb > 0"
+    },
+    {
+      "id": 3,
+      "code": "main_inflow_5d_ratio",
+      "name": "5-day Main Inflow / Turnover",
+      "category": "capital_flow",
+      "direction": "higher_better",
+      "status": "active",
+      "source_type": "local_akshare",
+      "frequency": "daily",
+      "default_missing_policy": "exclude",
+      "is_active": 1,
+      "description": "5-day Main Inflow / Turnover",
+      "formula_expr": "sum(main_net_inflow, 5d) / sum(amount, 5d)"
+    },
+    {
+      "id": 4,
+      "code": "turnover_z20",
+      "name": "20-day Turnover Z-Score",
+      "category": "sentiment",
+      "direction": "nonlinear",
+      "status": "active",
+      "source_type": "local_akshare",
+      "frequency": "daily",
+      "default_missing_policy": "exclude",
+      "is_active": 1,
+      "description": "20-day Turnover Z-Score",
+      "formula_expr": "(turnover - mean_20d) / stddev_pop_20d"
+    },
+    {
+      "id": 5,
+      "code": "roe_yoy_growth",
+      "name": "ROE YoY Growth (ppt)",
+      "category": "fundamental",
+      "direction": "higher_better",
+      "status": "active",
+      "source_type": "local_akshare",
+      "frequency": "quarterly",
+      "default_missing_policy": "exclude",
+      "is_active": 1,
+      "description": "ROE YoY Growth (ppt)",
+      "formula_expr": "latest announced roe_ttm - same-period prior-year roe_ttm"
+    },
+    {
+      "id": 6,
+      "code": "lhb_institution_net_ratio",
+      "name": "LHB Institution Net / Turnover",
+      "category": "capital_flow",
+      "direction": "higher_better",
+      "status": "active",
+      "source_type": "local_akshare",
+      "frequency": "daily",
+      "default_missing_policy": "exclude",
+      "is_active": 1,
+      "description": "LHB Institution Net / Turnover",
+      "formula_expr": "lhb_institution_net / amount on listed event day"
+    },
+    {
+      "id": 7,
+      "code": "hot_rank_attention",
+      "name": "EastMoney Hot-Rank Attention",
+      "category": "sentiment",
+      "direction": "nonlinear",
+      "status": "active",
+      "source_type": "local_akshare",
+      "frequency": "daily",
+      "default_missing_policy": "exclude",
+      "is_active": 1,
+      "description": "EastMoney Hot-Rank Attention",
+      "formula_expr": "1 - hot_rank_pct / 100 for current top-100 snapshot"
+    },
+    {
+      "id": 8,
+      "code": "tail_accumulation_proxy",
+      "name": "Tail-session Accumulation Proxy",
+      "category": "capital_flow",
+      "direction": "higher_better",
+      "status": "active",
+      "source_type": "local_akshare",
+      "frequency": "daily",
+      "default_missing_policy": "exclude",
+      "is_active": 1,
+      "description": "Tail-session Accumulation Proxy",
+      "formula_expr": "log(tail_avg_amount/pre_tail_avg_amount) + 20*tail_return + close_location - 0.5"
+    }
+  ],
+  "factors_count": 8,
+  "factor_versions_snapshot": [
+    {
+      "id": 1,
+      "factor_id": 1,
+      "version": 1,
+      "formula_expr": "1 / pe_ttm, pe_ttm > 0",
+      "params_json": "{\"positive_pe_only\": true, \"valuation_max_age_days\": 7}",
+      "source_mapping_json": "{\"field\": \"pe_ttm\", \"table\": \"raw_valuation_snapshots\"}",
+      "direction": "higher_better",
+      "is_latest": 1,
+      "change_note": "Initial local AkShare factor definition",
+      "created_at": "2026-07-14 13:26:24"
+    },
+    {
+      "id": 2,
+      "factor_id": 2,
+      "version": 1,
+      "formula_expr": "-pb, pb > 0",
+      "params_json": "{\"positive_pb_only\": true, \"valuation_max_age_days\": 7}",
+      "source_mapping_json": "{\"field\": \"pb\", \"table\": \"raw_valuation_snapshots\"}",
+      "direction": "higher_better",
+      "is_latest": 1,
+      "change_note": "Initial local AkShare factor definition",
+      "created_at": "2026-07-14 13:26:24"
+    },
+    {
+      "id": 3,
+      "factor_id": 3,
+      "version": 1,
+      "formula_expr": "sum(main_net_inflow, 5d) / sum(amount, 5d)",
+      "params_json": "{\"minimum_periods\": 5, \"window\": 5}",
+      "source_mapping_json": "{\"fields\": [\"main_net_inflow\", \"amount\"], \"tables\": [\"raw_fund_flows\", \"raw_daily_bars\"]}",
+      "direction": "higher_better",
+      "is_latest": 1,
+      "change_note": "Initial local AkShare factor definition",
+      "created_at": "2026-07-14 13:26:24"
+    },
+    {
+      "id": 4,
+      "factor_id": 4,
+      "version": 1,
+      "formula_expr": "(turnover - mean_20d) / stddev_pop_20d",
+      "params_json": "{\"minimum_periods\": 20, \"window\": 20}",
+      "source_mapping_json": "{\"field\": \"turnover_rate\", \"table\": \"raw_daily_bars\"}",
+      "direction": "nonlinear",
+      "is_latest": 1,
+      "change_note": "Initial local AkShare factor definition",
+      "created_at": "2026-07-14 13:26:24"
+    },
+    {
+      "id": 5,
+      "factor_id": 5,
+      "version": 1,
+      "formula_expr": "latest announced roe_ttm - same-period prior-year roe_ttm",
+      "params_json": "{\"announcement_date_cutoff\": true, \"same_period_years\": 1, \"unit\": \"percentage_point\"}",
+      "source_mapping_json": "{\"fields\": [\"report_period\", \"announcement_date\", \"roe_ttm\"], \"point_in_time\": true, \"table\": \"raw_financial_reports\"}",
+      "direction": "higher_better",
+      "is_latest": 1,
+      "change_note": "Initial local AkShare factor definition",
+      "created_at": "2026-07-15 09:26:37"
+    },
+    {
+      "id": 6,
+      "factor_id": 6,
+      "version": 1,
+      "formula_expr": "lhb_institution_net / amount on listed event day",
+      "params_json": "{\"event_only\": true, \"model_enabled\": false, \"non_event_policy\": \"missing\"}",
+      "source_mapping_json": "{\"fields\": [\"has_lhb\", \"lhb_institution_net\", \"amount\"], \"provider_scope\": \"institution_seats_only\", \"tables\": [\"raw_sentiment\", \"raw_daily_bars\"]}",
+      "direction": "higher_better",
+      "is_latest": 1,
+      "change_note": "Initial local AkShare factor definition",
+      "created_at": "2026-07-15 09:26:37"
+    },
+    {
+      "id": 7,
+      "factor_id": 7,
+      "version": 1,
+      "formula_expr": "1 - hot_rank_pct / 100 for current top-100 snapshot",
+      "params_json": "{\"historical_backfill\": false, \"model_enabled\": false, \"snapshot_only\": true}",
+      "source_mapping_json": "{\"fields\": [\"hot_rank\", \"hot_rank_total\", \"hot_rank_pct\"], \"provider_scope\": \"current_top_100_only\", \"table\": \"raw_sentiment\"}",
+      "direction": "nonlinear",
+      "is_latest": 1,
+      "change_note": "Initial local AkShare factor definition",
+      "created_at": "2026-07-15 09:26:37"
+    },
+    {
+      "id": 8,
+      "factor_id": 8,
+      "version": 1,
+      "formula_expr": "log(tail_avg_amount/pre_tail_avg_amount) + 20*tail_return + close_location - 0.5",
+      "params_json": "{\"level2\": false, \"minimum_day_minutes\": 180, \"minimum_tail_minutes\": 20, \"minute_period\": \"1\", \"model_enabled\": false, \"tail_start\": \"14:30\"}",
+      "source_mapping_json": "{\"fields\": [\"tail_activity_ratio\", \"tail_return\", \"close_location\", \"proxy_score\"], \"provider_scope\": \"candidate_pool_only\", \"table\": \"raw_tail_proxy\"}",
+      "direction": "higher_better",
+      "is_latest": 1,
+      "change_note": "Initial local AkShare factor definition",
+      "created_at": "2026-07-15 09:26:37"
+    }
+  ],
+  "factor_system_config": "ERROR: (1054, \"Unknown column 'weight_mode' in 'field list'\")",
+  "table_row_counts": {
+    "universe_symbols": 7207,
+    "universe_daily_bars": 7361924,
+    "symbols": 7499,
+    "daily_bars": 1418741,
+    "stock_valuations": 6,
+    "stock_financial_reports": 336,
+    "capital_flows": 0,
+    "stock_hot_rank_snapshots": 1155,
+    "lhb_institution_trades": 1662,
+    "tail_accumulation_snapshots": 0,
+    "scores": 22008,
+    "factors": 8,
+    "factor_versions": 8,
+    "factor_model_runs": 1,
+    "factor_weight_snapshots": 0,
+    "custom_indicators": 2,
+    "async_tasks": 171
+  },
+  "recent_factor_tasks": "ERROR: (1054, \"Unknown column 'error_code' in 'field list'\")",
+  "universe_daily_recent_dates": [
+    {
+      "trade_date": "2026-07-31",
+      "count": 4336
+    },
+    {
+      "trade_date": "2026-07-30",
+      "count": 4336
+    },
+    {
+      "trade_date": "2026-07-29",
+      "count": 4334
+    },
+    {
+      "trade_date": "2026-07-28",
+      "count": 4335
+    },
+    {
+      "trade_date": "2026-07-27",
+      "count": 4335
+    },
+    {
+      "trade_date": "2026-07-24",
+      "count": 4345
+    },
+    {
+      "trade_date": "2026-07-23",
+      "count": 4385
+    },
+    {
+      "trade_date": "2026-07-22",
+      "count": 4386
+    },
+    {
+      "trade_date": "2026-07-21",
+      "count": 4386
+    },
+    {
+      "trade_date": "2026-07-20",
+      "count": 4386
+    }
+  ]
+}

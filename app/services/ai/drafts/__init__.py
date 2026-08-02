@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 from app.services.ai.drafts.alert import draft_alert, execute_alert, preview_alert
+from app.services.ai.drafts.factor_draft import draft_factor, execute_factor, preview_factor
 from app.services.ai.drafts.filter import draft_filter, execute_filter, preview_filter
 from app.services.ai.drafts.indicator import draft_indicator, execute_indicator, preview_indicator
 from app.services.ai.drafts.note import draft_note, execute_note, preview_note
@@ -36,6 +37,7 @@ from app.services.ai.drafts.review import draft_review, execute_review, preview_
 # 草稿工具注册表：draft_type -> (draft_fn, preview_fn, execute_fn)
 DRAFT_REGISTRY = {
     "draft_indicator": (draft_indicator, preview_indicator, execute_indicator),
+    "draft_factor": (draft_factor, preview_factor, execute_factor),
     "draft_filter": (draft_filter, preview_filter, execute_filter),
     "draft_alert": (draft_alert, preview_alert, execute_alert),
     "draft_note": (draft_note, preview_note, execute_note),
@@ -54,6 +56,7 @@ __all__ = [
     "get_draft_functions",
     # 各草稿三步函数
     "draft_indicator", "preview_indicator", "execute_indicator",
+    "draft_factor", "preview_factor", "execute_factor",
     "draft_filter", "preview_filter", "execute_filter",
     "draft_alert", "preview_alert", "execute_alert",
     "draft_note", "preview_note", "execute_note",

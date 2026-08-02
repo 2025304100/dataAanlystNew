@@ -15,6 +15,14 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping
 
 from app.core.config import settings
+from app.services.factors.warehouse_locks import (
+    WarehouseLockAcquisition,
+    WarehouseLockInfo,
+    WarehouseLockUnavailable,
+    acquire_warehouse_lock,
+    diagnose_warehouse_lock,
+    release_warehouse_lock,
+)
 
 
 SCHEMA_VERSION = "3"
@@ -782,3 +790,79 @@ class FactorWarehouse:
                 conn.execute("ROLLBACK")
                 raise
         return len(selected)
+
+    # ------------------------------------------------------------------
+    # WPD-03: cross-process lock governance
+    # ------------------------------------------------------------------
+
+    def acquire_process_lock(
+        self, *, timeout_seconds: float = 0.0
+    ) -> WarehouseLockAcquisition:
+        """Acquire a cross-process mutual-exclusion lock for this warehouse.
+
+        Delegates to :func:`warehouse_locks.acquire_warehouse_lock`.
+        """
+        return acquire_warehouse_lock(
+            self.path, timeout_seconds=timeout_seconds
+        )
+
+    def release_process_lock(
+        self, *, owner_pid: int | None = None
+    ) -> bool:
+        """Release the cross-process lock previously acquired via
+        :meth:`acquire_process_lock`.
+        """
+        return release_warehouse_lock(self.path, owner_pid=owner_pid)
+
+    def diagnose_lock(self) -> WarehouseLockInfo:
+        """Return diagnostic information about the warehouse file lock."""
+        return diagnose_warehouse_lock(self.path)
+
+    @contextmanager
+    def safe_write_context(
+        self, *, timeout_seconds: float = 30.0
+    ) -> Iterator[Any]:
+        """Context manager that combines cross-process locking with an
+        atomic DuckDB write transaction.
+
+        Usage::
+
+            with warehouse.safe_write_context(timeout_seconds=30) as conn:
+                conn.execute("INSERT ...")
+
+        Guarantees:
+
+        * The cross-process file lock is acquired before any write.
+        * On success the transaction is ``COMMIT``-ed.
+        * On failure the transaction is ``ROLLBACK``-ed so a failed
+          batch never partially overwrites the last successful data.
+        * The lock is **always** released in the ``finally`` block,
+          even when an exception occurs.
+
+        Raises :class:`WarehouseLockUnavailable` when the lock cannot be
+        acquired within *timeout_seconds*.
+        """
+        acquisition = acquire_warehouse_lock(
+            self.path, timeout_seconds=timeout_seconds
+        )
+        if not acquisition.acquired:
+            raise WarehouseLockUnavailable(
+                str(self.path),
+                acquisition.owner_pid,
+                acquisition.reason or "unknown",
+            )
+        try:
+            self.initialize()
+            with self._write_lock, self.connection() as conn:
+                conn.execute("BEGIN TRANSACTION")
+                try:
+                    yield conn
+                    conn.execute("COMMIT")
+                except Exception:
+                    try:
+                        conn.execute("ROLLBACK")
+                    except Exception:
+                        pass  # Connection may already be in error state.
+                    raise
+        finally:
+            release_warehouse_lock(self.path)

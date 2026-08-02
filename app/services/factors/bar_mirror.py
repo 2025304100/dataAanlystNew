@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.models.daily_bar import DailyBar
 from app.models.symbol import Symbol
 from app.models.universe import UniverseDailyBar, UniverseSymbol
+from app.services.factors.batch_audit import begin_batch, finalize_batch
 from app.services.factors.store import FactorWarehouse
 
 
@@ -642,44 +643,101 @@ def mirror_daily_bars(
     if _cancelled(should_cancel):
         return result
 
-    # Universe data is the full-market baseline. Business bars are mirrored
-    # second so their business_symbol_id and any promoted-symbol corrections
-    # remain visible on duplicate symbol/date keys.
-    if include_universe:
-        _mirror_universe_metadata(
-            db,
+    # WPD-06: best-effort batch audit. begin_batch errors are swallowed so
+    # they never block the mirror pipeline. finalize_batch runs in finally
+    # with the same guarantee.
+    batch_recorded = False
+    try:
+        begin_batch(
             target,
-            result,
-            batch_size=batch_size,
-            full_refresh=full_refresh,
-            should_cancel=should_cancel,
-            progress_callback=progress_callback,
+            batch_id=result.batch_id,
+            source_key="ingest.daily_bars.business",
+            scope={
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+                "adjust": adjust,
+                "include_business": include_business,
+                "include_universe": include_universe,
+                "full_refresh": full_refresh,
+            },
         )
-        if _cancelled(should_cancel):
-            return result
-        _mirror_universe_bars(
-            db,
-            target,
-            result,
-            start_date=start_date,
-            end_date=end_date,
-            batch_size=batch_size,
-            adjust=adjust,
-            full_refresh=full_refresh,
-            should_cancel=should_cancel,
-            progress_callback=progress_callback,
+        batch_recorded = True
+    except Exception:
+        logger.exception(
+            "begin_batch failed for %s; continuing without batch tracking",
+            result.batch_id,
         )
-    if include_business and not _cancelled(should_cancel):
-        _mirror_business_bars(
-            db,
-            target,
-            result,
-            start_date=start_date,
-            end_date=end_date,
-            batch_size=batch_size,
-            adjust=adjust,
-            full_refresh=full_refresh,
-            should_cancel=should_cancel,
-            progress_callback=progress_callback,
-        )
+
+    mirror_exc: Exception | None = None
+    try:
+        # Universe data is the full-market baseline. Business bars are mirrored
+        # second so their business_symbol_id and any promoted-symbol corrections
+        # remain visible on duplicate symbol/date keys.
+        if include_universe:
+            _mirror_universe_metadata(
+                db,
+                target,
+                result,
+                batch_size=batch_size,
+                full_refresh=full_refresh,
+                should_cancel=should_cancel,
+                progress_callback=progress_callback,
+            )
+            if _cancelled(should_cancel):
+                return result
+            _mirror_universe_bars(
+                db,
+                target,
+                result,
+                start_date=start_date,
+                end_date=end_date,
+                batch_size=batch_size,
+                adjust=adjust,
+                full_refresh=full_refresh,
+                should_cancel=should_cancel,
+                progress_callback=progress_callback,
+            )
+        if include_business and not _cancelled(should_cancel):
+            _mirror_business_bars(
+                db,
+                target,
+                result,
+                start_date=start_date,
+                end_date=end_date,
+                batch_size=batch_size,
+                adjust=adjust,
+                full_refresh=full_refresh,
+                should_cancel=should_cancel,
+                progress_callback=progress_callback,
+            )
+    except Exception as exc:
+        mirror_exc = exc
+        raise
+    finally:
+        if batch_recorded:
+            try:
+                if mirror_exc is not None:
+                    finalize_batch(
+                        target,
+                        batch_id=result.batch_id,
+                        status="failed",
+                        rows_received=result.rows_written,
+                        rows_written=result.rows_written,
+                        error={
+                            "error_type": type(mirror_exc).__name__,
+                            "error_message": str(mirror_exc),
+                        },
+                    )
+                else:
+                    finalize_batch(
+                        target,
+                        batch_id=result.batch_id,
+                        status="committed",
+                        rows_received=result.rows_written,
+                        rows_written=result.rows_written,
+                    )
+            except Exception:
+                logger.exception(
+                    "finalize_batch failed for %s", result.batch_id
+                )
     return result

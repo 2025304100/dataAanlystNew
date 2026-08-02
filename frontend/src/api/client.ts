@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import type { AsyncTaskRead, CapabilitiesResponse, CustomIndicatorPreviewRead, SignalRule, SignalRulePreviewResult, SnapshotStatusRead } from "../types";
+import type { AIDraftDetail, AIDraftExecuteResult, AIDraftPreviewResult, AsyncTaskRead, CapabilitiesResponse, CustomIndicatorPreviewRead, CustomIndicatorPromoteResponse, SignalRule, SignalRulePreviewResult, SnapshotStatusRead } from "../types";
 import type { AttributionReport, Review } from "../types";
 import type { SymbolRelationships } from "../types/symbolRelationships";
 import type {
@@ -241,6 +241,63 @@ const API = "/api/v1";
 
 export const SYSTEM_HEALTH_URL = API + "/system/data-health";
 
+export type ExternalSyncDataset =
+  | "fundamental"
+  | "financial"
+  | "lhb"
+  | "hot_rank"
+  | "tail_proxy"
+  | "capital_flow"
+  | "etf";
+
+export interface ExternalSyncResult {
+  dataset: ExternalSyncDataset;
+  total: number;
+  success: number;
+  skipped: number;
+  failed: number;
+  records: number;
+  errors: string[];
+}
+
+export interface ExternalSyncTask {
+  id: string;
+  task_type: string;
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
+  stage: string;
+  percent: number;
+  message: string;
+  total: number;
+  processed: number;
+  ok_count: number;
+  failed_count: number;
+  current_item: string | null;
+  result: ExternalSyncResult | null;
+  errors: Array<{ stage?: string; error?: string }>;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ExternalDatasetOverview {
+  dataset: ExternalSyncDataset;
+  records: number;
+  symbols: number;
+  latest_date: string | null;
+  last_updated_at: string | null;
+  latest_task: ExternalSyncTask | null;
+}
+
+export interface ExternalDataOverview {
+  datasets: ExternalDatasetOverview[];
+  total_records: number;
+  covered_symbols: number;
+  available_datasets: number;
+  running_tasks: number;
+  refreshed_at: string;
+}
+
 // TODO: 待后续类型强化——下方 requestJson<any>/requestJson<any[]> 调用保留 any 是为了
 // 兼容各调用方对返回值字段的直接访问（如 .id / .symbol 等），避免大面积级联报错。
 export const api = {
@@ -279,6 +336,26 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ actor: "local_user", reason }),
     }),
+  // WP7-06: FactorSet API
+  listFactorSets: (status?: string, limit: number = 50) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status) params.set("status", status);
+    return requestJson<FactorSet[]>(`${API}/factor-sets?${params.toString()}`);
+  },
+  getFactorSet: (factorSetId: string) =>
+    requestJson<FactorSet>(`${API}/factor-sets/${encodeURIComponent(factorSetId)}`),
+  freezeFactorSet: (factorSetId: string, reason: string) =>
+    requestJson<FactorSet>(`${API}/factor-sets/${encodeURIComponent(factorSetId)}/freeze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor: "local_user", reason }),
+    }),
+  deprecateFactorSet: (factorSetId: string, reason: string) =>
+    requestJson<FactorSet>(`${API}/factor-sets/${encodeURIComponent(factorSetId)}/deprecate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor: "local_user", reason }),
+    }),
   createFactorPipelineTask: (payload: FactorPipelineCreate) =>
     requestJson<FactorPipelineTask>(`${API}/factor-pipeline/tasks`, {
       method: "POST",
@@ -305,6 +382,126 @@ export const api = {
     const suffix = params.toString() ? `?${params.toString()}` : "";
     return requestJson<SymbolFactorExplanation>(`${API}/factors/symbols/${symbolId}/explanation${suffix}`);
   },
+
+  // WP3: Factor library CRUD
+  listFactorDefinitions: (params: {
+    lifecycle_status?: string;
+    origin?: string;
+    factor_kind?: string;
+    category?: string;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.lifecycle_status) sp.set("lifecycle_status", params.lifecycle_status);
+    if (params.origin) sp.set("origin", params.origin);
+    if (params.factor_kind) sp.set("factor_kind", params.factor_kind);
+    if (params.category) sp.set("category", params.category);
+    if (params.search) sp.set("search", params.search);
+    if (params.page) sp.set("page", String(params.page));
+    if (params.page_size) sp.set("page_size", String(params.page_size));
+    const suffix = sp.toString() ? `?${sp.toString()}` : "";
+    return requestJson<FactorDefinitionListResponse>(`${API}/factors${suffix}`);
+  },
+  getFactorDefinition: (factorCode: string) =>
+    requestJson<FactorDefinition>(`${API}/factors/${encodeURIComponent(factorCode)}`),
+  createFactorDraft: (payload: FactorDraftPayload) =>
+    requestJson<FactorDefinition>(`${API}/factors`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  createFactorVersion: (factorCode: string, payload: FactorVersionPayload) =>
+    requestJson<FactorVersionDefinition>(`${API}/factors/${encodeURIComponent(factorCode)}/versions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  getFactorReferences: (factorCode: string, versionId: number) =>
+    requestJson<FactorReferenceInfo>(`${API}/factors/${encodeURIComponent(factorCode)}/references?version_id=${versionId}`),
+  executeFactorTransition: (factorCode: string, payload: FactorTransitionPayload) =>
+    requestJson<FactorTransitionResult>(`${API}/factors/${encodeURIComponent(factorCode)}/transitions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  getFactorTransitionHistory: (factorCode: string) =>
+    requestJson<FactorTransitionAudit[]>(`${API}/factors/${encodeURIComponent(factorCode)}/transitions`),
+  validateFactorFormula: (payload: FactorValidatePayload) =>
+    requestJson<FactorValidateResult>(`${API}/factors/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  previewFactorFormula: (payload: FactorPreviewPayload) =>
+    requestJson<FactorPreviewResult>(`${API}/factors/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
+  // WP5-07: 评估实验室 API
+  createEvaluationTask: (payload: EvaluationTaskCreatePayload) =>
+    requestJson<EvaluationTaskRead>(`${API}/factor-evaluation/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  listEvaluationTasks: (limit: number = 20) =>
+    requestJson<EvaluationTaskRead[]>(`${API}/factor-evaluation/tasks?limit=${limit}`),
+  getEvaluationTask: (taskId: string) =>
+    requestJson<EvaluationTaskRead>(`${API}/factor-evaluation/tasks/${encodeURIComponent(taskId)}`),
+  cancelEvaluationTask: (taskId: string) =>
+    requestJson<EvaluationTaskRead>(`${API}/factor-evaluation/tasks/${encodeURIComponent(taskId)}/cancel`, { method: "POST" }),
+  listEvaluationRuns: (params: { factorVersionId?: number; gateResult?: string; limit?: number } = {}) => {
+    const sp = new URLSearchParams();
+    if (params.factorVersionId != null) sp.set("factor_version_id", String(params.factorVersionId));
+    if (params.gateResult) sp.set("gate_result", params.gateResult);
+    sp.set("limit", String(params.limit ?? 20));
+    return requestJson<EvaluationRunRead[]>(`${API}/factor-evaluation/runs?${sp.toString()}`);
+  },
+  getEvaluationRun: (runId: string) =>
+    requestJson<EvaluationRunRead>(`${API}/factor-evaluation/runs/${encodeURIComponent(runId)}`),
+
+  // WP6-06: Shadow 观测与审批 API
+  listShadowObservations: (factorVersionId: number, params: { startDate?: string; endDate?: string; validOnly?: boolean; limit?: number } = {}) => {
+    const sp = new URLSearchParams();
+    sp.set("factor_version_id", String(factorVersionId));
+    if (params.startDate) sp.set("start_date", params.startDate);
+    if (params.endDate) sp.set("end_date", params.endDate);
+    if (params.validOnly) sp.set("valid_only", "true");
+    sp.set("limit", String(params.limit ?? 200));
+    return requestJson<ShadowObservationRead[]>(`${API}/factor-shadow/observations?${sp.toString()}`);
+  },
+  getShadowObservationSummary: (factorVersionId: number) =>
+    requestJson<ShadowObservationSummary>(`${API}/factor-shadow/observations/summary?factor_version_id=${factorVersionId}`),
+  getShadowHealth: (factorVersionId: number) =>
+    requestJson<ShadowHealthReport>(`${API}/factor-shadow/health/${factorVersionId}`),
+  requestActivation: (payload: { factor_id: number; factor_version_id: number; evidence_run_id?: string; actor?: string; reason?: string }) =>
+    requestJson<ActivationResult>(`${API}/factor-shadow/activation/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  approveActivation: (payload: { factor_id: number; factor_version_id: number; approver?: string; reason: string; evidence_run_id?: string; request_id?: string }) =>
+    requestJson<ActivationResult>(`${API}/factor-shadow/activation/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  rejectActivation: (payload: { factor_id: number; reviewer?: string; reason: string; request_id?: string }) =>
+    requestJson<ActivationResult>(`${API}/factor-shadow/activation/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  quarantineFactor: (factorId: number, payload: { factor_version_id: number; reason: string; request_id?: string }) =>
+    requestJson<ActivationResult>(`${API}/factor-shadow/quarantine/${factorId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
 
   // Portfolios
   getPortfolios: () => requestJson<any[]>(`${API}/portfolios`),
@@ -986,6 +1183,18 @@ export const api = {
     requestJson<any[]>(`${API}/settings/custom-indicators/${id}/versions`),
   rollbackIndicator: (id: number, version: number) =>
     requestJson<any>(`${API}/settings/custom-indicators/${id}/rollback/${version}`, { method: "POST", headers: { "Content-Type": "application/json" } }),
+  promoteIndicatorToFactor: (id: number, payload: {
+    code?: string; name?: string; category?: string;
+    direction?: "higher_better" | "lower_better" | "nonlinear";
+    factor_kind?: "continuous" | "event" | "regime";
+    risk_level?: "low" | "medium" | "high";
+    description?: string; thesis?: string; change_note?: string;
+  } = {}) =>
+    requestJson<CustomIndicatorPromoteResponse>(`${API}/settings/custom-indicators/${id}/promote-to-factor`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
 
 
   // Discovery plans
@@ -1056,6 +1265,24 @@ export const api = {
     requestJson<any>(`${API}/alerts/evaluate`, { method: "POST" }),
 
   // P2: External data sync (valuation / financial reports / flow / ETF)
+  getExternalDataOverview: () =>
+    requestJson<ExternalDataOverview>(`${API}/external-data/overview`),
+  startExternalDataSync: (payload: {
+    dataset: ExternalSyncDataset;
+    source: "watchlist" | "positions" | "all";
+    include_northbound?: boolean;
+    lookback_days?: number;
+    limit?: number;
+  }) =>
+    requestJson<ExternalSyncTask>(`${API}/external-data/sync-tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  getExternalDataSyncTask: (taskId: string) =>
+    requestJson<ExternalSyncTask>(`${API}/external-data/sync-tasks/${encodeURIComponent(taskId)}`),
+
+  // Legacy blocking endpoints kept for compatibility with existing callers.
   syncFundamental: (source: "watchlist" | "positions" | "all") =>
     requestJson<{ total: number; success: number; skipped: number; failed: number; errors: string[] }>(
       `${API}/external-data/fundamental/sync?source=${source}`,
@@ -1160,6 +1387,30 @@ export const api = {
       `${API}/ai/sessions/cleanup`,
       { method: "POST" },
     ),
+
+  // WP4-05: AI 草案确认流程（通用 confirm/preview/reject/execute）
+  getAIDraft: (auditId: number) =>
+    requestJson<AIDraftDetail>(`${API}/ai/drafts/${auditId}`),
+  previewAIDraft: (auditId: number, modifiedPayload?: Record<string, unknown>) =>
+    requestJson<AIDraftPreviewResult>(`${API}/ai/drafts/${auditId}/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(modifiedPayload ? { modified_payload: modifiedPayload } : {}),
+    }),
+  confirmAIDraft: (auditId: number, modifiedPayload?: Record<string, unknown>) =>
+    requestJson<AIDraftDetail>(`${API}/ai/drafts/${auditId}/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(modifiedPayload ? { modified_payload: modifiedPayload } : {}),
+    }),
+  rejectAIDraft: (auditId: number, reason?: string) =>
+    requestJson<AIDraftDetail>(`${API}/ai/drafts/${auditId}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
+  executeAIDraft: (auditId: number) =>
+    requestJson<AIDraftExecuteResult>(`${API}/ai/drafts/${auditId}/execute`, { method: "POST" }),
 
   // WP-AI.7：AI Profile 管理
   getAIProfiles: () =>
@@ -1318,6 +1569,37 @@ export interface FactorModelList {
   items: FactorModelRun[];
 }
 
+// WP7-06: FactorSet 类型
+export interface FactorSetMember {
+  id: number;
+  factor_set_id: string;
+  factor_id: number;
+  factor_version_id: number;
+  factor_code: string;
+  factor_version: number;
+  role: string;
+  weight_constraint: string | null;
+  display_order: number;
+  missing_policy: string;
+  excluded_reason: string | null;
+}
+
+export type FactorSetStatus = "draft" | "frozen" | "deprecated";
+
+export interface FactorSet {
+  id: string;
+  name: string;
+  description: string | null;
+  content_hash: string | null;
+  status: FactorSetStatus;
+  frozen_at: string | null;
+  created_by: string;
+  created_at: string | null;
+  updated_at: string | null;
+  n_members: number;
+  members: FactorSetMember[];
+}
+
 export interface FactorPipelineCreate {
   start_date?: string | null;
   end_date?: string | null;
@@ -1357,6 +1639,252 @@ export interface FactorPipelineEta {
   recommended_seconds: number;
   train_model: boolean;
   full_refresh: boolean;
+}
+
+// ══════════════════════════════════════════════════════════
+// WP5-07: 评估实验室类型
+// ══════════════════════════════════════════════════════════
+
+export interface EvaluationTaskCreatePayload {
+  factor_code: string;
+  factor_kind?: "continuous" | "event" | "regime";
+  target_horizon?: number;
+  n_groups?: number;
+  cost_rate?: number;
+  created_by?: string;
+}
+
+/** 评估异步任务（结构与 AsyncTaskRead 对齐，复用通用任务协议字段） */
+export interface EvaluationTaskRead {
+  id: string;
+  task_type: string;
+  status: "queued" | "running" | "done" | "completed" | "failed" | "cancelled" | string;
+  stage: string;
+  percent: number;
+  message: string;
+  total: number;
+  processed: number;
+  ok_count: number;
+  failed_count: number;
+  current_item: string | null;
+  result: Record<string, unknown> | null;
+  errors: Array<Record<string, unknown>>;
+  error_code?: string | null;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  updated_at: string | null;
+  heartbeat_at?: string | null;
+  suggested_action?: string | null;
+  cancel_requested?: boolean;
+}
+
+/** 评估运行基础指标（IC/分组/换手/成本） */
+export interface EvaluationMetrics {
+  // 基础 IC 指标
+  rank_ic_mean?: number;
+  rank_ic_median?: number;
+  rank_ic_std?: number;
+  icir?: number;
+  positive_ic_ratio?: number;
+  coverage?: number;
+  n_samples?: number;
+  // 分组单调性
+  quantile_returns?: number[];
+  monotonicity_score?: number;
+  long_short_return?: number;
+  // 换手与成本
+  turnover?: number;
+  cost_adjusted_return?: number;
+  // 时间切分
+  train_start?: string;
+  train_end?: string;
+  validation_start?: string;
+  validation_end?: string;
+  // 压力测试（可选，由 worker 写入）
+  stress_test?: StressTestSummary;
+  [key: string]: unknown;
+}
+
+/** 参数扰动结果 */
+export interface ParameterPerturbationResult {
+  param_name: string;
+  baseline_value: number;
+  verdict: "stable" | "unstable" | "cliff_drop" | string;
+  sign_consistency_ratio: number;
+  median_ic_ratio: number;
+  passing_neighbor_count: number;
+  has_cliff_drop: boolean;
+  points: Array<{
+    label: string;
+    ratio: number;
+    param_value: number;
+    ic_mean: number;
+    icir: number;
+    passed_min_gate: boolean;
+  }>;
+}
+
+/** 时间段扰动结果 */
+export interface TimePerturbationResult {
+  ic_stability: number;
+  verdict: "stable" | "unstable" | string;
+  segments: Array<{
+    segment_label: string;
+    ic_mean: number;
+    icir: number;
+  }>;
+}
+
+/** 缺失敏感度结果 */
+export interface MissingPerturbationResult {
+  ic_decay_ratio: number;
+  verdict: "stable" | "unstable" | string;
+}
+
+/** 压力测试汇总 */
+export interface StressTestSummary {
+  overall_verdict: "stable" | "unstable" | string;
+  failure_reasons: string[];
+  parameter_results: ParameterPerturbationResult[];
+  time_result: TimePerturbationResult | null;
+  missing_result: MissingPerturbationResult | null;
+}
+
+/** 评估运行记录（不可变） */
+export interface EvaluationRunRead {
+  id: string;
+  factor_version_id: number;
+  universe_snapshot_id: string | null;
+  data_cutoff_at: string | null;
+  target_code: string;
+  train_start_date: string | null;
+  train_end_date: string | null;
+  validation_start_date: string | null;
+  validation_end_date: string | null;
+  config: Record<string, unknown>;
+  metrics: EvaluationMetrics;
+  gate_result: "passed" | "rejected" | "warn" | null;
+  rejection_reasons: string[];
+  artifact_path: string | null;
+  task_id: string | null;
+  created_by: string;
+  // WPD-02 完整交易日证据
+  selected_trade_date: string | null;
+  observed_symbols: number | null;
+  expected_symbols: number | null;
+  completeness_ratio: number | null;
+  fallback_reason: string | null;
+  created_at: string | null;
+}
+
+// ══════════════════════════════════════════════════════════
+// WP6-06: Shadow 观测与审批类型
+// ══════════════════════════════════════════════════════════
+
+/** Shadow 每日观测记录 */
+export interface ShadowObservationRead {
+  id: number;
+  trade_date: string;
+  is_valid_day: boolean;
+  invalid_reason: string | null;
+  ic_value: number | null;
+  coverage: number | null;
+  turnover: number | null;
+  completeness_ratio: number | null;
+  observed_symbols: number | null;
+  expected_symbols: number | null;
+  health_status: "healthy" | "degraded" | "blocked" | string;
+  health_reason: string | null;
+  metrics: Record<string, unknown>;
+}
+
+/** 观察期汇总 */
+export interface ShadowObservationSummary {
+  factor_version_id: number;
+  valid_days: number;
+  min_required_days: number;
+  is_complete: boolean;
+  reason: string | null;
+}
+
+/** 健康告警 */
+export interface HealthAlert {
+  alert_type: string;
+  severity: "warn" | "critical" | string;
+  message: string;
+  current_value?: number | null;
+  threshold?: number | null;
+  window_days?: number | null;
+}
+
+/** Shadow 健康报告 */
+export interface ShadowHealthReport {
+  factor_version_id: number;
+  health_status: "healthy" | "degraded" | "blocked" | string;
+  alerts: HealthAlert[];
+  recent_ic_mean: number | null;
+  recent_ic_std: number | null;
+  historical_ic_mean: number | null;
+  recent_coverage_mean: number | null;
+  historical_coverage_mean: number | null;
+  n_valid_days: number;
+  n_total_days: number;
+  should_quarantine: boolean;
+}
+
+/** 激活审批结果 */
+export interface ActivationResult {
+  success: boolean;
+  factor_id: number;
+  from_status: string | null;
+  to_status: string;
+  actor?: string;
+  audit_id: number | null;
+  error: string | null;
+  valid_days?: number;
+  min_required_days?: number;
+}
+
+/** 因子簇 */
+export interface FactorClusterRead {
+  cluster_id: number;
+  members: string[];
+  representative: string;
+  intra_max_correlation: number;
+  mean_correlation: number;
+}
+
+/** 相关性治理报告 */
+export interface CorrelationGovernanceReport {
+  correlation_matrix: {
+    matrix: Record<string, Record<string, number>>;
+    method: string;
+    n_dates: number;
+    n_symbols_avg: number;
+    factor_codes: string[];
+    high_correlation_pairs: Array<[string, string, number]>;
+  };
+  cluster_report: {
+    clusters: FactorClusterRead[];
+    threshold: number;
+    n_factors: number;
+    n_clusters: number;
+    orphans: string[];
+  };
+  residual_results: Array<{
+    candidate_code: string;
+    reference_codes: string[];
+    residual_ic_mean: number;
+    residual_icir: number;
+    residual_ic_tstat: number;
+    original_ic_mean: number;
+    original_icir: number;
+    incremental_ic_ratio: number;
+    has_incremental_value: boolean;
+    verdict: "valuable" | "marginal" | "redundant" | string;
+    reasons: string[];
+  }>;
 }
 
 export interface FactorContribution {
@@ -1525,3 +2053,192 @@ export interface AiChatResult {
   reply: string;
   error: string;
 }
+
+// ----------------------------------------------------------------------------
+// WP3: Factor library definition types
+// ----------------------------------------------------------------------------
+
+export type FactorLifecycleStatus =
+  | "draft" | "candidate" | "testing" | "shadow"
+  | "active" | "quarantined" | "deprecated" | "rejected";
+
+export type FactorOrigin = "system" | "user" | "ai_assisted" | "imported";
+export type FactorKind = "continuous" | "event" | "regime";
+
+export interface FactorDefinition {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  direction: string;
+  status: string | null;
+  is_active: number | null;
+  source_type: string | null;
+  frequency: string | null;
+  default_missing_policy: string;
+  description: string | null;
+  formula_expr: string | null;
+  origin: string | null;
+  lifecycle_status: string | null;
+  owner: string | null;
+  thesis: string | null;
+  factor_kind: string | null;
+  asset_scope: string[] | null;
+  active_version_id: number | null;
+  shadow_version_id: number | null;
+  risk_level: string | null;
+  archived_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface FactorDefinitionListResponse {
+  items: FactorDefinition[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface FactorVersionDefinition {
+  id: number;
+  factor_id: number;
+  version: number;
+  formula_expr: string;
+  params: Record<string, unknown>;
+  direction: string;
+  source_mapping: Record<string, unknown>;
+  effective_from: string | null;
+  change_note: string;
+  is_latest: number;
+  created_at: string | null;
+  formula_ast: Record<string, unknown> | null;
+  postprocess: Record<string, unknown> | null;
+  parameter_schema: Record<string, unknown> | null;
+  data_dependencies: Record<string, unknown> | null;
+  compiler_version: string | null;
+  execution_plan_hash: string | null;
+  complexity_score: number | null;
+  created_by: string | null;
+  created_via: string | null;
+  validation_status: string | null;
+  validation_errors: Array<Record<string, unknown>> | null;
+}
+
+export interface FactorReferenceInfo {
+  factor_code: string;
+  factor_version: number;
+  referenced_by_evaluations: number;
+  referenced_by_factor_sets: number;
+  referenced_by_model_runs: number;
+  is_immutable: boolean;
+}
+
+export interface FactorTransitionAudit {
+  id: number;
+  factor_id: number;
+  factor_version_id: number | null;
+  from_status: string | null;
+  to_status: string;
+  actor: string;
+  reason: string | null;
+  evidence_run_id: string | null;
+  request_id: string | null;
+  migration_note: string | null;
+  created_at: string;
+}
+
+export interface FactorTransitionResult {
+  factor_id: number;
+  from_status: string | null;
+  to_status: string;
+  action: string;
+  actor: string;
+  reason: string | null;
+  audit_id: number;
+  success: boolean;
+  error: string | null;
+}
+
+export interface FactorDraftPayload {
+  code: string;
+  name: string;
+  category: string;
+  direction: "higher_better" | "lower_better" | "nonlinear";
+  factor_kind: FactorKind;
+  description?: string;
+  thesis?: string;
+  owner?: string;
+  risk_level: "low" | "medium" | "high";
+  asset_scope: string[];
+  default_missing_policy: "exclude" | "impute_zero" | "ignore";
+  frequency?: string;
+}
+
+export interface FactorVersionPayload {
+  formula_expr: string;
+  params?: Record<string, unknown>;
+  direction?: "higher_better" | "lower_better" | "nonlinear";
+  source_mapping?: Record<string, unknown>;
+  postprocess?: Record<string, unknown> | null;
+  parameter_schema?: Record<string, unknown> | null;
+  change_note?: string;
+  created_by?: string;
+  created_via?: "manual" | "template" | "ai" | "import";
+}
+
+export interface FactorTransitionPayload {
+  action: "submit_candidate" | "start_testing" | "reject" | "revoke_to_draft" | "deprecate";
+  actor?: string;
+  reason?: string;
+  evidence_run_id?: string;
+  request_id?: string;
+}
+
+export interface FactorValidatePayload {
+  formula_expr: string;
+  params?: Record<string, unknown>;
+  direction?: "higher_better" | "lower_better" | "nonlinear";
+  postprocess?: Record<string, unknown> | null;
+  source_mapping?: Record<string, unknown>;
+}
+
+export interface FactorValidateResult {
+  is_valid: boolean;
+  execution_plan: Record<string, unknown> | null;
+  errors: Array<Record<string, unknown>>;
+  data_dependencies: Record<string, unknown> | null;
+}
+
+export interface FactorPreviewPayload {
+  formula_expr: string;
+  params?: Record<string, unknown>;
+  direction?: "higher_better" | "lower_better" | "nonlinear";
+  postprocess?: Record<string, unknown> | null;
+  source_mapping?: Record<string, unknown>;
+  trade_date?: string | null;
+  symbols?: string[] | null;
+  max_symbols?: number;
+}
+
+export interface FactorPreviewValueItem {
+  symbol: string;
+  trade_date: string;
+  raw_value: number | null;
+  winsorized_value: number | null;
+  normalized_value: number | null;
+  eligible: boolean;
+}
+
+export interface FactorPreviewResult {
+  is_valid: boolean;
+  execution_plan: Record<string, unknown> | null;
+  errors: Array<Record<string, unknown>>;
+  data_cutoff_at: string | null;
+  selected_trade_date: string | null;
+  complete_trade_day_evidence: Record<string, unknown> | null;
+  data_readiness: Record<string, unknown> | null;
+  data_dependencies: Record<string, unknown> | null;
+  values: FactorPreviewValueItem[];
+  missing_reasons: Record<string, string>;
+}
+

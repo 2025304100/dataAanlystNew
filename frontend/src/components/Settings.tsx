@@ -3,7 +3,7 @@ import { useApp } from "../context/AppContext";
 import { t, DOT } from "../i18n";
 import { statPct, pnlClass, clamp } from "../utils/format";
 import { Input, InputNumber, Checkbox, Button, Space, Card, Form } from "antd";
-import { CalendarOutlined, DatabaseOutlined, ExperimentOutlined, FunctionOutlined, SettingOutlined, SyncOutlined, MedicineBoxOutlined, UnorderedListOutlined, BellOutlined, TrophyOutlined, GlobalOutlined, ApiOutlined, RobotOutlined, NotificationOutlined } from "@ant-design/icons";
+import { CalendarOutlined, DatabaseOutlined, ExperimentOutlined, FunctionOutlined, SettingOutlined, SyncOutlined, MedicineBoxOutlined, UnorderedListOutlined, BellOutlined, TrophyOutlined, GlobalOutlined, ApiOutlined, RobotOutlined, NotificationOutlined, AppstoreOutlined } from "@ant-design/icons";
 import DbConfigSection from "./DbConfigSection";
 import CustomIndicatorSettings from "./CustomIndicatorSettings";
 import DiscoveryPlanSettings from "./DiscoveryPlanSettings";
@@ -16,6 +16,7 @@ import ExternalDataSync from "./ExternalDataSync";
 import AkshareApiManager from "./AkshareApiManager";
 import UniverseDataPanel from "./UniverseDataPanel";
 import FactorModelSettings from "./FactorModelSettings";
+import FactorCenter from "./factors/FactorCenter";
 import ScheduledTaskManager from "./ScheduledTaskManager";
 import AiConfigSection from "./AiConfigSection";
 import { ChannelConfig } from "./notifications/ChannelConfig";
@@ -30,10 +31,10 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "alerts" | "scoring" | "factor-model" | "external" | "api-mgmt" | "universe" | "db" | "ai" | "notifications">(() => {
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "alerts" | "scoring" | "factor-model" | "factor-center" | "external" | "api-mgmt" | "universe" | "db" | "ai" | "notifications">(() => {
     if (typeof window === "undefined") return "rules";
     const stored = window.localStorage.getItem("settings_active_section");
-    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "alerts" || stored === "scoring" || stored === "factor-model" || stored === "external" || stored === "api-mgmt" || stored === "universe" || stored === "db" || stored === "ai" || stored === "notifications" ? stored : "rules";
+    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "alerts" || stored === "scoring" || stored === "factor-model" || stored === "factor-center" || stored === "external" || stored === "api-mgmt" || stored === "universe" || stored === "db" || stored === "ai" || stored === "notifications" ? stored : "rules";
   });
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<"formulas" | "plans">(() => {
     if (typeof window === "undefined") return "formulas";
@@ -258,6 +259,15 @@ export default function Settings() {
           >
             <span className="settings-nav-icon"><ExperimentOutlined /></span>
             <span className="settings-nav-copy">{t("factorModelTabTitle")}</span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav-item ${activeSection === "factor-center" ? "active" : ""}`}
+            aria-current={activeSection === "factor-center" ? "page" : undefined}
+            onClick={() => setActiveSection("factor-center")}
+          >
+            <span className="settings-nav-icon"><AppstoreOutlined /></span>
+            <span className="settings-nav-copy">{t("factorCenterTabTitle")}</span>
           </button>
           <button
             type="button"
@@ -528,6 +538,13 @@ export default function Settings() {
             <div className="settings-tab-container" data-settings-content="settings-factor-model">
               <section className="band">
                 <FactorModelSettings />
+              </section>
+            </div>
+          )}
+          {activeSection === "factor-center" && (
+            <div className="settings-tab-container" data-settings-content="settings-factor-center">
+              <section className="band">
+                <FactorCenter />
               </section>
             </div>
           )}

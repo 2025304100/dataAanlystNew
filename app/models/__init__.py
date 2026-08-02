@@ -2,6 +2,7 @@ from app.models import async_task, backtest, market_event
 from app.models import custom_indicator, discovery_plan
 from app.models import scoring_config
 from app.models import factor, factor_model, factor_runtime, scheduled_task
+from app.models import factor_evaluation  # noqa: F401
 # P2：外部数据因子表（股票估值 / 资金流 / ETF 指标）
 from app.models import (
     capital_flow,

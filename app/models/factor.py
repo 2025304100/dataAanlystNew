@@ -25,6 +25,22 @@ class Factor(Base):
     is_active: Mapped[int] = mapped_column(Integer, default=1, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     formula_expr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # --- WP1-01: 生命周期与治理字段 ---
+    # status 与 is_active 保持不变（向后兼容）；新增 lifecycle_status 用于治理工作流。
+    origin: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # system/user/ai_assisted/imported
+    lifecycle_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # draft/candidate/testing/shadow/active/quarantined/deprecated/rejected
+    owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    thesis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    factor_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)  # continuous/event/regime
+    asset_scope_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: ["cn-stock", "cn-etf"]
+    active_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("factor_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    shadow_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("factor_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    risk_level: Mapped[str | None] = mapped_column(String(16), nullable=True)  # low/medium/high
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
