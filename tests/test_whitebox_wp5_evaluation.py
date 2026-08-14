@@ -921,3 +921,39 @@ class TestRunEvaluation:
 
         assert outcome1.run_id == outcome2.run_id
         assert outcome1.gate_result == outcome2.gate_result
+        assert outcome2.time_split is not None
+        assert outcome2.time_split == outcome1.time_split
+
+    def test_idempotent_legacy_run_rebuilds_missing_time_split(self, db_session):
+        """旧版终态运行缺少切分元数据时，重试仍可得到验证区间。"""
+        _, version = _make_factor_and_version(db_session)
+        config = EvaluationConfig(factor_kind="continuous")
+        legacy_run = create_evaluation_run(
+            db_session,
+            factor_version_id=version.id,
+            config=config.to_dict(),
+            data_cutoff_at=datetime(2026, 7, 24),
+        )
+        finalize_evaluation_run(
+            db_session,
+            run_id=legacy_run.id,
+            metrics={"evaluator_version": EVALUATOR_VERSION},
+            gate_result="rejected",
+            rejection_reasons=["legacy_record"],
+        )
+        db_session.commit()
+
+        factor_values = _make_factor_values_df(n_days=80, n_symbols=20, seed=12)
+        forward_returns = _make_forward_returns_df(factor_values, seed=12)
+        outcome = run_evaluation(
+            db_session,
+            factor_version_id=version.id,
+            factor_values=factor_values,
+            forward_returns=forward_returns,
+            config=config,
+            data_cutoff_at=datetime(2026, 7, 24),
+        )
+
+        assert outcome.run_id == legacy_run.id
+        assert outcome.time_split is not None
+        assert outcome.time_split.train_end < outcome.time_split.validation_start

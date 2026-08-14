@@ -137,6 +137,21 @@ export function futureTriggerLabel(plan: { label: string; trigger: string } | nu
   return t(key) === key ? plan?.trigger ?? "-" : t(key);
 }
 
+export function factorLabel(code: string | null | undefined, fallbackName?: string): string {
+  if (!code) return fallbackName ?? "-";
+  return FACTOR_NAME_LABELS[currentLocale]?.[code] ?? fallbackName ?? code;
+}
+
+export function factorCategoryLabel(value: string | null | undefined): string {
+  if (!value) return "-";
+  return FACTOR_CATEGORY_LABELS[currentLocale]?.[value] ?? value;
+}
+
+export function factorDirectionLabel(value: string | null | undefined): string {
+  if (!value) return "-";
+  return FACTOR_DIRECTION_LABELS[currentLocale]?.[value] ?? value;
+}
+
 // Translate tranche plan labels (Starter/Trend/Momentum)
 const TRANCHE_LABEL_MAP: Record<string, string> = {
   Starter: "trancheLabelStarter",
@@ -178,5 +193,38 @@ export function trancheTrigger(trigger: string): string {
   }
   return trigger;
 }
+
+export const FACTOR_NAME_LABELS: Record<string, Record<string, string>> = {
+  "zh-CN": {
+    ep_ttm: "市盈率倒数 (TTM)",
+    negative_pb: "负市净率",
+    roe_yoy_growth: "ROE 同比增长 (百分点)",
+    main_inflow_5d_ratio: "5日主力净流入 / 成交额",
+    lhb_institution_net_ratio: "龙虎榜机构净买入 / 成交额",
+    turnover_z20: "20日换手率 Z 分数",
+    hot_rank_attention: "东方财富热度排名关注度",
+    tail_accumulation_proxy: "尾盘 accumulation 代理指标",
+  },
+  "en-US": {
+    ep_ttm: "E/P (TTM)",
+    negative_pb: "Negative PB",
+    roe_yoy_growth: "ROE YoY Growth (ppt)",
+    main_inflow_5d_ratio: "5-day Main Inflow / Turnover",
+    lhb_institution_net_ratio: "LHB Institution Net / Turnover",
+    turnover_z20: "20-day Turnover Z-Score",
+    hot_rank_attention: "EastMoney Hot-Rank Attention",
+    tail_accumulation_proxy: "Tail-session Accumulation Proxy",
+  },
+};
+
+export const FACTOR_CATEGORY_LABELS: Record<string, Record<string, string>> = {
+  "zh-CN": { fundamental: "基本面", capital_flow: "资金面", sentiment: "情绪面", technical: "技术面" },
+  "en-US": { fundamental: "Fundamental", capital_flow: "Capital Flow", sentiment: "Sentiment", technical: "Technical" },
+};
+
+export const FACTOR_DIRECTION_LABELS: Record<string, Record<string, string>> = {
+  "zh-CN": { higher_better: "高者为佳", lower_better: "低者为佳", nonlinear: "非线性" },
+  "en-US": { higher_better: "Higher is Better", lower_better: "Lower is Better", nonlinear: "Non-linear" },
+};
 
 export { DOT };

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { TextAreaRef } from "antd/es/input/TextArea";
 import {
   Alert,
   Button,
@@ -15,16 +16,23 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   App,
   Typography,
 } from "antd";
 import {
   ArrowLeftOutlined,
   CheckCircleFilled,
+  CheckCircleOutlined,
   CloseCircleFilled,
+  CodeOutlined,
+  EditOutlined,
   EyeOutlined,
+  FileTextOutlined,
+  InfoCircleOutlined,
   SafetyCertificateOutlined,
   SaveOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import { api } from "../../api/client";
 import type {
@@ -34,7 +42,10 @@ import type {
   FactorPreviewValueItem,
 } from "../../api/client";
 import { useApp } from "../../context/AppContext";
-import { t } from "../../i18n";
+import { t, factorLabel, factorCategoryLabel, factorDirectionLabel } from "../../i18n";
+import FactorFormulaEditorModal from "./FactorFormulaEditorModal";
+import AiChatDrawer from "../AiChatDrawer";
+import "./FactorEditor.css";
 
 type FactorEditorProps = {
   factorCode: string | null; // null = 新建草稿，非 null = 基于已有因子创建新版本
@@ -189,6 +200,18 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
 
   // 公式编辑
   const [formulaExpr, setFormulaExpr] = useState("");
+  const [aiFormulaOpen, setAiFormulaOpen] = useState(false);
+  const [formulaEditorOpen, setFormulaEditorOpen] = useState(false);
+  const formulaTextAreaRef = useRef<TextAreaRef>(null);
+  const formulaSelectionRef = useRef({ start: Number.MAX_SAFE_INTEGER, end: Number.MAX_SAFE_INTEGER });
+  const formulaEditorSnapshotRef = useRef<{
+    formulaExpr: string;
+    versionDirection: Direction;
+    changeNote: string;
+    paramsText: string;
+    validateResult: FactorValidateResult | null;
+    previewResult: FactorPreviewResult | null;
+  } | null>(null);
   const [versionDirection, setVersionDirection] = useState<Direction>("higher_better");
   const [changeNote, setChangeNote] = useState("");
   const [paramsText, setParamsText] = useState("{}");
@@ -215,20 +238,33 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
     }
     let cancelled = false;
     setLoadingFactor(true);
-    api
-      .getFactorDefinition(factorCode)
-      .then((def) => {
+    Promise.all([
+      api.getFactorDefinition(factorCode),
+      api.listFactorVersions(factorCode),
+    ])
+      .then(([def, versions]) => {
         if (cancelled) return;
+        const latestVersion = versions.find((version) => version.is_latest) ?? versions[versions.length - 1];
         setFactor(def);
         if (
+          latestVersion?.direction === "higher_better" ||
+          latestVersion?.direction === "lower_better" ||
+          latestVersion?.direction === "nonlinear"
+        ) {
+          setVersionDirection(latestVersion.direction as Direction);
+        } else if (
           def.direction === "higher_better" ||
           def.direction === "lower_better" ||
           def.direction === "nonlinear"
         ) {
           setVersionDirection(def.direction as Direction);
         }
-        if (def.formula_expr) {
-          setFormulaExpr(def.formula_expr);
+        const currentFormula = latestVersion?.formula_expr || def.formula_expr;
+        if (currentFormula) {
+          setFormulaExpr(currentFormula);
+        }
+        if (latestVersion?.params) {
+          setParamsText(JSON.stringify(latestVersion.params, null, 2));
         }
         if (
           def.default_missing_policy === "exclude" ||
@@ -385,9 +421,10 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
       return;
     }
     if (!validateResult || !validateResult.is_valid) {
-      message.warning(
-        isZh ? "公式尚未校验通过，仍将尝试保存" : "Formula has not passed validation, will still try to save",
+      message.error(
+        isZh ? "请先点击“校验公式”并修复全部错误，再保存可运行版本" : "Validate and fix all formula errors before saving a runnable version",
       );
+      return;
     }
     const params = parseParams();
     if (params === null) return;
@@ -397,7 +434,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
 
     const versionPayload = {
       formula_expr: formulaExpr,
-      params,
+      params: params ?? {},
       direction: versionDirection,
       postprocess: postprocessConfig,
       change_note: changeNote || undefined,
@@ -427,15 +464,29 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         risk_level: riskLevel,
         description: description || undefined,
         thesis: thesis || undefined,
-        asset_scope: [],
+        asset_scope: ["cn-stock"],
         default_missing_policy: postprocess.missingPolicy,
       };
+      // 草稿创建成功后再创建版本，失败时明确提示是"版本"失败还是"草稿"失败，避免误导
+      let draftCreated = false;
       api
         .createFactorDraft(draftPayload)
-        .then((def) => finish(def.code))
+        .then((def) => {
+          draftCreated = true;
+          return finish(def.code);
+        })
         .catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
-          message.error(isZh ? `创建因子失败: ${msg}` : `Create factor failed: ${msg}`);
+          if (draftCreated) {
+            // 草稿已经建成功，是创建版本时失败；提示用户草稿已存在可进入详情再追加版本
+            message.error(
+              isZh
+                ? `草稿创建成功，但创建版本失败: ${msg}（可在因子详情中追加版本）`
+                : `Draft created, but version creation failed: ${msg}`,
+            );
+          } else {
+            message.error(isZh ? `创建因子失败: ${msg}` : `Create factor failed: ${msg}`);
+          }
         })
         .finally(() => setSaving(false));
     } else {
@@ -459,7 +510,106 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
     message.info(isZh ? `已应用模板: ${tmpl.name}` : `Applied template: ${tmpl.name}`);
   };
 
+  const handleFormulaChange = (value: string) => {
+    setFormulaExpr(value);
+    // 校验结果只对应当时的公式文本；编辑后必须重新校验，不能复用旧绿灯。
+    setValidateResult(null);
+    setPreviewResult(null);
+  };
+
+  const openFormulaEditor = () => {
+    formulaEditorSnapshotRef.current = {
+      formulaExpr,
+      versionDirection,
+      changeNote,
+      paramsText,
+      validateResult,
+      previewResult,
+    };
+    formulaSelectionRef.current = { start: formulaExpr.length, end: formulaExpr.length };
+    setFormulaEditorOpen(true);
+  };
+
+  const cancelFormulaEditor = () => {
+    const snapshot = formulaEditorSnapshotRef.current;
+    if (snapshot) {
+      setFormulaExpr(snapshot.formulaExpr);
+      setVersionDirection(snapshot.versionDirection);
+      setChangeNote(snapshot.changeNote);
+      setParamsText(snapshot.paramsText);
+      setValidateResult(snapshot.validateResult);
+      setPreviewResult(snapshot.previewResult);
+    }
+    formulaEditorSnapshotRef.current = null;
+    setFormulaEditorOpen(false);
+  };
+
+  const applyFormulaEditor = () => {
+    formulaEditorSnapshotRef.current = null;
+    setFormulaEditorOpen(false);
+    message.success(
+      isZh
+        ? "公式修改已应用到当前草稿，请校验后再保存版本"
+        : "Formula changes applied to the draft. Validate before saving the version.",
+    );
+  };
+
   // 预览表格列
+  const rememberFormulaSelection = (textarea: HTMLTextAreaElement) => {
+    formulaSelectionRef.current = {
+      start: textarea.selectionStart ?? textarea.value.length,
+      end: textarea.selectionEnd ?? textarea.value.length,
+    };
+  };
+
+  const focusFormulaSelection = (start: number, end: number = start) => {
+    requestAnimationFrame(() => {
+      const textarea = formulaTextAreaRef.current?.resizableTextArea?.textArea;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(start, end);
+      formulaSelectionRef.current = { start, end };
+    });
+  };
+
+  const insertFormulaSnippet = (snippet: string) => {
+    const currentSelection = formulaSelectionRef.current;
+    let start = Math.min(currentSelection.start, formulaExpr.length);
+    const end = Math.min(Math.max(currentSelection.end, start), formulaExpr.length);
+    let selectedExpression = formulaExpr.slice(start, end);
+
+    // 函数默认以 close 作为示例参数；若用户选中了表达式，或光标刚好位于字段后，自动用它替换示例参数。
+    if (!selectedExpression && snippet.includes("close")) {
+      const precedingIdentifier = formulaExpr.slice(0, start).match(/[A-Za-z_][A-Za-z0-9_]*$/)?.[0];
+      if (precedingIdentifier) {
+        selectedExpression = precedingIdentifier;
+        start -= precedingIdentifier.length;
+      }
+    }
+
+    const insertion = selectedExpression && snippet.includes("close")
+      ? snippet.replace("close", selectedExpression)
+      : snippet;
+    const nextFormula = `${formulaExpr.slice(0, start)}${insertion}${formulaExpr.slice(end)}`;
+    handleFormulaChange(nextFormula);
+
+    const placeholderStart = insertion.indexOf("close");
+    if (!selectedExpression && placeholderStart >= 0 && insertion !== "close") {
+      focusFormulaSelection(start + placeholderStart, start + placeholderStart + "close".length);
+    } else if (insertion === "()") {
+      focusFormulaSelection(start + 1);
+    } else {
+      focusFormulaSelection(start + insertion.length);
+    }
+  };
+
+  const useFormulaExample = (formula: string) => {
+    handleFormulaChange(formula);
+    formulaSelectionRef.current = { start: formula.length, end: formula.length };
+    focusFormulaSelection(formula.length);
+    message.success(t("factorFormulaBuilderApplied"));
+  };
+
   const previewColumns = [
     {
       title: "symbol",
@@ -565,25 +715,38 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
   };
 
   return (
-    <div style={{ padding: 16 }}>
+    <div className="factor-editor-redesign">
       <Spin spinning={loadingFactor}>
         {/* 顶部操作栏 */}
-        <div className="factor-editor-actions" style={{ marginBottom: 12 }}>
-          <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+        <div className="factor-editor-header">
+          <div className="factor-editor-header-left">
+            <Button
+              className="factor-editor-back-btn"
+              icon={<ArrowLeftOutlined />}
+              onClick={onBack}
+              type="text"
+            >
               {t("factorEditorBack")}
             </Button>
-            <Typography.Text strong>
-              {isNewDraft
-                ? t("factorEditorTitleNew")
-                : `${t("factorEditorTitleVersion")}: ${factorCode}`}
-            </Typography.Text>
-          </Space>
+            <div className="factor-editor-title-block">
+              <h2 className="factor-editor-title">
+                {isNewDraft
+                  ? t("factorEditorTitleNew")
+                  : `${t("factorEditorTitleVersion")} · ${factorCode}`}
+              </h2>
+              <span className="factor-editor-subtitle">
+                {isNewDraft
+                  ? t("factorEditorSubtitleNew") || "创建新的因子表达式"
+                  : factorLabel(factor?.code, factor?.name)}
+              </span>
+            </div>
+          </div>
           <Button
             type="primary"
             icon={<SaveOutlined />}
             loading={saving}
             onClick={handleSave}
+            className="factor-editor-save-btn"
           >
             {t("factorEditorSave")}
           </Button>
@@ -591,22 +754,26 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
 
         {/* 已有因子只读信息（非新建草稿时显示） */}
         {!isNewDraft && factor ? (
-          <Card size="small" style={{ marginBottom: 12 }}>
-            <Descriptions size="small" column={3} bordered>
-              <Descriptions.Item label="code">{factor.code}</Descriptions.Item>
-              <Descriptions.Item label="name">{factor.name}</Descriptions.Item>
-              <Descriptions.Item label="category">{factor.category}</Descriptions.Item>
-              <Descriptions.Item label="direction">{factor.direction}</Descriptions.Item>
-              <Descriptions.Item label="factor_kind">{factor.factor_kind ?? "-"}</Descriptions.Item>
-              <Descriptions.Item label="risk_level">{factor.risk_level ?? "-"}</Descriptions.Item>
-              <Descriptions.Item label="description" span={3}>
+          <div className="factor-editor-info-card">
+            <div className="factor-editor-info-header">
+              <span className="factor-editor-info-title">{t("factorEditorFactorInfo") || "因子信息"}</span>
+              <Tag icon={<InfoCircleOutlined />} color="blue">{factor.factor_kind ?? "alpha"}</Tag>
+            </div>
+            <Descriptions size="small" column={3} bordered className="factor-editor-info-desc">
+              <Descriptions.Item label={t("factorColCode")}>{factor.code}</Descriptions.Item>
+              <Descriptions.Item label={t("factorColName")}>{factorLabel(factor.code, factor.name)}</Descriptions.Item>
+              <Descriptions.Item label={t("factorColCategory")}>{factorCategoryLabel(factor.category)}</Descriptions.Item>
+              <Descriptions.Item label={t("factorColDirection")}>{factorDirectionLabel(factor.direction)}</Descriptions.Item>
+              <Descriptions.Item label={t("factorColKind")}>{factor.factor_kind ?? "-"}</Descriptions.Item>
+              <Descriptions.Item label={t("factorColRiskLevel")}>{factor.risk_level ?? "-"}</Descriptions.Item>
+              <Descriptions.Item label={t("factorColDescription")} span={3}>
                 {factor.description ?? "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="thesis" span={3}>
+              <Descriptions.Item label={t("factorColThesis")} span={3}>
                 {factor.thesis ?? "-"}
               </Descriptions.Item>
             </Descriptions>
-          </Card>
+          </div>
         ) : null}
 
         <div className="factor-editor-layout">
@@ -614,41 +781,51 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
           <div className="factor-editor-main">
             {/* 基本信息（仅新建草稿时显示） */}
             {isNewDraft ? (
-              <Card size="small" title={t("factorEditorBasicInfo")} style={{ marginBottom: 12 }}>
-                <Form layout="vertical" size="small">
+              <div className="factor-editor-card factor-editor-basic-card">
+                <div className="factor-editor-card-header">
+                  <div className="factor-editor-card-icon factor-editor-card-icon--purple">
+                    <FileTextOutlined />
+                  </div>
+                  <div className="factor-editor-card-title-wrap">
+                    <h3 className="factor-editor-card-title">{t("factorEditorBasicInfo")}</h3>
+                    <span className="factor-editor-card-desc">{t("factorEditorBasicInfoDesc") || "填写因子的基础属性"}</span>
+                  </div>
+                </div>
+                <div className="factor-editor-card-body">
+                  <Form layout="vertical" size="small">
                   <div className="factor-editor-grid">
-                    <Form.Item label="code" required>
+                    <Form.Item label={t("factorEditorCode")} required>
                       <Input
                         value={code}
                         onChange={(e) => setCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))}
                         placeholder="ep_ttm"
                       />
                     </Form.Item>
-                    <Form.Item label="name" required>
+                    <Form.Item label={t("factorEditorName")} required>
                       <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("factorEditorNamePlaceholder")} />
                     </Form.Item>
-                    <Form.Item label="category" required>
+                    <Form.Item label={t("factorEditorCategory")} required>
                       <Input
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
-                        placeholder="valuation / momentum / volume"
+                        placeholder={t("factorEditorCategoryPlaceholder")}
                       />
                     </Form.Item>
-                    <Form.Item label="direction">
+                    <Form.Item label={t("factorEditorDirection")}>
                       <Select
                         value={direction}
                         onChange={(v: Direction) => setDirection(v)}
                         options={DIRECTION_OPTIONS}
                       />
                     </Form.Item>
-                    <Form.Item label="factor_kind">
+                    <Form.Item label={t("factorEditorFactorKind")}>
                       <Select
                         value={factorKind}
                         onChange={(v: FactorKind) => setFactorKind(v)}
                         options={FACTOR_KIND_OPTIONS}
                       />
                     </Form.Item>
-                    <Form.Item label="risk_level">
+                    <Form.Item label={t("factorEditorRiskLevel")}>
                       <Select
                         value={riskLevel}
                         onChange={(v: RiskLevel) => setRiskLevel(v)}
@@ -656,7 +833,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
                       />
                     </Form.Item>
                   </div>
-                  <Form.Item label="description">
+                  <Form.Item label={t("factorEditorDescription")}>
                     <Input.TextArea
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
@@ -673,169 +850,192 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
                     />
                   </Form.Item>
                 </Form>
-              </Card>
+              </div>
+              </div>
             ) : null}
 
-            {/* 公式编辑 */}
-            <Card
-              size="small"
-              title={t("factorEditorFormula")}
-              extra={
-                <Space size="small" wrap>
-                  {FORMULA_TEMPLATES.map((tmpl) => (
-                    <Button key={tmpl.key} size="small" onClick={() => applyTemplate(tmpl)}>
-                      {tmpl.name}
-                    </Button>
-                  ))}
-                </Space>
-              }
-              style={{ marginBottom: 12 }}
-            >
-              <Form layout="vertical" size="small">
-                <Form.Item label="formula_expr" required>
-                  <Input.TextArea
-                    value={formulaExpr}
-                    onChange={(e) => setFormulaExpr(e.target.value)}
-                    rows={8}
-                    style={{ fontFamily: "monospace" }}
-                    placeholder="1 / pe_ttm"
-                  />
-                </Form.Item>
-                <div className="factor-editor-grid">
-                  <Form.Item label="direction">
-                    <Select
-                      value={versionDirection}
-                      onChange={(v: Direction) => setVersionDirection(v)}
-                      options={DIRECTION_OPTIONS}
-                    />
-                  </Form.Item>
-                  <Form.Item label={t("factorEditorChangeNote")}>
-                    <Input
-                      value={changeNote}
-                      onChange={(e) => setChangeNote(e.target.value)}
-                      placeholder={t("factorEditorChangeNotePlaceholder")}
-                    />
-                  </Form.Item>
+            {/* 公式摘要：完整编辑迁移到弹窗，避免与校验/预览/后处理纵向堆叠 */}
+            <div className="factor-editor-card factor-editor-formula-card">
+              <div className="factor-editor-card-header">
+                <div className="factor-editor-card-icon factor-editor-card-icon--indigo">
+                  <CodeOutlined />
                 </div>
-                <Form.Item label="params (JSON)" help={t("factorEditorParamsHelp")} style={{ marginBottom: 0 }}>
-                  <Input.TextArea
-                    value={paramsText}
-                    onChange={(e) => setParamsText(e.target.value)}
-                    rows={3}
-                    style={{ fontFamily: "monospace" }}
-                    placeholder="{}"
-                  />
-                </Form.Item>
-              </Form>
-              <Space style={{ marginTop: 12 }}>
+                <div className="factor-editor-card-title-wrap">
+                  <h3 className="factor-editor-card-title">{t("factorEditorFormula")}</h3>
+                  <span className="factor-editor-card-desc">{t("factorEditorFormulaDesc") || "定义因子的计算表达式"}</span>
+                </div>
                 <Button
-                  icon={<SafetyCertificateOutlined />}
-                  loading={validating}
-                  onClick={handleValidate}
+                  size="middle"
+                  type="primary"
+                  icon={<EditOutlined />}
+                  onClick={openFormulaEditor}
+                  data-testid="factor-open-formula-modal"
+                  className="factor-editor-edit-formula-btn"
                 >
-                  {t("factorEditorValidate")}
+                  {t("factorFormulaModalOpen")}
                 </Button>
-                <Button icon={<EyeOutlined />} loading={previewing} onClick={handlePreview}>
-                  {t("factorEditorPreview")}
-                </Button>
-              </Space>
-            </Card>
+              </div>
+              <div className="factor-editor-card-body">
+                <div className="factor-formula-summary">
+                  <div className="factor-formula-summary__code">
+                    <div className="metric-label">{t("factorEditorFormulaExpr")}</div>
+                    <code>{formulaExpr || t("factorEditorFormulaPlaceholder")}</code>
+                  </div>
+                  <div className="factor-formula-tags">
+                    <Tag className="factor-formula-tag--direction">{factorDirectionLabel(versionDirection)}</Tag>
+                    {validateResult?.is_valid ? (
+                      <Tag icon={<CheckCircleFilled />} color="success" className="factor-formula-tag">{t("factorEditorValid")}</Tag>
+                    ) : validateResult ? (
+                      <Tag icon={<CloseCircleFilled />} color="error" className="factor-formula-tag">{t("factorEditorInvalid")}</Tag>
+                    ) : (
+                      <Tag className="factor-formula-tag">{t("factorFormulaModalNeedsValidation")}</Tag>
+                    )}
+                    {previewResult ? (
+                      <Tag color="blue" className="factor-formula-tag">{previewResult.values.length} {t("factorFormulaModalPreviewRows")}</Tag>
+                    ) : null}
+                  </div>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={t("factorFormulaModalCompatibilityTitle")}
+                    description={t("factorFormulaModalCompatibilityDescription")}
+                    className="factor-formula-compat-alert"
+                  />
+                </div>
+                <div className="factor-formula-actions">
+                  <Button
+                    icon={<SafetyCertificateOutlined />}
+                    loading={validating}
+                    onClick={handleValidate}
+                    className="factor-formula-action-btn"
+                  >
+                    {t("factorEditorValidate")}
+                  </Button>
+                  <Button icon={<EyeOutlined />} loading={previewing} onClick={handlePreview} className="factor-formula-action-btn">
+                    {t("factorEditorPreview")}
+                  </Button>
+                  <Button type="primary" ghost icon={<EditOutlined />} onClick={openFormulaEditor} className="factor-formula-action-btn">
+                    {t("factorFormulaModalOpen")}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
-
           {/* 右栏：校验结果 + 预览结果 + 后处理配置 */}
           <div className="factor-editor-side">
             {/* 校验结果 */}
-            <Card size="small" title={t("factorEditorValidateResult")} style={{ marginBottom: 12 }}>
-              {validateResult ? (
-                <div>
-                  <div style={{ marginBottom: 8 }}>
-                    {validateResult.is_valid ? (
-                      <Tag icon={<CheckCircleFilled />} color="success">
-                        {t("factorEditorValid")}
-                      </Tag>
-                    ) : (
-                      <Tag icon={<CloseCircleFilled />} color="error">
-                        {t("factorEditorInvalid")}
-                      </Tag>
-                    )}
-                  </div>
-                  {validateResult.errors && validateResult.errors.length > 0 ? (
-                    <div style={{ marginBottom: 8 }}>
-                      {validateResult.errors.map((err, idx) => (
-                        <Alert
-                          key={idx}
-                          type="error"
-                          showIcon
-                          style={{ marginBottom: 4 }}
-                          message={valOrEmpty(err.error_code) || valOrEmpty(err.code) || `Error ${idx + 1}`}
-                          description={valOrEmpty(err.message) || valOrEmpty(err.detail) || numText(err)}
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-                  <Collapse
-                    size="small"
-                    items={[
-                      {
-                        key: "dep",
-                        label: t("factorEditorDataDependencies"),
-                        children: renderDataDependencies(validateResult.data_dependencies ?? null),
-                      },
-                      {
-                        key: "plan",
-                        label: t("factorEditorExecutionPlan"),
-                        children: renderExecutionPlan(validateResult.execution_plan ?? null),
-                      },
-                    ]}
-                  />
+            <div className="factor-editor-card factor-editor-validate-card">
+              <div className="factor-editor-card-header factor-editor-card-header--compact">
+                <div className="factor-editor-card-icon factor-editor-card-icon--green">
+                  <CheckCircleOutlined />
                 </div>
-              ) : (
-                <Empty description={t("factorEditorNoValidateResult")} />
-              )}
-            </Card>
+                <div className="factor-editor-card-title-wrap">
+                  <h3 className="factor-editor-card-title">{t("factorEditorValidateResult")}</h3>
+                </div>
+                {validateResult ? (
+                  validateResult.is_valid ? (
+                    <Tag icon={<CheckCircleFilled />} color="success">{t("factorEditorValid")}</Tag>
+                  ) : (
+                    <Tag icon={<CloseCircleFilled />} color="error">{t("factorEditorInvalid")}</Tag>
+                  )
+                ) : null}
+              </div>
+              <div className="factor-editor-card-body">
+                {validateResult ? (
+                  <div>
+                    {validateResult.errors && validateResult.errors.length > 0 ? (
+                      <div className="factor-editor-errors">
+                        {validateResult.errors.map((err, idx) => (
+                          <Alert
+                            key={idx}
+                            type="error"
+                            showIcon
+                            className="factor-editor-error-alert"
+                            message={valOrEmpty(err.error_code) || valOrEmpty(err.code) || `Error ${idx + 1}`}
+                            description={valOrEmpty(err.message) || valOrEmpty(err.detail) || numText(err)}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                    <Collapse
+                      size="small"
+                      className="factor-editor-collapse"
+                      items={[
+                        {
+                          key: "dep",
+                          label: t("factorEditorDataDependencies"),
+                          children: renderDataDependencies(validateResult.data_dependencies ?? null),
+                        },
+                        {
+                          key: "plan",
+                          label: t("factorEditorExecutionPlan"),
+                          children: renderExecutionPlan(validateResult.execution_plan ?? null),
+                        },
+                      ]}
+                    />
+                  </div>
+                ) : (
+                  <Empty description={t("factorEditorNoValidateResult")} className="factor-editor-empty" />
+                )}
+              </div>
+            </div>
 
             {/* 预览结果 */}
-            <Card size="small" title={t("factorEditorPreviewResult")} style={{ marginBottom: 12 }}>
-              {previewResult ? (
-                <div>
-                  <Descriptions size="small" column={1} bordered style={{ marginBottom: 8 }}>
-                    <Descriptions.Item label="selected_trade_date">
-                      {previewResult.selected_trade_date ?? "-"}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="data_cutoff_at">
-                      {previewResult.data_cutoff_at ?? "-"}
-                    </Descriptions.Item>
-                    {previewResult.complete_trade_day_evidence ? (
-                      <Descriptions.Item label="complete_trade_day_evidence">
-                        {numText(previewResult.complete_trade_day_evidence)}
+            <div className="factor-editor-card factor-editor-preview-card">
+              <div className="factor-editor-card-header factor-editor-card-header--compact">
+                <div className="factor-editor-card-icon factor-editor-card-icon--blue">
+                  <EyeOutlined />
+                </div>
+                <div className="factor-editor-card-title-wrap">
+                  <h3 className="factor-editor-card-title">{t("factorEditorPreviewResult")}</h3>
+                </div>
+                {previewResult ? (
+                  <Tag color="blue">{previewResult.values.length} 行</Tag>
+                ) : null}
+              </div>
+              <div className="factor-editor-card-body">
+                {previewResult ? (
+                  <div>
+                    <Descriptions size="small" column={1} bordered className="factor-editor-preview-meta">
+                      <Descriptions.Item label="selected_trade_date">
+                        {previewResult.selected_trade_date ?? "-"}
                       </Descriptions.Item>
+                      <Descriptions.Item label="data_cutoff_at">
+                        {previewResult.data_cutoff_at ?? "-"}
+                      </Descriptions.Item>
+                      {previewResult.complete_trade_day_evidence ? (
+                        <Descriptions.Item label="complete_trade_day_evidence">
+                          {numText(previewResult.complete_trade_day_evidence)}
+                        </Descriptions.Item>
+                      ) : null}
+                    </Descriptions>
+                    {previewResult.errors && previewResult.errors.length > 0 ? (
+                      <div className="factor-editor-errors">
+                        {previewResult.errors.map((err, idx) => (
+                          <Alert
+                            key={idx}
+                            type="error"
+                            showIcon
+                            className="factor-editor-error-alert"
+                            message={valOrEmpty(err.error_code) || valOrEmpty(err.code) || `Error ${idx + 1}`}
+                            description={valOrEmpty(err.message) || valOrEmpty(err.detail) || numText(err)}
+                          />
+                        ))}
+                      </div>
                     ) : null}
-                  </Descriptions>
-                  {previewResult.errors && previewResult.errors.length > 0 ? (
-                    <div style={{ marginBottom: 8 }}>
-                      {previewResult.errors.map((err, idx) => (
-                        <Alert
-                          key={idx}
-                          type="error"
-                          showIcon
-                          style={{ marginBottom: 4 }}
-                          message={valOrEmpty(err.error_code) || valOrEmpty(err.code) || `Error ${idx + 1}`}
-                          description={valOrEmpty(err.message) || valOrEmpty(err.detail) || numText(err)}
-                        />
-                      ))}
+                    <div className="factor-editor-preview-values-header">
+                      <span>{t("factorEditorPreviewValues")}</span>
+                      <Tag color="blue">{previewResult.values.length}</Tag>
                     </div>
-                  ) : null}
-                  <Typography.Text strong style={{ display: "block", margin: "8px 0 4px" }}>
-                    {t("factorEditorPreviewValues")} ({previewResult.values.length})
-                  </Typography.Text>
-                  <Table<FactorPreviewValueItem>
-                    size="small"
-                    rowKey={(r) => `${r.symbol}-${r.trade_date}`}
-                    pagination={{ pageSize: 8, size: "small" }}
-                    dataSource={previewResult.values}
-                    columns={previewColumns}
-                    scroll={{ x: "max-content" }}
-                  />
+                    <Table<FactorPreviewValueItem>
+                      size="small"
+                      rowKey={(r) => `${r.symbol}-${r.trade_date}`}
+                      pagination={{ pageSize: 8, size: "small" }}
+                      dataSource={previewResult.values}
+                      columns={previewColumns}
+                      scroll={{ x: "max-content" }}
+                      className="factor-editor-preview-table"
+                    />
                   {previewResult.missing_reasons &&
                   Object.keys(previewResult.missing_reasons).length > 0 ? (
                     <div style={{ marginTop: 8 }}>
@@ -853,19 +1053,31 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
                   ) : null}
                 </div>
               ) : (
-                <Empty description={t("factorEditorNoPreviewResult")} />
+                <Empty description={t("factorEditorNoPreviewResult")} className="factor-editor-empty" />
               )}
-            </Card>
+              </div>
+            </div>
 
             {/* 后处理配置 */}
-            <Card size="small" style={{ marginBottom: 12 }}>
-              <Collapse
-                size="small"
-                items={[
-                  {
-                    key: "postprocess",
-                    label: t("factorEditorPostprocess"),
-                    children: (
+            <div className="factor-editor-card factor-editor-postprocess-card">
+              <div className="factor-editor-card-header factor-editor-card-header--compact">
+                <div className="factor-editor-card-icon factor-editor-card-icon--orange">
+                  <SettingOutlined />
+                </div>
+                <div className="factor-editor-card-title-wrap">
+                  <h3 className="factor-editor-card-title">{t("factorEditorPostprocess")}</h3>
+                </div>
+              </div>
+              <div className="factor-editor-card-body">
+                <Collapse
+                  size="small"
+                  defaultActiveKey={["postprocess"]}
+                  className="factor-editor-collapse factor-editor-postprocess-collapse"
+                  items={[
+                    {
+                      key: "postprocess",
+                      label: t("factorEditorPostprocessConfig") || "后处理参数配置",
+                      children: (
                       <Form layout="vertical" size="small">
                         <Form.Item label={t("factorEditorWinsorMethod")}>
                           <Select
@@ -946,11 +1158,67 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
                     ),
                   },
                 ]}
-              />
-            </Card>
+                />
+              </div>
+            </div>
           </div>
         </div>
       </Spin>
+      <FactorFormulaEditorModal
+        open={formulaEditorOpen}
+        isZh={isZh}
+        factorCode={factorCode}
+        formulaExpr={formulaExpr}
+        formulaTextAreaRef={formulaTextAreaRef}
+        versionDirection={versionDirection}
+        changeNote={changeNote}
+        paramsText={paramsText}
+        templates={FORMULA_TEMPLATES}
+        validating={validating}
+        previewing={previewing}
+        validationState={validateResult ? (validateResult.is_valid ? "valid" : "invalid") : "idle"}
+        previewCount={previewResult ? previewResult.values.length : null}
+        directionOptions={DIRECTION_OPTIONS}
+        onCancel={cancelFormulaEditor}
+        onApply={applyFormulaEditor}
+        onAskAi={() => setAiFormulaOpen(true)}
+        onValidate={handleValidate}
+        onPreview={handlePreview}
+        onInsert={insertFormulaSnippet}
+        onUseExample={useFormulaExample}
+        onApplyTemplate={applyTemplate}
+        onFormulaChange={handleFormulaChange}
+        onRememberSelection={rememberFormulaSelection}
+        onDirectionChange={(value) => {
+          setVersionDirection(value);
+          setValidateResult(null);
+          setPreviewResult(null);
+        }}
+        onChangeNoteChange={setChangeNote}
+        onParamsTextChange={(value) => {
+          setParamsText(value);
+          setValidateResult(null);
+          setPreviewResult(null);
+        }}
+      />
+      <AiChatDrawer
+        open={aiFormulaOpen}
+        formula={formulaExpr}
+        formulaMode="factor"
+        factorContext={{
+          direction: factorDirectionLabel(versionDirection),
+          changeNote: changeNote || undefined,
+          paramsText: paramsText !== "{}" ? paramsText : undefined,
+        }}
+        onClose={() => setAiFormulaOpen(false)}
+        onInsertFormula={(formula) => {
+          handleFormulaChange(formula);
+          formulaSelectionRef.current = { start: formula.length, end: formula.length };
+          setAiFormulaOpen(false);
+          focusFormulaSelection(formula.length);
+          message.success(isZh ? "AI 公式已填入，请校验后再保存" : "AI formula inserted. Validate it before saving.");
+        }}
+      />
     </div>
   );
 }

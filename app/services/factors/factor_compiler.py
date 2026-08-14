@@ -35,7 +35,7 @@ COMPILER_VERSION = "wp2-1.0.0"
 MAX_FORMULA_LENGTH = 2000
 
 # AST 深度限制（默认 4，对齐 spec §公式编译与静态校验）
-MAX_AST_DEPTH = 4
+MAX_AST_DEPTH = 6
 
 # 函数调用数量限制（默认 12）
 MAX_FUNCTION_CALLS = 12
@@ -230,6 +230,8 @@ _ALLOWED_NODES: tuple[type, ...] = (
     ast.Name,
     ast.Load,
     ast.Constant,
+    ast.Tuple,
+    ast.List,
     # 二元算术运算符
     ast.Add,
     ast.Sub,
@@ -515,6 +517,16 @@ def _serialize_ast(node: ast.AST) -> dict[str, Any]:
             "body": _serialize_ast(node.body),
             "orelse": _serialize_ast(node.orelse),
         }
+    if isinstance(node, ast.Tuple):
+        return {
+            "type": "Tuple",
+            "elts": [_serialize_ast(e) for e in node.elts],
+        }
+    if isinstance(node, ast.List):
+        return {
+            "type": "List",
+            "elts": [_serialize_ast(e) for e in node.elts],
+        }
     return {"type": type(node).__name__}
 
 
@@ -618,6 +630,7 @@ class ExecutionPlan:
     postprocess: dict[str, Any] | None
     direction: str
     data_dependencies: dict[str, Any]
+    max_lookback: int
     complexity_score: float
     ast_depth: int
     node_count: int
@@ -633,6 +646,7 @@ class ExecutionPlan:
             "postprocess": self.postprocess,
             "direction": self.direction,
             "data_dependencies": self.data_dependencies,
+            "max_lookback": self.max_lookback,
             "complexity_score": round(self.complexity_score, 6),
         }
         return json.dumps(payload, sort_keys=True, ensure_ascii=False)
@@ -651,6 +665,7 @@ class ExecutionPlan:
             "postprocess": self.postprocess,
             "direction": self.direction,
             "data_dependencies": self.data_dependencies,
+            "max_lookback": self.max_lookback,
             "complexity_score": self.complexity_score,
             "ast_depth": self.ast_depth,
             "node_count": self.node_count,
@@ -885,6 +900,7 @@ class FactorCompiler:
             postprocess=_normalize_postprocess(postprocess),
             direction=direction,
             data_dependencies=deps.to_dict(),
+            max_lookback=deps.max_lookback,
             complexity_score=complexity,
             ast_depth=depth,
             node_count=node_count,

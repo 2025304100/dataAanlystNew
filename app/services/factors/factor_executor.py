@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any
 from uuid import uuid4
+import uuid as _uuid
 
 import pandas as pd
 
@@ -84,6 +85,17 @@ class PreviewOutcome:
             "coverage": round(self.coverage, 6),
             "errors": self.errors,
         }
+
+
+@dataclass
+class PanelExecutionOutcome:
+    """面板批量执行结果（多交易日×多标的，长表格式）。"""
+
+    factors_long: pd.DataFrame
+    trade_dates: list[date]
+    symbols: list[str]
+    n_cells: int
+    read_errors: list[dict] = field(default_factory=list)
 
 
 # ══════════════════════════════════════════════════════════
@@ -341,6 +353,13 @@ def _eval_ast(
             return _eval_math_func(func_name, args)
         return None
 
+    if isinstance(node, ast.Tuple):
+        elts = [_eval_ast(e, context, symbol_series=symbol_series) for e in node.elts]
+        return elts[0] if elts else None
+
+    if isinstance(node, ast.List):
+        return [_eval_ast(e, context, symbol_series=symbol_series) for e in node.elts]
+
     return None
 
 
@@ -453,6 +472,36 @@ def apply_postprocess(
     return winsorized, normalized
 
 
+def apply_postprocess_cross_sectional(
+    raw_values: pd.Series,
+    trade_date_series: pd.Series,
+    postprocess: dict[str, Any] | None,
+) -> tuple[pd.Series, pd.Series]:
+    """横截面后处理（按 trade_date 分组独立执行 winsorize/zscore/rank）。
+
+    Args:
+        raw_values: 完整历史上的 raw 因子值（与 trade_date_series 按索引对齐）
+        trade_date_series: 对应每一行的 trade_date（用于分组）
+        postprocess: 后处理配置
+
+    Returns:
+        (winsorized, normalized) 与输入索引对齐的 Series
+    """
+    if postprocess is None:
+        return raw_values.copy(), raw_values.copy()
+
+    winsorized = pd.Series(index=raw_values.index, dtype=float)
+    normalized = pd.Series(index=raw_values.index, dtype=float)
+
+    for _, idx in raw_values.groupby(trade_date_series).groups.items():
+        group_raw = raw_values.loc[idx]
+        group_w, group_n = apply_postprocess(group_raw, postprocess)
+        winsorized.loc[idx] = group_w.values
+        normalized.loc[idx] = group_n.values
+
+    return winsorized, normalized
+
+
 # ══════════════════════════════════════════════════════════
 # 因子执行器
 # ══════════════════════════════════════════════════════════
@@ -485,19 +534,23 @@ class FactorExecutor:
         *,
         trade_date: date | None = None,
         lookback_days: int = 30,
-    ) -> pd.DataFrame:
+    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
         """冻结批次读取源数据（read_only 连接）。
 
         根据 plan.data_dependencies 读取所需字段，返回按 (symbol, trade_date) 排序的 DataFrame。
         如果指定 trade_date，则只读取该日期及之前 lookback_days + max_lookback 天的数据。
+
+        Returns:
+            (DataFrame, structured_errors)
         """
+        structured_errors: list[dict[str, Any]] = []
         deps = plan.data_dependencies
         fields = deps.get("fields", [])
         source_tables = deps.get("source_tables", [])
         max_lookback = deps.get("max_lookback", 1)
 
         if not fields or not source_tables:
-            return pd.DataFrame()
+            return pd.DataFrame(), structured_errors
 
         # 构建字段到表名的映射
         field_to_table: dict[str, str] = {}
@@ -507,7 +560,7 @@ class FactorExecutor:
                 field_to_table[field_name] = spec.source_table
 
         if not field_to_table:
-            return pd.DataFrame()
+            return pd.DataFrame(), structured_errors
 
         # 计算读取日期范围
         if trade_date is not None:
@@ -521,36 +574,54 @@ class FactorExecutor:
             date_clause = ""
 
         # 冻结批次读取：read_only 连接
-        with self.warehouse.connection(read_only=True) as conn:
-            frames: list[pd.DataFrame] = []
-            for table_name in set(field_to_table.values()):
-                table_fields = [
-                    f for f, t in field_to_table.items() if t == table_name
-                ]
-                # 构建 WHERE 子句
-                conditions: list[str] = []
-                if table_name == "raw_daily_bars":
-                    conditions.append("adjust = 'qfq'")
-                if date_clause:
-                    conditions.append(date_clause)
-                where_sql = (
-                    f"WHERE {' AND '.join(conditions)}"
-                    if conditions
-                    else ""
-                )
-                sql = (
-                    f"SELECT symbol, trade_date, {', '.join(table_fields)} "
-                    f"FROM {table_name} {where_sql}"
-                )
-                try:
-                    df = conn.execute(sql).fetchdf()
-                    if not df.empty:
-                        frames.append(df)
-                except Exception:
-                    continue
+        try:
+            with self.warehouse.connection(read_only=True) as conn:
+                frames: list[pd.DataFrame] = []
+                for table_name in set(field_to_table.values()):
+                    table_fields = [
+                        f for f, t in field_to_table.items() if t == table_name
+                    ]
+                    # 构建 WHERE 子句
+                    conditions: list[str] = []
+                    if table_name == "raw_daily_bars":
+                        conditions.append("adjust = 'qfq'")
+                    if date_clause:
+                        conditions.append(date_clause)
+                    where_sql = (
+                        f"WHERE {' AND '.join(conditions)}"
+                        if conditions
+                        else ""
+                    )
+                    sql = (
+                        f"SELECT symbol, trade_date, {', '.join(table_fields)} "
+                        f"FROM {table_name} {where_sql}"
+                    )
+                    try:
+                        df = conn.execute(sql).fetchdf()
+                        if not df.empty:
+                            frames.append(df)
+                    except Exception as exc:
+                        structured_errors.append({
+                            "source_table": table_name,
+                            "required_fields": list(table_fields),
+                            "category": "sql",
+                            "correlation_id": _uuid.uuid4().hex[:8],
+                            "message": f"{type(exc).__name__}: {exc}",
+                            "sql": sql,
+                        })
+                        continue
+        except Exception as exc:
+            structured_errors.append({
+                "source_table": None,
+                "required_fields": list(fields),
+                "category": "read",
+                "correlation_id": _uuid.uuid4().hex[:8],
+                "message": f"warehouse connection failed: {type(exc).__name__}: {exc}",
+            })
+            return pd.DataFrame(), structured_errors
 
         if not frames:
-            return pd.DataFrame()
+            return pd.DataFrame(), structured_errors
 
         # 合并所有表的数据（按 symbol + trade_date 外连接）
         result = frames[0]
@@ -559,7 +630,7 @@ class FactorExecutor:
 
         # 按 symbol, trade_date 排序
         result = result.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
-        return result
+        return result, structured_errors
 
     # ── 公式评估 ──────────────────────────────────────────
 
@@ -630,7 +701,9 @@ class FactorExecutor:
 
         # 1. 冻结批次读取
         try:
-            source_data = self._read_source_data(plan, trade_date=trade_date)
+            source_data, read_errors = self._read_source_data(plan, trade_date=trade_date)
+            for err in read_errors:
+                errors.append(f"{err['category']}_error: [{err['correlation_id']}] {err['message']}")
         except Exception as exc:
             return PreviewOutcome(
                 values=[],
@@ -729,7 +802,9 @@ class FactorExecutor:
 
         # 1. 冻结批次读取
         try:
-            source_data = self._read_source_data(plan, trade_date=trade_date)
+            source_data, read_errors = self._read_source_data(plan, trade_date=trade_date)
+            for err in read_errors:
+                errors.append(f"{err['category']}_error: [{err['correlation_id']}] {err['message']}")
         except Exception as exc:
             return ExecutionOutcome(
                 calc_batch_id=batch_id,
@@ -824,6 +899,251 @@ class FactorExecutor:
             errors=errors,
         )
 
+    # ── 面板批量读取 ──────────────────────────────────────
+
+    def _read_source_data_panel(
+        self,
+        plan: ExecutionPlan,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+        """读取 [start_date, end_date] 全量源数据（不分日、不设 limit）。
+
+        Returns:
+            (DataFrame 按 symbol, trade_date 排序, structured_errors)
+        """
+        structured_errors: list[dict[str, Any]] = []
+        deps = plan.data_dependencies
+        fields = deps.get("fields", [])
+        source_tables = deps.get("source_tables", [])
+
+        if not fields or not source_tables:
+            return pd.DataFrame(), structured_errors
+
+        # 构建字段到表名的映射
+        field_to_table: dict[str, str] = {}
+        for field_name in fields:
+            spec = FIELD_CATALOG.get(field_name)
+            if spec:
+                field_to_table[field_name] = spec.source_table
+
+        if not field_to_table:
+            return pd.DataFrame(), structured_errors
+
+        date_clause = (
+            f"trade_date >= '{start_date}' AND trade_date <= '{end_date}'"
+        )
+
+        try:
+            with self.warehouse.connection(read_only=True) as conn:
+                frames: list[pd.DataFrame] = []
+                for table_name in set(field_to_table.values()):
+                    table_fields = [
+                        f for f, t in field_to_table.items() if t == table_name
+                    ]
+                    conditions: list[str] = []
+                    if table_name == "raw_daily_bars":
+                        conditions.append("adjust = 'qfq'")
+                    conditions.append(date_clause)
+                    where_sql = f"WHERE {' AND '.join(conditions)}"
+                    sql = (
+                        f"SELECT symbol, trade_date, {', '.join(table_fields)} "
+                        f"FROM {table_name} {where_sql}"
+                    )
+                    try:
+                        df = conn.execute(sql).fetchdf()
+                        if not df.empty:
+                            frames.append(df)
+                    except Exception as exc:
+                        structured_errors.append({
+                            "source_table": table_name,
+                            "required_fields": list(table_fields),
+                            "category": "sql",
+                            "correlation_id": _uuid.uuid4().hex[:8],
+                            "message": f"{type(exc).__name__}: {exc}",
+                            "sql": sql,
+                        })
+                        continue
+        except Exception as exc:
+            structured_errors.append({
+                "source_table": None,
+                "required_fields": list(fields),
+                "category": "read",
+                "correlation_id": _uuid.uuid4().hex[:8],
+                "message": f"warehouse connection failed: {type(exc).__name__}: {exc}",
+            })
+            return pd.DataFrame(), structured_errors
+
+        if not frames:
+            return pd.DataFrame(), structured_errors
+
+        result = frames[0]
+        for df in frames[1:]:
+            result = result.merge(df, on=["symbol", "trade_date"], how="outer")
+
+        result = result.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
+        return result, structured_errors
+
+    # ── 面板批量执行（多交易日×多标的） ──────────────────
+
+    def execute_panel(
+        self,
+        plan: ExecutionPlan,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> PanelExecutionOutcome:
+        """批量计算因子面板（解决滚动窗口预热 + 横截面按天独立后处理）。
+
+        流程：
+        1. 计算预热窗口：warmup_days = max_lookback + 30
+        2. 读取 [warmup_start, end_date] 全量源数据
+        3. AST evaluate 在完整历史上执行（滚动函数在每个 symbol 的完整时间序列上正确运算）
+        4. 横截面后处理按 trade_date 分组独立执行
+        5. 截取 [start_date, end_date] 作为正式信号日
+        6. 构建 MultiIndex 长表 (trade_date, symbol) × {raw, winsorized, normalized}
+        """
+        # 1. 计算预热窗口
+        max_window = getattr(plan, "max_lookback", None)
+        if max_window is None:
+            max_window = plan.data_dependencies.get("max_lookback", 1)
+        warmup_days = max(int(max_window), 1) + 30
+
+        # 获取仓库中所有可用交易日（DESC 排序），用于向前推 warmup 个交易日
+        all_trade_dates_desc: list[date] = self.warehouse.list_trade_dates()
+        all_trade_dates_asc = sorted(all_trade_dates_desc)
+
+        # 确定 warmup_start：找 start_date 之前 warmup_days 个交易日
+        if all_trade_dates_asc:
+            start_in_list = start_date
+            if start_in_list not in all_trade_dates_asc:
+                # 找第一个 >= start_date 的交易日
+                candidates = [d for d in all_trade_dates_asc if d >= start_date]
+                start_in_list = candidates[0] if candidates else all_trade_dates_asc[-1]
+            try:
+                start_idx = all_trade_dates_asc.index(start_in_list)
+            except ValueError:
+                start_idx = len(all_trade_dates_asc) - 1
+            warmup_idx = max(0, start_idx - warmup_days)
+            warmup_start = all_trade_dates_asc[warmup_idx]
+        else:
+            # 没有交易日信息时，退化为自然日估算（约 * 1.5）
+            warmup_start = start_date - pd.Timedelta(days=int(warmup_days * 1.5))
+
+        # 2. 读取完整历史源数据 [warmup_start, end_date]
+        try:
+            source_data, read_errors = self._read_source_data_panel(
+                plan, start_date=warmup_start, end_date=end_date
+            )
+        except Exception as exc:
+            return PanelExecutionOutcome(
+                factors_long=pd.DataFrame(
+                    columns=["trade_date", "symbol", "raw_value",
+                             "winsorized_value", "normalized_value"]
+                ),
+                trade_dates=[],
+                symbols=[],
+                n_cells=0,
+                read_errors=[{
+                    "source_table": None,
+                    "category": "read",
+                    "correlation_id": _uuid.uuid4().hex[:8],
+                    "message": f"{type(exc).__name__}: {exc}",
+                }],
+            )
+
+        if source_data.empty:
+            return PanelExecutionOutcome(
+                factors_long=pd.DataFrame(
+                    columns=["trade_date", "symbol", "raw_value",
+                             "winsorized_value", "normalized_value"]
+                ),
+                trade_dates=[],
+                symbols=[],
+                n_cells=0,
+                read_errors=read_errors,
+            )
+
+        # 确保 trade_date 是可比较的类型
+        td_col = source_data["trade_date"]
+        if not hasattr(td_col.iloc[0], "__lt__") if len(td_col) > 0 else False:
+            pass
+
+        # 3. AST evaluate 在完整历史上执行（含 warmup）
+        try:
+            raw_values = self._evaluate(plan, source_data)
+        except Exception as exc:
+            return PanelExecutionOutcome(
+                factors_long=pd.DataFrame(
+                    columns=["trade_date", "symbol", "raw_value",
+                             "winsorized_value", "normalized_value"]
+                ),
+                trade_dates=[],
+                symbols=[],
+                n_cells=0,
+                read_errors=read_errors + [{
+                    "category": "eval",
+                    "correlation_id": _uuid.uuid4().hex[:8],
+                    "message": f"{type(exc).__name__}: {exc}",
+                }],
+            )
+
+        # 4. 横截面后处理按天独立执行
+        trade_date_series = source_data["trade_date"]
+        winsorized, normalized = apply_postprocess_cross_sectional(
+            raw_values, trade_date_series, plan.postprocess
+        )
+
+        # 5. 截取 [start_date, end_date] 作为正式信号日
+        def _to_date(v: Any) -> date | None:
+            if isinstance(v, date) and not isinstance(v, datetime):
+                return v
+            if isinstance(v, datetime):
+                return v.date()
+            if isinstance(v, pd.Timestamp):
+                return v.date()
+            if isinstance(v, str):
+                try:
+                    return datetime.strptime(v[:10], "%Y-%m-%d").date()
+                except Exception:
+                    return None
+            return None
+
+        source_tds = source_data["trade_date"].apply(_to_date)
+        mask = (source_tds >= start_date) & (source_tds <= end_date)
+
+        sliced_data = source_data.loc[mask].reset_index(drop=True)
+        sliced_raw = raw_values.loc[mask].reset_index(drop=True)
+        sliced_winsorized = winsorized.loc[mask].reset_index(drop=True)
+        sliced_normalized = normalized.loc[mask].reset_index(drop=True)
+
+        # 6. 构建长表
+        factors_long = pd.DataFrame({
+            "trade_date": sliced_data["trade_date"],
+            "symbol": sliced_data["symbol"],
+            "raw_value": sliced_raw.values,
+            "winsorized_value": sliced_winsorized.values,
+            "normalized_value": sliced_normalized.values,
+        })
+
+        # 规范化 trade_date 为 date 对象
+        factors_long["trade_date"] = factors_long["trade_date"].apply(_to_date)
+
+        trade_dates = sorted(
+            [d for d in factors_long["trade_date"].unique().tolist() if d is not None]
+        )
+        symbols = sorted(factors_long["symbol"].unique().tolist())
+        n_cells = len(factors_long)
+
+        return PanelExecutionOutcome(
+            factors_long=factors_long,
+            trade_dates=trade_dates,
+            symbols=symbols,
+            n_cells=n_cells,
+            read_errors=read_errors,
+        )
+
 
 # ══════════════════════════════════════════════════════════
 # 辅助函数
@@ -847,5 +1167,7 @@ __all__ = [
     "FactorExecutor",
     "ExecutionOutcome",
     "PreviewOutcome",
+    "PanelExecutionOutcome",
     "apply_postprocess",
+    "apply_postprocess_cross_sectional",
 ]

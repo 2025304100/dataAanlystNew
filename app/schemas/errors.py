@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Literal
+import typing
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -74,6 +75,8 @@ class UserError(BaseModel):
     next_actions: list[NextAction] = Field(default_factory=list)
     technical_details: TechnicalDetails | None = None
     correlation_id: str
+    # P0-AutoTrade：当 HTTPException.detail 为 dict 时，透传的扩展字段（如 blockers、readiness）。
+    extras: dict[str, typing.Any] | None = None
 
 
 # ── 错误码字典 ────────────────────────────────────────
@@ -151,6 +154,12 @@ ERROR_CODE_LIBRARY: dict[str, dict[str, Any]] = {
         "retryable": True,
         "next_actions": [{"label": "重试", "action_type": "retry"}],
     },
+    "BUSINESS_BLOCKED": {
+        "user_message": "当前业务条件未满足，操作被阻止",
+        "impact": "本次操作未执行，请按下方提示修复后重试",
+        "retryable": True,
+        "next_actions": [{"label": "查看 readiness 接口获取详细阻塞原因", "action_type": "dismiss"}],
+    },
     "STALE_DATA": {
         "user_message": "本地数据已过期",
         "impact": "正在使用过期数据，结果可能不准确",
@@ -221,6 +230,7 @@ def build_user_error(
     override_user_message: str | None = None,
     override_impact: str | None = None,
     extra_next_actions: list[NextAction] | None = None,
+    extras: dict[str, typing.Any] | None = None,
 ) -> UserError:
     """根据 `error_code` 从字典构造 `UserError`，允许覆盖部分字段。
 
@@ -235,6 +245,7 @@ def build_user_error(
         override_user_message: 覆盖默认中文文案（仅在业务确有定制需要时使用）
         override_impact: 覆盖默认影响说明
         extra_next_actions: 追加到默认 `next_actions` 之后的额外操作
+        extras: 透传扩展字典（readiness/blockers 等业务字段）。
 
     Returns:
         构造好的 `UserError` 实例
@@ -283,6 +294,7 @@ def build_user_error(
         next_actions=next_actions,
         technical_details=technical_details,
         correlation_id=correlation_id or uuid4().hex,
+        extras=extras,
     )
 
 

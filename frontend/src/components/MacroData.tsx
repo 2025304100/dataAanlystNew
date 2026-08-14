@@ -170,7 +170,7 @@ export default function MacroData() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updateTask, setUpdateTask] = useState<any | null>(null);
-  const pollRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
+  const pollRef = useRef<number | null>(null);
   const [selectedIndicator, setSelectedIndicator] = useState<MacroIndicator | null>(null);
   const [history, setHistory] = useState<MacroIndicator[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -178,6 +178,7 @@ export default function MacroData() {
   const [taskNoticeType, setTaskNoticeType] = useState<"success" | "info" | "warning" | "error" | null>(null);
   const [taskFailureDetails, setTaskFailureDetails] = useState<FailureDetail[]>([]);
   const [failureDetailOpen, setFailureDetailOpen] = useState(false);
+  const [chartReady, setChartReady] = useState(false);
   const terminalNoticeRef = useRef<string | null>(null);
 
   const stopPolling = () => {
@@ -209,6 +210,11 @@ export default function MacroData() {
   useEffect(() => {
     load(region);
   }, [region]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setChartReady(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -359,6 +365,7 @@ export default function MacroData() {
         radius: "68%",
         indicator: dimensionRows.map((row) => ({ name: t("macro_" + row.key), max: 100 })),
         splitNumber: 4,
+        axisTick: { show: false },
       },
       series: [
         {
@@ -637,7 +644,9 @@ export default function MacroData() {
           <Row gutter={[12, 12]} className="macro-main-row">
             <Col xs={24} lg={10}>
               <Card title={t("macro_radar")} className="macro-card">
-                <ReactECharts option={radarOption} style={{ height: 320 }} />
+                {chartReady && (
+                  <ReactECharts option={radarOption} style={{ height: 320 }} />
+                )}
               </Card>
             </Col>
             <Col xs={24} lg={14}>
@@ -714,7 +723,9 @@ export default function MacroData() {
         ) : (
           <>
             <Card title={t("macro_history_chart")} size="small" className="macro-history-card">
-              <ReactECharts option={historyOption} showLoading={historyLoading} style={{ height: 300 }} />
+              {chartReady && (
+                <ReactECharts option={historyOption} showLoading={historyLoading} style={{ height: 300 }} />
+              )}
             </Card>
             <Table
               rowKey={(row) => row.region + "-" + row.indicator_key + "-" + row.period}

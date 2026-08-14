@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+from datetime import date, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.index_price import IndexPrice
 from app.schemas.async_task import AsyncTaskRead
-from app.services import universe_sync, universe_sync_task
+from app.services import index_data, index_prices_sync_task, universe_sync, universe_sync_task
 
 
 router = APIRouter()
@@ -286,3 +291,245 @@ def cancel_backfill():
     if result is None:
         raise HTTPException(status_code=404, detail="任务不存在")
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 指数日线数据同步（回测基准曲线数据源：index_prices 表）
+# 集成到"设置 - 基础数据"页面，与 Universe 股票数据打通
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 5 大基准指数：与 portfolio_backtest._BENCHMARK_NAME_TO_SYMBOL 保持一致
+# 注：此处显式定义，避免循环 import
+_BENCHMARK_DEFAULTS: list[dict[str, str]] = [
+    {"name": "沪深300", "symbol": "000300"},
+    {"name": "中证500", "symbol": "000905"},
+    {"name": "创业板指", "symbol": "399006"},
+    {"name": "上证50",  "symbol": "000016"},
+    {"name": "科创50",  "symbol": "000688"},
+]
+
+
+class IndexPriceSyncRequest(BaseModel):
+    """单/多指数日线同步请求。"""
+    symbols: list[str] | None = Field(
+        default=None,
+        description="要同步的指数代码列表，如 [\"000300\",\"399006\"]；None 表示同步全部 5 大基准指数",
+    )
+    history_days: int = Field(
+        default=1825, ge=30, le=7300,
+        description="历史K线天数（默认5年=1825；近1年=365；近3年=1095；近10年=3650）",
+    )
+    end_date: date | None = Field(default=None, description="结束日期（含），None=今天")
+
+
+class IndexPriceSyncItem(BaseModel):
+    symbol: str
+    name: str
+    received: int = 0
+    written: int = 0
+    skipped: int = 0
+    first_date: date | None = None
+    last_date: date | None = None
+    error: str | None = None
+
+
+class IndexPriceSyncResponse(BaseModel):
+    """指数日线同步结果。"""
+    total: int
+    success: int
+    failed: int
+    items: list[IndexPriceSyncItem]
+
+
+class IndexPriceStatusItem(BaseModel):
+    """单个指数的数据健康度。"""
+    symbol: str
+    name: str
+    bar_count: int
+    first_date: date | None = None
+    last_date: date | None = None
+    freshness_days: int | None = None  # 距今天数（None=无数据）
+    # 线性度检测（0=完全直线，越大越非线性；>0.001 视为有真实波动）
+    linearity_dev_pct: float | None = None
+
+
+class IndexPriceStatusResponse(BaseModel):
+    items: list[IndexPriceStatusItem]
+
+
+def _default_symbols(symbols: list[str] | None) -> list[str]:
+    if symbols and len(symbols) > 0:
+        return list(symbols)
+    return [b["symbol"] for b in _BENCHMARK_DEFAULTS]
+
+
+def _name_of(symbol: str) -> str:
+    for b in _BENCHMARK_DEFAULTS:
+        if b["symbol"] == symbol:
+            return b["name"]
+    return symbol
+
+
+def _linearity_dev(db: Session, symbol: str) -> float | None:
+    """计算基准指数偏离直线的程度（百分比）。
+
+    - 有数据且有波动 → 返回偏离度（如 11.26 表示 11.26%）
+    - 无数据或数据不足 → None
+    - 全是一条直线（极端case）→ 接近 0
+    """
+    bars = index_data.list_index_prices(db, symbol, limit=1000)
+    if len(bars) < 5:
+        return None
+    closes = [float(b.close) for b in bars if b.close is not None]
+    if len(closes) < 5:
+        return None
+    n = len(closes)
+    first, last = closes[0], closes[-1]
+    if abs(first) < 1e-9:
+        return None
+    max_dev = 0.0
+    for i in range(n):
+        expected = first + (last - first) * (i / (n - 1))
+        dev = abs(closes[i] - expected) / abs(expected)
+        if dev > max_dev:
+            max_dev = dev
+    return round(max_dev * 100, 3)
+
+
+# ──────────────── 列表查询 ────────────────
+
+@router.get("/index-prices")
+def list_index_prices_endpoint(
+    symbol: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    limit: int = 2000,
+    db: Session = Depends(get_db),
+):
+    """查询单个指数的日线数据（公开列表）。"""
+    bars = index_data.list_index_prices(
+        db, symbol, start_date=start_date, end_date=end_date, limit=limit,
+    )
+    items = [
+        {
+            "symbol": b.symbol,
+            "trade_date": b.trade_date,
+            "open": b.open, "high": b.high, "low": b.low, "close": b.close,
+            "volume": b.volume, "amount": b.amount,
+            "source": b.source,
+        }
+        for b in bars
+    ]
+    return {"items": items, "total": len(items)}
+
+
+# ──────────────── 状态查询 ────────────────
+
+@router.get("/index-prices/status", response_model=IndexPriceStatusResponse)
+def get_index_prices_status(
+    symbols: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """查询 5 大基准指数（或指定）的健康度。
+
+    Query 参数 `symbols`：可选，逗号分隔，如 "000300,399006"；空=默认5个
+    """
+    target_symbols: list[str]
+    if symbols:
+        target_symbols = [s.strip() for s in symbols.split(",") if s.strip()]
+    else:
+        # 默认：默认 5 基准 + DB 中所有已存在的指数（保留之前用户/自定义同步过的）
+        from sqlalchemy import distinct as sa_distinct
+        existing_syms = db.execute(select(sa_distinct(IndexPrice.symbol))).scalars().all()
+        existing_syms = [s for s in existing_syms if s]
+        merged: list[str] = [b["symbol"] for b in _BENCHMARK_DEFAULTS]
+        for s in existing_syms:
+            if s not in merged:
+                merged.append(s)
+        target_symbols = merged
+
+    today = date.today()
+    items: list[IndexPriceStatusItem] = []
+    for sym in target_symbols:
+        # count / min / max trade_date
+        stmt = select(
+            func.count(IndexPrice.id),
+            func.min(IndexPrice.trade_date),
+            func.max(IndexPrice.trade_date),
+        ).where(IndexPrice.symbol == sym)
+        count_, first_, last_ = db.execute(stmt).one()
+        count_ = int(count_ or 0)
+        freshness = (today - last_).days if last_ else None
+        dev = _linearity_dev(db, sym)
+        items.append(IndexPriceStatusItem(
+            symbol=sym,
+            name=_name_of(sym),
+            bar_count=count_,
+            first_date=first_,
+            last_date=last_,
+            freshness_days=freshness,
+            linearity_dev_pct=dev,
+        ))
+    return IndexPriceStatusResponse(items=items)
+
+
+# ──────────────── 异步提交（心跳轮询） ────────────────
+
+@router.post("/index-prices/sync", response_model=AsyncTaskRead)
+async def sync_index_prices(
+    payload: IndexPriceSyncRequest,
+):
+    """异步提交指数日线同步 → 返回 task_id，前端心跳轮询进度。
+
+    之前同步阻塞 HTTP，指数多时容易超时返回"同步失败"但后端还在跑；
+    现改为后台 daemon 线程执行（index_prices_sync_task），
+    通过 GET /index-prices/sync-tasks/{task_id} 2s 轮询 percent/status。
+
+    路由使用 async def：避免与 universe_sync / market_data_sync 等同步 def 路由
+    抢 anyio 线程池的槽位（默认 40 线程，被大量重任务占满时新请求排队会超 20s 前端 timeout）。
+    create_index_prices_sync_task 本身 DB 写入轻量 (<30ms)，用 to_thread 抛到
+    独立 worker 中，eventloop 不被阻塞。
+
+    - 默认同步 5 大基准；也可 symbols 指定（支持自定义指数）
+    - history_days: 回补范围，默认 1825（5 年）
+    """
+    return await asyncio.to_thread(
+        index_prices_sync_task.create_index_prices_sync_task,
+        symbols=payload.symbols,
+        history_days=int(payload.history_days),
+        end_date=payload.end_date,
+    )
+
+
+@router.get("/index-prices/sync-tasks/{task_id}", response_model=AsyncTaskRead)
+async def get_index_prices_sync_task(task_id: str):
+    """指数同步任务进度查询（心跳轮询用）。
+
+    返回 AsyncTaskRead：status / percent / message / total / processed / ok_count / failed_count
+    终态 done 时 result={ total, success, failed, items:[{symbol,written,...error}] }
+    与原先同步接口 IndexPriceSyncResponse 结构一致，前端直接复用更新行状态。
+
+    async def + to_thread 使心跳不占用 anyio threadpool 槽，避免被其它重任务堵死。
+    """
+    task = await asyncio.to_thread(index_prices_sync_task.get_index_prices_sync_task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Index sync task not found")
+    return task
+
+
+# ──────────────── 便捷：同步全部 5 大基准（默认5年） ────────────────
+
+@router.post("/index-prices/sync-all-benchmarks", response_model=AsyncTaskRead)
+async def sync_all_benchmarks():
+    """一键异步提交 5 大基准指数同步（默认最近5年）。
+
+    专为"设置 - 基础数据"面板的"一键同步基准"按钮设计。
+    返回 AsyncTaskRead，前端心跳轮询 /index-prices/sync-tasks/{task_id}。
+
+    async def + to_thread：规避 anyio threadpool 饥饿导致前端 20s 超时。
+    """
+    return await asyncio.to_thread(
+        index_prices_sync_task.create_index_prices_sync_task,
+        symbols=None,
+        history_days=1825,
+    )

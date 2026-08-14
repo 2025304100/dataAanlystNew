@@ -558,3 +558,43 @@ def test_create_session_no_sensitive_data(client, db_session, monkeypatch):
     assert audit_resp.status_code == 200, f"查询审计记录失败：{audit_resp.text}"
     audit_text = json.dumps(audit_resp.json(), ensure_ascii=False)
     assert secret_value not in audit_text, "审计记录中泄露了 secret_value"
+
+
+def test_stream_session_pushes_deltas_and_persists_response(client, db_session, monkeypatch):
+    profile = _make_profile(db_session)
+
+    def fake_stream(*_args, **_kwargs):
+        yield {"type": "delta", "content": '{"answer":"流'}
+        yield {"type": "delta", "content": '式回答","evidence":[],"warnings":[],"suggested_actions":[],"draft":null}'}
+        yield {"type": "result", "result": LLMCallResult(
+            success=True,
+            raw_response='{"answer":"流式回答","evidence":[],"warnings":[],"suggested_actions":[],"draft":null}',
+            profile_used=profile,
+            latency_ms=12,
+        )}
+
+    monkeypatch.setattr("app.api.routes.ai_sessions.stream_llm_completion", fake_stream)
+    with client.stream("POST", "/api/v1/ai/sessions/stream", json={
+        "profile_id": profile.id, "message": "请流式回答", "source_page": "settings",
+    }) as resp:
+        body = resp.read().decode("utf-8")
+    assert resp.status_code == 200
+    assert "event: session" in body
+    assert body.count("event: delta") == 2
+    assert "event: done" in body
+    sessions = client.get("/api/v1/ai/sessions").json()["items"]
+    messages = client.get(f"/api/v1/ai/sessions/{sessions[0]['id']}/messages").json()["items"]
+    assert json.loads(messages[-1]["content"])["answer"] == "流式回答"
+
+
+def test_evidence_is_normalized_for_display():
+    from app.services.ai.response import parse_llm_response
+
+    response = parse_llm_response(json.dumps({
+        "answer": "ok",
+        "evidence": ["字符串证据", {"kind": "market", "origin": "daily", "value": "收盘价上涨", "score": 85}],
+    }, ensure_ascii=False), {})
+    assert response.evidence[0]["content"] == "字符串证据"
+    assert response.evidence[1] == {
+        "type": "market", "source": "daily", "content": "收盘价上涨", "confidence": 0.85,
+    }

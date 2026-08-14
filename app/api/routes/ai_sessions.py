@@ -21,7 +21,7 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -40,7 +40,7 @@ from app.services import ai_profile_service, ai_session_service
 from app.services.ai import audit as ai_audit
 from app.services.ai import session_retention
 from app.services.ai.context_pack import build_context_pack, to_prompt_dict
-from app.services.ai.llm_client import call_llm_with_failover
+from app.services.ai.llm_client import call_llm_with_failover, stream_llm_completion
 from app.services.ai.response import build_response, parse_llm_response
 from app.services.ai_failover import get_failover_manager
 
@@ -101,6 +101,12 @@ _SYSTEM_PROMPT_BASE = (
     "对于涉及副作用操作（添加指标/筛选器/告警/备注/复盘/下单），"
     "只能在 draft 字段生成建议草稿，不得直接执行任何写操作。"
     "缺数据时 answer 必须明确说\"我不知道\"，并在 warnings 中提示数据不足。"
+)
+
+
+_SYSTEM_PROMPT_BASE += (
+    "evidence 每一项必须严格包含 type、source、content、confidence 四个字段；"
+    "content 必须是可直接展示的证据文字，confidence 为 0 到 1 的数字或 null。"
 )
 
 
@@ -168,6 +174,37 @@ def _build_create_response(session, messages_out, response_dict) -> dict:
         "messages": messages_out,
         "response": response_dict,
     }
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+
+
+def _stream_answer_preview(raw: str) -> str:
+    """Extract the answer value from a partial structured JSON response."""
+    if not raw.lstrip().startswith("{"):
+        return raw
+    marker = raw.find('"answer"')
+    if marker < 0:
+        return ""
+    colon = raw.find(":", marker + 8)
+    start = raw.find('"', colon + 1)
+    if colon < 0 or start < 0:
+        return ""
+    output: list[str] = []
+    escaped = False
+    escape_map = {"n": chr(10), "r": chr(13), "t": chr(9)}
+    for char in raw[start + 1:]:
+        if escaped:
+            output.append(escape_map.get(char, char))
+            escaped = False
+        elif char == chr(92):
+            escaped = True
+        elif char == chr(34):
+            break
+        else:
+            output.append(char)
+    return "".join(output)
 
 
 # ── 端点 ───────────────────────────────────────────────────
@@ -348,6 +385,86 @@ def create_session(
     if http_status == 503:
         return JSONResponse(status_code=503, content=body)
     return body
+
+
+@router.post("/ai/sessions/stream")
+def create_session_stream(payload: AiSessionCreateRequest, db: Session = Depends(get_db)):
+    """Create a session and push model output as server-sent events."""
+    first_message = payload.first_message or payload.message
+    if not first_message:
+        raise HTTPException(status_code=422, detail="流式会话必须包含消息")
+    context_refs = payload.context or payload.references or {}
+    mgr = get_failover_manager()
+    profile = ai_profile_service.get_profile(db, payload.profile_id) if payload.profile_id else mgr.select_profile(db, purpose=PURPOSE_ALL)
+    if profile is None or not profile.is_enabled:
+        raise UnifiedErrorException("AI_CONFIG_MISSING", status_code=400, override_user_message="AI 助手未配置，请前往设置")
+
+    title = payload.title or first_message[:80]
+    session = ai_session_service.create_session(
+        db, title=title, source_page=payload.source_page,
+        provider=profile.provider, model=profile.model, profile_id=str(profile.id),
+    )
+    try:
+        pack = build_context_pack(
+            db, user_question=first_message, source_page=payload.source_page or "task",
+            references=context_refs, max_context_tokens=profile.max_context_tokens,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("build_context_pack for stream failed: %s", exc)
+        pack = None
+    context_summary = _context_summary_for_audit(pack)
+    ai_session_service.add_message(
+        db, session_id=session.id, role=ROLE_USER,
+        content=first_message, context_summary=context_summary,
+    )
+    llm_messages = [
+        {"role": "system", "content": _build_system_prompt(pack)},
+        {"role": "user", "content": first_message},
+    ]
+
+    def event_stream():
+        yield _sse("session", {"session_id": session.id, "title": session.title})
+        result = None
+        raw_stream = ""
+        displayed_answer = ""
+        for event in stream_llm_completion(
+            db, llm_messages, profile_id=profile.id, max_tokens=profile.max_tokens,
+        ):
+            if event["type"] == "delta":
+                raw_stream += event["content"]
+                answer = _stream_answer_preview(raw_stream)
+                if len(answer) > len(displayed_answer):
+                    yield _sse("delta", {"content": answer[len(displayed_answer):]})
+                    displayed_answer = answer
+            else:
+                result = event["result"]
+        if result is None or not result.success:
+            message = result.error_message if result else "AI 流式响应异常结束"
+            yield _sse("error", {"message": message})
+            return
+        metadata = {
+            "data_as_of": pack.metadata.get("data_as_of") if pack else None,
+            "model_version": pack.metadata.get("model_version") if pack else None,
+            "rule_version": pack.metadata.get("rule_version") if pack else None,
+            "provider_used": profile.provider, "model_used": profile.model,
+            "latency_ms": result.latency_ms, "tokens": result.total_tokens,
+        }
+        ai_resp = parse_llm_response(result.raw_response, metadata)
+        assistant_msg = ai_session_service.add_message(
+            db, session_id=session.id, role=ROLE_ASSISTANT,
+            content=ai_resp.to_message_content(), context_summary=context_summary,
+            prompt_tokens=result.prompt_tokens, completion_tokens=result.completion_tokens,
+            total_tokens=result.total_tokens, latency_ms=result.latency_ms,
+            model_used=profile.model, provider_used=profile.provider,
+            metadata_json=json.dumps(ai_resp.metadata, ensure_ascii=False),
+        )
+        _maybe_audit_draft(db, session.id, assistant_msg.id, pack, ai_resp)
+        yield _sse("done", {"session_id": session.id, "response": ai_resp.to_dict()})
+
+    return StreamingResponse(
+        event_stream(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/ai/sessions")

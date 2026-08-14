@@ -5,8 +5,7 @@ from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 import json
 import logging
-from threading import Event, Lock, RLock
-import os
+from threading import Event, Lock
 import time
 
 import akshare as ak
@@ -16,7 +15,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from app.services.akshare_utils import quiet_akshare_output
+from app.services.akshare_utils import quiet_akshare_output, request_proxy_bypass
 from app.models.daily_bar import DailyBar
 from app.models.portfolio import Position
 from app.models.scan import ScanResult
@@ -36,22 +35,10 @@ from app.schemas.async_task import AsyncTaskRead
 from app.services.async_tasks import _set_task, _start_worker, create_async_task, get_async_task, list_async_tasks
 
 
-PROXY_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
-
-# 跨线程保护 os.environ 修改的锁（RLock 允许同线程内嵌套调用，避免死锁）
-_proxy_lock = RLock()
-
-
 @contextmanager
 def _proxy_bypass():
-    with _proxy_lock:
-        previous = {key: os.environ.pop(key, None) for key in PROXY_KEYS}
-        try:
-            yield
-        finally:
-            for key, value in previous.items():
-                if value is not None:
-                    os.environ[key] = value
+    with request_proxy_bypass():
+        yield
 
 
 def _resolve_sync_symbols(

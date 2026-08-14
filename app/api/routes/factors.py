@@ -13,6 +13,14 @@ from app.models.factor import Factor
 from app.models.factor_model import FactorVersion
 from app.models.score import Score
 from app.models.symbol import Symbol
+from app.schemas.factor_library import (
+    FactorDraftCreate,
+    FactorPreviewRequest,
+    FactorTransitionRequest,
+    FactorValidateRequest,
+    FactorVersionCreate,
+    FactorVersionRead,
+)
 from app.services.factors.health import get_factor_health
 from app.services.factors.config import (
     get_factor_system_config,
@@ -375,7 +383,7 @@ def get_data_source_roadmap(db: Session = Depends(get_db)):
 
 @router.post('/factors/validate')
 def validate_factor_formula(
-    payload: 'FactorValidateRequest',
+    payload: FactorValidateRequest,
 ):
     """校验因子公式，返回编译结果和错误码（WP2-05）。
 
@@ -412,7 +420,7 @@ def validate_factor_formula(
 
 @router.post('/factors/preview')
 def preview_factor_formula(
-    payload: 'FactorPreviewRequest',
+    payload: FactorPreviewRequest,
     db: Session = Depends(get_db),
 ):
     """预览因子公式，返回执行计划、数据 readiness 和完整交易日证据（WP2-05）。
@@ -597,12 +605,11 @@ def create_factor(
 @router.post('/factors/{factor_code}/versions', status_code=201)
 def create_factor_version_endpoint(
     factor_code: str,
-    payload: 'FactorVersionCreate',
+    payload: FactorVersionCreate,
     db: Session = Depends(get_db),
 ):
     """创建因子版本。"""
     _require_feature_enabled(db)
-    from app.schemas.factor_library import FactorVersionCreate, FactorVersionRead
     from app.services.factors.factor_registry import (
         create_factor_version,
         get_factor_by_code,
@@ -657,7 +664,7 @@ def get_factor_references_endpoint(
 @router.post('/factors/{factor_code}/transitions')
 def execute_factor_transition(
     factor_code: str,
-    payload: 'FactorTransitionRequest',
+    payload: FactorTransitionRequest,
     db: Session = Depends(get_db),
 ):
     """执行因子状态迁移。"""

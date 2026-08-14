@@ -111,6 +111,9 @@ def test_provider_headers_payloads_and_responses():
     assert ai_config._build_chat_payload(
         ollama, [{"role": "user", "content": "hello"}]
     )["stream"] is False
+    assert ai_config._build_chat_payload(
+        ollama, [{"role": "user", "content": "hello"}], stream=True
+    )["stream"] is True
 
     assert ai_config._extract_ai_reply(
         {"choices": [{"message": {"content": "openai"}}]}
@@ -121,6 +124,26 @@ def test_provider_headers_payloads_and_responses():
     assert ai_config._extract_ai_reply(
         {"message": {"content": "ollama"}}
     ) == "ollama"
+
+    openai_payload = ai_config._build_chat_payload(
+        anthropic,
+        [{"role": "system", "content": "system rules"}, {"role": "user", "content": "hello"}],
+        stream=True,
+    )
+    assert openai_payload["stream"] is True
+
+
+def test_ai_chat_stream_delta_parser_accepts_common_shapes():
+    assert ai_config._extract_stream_delta(
+        'data: {"choices":[{"delta":{"content":"hello"}}]}'
+    ) == ("hello", False)
+    assert ai_config._extract_stream_delta(
+        '{"message":{"content":"ollama"},"done":false}'
+    ) == ("ollama", False)
+    assert ai_config._extract_stream_delta(
+        '{"type":"content_block_delta","delta":{"text":"anthropic"}}'
+    ) == ("anthropic", False)
+    assert ai_config._extract_stream_delta("data: [DONE]") == ("", True)
 
 
 def test_model_parser_accepts_openai_and_ollama_shapes():
@@ -134,3 +157,17 @@ def test_model_parser_accepts_openai_and_ollama_shapes():
     assert openai_models[0]["id"] == "gpt-test"
     assert ollama_models[0]["id"] == "qwen3:latest"
     assert ollama_models[0]["owned_by"] == "qwen3"
+
+
+def test_factor_formula_chat_mode_uses_factor_catalog():
+    request = ai_config.AiChatRequest(
+        message="写一个换手率标准分公式",
+        formula="turnover_rate",
+        formula_mode="factor",
+    )
+    assert request.formula_mode == "factor"
+    prompt = ai_config._FACTOR_SYSTEM_FUNCTIONS_DOC
+    assert "sma(field,n)" in prompt
+    assert "pe_ttm" in prompt
+    assert "回看窗口为 1-250 个交易日" in prompt
+    assert "```formula" in prompt

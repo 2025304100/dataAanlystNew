@@ -273,6 +273,10 @@ h2 {
   background: rgba(255, 250, 240, 0.92);
   backdrop-filter: blur(10px);
   box-shadow: 0 10px 26px rgba(31, 41, 51, 0.06);
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .view-tab {
@@ -2775,7 +2779,7 @@ body.chart-expanded {
   border-radius: 8px;
   background: rgba(255, 250, 240, 0.6);
   position: sticky;
-  top: 16px;
+  top: 56px;
 }
 
 .settings-nav-item {
@@ -3280,6 +3284,11 @@ body.chart-expanded {
   .trading-order {
     position: static;
   }
+
+  .trading-order-panel {
+    position: static;
+    top: auto;
+  }
 }
 
 @media (max-width: 720px) {
@@ -3770,8 +3779,8 @@ td .symbol-name {
 .detail-dashboard-modal,
 .modal-panel,
 .ic__modal-content {
-  width: 76vw !important;
-  max-width: 1680px;
+  width: min(68vw, 1280px) !important;
+  max-width: 1280px;
 }
 
 .ant-modal-body {
@@ -3785,7 +3794,7 @@ td .symbol-name {
   .modal-panel,
   .ic__modal-content {
     width: calc(100vw - 24px) !important;
-    max-width: none;
+    max-width: 960px;
   }
 }
 
@@ -4660,6 +4669,8 @@ td .symbol-name {
   flex-direction: column;
   gap: 12px;
   width: 100%;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .macro-hero {
@@ -4987,6 +4998,8 @@ td .symbol-name {
   flex-direction: column;
   gap: 12px;
   width: 100%;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .decision-hero {
@@ -5129,6 +5142,8 @@ td .symbol-name {
   flex-direction: column;
   gap: 12px;
   width: 100%;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 /* 鈹€鈹€ 澶撮儴 鈹€鈹€ */
@@ -6807,6 +6822,43 @@ td .symbol-name {
   gap: 0 12px;
 }
 
+.factor-formula-builder {
+  margin-bottom: 14px;
+  background: #fafcfc;
+}
+
+.factor-formula-builder__body,
+.factor-formula-builder__sections,
+.factor-formula-examples {
+  display: grid;
+  gap: 12px;
+}
+
+.factor-formula-builder__sections > div {
+  display: grid;
+  gap: 8px;
+}
+
+.factor-formula-button-label {
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.factor-formula-example {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #edf0ee;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.factor-formula-example > div {
+  min-width: 0;
+  flex: 1;
+}
 /* WP3-06: responsive — prevent overlap on 1366×768 and 390×844 */
 @media (max-width: 1024px) {
   .factor-editor-layout {
@@ -6837,6 +6889,143 @@ td .symbol-name {
 
   .factor-editor-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ============ FACTOR LIBRARY REDESIGN ============ */
+.factor-library-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.factor-library-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.factor-library-title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.factor-library-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.factor-new-btn {
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+.factor-new-btn:hover {
+  background: #0d6b63 !important;
+  border-color: #0d6b63 !important;
+}
+
+.factor-library-filter-card {
+  background: var(--bg-card);
+}
+
+.filter-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.factor-library-stats {
+  margin: 0;
+}
+
+.stat-card {
+  border-radius: 8px;
+  transition: box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.stat-label {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stat-sub.warning {
+  color: #d97706;
+}
+
+.factor-library-table-card {
+  border-radius: 8px;
+}
+
+.factor-library-table-card .ant-table {
+  font-size: 14px;
+}
+
+.factor-name-cell:hover {
+  text-decoration: underline;
+}
+
+/* 详情弹窗和编辑器弹窗样式 */
+.factor-detail-modal .ant-modal-body {
+  padding: 16px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.factor-detail-modal .ant-spin {
+  min-height: 200px;
+}
+
+.factor-detail-modal .factor-editor-actions {
+  margin-bottom: 12px;
+}
+
+.factor-editor-modal .ant-modal-body {
+  padding: 0;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.factor-editor-modal > .ant-modal-content {
+  padding-bottom: 0;
+}
+
+@media (max-width: 720px) {
+  .factor-library-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .factor-library-title {
+    font-size: 18px;
+  }
+
+  .stat-value {
+    font-size: 22px;
   }
 }
 
@@ -6926,6 +7115,267 @@ td .symbol-name {
 
   .factor-eval-lab-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ============ EVALUATION LAB REDESIGN ============ */
+.factor-eval-lab-redesign {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* 页面标题栏 */
+.eval-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.eval-header-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.eval-title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.eval-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 吸顶配置工作台 */
+.eval-workbench {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.eval-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.eval-field-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.2;
+  height: 16px;
+}
+
+.eval-field-submit {
+  justify-content: flex-end;
+}
+
+.eval-run-btn {
+  background: #0f766e;
+  border-color: #0f766e;
+  height: 40px;
+  font-weight: 600;
+}
+
+.eval-run-btn:hover {
+  background: #0d6b63 !important;
+  border-color: #0d6b63 !important;
+}
+
+.eval-run-btn:disabled {
+  background: #d1d5db !important;
+  border-color: #d1d5db !important;
+}
+
+/* 工作台第二行：元数据摘要 */
+.eval-workbench-meta {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-light);
+}
+
+.eval-meta-list {
+  width: 100%;
+}
+
+.eval-meta-item {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.eval-meta-label {
+  color: var(--muted);
+}
+
+.eval-meta-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.eval-meta-value.mono {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 11px;
+}
+
+/* 运行中提示条 */
+.eval-running-banner {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #ecfeff;
+  border: 1px solid #a5f3fc;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.eval-running-stage {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.eval-running-elapsed {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 双栏主内容区 */
+.eval-main-content {
+  margin: 0 !important;
+}
+
+.eval-result-card {
+  border-radius: 8px;
+}
+
+.eval-result-card .ant-tabs {
+  margin-top: -4px;
+}
+
+.eval-result-panel {
+  padding-top: 4px;
+}
+
+/* 右侧就绪检查区 */
+.eval-preflight-panel {
+  position: sticky;
+  top: 150px;
+}
+
+.eval-preflight-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.preflight-item {
+  padding: 10px 4px !important;
+  border-bottom: 1px solid var(--border-light) !important;
+}
+
+.preflight-item:last-child {
+  border-bottom: none !important;
+}
+
+.preflight-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.preflight-item-detail {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.preflight-footer {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  justify-content: space-around;
+}
+
+.preflight-footer-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.preflight-footer-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* 高级参数抽屉 */
+.eval-advanced-drawer .ant-drawer-body {
+  padding: 16px 24px;
+}
+
+.eval-advanced-section {
+  margin-bottom: 20px;
+}
+
+.eval-advanced-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: var(--text-primary);
+}
+
+.eval-advanced-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 24px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 响应式 */
+@media (max-width: 992px) {
+  .eval-preflight-panel {
+    position: static;
+  }
+
+  .eval-workbench {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .eval-title {
+    font-size: 18px;
+  }
+
+  .eval-workbench {
+    padding: 12px;
+  }
+
+  .eval-meta-list {
+    font-size: 11px;
   }
 }
 
@@ -8062,3 +8512,525 @@ td .symbol-name {
   }
 }
 
+/* ============================================================
+   Portfolio Trading Redesign — Scoped Dark Cyan Theme
+   Brand prefix: pt | Scope wrapper: .pt-theme-scope
+   All variables & component classes below are scoped to
+   .pt-theme-scope and do NOT leak to global :root or other
+   top-level tabs. Color values are extracted 1:1 from the
+   prototype HTML :root (原型图/组合交易改造原型图/pages/*.html).
+   ============================================================ */
+
+/* ---------- SubTask 1.1: Scoped CSS Variables ---------- */
+.pt-theme-scope {
+  /* Neutral scale */
+  --pt-white: #ffffff;
+  --pt-black: #000000;
+  --pt-slate-50: #f8fafc;
+  --pt-slate-100: #f1f5f9;
+  --pt-slate-200: #e2e8f0;
+  --pt-slate-300: #cbd5e1;
+  --pt-slate-400: #94a3b8;
+  --pt-slate-500: #64748b;
+  --pt-slate-600: #475569;
+  --pt-slate-700: #334155;
+  --pt-slate-800: #1e293b;
+  --pt-slate-900: #0f172a;
+  --pt-slate-950: #020617;
+
+  /* Primary cyan scale (single brand hue) */
+  --pt-cyan-50: #ecfeff;
+  --pt-cyan-100: #cffafe;
+  --pt-cyan-200: #a5f3fc;
+  --pt-cyan-300: #67e8f9;
+  --pt-cyan-400: #22d3ee;
+  --pt-cyan-500: #06b6d4;
+  --pt-cyan-600: #0891b2;
+  --pt-cyan-700: #0e7490;
+  --pt-cyan-800: #155e75;
+  --pt-cyan-900: #164e63;
+  --pt-cyan-950: #083344;
+
+  /* State colors (semantic only) */
+  --pt-state-success: #10b981;
+  --pt-state-success-dim: rgba(16, 185, 129, 0.12);
+  --pt-state-warning: #f59e0b;
+  --pt-state-warning-dim: rgba(245, 158, 11, 0.12);
+  --pt-state-error: #ef4444;
+  --pt-state-error-dim: rgba(239, 68, 68, 0.12);
+  --pt-state-info: #3b82f6;
+  --pt-state-info-dim: rgba(59, 130, 246, 0.12);
+
+  /* Semantic aliases */
+  --pt-background: #0b1120;
+  --pt-foreground: #f8fafc;
+  --pt-card: #111827;
+  --pt-card-foreground: #f8fafc;
+  --pt-popover: #111827;
+  --pt-popover-foreground: #f8fafc;
+  --pt-primary: #06b6d4;
+  --pt-primary-foreground: #020617;
+  --pt-muted: #1f2937;
+  --pt-muted-foreground: #94a3b8;
+  --pt-border: #374151;
+  --pt-input: #1f2937;
+  --pt-ring: #06b6d4;
+
+  /* Radius scale (restrained) */
+  --pt-radius-sm: 4px;
+  --pt-radius-md: 8px;
+  --pt-radius-lg: 12px;
+  --pt-radius-full: 9999px;
+
+  /* Surface depth */
+  --pt-surface-1: #0b1120;
+  --pt-surface-2: #111827;
+  --pt-surface-3: #1f2937;
+  --pt-surface-4: #27354f;
+
+  /* Typography */
+  --pt-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  --pt-font-mono: "SF Mono", "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
+
+  /* Spacing scale */
+  --pt-space-1: 4px;
+  --pt-space-2: 8px;
+  --pt-space-3: 12px;
+  --pt-space-4: 16px;
+  --pt-space-5: 20px;
+  --pt-space-6: 24px;
+  --pt-space-8: 32px;
+  --pt-space-10: 40px;
+  --pt-space-12: 48px;
+
+  /* Shadows (only for floating layers, alpha <= 0.15) */
+  --pt-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --pt-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --pt-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
+  --pt-shadow-glow: 0 0 20px rgba(6, 182, 212, 0.15);
+
+  /* Scope background & foreground */
+  background-color: var(--pt-background);
+  color: var(--pt-foreground);
+  font-family: var(--pt-font-sans);
+}
+
+/* ---------- SubTask 1.2: Scoped Component Classes ---------- */
+
+/* Card */
+.pt-theme-scope .pt-card {
+  background: var(--pt-card);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-radius-lg);
+}
+
+/* Buttons */
+.pt-theme-scope .pt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--pt-radius-md);
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--pt-font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pt-theme-scope .pt-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pt-theme-scope .pt-btn-primary {
+  background: var(--pt-primary);
+  color: var(--pt-primary-foreground);
+}
+.pt-theme-scope .pt-btn-primary:hover:not(:disabled) {
+  background: var(--pt-cyan-400);
+}
+.pt-theme-scope .pt-btn-secondary {
+  background: var(--pt-surface-3);
+  color: var(--pt-foreground);
+  border-color: var(--pt-border);
+}
+.pt-theme-scope .pt-btn-secondary:hover:not(:disabled) {
+  background: var(--pt-surface-4);
+}
+.pt-theme-scope .pt-btn-ghost {
+  background: transparent;
+  color: var(--pt-muted-foreground);
+}
+.pt-theme-scope .pt-btn-ghost:hover:not(:disabled) {
+  background: var(--pt-surface-3);
+  color: var(--pt-foreground);
+}
+.pt-theme-scope .pt-btn-outline {
+  background: transparent;
+  color: var(--pt-foreground);
+  border-color: var(--pt-border);
+}
+.pt-theme-scope .pt-btn-outline:hover:not(:disabled) {
+  color: var(--pt-foreground);
+  border-color: var(--pt-muted-foreground);
+}
+.pt-theme-scope .pt-btn-sm {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+.pt-theme-scope .pt-btn-lg {
+  height: 44px;
+  padding: 0 24px;
+  font-size: 14px;
+}
+
+/* Tabs */
+.pt-theme-scope .pt-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--pt-muted-foreground);
+  appearance: none;
+  border: none !important;
+  box-shadow: none;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: transparent;
+}
+.pt-theme-scope .pt-tab:hover {
+  color: var(--pt-foreground);
+}
+.pt-theme-scope .pt-tab.active,
+.pt-theme-scope .pt-tab[data-active="true"] {
+  color: var(--pt-foreground);
+}
+.pt-theme-scope .pt-tab::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: var(--pt-primary);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.pt-theme-scope .pt-tab.active::after,
+.pt-theme-scope .pt-tab[data-active="true"]::after {
+  opacity: 1;
+}
+
+/* Table */
+.pt-theme-scope .pt-table {
+  width: 100%;
+  font-size: 13px;
+  border-collapse: collapse;
+}
+.pt-theme-scope .pt-table th {
+  text-align: left;
+  padding: 12px 16px;
+  font-weight: 500;
+  color: var(--pt-muted-foreground);
+  border-bottom: 1px solid var(--pt-border);
+  white-space: nowrap;
+}
+.pt-theme-scope .pt-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--pt-border);
+  color: var(--pt-foreground);
+}
+.pt-theme-scope .pt-table tbody tr {
+  transition: background 0.15s ease;
+}
+.pt-theme-scope .pt-table tbody tr:hover {
+  background: var(--pt-surface-3);
+}
+
+/* Toggle switch */
+.pt-theme-scope .pt-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: var(--pt-radius-full);
+  background: var(--pt-surface-4);
+  transition: background 0.2s ease;
+  cursor: pointer;
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+}
+.pt-theme-scope .pt-toggle.active {
+  background: var(--pt-primary);
+}
+.pt-theme-scope .pt-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s ease;
+}
+.pt-theme-scope .pt-toggle.active::after {
+  transform: translateX(16px);
+}
+
+/* Input */
+.pt-theme-scope .pt-input {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--pt-radius-md);
+  background: var(--pt-input);
+  border: 1px solid var(--pt-border);
+  color: var(--pt-foreground);
+  font-size: 13px;
+  font-family: var(--pt-font-sans);
+  transition: border-color 0.15s ease;
+}
+.pt-theme-scope .pt-input:focus {
+  outline: none;
+  border-color: var(--pt-primary);
+}
+.pt-theme-scope .pt-input::placeholder {
+  color: var(--pt-muted-foreground);
+}
+
+/* Select */
+.pt-theme-scope .pt-select {
+  height: 36px;
+  padding: 0 32px 0 12px;
+  border-radius: var(--pt-radius-md);
+  background: var(--pt-input);
+  border: 1px solid var(--pt-border);
+  color: var(--pt-foreground);
+  font-size: 13px;
+  font-family: var(--pt-font-sans);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+.pt-theme-scope .pt-select:focus {
+  outline: none;
+  border-color: var(--pt-primary);
+}
+
+/* Tags */
+.pt-theme-scope .pt-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--pt-radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.pt-theme-scope .pt-tag-success {
+  background: var(--pt-state-success-dim);
+  color: var(--pt-state-success);
+}
+.pt-theme-scope .pt-tag-warning {
+  background: var(--pt-state-warning-dim);
+  color: var(--pt-state-warning);
+}
+.pt-theme-scope .pt-tag-error {
+  background: var(--pt-state-error-dim);
+  color: var(--pt-state-error);
+}
+.pt-theme-scope .pt-tag-info {
+  background: var(--pt-state-info-dim);
+  color: var(--pt-state-info);
+}
+.pt-theme-scope .pt-tag-primary {
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--pt-primary);
+}
+
+/* Progress bar */
+.pt-theme-scope .pt-progress {
+  height: 6px;
+  border-radius: var(--pt-radius-full);
+  background: var(--pt-surface-3);
+  overflow: hidden;
+}
+.pt-theme-scope .pt-progress-fill {
+  height: 100%;
+  border-radius: var(--pt-radius-full);
+  background: var(--pt-primary);
+  transition: width 0.3s ease;
+}
+
+/* Dropdown */
+.pt-theme-scope .pt-dropdown {
+  position: absolute;
+  background: var(--pt-popover);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-radius-lg);
+  box-shadow: var(--pt-shadow-lg);
+  padding: 4px;
+  z-index: 100;
+  min-width: 180px;
+}
+
+/* Status badge */
+.pt-theme-scope .pt-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--pt-radius-full);
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Auto-trade pill */
+.pt-theme-scope .pt-autotrade-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--pt-state-success-dim);
+  color: var(--pt-state-success);
+  border-radius: var(--pt-radius-full);
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Factor chip */
+.pt-theme-scope .pt-factor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--pt-surface-3);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-radius-full);
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--pt-muted-foreground);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+/* Row warning highlight */
+.pt-theme-scope .pt-row-warn {
+  background: var(--pt-state-warning-dim);
+}
+
+/* Thin scrollbar */
+.pt-theme-scope .thin-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.pt-theme-scope .thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pt-theme-scope .thin-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--pt-slate-600);
+  border-radius: 2px;
+}
+.pt-theme-scope .thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--pt-slate-500);
+}
+
+/* ---------- SubTask 1.2: Scoped Typography Utilities ---------- */
+
+.pt-theme-scope .pt-text-xs { font-size: 11px; line-height: 16px; }
+.pt-theme-scope .pt-text-sm { font-size: 12px; line-height: 18px; }
+.pt-theme-scope .pt-text-base { font-size: 13px; line-height: 20px; }
+.pt-theme-scope .pt-text-md { font-size: 14px; line-height: 22px; }
+.pt-theme-scope .pt-text-lg { font-size: 16px; line-height: 24px; }
+.pt-theme-scope .pt-text-xl { font-size: 18px; line-height: 28px; }
+.pt-theme-scope .pt-text-2xl { font-size: 20px; line-height: 30px; }
+.pt-theme-scope .pt-text-3xl { font-size: 24px; line-height: 32px; }
+
+.pt-theme-scope .pt-font-normal { font-weight: 400; }
+.pt-theme-scope .pt-font-medium { font-weight: 500; }
+.pt-theme-scope .pt-font-semibold { font-weight: 600; }
+.pt-theme-scope .pt-font-bold { font-weight: 700; }
+
+.pt-theme-scope .pt-text-primary { color: var(--pt-foreground); }
+.pt-theme-scope .pt-text-secondary { color: var(--pt-muted-foreground); }
+.pt-theme-scope .pt-text-muted { color: var(--pt-slate-500); }
+.pt-theme-scope .pt-text-cyan { color: var(--pt-primary); }
+.pt-theme-scope .pt-text-success { color: var(--pt-state-success); }
+.pt-theme-scope .pt-text-warning { color: var(--pt-state-warning); }
+.pt-theme-scope .pt-text-error { color: var(--pt-state-error); }
+.pt-theme-scope .pt-text-info { color: var(--pt-state-info); }
+
+/* Financial data styling */
+.pt-theme-scope .pt-mono { font-family: var(--pt-font-mono); }
+.pt-theme-scope .pt-positive { color: var(--pt-state-success); }
+.pt-theme-scope .pt-negative { color: var(--pt-state-error); }
+.pt-theme-scope .pt-neutral { color: var(--pt-muted-foreground); }
+
+/* ═══════════════════════════════════════════════════════════════
+   基准指数/板块同步表格 (benchmark-index-table)
+   - 覆盖全局 ConfigProvider teal 品牌色导致的"选中行灰绿染满"视觉问题
+   - 改用用户熟悉的 AntD 默认蓝色选中样式，勾选状态清晰可辨
+   ═══════════════════════════════════════════════════════════════ */
+.benchmark-index-table .ant-table-tbody > tr.ant-table-row-selected > td,
+.benchmark-index-table .ant-table-tbody > tr.ant-table-row-selected:hover > td,
+.benchmark-index-table .ant-table-tbody > tr.ant-table-row-selected.ant-table-row-hover > td {
+  background: #e6f4ff !important;  /* AntD 蓝色选中，与默认 colorPrimary:#1677ff 一致 */
+}
+.benchmark-index-table .ant-table-tbody > tr.ant-table-row-selected > td.ant-table-cell-row-hover {
+  background: #bae0ff !important;
+}
+/* 行 hover 态（未选中）：保持低饱和，避免对比度太高 */
+.benchmark-index-table .ant-table-tbody > tr:hover > td,
+.benchmark-index-table .ant-table-tbody > tr.ant-table-row-hover > td {
+  background: rgba(22, 119, 255, 0.04);
+}
+/* 调整列宽占用：避免横向滚动条过早出现 */
+.benchmark-index-table .ant-table-thead > tr > th,
+.benchmark-index-table .ant-table-tbody > tr > td {
+  padding: 8px 10px;
+}
+/* 展开行错误详情面板的可读性优化 */
+.benchmark-index-table .ant-table-expanded-row > td {
+  background: #fafcff !important;
+  border-bottom: 1px dashed #d6e4ff;
+}
+/* 错误行 pre 样式（同步错误详情）更紧凑 */
+.benchmark-index-table .ant-table-expanded-row pre {
+  max-height: 180px;
+  overflow: auto;
+}
+
+/* Keep the Ant Design date range selector consistent with the dark portfolio workspace. */
+.pt-theme-scope .pt-backtest-date-picker.ant-picker {
+  background: var(--pt-surface-3);
+  border-color: var(--pt-border);
+}
+.pt-theme-scope .pt-backtest-date-picker.ant-picker:hover,
+.pt-theme-scope .pt-backtest-date-picker.ant-picker-focused {
+  border-color: var(--pt-primary);
+}
+.pt-theme-scope .pt-backtest-date-picker .ant-picker-input > input {
+  color: var(--pt-foreground);
+}
+.pt-theme-scope .pt-backtest-date-picker .ant-picker-separator,
+.pt-theme-scope .pt-backtest-date-picker .ant-picker-suffix {
+  color: var(--pt-muted-foreground);
+}
+
+
+@media (max-width: 720px) {
+  .factor-formula-example {
+    flex-direction: column;
+  }
+}

@@ -2,6 +2,7 @@
 config/db_config.json
 config/ai_config.json
 config/.ai_config.json.*.tmp
+config/secrets.key
 
 # Python
 __pycache__/
@@ -11,6 +12,10 @@ __pycache__/
 dist/
 build/
 .eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
 
 # Database files
 *.db
@@ -25,6 +30,16 @@ build/
 
 # Node
 node_modules/
+.pnpm-store/
+.npm/
+.cache/
+.eslintcache
+
+# pnpm / frontend build artifacts
+**/dist/
+**/*.tsbuildinfo
+frontend/dist/
+app/web/dist/
 
 # IDE
 .vscode/
@@ -36,12 +51,78 @@ Thumbs.db
 
 # Test artifacts
 test_*.png
+test_output/
+test-results/
+*.junit.xml
+junit.xml
+playwright-report/
+coverage/
+.nyc_output/
+reports/
 
-# Temp files
-tmp/*.db-journal
-tmp/*.txt
+# Temp files (catch all .tmp-* prefix, and tmp/ directory)
+.tmp-*
+.tmp*/
+tmp/**
+!tmp/.gitkeep
+!tmp/README*
 .pip_packages/
+
+# One-off debug / TDD scripts (generated during diagnostics, never commit)
+_tmp_*
+_debug_*
+check_tasks.py
+cleanup_tasks.py
+verify_fix.py
+debug_discovery_button*.py
 
 # Dev service runtime
 tmp/dev-services/
+
+# Runtime / worker logs (huge! never commit)
+*.log
+!logs/.gitkeep
+
+# Debug screenshots & binaries
+debug_*.png
+debug_*.jpg
+verify_fix.*.png
+verify_fix.*.jpg
+*.heapdump
+*.hprof
+
+# Trae local state / auto-generated spec drafts (commit only manually reviewed docs)
+.trae/cache/
+.trae/*.jsonl
+.trae/memory/
+.trae/specs/**
+!.trae/specs/README*
+
+# AI / LLM local caches
+.codex/
+.ollama/
+
+# Portfolio trading local drafts (design / specs)
+portfolio-trading-redesign/
+design_drafts/
+原始图片/
+
+# Test runner seed & temp files
+qa_blockers_*.py
+qa_blockers_*.json
+
+# Reports output & blackbox/whitebox output (120k+ line logs, never commit)
+professional-test-report-*.md
+factor-core-*.xml
+blackbox-*.xml
+whitebox-*.xml
+frontend-test-*.log
+backend-*.log
+bb-backend-*.log
+whitebox-output.log
+frontend-after-fix.log
+blackbox-after-fix.log
+factor-core-output.log
+factor-mini-after-fix.log
+blackbox-output.log
 

@@ -1,6 +1,7 @@
 """WP5 评估实验室 API 路由。
 
 端点：
+- POST /factor-evaluation/preflight：评价前预检（6 项检查）
 - POST /factor-evaluation/tasks：创建评估任务
 - GET /factor-evaluation/tasks：列出评估任务
 - GET /factor-evaluation/tasks/{task_id}：获取任务详情
@@ -11,9 +12,13 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+import logging
+import uuid
+from datetime import date
+from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.db.session import SessionLocal
@@ -26,10 +31,97 @@ from app.services.factors.wp5_eval_task import (
     create_evaluation_task,
     get_evaluation_task,
     list_evaluation_tasks,
+    preflight_factor_evaluation,
 )
 
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+def _make_correlation_id() -> str:
+    """生成 8 位 hex correlation_id（T3-5：用于 5xx 响应 + Worker errors_json）。"""
+    return uuid.uuid4().hex[:8]
+
+
+def _structured_5xx_error(exc: Exception, correlation_id: str, *, endpoint_name: str) -> tuple[int, dict]:
+    """构造结构化 5xx 响应（不暴露堆栈）。
+
+    Returns:
+        (status_code, response_dict)
+    """
+    from sqlalchemy.exc import OperationalError as _SAOpErr
+
+    if isinstance(exc, _SAOpErr):
+        status_code = 503
+        title_zh = "数据库连接异常（请稍后重试）"
+        detail = "DB connection unavailable"
+        error_code = "eval.db.operational_error"
+    else:
+        status_code = 500
+        title_zh = "服务端未知异常（请联系管理员）"
+        detail = "Internal server error"
+        error_code = "eval.server.internal_error"
+
+    error_item = {
+        "code": error_code,
+        "severity": "error",
+        "category": "config",
+        "title_zh": title_zh,
+        "detail_zh": (
+            f"{type(exc).__name__}：服务端执行评估请求时出现非预期错误，"
+            f"请提供 correlation_id={correlation_id} 给管理员定位问题。"
+        ),
+        "correlation_id": correlation_id,
+        "endpoint": endpoint_name,
+        "exception_type": type(exc).__name__,
+        "evidence": {"correlation_id": correlation_id},
+        "retryable": True,
+    }
+    body = {
+        "detail": detail,
+        "error": title_zh,
+        "correlation_id": correlation_id,
+        "errors_json": [error_item],
+    }
+    return status_code, body
+
+
+class FactorEvaluationPreflightRequest(BaseModel):
+    """评价预检请求。"""
+
+    factor_code: str = Field(..., description="因子代码")
+    factor_version_id: str | None = Field(None, description="因子版本 ID（可选，默认使用最新版本）")
+    universe: str = Field("all_a_shares", description="股票池标识")
+    start_date: date | None = Field(None, description="评价起始日期（可选，系统自动推算）")
+    end_date: date | None = Field(None, description="评价结束日期（可选，系统自动推算）")
+    target_horizon: int = Field(5, ge=1, le=60, description="目标收益 horizon（天）")
+
+
+class PreflightCheckItem(BaseModel):
+    """单条预检检查项。"""
+
+    code: str = Field(..., description="稳定检查代码")
+    severity: Literal["pass", "warn", "error", "info"] = Field(..., description="严重等级")
+    category: Literal["formula", "data", "config", "sample", "pit", "target"] = Field(
+        ..., description="检查维度分类"
+    )
+    title_zh: str = Field(..., description="中文标题")
+    detail_zh: str = Field(..., description="中文详细说明")
+    evidence: dict = Field(default_factory=dict, description="结构化证据数据")
+    fix_link: dict | None = Field(None, description='前端跳转链接: {"tab":"","subtab":"","label_zh":""}')
+    retryable: bool = Field(True, description="修复后是否可重试通过")
+
+
+class FactorEvaluationPreflightResponse(BaseModel):
+    """评价预检响应。"""
+
+    overall: dict = Field(
+        ...,
+        description='总体结论: {"passed": bool, "blocking_count": int, "recommended_date_range": [start,end]|None}',
+    )
+    items: list[PreflightCheckItem] = Field(..., description="按顺序输出的检查项列表（至少 6 项）")
 
 
 class EvaluationTaskCreate(BaseModel):
@@ -37,10 +129,37 @@ class EvaluationTaskCreate(BaseModel):
 
     factor_code: str = Field(..., description="因子代码")
     factor_kind: str = Field("continuous", description="因子类型: continuous/event/regime")
+    factor_version_id: int | None = Field(None, description="因子版本 ID（可选，默认使用最新版本）")
+    universe: str = Field("all_a_shares", description="股票池标识")
+    start_date: date | None = Field(None, description="评价起始日期（可选）")
+    end_date: date | None = Field(None, description="评价结束日期（可选）")
     target_horizon: int = Field(5, ge=1, le=60, description="目标收益 horizon（天）")
     n_groups: int = Field(5, ge=2, le=10, description="分组数")
     cost_rate: float = Field(0.001, ge=0.0, le=0.01, description="单边成本率")
+    direction: str | None = Field(None, description="因子方向: higher_better/lower_better/nonlinear（可选，默认因子版本配置）")
     created_by: str = Field("local_user", description="创建者")
+
+
+@router.post("/factor-evaluation/preflight", response_model=FactorEvaluationPreflightResponse)
+def preflight_eval(payload: FactorEvaluationPreflightRequest) -> FactorEvaluationPreflightResponse:
+    """执行因子评价前预检（6 项检查，按顺序输出）。"""
+    try:
+        result = preflight_factor_evaluation(
+            factor_code=payload.factor_code,
+            factor_version_id=payload.factor_version_id,
+            universe=payload.universe,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            target_horizon=payload.target_horizon,
+        )
+        return FactorEvaluationPreflightResponse(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - T3-5: 非预期异常给 correlation_id
+        cid = _make_correlation_id()
+        logger.exception("[%s] preflight_eval unexpected error", cid)
+        status_code, body = _structured_5xx_error(exc, cid, endpoint_name="preflight")
+        return JSONResponse(status_code=status_code, content=body)
 
 
 @router.post("/factor-evaluation/tasks")
@@ -50,13 +169,23 @@ def create_eval_task(payload: EvaluationTaskCreate):
         return create_evaluation_task(
             factor_code=payload.factor_code,
             factor_kind=payload.factor_kind,
+            factor_version_id=payload.factor_version_id,
+            universe=payload.universe,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
             target_horizon=payload.target_horizon,
             n_groups=payload.n_groups,
             cost_rate=payload.cost_rate,
+            direction=payload.direction,
             created_by=payload.created_by,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - T3-5: DB OperationalError 等给 correlation_id
+        cid = _make_correlation_id()
+        logger.exception("[%s] create_eval_task unexpected error", cid)
+        status_code, body = _structured_5xx_error(exc, cid, endpoint_name="create_task")
+        return JSONResponse(status_code=status_code, content=body)
 
 
 @router.get("/factor-evaluation/tasks")

@@ -34,6 +34,7 @@ from app.services.backtest import (
 from app.services.backtest_apply import apply_backtest_run_to_portfolio
 from app.services.factors.runtime import get_factor_runtime_snapshot
 from app.services.portfolio_backtest import compare_new_old_engine, run_portfolio_backtest
+from app.services.portfolio_asset_scope import ensure_symbol_ids_in_scope
 
 
 router = APIRouter()
@@ -42,6 +43,13 @@ router = APIRouter()
 @router.post("/backtest/run", response_model=BacktestRunRead)
 def create_backtest_run(payload: BacktestRunRequest, db: Session = Depends(get_db)):
     try:
+        portfolio = db.get(Portfolio, payload.portfolio_id)
+        if portfolio is None:
+            raise HTTPException(status_code=404, detail=f"Portfolio {payload.portfolio_id} not found")
+        try:
+            ensure_symbol_ids_in_scope(db, portfolio, payload.symbol_ids)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         runtime = get_factor_runtime_snapshot(db)
         score_weight_mode = (
             payload.score_weight_mode or runtime.score_weight_mode
@@ -100,6 +108,18 @@ def create_backtest_run(payload: BacktestRunRequest, db: Session = Depends(get_d
         return result
     except HTTPException:
         raise
+    except ValueError as exc:
+        # 将可由用户修复的数据问题转换为明确的 4xx，避免被全局异常处理器
+        # 包装成“服务暂时不可用”。前端可据 error_code 提供直达修复入口。
+        if str(exc) == "No trading data found in date range":
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "BACKTEST_MARKET_DATA_MISSING",
+                    "message": "该标的在回测区间内没有行情数据，请先初始化历史行情。",
+                },
+            ) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logging.getLogger(__name__).exception("回测执行失败")
         raise HTTPException(status_code=500, detail="回测执行失败，请检查配置或稍后重试") from exc
@@ -210,6 +230,8 @@ def create_portfolio_backtest_run(payload: PortfolioBacktestRequest, db: Session
             end_date=payload.end_date,
             run_name=payload.run_name,
             only_auto=payload.only_auto,
+            current_universe=payload.current_universe,
+            benchmark=payload.benchmark,
         )
         return PortfolioBacktestResult(**result)
     except ValueError as exc:

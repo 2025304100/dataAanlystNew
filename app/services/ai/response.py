@@ -22,10 +22,47 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _first_non_empty(item: dict, *keys: str) -> Any:
+    for key in keys:
+        value = item.get(key)
+        if value is not None and str(value).strip():
+            return value
+    return None
+
+
+def normalize_evidence(items: Any) -> list[dict]:
+    """Normalize evidence into a stable UI contract."""
+    if not isinstance(items, list):
+        items = [items] if items else []
+    normalized: list[dict] = []
+    for raw in items:
+        if isinstance(raw, str):
+            raw = {"content": raw}
+        if not isinstance(raw, dict):
+            continue
+        evidence_type = _first_non_empty(raw, "type", "kind", "category") or "context"
+        source = _first_non_empty(raw, "source", "origin", "dataset", "provider") or "AI"
+        content = _first_non_empty(raw, "content", "text", "description", "value", "quote", "title")
+        if content is None:
+            content = json.dumps(raw, ensure_ascii=False, default=str)
+        confidence = _first_non_empty(raw, "confidence", "score")
+        try:
+            confidence = float(confidence) if confidence is not None else None
+            if confidence is not None and confidence > 1 and confidence <= 100:
+                confidence /= 100
+            if confidence is not None and (not math.isfinite(confidence) or not 0 <= confidence <= 1):
+                confidence = None
+        except (TypeError, ValueError):
+            confidence = None
+        normalized.append({"type": str(evidence_type), "source": str(source), "content": str(content), "confidence": confidence})
+    return normalized
 
 
 # 缺数据时的标准提示语
@@ -72,7 +109,7 @@ class AIResponse:
         """
         return {
             "answer": self.answer,
-            "evidence": list(self.evidence),
+            "evidence": normalize_evidence(self.evidence),
             "warnings": list(self.warnings),
             "suggested_actions": list(self.suggested_actions),
             "draft": self.draft,
@@ -92,7 +129,7 @@ class AIResponse:
         """从字典构造 AIResponse（用于从 AIMessage.content 反序列化）。"""
         return cls(
             answer=str(data.get("answer", "")),
-            evidence=list(data.get("evidence") or []),
+            evidence=normalize_evidence(data.get("evidence")),
             warnings=list(data.get("warnings") or []),
             suggested_actions=list(data.get("suggested_actions") or []),
             draft=data.get("draft"),
@@ -139,7 +176,7 @@ def build_response(
     """
     return AIResponse(
         answer=answer,
-        evidence=list(evidence) if evidence else [],
+        evidence=normalize_evidence(evidence),
         warnings=list(warnings) if warnings else [],
         suggested_actions=list(suggested_actions) if suggested_actions else [],
         draft=draft,
@@ -220,7 +257,7 @@ def parse_llm_response(raw_response: str, context_metadata: dict) -> AIResponse:
     if "answer" in data:
         response = AIResponse(
             answer=str(data.get("answer", "")),
-            evidence=list(data.get("evidence") or []),
+            evidence=normalize_evidence(data.get("evidence")),
             warnings=list(data.get("warnings") or []),
             suggested_actions=list(data.get("suggested_actions") or []),
             draft=data.get("draft"),
@@ -262,4 +299,5 @@ __all__ = [
     "build_response",
     "build_no_data_response",
     "parse_llm_response",
+    "normalize_evidence",
 ]

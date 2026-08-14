@@ -7,6 +7,7 @@ const { mockApi } = vi.hoisted(() => ({
     getAIHealth: vi.fn(),
     getAISessions: vi.fn(),
     createAISession: vi.fn(),
+    streamAISession: vi.fn(),
     getAIMessages: vi.fn(),
     deleteAISession: vi.fn(),
     getAIProfiles: vi.fn(),
@@ -90,6 +91,11 @@ describe("WP-AI.7 AIAssistant", () => {
     mockApi.getAISessions.mockResolvedValue({ items: [], limit: 20, offset: 0, include_archived: false });
     mockApi.getAIMessages.mockResolvedValue({ items: [], session_id: 0, limit: 100, offset: 0 });
     mockApi.createAISession.mockResolvedValue({ session_id: 1, response: sampleAIResponse });
+    mockApi.streamAISession.mockImplementation(async (_payload, handlers) => {
+      handlers.onSession?.(1);
+      handlers.onDelta?.("partial answer");
+      handlers.onDone?.(1, sampleAIResponse);
+    });
     mockApi.getAIProfiles.mockResolvedValue([]);
     mockApi.testAIProfile.mockResolvedValue({ success: true, latency_ms: 100, model_info: null, error: null });
     mockApi.discoverAIModels.mockResolvedValue({ models: [] });
@@ -211,11 +217,12 @@ describe("WP-AI.7 AIAssistant", () => {
     fireEvent.click(screen.getByTestId("ai-send-button"));
 
     await waitFor(() => {
-      expect(mockApi.createAISession).toHaveBeenCalledWith(
+      expect(mockApi.streamAISession).toHaveBeenCalledWith(
         expect.objectContaining({
           source_page: "discovery",
           message: "Explain this candidate",
         }),
+        expect.any(Object),
       );
     }, { timeout: 5000 });
   });

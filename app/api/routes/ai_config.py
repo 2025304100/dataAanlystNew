@@ -17,6 +17,7 @@ from typing import Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
@@ -154,6 +155,11 @@ class AiChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     formula: str = Field(default="", max_length=500)
     history: list[dict] = Field(default_factory=list)
+    formula_mode: Literal["indicator", "factor"] = "indicator"
+    # 因子编辑器额外上下文（问AI时同步传递，帮助AI更理解需求）
+    factor_direction: str | None = Field(default=None, max_length=64)
+    factor_change_note: str | None = Field(default=None, max_length=500)
+    factor_params_text: str | None = Field(default=None, max_length=2000)
 
 
 class AiChatResponse(BaseModel):
@@ -201,6 +207,35 @@ _SYSTEM_FUNCTIONS_DOC = """
 - 组合条件：rsi(14) < 40 and close > sma(20) and volume_ratio(5) > 1.5
 - 上穿信号：cross_over(close, sma(20))
 - 引用前值：ref(close, 5) > sma(20)
+"""
+
+
+_FACTOR_SYSTEM_FUNCTIONS_DOC = """
+你是因子中心的公式助手。请把用户的自然语言想法转换成系统可执行的因子公式。
+
+【严格约束】
+1. 只能使用下列字段、函数、运算符，不得编造名称。
+2. 函数签名必须包含字段参数和回看窗口，例如 sma(close, 20)。回看窗口为 1-250 个交易日。
+3. 优先规避除零、无效估值和负数开方等问题。
+4. 每次给出一个首选公式，必须放在 ```formula 代码块中，随后用简短文字说明逻辑和方向。
+5. 若需求无法实现，明确说明缺少哪个字段或函数，不要伪造公式。
+
+【可用字段】
+open, high, low, close, volume, amount, turnover_rate, prev_close, pe_ttm, pb,
+main_net_inflow, roe_ttm, lhb_institution_net, hot_rank_pct, proxy_score
+
+【可用函数】
+abs(x), min(a,b), max(a,b), round(x,n), log(x), sqrt(x), exp(x),
+sma(field,n), ema(field,n), stddev(field,n), sum(field,n), mean(field,n), count(field,n),
+highest(field,n), lowest(field,n), ref(field,n), pct_change(field,n)
+
+【可用运算】
++ - * / % **，> >= < <= == !=，and or not，条件表达式 a if condition else b
+
+【示例】
+```formula
+(turnover_rate - mean(turnover_rate, 20)) / max(stddev(turnover_rate, 20), 0.000001)
+```
 """
 
 
@@ -313,7 +348,7 @@ def _validate_runtime_config(cfg: dict, *, require_model: bool = False) -> None:
         raise HTTPException(400, "请先配置模型名称")
 
 
-def _build_chat_payload(cfg: dict, messages: list[dict], *, test: bool = False) -> dict:
+def _build_chat_payload(cfg: dict, messages: list[dict], *, test: bool = False, stream: bool = False) -> dict:
     provider = cfg.get("provider", "openai_compatible")
     model = cfg.get("model") or _default_model(provider)
     max_tokens = min(int(cfg.get("max_tokens", 1024)), 8) if test else int(cfg.get("max_tokens", 1024))
@@ -333,23 +368,28 @@ def _build_chat_payload(cfg: dict, messages: list[dict], *, test: bool = False) 
         }
         if system_parts:
             payload["system"] = "\n\n".join(system_parts)
+        if stream:
+            payload["stream"] = True
         return payload
     if provider == "ollama":
         return {
             "model": model,
             "messages": messages,
-            "stream": False,
+            "stream": stream,
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
             },
         }
-    return {
+    payload = {
         "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    if stream:
+        payload["stream"] = True
+    return payload
 
 
 def _extract_ai_reply(data: dict) -> str:
@@ -372,6 +412,98 @@ def _extract_ai_reply(data: dict) -> str:
     if isinstance(message, dict):
         return str(message.get("content", ""))
     return str(data.get("response", ""))
+
+
+def _json_sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _build_ai_chat_messages(req: AiChatRequest) -> list[dict]:
+    system_prompt = _FACTOR_SYSTEM_FUNCTIONS_DOC if req.formula_mode == "factor" else _SYSTEM_FUNCTIONS_DOC
+    messages = [{"role": "system", "content": system_prompt}]
+    for item in (req.history or []):
+        role = item.get("role", "user")
+        content = item.get("content", "")
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+
+    user_content = req.message
+    if req.formula:
+        user_content += f"\n\n[当前公式] {req.formula}"
+    # 因子编辑器额外上下文
+    if req.formula_mode == "factor":
+        if req.factor_direction:
+            user_content += f"\n[因子方向] {req.factor_direction}"
+        if req.factor_change_note:
+            user_content += f"\n[本次修改/意图] {req.factor_change_note}"
+        if req.factor_params_text:
+            user_content += f"\n[当前参数JSON] {req.factor_params_text}"
+    messages.append({"role": "user", "content": user_content})
+    return messages
+
+
+def _extract_stream_delta(raw_line: str) -> tuple[str, bool] | None:
+    line = raw_line.strip()
+    if not line or line.startswith(":") or line.startswith("event:"):
+        return None
+    if line.startswith("data:"):
+        line = line[5:].strip()
+    if not line:
+        return None
+    if line == "[DONE]":
+        return "", True
+
+    try:
+        data = json.loads(line)
+    except json.JSONDecodeError:
+        return line, False
+
+    choices = data.get("choices") or []
+    if choices:
+        choice = choices[0] or {}
+        delta = choice.get("delta") or {}
+        content = delta.get("content")
+        if isinstance(content, list):
+            content = "".join(
+                str(item.get("text", "")) for item in content
+                if isinstance(item, dict)
+            )
+        if content:
+            return str(content), False
+        message = choice.get("message") or {}
+        message_content = message.get("content")
+        if message_content:
+            return str(message_content), True
+        text = choice.get("text")
+        if text:
+            return str(text), bool(choice.get("finish_reason"))
+        if choice.get("finish_reason"):
+            return "", True
+
+    event_type = data.get("type")
+    if event_type == "content_block_delta":
+        delta = data.get("delta") or {}
+        text = delta.get("text")
+        if text:
+            return str(text), False
+    if event_type == "content_block_start":
+        block = data.get("content_block") or {}
+        text = block.get("text")
+        if text:
+            return str(text), False
+    if event_type in ("message_stop", "done"):
+        return "", True
+
+    message = data.get("message")
+    if isinstance(message, dict) and message.get("content"):
+        return str(message.get("content")), bool(data.get("done"))
+    if data.get("response"):
+        return str(data.get("response")), bool(data.get("done"))
+    if data.get("content") and isinstance(data.get("content"), str):
+        return str(data.get("content")), bool(data.get("done"))
+    if data.get("done") is True:
+        return "", True
+    return None
 
 
 def _parse_model_list(data: object) -> list[dict]:
@@ -559,24 +691,7 @@ def ai_chat(req: AiChatRequest):
         raise HTTPException(400, "AI 功能未启用，请先在设置中配置并启用 AI 接口")
     _validate_runtime_config(cfg)
 
-    # 构建 system prompt（严格限定项目框架）
-    system_prompt = _SYSTEM_FUNCTIONS_DOC
-
-    # 构建 messages
-    messages = [{"role": "system", "content": system_prompt}]
-
-    # 添加历史对话
-    for item in (req.history or []):
-        role = item.get("role", "user")
-        content = item.get("content", "")
-        if role in ("user", "assistant") and content:
-            messages.append({"role": role, "content": content})
-
-    # 添加当前消息（附带当前公式上下文）
-    user_content = req.message
-    if req.formula:
-        user_content += f"\n\n[当前公式] {req.formula}"
-    messages.append({"role": "user", "content": user_content})
+    messages = _build_ai_chat_messages(req)
 
     try:
         headers = _auth_headers(cfg, json_content=True)
@@ -596,7 +711,7 @@ def ai_chat(req: AiChatRequest):
             return AiChatResponse(ok=False, error="AI 服务未返回有效回复")
 
         # 校验 AI 回复中的公式是否在项目框架内
-        invalid_formulas = _extract_and_validate_formulas(reply)
+        invalid_formulas = _extract_and_validate_formulas(reply) if req.formula_mode == "indicator" else []
         if invalid_formulas:
             warning = "\n\n⚠️ 注意：AI 回复中包含以下不在系统函数范围内的公式，请谨慎使用：\n" + "\n".join(f"  - {f}" for f in invalid_formulas)
             reply = reply + warning
@@ -610,3 +725,68 @@ def ai_chat(req: AiChatRequest):
     except Exception as e:
         logger.exception("AI chat proxy failed")
         return AiChatResponse(ok=False, error=f"请求失败：{str(e)[:100]}")
+
+
+@router.post("/settings/ai-chat/stream")
+def ai_chat_stream(req: AiChatRequest):
+    """Stream formula assistant replies as SSE."""
+    cfg = _load_ai_config()
+    if not cfg.get("enabled"):
+        raise HTTPException(400, "AI 功能未启用，请先在设置中配置并启用 AI 接口")
+    _validate_runtime_config(cfg)
+    messages = _build_ai_chat_messages(req)
+
+    def event_stream():
+        raw_reply = ""
+        try:
+            headers = _auth_headers(cfg, json_content=True)
+            payload = _build_chat_payload(cfg, messages, stream=True)
+            endpoint = _endpoint_url(cfg, "chat_path")
+            timeout = httpx.Timeout(float(cfg["timeout_seconds"]))
+            with httpx.Client(timeout=timeout) as client:
+                with client.stream("POST", endpoint, json=payload, headers=headers) as resp:
+                    if resp.status_code >= 400:
+                        body = resp.read().decode("utf-8", errors="replace")
+                        logger.warning("AI chat stream proxy error: %s %s", resp.status_code, body[:300])
+                        yield _json_sse("error", {"message": f"AI 服务返回错误 (HTTP {resp.status_code})"})
+                        return
+
+                    for line in resp.iter_lines():
+                        parsed = _extract_stream_delta(line)
+                        if parsed is None:
+                            continue
+                        delta, done = parsed
+                        if delta:
+                            raw_reply += delta
+                            yield _json_sse("delta", {"content": delta})
+                        if done:
+                            break
+
+            if not raw_reply:
+                yield _json_sse("error", {"message": "AI 服务未返回有效回复"})
+                return
+
+            invalid_formulas = _extract_and_validate_formulas(raw_reply) if req.formula_mode == "indicator" else []
+            if invalid_formulas:
+                warning = "\n\n注意：AI 回复中包含不在系统函数范围内的公式，请谨慎使用：\n" + "\n".join(f"  - {f}" for f in invalid_formulas)
+                raw_reply += warning
+                yield _json_sse("delta", {"content": warning})
+
+            yield _json_sse("done", {"ok": True, "reply": raw_reply, "error": ""})
+        except httpx.TimeoutException:
+            yield _json_sse("error", {"message": "AI 服务请求超时"})
+        except httpx.RequestError as exc:
+            logger.warning("AI chat stream request failed: %s", exc)
+            yield _json_sse("error", {"message": f"连接失败：{str(exc)[:100]}"})
+        except Exception as exc:
+            logger.exception("AI chat stream proxy failed")
+            yield _json_sse("error", {"message": f"请求失败：{str(exc)[:100]}"})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

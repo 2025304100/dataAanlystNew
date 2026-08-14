@@ -1,0 +1,2419 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智策量化 - 组合交易</title>
+    <style id="theme-vars">
+/* Portfolio Trading Redesign — Professional Calm Finance Theme */
+/* Brand prefix: pt */
+
+:root {
+  /* Neutral scale */
+  --pt-white: #ffffff;
+  --pt-black: #000000;
+  --pt-slate-50: #f8fafc;
+  --pt-slate-100: #f1f5f9;
+  --pt-slate-200: #e2e8f0;
+  --pt-slate-300: #cbd5e1;
+  --pt-slate-400: #94a3b8;
+  --pt-slate-500: #64748b;
+  --pt-slate-600: #475569;
+  --pt-slate-700: #334155;
+  --pt-slate-800: #1e293b;
+  --pt-slate-900: #0f172a;
+  --pt-slate-950: #020617;
+
+  /* Primary cyan scale (single brand hue) */
+  --pt-cyan-50: #ecfeff;
+  --pt-cyan-100: #cffafe;
+  --pt-cyan-200: #a5f3fc;
+  --pt-cyan-300: #67e8f9;
+  --pt-cyan-400: #22d3ee;
+  --pt-cyan-500: #06b6d4;
+  --pt-cyan-600: #0891b2;
+  --pt-cyan-700: #0e7490;
+  --pt-cyan-800: #155e75;
+  --pt-cyan-900: #164e63;
+  --pt-cyan-950: #083344;
+
+  /* State colors (semantic only) */
+  --pt-state-success: #10b981;
+  --pt-state-success-dim: rgba(16, 185, 129, 0.12);
+  --pt-state-warning: #f59e0b;
+  --pt-state-warning-dim: rgba(245, 158, 11, 0.12);
+  --pt-state-error: #ef4444;
+  --pt-state-error-dim: rgba(239, 68, 68, 0.12);
+  --pt-state-info: #3b82f6;
+  --pt-state-info-dim: rgba(59, 130, 246, 0.12);
+
+  /* Semantic aliases */
+  --pt-background: #0b1120;
+  --pt-foreground: #f8fafc;
+  --pt-card: #111827;
+  --pt-card-foreground: #f8fafc;
+  --pt-popover: #111827;
+  --pt-popover-foreground: #f8fafc;
+  --pt-primary: #06b6d4;
+  --pt-primary-foreground: #020617;
+  --pt-muted: #1f2937;
+  --pt-muted-foreground: #94a3b8;
+  --pt-border: #374151;
+  --pt-input: #1f2937;
+  --pt-ring: #06b6d4;
+
+  /* Radius scale (restrained) */
+  --pt-radius-sm: 4px;
+  --pt-radius-md: 8px;
+  --pt-radius-lg: 12px;
+  --pt-radius-full: 9999px;
+
+  /* Surface depth */
+  --pt-surface-1: #0b1120;
+  --pt-surface-2: #111827;
+  --pt-surface-3: #1f2937;
+  --pt-surface-4: #27354f;
+
+  /* Typography */
+  --pt-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  --pt-font-mono: "SF Mono", "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
+
+  /* Spacing scale */
+  --pt-space-1: 4px;
+  --pt-space-2: 8px;
+  --pt-space-3: 12px;
+  --pt-space-4: 16px;
+  --pt-space-5: 20px;
+  --pt-space-6: 24px;
+  --pt-space-8: 32px;
+  --pt-space-10: 40px;
+  --pt-space-12: 48px;
+
+  /* Shadows (only for floating layers, alpha <= 0.15) */
+  --pt-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --pt-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --pt-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
+  --pt-shadow-glow: 0 0 20px rgba(6, 182, 212, 0.15);
+}
+
+/* Base typography classes */
+.pt-text-xs { font-size: 11px; line-height: 16px; }
+.pt-text-sm { font-size: 12px; line-height: 18px; }
+.pt-text-base { font-size: 13px; line-height: 20px; }
+.pt-text-md { font-size: 14px; line-height: 22px; }
+.pt-text-lg { font-size: 16px; line-height: 24px; }
+.pt-text-xl { font-size: 18px; line-height: 28px; }
+.pt-text-2xl { font-size: 20px; line-height: 30px; }
+.pt-text-3xl { font-size: 24px; line-height: 32px; }
+
+.pt-font-normal { font-weight: 400; }
+.pt-font-medium { font-weight: 500; }
+.pt-font-semibold { font-weight: 600; }
+.pt-font-bold { font-weight: 700; }
+
+.pt-tracking-tight { letter-spacing: -0.01em; }
+.pt-tracking-wide { letter-spacing: 0.03em; }
+
+/* Utility color classes */
+.pt-text-primary { color: var(--pt-foreground); }
+.pt-text-secondary { color: var(--pt-muted-foreground); }
+.pt-text-muted { color: var(--pt-slate-500); }
+.pt-text-cyan { color: var(--pt-primary); }
+.pt-text-success { color: var(--pt-state-success); }
+.pt-text-warning { color: var(--pt-state-warning); }
+.pt-text-error { color: var(--pt-state-error); }
+.pt-text-info { color: var(--pt-state-info); }
+
+.pt-bg-background { background-color: var(--pt-background); }
+.pt-bg-card { background-color: var(--pt-card); }
+.pt-bg-muted { background-color: var(--pt-muted); }
+.pt-bg-surface-3 { background-color: var(--pt-surface-3); }
+.pt-bg-primary { background-color: var(--pt-primary); }
+.pt-bg-primary-dim { background-color: rgba(6, 182, 212, 0.12); }
+.pt-bg-success-dim { background-color: var(--pt-state-success-dim); }
+.pt-bg-warning-dim { background-color: var(--pt-state-warning-dim); }
+.pt-bg-error-dim { background-color: var(--pt-state-error-dim); }
+
+.pt-border { border-color: var(--pt-border); }
+.pt-border-primary { border-color: var(--pt-primary); }
+
+/* Financial data styling */
+.pt-mono { font-family: var(--pt-font-mono); }
+.pt-positive { color: var(--pt-state-success); }
+.pt-negative { color: var(--pt-state-error); }
+.pt-neutral { color: var(--pt-muted-foreground); }
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--pt-background);
+    --color-foreground: var(--pt-foreground);
+    --color-card: var(--pt-card);
+    --color-card-foreground: var(--pt-card-foreground);
+    --color-popover: var(--pt-popover);
+    --color-popover-foreground: var(--pt-popover-foreground);
+    --color-primary: var(--pt-primary);
+    --color-primary-foreground: var(--pt-primary-foreground);
+    --color-muted: var(--pt-muted);
+    --color-muted-foreground: var(--pt-muted-foreground);
+    --color-border: var(--pt-border);
+    --color-input: var(--pt-input);
+    --color-ring: var(--pt-ring);
+    --radius-sm: var(--pt-radius-sm);
+    --radius-md: var(--pt-radius-md);
+    --radius-lg: var(--pt-radius-lg);
+  }
+  @layer base {
+    body { background: var(--pt-background); color: var(--pt-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--pt-background); }
+      .text-background { color: var(--pt-background); }
+      .border-background { border-color: var(--pt-background); }
+      .ring-background { --tw-ring-color: var(--pt-background); }
+      .bg-foreground { background-color: var(--pt-foreground); }
+      .text-foreground { color: var(--pt-foreground); }
+      .border-foreground { border-color: var(--pt-foreground); }
+      .ring-foreground { --tw-ring-color: var(--pt-foreground); }
+      .bg-card { background-color: var(--pt-card); }
+      .text-card { color: var(--pt-card); }
+      .border-card { border-color: var(--pt-card); }
+      .ring-card { --tw-ring-color: var(--pt-card); }
+      .bg-card-foreground { background-color: var(--pt-card-foreground); }
+      .text-card-foreground { color: var(--pt-card-foreground); }
+      .border-card-foreground { border-color: var(--pt-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--pt-card-foreground); }
+      .bg-popover { background-color: var(--pt-popover); }
+      .text-popover { color: var(--pt-popover); }
+      .border-popover { border-color: var(--pt-popover); }
+      .ring-popover { --tw-ring-color: var(--pt-popover); }
+      .bg-popover-foreground { background-color: var(--pt-popover-foreground); }
+      .text-popover-foreground { color: var(--pt-popover-foreground); }
+      .border-popover-foreground { border-color: var(--pt-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--pt-popover-foreground); }
+      .bg-primary { background-color: var(--pt-primary); }
+      .text-primary { color: var(--pt-primary); }
+      .border-primary { border-color: var(--pt-primary); }
+      .ring-primary { --tw-ring-color: var(--pt-primary); }
+      .bg-primary-foreground { background-color: var(--pt-primary-foreground); }
+      .text-primary-foreground { color: var(--pt-primary-foreground); }
+      .border-primary-foreground { border-color: var(--pt-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--pt-primary-foreground); }
+      .bg-muted { background-color: var(--pt-muted); }
+      .text-muted { color: var(--pt-muted); }
+      .border-muted { border-color: var(--pt-muted); }
+      .ring-muted { --tw-ring-color: var(--pt-muted); }
+      .bg-muted-foreground { background-color: var(--pt-muted-foreground); }
+      .text-muted-foreground { color: var(--pt-muted-foreground); }
+      .border-muted-foreground { border-color: var(--pt-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--pt-muted-foreground); }
+      .bg-border { background-color: var(--pt-border); }
+      .text-border { color: var(--pt-border); }
+      .border-border { border-color: var(--pt-border); }
+      .ring-border { --tw-ring-color: var(--pt-border); }
+      .bg-input { background-color: var(--pt-input); }
+      .text-input { color: var(--pt-input); }
+      .border-input { border-color: var(--pt-input); }
+      .ring-input { --tw-ring-color: var(--pt-input); }
+      .bg-ring { background-color: var(--pt-ring); }
+      .text-ring { color: var(--pt-ring); }
+      .border-ring { border-color: var(--pt-ring); }
+      .ring-ring { --tw-ring-color: var(--pt-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen antialiased" style="background-color: var(--pt-background); color: var(--pt-foreground); font-family: var(--pt-font-sans);">
+
+    <!-- ========== GLOBAL NAV (固定顶部) ========== -->
+    <nav class="app-global-nav" data-dom-id="app-global-nav">
+        <div class="app-nav-left">
+            <!-- Logo -->
+            <div class="app-logo">
+                <div class="app-logo-mark">智</div>
+                <span>智策量化</span>
+            </div>
+            <!-- Global Nav Tabs -->
+            <div class="app-nav-tabs">
+                <button type="button" data-dom-id="nav-today" class="app-nav-tab">
+                    今日决策
+                </button>
+                <button type="button" data-dom-id="nav-portfolio" class="app-nav-tab active">
+                    组合交易
+                </button>
+                <button type="button" data-dom-id="nav-opportunity" class="app-nav-tab">
+                    机会中心
+                </button>
+                <button type="button" data-dom-id="nav-macro" class="app-nav-tab">
+                    宏观数据
+                </button>
+                <button type="button" data-dom-id="nav-market" class="app-nav-tab">
+                    行情消息
+                    <span class="nav-badge">3</span>
+                </button>
+                <button type="button" data-dom-id="nav-settings" class="app-nav-tab">
+                    设置
+                </button>
+            </div>
+        </div>
+        <div class="app-nav-right">
+            <!-- Notifications -->
+            <div class="relative" id="notif-dropdown-wrap">
+                <button type="button" id="notif-btn" class="app-nav-icon-btn" title="通知">
+                    <i data-lucide="bell" class="w-4 h-4"></i>
+                    <span class="notif-dot"></span>
+                </button>
+                <div id="notif-dropdown" class="pt-dropdown hidden" style="top: calc(100% + 8px); right: 0; min-width: 340px; padding: 0;">
+                    <div class="px-3 py-2.5 border-b flex items-center justify-between" style="border-color: var(--pt-border);">
+                        <span class="text-sm font-semibold text-white">消息通知</span>
+                        <button type="button" class="text-xs hover:text-white transition-colors" style="color: var(--pt-primary);">全部已读</button>
+                    </div>
+                    <div class="max-h-80 overflow-y-auto thin-scrollbar">
+                        <div class="notif-item notif-unread">
+                            <div class="notif-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">
+                                <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                            </div>
+                            <div class="notif-content">
+                                <div class="notif-title">风险预警：组合回撤达 8.3%</div>
+                                <div class="notif-desc">稳健增强组合回撤接近预警线，建议关注仓位。</div>
+                                <div class="notif-time">10 分钟前</div>
+                            </div>
+                        </div>
+                        <div class="notif-item notif-unread">
+                            <div class="notif-icon" style="background: rgba(34, 197, 94, 0.15); color: #22c55e;">
+                                <i data-lucide="trending-up" class="w-4 h-4"></i>
+                            </div>
+                            <div class="notif-content">
+                                <div class="notif-title">调仓完成：本周再平衡已执行</div>
+                                <div class="notif-desc">已按 Alpha_1 模型完成调仓，共成交 12 笔。</div>
+                                <div class="notif-time">2 小时前</div>
+                            </div>
+                        </div>
+                        <div class="notif-item">
+                            <div class="notif-icon" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4;">
+                                <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                            </div>
+                            <div class="notif-content">
+                                <div class="notif-title">回测完成：价值优选模型</div>
+                                <div class="notif-desc">回测收益率 +28.30%，最大回撤 -15.2%。</div>
+                                <div class="notif-time">昨天 16:42</div>
+                            </div>
+                        </div>
+                        <div class="notif-item">
+                            <div class="notif-icon" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">
+                                <i data-lucide="settings" class="w-4 h-4"></i>
+                            </div>
+                            <div class="notif-content">
+                                <div class="notif-title">策略更新：因子权重已调整</div>
+                                <div class="notif-desc">动量因子权重由 35% 调整为 40%，下一调仓周期生效。</div>
+                                <div class="notif-time">2 天前</div>
+                            </div>
+                        </div>
+                        <div class="notif-item">
+                            <div class="notif-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">
+                                <i data-lucide="info" class="w-4 h-4"></i>
+                            </div>
+                            <div class="notif-content">
+                                <div class="notif-title">系统维护通知</div>
+                                <div class="notif-desc">本周六 02:00-04:00 系统升级，期间暂停自动交易。</div>
+                                <div class="notif-time">3 天前</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="px-3 py-2 border-t text-center" style="border-color: var(--pt-border);">
+                        <button type="button" class="text-xs hover:text-white transition-colors" style="color: var(--pt-primary);">查看全部通知</button>
+                    </div>
+                </div>
+            </div>
+            <!-- Help -->
+            <div class="relative" id="help-dropdown-wrap">
+                <button type="button" id="help-btn" class="app-nav-icon-btn" title="帮助">
+                    <i data-lucide="help-circle" class="w-4 h-4"></i>
+                </button>
+                <div id="help-dropdown" class="pt-dropdown hidden" style="top: calc(100% + 8px); right: 0; min-width: 280px; padding: 4px;">
+                    <div class="pt-dropdown-item" data-action="manual">
+                        <i data-lucide="book-open" class="w-4 h-4 mr-2.5" style="color: var(--pt-primary);"></i>
+                        <div>
+                            <div class="text-sm font-medium text-white">使用手册</div>
+                            <div class="text-xs" style="color: var(--pt-muted-foreground);">快速上手与功能详解</div>
+                        </div>
+                    </div>
+                    <div class="pt-dropdown-item" data-action="faq">
+                        <i data-lucide="message-circle-question" class="w-4 h-4 mr-2.5" style="color: var(--pt-primary);"></i>
+                        <div>
+                            <div class="text-sm font-medium text-white">常见问题</div>
+                            <div class="text-xs" style="color: var(--pt-muted-foreground);">FAQ 与故障排查</div>
+                        </div>
+                    </div>
+                    <div class="pt-dropdown-divider"></div>
+                    <div class="pt-dropdown-item" data-action="support">
+                        <i data-lucide="headphones" class="w-4 h-4 mr-2.5" style="color: #22c55e;"></i>
+                        <div>
+                            <div class="text-sm font-medium text-white">联系客服</div>
+                            <div class="text-xs" style="color: var(--pt-muted-foreground);">工作日 9:00-18:00</div>
+                        </div>
+                    </div>
+                    <div class="pt-dropdown-item" data-action="feedback">
+                        <i data-lucide="message-square-plus" class="w-4 h-4 mr-2.5" style="color: #f59e0b;"></i>
+                        <div>
+                            <div class="text-sm font-medium text-white">意见反馈</div>
+                            <div class="text-xs" style="color: var(--pt-muted-foreground);">提交建议与问题</div>
+                        </div>
+                    </div>
+                    <div class="pt-dropdown-divider"></div>
+                    <div class="px-3 py-2 text-xs" style="color: var(--pt-muted-foreground);">
+                        版本 v2.4.1 · 更新于 2024-01-15
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main id="page-app-shell" data-node-id="page-app-shell" data-page-index="0" data-page-type="information-dense" data-viewport-mode="document-scroll">
+
+        <!-- ========== 组合交易内容区 (组合工作台) ========== -->
+        <div data-tab-content="portfolio">
+
+            <!-- Portfolio Header (组合选择 + 状态 + 操作) -->
+            <header class="portfolio-header">
+                <div class="flex items-center gap-3">
+                    <!-- Portfolio Selector -->
+                    <div class="relative">
+                        <button type="button" data-dom-id="portfolio-select" class="flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-[var(--pt-surface-3)] transition-colors group">
+                            <span class="text-[15px] font-semibold text-white">稳健增强组合</span>
+                            <span class="text-[11px] px-1.5 py-0.5 rounded font-medium" style="background: var(--pt-state-success-dim); color: var(--pt-state-success);">实盘</span>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-[var(--pt-muted-foreground)] group-hover:text-white transition-colors"></i>
+                        </button>
+                    </div>
+                    <!-- Running Status -->
+                    <span class="pt-status-badge" style="background: var(--pt-state-success-dim); color: var(--pt-state-success);">
+                        <span class="pt-status-dot" style="background: var(--pt-state-success); box-shadow: 0 0 0 3px rgba(16,185,129,0.2);"></span>
+                        运行正常
+                    </span>
+                    <!-- Auto-trading Status -->
+                    <span class="pt-autotrade-pill">
+                        <i data-lucide="zap" class="w-3.5 h-3.5 bolt"></i>
+                        自动接管：全自动运行
+                    </span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" data-dom-id="btn-ranking" class="pt-btn pt-btn-secondary">
+                        <i data-lucide="trophy" class="w-4 h-4" style="color: var(--pt-state-warning);"></i>
+                        <span>组合排名</span>
+                    </button>
+                    <button type="button" data-dom-id="btn-add-candidate" class="pt-btn pt-btn-primary">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        <span>添加候选标的</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Sub Tab Navigation (工作台内的4个Tab) -->
+            <nav class="h-11 border-b flex items-center px-4 gap-6" style="background-color: var(--pt-surface-1); border-color: var(--pt-border);">
+                <button type="button" data-dom-id="tab-overview" class="pt-tab active">账户总览</button>
+                <button type="button" data-dom-id="tab-members" class="pt-tab">组合成员</button>
+                <button type="button" data-dom-id="tab-strategy" class="pt-tab">策略规则（因子/条件）</button>
+                <button type="button" data-dom-id="tab-backtest" class="pt-tab">回测中心</button>
+            </nav>
+
+            <!-- Tab Content: 账户总览 -->
+            <section data-tab="overview" class="p-4 space-y-4">
+                <!-- Account Summary Band -->
+                <div class="pt-card overflow-hidden">
+                    <div class="grid grid-cols-5 divide-x" style="border-color: var(--pt-border);">
+                        <div class="p-4">
+                            <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">总资产</p>
+                            <p class="text-2xl font-semibold pt-mono tracking-tight text-white">¥50,000</p>
+                            <p class="text-xs pt-mono mt-1" style="color: var(--pt-muted-foreground);">累计盈亏 <span style="color: var(--pt-state-success);">¥0</span></p>
+                        </div>
+                        <div class="p-4">
+                            <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">可用现金</p>
+                            <p class="text-xl font-medium pt-mono tracking-tight text-white">¥50,000</p>
+                            <p class="text-xs pt-mono mt-1" style="color: var(--pt-muted-foreground);">现金占比 100%</p>
+                        </div>
+                        <div class="p-4">
+                            <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">持仓市值</p>
+                            <p class="text-xl font-medium pt-mono tracking-tight text-white">¥0</p>
+                            <p class="text-xs pt-mono mt-1" style="color: var(--pt-muted-foreground);">当前持仓 0 只</p>
+                        </div>
+                        <div class="p-4">
+                            <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">累计收益</p>
+                            <p class="text-xl font-medium pt-mono tracking-tight pt-positive">+35.2%</p>
+                            <p class="text-xs pt-mono mt-1" style="color: var(--pt-muted-foreground);">年化 <span class="pt-positive">18.5%</span></p>
+                        </div>
+                        <div class="p-4">
+                            <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">最大回撤</p>
+                            <p class="text-xl font-medium pt-mono tracking-tight pt-negative">-8.3%</p>
+                            <p class="text-xs pt-mono mt-1" style="color: var(--pt-muted-foreground);">夏普比 <span style="color: var(--pt-primary);">2.1</span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Two column layout -->
+                <div class="grid gap-4" style="grid-template-columns: 1fr 1fr;">
+                    <!-- Auto-trading quick config - ON state -->
+                    <div class="pt-card p-4">
+                        <div class="flex items-start justify-between mb-4">
+                            <div>
+                                <h3 class="pt-section-title">自动接管配置</h3>
+                                <p class="pt-section-sub">当前策略运行状态与核心参数</p>
+                            </div>
+                            <div class="pt-toggle active" title="自动接管开关"></div>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-[var(--pt-muted-foreground)]">当前模型</span>
+                                <span class="text-sm text-white font-medium">因子模型-Alpha_1</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-[var(--pt-muted-foreground)]">调仓频率</span>
+                                <span class="text-sm text-white">每日 14:50</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-[var(--pt-muted-foreground)]">单票仓位上限</span>
+                                <span class="text-sm text-white">15%</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-[var(--pt-muted-foreground)]">最大回撤阈值</span>
+                                <span class="text-sm text-white">20% → 清仓</span>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-4 border-t" style="border-color: var(--pt-border);">
+                            <button type="button" data-dom-id="btn-detail-config" class="pt-btn pt-btn-primary w-full">
+                                <i data-lucide="settings-2" class="w-4 h-4"></i>
+                                详细配置
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Risk Rules -->
+                    <div class="pt-card p-4">
+                        <div class="flex items-start justify-between mb-4">
+                            <div>
+                                <h3 class="pt-section-title">风险规则</h3>
+                                <p class="pt-section-sub">条件模型触发的风控规则</p>
+                            </div>
+                            <span class="pt-tag pt-tag-success">3 条已启用</span>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="flex items-center gap-3 p-2.5 rounded-lg" style="background: var(--pt-surface-3);">
+                                <div class="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0" style="background: var(--pt-state-error-dim);">
+                                    <i data-lucide="trending-down" class="w-4 h-4" style="color: var(--pt-state-error);"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-white">个股止损</p>
+                                    <p class="text-xs text-[var(--pt-muted-foreground)]">单票亏损达 8% 强制卖出</p>
+                                </div>
+                                <div class="pt-toggle active" style="width: 30px; height: 16px;"></div>
+                            </div>
+                            <div class="flex items-center gap-3 p-2.5 rounded-lg" style="background: var(--pt-surface-3);">
+                                <div class="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0" style="background: var(--pt-state-warning-dim);">
+                                    <i data-lucide="shield-alert" class="w-4 h-4" style="color: var(--pt-state-warning);"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-white">组合回撤保护</p>
+                                    <p class="text-xs text-[var(--pt-muted-foreground)]">组合回撤 15% 降仓 50%</p>
+                                </div>
+                                <div class="pt-toggle active" style="width: 30px; height: 16px;"></div>
+                            </div>
+                            <div class="flex items-center gap-3 p-2.5 rounded-lg" style="background: var(--pt-surface-3);">
+                                <div class="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0" style="background: var(--pt-state-info-dim);">
+                                    <i data-lucide="activity" class="w-4 h-4" style="color: var(--pt-state-info);"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-white">波动率控制</p>
+                                    <p class="text-xs text-[var(--pt-muted-foreground)]">年化波动率 > 25% 降低仓位</p>
+                                </div>
+                                <div class="pt-toggle" style="width: 30px; height: 16px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance chart + holdings preview -->
+                <div class="grid gap-4" style="grid-template-columns: 2fr 1fr;">
+                    <!-- Equity curve chart -->
+                    <div class="pt-card p-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="pt-section-title">收益曲线</h3>
+                                <p class="pt-section-sub">组合净值 vs 基准指数</p>
+                            </div>
+                            <div class="flex gap-1">
+                                <button type="button" class="pt-btn pt-btn-sm pt-btn-ghost">1月</button>
+                                <button type="button" class="pt-btn pt-btn-sm pt-btn-secondary">3月</button>
+                                <button type="button" class="pt-btn pt-btn-sm pt-btn-ghost">1年</button>
+                                <button type="button" class="pt-btn pt-btn-sm pt-btn-ghost">全部</button>
+                            </div>
+                        </div>
+                        <div class="h-56 flex items-center justify-center rounded-lg" style="background: var(--pt-surface-3);">
+                            <div class="text-center">
+                                <i data-lucide="line-chart" class="w-10 h-10 mx-auto mb-2" style="color: var(--pt-muted-foreground); opacity: 0.5;"></i>
+                                <p class="text-sm text-[var(--pt-muted-foreground)]">收益曲线图（Chart.js 占位）</p>
+                                <p class="text-xs mt-1" style="color: var(--pt-slate-600);">青色=组合净值，灰色=沪深300基准</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Top holdings -->
+                    <div class="pt-card p-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="pt-section-title">持仓分布</h3>
+                            <button type="button" class="text-xs pt-cyan hover:underline">查看全部</button>
+                        </div>
+                        <div class="space-y-3">
+                            <div>
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-medium text-white">600519</span>
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">贵州茅台</span>
+                                    </div>
+                                    <span class="text-sm pt-mono text-white">15.2%</span>
+                                </div>
+                                <div class="pt-progress">
+                                    <div class="pt-progress-fill" style="width: 15.2%;"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-medium text-white">000858</span>
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">五粮液</span>
+                                    </div>
+                                    <span class="text-sm pt-mono text-white">12.8%</span>
+                                </div>
+                                <div class="pt-progress">
+                                    <div class="pt-progress-fill" style="width: 12.8%;"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-medium text-white">601318</span>
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">中国平安</span>
+                                    </div>
+                                    <span class="text-sm pt-mono text-white">10.5%</span>
+                                </div>
+                                <div class="pt-progress">
+                                    <div class="pt-progress-fill" style="width: 10.5%;"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-medium text-white">300750</span>
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">宁德时代</span>
+                                    </div>
+                                    <span class="text-sm pt-mono text-white">8.3%</span>
+                                </div>
+                                <div class="pt-progress">
+                                    <div class="pt-progress-fill" style="width: 8.3%;"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm font-medium text-white">600036</span>
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">招商银行</span>
+                                    </div>
+                                    <span class="text-sm pt-mono text-white">7.1%</span>
+                                </div>
+                                <div class="pt-progress">
+                                    <div class="pt-progress-fill" style="width: 7.1%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-4 border-t" style="border-color: var(--pt-border);">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-[var(--pt-muted-foreground)]">持仓标的</span>
+                                <span class="text-white">5 只</span>
+                            </div>
+                            <div class="flex items-center justify-between text-xs mt-2">
+                                <span class="text-[var(--pt-muted-foreground)]">现金占比</span>
+                                <span class="text-white">46.1%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- Tab Content: 组合成员 -->
+            <section data-tab="members" class="p-4 space-y-4" style="display: none;">
+                <div class="pt-card p-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <button type="button" class="pt-btn pt-btn-secondary">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                导出持仓（CSV）
+                            </button>
+                            <button type="button" class="pt-btn pt-btn-secondary">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                                手动触发再平衡
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-[var(--pt-muted-foreground)]">仅显示目标偏离 &gt; 2% 的标的</span>
+                                <div class="pt-toggle active"></div>
+                            </div>
+                            <div class="relative">
+                                <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--pt-muted-foreground)]"></i>
+                                <input type="text" placeholder="搜索代码/名称" class="pt-input pl-8 w-44">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="pt-card overflow-hidden">
+                    <div class="overflow-x-auto thin-scrollbar">
+                        <table class="pt-table">
+                            <thead>
+                                <tr>
+                                    <th>标的代码</th>
+                                    <th>标的名称</th>
+                                    <th class="text-right">现价</th>
+                                    <th class="text-right">成本价</th>
+                                    <th class="text-right">持股数量</th>
+                                    <th class="text-right">持仓市值</th>
+                                    <th class="text-right">实际占比</th>
+                                    <th class="text-right">策略目标占比</th>
+                                    <th class="text-right">浮动盈亏</th>
+                                    <th class="text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="cursor-pointer">
+                                    <td class="pt-mono font-medium">600519.SH</td>
+                                    <td>贵州茅台</td>
+                                    <td class="text-right pt-mono">1,680.00</td>
+                                    <td class="text-right pt-mono">1,600.00</td>
+                                    <td class="text-right pt-mono">100</td>
+                                    <td class="text-right pt-mono">168,000.00</td>
+                                    <td class="text-right pt-mono">13.4%</td>
+                                    <td class="text-right">
+                                        <span class="pt-mono font-medium text-white">15.0%</span>
+                                        <span class="text-xs ml-1 pt-negative">(-1.6%)</span>
+                                    </td>
+                                    <td class="text-right">
+                                        <span class="pt-mono pt-positive">+8,000.00</span>
+                                        <span class="text-xs ml-1 pt-positive">(+5.0%)</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="text-xs font-medium mr-2 hover:underline" style="color: var(--pt-primary);">调仓</button>
+                                        <button type="button" class="text-xs font-medium hover:underline" style="color: var(--pt-state-error);">平仓</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="pt-mono font-medium">000858.SZ</td>
+                                    <td>五粮液</td>
+                                    <td class="text-right pt-mono">145.20</td>
+                                    <td class="text-right pt-mono">150.00</td>
+                                    <td class="text-right pt-mono">1,000</td>
+                                    <td class="text-right pt-mono">145,200.00</td>
+                                    <td class="text-right pt-mono">11.6%</td>
+                                    <td class="text-right">
+                                        <span class="pt-mono font-medium text-white">10.0%</span>
+                                        <span class="text-xs ml-1 pt-positive">(+1.6%)</span>
+                                    </td>
+                                    <td class="text-right">
+                                        <span class="pt-mono pt-negative">-4,800.00</span>
+                                        <span class="text-xs ml-1 pt-negative">(-3.2%)</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="text-xs font-medium mr-2 hover:underline" style="color: var(--pt-primary);">调仓</button>
+                                        <button type="button" class="text-xs font-medium hover:underline" style="color: var(--pt-state-error);">平仓</button>
+                                    </td>
+                                </tr>
+                                <tr class="pt-row-warn">
+                                    <td class="pt-mono font-medium">300750.SZ</td>
+                                    <td>宁德时代</td>
+                                    <td class="text-right pt-mono">195.00</td>
+                                    <td class="text-right pt-mono">180.00</td>
+                                    <td class="text-right pt-mono">500</td>
+                                    <td class="text-right pt-mono">97,500.00</td>
+                                    <td class="text-right pt-mono">7.8%</td>
+                                    <td class="text-right">
+                                        <span class="pt-mono font-medium" style="color: var(--pt-state-warning);">0.0%</span>
+                                        <span class="text-xs ml-1" style="color: var(--pt-state-warning);">(待调出)</span>
+                                    </td>
+                                    <td class="text-right">
+                                        <span class="pt-mono pt-positive">+7,500.00</span>
+                                        <span class="text-xs ml-1 pt-positive">(+8.3%)</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="text-xs font-medium px-2.5 py-1 rounded font-semibold" style="background: var(--pt-state-warning); color: #000;">一键清仓</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="pt-mono font-medium">601318.SH</td>
+                                    <td>中国平安</td>
+                                    <td class="text-right pt-mono">48.35</td>
+                                    <td class="text-right pt-mono">46.20</td>
+                                    <td class="text-right pt-mono">2,000</td>
+                                    <td class="text-right pt-mono">96,700.00</td>
+                                    <td class="text-right pt-mono">7.7%</td>
+                                    <td class="text-right">
+                                        <span class="pt-mono font-medium text-white">8.0%</span>
+                                        <span class="text-xs ml-1 pt-negative">(-0.3%)</span>
+                                    </td>
+                                    <td class="text-right">
+                                        <span class="pt-mono pt-positive">+4,300.00</span>
+                                        <span class="text-xs ml-1 pt-positive">(+4.7%)</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="text-xs font-medium mr-2 hover:underline" style="color: var(--pt-primary);">调仓</button>
+                                        <button type="button" class="text-xs font-medium hover:underline" style="color: var(--pt-state-error);">平仓</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="pt-mono font-medium">000333.SZ</td>
+                                    <td>美的集团</td>
+                                    <td class="text-right pt-mono">62.80</td>
+                                    <td class="text-right pt-mono">58.50</td>
+                                    <td class="text-right pt-mono">1,500</td>
+                                    <td class="text-right pt-mono">94,200.00</td>
+                                    <td class="text-right pt-mono">7.5%</td>
+                                    <td class="text-right">
+                                        <span class="pt-mono font-medium text-white">7.0%</span>
+                                        <span class="text-xs ml-1 pt-positive">(+0.5%)</span>
+                                    </td>
+                                    <td class="text-right">
+                                        <span class="pt-mono pt-positive">+6,450.00</span>
+                                        <span class="text-xs ml-1 pt-positive">(+7.4%)</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="text-xs font-medium mr-2 hover:underline" style="color: var(--pt-primary);">调仓</button>
+                                        <button type="button" class="text-xs font-medium hover:underline" style="color: var(--pt-state-error);">平仓</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="pt-mono font-medium">600036.SH</td>
+                                    <td>招商银行</td>
+                                    <td class="text-right pt-mono">35.60</td>
+                                    <td class="text-right pt-mono">34.80</td>
+                                    <td class="text-right pt-mono">3,000</td>
+                                    <td class="text-right pt-mono">106,800.00</td>
+                                    <td class="text-right pt-mono">8.5%</td>
+                                    <td class="text-right">
+                                        <span class="pt-mono font-medium text-white">8.0%</span>
+                                        <span class="text-xs ml-1 pt-positive">(+0.5%)</span>
+                                    </td>
+                                    <td class="text-right">
+                                        <span class="pt-mono pt-positive">+2,400.00</span>
+                                        <span class="text-xs ml-1 pt-positive">(+2.3%)</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="text-xs font-medium mr-2 hover:underline" style="color: var(--pt-primary);">调仓</button>
+                                        <button type="button" class="text-xs font-medium hover:underline" style="color: var(--pt-state-error);">平仓</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="pt-card overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-3 border-b" style="border-color: var(--pt-border);">
+                        <h3 class="pt-section-title">候选标的池</h3>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-[var(--pt-muted-foreground)]">共 12 只候选</span>
+                            <button type="button" class="text-xs hover:text-white transition-colors" style="color: var(--pt-primary);">管理候选池</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto thin-scrollbar">
+                        <table class="pt-table">
+                            <thead>
+                                <tr>
+                                    <th>代码</th>
+                                    <th>名称</th>
+                                    <th class="text-right">信号分</th>
+                                    <th class="text-right">目标权重</th>
+                                    <th>所属因子</th>
+                                    <th class="text-right">加入时间</th>
+                                    <th class="text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="pt-mono font-medium">002594.SZ</td>
+                                    <td>比亚迪</td>
+                                    <td class="text-right pt-mono font-medium" style="color: var(--pt-primary);">87.1</td>
+                                    <td class="text-right pt-mono">5.0%</td>
+                                    <td><span class="text-xs px-2 py-0.5 rounded" style="background: var(--pt-state-info-dim); color: var(--pt-state-info);">动量</span></td>
+                                    <td class="text-right pt-mono text-[var(--pt-muted-foreground)]">—</td>
+                                    <td class="text-center">
+                                        <button type="button" class="text-xs font-medium hover:underline" style="color: var(--pt-primary);">加入组合</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="pt-mono font-medium">601899.SH</td>
+                                    <td>紫金矿业</td>
+                                    <td class="text-right pt-mono font-medium" style="color: var(--pt-primary);">81.6</td>
+                                    <td class="text-right pt-mono">4.5%</td>
+                                    <td><span class="text-xs px-2 py-0.5 rounded" style="background: var(--pt-state-success-dim); color: var(--pt-state-success);">价值</span></td>
+                                    <td class="text-right pt-mono text-[var(--pt-muted-foreground)]">—</td>
+                                    <td class="text-center">
+                                        <button type="button" class="text-xs font-medium hover:underline" style="color: var(--pt-primary);">加入组合</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="pt-mono font-medium">300059.SZ</td>
+                                    <td>东方财富</td>
+                                    <td class="text-right pt-mono font-medium" style="color: var(--pt-primary);">76.3</td>
+                                    <td class="text-right pt-mono">3.0%</td>
+                                    <td><span class="text-xs px-2 py-0.5 rounded" style="background: rgba(6,182,212,0.12); color: var(--pt-primary);">低波</span></td>
+                                    <td class="text-right pt-mono text-[var(--pt-muted-foreground)]">—</td>
+                                    <td class="text-center">
+                                        <button type="button" class="text-xs font-medium hover:underline" style="color: var(--pt-primary);">加入组合</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab Content: 策略规则 -->
+            <section data-tab="strategy" class="p-4 space-y-4" style="display: none;">
+                <div class="pt-card p-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: var(--pt-state-warning-dim);">
+                                <i data-lucide="bot" class="w-5 h-5" style="color: var(--pt-state-warning);"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-base font-semibold text-white">自动接管系统配置</h2>
+                                <p class="text-xs text-[var(--pt-muted-foreground)] mt-0.5">配置因子模型、条件模型与风控规则，开启后系统将自动执行交易指令</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm text-[var(--pt-muted-foreground)]">当前状态：</span>
+                            <span class="pt-status-badge" style="background: var(--pt-state-success-dim); color: var(--pt-state-success);">
+                                自动运行中（接管）
+                            </span>
+                            <div class="pt-toggle active"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid gap-4" style="grid-template-columns: 1fr 1fr;">
+                    <div class="pt-card overflow-hidden">
+                        <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: var(--pt-border);">
+                            <div>
+                                <h3 class="pt-section-title">1. 因子模型配置</h3>
+                                <p class="pt-section-sub">Factor Selection — 选股与调仓逻辑</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="relative" id="factor-model-dropdown-wrap">
+                                    <button type="button" id="factor-model-btn" class="pt-btn pt-btn-secondary flex items-center gap-1.5">
+                                        <span class="text-xs">当前模型</span>
+                                        <span class="text-xs font-semibold" style="color: var(--pt-primary);" id="factor-model-name">Alpha_1 多因子</span>
+                                        <i data-lucide="chevron-down" class="w-3.5 h-3.5" style="color: var(--pt-muted-foreground);"></i>
+                                    </button>
+                                    <div id="factor-model-dropdown" class="pt-dropdown hidden" style="top: calc(100% + 6px); right: 0; min-width: 200px;">
+                                        <div class="pt-dropdown-item active" data-model="Alpha_1 多因子">
+                                            <span>Alpha_1 多因子</span>
+                                            <i data-lucide="check" class="w-3.5 h-3.5 ml-auto"></i>
+                                        </div>
+                                        <div class="pt-dropdown-item" data-model="价值优选模型">
+                                            <span>价值优选模型</span>
+                                        </div>
+                                        <div class="pt-dropdown-item" data-model="成长轮动模型">
+                                            <span>成长轮动模型</span>
+                                        </div>
+                                        <div class="pt-dropdown-item" data-model="低波稳健模型">
+                                            <span>低波稳健模型</span>
+                                        </div>
+                                        <div class="pt-dropdown-divider"></div>
+                                        <div class="pt-dropdown-item" data-model="manage">
+                                            <i data-lucide="settings" class="w-3.5 h-3.5 mr-2"></i>
+                                            <span>管理模型</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" id="copy-model-btn" class="app-nav-icon-btn" title="复制模型">
+                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <button type="button" id="new-model-btn" class="app-nav-icon-btn" title="新建模型">
+                                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">选股池（Universe）</label>
+                                <select class="pt-select w-full">
+                                    <option>沪深300成分股</option>
+                                    <option selected>中证500成分股</option>
+                                    <option>中证800成分股</option>
+                                    <option>自定义板块</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">调仓周期（Rebalance）</label>
+                                <select class="pt-select w-full">
+                                    <option>每日收盘前</option>
+                                    <option selected>每周五收盘前</option>
+                                    <option>每月最后交易日</option>
+                                    <option>按信号触发</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">权重分配（Weighting）</label>
+                                <select class="pt-select w-full">
+                                    <option>等权分配</option>
+                                    <option>市值加权</option>
+                                    <option selected>风险平价模型</option>
+                                    <option>最小方差</option>
+                                </select>
+                            </div>
+                            <div class="space-y-3 pt-2 border-t" style="border-color: var(--pt-border);">
+                                <div class="flex items-center justify-between">
+                                    <label class="text-xs text-[var(--pt-muted-foreground)]">激活因子</label>
+                                    <span class="text-xs pt-mono" style="color: var(--pt-primary);">总权重 100%</span>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <span class="pt-factor-chip active">
+                                        动量（Momentum）
+                                        <span class="weight">40%</span>
+                                    </span>
+                                    <span class="pt-factor-chip active">
+                                        价值（PE/PB）
+                                        <span class="weight">30%</span>
+                                    </span>
+                                    <span class="pt-factor-chip active">
+                                        低波（Volatility）
+                                        <span class="weight">30%</span>
+                                    </span>
+                                    <span class="pt-factor-chip">
+                                        质量（Quality）
+                                        <span class="weight">0%</span>
+                                    </span>
+                                    <span class="pt-factor-chip">
+                                        成长（Growth）
+                                        <span class="weight">0%</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pt-card overflow-hidden">
+                        <div class="px-4 py-3 border-b" style="border-color: var(--pt-border);">
+                            <h3 class="pt-section-title">2. 条件模型与风控</h3>
+                            <p class="pt-section-sub">Condition &amp; Risk — 择时与风险控制</p>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">择时信号（Timing）</label>
+                                <select class="pt-select w-full">
+                                    <option selected>MACD 金叉买入</option>
+                                    <option>均线多头排列</option>
+                                    <option>RSI 超卖反弹</option>
+                                    <option>布林带突破</option>
+                                    <option>无择时（始终满仓）</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">单股持仓上限</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="text" value="15%" class="pt-input flex-1">
+                                    <span class="text-xs text-[var(--pt-muted-foreground)]">占组合净值</span>
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">个股止损（Stop Loss）</label>
+                                <select class="pt-select w-full">
+                                    <option>-5%（绝对值）</option>
+                                    <option selected>-8%（绝对值）</option>
+                                    <option>-10%（绝对值）</option>
+                                    <option>移动止损 -5%</option>
+                                    <option>移动止损 -8%</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">组合回撤熔断</label>
+                                <select class="pt-select w-full">
+                                    <option>-5% 自动减仓</option>
+                                    <option selected>-10% 自动清仓</option>
+                                    <option>-15% 自动清仓</option>
+                                    <option>不设熔断</option>
+                                </select>
+                            </div>
+                            <div class="pt-warning-banner mt-2">
+                                <strong><i data-lucide="alert-triangle" class="w-4 h-4 inline mr-1" style="vertical-align: -2px;"></i> 警告：</strong>
+                                当前止损策略已激活，触发后系统将自动生成市价单平仓，无需人工干预。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="pt-card p-4 flex items-center justify-between">
+                    <span class="text-xs text-[var(--pt-muted-foreground)]">
+                        <i data-lucide="info" class="w-3.5 h-3.5 inline mr-1" style="vertical-align: -2px;"></i>
+                        修改配置后将在下一个调仓周期生效，当前运行策略不受影响
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <button type="button" class="pt-btn pt-btn-outline">恢复默认</button>
+                        <button type="button" class="pt-btn pt-btn-secondary">保存草稿</button>
+                        <button type="button" class="pt-btn pt-btn-primary">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            保存并应用
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab Content: 回测中心 -->
+            <section data-tab="backtest" class="p-4 space-y-4" style="display: none;">
+                <div class="pt-card p-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-1 p-0.5 rounded-lg" style="background: var(--pt-surface-3);">
+                            <button type="button" id="bt-tab-portfolio" class="bt-inner-tab px-4 py-1.5 rounded-md text-sm font-medium transition-colors" style="background: var(--pt-primary); color: var(--pt-primary-foreground);">
+                                组合全局回测
+                            </button>
+                            <button type="button" id="bt-tab-single" class="bt-inner-tab px-4 py-1.5 rounded-md text-sm font-medium transition-colors text-[var(--pt-muted-foreground)] hover:text-white">
+                                单股/指标回测
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-[var(--pt-muted-foreground)]">最近回测：2024-01-15 14:30</span>
+                            <button type="button" id="bt-history-btn" class="pt-btn pt-btn-outline">
+                                <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                                回测历史
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div id="bt-panel-portfolio" class="bt-panel grid gap-4" style="grid-template-columns: 280px 1fr;">
+                    <div class="pt-card overflow-hidden">
+                        <div class="px-4 py-3 border-b" style="border-color: var(--pt-border);">
+                            <h3 class="pt-section-title">参数配置</h3>
+                            <p class="pt-section-sub">设置回测参数与约束条件</p>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">回测区间</label>
+                                <div class="flex items-center gap-1">
+                                    <input type="text" value="2023-01-01" class="pt-input flex-1 text-xs">
+                                    <span class="text-[var(--pt-muted-foreground)] text-xs">至</span>
+                                    <input type="text" value="2024-01-01" class="pt-input flex-1 text-xs">
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">初始资金</label>
+                                <input type="text" value="¥ 1,000,000" class="pt-input w-full">
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">基准指数</label>
+                                <select class="pt-select w-full">
+                                    <option selected>沪深300（000300.SH）</option>
+                                    <option>中证500（000905.SH）</option>
+                                    <option>上证指数（000001.SH）</option>
+                                    <option>创业板指（399006.SZ）</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">手续费/滑点</label>
+                                <select class="pt-select w-full">
+                                    <option selected>万分之三 / 2个滑点</option>
+                                    <option>万分之二 / 1个滑点</option>
+                                    <option>万分之五 / 3个滑点</option>
+                                    <option>自定义</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">使用策略</label>
+                                <div class="p-2.5 rounded-md text-sm" style="background: var(--pt-surface-3); color: var(--pt-foreground);">
+                                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5 inline mr-1" style="color: var(--pt-primary); vertical-align: -2px;"></i>
+                                    当前策略配置
+                                </div>
+                            </div>
+                            <button type="button" class="pt-btn pt-btn-primary w-full pt-btn-lg mt-2">
+                                <i data-lucide="play" class="w-4 h-4"></i>
+                                开始回测引擎
+                            </button>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="grid gap-3" style="grid-template-columns: repeat(4, 1fr);">
+                            <div class="pt-card p-3">
+                                <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">绝对收益率</p>
+                                <p class="text-2xl font-bold pt-mono pt-positive">+42.15%</p>
+                            </div>
+                            <div class="pt-card p-3">
+                                <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">最大回撤</p>
+                                <p class="text-2xl font-bold pt-mono pt-negative">-12.40%</p>
+                            </div>
+                            <div class="pt-card p-3">
+                                <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">夏普比率</p>
+                                <p class="text-2xl font-bold pt-mono" style="color: var(--pt-primary);">1.85</p>
+                            </div>
+                            <div class="pt-card p-3">
+                                <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">胜率</p>
+                                <p class="text-2xl font-bold pt-mono text-white">58.3%</p>
+                            </div>
+                        </div>
+                        <div class="pt-card overflow-hidden">
+                            <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: var(--pt-border);">
+                                <h3 class="pt-section-title">累计净值曲线（策略 vs 基准）</h3>
+                                <div class="flex items-center gap-3">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-3 h-0.5" style="background: var(--pt-primary);"></span>
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">策略净值</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-3 h-0.5" style="background: var(--pt-slate-500);"></span>
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">基准净值</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-4">
+                                <div class="w-full h-64 rounded relative overflow-hidden" style="background: var(--pt-surface-2);">
+                                    <svg viewBox="0 0 800 260" class="w-full h-full" preserveAspectRatio="none">
+                                        <line x1="0" y1="65" x2="800" y2="65" stroke="var(--pt-surface-3)" stroke-width="1" stroke-dasharray="4,4"></line>
+                                        <line x1="0" y1="130" x2="800" y2="130" stroke="var(--pt-surface-3)" stroke-width="1" stroke-dasharray="4,4"></line>
+                                        <line x1="0" y1="195" x2="800" y2="195" stroke="var(--pt-surface-3)" stroke-width="1" stroke-dasharray="4,4"></line>
+                                        <defs>
+                                            <linearGradient id="strategyFill" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:0.2"></stop>
+                                                <stop offset="100%" style="stop-color:#06b6d4;stop-opacity:0"></stop>
+                                            </linearGradient>
+                                        </defs>
+                                        <path d="M0,220 Q40,215 80,200 T160,190 T240,170 T320,165 T400,140 T480,120 T560,100 T640,80 T720,60 T800,45 L800,260 L0,260 Z" fill="url(#strategyFill)"></path>
+                                        <path d="M0,220 Q40,215 80,200 T160,190 T240,170 T320,165 T400,140 T480,120 T560,100 T640,80 T720,60 T800,45" fill="none" stroke="#06b6d4" stroke-width="2"></path>
+                                        <path d="M0,220 Q40,218 80,210 T160,200 T240,190 T320,185 T400,175 T480,170 T560,160 T640,150 T720,145 T800,135" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5,3"></path>
+                                    </svg>
+                                    <div class="absolute top-2 left-2 text-xs pt-mono" style="color: var(--pt-muted-foreground);">1.5</div>
+                                    <div class="absolute top-1/2 left-2 text-xs pt-mono -translate-y-1/2" style="color: var(--pt-muted-foreground);">1.2</div>
+                                    <div class="absolute bottom-2 left-2 text-xs pt-mono" style="color: var(--pt-muted-foreground);">1.0</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid gap-4" style="grid-template-columns: 1fr 1fr;">
+                            <div class="pt-card overflow-hidden">
+                                <div class="px-4 py-3 border-b" style="border-color: var(--pt-border);">
+                                    <h3 class="pt-section-title text-sm">水下回撤图</h3>
+                                </div>
+                                <div class="p-4">
+                                    <div class="w-full h-32 rounded relative overflow-hidden" style="background: var(--pt-surface-2);">
+                                        <svg viewBox="0 0 400 128" class="w-full h-full" preserveAspectRatio="none">
+                                            <defs>
+                                                <linearGradient id="drawdownFill" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                    <stop offset="0%" style="stop-color:#ef4444;stop-opacity:0.3"></stop>
+                                                    <stop offset="100%" style="stop-color:#ef4444;stop-opacity:0.05"></stop>
+                                                </linearGradient>
+                                            </defs>
+                                            <path d="M0,0 Q20,10 40,25 T80,40 T120,55 T160,70 T200,90 T240,75 T280,60 T320,80 T360,65 T400,50 L400,128 L0,128 Z" fill="url(#drawdownFill)"></path>
+                                            <path d="M0,0 Q20,10 40,25 T80,40 T120,55 T160,70 T200,90 T240,75 T280,60 T320,80 T360,65 T400,50" fill="none" stroke="#ef4444" stroke-width="1.5"></path>
+                                            <line x1="0" y1="0" x2="400" y2="0" stroke="var(--pt-surface-4)" stroke-width="1"></line>
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="pt-card overflow-hidden">
+                                <div class="px-4 py-3 border-b" style="border-color: var(--pt-border);">
+                                    <h3 class="pt-section-title text-sm">回测明细指标</h3>
+                                </div>
+                                <div class="p-4 space-y-2.5">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">年化收益率</span>
+                                        <span class="text-sm pt-mono font-medium pt-positive">+42.15%</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">年化波动率</span>
+                                        <span class="text-sm pt-mono font-medium text-white">18.3%</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">卡玛比率</span>
+                                        <span class="text-sm pt-mono font-medium" style="color: var(--pt-primary);">3.40</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">最大回撤期</span>
+                                        <span class="text-sm pt-mono font-medium text-white">37 天</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">交易次数</span>
+                                        <span class="text-sm pt-mono font-medium text-white">142 次</span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">超额收益</span>
+                                        <span class="text-sm pt-mono font-medium pt-positive">+28.65%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 单股/指标回测面板 -->
+                <div id="bt-panel-single" class="bt-panel grid gap-4 hidden" style="grid-template-columns: 280px 1fr;">
+                    <div class="pt-card overflow-hidden">
+                        <div class="px-4 py-3 border-b" style="border-color: var(--pt-border);">
+                            <h3 class="pt-section-title">单股回测配置</h3>
+                            <p class="pt-section-sub">选择标的与指标参数</p>
+                        </div>
+                        <div class="p-4 space-y-4">
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">标的代码</label>
+                                <input type="text" value="600519.SH 贵州茅台" class="pt-input w-full">
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">回测区间</label>
+                                <div class="flex items-center gap-1">
+                                    <input type="text" value="2023-01-01" class="pt-input flex-1 text-xs">
+                                    <span class="text-[var(--pt-muted-foreground)] text-xs">至</span>
+                                    <input type="text" value="2024-01-01" class="pt-input flex-1 text-xs">
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">指标类型</label>
+                                <select class="pt-select w-full">
+                                    <option selected>MACD 金叉死叉</option>
+                                    <option>均线多头排列</option>
+                                    <option>RSI 超买超卖</option>
+                                    <option>布林带突破</option>
+                                    <option>KDJ 交叉信号</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">初始资金</label>
+                                <input type="text" value="¥ 100,000" class="pt-input w-full">
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs text-[var(--pt-muted-foreground)]">手续费/滑点</label>
+                                <select class="pt-select w-full">
+                                    <option selected>万分之三 / 2个滑点</option>
+                                    <option>万分之二 / 1个滑点</option>
+                                    <option>万分之五 / 3个滑点</option>
+                                </select>
+                            </div>
+                            <button type="button" class="pt-btn pt-btn-primary w-full pt-btn-lg mt-2">
+                                <i data-lucide="play" class="w-4 h-4"></i>
+                                开始单股回测
+                            </button>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="grid gap-3" style="grid-template-columns: repeat(4, 1fr);">
+                            <div class="pt-card p-3">
+                                <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">绝对收益率</p>
+                                <p class="text-2xl font-bold pt-mono pt-positive">+28.6%</p>
+                            </div>
+                            <div class="pt-card p-3">
+                                <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">最大回撤</p>
+                                <p class="text-2xl font-bold pt-mono pt-negative">-15.2%</p>
+                            </div>
+                            <div class="pt-card p-3">
+                                <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">夏普比率</p>
+                                <p class="text-2xl font-bold pt-mono" style="color: var(--pt-primary);">1.42</p>
+                            </div>
+                            <div class="pt-card p-3">
+                                <p class="text-xs text-[var(--pt-muted-foreground)] mb-1">胜率</p>
+                                <p class="text-2xl font-bold pt-mono text-white">52.1%</p>
+                            </div>
+                        </div>
+                        <div class="pt-card overflow-hidden">
+                            <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: var(--pt-border);">
+                                <h3 class="pt-section-title">股价与指标信号</h3>
+                                <div class="flex items-center gap-3">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-3 h-0.5" style="background: var(--pt-primary);"></span>
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">股价</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-2 h-2 rounded-full" style="background: #22c55e;"></span>
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">买入信号</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-2 h-2 rounded-full" style="background: #ef4444;"></span>
+                                        <span class="text-xs text-[var(--pt-muted-foreground)]">卖出信号</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-4">
+                                <div class="w-full h-64 rounded relative overflow-hidden" style="background: var(--pt-surface-2);">
+                                    <svg viewBox="0 0 800 260" class="w-full h-full" preserveAspectRatio="none">
+                                        <line x1="0" y1="65" x2="800" y2="65" stroke="var(--pt-surface-3)" stroke-width="1" stroke-dasharray="4,4"></line>
+                                        <line x1="0" y1="130" x2="800" y2="130" stroke="var(--pt-surface-3)" stroke-width="1" stroke-dasharray="4,4"></line>
+                                        <line x1="0" y1="195" x2="800" y2="195" stroke="var(--pt-surface-3)" stroke-width="1" stroke-dasharray="4,4"></line>
+                                        <path d="M0,180 Q60,160 120,140 T240,150 T360,120 T480,100 T600,110 T720,80 T800,60" fill="none" stroke="#06b6d4" stroke-width="2"></path>
+                                        <circle cx="120" cy="140" r="4" fill="#22c55e"></circle>
+                                        <circle cx="360" cy="120" r="4" fill="#22c55e"></circle>
+                                        <circle cx="240" cy="150" r="4" fill="#ef4444"></circle>
+                                        <circle cx="480" cy="100" r="4" fill="#ef4444"></circle>
+                                        <circle cx="600" cy="110" r="4" fill="#22c55e"></circle>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="pt-card overflow-hidden">
+                            <div class="px-4 py-3 border-b" style="border-color: var(--pt-border);">
+                                <h3 class="pt-section-title text-sm">交易明细</h3>
+                            </div>
+                            <div class="p-3">
+                                <div class="space-y-1.5 max-h-40 overflow-y-auto thin-scrollbar">
+                                    <div class="flex items-center justify-between px-2 py-1.5 rounded-md text-xs" style="background: var(--pt-surface-2);">
+                                        <span class="text-[var(--pt-muted-foreground)]">2023-03-15</span>
+                                        <span class="text-green-400 font-medium">买入 100股 @¥1,680</span>
+                                        <span class="pt-mono" style="color: var(--pt-muted-foreground);">¥168,000</span>
+                                    </div>
+                                    <div class="flex items-center justify-between px-2 py-1.5 rounded-md text-xs" style="background: var(--pt-surface-2);">
+                                        <span class="text-[var(--pt-muted-foreground)]">2023-06-20</span>
+                                        <span class="text-red-400 font-medium">卖出 100股 @¥1,750</span>
+                                        <span class="pt-mono pt-positive">+¥7,000</span>
+                                    </div>
+                                    <div class="flex items-center justify-between px-2 py-1.5 rounded-md text-xs" style="background: var(--pt-surface-2);">
+                                        <span class="text-[var(--pt-muted-foreground)]">2023-08-10</span>
+                                        <span class="text-green-400 font-medium">买入 100股 @¥1,720</span>
+                                        <span class="pt-mono" style="color: var(--pt-muted-foreground);">¥172,000</span>
+                                    </div>
+                                    <div class="flex items-center justify-between px-2 py-1.5 rounded-md text-xs" style="background: var(--pt-surface-2);">
+                                        <span class="text-[var(--pt-muted-foreground)]">2023-11-28</span>
+                                        <span class="text-red-400 font-medium">卖出 100股 @¥1,820</span>
+                                        <span class="pt-mono pt-positive">+¥10,000</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 回测历史侧边栏 -->
+                <div id="bt-history-panel" class="bt-history-panel hidden">
+                    <div class="bt-history-overlay"></div>
+                    <div class="bt-history-drawer">
+                        <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: var(--pt-border);">
+                            <div>
+                                <h3 class="pt-section-title">回测历史记录</h3>
+                                <p class="pt-section-sub">最近 10 条回测记录</p>
+                            </div>
+                            <button type="button" id="bt-history-close" class="app-nav-icon-btn">
+                                <i data-lucide="x" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                        <div class="p-3 space-y-2 overflow-y-auto thin-scrollbar" style="height: calc(100% - 57px);">
+                            <div class="bt-history-item">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-medium text-white">Alpha_1 多因子 · 组合回测</span>
+                                    <span class="text-xs pt-positive font-medium">+42.15%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs" style="color: var(--pt-muted-foreground);">
+                                    <span>2024-01-15 14:30</span>
+                                    <span>沪深300 · 1年</span>
+                                </div>
+                            </div>
+                            <div class="bt-history-item">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-medium text-white">价值优选模型 · 组合回测</span>
+                                    <span class="text-xs pt-positive font-medium">+28.30%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs" style="color: var(--pt-muted-foreground);">
+                                    <span>2024-01-10 09:15</span>
+                                    <span>沪深300 · 1年</span>
+                                </div>
+                            </div>
+                            <div class="bt-history-item">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-medium text-white">贵州茅台 · MACD策略</span>
+                                    <span class="text-xs pt-positive font-medium">+18.60%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs" style="color: var(--pt-muted-foreground);">
+                                    <span>2024-01-08 16:42</span>
+                                    <span>单股回测 · 6月</span>
+                                </div>
+                            </div>
+                            <div class="bt-history-item">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-medium text-white">成长轮动模型 · 组合回测</span>
+                                    <span class="text-xs pt-negative font-medium">-5.20%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs" style="color: var(--pt-muted-foreground);">
+                                    <span>2024-01-05 11:20</span>
+                                    <span>中证500 · 1年</span>
+                                </div>
+                            </div>
+                            <div class="bt-history-item">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-medium text-white">低波稳健模型 · 组合回测</span>
+                                    <span class="text-xs pt-positive font-medium">+12.80%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs" style="color: var(--pt-muted-foreground);">
+                                    <span>2024-01-02 10:05</span>
+                                    <span>沪深300 · 3年</span>
+                                </div>
+                            </div>
+                            <div class="bt-history-item">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-medium text-white">宁德时代 · 布林带策略</span>
+                                    <span class="text-xs pt-negative font-medium">-8.40%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs" style="color: var(--pt-muted-foreground);">
+                                    <span>2023-12-28 15:30</span>
+                                    <span>单股回测 · 1年</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <style>
+/* Toggle switch */
+.pt-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 9999px;
+  background: var(--pt-surface-3);
+  transition: background 0.2s;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.pt-toggle.active {
+  background: var(--pt-primary);
+}
+.pt-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+}
+.pt-toggle.active::after {
+  transform: translateX(16px);
+}
+
+/* Status badge */
+.pt-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.pt-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* Tab underline indicator */
+.pt-tab {
+  position: relative;
+  padding: 0 4px;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pt-muted-foreground);
+  cursor: pointer;
+  transition: color 0.15s;
+  border-bottom: 2px solid transparent;
+}
+.pt-tab:hover {
+  color: var(--pt-foreground);
+}
+.pt-tab.active {
+  color: var(--pt-primary);
+  border-bottom-color: var(--pt-primary);
+}
+
+/* Card */
+.pt-card {
+  background: var(--pt-card);
+  border: 1px solid var(--pt-border);
+  border-radius: var(--pt-radius-lg);
+}
+
+/* Button variants */
+.pt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--pt-radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s;
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.pt-btn-primary {
+  background: var(--pt-primary);
+  color: var(--pt-primary-foreground);
+}
+.pt-btn-primary:hover {
+  background: var(--pt-cyan-400);
+}
+.pt-btn-secondary {
+  background: var(--pt-surface-3);
+  color: var(--pt-foreground);
+  border-color: var(--pt-border);
+}
+.pt-btn-secondary:hover {
+  background: var(--pt-surface-4);
+}
+.pt-btn-ghost {
+  background: transparent;
+  color: var(--pt-muted-foreground);
+}
+.pt-btn-ghost:hover {
+  background: var(--pt-surface-3);
+  color: var(--pt-foreground);
+}
+.pt-btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* Section titles */
+.pt-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pt-foreground);
+}
+.pt-section-sub {
+  font-size: 12px;
+  color: var(--pt-muted-foreground);
+  margin-top: 2px;
+}
+
+/* Auto-trade pill */
+.pt-autotrade-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(6, 182, 212, 0.1);
+  color: var(--pt-primary);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+}
+.pt-autotrade-pill .bolt {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ========== APP SHELL STYLES ========== */
+
+/* Global nav - top level */
+.app-global-nav {
+  height: 44px;
+  background: var(--pt-surface-2);
+  border-bottom: 1px solid var(--pt-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.app-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--pt-foreground);
+}
+
+.app-logo-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--pt-primary), var(--pt-cyan-700));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.app-nav-tabs {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: 2px;
+}
+
+.app-nav-tab {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pt-muted-foreground);
+  cursor: pointer;
+  transition: color 0.15s;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.app-nav-tab:hover {
+  color: var(--pt-foreground);
+}
+.app-nav-tab.active {
+  color: var(--pt-primary);
+  border-bottom-color: var(--pt-primary);
+}
+.app-nav-tab .nav-badge {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--pt-state-error);
+  color: #fff;
+}
+
+.app-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-nav-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--pt-muted-foreground);
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+.app-nav-icon-btn:hover {
+  background: var(--pt-surface-3);
+  color: var(--pt-foreground);
+}
+.app-nav-icon-btn .notif-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pt-state-error);
+  border: 1px solid var(--pt-surface-2);
+}
+
+.app-user-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.app-user-area:hover {
+  background: var(--pt-surface-3);
+}
+.app-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--pt-cyan-500), var(--pt-cyan-800));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+}
+.app-user-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--pt-foreground);
+}
+
+/* Portfolio sub-header (workbench level) */
+.portfolio-header {
+  height: 56px;
+  background: var(--pt-surface-2);
+  border-bottom: 1px solid var(--pt-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+}
+
+/* Progress bar */
+.pt-progress {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--pt-surface-3);
+  overflow: hidden;
+}
+.pt-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--pt-primary);
+}
+
+/* Tag / chip */
+.pt-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.pt-tag-success {
+  background: var(--pt-state-success-dim);
+  color: var(--pt-state-success);
+}
+.pt-tag-warning {
+  background: var(--pt-state-warning-dim);
+  color: var(--pt-state-warning);
+}
+.pt-tag-error {
+  background: var(--pt-state-error-dim);
+  color: var(--pt-state-error);
+}
+.pt-tag-info {
+  background: var(--pt-state-info-dim);
+  color: var(--pt-state-info);
+}
+.pt-tag-primary {
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--pt-primary);
+}
+
+/* Button variants - additional */
+.pt-btn-outline {
+  background: transparent;
+  color: var(--pt-muted-foreground);
+  border-color: var(--pt-border);
+}
+.pt-btn-outline:hover { color: var(--pt-foreground); border-color: var(--pt-muted-foreground); }
+.pt-btn-lg { height: 40px; padding: 0 16px; font-size: 13px; }
+
+/* Select / dropdown input */
+.pt-select {
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border-radius: var(--pt-radius-md);
+  background: var(--pt-input);
+  border: 1px solid var(--pt-border);
+  color: var(--pt-foreground);
+  font-size: 12px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  cursor: pointer;
+}
+.pt-select:focus {
+  outline: none;
+  border-color: var(--pt-primary);
+}
+
+/* Input */
+.pt-input {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--pt-radius-md);
+  background: var(--pt-input);
+  border: 1px solid var(--pt-border);
+  color: var(--pt-foreground);
+  font-size: 12px;
+  font-family: var(--pt-font-mono);
+}
+.pt-input:focus {
+  outline: none;
+  border-color: var(--pt-primary);
+}
+
+/* Table styles */
+.pt-table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+.pt-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--pt-muted-foreground);
+  padding: 8px 12px;
+  background: var(--pt-surface-2);
+  border-bottom: 1px solid var(--pt-border);
+  white-space: nowrap;
+}
+.pt-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--pt-border);
+  color: var(--pt-foreground);
+}
+.pt-table tbody tr {
+  transition: background 0.15s;
+}
+.pt-table tbody tr:hover {
+  background: var(--pt-surface-3);
+}
+
+/* Warning banner */
+.pt-warning-banner {
+  padding: 12px 14px;
+  border-radius: var(--pt-radius-md);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Factor chip */
+.pt-factor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--pt-radius-md);
+  background: var(--pt-surface-3);
+  border: 1px solid var(--pt-border);
+  font-size: 12px;
+  color: var(--pt-muted-foreground);
+  cursor: pointer;
+}
+.pt-factor-chip.active {
+  border-color: var(--pt-primary);
+  color: var(--pt-primary);
+  background: rgba(6, 182, 212, 0.08);
+}
+.pt-factor-chip .weight {
+  font-family: var(--pt-font-mono);
+  font-weight: 500;
+}
+
+/* Deviation highlight */
+.pt-row-warn {
+  background: rgba(245, 158, 11, 0.04);
+}
+.pt-row-warn:hover {
+  background: rgba(245, 158, 11, 0.08) !important;
+}
+
+/* Scrollbar */
+.thin-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.thin-scrollbar::-webkit-scrollbar-thumb { background: var(--pt-surface-4); border-radius: 3px; }
+.thin-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--pt-slate-600); }
+
+/* Text alignment helpers */
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+
+/* Dropdown */
+.pt-dropdown {
+  position: absolute;
+  background: var(--pt-surface-2);
+  border: 1px solid var(--pt-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  z-index: 100;
+  min-width: 180px;
+}
+.pt-dropdown.hidden { display: none; }
+.pt-dropdown-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--pt-foreground);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.pt-dropdown-item:hover { background: var(--pt-surface-3); }
+.pt-dropdown-item.active { color: var(--pt-primary); }
+.pt-dropdown-item.active:hover { background: var(--pt-surface-3); }
+.pt-dropdown-divider {
+  height: 1px;
+  background: var(--pt-border);
+  margin: 4px 0;
+}
+
+/* Toast */
+.pt-toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: var(--pt-surface-2);
+  border: 1px solid var(--pt-border);
+  color: var(--pt-foreground);
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  opacity: 0;
+  transition: all 0.25s ease;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pt-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.pt-toast-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--pt-primary);
+}
+
+/* Utility */
+.hidden { display: none !important; }
+.ml-auto { margin-left: auto; }
+.mr-2 { margin-right: 8px; }
+
+/* Backtest inner tabs */
+.bt-inner-tab.active {
+  background: var(--pt-primary) !important;
+  color: var(--pt-primary-foreground) !important;
+}
+.bt-inner-tab:not(.active) {
+  background: transparent !important;
+  color: var(--pt-muted-foreground) !important;
+}
+.bt-inner-tab:not(.active):hover {
+  color: var(--pt-foreground) !important;
+}
+
+/* Backtest history drawer */
+.bt-history-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  pointer-events: none;
+}
+.bt-history-panel:not(.hidden) {
+  pointer-events: auto;
+}
+.bt-history-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.bt-history-panel:not(.hidden) .bt-history-overlay {
+  opacity: 1;
+}
+.bt-history-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 360px;
+  height: 100%;
+  background: var(--pt-card);
+  border-left: 1px solid var(--pt-border);
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+.bt-history-panel:not(.hidden) .bt-history-drawer {
+  transform: translateX(0);
+}
+.bt-history-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--pt-surface-2);
+  cursor: pointer;
+  transition: background 0.15s;
+  border: 1px solid transparent;
+}
+.bt-history-item:hover {
+  background: var(--pt-surface-3);
+  border-color: var(--pt-border);
+}
+
+/* Notification items */
+.notif-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid var(--pt-border);
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: var(--pt-surface-3); }
+.notif-item.notif-unread {
+  background: rgba(6, 182, 212, 0.04);
+  position: relative;
+}
+.notif-item.notif-unread::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--pt-primary);
+}
+.notif-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.notif-content {
+  flex: 1;
+  min-width: 0;
+}
+.notif-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pt-foreground);
+  margin-bottom: 2px;
+  line-height: 1.4;
+}
+.notif-desc {
+  font-size: 12px;
+  color: var(--pt-muted-foreground);
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+.notif-time {
+  font-size: 11px;
+  color: var(--pt-slate-500);
+}
+    </style>
+    <script>
+      if (window.lucide) { lucide.createIcons(); }
+
+      // Tab 切换
+      (function() {
+        var tabs = document.querySelectorAll('.pt-tab[data-dom-id^="tab-"]');
+        var sections = document.querySelectorAll('section[data-tab]');
+
+        function switchTab(tabName) {
+          tabs.forEach(function(tab) {
+            var id = tab.getAttribute('data-dom-id');
+            if (id === 'tab-' + tabName) {
+              tab.classList.add('active');
+            } else {
+              tab.classList.remove('active');
+            }
+          });
+          sections.forEach(function(sec) {
+            if (sec.getAttribute('data-tab') === tabName) {
+              sec.style.display = '';
+            } else {
+              sec.style.display = 'none';
+            }
+          });
+        }
+
+        tabs.forEach(function(tab) {
+          tab.addEventListener('click', function() {
+            var id = tab.getAttribute('data-dom-id');
+            var tabName = id.replace('tab-', '');
+            switchTab(tabName);
+          });
+        });
+
+        // 详细配置按钮 → 跳转到策略规则Tab
+        var detailBtn = document.querySelector('[data-dom-id="btn-detail-config"]');
+        if (detailBtn) {
+          detailBtn.addEventListener('click', function() {
+            switchTab('strategy');
+          });
+        }
+
+        // ====== Toast 提示 ======
+        function showToast(message, iconName) {
+          var toast = document.getElementById('pt-global-toast');
+          if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'pt-global-toast';
+            toast.className = 'pt-toast';
+            toast.innerHTML = '<i class="pt-toast-icon" data-lucide="' + (iconName || 'check-circle') + '"></i><span class="pt-toast-text"></span>';
+            document.body.appendChild(toast);
+            if (window.lucide) { lucide.createIcons({ root: toast }); }
+          }
+          toast.querySelector('.pt-toast-text').textContent = message;
+          // 强制重绘
+          toast.offsetHeight;
+          toast.classList.add('show');
+          clearTimeout(toast._timer);
+          toast._timer = setTimeout(function() {
+            toast.classList.remove('show');
+          }, 2200);
+        }
+
+        // ====== 因子模型下拉菜单 ======
+        var modelBtn = document.getElementById('factor-model-btn');
+        var modelDropdown = document.getElementById('factor-model-dropdown');
+        var modelName = document.getElementById('factor-model-name');
+        var modelDropdownWrap = document.getElementById('factor-model-dropdown-wrap');
+
+        if (modelBtn && modelDropdown) {
+          modelBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            modelDropdown.classList.toggle('hidden');
+          });
+
+          // 点击菜单项切换模型
+          var dropdownItems = modelDropdown.querySelectorAll('.pt-dropdown-item[data-model]');
+          dropdownItems.forEach(function(item) {
+            item.addEventListener('click', function() {
+              var model = item.getAttribute('data-model');
+              if (model === 'manage') {
+                showToast('打开模型管理器', 'settings');
+              } else {
+                // 更新选中状态
+                dropdownItems.forEach(function(i) {
+                  i.classList.remove('active');
+                  var check = i.querySelector('[data-lucide="check"]');
+                  if (check) { check.remove(); }
+                });
+                item.classList.add('active');
+                var checkIcon = document.createElement('i');
+                checkIcon.setAttribute('data-lucide', 'check');
+                checkIcon.className = 'w-3.5 h-3.5 ml-auto';
+                item.appendChild(checkIcon);
+                if (window.lucide) { lucide.createIcons({ root: item }); }
+                // 更新按钮显示
+                modelName.textContent = model;
+                showToast('已切换至「' + model + '」', 'check-circle');
+              }
+              modelDropdown.classList.add('hidden');
+            });
+          });
+
+          // 点击外部关闭
+          document.addEventListener('click', function(e) {
+            if (!modelDropdownWrap.contains(e.target)) {
+              modelDropdown.classList.add('hidden');
+            }
+          });
+        }
+
+        // ====== 复制模型按钮 ======
+        var copyBtn = document.getElementById('copy-model-btn');
+        if (copyBtn) {
+          copyBtn.addEventListener('click', function() {
+            var current = modelName ? modelName.textContent : '当前模型';
+            showToast('已复制「' + current + '」为副本', 'copy');
+          });
+        }
+
+        // ====== 新建模型按钮 ======
+        var newBtn = document.getElementById('new-model-btn');
+        if (newBtn) {
+          newBtn.addEventListener('click', function() {
+            showToast('创建新的因子模型', 'plus');
+          });
+        }
+
+        // ====== 回测中心内部Tab切换 ======
+        var btTabs = document.querySelectorAll('.bt-inner-tab');
+        var btPanels = document.querySelectorAll('.bt-panel');
+
+        function switchBtTab(tabName) {
+          btTabs.forEach(function(t) {
+            if (t.id === 'bt-tab-' + tabName) {
+              t.classList.add('active');
+            } else {
+              t.classList.remove('active');
+            }
+          });
+          btPanels.forEach(function(p) {
+            if (p.id === 'bt-panel-' + tabName) {
+              p.classList.remove('hidden');
+            } else {
+              p.classList.add('hidden');
+            }
+          });
+        }
+
+        btTabs.forEach(function(tab) {
+          tab.addEventListener('click', function() {
+            var id = tab.id;
+            var tabName = id.replace('bt-tab-', '');
+            switchBtTab(tabName);
+            if (window.lucide) { lucide.createIcons(); }
+          });
+        });
+
+        // ====== 回测历史侧边栏 ======
+        var historyBtn = document.getElementById('bt-history-btn');
+        var historyPanel = document.getElementById('bt-history-panel');
+        var historyClose = document.getElementById('bt-history-close');
+        var historyOverlay = historyPanel ? historyPanel.querySelector('.bt-history-overlay') : null;
+
+        function openHistory() {
+          if (historyPanel) {
+            historyPanel.classList.remove('hidden');
+          }
+        }
+        function closeHistory() {
+          if (historyPanel) {
+            historyPanel.classList.add('hidden');
+          }
+        }
+
+        if (historyBtn) {
+          historyBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openHistory();
+          });
+        }
+        if (historyClose) {
+          historyClose.addEventListener('click', closeHistory);
+        }
+        if (historyOverlay) {
+          historyOverlay.addEventListener('click', closeHistory);
+        }
+
+        // 点击历史记录项
+        var historyItems = document.querySelectorAll('.bt-history-item');
+        historyItems.forEach(function(item) {
+          item.addEventListener('click', function() {
+            var title = item.querySelector('span') ? item.querySelector('span').textContent : '历史记录';
+            closeHistory();
+            showToast('加载回测记录：' + title, 'history');
+          });
+        });
+
+        // ====== 消息通知下拉 ======
+        var notifBtn = document.getElementById('notif-btn');
+        var notifDropdown = document.getElementById('notif-dropdown');
+        var notifWrap = document.getElementById('notif-dropdown-wrap');
+
+        if (notifBtn && notifDropdown) {
+          notifBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            notifDropdown.classList.toggle('hidden');
+            helpDropdown.classList.add('hidden');
+          });
+
+          // 点击通知项
+          var notifItems = notifDropdown.querySelectorAll('.notif-item');
+          notifItems.forEach(function(item) {
+            item.addEventListener('click', function() {
+              item.classList.remove('notif-unread');
+              var title = item.querySelector('.notif-title') ? item.querySelector('.notif-title').textContent : '';
+              showToast('已查看：' + title, 'check-circle');
+              notifDropdown.classList.add('hidden');
+            });
+          });
+
+          // 全部已读
+          var markAllRead = notifDropdown.querySelector('button');
+          if (markAllRead) {
+            markAllRead.addEventListener('click', function(e) {
+              e.stopPropagation();
+              notifItems.forEach(function(i) { i.classList.remove('notif-unread'); });
+              showToast('已全部标记为已读', 'check-circle');
+            });
+          }
+        }
+
+        // ====== 帮助下拉 ======
+        var helpBtn = document.getElementById('help-btn');
+        var helpDropdown = document.getElementById('help-dropdown');
+        var helpWrap = document.getElementById('help-dropdown-wrap');
+
+        if (helpBtn && helpDropdown) {
+          helpBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            helpDropdown.classList.toggle('hidden');
+            notifDropdown.classList.add('hidden');
+          });
+
+          var helpItems = helpDropdown.querySelectorAll('.pt-dropdown-item[data-action]');
+          helpItems.forEach(function(item) {
+            item.addEventListener('click', function() {
+              var action = item.getAttribute('data-action');
+              var actionMap = {
+                manual: '打开使用手册',
+                faq: '打开常见问题',
+                support: '联系客服',
+                feedback: '提交意见反馈'
+              };
+              showToast(actionMap[action] || action, 'help-circle');
+              helpDropdown.classList.add('hidden');
+            });
+          });
+        }
+
+        // 点击外部关闭所有下拉
+        document.addEventListener('click', function(e) {
+          if (notifWrap && !notifWrap.contains(e.target)) {
+            notifDropdown.classList.add('hidden');
+          }
+          if (helpWrap && !helpWrap.contains(e.target)) {
+            helpDropdown.classList.add('hidden');
+          }
+          if (modelDropdownWrap && !modelDropdownWrap.contains(e.target)) {
+            modelDropdown.classList.add('hidden');
+          }
+        });
+      })();
+    </script>
+</body>
+</html>

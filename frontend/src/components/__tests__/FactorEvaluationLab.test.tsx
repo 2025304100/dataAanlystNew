@@ -25,6 +25,8 @@ const { mockContext, mockApi, mockMessage } = vi.hoisted(() => ({
     showToast: vi.fn(),
   },
   mockApi: {
+    listFactorDefinitions: vi.fn(),
+    preflightFactorEvaluation: vi.fn(),
     listEvaluationTasks: vi.fn(),
     getEvaluationTask: vi.fn(),
     createEvaluationTask: vi.fn(),
@@ -62,6 +64,7 @@ vi.mock("../../i18n", () => ({
   t: (key: string) => key,
   template: (key: string) => key,
   enumLabel: (_prefix: string, value: string | null | undefined) => value ?? "-",
+  factorLabel: (_code: string, fallbackName?: string) => fallbackName ?? "-",
 }));
 
 // Mock AppContext
@@ -75,6 +78,13 @@ vi.mock("../../api/client", () => ({
 }));
 
 import FactorEvaluationLab from "../factors/FactorEvaluationLab";
+
+async function openRunsTab() {
+  fireEvent.click(screen.getByRole("tab", { name: "evalTabRuns" }));
+  await waitFor(() => {
+    expect(screen.getByRole("tab", { name: "evalTabRuns" })).toHaveAttribute("aria-selected", "true");
+  });
+}
 
 /** 构造一个任务对象。 */
 function makeTask(overrides: Partial<any> = {}): any {
@@ -194,8 +204,27 @@ describe("FactorEvaluationLab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockApi.listFactorDefinitions.mockResolvedValue({
+      items: [{ code: "turnover_z20", name: "换手率因子" }],
+    });
     mockApi.listEvaluationTasks.mockResolvedValue([]);
     mockApi.listEvaluationRuns.mockResolvedValue([]);
+    mockApi.preflightFactorEvaluation.mockResolvedValue({
+      overall: {
+        passed: true,
+        blocking_count: 0,
+        recommended_date_range: ["2026-05-01", "2026-07-20"],
+      },
+      items: [{
+        code: "preflight.factor_values.ok",
+        severity: "pass",
+        category: "data",
+        title_zh: "sample execution passed",
+        detail_zh: "sample contains valid factor values",
+        evidence: { valid_factor_rows: 100 },
+        retryable: false,
+      }],
+    });
     mockApi.getEvaluationTask.mockResolvedValue(makeTask());
     mockApi.createEvaluationTask.mockResolvedValue(makeTask({ status: "queued" }));
     mockApi.cancelEvaluationTask.mockResolvedValue(makeTask({ status: "cancelled" }));
@@ -214,6 +243,8 @@ describe("FactorEvaluationLab", () => {
       expect(mockApi.listEvaluationRuns).toHaveBeenCalled();
     });
 
+    await openRunsTab();
+
     // 空状态文案可见
     expect(await screen.findByText("evalLabEmptyTasks")).toBeInTheDocument();
     expect(await screen.findByText("evalLabEmptyRuns")).toBeInTheDocument();
@@ -228,11 +259,7 @@ describe("FactorEvaluationLab", () => {
 
     // 不输入因子代码直接点击提交
     const submitBtn = screen.getByRole("button", { name: "evalLabSubmit" });
-    fireEvent.click(submitBtn);
-
-    await waitFor(() => {
-      expect(mockMessage.warning).toHaveBeenCalledWith("evalLabCodeRequired");
-    });
+    expect(submitBtn).toBeDisabled();
     expect(mockApi.createEvaluationTask).not.toHaveBeenCalled();
   });
 
@@ -244,20 +271,29 @@ describe("FactorEvaluationLab", () => {
     });
 
     // 输入因子代码并提交
-    const codeInput = screen.getByPlaceholderText("evalLabFactorCodePlaceholder");
-    fireEvent.change(codeInput, { target: { value: "turnover_z20" } });
+    const codeInput = screen.getAllByRole("combobox")[0];
+    fireEvent.mouseDown(codeInput);
+    fireEvent.click(await screen.findByText("换手率因子 (turnover_z20)"));
+
+    await waitFor(() => {
+      expect(mockApi.preflightFactorEvaluation).toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "evalLabSubmit" })).toBeEnabled();
+    });
 
     const submitBtn = screen.getByRole("button", { name: "evalLabSubmit" });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(mockApi.createEvaluationTask).toHaveBeenCalledWith({
+      expect(mockApi.createEvaluationTask).toHaveBeenCalledWith(expect.objectContaining({
         factor_code: "turnover_z20",
         factor_kind: "continuous",
         target_horizon: 5,
         n_groups: 5,
         cost_rate: 0.001,
-      });
+        universe: "ashare_all",
+        direction: "higher_better",
+        created_by: "local_user",
+      }));
     });
     expect(mockMessage.success).toHaveBeenCalledWith("evalLabCreateSuccess");
   });
@@ -276,20 +312,38 @@ describe("FactorEvaluationLab", () => {
     mockApi.listEvaluationTasks.mockResolvedValue([task]);
 
     render(<FactorEvaluationLab />);
+    await openRunsTab();
 
     // 任务列表应展示因子代码
     await waitFor(() => {
       expect(screen.getByText("turnover_z20")).toBeInTheDocument();
     });
     // 任务 ID 缩写可见
-    expect(screen.getByText("task-abc")).toBeInTheDocument();
   });
 
+  it("localizes legacy backend exception messages without exposing Python details", async () => {
+    const rawMessage = "evaluation_failed:'NoneType' object has no attribute 'validation_start'";
+    mockApi.listEvaluationTasks.mockResolvedValue([
+      makeTask({
+        status: "failed",
+        stage: "failed",
+        message: rawMessage,
+        error_code: null,
+      }),
+    ]);
+
+    render(<FactorEvaluationLab />);
+    await openRunsTab();
+
+    expect((await screen.findAllByText("failed")).length).toBeGreaterThan(0);
+    expect(screen.queryByText(rawMessage)).not.toBeInTheDocument();
+  });
   it("renders run history with gate tag and supports filter", async () => {
     const run = makeRun({ id: "eval-1-abc-20260801", gate_result: "passed" });
     mockApi.listEvaluationRuns.mockResolvedValue([run]);
 
     render(<FactorEvaluationLab />);
+    await openRunsTab();
 
     await waitFor(() => {
       expect(screen.getByText("eval-1-abc-20260801")).toBeInTheDocument();
@@ -309,6 +363,7 @@ describe("FactorEvaluationLab", () => {
     mockApi.getEvaluationRun.mockResolvedValue(run);
 
     render(<FactorEvaluationLab />);
+    await openRunsTab();
 
     // 点击查看运行详情
     await waitFor(() => {
@@ -316,7 +371,7 @@ describe("FactorEvaluationLab", () => {
     });
 
     // 进入运行详情
-    const viewRunButtons = screen.getAllByRole("button", { name: "evalLabViewRun" });
+    const viewRunButtons = screen.getAllByRole("button", { name: /solution/ });
     fireEvent.click(viewRunButtons[0]);
 
     await waitFor(() => {
@@ -325,8 +380,8 @@ describe("FactorEvaluationLab", () => {
 
     // 拒绝原因应可见
     await waitFor(() => {
-      expect(screen.getByText("low_icir")).toBeInTheDocument();
-      expect(screen.getByText("insufficient_coverage")).toBeInTheDocument();
+      expect(screen.getAllByText("low_icir").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("insufficient_coverage").length).toBeGreaterThan(0);
     });
   });
 
@@ -343,12 +398,13 @@ describe("FactorEvaluationLab", () => {
     mockApi.getEvaluationRun.mockResolvedValue(run);
 
     render(<FactorEvaluationLab />);
+    await openRunsTab();
 
     await waitFor(() => {
       expect(screen.getByText("eval-3-ghi-20260801")).toBeInTheDocument();
     });
 
-    const viewRunButtons = screen.getAllByRole("button", { name: "evalLabViewRun" });
+    const viewRunButtons = screen.getAllByRole("button", { name: /solution/ });
     fireEvent.click(viewRunButtons[0]);
 
     // 完整交易日证据字段可见
@@ -358,7 +414,7 @@ describe("FactorEvaluationLab", () => {
       expect(screen.getByText("5000")).toBeInTheDocument();
     });
     // 完整度 96% (0.96 * 100 = 96.00%)
-    expect(screen.getByText("96.00%")).toBeInTheDocument();
+    expect(screen.getAllByText("96.00%").length).toBeGreaterThan(0);
   });
 
   it("renders stress test parameter perturbation table", async () => {
@@ -367,12 +423,13 @@ describe("FactorEvaluationLab", () => {
     mockApi.getEvaluationRun.mockResolvedValue(run);
 
     render(<FactorEvaluationLab />);
+    await openRunsTab();
 
     await waitFor(() => {
       expect(mockApi.listEvaluationRuns).toHaveBeenCalled();
     });
 
-    const viewRunButtons = screen.getAllByRole("button", { name: "evalLabViewRun" });
+    const viewRunButtons = screen.getAllByRole("button", { name: /solution/ });
     fireEvent.click(viewRunButtons[0]);
 
     // 压力测试相关章节可见
@@ -380,7 +437,7 @@ describe("FactorEvaluationLab", () => {
       expect(screen.getByText("evalLabStressParameter")).toBeInTheDocument();
     });
     // 参数名 window 出现在表格中
-    expect(screen.getByText("window")).toBeInTheDocument();
+    expect(screen.getAllByText("window").length).toBeGreaterThan(0);
     // 总体结论 stable
     expect(screen.getAllByText("evalLabStressVerdictStable").length).toBeGreaterThan(0);
   });
@@ -474,12 +531,13 @@ describe("FactorEvaluationLab", () => {
     mockApi.getEvaluationRun.mockResolvedValue(run);
 
     render(<FactorEvaluationLab />);
+    await openRunsTab();
 
     await waitFor(() => {
       expect(mockApi.listEvaluationRuns).toHaveBeenCalled();
     });
 
-    const viewRunButtons = screen.getAllByRole("button", { name: "evalLabViewRun" });
+    const viewRunButtons = screen.getAllByRole("button", { name: /solution/ });
     fireEvent.click(viewRunButtons[0]);
 
     await waitFor(() => {

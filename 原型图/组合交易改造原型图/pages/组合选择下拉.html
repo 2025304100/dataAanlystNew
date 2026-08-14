@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>组合选择下拉面板</title>
+    <style id="theme-vars">
+/* Portfolio Trading Redesign — Professional Calm Finance Theme */
+/* Brand prefix: pt */
+
+:root {
+  /* Neutral scale */
+  --pt-white: #ffffff;
+  --pt-black: #000000;
+  --pt-slate-50: #f8fafc;
+  --pt-slate-100: #f1f5f9;
+  --pt-slate-200: #e2e8f0;
+  --pt-slate-300: #cbd5e1;
+  --pt-slate-400: #94a3b8;
+  --pt-slate-500: #64748b;
+  --pt-slate-600: #475569;
+  --pt-slate-700: #334155;
+  --pt-slate-800: #1e293b;
+  --pt-slate-900: #0f172a;
+  --pt-slate-950: #020617;
+
+  /* Primary cyan scale (single brand hue) */
+  --pt-cyan-50: #ecfeff;
+  --pt-cyan-100: #cffafe;
+  --pt-cyan-200: #a5f3fc;
+  --pt-cyan-300: #67e8f9;
+  --pt-cyan-400: #22d3ee;
+  --pt-cyan-500: #06b6d4;
+  --pt-cyan-600: #0891b2;
+  --pt-cyan-700: #0e7490;
+  --pt-cyan-800: #155e75;
+  --pt-cyan-900: #164e63;
+  --pt-cyan-950: #083344;
+
+  /* State colors (semantic only) */
+  --pt-state-success: #10b981;
+  --pt-state-success-dim: rgba(16, 185, 129, 0.12);
+  --pt-state-warning: #f59e0b;
+  --pt-state-warning-dim: rgba(245, 158, 11, 0.12);
+  --pt-state-error: #ef4444;
+  --pt-state-error-dim: rgba(239, 68, 68, 0.12);
+  --pt-state-info: #3b82f6;
+  --pt-state-info-dim: rgba(59, 130, 246, 0.12);
+
+  /* Semantic aliases */
+  --pt-background: #0b1120;
+  --pt-foreground: #f8fafc;
+  --pt-card: #111827;
+  --pt-card-foreground: #f8fafc;
+  --pt-popover: #111827;
+  --pt-popover-foreground: #f8fafc;
+  --pt-primary: #06b6d4;
+  --pt-primary-foreground: #020617;
+  --pt-muted: #1f2937;
+  --pt-muted-foreground: #94a3b8;
+  --pt-border: #374151;
+  --pt-input: #1f2937;
+  --pt-ring: #06b6d4;
+
+  /* Radius scale (restrained) */
+  --pt-radius-sm: 4px;
+  --pt-radius-md: 8px;
+  --pt-radius-lg: 12px;
+  --pt-radius-full: 9999px;
+
+  /* Surface depth */
+  --pt-surface-1: #0b1120;
+  --pt-surface-2: #111827;
+  --pt-surface-3: #1f2937;
+  --pt-surface-4: #27354f;
+
+  /* Typography */
+  --pt-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  --pt-font-mono: "SF Mono", "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
+
+  /* Spacing scale */
+  --pt-space-1: 4px;
+  --pt-space-2: 8px;
+  --pt-space-3: 12px;
+  --pt-space-4: 16px;
+  --pt-space-5: 20px;
+  --pt-space-6: 24px;
+  --pt-space-8: 32px;
+  --pt-space-10: 40px;
+  --pt-space-12: 48px;
+
+  /* Shadows (only for floating layers, alpha <= 0.15) */
+  --pt-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --pt-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --pt-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
+  --pt-shadow-glow: 0 0 20px rgba(6, 182, 212, 0.15);
+}
+
+/* Base typography classes */
+.pt-text-xs { font-size: 11px; line-height: 16px; }
+.pt-text-sm { font-size: 12px; line-height: 18px; }
+.pt-text-base { font-size: 13px; line-height: 20px; }
+.pt-text-md { font-size: 14px; line-height: 22px; }
+.pt-text-lg { font-size: 16px; line-height: 24px; }
+.pt-text-xl { font-size: 18px; line-height: 28px; }
+.pt-text-2xl { font-size: 20px; line-height: 30px; }
+.pt-text-3xl { font-size: 24px; line-height: 32px; }
+
+.pt-font-normal { font-weight: 400; }
+.pt-font-medium { font-weight: 500; }
+.pt-font-semibold { font-weight: 600; }
+.pt-font-bold { font-weight: 700; }
+
+.pt-tracking-tight { letter-spacing: -0.01em; }
+.pt-tracking-wide { letter-spacing: 0.03em; }
+
+/* Utility color classes */
+.pt-text-primary { color: var(--pt-foreground); }
+.pt-text-secondary { color: var(--pt-muted-foreground); }
+.pt-text-muted { color: var(--pt-slate-500); }
+.pt-text-cyan { color: var(--pt-primary); }
+.pt-text-success { color: var(--pt-state-success); }
+.pt-text-warning { color: var(--pt-state-warning); }
+.pt-text-error { color: var(--pt-state-error); }
+.pt-text-info { color: var(--pt-state-info); }
+
+.pt-bg-background { background-color: var(--pt-background); }
+.pt-bg-card { background-color: var(--pt-card); }
+.pt-bg-muted { background-color: var(--pt-muted); }
+.pt-bg-surface-3 { background-color: var(--pt-surface-3); }
+.pt-bg-primary { background-color: var(--pt-primary); }
+.pt-bg-primary-dim { background-color: rgba(6, 182, 212, 0.12); }
+.pt-bg-success-dim { background-color: var(--pt-state-success-dim); }
+.pt-bg-warning-dim { background-color: var(--pt-state-warning-dim); }
+.pt-bg-error-dim { background-color: var(--pt-state-error-dim); }
+
+.pt-border { border-color: var(--pt-border); }
+.pt-border-primary { border-color: var(--pt-primary); }
+
+/* Financial data styling */
+.pt-mono { font-family: var(--pt-font-mono); }
+.pt-positive { color: var(--pt-state-success); }
+.pt-negative { color: var(--pt-state-error); }
+.pt-neutral { color: var(--pt-muted-foreground); }
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--pt-background);
+    --color-foreground: var(--pt-foreground);
+    --color-card: var(--pt-card);
+    --color-card-foreground: var(--pt-card-foreground);
+    --color-popover: var(--pt-popover);
+    --color-popover-foreground: var(--pt-popover-foreground);
+    --color-primary: var(--pt-primary);
+    --color-primary-foreground: var(--pt-primary-foreground);
+    --color-muted: var(--pt-muted);
+    --color-muted-foreground: var(--pt-muted-foreground);
+    --color-border: var(--pt-border);
+    --color-input: var(--pt-input);
+    --color-ring: var(--pt-ring);
+    --radius-sm: var(--pt-radius-sm);
+    --radius-md: var(--pt-radius-md);
+    --radius-lg: var(--pt-radius-lg);
+  }
+  @layer base {
+    body { background: transparent; color: var(--pt-foreground); font-family: var(--pt-font-sans); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--pt-background); }
+      .text-background { color: var(--pt-background); }
+      .border-background { border-color: var(--pt-background); }
+      .ring-background { --tw-ring-color: var(--pt-background); }
+      .bg-foreground { background-color: var(--pt-foreground); }
+      .text-foreground { color: var(--pt-foreground); }
+      .border-foreground { border-color: var(--pt-foreground); }
+      .ring-foreground { --tw-ring-color: var(--pt-foreground); }
+      .bg-card { background-color: var(--pt-card); }
+      .text-card { color: var(--pt-card); }
+      .border-card { border-color: var(--pt-card); }
+      .ring-card { --tw-ring-color: var(--pt-card); }
+      .bg-card-foreground { background-color: var(--pt-card-foreground); }
+      .text-card-foreground { color: var(--pt-card-foreground); }
+      .border-card-foreground { border-color: var(--pt-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--pt-card-foreground); }
+      .bg-popover { background-color: var(--pt-popover); }
+      .text-popover { color: var(--pt-popover); }
+      .border-popover { border-color: var(--pt-popover); }
+      .ring-popover { --tw-ring-color: var(--pt-popover); }
+      .bg-popover-foreground { background-color: var(--pt-popover-foreground); }
+      .text-popover-foreground { color: var(--pt-popover-foreground); }
+      .border-popover-foreground { border-color: var(--pt-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--pt-popover-foreground); }
+      .bg-primary { background-color: var(--pt-primary); }
+      .text-primary { color: var(--pt-primary); }
+      .border-primary { border-color: var(--pt-primary); }
+      .ring-primary { --tw-ring-color: var(--pt-primary); }
+      .bg-primary-foreground { background-color: var(--pt-primary-foreground); }
+      .text-primary-foreground { color: var(--pt-primary-foreground); }
+      .border-primary-foreground { border-color: var(--pt-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--pt-primary-foreground); }
+      .bg-muted { background-color: var(--pt-muted); }
+      .text-muted { color: var(--pt-muted); }
+      .border-muted { border-color: var(--pt-muted); }
+      .ring-muted { --tw-ring-color: var(--pt-muted); }
+      .bg-muted-foreground { background-color: var(--pt-muted-foreground); }
+      .text-muted-foreground { color: var(--pt-muted-foreground); }
+      .border-muted-foreground { border-color: var(--pt-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--pt-muted-foreground); }
+      .bg-border { background-color: var(--pt-border); }
+      .text-border { color: var(--pt-border); }
+      .border-border { border-color: var(--pt-border); }
+      .ring-border { --tw-ring-color: var(--pt-border); }
+      .bg-input { background-color: var(--pt-input); }
+      .text-input { color: var(--pt-input); }
+      .border-input { border-color: var(--pt-input); }
+      .ring-input { --tw-ring-color: var(--pt-input); }
+      .bg-ring { background-color: var(--pt-ring); }
+      .text-ring { color: var(--pt-ring); }
+      .border-ring { border-color: var(--pt-ring); }
+      .ring-ring { --tw-ring-color: var(--pt-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+
+      /* Custom scrollbar for dropdown list */
+      .dropdown-scroll::-webkit-scrollbar {
+        width: 4px;
+      }
+      .dropdown-scroll::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .dropdown-scroll::-webkit-scrollbar-thumb {
+        background: var(--pt-slate-600);
+        border-radius: 2px;
+      }
+      .dropdown-scroll::-webkit-scrollbar-thumb:hover {
+        background: var(--pt-slate-500);
+      }
+    </style>
+</head>
+<body data-node-id="page-portfolio-dropdown" class="min-h-screen">
+    <!-- Simulated trigger button area (for visual context) -->
+    <div style="position: absolute; top: 24px; left: 24px;">
+        <div style="width: 320px; height: 36px; background: var(--pt-surface-2); border: 1px solid var(--pt-border); border-radius: var(--pt-radius-md); display: flex; align-items: center; padding: 0 12px; gap: 8px; opacity: 0.5;">
+            <i data-lucide="briefcase" class="w-4 h-4" style="color: var(--pt-primary);"></i>
+            <span class="pt-text-sm pt-font-medium" style="color: var(--pt-foreground);">稳健增强组合</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 ml-auto" style="color: var(--pt-muted-foreground);"></i>
+        </div>
+    </div>
+
+    <!-- Dropdown Panel -->
+    <div style="position: absolute; top: 68px; left: 24px; width: 320px; background: var(--pt-surface-2); border: 1px solid var(--pt-border); border-radius: var(--pt-radius-lg); box-shadow: var(--pt-shadow-lg); overflow: hidden;">
+
+        <!-- Search Box -->
+        <div style="padding: 12px; border-bottom: 1px solid var(--pt-border);">
+            <div style="position: relative;">
+                <i data-lucide="search" class="w-4 h-4" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--pt-slate-500);"></i>
+                <input
+                    type="text"
+                    data-dom-id="portfolio-search"
+                    placeholder="搜索组合名称"
+                    class="w-full pt-text-sm outline-none"
+                    style="height: 36px; padding: 0 12px 0 32px; background: var(--pt-surface-3); border: 1px solid var(--pt-border); border-radius: var(--pt-radius-md); color: var(--pt-foreground); transition: border-color 0.15s ease;"
+                    onfocus="this.style.borderColor='var(--pt-primary)'"
+                    onblur="this.style.borderColor='var(--pt-border)'"
+                >
+            </div>
+        </div>
+
+        <!-- Group Header -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 8px;">
+            <span class="pt-text-xs pt-font-medium" style="color: var(--pt-slate-400); letter-spacing: 0.02em;">我的组合</span>
+            <span class="pt-text-xs" style="color: var(--pt-slate-500);">8</span>
+        </div>
+
+        <!-- Portfolio List -->
+        <div class="dropdown-scroll" style="max-height: 420px; overflow-y: auto;">
+
+            <!-- Item 1 - Selected -->
+            <div data-dom-id="portfolio-item-1"
+                 class="portfolio-item selected"
+                 style="position: relative; display: flex; align-items: center; padding: 10px 12px 10px 0; cursor: pointer; background: rgba(6, 182, 212, 0.08);">
+                <!-- Left cyan bar for selected -->
+                <div style="position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; background: var(--pt-primary); border-radius: 0 2px 2px 0;"></div>
+                <!-- Left info -->
+                <div style="flex: 1; min-width: 0; margin-left: 12px;">
+                    <div class="pt-text-sm pt-font-medium" style="color: var(--pt-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        稳健增强组合
+                    </div>
+                    <div class="pt-text-xs mt-0.5" style="color: var(--pt-slate-500);">
+                        成立186天 · 8只
+                    </div>
+                </div>
+                <!-- Return -->
+                <div class="pt-mono pt-text-sm pt-font-semibold pt-positive" style="margin-right: 10px; flex-shrink: 0;">
+                    +35.2%
+                </div>
+                <!-- Tag + Check -->
+                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                    <span class="pt-text-xs" style="padding: 2px 6px; border-radius: 4px; background: var(--pt-state-success-dim); color: var(--pt-state-success);">实盘</span>
+                    <i data-lucide="check" class="w-4 h-4" style="color: var(--pt-primary);"></i>
+                </div>
+            </div>
+
+            <!-- Item 2 -->
+            <div data-dom-id="portfolio-item-2"
+                 class="portfolio-item"
+                 style="position: relative; display: flex; align-items: center; padding: 10px 12px 10px 15px; cursor: pointer; transition: background-color 0.15s ease;"
+                 onmouseenter="this.style.background='var(--pt-surface-3)'"
+                 onmouseleave="this.style.background='transparent'">
+                <div style="flex: 1; min-width: 0;">
+                    <div class="pt-text-sm pt-font-medium" style="color: var(--pt-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        成长优选组合
+                    </div>
+                    <div class="pt-text-xs mt-0.5" style="color: var(--pt-slate-500);">
+                        成立142天 · 12只
+                    </div>
+                </div>
+                <div class="pt-mono pt-text-sm pt-font-semibold pt-positive" style="margin-right: 10px; flex-shrink: 0;">
+                    +28.7%
+                </div>
+                <span class="pt-text-xs" style="padding: 2px 6px; border-radius: 4px; background: var(--pt-state-success-dim); color: var(--pt-state-success); flex-shrink: 0;">实盘</span>
+            </div>
+
+            <!-- Item 3 -->
+            <div data-dom-id="portfolio-item-3"
+                 class="portfolio-item"
+                 style="position: relative; display: flex; align-items: center; padding: 10px 12px 10px 15px; cursor: pointer; transition: background-color 0.15s ease;"
+                 onmouseenter="this.style.background='var(--pt-surface-3)'"
+                 onmouseleave="this.style.background='transparent'">
+                <div style="flex: 1; min-width: 0;">
+                    <div class="pt-text-sm pt-font-medium" style="color: var(--pt-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        科技龙头组合
+                    </div>
+                    <div class="pt-text-xs mt-0.5" style="color: var(--pt-slate-500);">
+                        成立210天 · 10只
+                    </div>
+                </div>
+                <div class="pt-mono pt-text-sm pt-font-semibold pt-positive" style="margin-right: 10px; flex-shrink: 0;">
+                    +18.5%
+                </div>
+                <span class="pt-text-xs" style="padding: 2px 6px; border-radius: 4px; background: var(--pt-state-success-dim); color: var(--pt-state-success); flex-shrink: 0;">实盘</span>
+            </div>
+
+            <!-- Item 4 -->
+            <div data-dom-id="portfolio-item-4"
+                 class="portfolio-item"
+                 style="position: relative; display: flex; align-items: center; padding: 10px 12px 10px 15px; cursor: pointer; transition: background-color 0.15s ease;"
+                 onmouseenter="this.style.background='var(--pt-surface-3)'"
+                 onmouseleave="this.style.background='transparent'">
+                <div style="flex: 1; min-width: 0;">
+                    <div class="pt-text-sm pt-font-medium" style="color: var(--pt-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        消费白马组合
+                    </div>
+                    <div class="pt-text-xs mt-0.5" style="color: var(--pt-slate-500);">
+                        成立165天 · 7只
+                    </div>
+                </div>
+                <div class="pt-mono pt-text-sm pt-font-semibold pt-positive" style="margin-right: 10px; flex-shrink: 0;">
+                    +8.9%
+                </div>
+                <span class="pt-text-xs" style="padding: 2px 6px; border-radius: 4px; background: var(--pt-state-success-dim); color: var(--pt-state-success); flex-shrink: 0;">实盘</span>
+            </div>
+
+            <!-- Item 5 -->
+            <div data-dom-id="portfolio-item-5"
+                 class="portfolio-item"
+                 style="position: relative; display: flex; align-items: center; padding: 10px 12px 10px 15px; cursor: pointer; transition: background-color 0.15s ease;"
+                 onmouseenter="this.style.background='var(--pt-surface-3)'"
+                 onmouseleave="this.style.background='transparent'">
+                <div style="flex: 1; min-width: 0;">
+                    <div class="pt-text-sm pt-font-medium" style="color: var(--pt-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        量化对冲组合
+                    </div>
+                    <div class="pt-text-xs mt-0.5" style="color: var(--pt-slate-500);">
+                        成立120天 · 11只
+                    </div>
+                </div>
+                <div class="pt-mono pt-text-sm pt-font-semibold pt-negative" style="margin-right: 10px; flex-shrink: 0;">
+                    -2.1%
+                </div>
+                <span class="pt-text-xs" style="padding: 2px 6px; border-radius: 4px; background: var(--pt-state-success-dim); color: var(--pt-state-success); flex-shrink: 0;">实盘</span>
+            </div>
+
+            <!-- Item 6 -->
+            <div data-dom-id="portfolio-item-6"
+                 class="portfolio-item"
+                 style="position: relative; display: flex; align-items: center; padding: 10px 12px 10px 15px; cursor: pointer; transition: background-color 0.15s ease;"
+                 onmouseenter="this.style.background='var(--pt-surface-3)'"
+                 onmouseleave="this.style.background='transparent'">
+                <div style="flex: 1; min-width: 0;">
+                    <div class="pt-text-sm pt-font-medium" style="color: var(--pt-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        低波红利组合
+                    </div>
+                    <div class="pt-text-xs mt-0.5" style="color: var(--pt-slate-500);">
+                        成立96天 · 6只
+                    </div>
+                </div>
+                <div class="pt-mono pt-text-sm pt-font-semibold pt-positive" style="margin-right: 10px; flex-shrink: 0;">
+                    +22.1%
+                </div>
+                <span class="pt-text-xs" style="padding: 2px 6px; border-radius: 4px; background: rgba(148, 163, 184, 0.15); color: var(--pt-slate-400); flex-shrink: 0;">模拟</span>
+            </div>
+
+            <!-- Item 7 -->
+            <div data-dom-id="portfolio-item-7"
+                 class="portfolio-item"
+                 style="position: relative; display: flex; align-items: center; padding: 10px 12px 10px 15px; cursor: pointer; transition: background-color 0.15s ease;"
+                 onmouseenter="this.style.background='var(--pt-surface-3)'"
+                 onmouseleave="this.style.background='transparent'">
+                <div style="flex: 1; min-width: 0;">
+                    <div class="pt-text-sm pt-font-medium" style="color: var(--pt-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        医药创新组合
+                    </div>
+                    <div class="pt-text-xs mt-0.5" style="color: var(--pt-slate-500);">
+                        成立78天 · 15只
+                    </div>
+                </div>
+                <div class="pt-mono pt-text-sm pt-font-semibold pt-positive" style="margin-right: 10px; flex-shrink: 0;">
+                    +12.3%
+                </div>
+                <span class="pt-text-xs" style="padding: 2px 6px; border-radius: 4px; background: rgba(148, 163, 184, 0.15); color: var(--pt-slate-400); flex-shrink: 0;">模拟</span>
+            </div>
+
+            <!-- Item 8 -->
+            <div data-dom-id="portfolio-item-8"
+                 class="portfolio-item"
+                 style="position: relative; display: flex; align-items: center; padding: 10px 12px 10px 15px; cursor: pointer; transition: background-color 0.15s ease;"
+                 onmouseenter="this.style.background='var(--pt-surface-3)'"
+                 onmouseleave="this.style.background='transparent'">
+                <div style="flex: 1; min-width: 0;">
+                    <div class="pt-text-sm pt-font-medium" style="color: var(--pt-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        周期轮动组合
+                    </div>
+                    <div class="pt-text-xs mt-0.5" style="color: var(--pt-slate-500);">
+                        成立54天 · 9只
+                    </div>
+                </div>
+                <div class="pt-mono pt-text-sm pt-font-semibold pt-positive" style="margin-right: 10px; flex-shrink: 0;">
+                    +3.2%
+                </div>
+                <span class="pt-text-xs" style="padding: 2px 6px; border-radius: 4px; background: rgba(148, 163, 184, 0.15); color: var(--pt-slate-400); flex-shrink: 0;">模拟</span>
+            </div>
+
+        </div>
+
+        <!-- Bottom Divider + Create Button -->
+        <div style="border-top: 1px solid var(--pt-border); padding: 8px 12px 12px;">
+            <button
+                type="button"
+                data-dom-id="btn-create-portfolio"
+                class="w-full"
+                style="display: flex; align-items: center; justify-content: center; gap: 6px; height: 36px; background: transparent; border: 1px solid var(--pt-border); border-radius: var(--pt-radius-md); color: var(--pt-muted-foreground); cursor: pointer; transition: all 0.15s ease;"
+                onmouseenter="this.style.background='var(--pt-surface-3)'; this.style.color='var(--pt-foreground)'; this.style.borderColor='var(--pt-slate-500)'"
+                onmouseleave="this.style.background='transparent'; this.style.color='var(--pt-muted-foreground)'; this.style.borderColor='var(--pt-border)'"
+            >
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                <span class="pt-text-sm pt-font-medium">新建组合</span>
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        if (window.lucide) lucide.createIcons();
+
+        // Portfolio item click - toggle selection
+        const portfolioItems = document.querySelectorAll('.portfolio-item');
+        portfolioItems.forEach(item => {
+            item.addEventListener('click', function() {
+                // Remove selected state from all items
+                portfolioItems.forEach(i => {
+                    i.classList.remove('selected');
+                    i.style.background = 'transparent';
+                    // Remove left bar
+                    const bar = i.querySelector('.selected-bar');
+                    if (bar) bar.remove();
+                    // Remove check icon
+                    const checkContainer = i.querySelector('.check-container');
+                    if (checkContainer) checkContainer.remove();
+                    // Reset left padding
+                    i.style.paddingLeft = '15px';
+                });
+
+                // Add selected state to clicked item
+                this.classList.add('selected');
+                this.style.background = 'rgba(6, 182, 212, 0.08)';
+                this.style.paddingLeft = '0';
+
+                // Add left cyan bar
+                const bar = document.createElement('div');
+                bar.className = 'selected-bar';
+                bar.style.cssText = 'position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; background: var(--pt-primary); border-radius: 0 2px 2px 0;';
+                this.insertBefore(bar, this.firstChild);
+
+                // Add padding to first child (info div)
+                const infoDiv = this.querySelector('div[style*="flex: 1"]');
+                if (infoDiv) {
+                    infoDiv.style.marginLeft = '12px';
+                }
+
+                // Add check icon next to tag
+                const tagSpan = this.querySelector('span[style*="padding: 2px 6px"]');
+                if (tagSpan && !this.querySelector('.check-container')) {
+                    const checkWrapper = document.createElement('div');
+                    checkWrapper.className = 'check-container';
+                    checkWrapper.style.cssText = 'display: flex; align-items: center; gap: 6px; flex-shrink: 0;';
+                    const checkIcon = document.createElement('i');
+                    checkIcon.setAttribute('data-lucide', 'check');
+                    checkIcon.className = 'w-4 h-4';
+                    checkIcon.style.color = 'var(--pt-primary)';
+                    checkWrapper.appendChild(tagSpan.cloneNode(true));
+                    checkWrapper.appendChild(checkIcon);
+                    tagSpan.parentNode.replaceChild(checkWrapper, tagSpan);
+                    if (window.lucide) lucide.createIcons();
+                }
+            });
+        });
+
+        // Search functionality
+        const searchInput = document.querySelector('[data-dom-id="portfolio-search"]');
+        searchInput.addEventListener('input', function() {
+            const query = this.value.toLowerCase();
+            portfolioItems.forEach(item => {
+                const name = item.querySelector('.pt-text-sm').textContent.toLowerCase();
+                if (name.includes(query)) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        });
+
+        // Create portfolio button
+        document.querySelector('[data-dom-id="btn-create-portfolio"]').addEventListener('click', function() {
+            console.log('Create new portfolio clicked');
+        });
+    </script>
+</body>
+</html>

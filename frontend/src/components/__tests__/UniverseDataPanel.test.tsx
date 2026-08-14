@@ -1,6 +1,7 @@
 ﻿import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { afterEach } from "vitest";
 
 const { mockApi } = vi.hoisted(() => ({
   mockApi: {
@@ -19,6 +20,25 @@ const { mockApi } = vi.hoisted(() => ({
     getUniverseIncrementalSyncStatus: vi.fn(async () => null),
     getUniverseBackfillStatus: vi.fn(async () => null),
     getUniverseRangeRepairStatus: vi.fn(async () => null),
+    getIndexPricesStatus: vi.fn(async () => ({
+      items: [{
+        symbol: "000300", name: "沪深300", bar_count: 0,
+        first_date: null, last_date: null, freshness_days: null, linearity_dev_pct: null,
+      }],
+    })),
+    syncIndexPrices: vi.fn(async () => ({
+      id: "index-sync-1", task_type: "index_prices_sync", status: "queued", stage: "queued",
+      percent: 0, message: "任务已创建", total: 1, processed: 0, ok_count: 0, failed_count: 0,
+      current_item: null, result: null, errors: [], error_code: null,
+      created_at: null, started_at: null, finished_at: null,
+    })),
+    getIndexPricesSyncTask: vi.fn(async () => ({
+      id: "index-sync-1", task_type: "index_prices_sync", status: "running", stage: "sync",
+      percent: 20, message: "正在同步", total: 1, processed: 0, ok_count: 0, failed_count: 0,
+      current_item: "000300", result: null, errors: [], error_code: null,
+      created_at: null, started_at: null, finished_at: null,
+    })),
+    syncAllBenchmarkIndices: vi.fn(async () => ({})),
     startUniverseInit: vi.fn(async () => ({})),
     retryUniverseInit: vi.fn(async () => ({})),
     cancelUniverseInit: vi.fn(async () => ({})),
@@ -47,6 +67,7 @@ vi.mock("antd", async () => {
       error: vi.fn(),
       warning: vi.fn(),
       info: vi.fn(),
+      open: vi.fn(),
     },
   };
 });
@@ -59,8 +80,13 @@ import UniverseDataPanel from "../UniverseDataPanel";
 
 describe("UniverseDataPanel sync panel interaction", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("defaults to incremental sync and only renders the incremental panel", async () => {
@@ -136,5 +162,66 @@ describe("UniverseDataPanel sync panel interaction", () => {
     });
 
     expect(screen.queryByText("universeTaskTitle")).not.toBeInTheDocument();
+  });
+
+  it("polls incremental status every second without refreshing full stats every second", async () => {
+    vi.useFakeTimers();
+    mockApi.getUniverseIncrementalSyncStatus.mockResolvedValue({
+      id: "incr-running",
+      status: "running",
+      stage: "sync_incremental",
+      percent: 10,
+      message: "running",
+      total: 100,
+      processed: 10,
+      ok_count: 10,
+      failed_count: 0,
+      result: null,
+      errors: [],
+      created_at: null,
+      started_at: null,
+      finished_at: null,
+    } as never);
+
+    render(<UniverseDataPanel />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    const initialStatusCalls = mockApi.getUniverseIncrementalSyncStatus.mock.calls.length;
+    const initialStatsCalls = mockApi.getUniverseStats.mock.calls.length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(mockApi.getUniverseIncrementalSyncStatus.mock.calls.length).toBeGreaterThanOrEqual(initialStatusCalls + 3);
+    expect(mockApi.getUniverseStats).toHaveBeenCalledTimes(initialStatsCalls);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    expect(mockApi.getUniverseStats.mock.calls.length).toBeGreaterThan(initialStatsCalls);
+  });
+
+  it("shows aggregate index-sync progress and submits the clicked row symbol", async () => {
+    const user = userEvent.setup();
+    render(<UniverseDataPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText("沪深300")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /同步$/ }));
+
+    await waitFor(() => {
+      expect(mockApi.syncIndexPrices).toHaveBeenCalledWith({
+        symbols: ["000300"],
+        history_days: 1825,
+      });
+    });
+
+    expect(screen.getByTestId("index-sync-total-progress")).toHaveTextContent("同步总进度");
+    expect(screen.getByTestId("index-sync-total-progress")).toHaveTextContent("已处理 0 / 1 个指数");
   });
 });

@@ -19,6 +19,7 @@ import FactorModelSettings from "./FactorModelSettings";
 import FactorCenter from "./factors/FactorCenter";
 import ScheduledTaskManager from "./ScheduledTaskManager";
 import AiConfigSection from "./AiConfigSection";
+import AISettings from "./ai/AISettings";
 import { ChannelConfig } from "./notifications/ChannelConfig";
 import { PolicyEditor } from "./notifications/PolicyEditor";
 import { TemplateEditor } from "./notifications/TemplateEditor";
@@ -45,6 +46,11 @@ export default function Settings() {
     if (typeof window === "undefined") return "channels";
     const stored = window.localStorage.getItem("settings_notification_subtab");
     return stored === "channels" || stored === "policies" || stored === "templates" || stored === "deliveries" ? stored : "channels";
+  });
+  const [activeAiTab, setActiveAiTab] = useState<"config" | "profiles">(() => {
+    if (typeof window === "undefined") return "config";
+    const stored = window.localStorage.getItem("settings_ai_subtab");
+    return stored === "config" || stored === "profiles" ? stored : "config";
   });
   const [historyFocusSignal, setHistoryFocusSignal] = useState(0);
   const [diagnosticSymbolId, setDiagnosticSymbolId] = useState<number | null>(null);
@@ -74,6 +80,12 @@ export default function Settings() {
       window.localStorage.setItem("settings_notification_subtab", activeNotificationTab);
     }
   }, [activeNotificationTab]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("settings_ai_subtab", activeAiTab);
+    }
+  }, [activeAiTab]);
 
   const applyPreset = (mode: string) => {
     const preset = presets.find((p) => p.mode === mode);
@@ -577,7 +589,32 @@ export default function Settings() {
           {activeSection === "ai" && (
             <div className="settings-tab-container" data-settings-content="settings-ai">
               <section className="band">
-                <AiConfigSection />
+                <div className="settings-indicator-stack">
+                  <div className="sub-tabs" aria-label={t("aiConfigTabTitle")}>
+                    <button
+                      type="button"
+                      className={`sub-tab ${activeAiTab === "config" ? "active" : ""}`}
+                      aria-current={activeAiTab === "config" ? "page" : undefined}
+                      onClick={() => setActiveAiTab("config")}
+                    >
+                      {t("aiConfigTabTitle")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`sub-tab ${activeAiTab === "profiles" ? "active" : ""}`}
+                      aria-current={activeAiTab === "profiles" ? "page" : undefined}
+                      onClick={() => setActiveAiTab("profiles")}
+                    >
+                      {t("aiSettings.profiles")}
+                    </button>
+                  </div>
+                  <div className="sub-tab-container" hidden={activeAiTab !== "config"}>
+                    <AiConfigSection />
+                  </div>
+                  <div className="sub-tab-container" hidden={activeAiTab !== "profiles"}>
+                    <AISettings embedded />
+                  </div>
+                </div>
               </section>
             </div>
           )}

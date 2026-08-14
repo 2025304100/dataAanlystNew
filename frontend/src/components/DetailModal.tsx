@@ -363,6 +363,8 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
   const [deletingReviewId, setDeletingReviewId] = useState<number | null>(null);
   const [refreshingPlan, setRefreshingPlan] = useState(false);
   const [signalValidationStats, setSignalValidationStats] = useState<any>(null);
+  const [chartReady, setChartReady] = useState(false);
+  const chartReadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Chart drawing tools ──
   const {
@@ -388,6 +390,27 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [open, onClose]);
+
+  // Delay chart initialization until modal is fully open to avoid DOM=0 warnings
+  useEffect(() => {
+    if (chartReadyTimer.current) {
+      clearTimeout(chartReadyTimer.current);
+      chartReadyTimer.current = null;
+    }
+    if (open) {
+      setChartReady(false);
+      chartReadyTimer.current = setTimeout(() => {
+        setChartReady(true);
+      }, 200);
+    } else {
+      setChartReady(false);
+    }
+    return () => {
+      if (chartReadyTimer.current) {
+        clearTimeout(chartReadyTimer.current);
+      }
+    };
+  }, [open]);
 
   // Sync sample limit input with context
   useEffect(() => {
@@ -701,6 +724,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
         ],
         axisName: { color: "#7b8490", fontSize: 12 },
         axisLine: { lineStyle: { color: "rgba(15, 118, 110, 0.20)" } },
+        axisTick: { show: false },
         splitLine: { lineStyle: { color: "rgba(15, 118, 110, 0.16)" } },
         splitArea: {
           areaStyle: { color: ["rgba(255,255,255,0.74)", "rgba(15,118,110,0.035)"] },
@@ -1470,7 +1494,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
               )}
               <div className="score-radar-breakdown-grid">
                 <div className="radar-panel">
-                  {radarOption && (
+                  {radarOption && chartReady && (
                     <ReactECharts option={radarOption} style={{ height: "320px", width: "100%" }} />
                   )}
                 </div>
@@ -2022,7 +2046,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                 id="detailChart"
                 className={`chart-surface ${ctx.chartExpanded ? "expanded" : ""}`}
               >
-                {chartOption ? (
+                {chartOption && chartReady ? (
                   <>
                     <div style={{ position: "relative" }}>
                       <ReactECharts

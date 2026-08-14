@@ -12,51 +12,102 @@ type ChatMessage = {
 type AiChatDrawerProps = {
   open: boolean;
   formula: string;
+  formulaMode?: "indicator" | "factor";
+  /** 额外上下文：方向、版本说明、参数等，会拼接到用户消息中传给AI */
+  factorContext?: {
+    direction?: string;
+    changeNote?: string;
+    paramsText?: string;
+  };
   onClose: () => void;
   onInsertFormula: (formula: string) => void;
 };
 
-export default function AiChatDrawer({ open, formula, onClose, onInsertFormula }: AiChatDrawerProps) {
+const FACTOR_TOKEN = /\b(open|high|low|close|volume|amount|turnover_rate|prev_close|pe_ttm|pb|main_net_inflow|roe_ttm|lhb_institution_net|hot_rank_pct|proxy_score|sma|ema|stddev|sum|mean|count|highest|lowest|ref|pct_change)\b/;
+
+export default function AiChatDrawer({
+  open,
+  formula,
+  formulaMode = "indicator",
+  factorContext,
+  onClose,
+  onInsertFormula,
+}: AiChatDrawerProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<any>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (open) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      setTimeout(() => inputRef.current?.focus(), 300);
+      window.setTimeout(() => inputRef.current?.focus(), 300);
+      return;
     }
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
   }, [open, messages]);
 
-  // 当公式变化时，更新系统上下文（不发送消息，仅作为下次请求的上下文）
-  // 这里不需要额外处理，因为每次发送都会带上当前 formula
+  const updateLastAssistant = (updater: (content: string) => string) => {
+    setMessages((prev) => {
+      const next = [...prev];
+      for (let i = next.length - 1; i >= 0; i -= 1) {
+        if (next[i].role === "assistant") {
+          next[i] = { ...next[i], content: updater(next[i].content) };
+          break;
+        }
+      }
+      return next;
+    });
+  };
 
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || loading) return;
 
-    const userMsg: ChatMessage = { role: "user", content: text };
-    setMessages((prev) => [...prev, userMsg]);
+    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    setMessages((prev) => [...prev, { role: "user", content: text }, { role: "assistant", content: "" }]);
     setInput("");
     setLoading(true);
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const history = messages.map((m) => ({ role: m.role, content: m.content }));
-      const result = await api.aiChat({ message: text, formula, history });
-      if (result.ok) {
-        setMessages((prev) => [...prev, { role: "assistant", content: result.reply }]);
-      } else {
-        message.error(result.error || t("aiChatFailed"));
-        setMessages((prev) => [...prev, { role: "assistant", content: `️ ${result.error || t("aiChatFailed")}` }]);
-      }
+      await api.streamAIChat(
+        {
+          message: text,
+          formula,
+          history,
+          formula_mode: formulaMode,
+          factor_direction: factorContext?.direction,
+          factor_change_note: factorContext?.changeNote,
+          factor_params_text: factorContext?.paramsText,
+        },
+        {
+          onDelta: (content) => updateLastAssistant((current) => `${current}${content}`),
+          onDone: (result) => {
+            if (!result.ok && result.error) {
+              updateLastAssistant((current) => (current ? `${current}\n\n${result.error}` : result.error));
+            }
+          },
+        },
+        controller.signal,
+      );
     } catch (error: any) {
+      if (error?.name === "AbortError") return;
       const errMsg = error?.message || t("aiChatFailed");
       message.error(errMsg);
-      setMessages((prev) => [...prev, { role: "assistant", content: `⚠️ ${errMsg}` }]);
+      updateLastAssistant((current) => (current ? `${current}\n\n${errMsg}` : errMsg));
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
@@ -68,33 +119,36 @@ export default function AiChatDrawer({ open, formula, onClose, onInsertFormula }
   };
 
   const clearChat = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
     setMessages([]);
   };
 
-  // 从 AI 回复中提取公式（严格匹配项目框架内的公式模式）
   const extractFormula = (text: string): string | null => {
-    // 先去掉后端校验不通过时追加的警告后缀
-    const cleanText = text.split("\n\n⚠️")[0];
-
-    // 优先匹配 ``` 代码块中的公式
+    const cleanText = text.split("\n\n注意：")[0];
     const codeBlockMatch = cleanText.match(/```(?:formula)?\s*\n?([\s\S]*?)```/);
-    if (codeBlockMatch) {
-      const extracted = codeBlockMatch[1].trim();
-      if (extracted) return extracted;
+    if (codeBlockMatch?.[1]?.trim()) return codeBlockMatch[1].trim();
+
+    if (formulaMode === "factor") {
+      const inlineCode = cleanText.match(/`([^`\n]+)`/);
+      if (inlineCode?.[1]?.trim()) return inlineCode[1].trim();
+      const candidate = cleanText
+        .split("\n")
+        .map((line) => line.trim().replace(/^(?:公式|formula)\s*[:：]\s*/i, ""))
+        .find((line) => FACTOR_TOKEN.test(line) && /[()+\-*/><]/.test(line));
+      return candidate || null;
     }
 
-    // 匹配行内公式：必须包含系统允许的函数名 + 比较运算符
     const allowedFuncs = "sma|ema|rsi|macd|macd_signal|macd_hist|atr|boll_upper|boll_mid|boll_lower|kdj_k|kdj_d|kdj_j|highest|lowest|ref|pct_change|volume_ratio|cross_over|cross_under|abs|min|max|round";
     const allowedVars = "open|high|low|close|volume|amount|turnover_rate|prev_close|quality_score|timing_score|trend_score|momentum_score|True|False";
     const pattern = new RegExp(
       `((?:${allowedFuncs})\\([^)]*\\)\\s*(?:[><=!]=?\\s*(?:${allowedFuncs}\\([^)]*\\)|${allowedVars}|\\d+(?:\\.\\d+)?)|(?:${allowedVars}|\\d+(?:\\.\\d+)?)\\s*[><=!]=?\\s*(?:${allowedFuncs}\\([^)]*\\))))` +
-      `(?:\\s+(?:and|or)\\s+(?:(?:${allowedFuncs})\\([^)]*\\)\\s*[><=!]=?\\s*(?:${allowedFuncs}\\([^)]*\\)|${allowedVars}|\\d+(?:\\.\\d+)?)|(?:${allowedVars}|\\d+(?:\\.\\d+)?)\\s*[><=!]=?\\s*(?:${allowedFuncs}\\([^)]*\\))))*`,
-      "i"
+        `(?:\\s+(?:and|or)\\s+(?:(?:${allowedFuncs})\\([^)]*\\)\\s*[><=!]=?\\s*(?:${allowedFuncs}\\([^)]*\\)|${allowedVars}|\\d+(?:\\.\\d+)?)|(?:${allowedVars}|\\d+(?:\\.\\d+)?)\\s*[><=!]=?\\s*(?:${allowedFuncs}\\([^)]*\\))))*`,
+      "i",
     );
     const inlineMatch = cleanText.match(pattern);
-    if (inlineMatch) return inlineMatch[1].trim();
-
-    return null;
+    return inlineMatch?.[1]?.trim() || null;
   };
 
   const renderMessage = (msg: ChatMessage, index: number) => {
@@ -103,22 +157,42 @@ export default function AiChatDrawer({ open, formula, onClose, onInsertFormula }
 
     return (
       <div key={index} style={{ display: "flex", gap: 8, marginBottom: 16, flexDirection: isUser ? "row-reverse" : "row" }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-          background: isUser ? "#1677ff" : "#f0f0f0", color: isUser ? "#fff" : "#666", flexShrink: 0, fontSize: 14,
-        }}>
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: isUser ? "#1677ff" : "#f0f0f0",
+            color: isUser ? "#fff" : "#666",
+            flexShrink: 0,
+            fontSize: 14,
+          }}
+        >
           {isUser ? <UserOutlined /> : <RobotOutlined />}
         </div>
-        <div style={{
-          maxWidth: "75%", padding: "10px 14px", borderRadius: 12,
-          background: isUser ? "#1677ff" : "#f5f5f5",
-          color: isUser ? "#fff" : "#333", fontSize: 13, lineHeight: 1.6,
-          whiteSpace: "pre-wrap", wordBreak: "break-word",
-        }}>
+        <div
+          style={{
+            maxWidth: "75%",
+            padding: "10px 14px",
+            borderRadius: 12,
+            background: isUser ? "#1677ff" : "#f5f5f5",
+            color: isUser ? "#fff" : "#333",
+            fontSize: 13,
+            lineHeight: 1.6,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            minHeight: 42,
+          }}
+        >
           {msg.content}
           {!isUser && formulaInReply && (
             <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-              <Tag color="blue" style={{ margin: 0, fontSize: 12 }}>{formulaInReply}</Tag>
+              <Tag color="blue" style={{ margin: 0, fontSize: 12 }}>
+                {formulaInReply}
+              </Tag>
               <Button size="small" type="link" style={{ padding: 0, height: "auto", fontSize: 12 }} onClick={() => onInsertFormula(formulaInReply)}>
                 {t("aiInsertFormula")}
               </Button>
@@ -135,7 +209,9 @@ export default function AiChatDrawer({ open, formula, onClose, onInsertFormula }
         <Space>
           <RobotOutlined />
           {t("aiChatTitle")}
-          <Tag color="blue" style={{ marginLeft: 8 }}>{t("aiChatSubtitle")}</Tag>
+          <Tag color="blue" style={{ marginLeft: 8 }}>
+            {t("aiChatSubtitle")}
+          </Tag>
         </Space>
       }
       open={open}
@@ -149,9 +225,7 @@ export default function AiChatDrawer({ open, formula, onClose, onInsertFormula }
           <div style={{ textAlign: "center", color: "#999", padding: "40px 0", fontSize: 13 }}>
             <RobotOutlined style={{ fontSize: 32, marginBottom: 12, display: "block", color: "#d9d9d9" }} />
             {t("aiChatWelcome")}
-            <div style={{ marginTop: 8, fontSize: 12, color: "#bbb" }}>
-              {t("aiChatHint")}
-            </div>
+            <div style={{ marginTop: 8, fontSize: 12, color: "#bbb" }}>{t("aiChatHint")}</div>
           </div>
         ) : (
           messages.map((msg, i) => renderMessage(msg, i))
@@ -177,7 +251,7 @@ export default function AiChatDrawer({ open, formula, onClose, onInsertFormula }
             icon={<SendOutlined />}
             onClick={sendMessage}
             loading={loading}
-            disabled={!input.trim()}
+            disabled={!input.trim() || loading}
             size="small"
           >
             {t("aiSend")}

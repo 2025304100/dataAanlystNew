@@ -465,6 +465,15 @@ def _run_factor_pipeline(task_id: str) -> None:
         if should_cancel():
             return
 
+        try:
+            db.close()
+        except Exception:
+            logger.warning(
+                'Failed to close stale database session for factor pipeline %s',
+                task_id,
+                exc_info=True,
+            )
+        db = SessionLocal()
         _set_task(
             db,
             task_id,
@@ -567,12 +576,20 @@ def _run_factor_pipeline(task_id: str) -> None:
             finished_at=_now(),
         )
     except Exception as exc:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            logger.warning(
+                'Failed to roll back database session for factor pipeline %s',
+                task_id,
+                exc_info=True,
+            )
         logger.exception('Factor pipeline task %s failed', task_id)
+        failure_db = SessionLocal()
         try:
             # 终态保护：若任务已被取消，不覆盖为 failed（硬约束：
             # cancelled 终态不得被 worker 线程覆盖）
-            existing = db.get(AsyncTaskRecord, task_id)
+            existing = failure_db.get(AsyncTaskRecord, task_id)
             if existing is not None and existing.status == 'cancelled':
                 return
             # 统一错误协议：避免裸露 NoneType/原始异常文本，返回中文可操作文案
@@ -588,7 +605,7 @@ def _run_factor_pipeline(task_id: str) -> None:
                 ),
             )
             _set_task(
-                db,
+                failure_db,
                 task_id,
                 status='failed',
                 stage='failed',
@@ -602,6 +619,8 @@ def _run_factor_pipeline(task_id: str) -> None:
             )
         except Exception:
             logger.exception('Failed to mark factor pipeline task failed')
+        finally:
+            failure_db.close()
     finally:
         if heartbeat_stop is not None:
             heartbeat_stop.set()

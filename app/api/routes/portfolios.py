@@ -11,6 +11,8 @@ from app.models.portfolio import Portfolio, PortfolioRule, Position
 from app.models.review import Review
 from app.models.sim_account import CashLedger, SimOrder, SimTrade
 from app.models.symbol import Symbol
+from app.models.portfolio_candidate import PortfolioCandidate
+from app.models.discovery_candidate import DiscoveryCandidate
 from app.schemas.attribution import AttributionReport, ReviewCreate, ReviewRead
 from app.schemas.portfolio import (
     AllocationSummary,
@@ -32,8 +34,12 @@ from app.schemas.portfolio_member import (
     PortfolioMemberRead,
     PortfolioMemberUpdate,
 )
+from app.schemas.portfolio_candidate import PortfolioCandidateCreate, PortfolioCandidateRead
 from app.services.allocation import compute_allocation, get_active_rule
-from app.services.auto_trade_task import run_auto_trade
+from app.services.auto_trade_dual_run import (
+    AutoTradeNotReadyError,
+    run_dual_trade,
+)
 from app.services.portfolio_equity_snapshot import (
     list_portfolio_equity_snapshots,
     snapshot_to_dict,
@@ -51,14 +57,215 @@ from app.services.portfolio_members import (
 from app.services.portfolio_performance import compute_portfolio_performance
 from app.services.attribution import get_attribution_report
 from app.services.sim_accounts import ensure_sim_account_seed
+from app.services.investment_themes import get_active_theme_opportunities
+from app.services.portfolio_asset_scope import ensure_symbol_in_scope
 
 
 router = APIRouter()
 
 
+def _json_object(value: str | None) -> dict:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _json_list(value: str | None) -> list[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return [value]
+    return [str(item) for item in parsed] if isinstance(parsed, list) else [str(parsed)]
+
+
+def _candidate_read(candidate: PortfolioCandidate, symbol: Symbol) -> PortfolioCandidateRead:
+    return PortfolioCandidateRead(
+        id=candidate.id,
+        portfolio_id=candidate.portfolio_id,
+        symbol_id=candidate.symbol_id,
+        source_candidate_id=candidate.source_candidate_id,
+        source_type=candidate.source_type,
+        source_scan_run_id=candidate.source_scan_run_id,
+        pool_memberships=_json_list(candidate.pool_memberships_json),
+        priority_score=candidate.priority_score,
+        recommended_position_pct=candidate.recommended_position_pct,
+        factor_tag=candidate.factor_tag,
+        symbol=symbol.symbol,
+        name=symbol.name,
+        created_at=candidate.created_at.isoformat() if candidate.created_at else None,
+        admission_snapshot=_json_object(candidate.admission_snapshot_json),
+    )
+
+
+@router.get("/portfolios/{portfolio_id}/candidates", response_model=list[PortfolioCandidateRead])
+def list_portfolio_candidates(portfolio_id: int, db: Session = Depends(get_db)) -> list[PortfolioCandidateRead]:
+    rows = db.execute(
+        select(PortfolioCandidate, Symbol)
+        .join(Symbol, Symbol.id == PortfolioCandidate.symbol_id)
+        .where(PortfolioCandidate.portfolio_id == portfolio_id)
+        .order_by(PortfolioCandidate.created_at.desc())
+    ).all()
+    return [_candidate_read(candidate, symbol) for candidate, symbol in rows]
+
+
+@router.post("/portfolios/{portfolio_id}/candidates", response_model=PortfolioCandidateRead, status_code=201)
+def add_portfolio_candidate(
+    portfolio_id: int, payload: PortfolioCandidateCreate, db: Session = Depends(get_db)
+) -> PortfolioCandidateRead:
+    portfolio = db.get(Portfolio, portfolio_id)
+    symbol = db.get(Symbol, payload.symbol_id)
+    if portfolio is None or symbol is None:
+        raise HTTPException(status_code=404, detail="Portfolio or symbol not found")
+    try:
+        ensure_symbol_in_scope(portfolio, symbol)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    existing = db.execute(
+        select(PortfolioCandidate).where(
+            PortfolioCandidate.portfolio_id == portfolio_id, PortfolioCandidate.symbol_id == payload.symbol_id
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Candidate already exists in this portfolio")
+
+    source = None
+    if payload.source_candidate_id is not None:
+        source = db.get(DiscoveryCandidate, payload.source_candidate_id)
+        if source is None or source.symbol != symbol.symbol:
+            raise HTTPException(status_code=422, detail="source_candidate_id does not match symbol_id")
+
+    memberships = [pool for pool in payload.pool_memberships if pool in {"factor", "technical", "theme"}]
+    source_type = payload.source_type if payload.source_type in {"factor", "technical", "theme", "manual"} else None
+    if source is not None:
+        # Server owns source identity and scan version; the browser cannot point
+        # a portfolio record at a different discovery candidate or scan run.
+        source_type = source_type or (memberships[0] if memberships else "manual")
+        theme_opportunity = get_active_theme_opportunities(db, [symbol.id]).get(symbol.id)
+        if source_type == "theme" and theme_opportunity is None:
+            raise HTTPException(status_code=422, detail="theme source is no longer backed by an active catalyst")
+        admission_snapshot = {
+            "source": "discovery_candidate",
+            "candidate_id": source.id,
+            "scan_run_id": source.scan_run_id,
+            "symbol": source.symbol,
+            "theme": theme_opportunity,
+            "pool_memberships": memberships,
+            "scores": {
+                "quality": source.quality_score,
+                "timing": source.timing_score,
+                "priority": source.priority_score,
+                "dimensions": _json_object(source.dimension_scores_json),
+            },
+            "technical": {"stage": source.stage, "action": source.action},
+            "reason_tags": _json_list(source.reason_tags),
+            "scoring_config": _json_object(source.scoring_config_snapshot_json),
+        }
+    else:
+        source_type = source_type or "manual"
+        admission_snapshot = {"source": "manual", "symbol": symbol.symbol, "pool_memberships": memberships}
+
+    candidate = PortfolioCandidate(
+        portfolio_id=portfolio_id,
+        symbol_id=payload.symbol_id,
+        source_candidate_id=source.id if source else None,
+        source_type=source_type,
+        source_scan_run_id=source.scan_run_id if source else payload.source_scan_run_id,
+        pool_memberships_json=json.dumps(memberships, ensure_ascii=False),
+        admission_snapshot_json=json.dumps(admission_snapshot, ensure_ascii=False),
+        priority_score=payload.priority_score if payload.priority_score is not None else (source.priority_score if source else None),
+        recommended_position_pct=payload.recommended_position_pct,
+        factor_tag=payload.factor_tag,
+    )
+    db.add(candidate)
+    db.commit()
+    db.refresh(candidate)
+    return _candidate_read(candidate, symbol)
+
+
 @router.get("/portfolios", response_model=list[PortfolioRead])
-def list_portfolios(db: Session = Depends(get_db)):
-    return db.execute(select(Portfolio).order_by(Portfolio.id.desc())).scalars().all()
+def list_portfolios(
+    include_test: bool = False,
+    auto_tag_tests: bool = True,
+    db: Session = Depends(get_db),
+):
+    """列出组合。
+
+    - 默认 include_test=False：过滤测试组合，仅展示生产级组合。
+    - include_test=true：同时返回 is_test=1 的测试组合（用于验收/研发）。
+    - auto_tag_tests=true：首次访问时按"已知关键字"智能将遗留未标记记录标记为 is_test=1，
+      避免数据库升级后遗留旧记录无法被过滤掉。auto_tag_tests=false 可跳过（纯读场景）。
+    """
+    rows = db.execute(select(Portfolio).order_by(Portfolio.id.desc())).scalars().all()
+
+    if auto_tag_tests:
+        # 已知测试组合关键字：匹配名称大小写不敏感。
+        # 例：API_TEST_PORTFOLIO、ZERO_CAPITAL_TEST、浏览器验证组合、验证测试、验收残留等。
+        TEST_NAME_KEYWORDS = (
+            "api_test_portfolio",
+            "zero_capital_test",
+            "test_portfolio",
+            "demo_portfolio",
+            "browser_test",
+            "browser_verify",
+            "manual_test",
+            "smoke_test",
+            "unit_test",
+            "integration_test",
+            "dev_test",
+            "staging_test",
+            "e2e_test",
+            "perf_test",
+            "测试",
+            "验收",
+            "验证",
+            "演示",
+            "mock",
+            "dummy",
+        )
+        changed = False
+        for p in rows:
+            if int(getattr(p, "is_test", 0) or 0) == 1:
+                continue
+            name_lower = (p.name or "").lower()
+            if any(k in name_lower for k in TEST_NAME_KEYWORDS):
+                try:
+                    p.is_test = 1
+                    changed = True
+                except Exception:
+                    # 某些旧 SQLite 可能字段尚未补齐，直接忽略，交给兜底名称匹配
+                    pass
+        if changed:
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+
+    def _is_test_row(p: Portfolio) -> bool:
+        if int(getattr(p, "is_test", 0) or 0) == 1:
+            return True
+        # 兜底：即使 DB 没补齐 is_test 列，也按关键字隐藏（向前兼容无 migration 的环境）
+        try:
+            # 兜底关键字集（与上方 auto_tag 同步，避免用户刷新两遍才生效）
+            FALLBACK_KEYWORDS = (
+                "api_test_portfolio", "zero_capital_test", "test_portfolio", "demo_portfolio",
+                "browser_test", "browser_verify", "manual_test", "smoke_test", "unit_test",
+                "integration_test", "dev_test", "staging_test", "e2e_test", "perf_test",
+                "测试", "验收", "验证", "演示", "mock", "dummy",
+            )
+            n = (p.name or "").lower()
+            return any(k in n for k in FALLBACK_KEYWORDS)
+        except Exception:
+            return False
+
+    if include_test:
+        return rows
+    return [p for p in rows if not _is_test_row(p)]
 
 
 @router.post("/portfolios", response_model=PortfolioRead)
@@ -75,12 +282,18 @@ def create_portfolio(payload: PortfolioCreate, db: Session = Depends(get_db)):
     portfolio = Portfolio(
         name=payload.name,
         account_type=payload.account_type,
+        asset_scope=payload.asset_scope,
         total_capital=payload.total_capital,
         investable_ratio=payload.investable_ratio,
         cash_reserve_ratio=payload.cash_reserve_ratio,
         currency=payload.currency,
         is_default=int(payload.is_default),
         auto_trade_enabled=int(payload.auto_trade_enabled),
+        # P1-FIX: 新建组合时接收表单提交的佣金/单票上限/基准指数（之前只保存在前端本地状态未提交）
+        buy_fee_pct=payload.buy_fee_pct,
+        sell_fee_pct=payload.sell_fee_pct,
+        benchmark_code=payload.benchmark_code,
+        default_single_position_pct=payload.default_single_position_pct,
     )
     db.add(portfolio)
     db.commit()
@@ -113,6 +326,27 @@ def update_portfolio(portfolio_id: int, payload: PortfolioUpdate, db: Session = 
 
     if payload.total_capital is not None:
         portfolio.total_capital = payload.total_capital
+    if payload.asset_scope is not None:
+        # Never let an edit turn an already mixed/non-empty portfolio into an
+        # invalid single-asset portfolio. The user must first remove/archive
+        # incompatible candidates, members and positions.
+        scope_symbol_ids = set(
+            db.execute(select(Position.symbol_id).where(Position.portfolio_id == portfolio_id)).scalars().all()
+        )
+        scope_symbol_ids.update(
+            db.execute(select(PortfolioCandidate.symbol_id).where(PortfolioCandidate.portfolio_id == portfolio_id)).scalars().all()
+        )
+        from app.models.portfolio_member import PortfolioMember
+        scope_symbol_ids.update(
+            db.execute(select(PortfolioMember.symbol_id).where(PortfolioMember.portfolio_id == portfolio_id)).scalars().all()
+        )
+        try:
+            from app.services.portfolio_asset_scope import ensure_symbol_ids_in_scope
+            scope_probe = Portfolio(asset_scope=payload.asset_scope)
+            ensure_symbol_ids_in_scope(db, scope_probe, list(scope_symbol_ids))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"无法修改组合资产范围：{exc}") from exc
+        portfolio.asset_scope = payload.asset_scope
     if payload.investable_ratio is not None:
         portfolio.investable_ratio = payload.investable_ratio
     if payload.cash_reserve_ratio is not None:
@@ -128,6 +362,16 @@ def update_portfolio(portfolio_id: int, payload: PortfolioUpdate, db: Session = 
     # P2-3：自动交易开关
     if payload.auto_trade_enabled is not None:
         portfolio.auto_trade_enabled = int(payload.auto_trade_enabled)
+
+    # P1-FIX: 新增补充字段增量更新（佣金/基准/单票上限）
+    if payload.buy_fee_pct is not None:
+        portfolio.buy_fee_pct = payload.buy_fee_pct
+    if payload.sell_fee_pct is not None:
+        portfolio.sell_fee_pct = payload.sell_fee_pct
+    if payload.benchmark_code is not None:
+        portfolio.benchmark_code = payload.benchmark_code
+    if payload.default_single_position_pct is not None:
+        portfolio.default_single_position_pct = payload.default_single_position_pct
 
     db.commit()
     db.refresh(portfolio)
@@ -287,36 +531,62 @@ def execute_auto_trade(
     payload: AutoTradeExecuteRequest,
     db: Session = Depends(get_db),
 ):
-    """P2-3：手动触发组合自动交易评估与下单。
+    """P2-3：手动触发组合自动交易评估与下单（统一执行入口）。
 
     首次使用建议 dry_run=True 查看计划，确认无误后再 dry_run=False 实际下单。
 
-    前置条件：
-    - 组合必须 account_type="simulated"
-    - 组合必须已开启 auto_trade_enabled（在组合管理 Modal 中开启）
+    P0-AutoTrade 统一流程（对齐最终收口方案）：
+    1) 执行锁：同组合并发执行直接 fail-closed（避免重复下单）
+    2) 就绪检查：dry_run=False 必须 ready=True，不满足则 409 含 blockers
+    3) 来源切换：按 Portfolio.auto_trade_source_mode + env 熔断选择执行来源
+    4) 双跑 diff：迁移期仍捕获旧/新来源交易集合，便于人工验收
+    5) 执行或计划：dry_run=True 保持可用，用于诊断为什么没有计划
 
     返回：
-    - sells: 卖出计划/执行结果（action=exit 全卖，action=reduce 卖一半）
-    - buys: 买入计划/执行结果（action=open/buy_dip 且 can_open=True）
-    - errors: 单笔失败原因
+    - sells / buys / errors：兼容旧 AutoTradeResult 字段
+    - readiness / blockers / warnings / diffs / executed_source：就绪与来源诊断
     """
     try:
-        result = run_auto_trade(
+        result = run_dual_trade(
             db=db,
             portfolio_id=portfolio_id,
             dry_run=payload.dry_run,
             buy_candidate_limit=payload.buy_candidate_limit,
+            for_schedule=False,
+            save_diff=True,
+            require_readiness=True,
         )
         return AutoTradeResult(**result)
     except ValueError as exc:
         msg = str(exc)
         if "not found" in msg:
-            raise HTTPException(status_code=404, detail=msg)
+            raise HTTPException(status_code=404, detail=msg) from exc
         if "not simulated" in msg:
-            raise HTTPException(status_code=400, detail=msg)
+            raise HTTPException(status_code=400, detail=msg) from exc
         if "auto_trade_enabled" in msg:
-            raise HTTPException(status_code=409, detail=msg)
-        raise HTTPException(status_code=400, detail=msg)
+            raise HTTPException(status_code=409, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+    except AutoTradeNotReadyError as exc:
+        blocker_payload = [
+            {
+                "code": getattr(b, "code", "NOT_READY"),
+                "message": getattr(b, "message", str(b)),
+                "detail": getattr(b, "detail", None),
+            }
+            for b in list(getattr(exc, "blockers", []) or [])
+        ]
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_message": str(exc),
+                "blockers": blocker_payload,
+            },
+        ) from exc
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "already running" in msg:
+            raise HTTPException(status_code=409, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("自动交易执行失败")
@@ -373,7 +643,32 @@ def list_positions(portfolio_id: int, db: Session = Depends(get_db)):
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
         raise HTTPException(status_code=404, detail="Portfolio not found")
-    return db.execute(select(Position).where(Position.portfolio_id == portfolio_id).order_by(Position.id.desc())).scalars().all()
+    positions = db.execute(select(Position).where(Position.portfolio_id == portfolio_id).order_by(Position.id.desc())).scalars().all()
+    # P1-FIX: 联表查 Symbol，补齐 symbol/name，前端可识别显示
+    symbol_ids = {p.symbol_id for p in positions}
+    symbol_map: dict[int, Symbol] = {}
+    if symbol_ids:
+        for s in db.execute(select(Symbol).where(Symbol.id.in_(symbol_ids))).scalars().all():
+            symbol_map[s.id] = s
+    # 显式构造 PositionRead（ORM 对象没有 symbol/name 字段）
+    result: list[PositionRead] = []
+    for p in positions:
+        data = {
+            "id": p.id,
+            "portfolio_id": p.portfolio_id,
+            "symbol_id": p.symbol_id,
+            "symbol": symbol_map.get(p.symbol_id).symbol if symbol_map.get(p.symbol_id) else None,
+            "name": symbol_map.get(p.symbol_id).name if symbol_map.get(p.symbol_id) else None,
+            "quantity": p.quantity,
+            "avg_cost": p.avg_cost,
+            "latest_price": p.latest_price,
+            "market_value": p.market_value,
+            "position_pct": p.position_pct,
+            "asset_type": p.asset_type,
+            "theme": p.theme,
+        }
+        result.append(PositionRead(**data))
+    return result
 
 
 @router.post("/portfolios/{portfolio_id}/positions", response_model=PositionRead)
@@ -382,6 +677,10 @@ def upsert_position(portfolio_id: int, payload: PositionUpsert, db: Session = De
     symbol = db.get(Symbol, payload.symbol_id)
     if portfolio is None or symbol is None:
         raise HTTPException(status_code=404, detail="Portfolio or symbol not found")
+    try:
+        ensure_symbol_in_scope(portfolio, symbol)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     position = db.execute(
         select(Position).where(Position.portfolio_id == portfolio_id, Position.symbol_id == payload.symbol_id)
@@ -416,7 +715,21 @@ def upsert_position(portfolio_id: int, payload: PositionUpsert, db: Session = De
     position.theme = symbol.theme
     db.commit()
     db.refresh(position)
-    return position
+    # P1-FIX: 返回显式 PositionRead dict（含 symbol/name）
+    return PositionRead(
+        id=position.id,
+        portfolio_id=position.portfolio_id,
+        symbol_id=position.symbol_id,
+        symbol=symbol.symbol,
+        name=symbol.name,
+        quantity=position.quantity,
+        avg_cost=position.avg_cost,
+        latest_price=position.latest_price,
+        market_value=position.market_value,
+        position_pct=position.position_pct,
+        asset_type=position.asset_type,
+        theme=position.theme,
+    )
 
 
 @router.delete("/portfolios/{portfolio_id}/positions/{symbol_id}")
@@ -560,6 +873,14 @@ def create_portfolio_member(
 
     同组合同标的已存在有效成员时返回 409。
     """
+    portfolio = db.get(Portfolio, portfolio_id)
+    symbol = db.get(Symbol, payload.symbol_id)
+    if portfolio is None or symbol is None:
+        raise HTTPException(status_code=404, detail="Portfolio or symbol not found")
+    try:
+        ensure_symbol_in_scope(portfolio, symbol)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         member = create_member(
             db,

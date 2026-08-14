@@ -34,6 +34,7 @@ from app.services.sim_accounts import (
     _upsert_position,
     cash_balance,
 )
+from app.services.portfolio_asset_scope import ensure_symbol_ids_in_scope
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,9 @@ def apply_backtest_run_to_portfolio(
         .where(BacktestTrade.run_id == run_id)
         .order_by(BacktestTrade.entry_date, BacktestTrade.id)
     ).scalars().all()
+    # Validate the complete replay set before clearing existing simulated data.
+    # Applying a stock backtest to an ETF-only portfolio must fail atomically.
+    ensure_symbol_ids_in_scope(db, portfolio, [trade.symbol_id for trade in trades])
 
     initial_capital = _round_money(float(run.initial_capital))
 

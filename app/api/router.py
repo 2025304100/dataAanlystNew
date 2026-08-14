@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import alerts, auto_trade, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, factor_evaluation, factor_models, factor_pipeline, factor_sets, factor_shadow, factors, journals, linkage, macro, market_data, market_events, news, notifications, portfolios, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_drafts, ai_profiles, ai_sessions
+from app.api.routes import alerts, auto_trade, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, factor_evaluation, factor_models, factor_pipeline, factor_sets, factor_shadow, factors, investment_themes, journals, linkage, macro, market_data, market_events, news, notifications, portfolios, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_drafts, ai_profiles, ai_sessions
 from app.core.config import settings
 
 
@@ -21,6 +21,7 @@ api_router.include_router(market_data.router, tags=["market-data"])
 api_router.include_router(news.router, tags=["news"])
 api_router.include_router(macro.router, tags=["macro"])
 api_router.include_router(market_events.router, tags=["market-events"])
+api_router.include_router(investment_themes.router, tags=["investment-themes"])
 api_router.include_router(discovery.router, tags=["discovery"])
 api_router.include_router(portfolios.router, tags=["portfolios"])
 api_router.include_router(sim_accounts.router, tags=["sim-accounts"])

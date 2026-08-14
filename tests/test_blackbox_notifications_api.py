@@ -24,7 +24,11 @@ from app.models.notification import (
     CHANNEL_STATUS_DISABLED,
     CHANNEL_STATUS_PENDING_TEST,
     CHANNEL_STATUS_TEST_SUCCESS,
+    NotificationChannel,
+    NotificationOutbox,
 )
+from app.services.notifications.dispatcher import Dispatcher
+from app.services.notifications.policies import emit_event
 
 
 pytestmark = pytest.mark.blackbox
@@ -541,3 +545,134 @@ def test_list_deliveries_invalid_date_format(client):
     resp = client.get("/api/v1/notifications/deliveries?date_from=not-a-date")
     body = _assert_unified_error(resp, 400)
     assert body["error_code"] == "VALIDATION_ERROR"
+
+
+# ----------------------------------------------------------------------------
+# 5. Real in-app inbox integration
+# ----------------------------------------------------------------------------
+
+
+def test_inbox_uses_real_in_app_outbox_and_persists_read_state(client, db_session):
+    channel_id = _make_enabled_in_app_channel(client, "qa-real-inbox")
+    test_send = client.post(f"/api/v1/notifications/channels/{channel_id}/test")
+    assert test_send.status_code == 200, test_send.text
+
+    response = client.get("/api/v1/notifications/inbox")
+    assert response.status_code == 200, response.text
+    items = response.json()
+    assert len(items) == 1
+    item = items[0]
+    assert item["channel_id"] == channel_id
+    assert item["event_type"] == "channel_test"
+    assert item["title"] != "风险预警：组合回撤达 8.3%"
+    assert item["read"] is False
+
+    marked = client.put(f"/api/v1/notifications/inbox/{item['id']}/read")
+    assert marked.status_code == 200, marked.text
+    assert marked.json()["read"] is True
+
+    persisted = client.get("/api/v1/notifications/inbox").json()
+    assert persisted[0]["read"] is True
+    db_session.expire_all()
+    assert db_session.get(NotificationOutbox, item["id"]).read_at is not None
+
+
+def test_inbox_filters_external_channels_and_read_all_static_route(client, db_session):
+    in_app_id = _make_enabled_in_app_channel(client, "qa-inbox-in-app")
+    client.post(f"/api/v1/notifications/channels/{in_app_id}/test")
+
+    external = NotificationChannel(
+        name="qa-inbox-webhook",
+        channel_type="webhook",
+        enabled=True,
+        status="enabled",
+    )
+    db_session.add(external)
+    db_session.flush()
+    db_session.add(
+        NotificationOutbox(
+            event_key="qa:external:1",
+            source_type="system",
+            source_id=None,
+            event_type="external_only",
+            severity="info",
+            payload_json=json.dumps({"title": "external", "body": "hidden"}),
+            channel_id=external.id,
+            status="pending",
+        )
+    )
+    db_session.commit()
+
+    items = client.get("/api/v1/notifications/inbox").json()
+    assert len(items) == 1
+    assert items[0]["channel_id"] == in_app_id
+
+    mark_all = client.put("/api/v1/notifications/inbox/read-all")
+    assert mark_all.status_code == 200, mark_all.text
+    assert mark_all.json()["count"] == 1
+    assert client.get("/api/v1/notifications/inbox").json()[0]["read"] is True
+
+    view_all = client.post("/api/v1/notifications/inbox/view-all")
+    assert view_all.status_code == 200
+    assert view_all.json()["total"] == 1
+
+
+def test_empty_inbox_returns_empty_list_without_seed_data(client):
+    response = client.get("/api/v1/notifications/inbox")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_full_message_chain_event_policy_dispatcher_inbox(client, db_session):
+    """渠道配置 -> 推送策略 -> 业务事件 -> dispatcher -> 右侧 inbox。"""
+    channel_id = _make_enabled_in_app_channel(client, "qa-full-chain-in-app")
+    policy_response = client.post(
+        "/api/v1/notifications/policies",
+        json={
+            "name": "qa-full-chain-policy",
+            "enabled": True,
+            "source_types": ["system"],
+            "min_severity": "info",
+            "scope_type": "all",
+            "delivery_mode": "instant",
+            "channel_ids": [channel_id],
+        },
+    )
+    assert policy_response.status_code == 200, policy_response.text
+
+    created = emit_event(
+        db_session,
+        source_type="system",
+        source_id=901,
+        event_type="full_chain_probe",
+        severity="warn",
+        title="全链路验证消息",
+        body="这条消息来自启用的站内消息渠道。",
+    )
+    assert len(created) == 1
+    assert created[0].status == "pending"
+    # Business emitters enqueue within the caller's transaction; the
+    # background dispatcher observes the event after that transaction commits.
+    db_session.commit()
+
+    processed = Dispatcher().run_once()
+    assert processed == 1
+
+    inbox = client.get("/api/v1/notifications/inbox").json()
+    assert len(inbox) == 1
+    item = inbox[0]
+    assert item["title"] == "全链路验证消息"
+    assert item["description"] == "这条消息来自启用的站内消息渠道。"
+    assert item["channel_id"] == channel_id
+    assert item["status"] == "sent"
+    assert item["read"] is False
+
+    deliveries = client.get("/api/v1/notifications/deliveries").json()
+    assert any(
+        row["outbox_id"] == item["id"] and row["status"] == "success"
+        for row in deliveries
+    )
+
+    marked = client.put(f"/api/v1/notifications/inbox/{item['id']}/read")
+    assert marked.status_code == 200, marked.text
+    assert client.get("/api/v1/notifications/inbox").json()[0]["read"] is True

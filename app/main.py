@@ -97,6 +97,12 @@ async def lifespan(_: FastAPI):
     # 跨平台持久化调度器：Linux / Windows 均由设置页统一管理。
     scheduled_task_loop = asyncio.create_task(scheduler_loop())
 
+    # Unified notification Outbox dispatcher. Business services only enqueue;
+    # this loop completes delivery for in-app and configured external channels.
+    notification_dispatcher_task = asyncio.create_task(
+        _notification_dispatcher_loop()
+    )
+
     # 基础数据隔离层：首次启动时检测 universe_symbols 为空 → 自动触发初始化（异步，不阻塞启动）
     _auto_start_universe_init()
 
@@ -118,6 +124,14 @@ async def lifespan(_: FastAPI):
         pass
     except Exception:
         logger.exception("scheduled_task_loop shutdown failed")
+
+    notification_dispatcher_task.cancel()
+    try:
+        await notification_dispatcher_task
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        logger.exception("notification_dispatcher_task shutdown failed")
 
     # 风控加固：关闭探测线程池，避免 uvicorn reload 时线程泄漏
     try:
@@ -259,6 +273,23 @@ async def _periodic_cleanup() -> None:
             logger.exception("Periodic cleanup failed")
 
 
+async def _notification_dispatcher_loop() -> None:
+    """Continuously drain the persisted notification Outbox without blocking FastAPI."""
+    from app.services.notifications.dispatcher import get_dispatcher
+
+    dispatcher = get_dispatcher()
+    while True:
+        try:
+            processed = await asyncio.to_thread(dispatcher.run_once)
+            if processed:
+                logger.info("Notification dispatcher processed %d item(s)", processed)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Notification dispatcher cycle failed")
+        await asyncio.sleep(dispatcher.poll_interval)
+
+
 def _auto_start_universe_init() -> None:
     """首次启动时检测 universe_symbols 表为空 → 自动触发初始化同步。
 
@@ -386,6 +417,12 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
         for err in exc.errors()[:5]
     )
+    # 记录到错误日志，方便排查：路径、方法、具体字段级错误
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "VALIDATION_ERROR correlation_id=%s path=%s method=%s errors=[%s]",
+        correlation_id, request.url.path, request.method, errors_summary,
+    )
     user_error = build_user_error(
         "VALIDATION_ERROR",
         correlation_id=correlation_id,
@@ -451,11 +488,35 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         error_code = "NOT_FOUND"
     elif exc.status_code in (401, 403):
         error_code = "UNAUTHORIZED"
+    elif exc.status_code == 422:
+        error_code = "VALIDATION_ERROR"
+    elif exc.status_code == 409:
+        # P0-AutoTrade：业务冲突/就绪检查未通过，统一 BUSINESS_BLOCKED
+        error_code = "BUSINESS_BLOCKED"
     elif exc.status_code == 429:
         error_code = "RATE_LIMITED"
     elif exc.status_code == 503:
         # P1-05：503 统一映射为 CAPABILITY_BLOCKED，前端可据此展示中文 + next_actions
         error_code = "CAPABILITY_BLOCKED"
+
+    detail = exc.detail
+    extras: dict | None = None
+    override_user_message: str | None = None
+    if isinstance(detail, dict):
+        # P0-AutoTrade：透传扩展字段（blockers/warnings/readiness）
+        extras = {}
+        for k, v in detail.items():
+            if k == "error_message" and isinstance(v, str) and v.strip():
+                override_user_message = v.strip()
+            elif k == "message" and isinstance(v, str) and v.strip() and not override_user_message:
+                override_user_message = v.strip()
+            else:
+                extras[k] = v
+        if not extras:
+            extras = None
+    elif exc.status_code < 500 and isinstance(detail, str) and detail.strip():
+        override_user_message = detail.strip()
+
     user_error = build_user_error(
         error_code,
         correlation_id=correlation_id,
@@ -464,6 +525,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             status_code=exc.status_code,
             error_message=sanitize_message(str(exc.detail))[:500],
         ),
+        override_user_message=override_user_message,
+        extras=extras,
     )
     return JSONResponse(
         status_code=exc.status_code,

@@ -38,7 +38,7 @@ from app.schemas.factor_library import (
 # ── 常量 ──────────────────────────────────────────────────
 
 # 允许加入 FactorSet 的因子版本状态（必须已通过校验）
-ALLOWED_VERSION_STATUSES = frozenset({"testing", "shadow", "active"})
+ALLOWED_VERSION_STATUSES = frozenset({"valid", "testing", "shadow", "active"})
 
 # FactorSet 状态迁移
 ALLOWED_SET_TRANSITIONS: dict[str, set[str]] = {

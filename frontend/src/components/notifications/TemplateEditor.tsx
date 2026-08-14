@@ -145,6 +145,20 @@ export const SYSTEM_VARIABLE_GROUPS: SystemVariableGroup[] = [
       { name: "threshold_pct", labelKey: "templateVarThresholdPct", descriptionKey: "templateVarThresholdPctDesc", example: "5.00" },
     ],
   },
+  {
+    key: "max_loss_warning",
+    labelKey: "sourceEventMaxLossWarning",
+    titleKey: "templateExampleMaxLossTitle",
+    bodyKey: "templateExampleMaxLossBody",
+    variables: [
+      { name: "symbol", labelKey: "templateVarSymbol", descriptionKey: "templateVarSymbolDesc", example: "000001.SZ" },
+      { name: "loss_pct", labelKey: "templateVarLossPct", descriptionKey: "templateVarLossPctDesc", example: "8.50" },
+      { name: "threshold_pct", labelKey: "templateVarThresholdPct", descriptionKey: "templateVarThresholdPctDesc", example: "5.00" },
+      { name: "current_price", labelKey: "templateVarCurrentPrice", descriptionKey: "templateVarCurrentPriceDesc", example: "9.15" },
+      { name: "avg_cost", labelKey: "templateVarAvgCost", descriptionKey: "templateVarAvgCostDesc", example: "10.00" },
+      { name: "realized_pnl", labelKey: "templateVarRealizedPnl", descriptionKey: "templateVarRealizedPnlDesc", example: "-85.00" },
+    ],
+  },
 ];
 
 function getSystemVariableExample(variable: SystemVariable): string {

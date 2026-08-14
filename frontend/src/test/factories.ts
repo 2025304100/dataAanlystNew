@@ -225,6 +225,7 @@ export function makeMockContext(overrides: Partial<AppContextValue> = {}): AppCo
     globalLoading: false,
     capabilities: null,
     capabilitiesLoading: false,
+    antdMessageApi: null,
     detailFocusRequest: 0,
     signalRulePreview: null,
     discoveryPolling: false,
@@ -244,6 +245,7 @@ export function makeMockContext(overrides: Partial<AppContextValue> = {}): AppCo
     setSimPrice: noopSync,
     setCandidateSearch: noopSync,
     setSignalSampleLimit: noopSync,
+    setAntdMessageApi: noopSync,
     showToast: noopSync as any,
     loadPortfolios: noop as any,
     // P0-7：组合管理方法

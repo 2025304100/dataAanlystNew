@@ -1,0 +1,16 @@
+﻿============================= test session starts =============================
+collected 3090 items / 2931 deselected / 159 selected
+
+tests\test_blackbox_ai_sessions_api.py .......                           [  4%]
+tests\test_blackbox_api.py ...x..............................ss.sxx.s... [ 32%]
+.....                                                                    [ 35%]
+tests\test_blackbox_api_mgmt.py ........X.....sssXXX.                    [ 49%]
+tests\test_blackbox_auto_mode_edge_cases.py .........                    [ 54%]
+tests\test_blackbox_data_migration_audit.py .....................        [ 67%]
+tests\test_blackbox_factor_settings.py .s.                               [ 69%]
+tests\test_blackbox_main_flow.py .......                                 [ 74%]
+tests\test_blackbox_notifications_api.py .........................       [ 89%]
+tests\test_blackbox_release_gate.py ........                             [ 94%]
+tests\test_blackbox_stability_guard.py ...X....                          [100%]
+
+= 143 passed, 8 skipped, 2931 deselected, 3 xfailed, 5 xpassed in 660.31s (0:11:00) =

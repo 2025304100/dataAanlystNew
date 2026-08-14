@@ -114,7 +114,7 @@ def get_symbol_research(db: Session, context: ContextPack) -> dict:
         rows = db.execute(
             select(NewsEvent)
             .where(NewsEvent.symbol_id == symbol_id)
-            .order_by(desc(NewsEvent.published_at).nullslast())
+            .order_by(desc(NewsEvent.published_at))
             .limit(5)
         ).scalars().all()
         for n in rows:

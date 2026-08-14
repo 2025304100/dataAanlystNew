@@ -181,30 +181,51 @@ export default function AIAssistant({ activeTab, onGoToSettings }: AIAssistantPr
       metadata_json: null,
       created_at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, tempUserMsg]);
+    const tempAssistantMsg: AIMessage = {
+      ...tempUserMsg,
+      id: tempUserMsg.id - 1,
+      role: "assistant",
+      content: "",
+    };
+    setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg]);
     setInput("");
 
     try {
       const sourcePage = context?.source_page ?? activeTab;
       const references = context?.references ?? {};
-      const result = await api.createAISession({
+      let streamed = "";
+      let completedSessionId: number | null = null;
+      await api.streamAISession({
         title: text.slice(0, 80),
         source_page: sourcePage,
         message: text,
         references,
+      }, {
+        onDelta: (content) => {
+          streamed += content;
+          setMessages((prev) => prev.map((msg) => (
+            msg.id === tempAssistantMsg.id ? { ...msg, content: streamed } : msg
+          )));
+        },
+        onDone: (sessionId, response) => {
+          completedSessionId = sessionId;
+          setMessages((prev) => prev.map((msg) => (
+            msg.id === tempAssistantMsg.id
+              ? { ...msg, session_id: sessionId, content: JSON.stringify(response) }
+              : msg.id === tempUserMsg.id ? { ...msg, session_id: sessionId } : msg
+          )));
+        },
       });
 
-      // 刷新消息列表
-      if (result.session_id) {
-        setCurrentSessionId(result.session_id);
-        await loadMessages(result.session_id);
+      if (completedSessionId != null) {
+        setCurrentSessionId(completedSessionId);
         await loadSessions();
       }
     } catch (err) {
       const classified = classifyError(err);
       setError(classified);
       // 移除乐观消息
-      setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id));
+      setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id && m.id !== tempAssistantMsg.id));
     } finally {
       setSending(false);
     }

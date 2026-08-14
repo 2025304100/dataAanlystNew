@@ -35,7 +35,7 @@ vi.mock("../../../i18n", () => ({
   DOT: " | ",
   stageLabel: (v: string | null | undefined) => v ?? "-",
   actionLabel: (v: string | null | undefined) => v ?? "-",
-  enumLabel: (_prefix: string, v: string | null | undefined) => v ?? "-",
+  enumLabel: (prefix: string, code: string | null | undefined, fallback = "-") => String(code ?? fallback),
   assetTypeLabel: (v: string | null | undefined) => v ?? "unknown",
   regionShortLabel: (v: string | null | undefined) => v ?? "-",
   getLocale: () => "zh-CN",
@@ -184,7 +184,7 @@ describe("ExcludedPool 组件测试", () => {
       expect(text).toContain("600000");
       expect(text).toContain("测试银行");
       // 排除事件信息应可见
-      expect(text).toContain("excluded_at");
+      expect(text).toContain("excludedPoolDetailExcludedAt");
       expect(text).toContain("user");
       // 幂等键应可见（makeItem 中 idempotency_key 为 "exc-10-2026-07-15"）
       expect(text).toContain("exc-10-2026-07-15");

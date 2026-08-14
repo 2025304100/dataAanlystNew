@@ -1,0 +1,617 @@
+﻿============================= test session starts =============================
+collected 3090 items / 375 deselected / 2715 selected
+
+tests\test_whitebox_ai_audit.py ..................................       [  1%]
+tests\test_whitebox_ai_config.py ....                                    [  1%]
+tests\test_whitebox_ai_context.py .........                              [  1%]
+tests\test_whitebox_ai_drafts.py ...............                         [  2%]
+tests\test_whitebox_ai_failover.py ..................................    [  3%]
+tests\test_whitebox_ai_integration.py ........                           [  3%]
+tests\test_whitebox_ai_session.py ......................                 [  4%]
+tests\test_whitebox_ai_tools.py ............                             [  5%]
+tests\test_whitebox_akshare_http.py .......................s....         [  6%]
+tests\test_whitebox_alerts.py ...................                        [  6%]
+tests\test_whitebox_allocation.py ..........                             [  7%]
+tests\test_whitebox_analysis.py ...xX.....                               [  7%]
+tests\test_whitebox_api_mgmt.py ........................................ [  9%]
+...                                                                      [  9%]
+tests\test_whitebox_async_tasks.py ..................                    [  9%]
+tests\test_whitebox_auto_trade.py ...................................... [ 11%]
+.                                                                        [ 11%]
+tests\test_whitebox_auto_trade_dual_run.py F.......................      [ 12%]
+tests\test_whitebox_auto_trade_idempotent.py ...............             [ 12%]
+tests\test_whitebox_auto_trade_member_source.py ........................ [ 13%]
+....                                                                     [ 13%]
+tests\test_whitebox_auto_trade_safety.py ........................        [ 14%]
+tests\test_whitebox_backtest_apply.py ..................                 [ 15%]
+tests\test_whitebox_backtest_sandbox.py ..............                   [ 15%]
+tests\test_whitebox_backtest_snapshot.py ................                [ 16%]
+tests\test_whitebox_baseline_freeze.py ...............                   [ 16%]
+tests\test_whitebox_batch_audit.py ....................                  [ 17%]
+tests\test_whitebox_candidate_is_promoted_compat.py .......              [ 17%]
+tests\test_whitebox_candidate_labels.py .                                [ 17%]
+tests\test_whitebox_capability_gates.py .........................FF.FF.. [ 19%]
+.                                                                        [ 19%]
+tests\test_whitebox_complete_trade_day.py ............                   [ 19%]
+tests\test_whitebox_core_watchlist_preservation.py .........             [ 19%]
+tests\test_whitebox_custom_indicators.py .................               [ 20%]
+tests\test_whitebox_data_calc_chain.py ......................            [ 21%]
+tests\test_whitebox_data_correctness.py ...................              [ 22%]
+tests\test_whitebox_data_source_roadmap.py .........................     [ 22%]
+tests\test_whitebox_db_config.py ........                                [ 23%]
+tests\test_whitebox_deprecation.py ...                                   [ 23%]
+tests\test_whitebox_discovery.py .......................                 [ 24%]
+tests\test_whitebox_discovery_data_prep.py ............................. [ 25%]
+                                                                         [ 25%]
+tests\test_whitebox_discovery_dirty_set.py ....FFF...............FF....  [ 26%]
+tests\test_whitebox_discovery_fast_scan.py ............................. [ 27%]
+...                                                                      [ 27%]
+tests\test_whitebox_discovery_filter.py ................................ [ 28%]
+....................                                                     [ 29%]
+tests\test_whitebox_discovery_incremental.py ..FFFF..........FFFFF...    [ 30%]
+tests\test_whitebox_discovery_result_cache.py .......................... [ 31%]
+........                                                                 [ 31%]
+tests\test_whitebox_discovery_result_retention.py .................      [ 32%]
+tests\test_whitebox_discovery_retention.py ..........................    [ 33%]
+tests\test_whitebox_discovery_schema.py ..............                   [ 33%]
+tests\test_whitebox_discovery_snapshot.py ..............                 [ 34%]
+tests\test_whitebox_discovery_stage_budget.py .......................... [ 35%]
+....                                                                     [ 35%]
+tests\test_whitebox_discovery_timeout.py ....                            [ 35%]
+tests\test_whitebox_discovery_universe.py .............................  [ 36%]
+tests\test_whitebox_error_protocol.py ...............                    [ 37%]
+tests\test_whitebox_external_data_gateway.py ........................... [ 38%]
+.......................F................................................ [ 40%]
+............................                                             [ 41%]
+tests\test_whitebox_external_factors.py .......................ss......  [ 42%]
+tests\test_whitebox_factor_bar_mirror.py .........                       [ 43%]
+tests\test_whitebox_factor_compiler.py ................................. [ 44%]
+................................................................         [ 46%]
+tests\test_whitebox_factor_config.py ...                                 [ 46%]
+tests\test_whitebox_factor_data_contracts.py .........                   [ 47%]
+tests\test_whitebox_factor_data_sync.py ........                         [ 47%]
+tests\test_whitebox_factor_engine.py ......                              [ 47%]
+tests\test_whitebox_factor_executor.py ................................. [ 48%]
+...........                                                              [ 49%]
+tests\test_whitebox_factor_health.py ....                                [ 49%]
+tests\test_whitebox_factor_lifecycle.py ............................     [ 50%]
+tests\test_whitebox_factor_macro.py ....                                 [ 50%]
+tests\test_whitebox_factor_models.py ..                                  [ 50%]
+tests\test_whitebox_factor_pipeline_startup.py ...............           [ 51%]
+tests\test_whitebox_factor_pipeline_state.py ...............             [ 51%]
+tests\test_whitebox_factor_readiness.py ................                 [ 52%]
+tests\test_whitebox_factor_runtime_api.py ......                         [ 52%]
+tests\test_whitebox_factor_scoring_bridge.py .....                       [ 52%]
+tests\test_whitebox_factor_settings.py ......                            [ 53%]
+tests\test_whitebox_factor_source_tasks.py ....                          [ 53%]
+tests\test_whitebox_factor_store.py .....                                [ 53%]
+tests\test_whitebox_factor_targets.py ....                               [ 53%]
+tests\test_whitebox_financial_data.py ......                             [ 53%]
+tests\test_whitebox_fundamental_data_fallback.py .                       [ 53%]
+tests\test_whitebox_hot_rank_data.py ..                                  [ 53%]
+tests\test_whitebox_index_data.py ...................................... [ 55%]
+.                                                                        [ 55%]
+tests\test_whitebox_interaction.py ......                                [ 55%]
+tests\test_whitebox_investment_center.py ...................             [ 56%]
+tests\test_whitebox_journals.py ...............                          [ 56%]
+tests\test_whitebox_lhb_data.py ....                                     [ 56%]
+tests\test_whitebox_linkage.py ..................                        [ 57%]
+tests\test_whitebox_local_persistence.py ....................            [ 58%]
+tests\test_whitebox_market_data_repair.py ....                           [ 58%]
+tests\test_whitebox_notification_adapters.py ........................... [ 59%]
+...................................................                      [ 61%]
+tests\test_whitebox_notification_anti_disturb.py ....................... [ 62%]
+............                                                             [ 62%]
+tests\test_whitebox_notification_channels.py ........................... [ 63%]
+..........                                                               [ 64%]
+tests\test_whitebox_notification_dispatcher.py ...............           [ 64%]
+tests\test_whitebox_notification_event_emitter.py ............           [ 65%]
+tests\test_whitebox_notification_models_schema.py ...................... [ 65%]
+.............................................                            [ 67%]
+tests\test_whitebox_notification_outbox.py ......................        [ 68%]
+tests\test_whitebox_notification_policies.py ........................... [ 69%]
+.................                                                        [ 69%]
+tests\test_whitebox_observations.py .................................... [ 71%]
+........                                                                 [ 71%]
+tests\test_whitebox_observations_api.py ..................               [ 72%]
+tests\test_whitebox_opportunity_transition_event_schema.py ............. [ 72%]
+...........................                                              [ 73%]
+tests\test_whitebox_opportunity_transitions.py ......................... [ 74%]
+....                                                                     [ 74%]
+tests\test_whitebox_portfolio_backtest.py .............................. [ 75%]
+......                                                                   [ 76%]
+tests\test_whitebox_portfolio_backtest_membership.py ................... [ 76%]
+..                                                                       [ 76%]
+tests\test_whitebox_portfolio_crud.py ....................               [ 77%]
+tests\test_whitebox_portfolio_equity_snapshot.py .....................   [ 78%]
+tests\test_whitebox_portfolio_member_backfill.py .............           [ 78%]
+tests\test_whitebox_portfolio_member_schema.py ......................... [ 79%]
+........                                                                 [ 80%]
+tests\test_whitebox_portfolio_members.py ............................... [ 81%]
+..                                                                       [ 81%]
+tests\test_whitebox_portfolio_members_api.py ....................        [ 81%]
+tests\test_whitebox_portfolio_performance.py ........................... [ 82%]
+...........                                                              [ 83%]
+tests\test_whitebox_probe_thread_pool.py ...F                            [ 83%]
+tests\test_whitebox_ridge_model.py .....                                 [ 83%]
+tests\test_whitebox_risk_control_guard.py .............................. [ 84%]
+..................                                                       [ 85%]
+tests\test_whitebox_scoring_config.py ....                               [ 85%]
+tests\test_whitebox_signal_rules.py ............                         [ 86%]
+tests\test_whitebox_sim_orders_attribution.py .......................    [ 86%]
+tests\test_whitebox_source_chain.py .............................        [ 87%]
+tests\test_whitebox_symbol_relationships.py ...............              [ 88%]
+tests\test_whitebox_tail_proxy.py ...                                    [ 88%]
+tests\test_whitebox_tail_proxy_data.py ....                              [ 88%]
+tests\test_whitebox_task_center.py ..........                            [ 89%]
+tests\test_whitebox_task_state_machine.py .........................      [ 90%]
+tests\test_whitebox_trade_setups.py ............                         [ 90%]
+tests\test_whitebox_unified_errors.py .................................. [ 91%]
+...............                                                          [ 92%]
+tests\test_whitebox_universe_bar_fallback.py .......                     [ 92%]
+tests\test_whitebox_universe_refresh.py .......                          [ 92%]
+tests\test_whitebox_universe_sync.py .....................               [ 93%]
+tests\test_whitebox_vectorbt_backtest.py ...........                     [ 94%]
+tests\test_whitebox_warehouse_locks.py .............F.....               [ 94%]
+tests\test_whitebox_watchlist_item_schema.py ........................    [ 95%]
+tests\test_whitebox_watchlists_portfolios.py ............                [ 96%]
+tests\test_whitebox_wp4_indicator_promote_and_ai_draft.py .............. [ 96%]
+............................                                             [ 97%]
+tests\test_whitebox_wp7_model_gate.py ...........................        [ 98%]
+tests\test_whitebox_wp7_ridge_factor_set.py .............                [ 99%]
+tests\test_whitebox_wp7_score_traceability.py ......                     [ 99%]
+tests\test_whitebox_wp8_acceptance_gate.py ...................           [100%]
+
+================================== FAILURES ===================================
+E   assert True is False
+     +  where True = is_member_source_enabled()
+D:\ai_project\dataAanlystNew\tests\test_whitebox_auto_trade_dual_run.py:117: assert True is False
+E   AssertionError: assert 'blocked' == 'degraded'
+      
+      - degraded
+      + blocked
+D:\ai_project\dataAanlystNew\tests\test_whitebox_capability_gates.py:564: AssertionError: assert 'blocked' == 'degraded'
+E   AssertionError: assert 'blocked' == 'ready'
+      
+      - ready
+      + blocked
+D:\ai_project\dataAanlystNew\tests\test_whitebox_capability_gates.py:577: AssertionError: assert 'blocked' == 'ready'
+E   AssertionError: 不应有 blocked，但存在：[('message_channel', 'no_message_channel')]
+    assert not [CapabilityStatus(key='message_channel', label='外部消息渠道', status='blocked', reason_code='no_message_channel', user_mess...ons', reason='配置消息渠道或测试连通性')], data_cutoff_at=None, last_checked_at=datetime.datetime(2026, 8, 3, 12, 43, 26, 791672))]
+D:\ai_project\dataAanlystNew\tests\test_whitebox_capability_gates.py:670: AssertionError: 不应有 blocked，但存在：[('message_channel', 'no_message_channel')]
+E   AssertionError: overall_status 应为 ready 或 degraded，实际 blocked，未就绪域：['message_channel']
+    assert 'blocked' in ('ready', 'degraded')
+     +  where 'blocked' = CapabilitiesResponse(overall_status='blocked', capabilities=[CapabilityStatus(key='market_data', label='基础数据采集', statu...d_at=datetime.datetime(2026, 8, 3, 12, 43, 30, 878653))], checked_at=datetime.datetime(2026, 8, 3, 12, 43, 30, 582329)).overall_status
+D:\ai_project\dataAanlystNew\tests\test_whitebox_capability_gates.py:757: AssertionError: overall_status 应为 ready 或 degraded，实际 blocked，未就绪域：['message_channel']
+E   AssertionError: assert [DirtySymbol(...9T10:00:00'})] == []
+      
+      Left contains 3 more items, first extra item: DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000000', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})
+      
+      Full diff:
+      - []
+      + [
+      +     DirtySymbol(
+      +         universe_symbol_id=1,
+      +         symbol_id=None,
+      +         symbol='000000',
+      +         reasons=[
+      +                     <DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>,
+      +                 ],
+      +         last_changed_at=datetime.datetime(2026, 7, 19, 10, 0),
+      +         detail={
+      +                    'snapshot_id': 1,
+      +                    'snapshot_generated_at': '2026-07-19T10:00:00',
+      +                },
+      +     ),
+      +     DirtySymbol(
+      +         universe_symbol_id=2,
+      +         symbol_id=None,
+      +         symbol='000001',
+      +         reasons=[
+      +                     <DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>,
+      +                 ],
+      +         last_changed_at=datetime.datetime(2026, 7, 19, 10, 0),
+      +         detail={
+      +                    'snapshot_id': 1,
+      +                    'snapshot_generated_at': '2026-07-19T10:00:00',
+      +                },
+      +     ),
+      +     DirtySymbol(
+      +         universe_symbol_id=3,
+      +         symbol_id=None,
+      +         symbol='000002',
+      +         reasons=[
+      +                     <DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>,
+      +                 ],
+      +         last_changed_at=datetime.datetime(2026, 7, 19, 10, 0),
+      +         detail={
+      +                    'snapshot_id': 1,
+      +                    'snapshot_generated_at': '2026-07-19T10:00:00',
+      +                },
+      +     ),
+      + ]
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_dirty_set.py:222: AssertionError: assert [DirtySymbol(...9T10:00:00'})] == []
+E   AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+     +  where <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> = DirtyReason.LATEST_BAR_CHANGED
+     +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000000', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_dirty_set.py:329: AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+E   AssertionError: assert <DirtyReason.UNIVERSE_RESYNCED: 'universe_resynced'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+     +  where <DirtyReason.UNIVERSE_RESYNCED: 'universe_resynced'> = DirtyReason.UNIVERSE_RESYNCED
+     +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000001', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_dirty_set.py:370: AssertionError: assert <DirtyReason.UNIVERSE_RESYNCED: 'universe_resynced'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+E   AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+     +  where <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> = DirtyReason.LATEST_BAR_CHANGED
+     +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000001', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_dirty_set.py:720: AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+E   AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+     +  where <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> = DirtyReason.LATEST_BAR_CHANGED
+     +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000002', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_dirty_set.py:747: AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+E   AssertionError: assert 2 == 1
+     +  where 2 = len([DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000001', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_...d_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})])
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_incremental.py:299: AssertionError: assert 2 == 1
+E   AssertionError: assert <DirtyReason.FINANCIAL_REPORT_UPDATED: 'financial_report_updated'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+     +  where <DirtyReason.FINANCIAL_REPORT_UPDATED: 'financial_report_updated'> = DirtyReason.FINANCIAL_REPORT_UPDATED
+     +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000010', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_incremental.py:322: AssertionError: assert <DirtyReason.FINANCIAL_REPORT_UPDATED: 'financial_report_updated'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+E   AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+     +  where <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> = DirtyReason.LATEST_BAR_CHANGED
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_incremental.py:367: AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+E   AssertionError: assert <DirtyReason.UNIVERSE_RESYNCED: 'universe_resynced'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+     +  where <DirtyReason.UNIVERSE_RESYNCED: 'universe_resynced'> = DirtyReason.UNIVERSE_RESYNCED
+     +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000030', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_incremental.py:390: AssertionError: assert <DirtyReason.UNIVERSE_RESYNCED: 'universe_resynced'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+E   AssertionError: assert 3 == 1
+     +  where 3 = len([DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000060', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_...d_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})])
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_incremental.py:654: AssertionError: assert 3 == 1
+E   AssertionError: assert [DirtySymbol(...9T10:00:00'})] == []
+      
+      Left contains 2 more items, first extra item: DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000070', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})
+      
+      Full diff:
+      - []
+      + [
+      +     DirtySymbol(
+      +         universe_symbol_id=1,
+      +         symbol_id=None,
+      +         symbol='000070',
+      +         reasons=[
+      +                     <DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>,
+      +                 ],
+      +         last_changed_at=datetime.datetime(2026, 7, 19, 10, 0),
+      +         detail={
+      +                    'snapshot_id': 1,
+      +                    'snapshot_generated_at': '2026-07-19T10:00:00',
+      +                },
+      +     ),
+      +     DirtySymbol(
+      +         universe_symbol_id=2,
+      +         symbol_id=None,
+      +         symbol='000071',
+      +         reasons=[
+      +                     <DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>,
+      +                 ],
+      +         last_changed_at=datetime.datetime(2026, 7, 19, 10, 0),
+      +         detail={
+      +                    'snapshot_id': 1,
+      +                    'snapshot_generated_at': '2026-07-19T10:00:00',
+      +                },
+      +     ),
+      + ]
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_incremental.py:669: AssertionError: assert [DirtySymbol(...9T10:00:00'})] == []
+E   AssertionError: assert 3 == 1
+     +  where 3 = len([DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000080', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_...d_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})])
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_incremental.py:693: AssertionError: assert 3 == 1
+E   AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+     +  where <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> = DirtyReason.LATEST_BAR_CHANGED
+     +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000090', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_incremental.py:712: AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+E   AssertionError: assert 2 == 1
+     +  where 2 = len([DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000100', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_...d_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})])
+D:\ai_project\dataAanlystNew\tests\test_whitebox_discovery_incremental.py:736: AssertionError: assert 2 == 1
+E   AssertionError: assert 'l3_duckdb' == 'l4_remote'
+      
+      - l4_remote
+      + l3_duckdb
+----------------------------- Captured log setup ------------------------------
+ERROR    asyncio:base_events.py:1819 Future exception was never retrieved
+future: <Future finished exception=RuntimeError('timeout')>
+Traceback (most recent call last):
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 1136, in fetch
+    data, source_detail, cutoff = await _single_flight.execute(
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 578, in execute
+    result = await coro_factory()
+             ^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 1112, in _do_l4_fetch
+    data, source_detail = await asyncio.to_thread(l4_fetcher, request_params)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\tests\test_whitebox_external_data_gateway.py", line 836, in always_fail
+    raise RuntimeError("timeout")
+RuntimeError: timeout
+ERROR    asyncio:base_events.py:1819 Future exception was never retrieved
+future: <Future finished exception=CircuitBreakerOpenError('Circuit breaker open for test.fetch_breaker, cooldown until 2026-08-03 13:06:58.977830')>
+Traceback (most recent call last):
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 1136, in fetch
+    data, source_detail, cutoff = await _single_flight.execute(
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 578, in execute
+    result = await coro_factory()
+             ^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 1107, in _do_l4_fetch
+    breaker_state = await _breaker.acquire(interface_key, host)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 775, in acquire
+    raise CircuitBreakerOpenError(
+app.schemas.external_data.CircuitBreakerOpenError: Circuit breaker open for test.fetch_breaker, cooldown until 2026-08-03 13:06:58.977830
+ERROR    asyncio:base_events.py:1819 Future exception was never retrieved
+future: <Future finished exception=CircuitBreakerOpenError('Circuit breaker open for test.fetch_breaker, cooldown until 2026-08-03 13:06:58.977830')>
+Traceback (most recent call last):
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 1136, in fetch
+    data, source_detail, cutoff = await _single_flight.execute(
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 578, in execute
+    result = await coro_factory()
+             ^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 1107, in _do_l4_fetch
+    breaker_state = await _breaker.acquire(interface_key, host)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\external_data_gateway.py", line 775, in acquire
+    raise CircuitBreakerOpenError(
+app.schemas.external_data.CircuitBreakerOpenError: Circuit breaker open for test.fetch_breaker, cooldown until 2026-08-03 13:06:58.977830
+D:\ai_project\dataAanlystNew\tests\test_whitebox_external_data_gateway.py:889: AssertionError: assert 'l3_duckdb' == 'l4_remote'
+E   AssertionError: 超时应有 WARNING 日志含 'TIMEOUT'
+    assert False
+     +  where False = any(<generator object test_probe_logs_timeout.<locals>.<genexpr> at 0x0000042D659B5B10>)
+------------------------------ Captured log call ------------------------------
+WARNING  app.api.routes.akshare_apis:akshare_apis.py:292 probe test_api EXC: test_probe_logs_timeout.<locals>._block_forever() takes 2 positional arguments but 3 were given
+Traceback (most recent call last):
+  File "D:\ai_project\dataAanlystNew\app\api\routes\akshare_apis.py", line 264, in probe_api
+    result = await asyncio.wait_for(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\asyncio\tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Python312\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: test_probe_logs_timeout.<locals>._block_forever() takes 2 positional arguments but 3 were given
+D:\ai_project\dataAanlystNew\tests\test_whitebox_probe_thread_pool.py:125: AssertionError: 超时应有 WARNING 日志含 'TIMEOUT'
+E   Failed: DID NOT RAISE WarehouseLockUnavailable
+D:\ai_project\dataAanlystNew\tests\test_whitebox_warehouse_locks.py:434: Failed: DID NOT RAISE WarehouseLockUnavailable
+============================== warnings summary ===============================
+tests/test_whitebox_ai_session.py: 2 warnings
+tests/test_whitebox_core_watchlist_preservation.py: 42 warnings
+tests/test_whitebox_notification_models_schema.py: 2 warnings
+tests/test_whitebox_opportunity_transition_event_schema.py: 2 warnings
+tests/test_whitebox_portfolio_member_schema.py: 2 warnings
+tests/test_whitebox_sim_orders_attribution.py: 2 warnings
+  C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\sqlalchemy\engine\default.py:952: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    cursor.execute(statement, parameters)
+
+tests/test_whitebox_discovery_data_prep.py::test_run_fast_scan_min_score_filter
+  C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\akshare\economic\macro_china.py:1019: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+    big_df = pd.concat(objs=[big_df, temp_df], ignore_index=True)
+
+tests/test_whitebox_discovery_data_prep.py::test_run_fast_scan_cache_hit_on_second_call_wp_p6
+tests/test_whitebox_discovery_data_prep.py::test_fast_scan_api_route_with_snapshot
+tests/test_whitebox_discovery_data_prep.py::test_snapshot_status_api_route_no_snapshot
+tests/test_whitebox_discovery_data_prep.py::test_snapshot_status_api_route_no_snapshot
+  C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\akshare\economic\macro_usa.py:42: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+    big_df = pd.concat(objs=[big_df, temp_df], ignore_index=True)
+
+tests/test_whitebox_discovery_stage_budget.py::test_snapshot_status_api_filters_by_scope
+  C:\Users\demo\AppData\Roaming\Python\Python312\site-packages\_pytest\unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored in: <function tqdm.__del__ at 0x000002E2AE5BFCE0>
+  
+  Traceback (most recent call last):
+    File "C:\Python312\Lib\site-packages\tqdm\std.py", line 1148, in __del__
+      self.close()
+    File "C:\Python312\Lib\site-packages\tqdm\std.py", line 1277, in close
+      if self.last_print_t < self.start_t + self.delay:
+         ^^^^^^^^^^^^^^^^^
+  AttributeError: 'tqdm' object has no attribute 'last_print_t'. Did you mean: 'last_print_n'?
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+tests/test_whitebox_portfolio_member_schema.py::test_archive_then_recreate
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_portfolio_member_schema.py:329: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    member.effective_to = datetime.utcnow()
+
+tests/test_whitebox_portfolio_member_schema.py::test_query_active_members
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_portfolio_member_schema.py:646: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    effective_to=datetime.utcnow(),
+
+tests/test_whitebox_portfolio_member_schema.py::test_query_archived_members
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_portfolio_member_schema.py:668: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    effective_to=datetime.utcnow(),
+
+tests/test_whitebox_portfolio_member_schema.py::test_query_archived_members
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_portfolio_member_schema.py:672: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    effective_to=datetime.utcnow(),
+
+tests/test_whitebox_portfolio_member_schema.py::test_effective_from_default_set
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_portfolio_member_schema.py:697: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    before = datetime.utcnow()
+
+tests/test_whitebox_portfolio_member_schema.py::test_effective_from_default_set
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_portfolio_member_schema.py:702: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    after = datetime.utcnow()
+
+tests/test_whitebox_wp7_model_gate.py::test_check_factor_set_healthy_returns_none_without_observations
+tests/test_whitebox_wp7_model_gate.py::test_check_factor_set_healthy_returns_true_when_all_healthy
+tests/test_whitebox_wp7_model_gate.py::test_check_factor_set_healthy_returns_false_when_blocked
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_wp7_model_gate.py:494: DeprecationWarning:
+  
+  datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+
+tests/test_whitebox_wp7_model_gate.py::test_train_rolling_ridge_writes_enhanced_metrics_to_metrics_json
+tests/test_whitebox_wp7_model_gate.py::test_train_rolling_ridge_enhanced_gate_rejects_on_high_cluster_exposure
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_wp7_model_gate.py:697: DeprecationWarning:
+  
+  datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+
+tests/test_whitebox_wp7_ridge_factor_set.py::test_load_features_from_factor_set_returns_dynamic_features
+tests/test_whitebox_wp7_ridge_factor_set.py::test_train_rolling_ridge_with_factor_set_id_uses_dynamic_features
+tests/test_whitebox_wp7_ridge_factor_set.py::test_train_rolling_ridge_with_factor_set_id_is_idempotent
+tests/test_whitebox_wp7_ridge_factor_set.py::test_train_rolling_ridge_factor_set_id_produces_different_run_than_legacy
+tests/test_whitebox_wp7_ridge_factor_set.py::test_scoring_bridge_uses_dynamic_features_from_model_weights
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_wp7_ridge_factor_set.py:113: DeprecationWarning:
+  
+  datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+
+tests/test_whitebox_wp7_ridge_factor_set.py::test_load_features_rejects_empty_feature_set
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_wp7_ridge_factor_set.py:262: DeprecationWarning:
+  
+  datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+
+tests/test_whitebox_wp7_ridge_factor_set.py::test_load_features_skips_non_feature_roles
+  D:\ai_project\dataAanlystNew\tests\test_whitebox_wp7_ridge_factor_set.py:298: DeprecationWarning:
+  
+  datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_whitebox_auto_trade_dual_run.py::TestIsMemberSourceEnabled::test_default_false - assert True is False
+ +  where True = is_member_source_enabled()
+FAILED tests/test_whitebox_capability_gates.py::TestMessageChannelCapability::test_channel_without_trigger_degraded - AssertionError: assert 'blocked' == 'degraded'
+  
+  - degraded
+  + blocked
+FAILED tests/test_whitebox_capability_gates.py::TestMessageChannelCapability::test_ready - AssertionError: assert 'blocked' == 'ready'
+  
+  - ready
+  + blocked
+FAILED tests/test_whitebox_capability_gates.py::TestAggregation::test_overall_status_degraded_when_no_blocked_but_degraded - AssertionError: 不应有 blocked，但存在：[('message_channel', 'no_message_channel')]
+assert not [CapabilityStatus(key='message_channel', label='外部消息渠道', status='blocked', reason_code='no_message_channel', user_mess...ons', reason='配置消息渠道或测试连通性')], data_cutoff_at=None, last_checked_at=datetime.datetime(2026, 8, 3, 12, 43, 26, 791672))]
+FAILED tests/test_whitebox_capability_gates.py::TestAggregation::test_overall_status_ready_when_all_ready - AssertionError: overall_status 应为 ready 或 degraded，实际 blocked，未就绪域：['message_channel']
+assert 'blocked' in ('ready', 'degraded')
+ +  where 'blocked' = CapabilitiesResponse(overall_status='blocked', capabilities=[CapabilityStatus(key='market_data', label='基础数据采集', statu...d_at=datetime.datetime(2026, 8, 3, 12, 43, 30, 878653))], checked_at=datetime.datetime(2026, 8, 3, 12, 43, 30, 582329)).overall_status
+FAILED tests/test_whitebox_discovery_dirty_set.py::test_snapshot_no_data_change_returns_empty - AssertionError: assert [DirtySymbol(...9T10:00:00'})] == []
+  
+  Left contains 3 more items, first extra item: DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000000', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})
+  
+  Full diff:
+  - []
+  + [
+  +     DirtySymbol(
+  +         universe_symbol_id=1,
+  +         symbol_id=None,
+  +         symbol='000000',
+  +         reasons=[
+  +                     <DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>,
+  +                 ],
+  +         last_changed_at=datetime.datetime(2026, 7, 19, 10, 0),
+  +         detail={
+  +                    'snapshot_id': 1,
+  +                    'snapshot_generated_at': '2026-07-19T10:00:00',
+  +                },
+  +     ),
+  +     DirtySymbol(
+  +         universe_symbol_id=2,
+  +         symbol_id=None,
+  +         symbol='000001',
+  +         reasons=[
+  +                     <DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>,
+  +                 ],
+  +         last_changed_at=datetime.datetime(2026, 7, 19, 10, 0),
+  +         detail={
+  +                    'snapshot_id': 1,
+  +                    'snapshot_generated_at': '2026-07-19T10:00:00',
+  +                },
+  +     ),
+  +     DirtySymbol(
+  +         universe_symbol_id=3,
+  +         symbol_id=None,
+  +         symbol='000002',
+  +         reasons=[
+  +                     <DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>,
+  +                 ],
+  +         last_changed_at=datetime.datetime(2026, 7, 19, 10, 0),
+  +         detail={
+  +                    'snapshot_id': 1,
+  +                    'snapshot_generated_at': '2026-07-19T10:00:00',
+  +                },
+  +     ),
+  + ]
+FAILED tests/test_whitebox_discovery_dirty_set.py::test_snapshot_with_various_data_changes - AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+ +  where <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> = DirtyReason.LATEST_BAR_CHANGED
+ +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000000', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+FAILED tests/test_whitebox_discovery_dirty_set.py::test_snapshot_with_universe_resynced - AssertionError: assert <DirtyReason.UNIVERSE_RESYNCED: 'universe_resynced'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+ +  where <DirtyReason.UNIVERSE_RESYNCED: 'universe_resynced'> = DirtyReason.UNIVERSE_RESYNCED
+ +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000001', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+FAILED tests/test_whitebox_discovery_dirty_set.py::test_bar_count_below_threshold_marked_dirty - AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+ +  where <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> = DirtyReason.LATEST_BAR_CHANGED
+ +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000001', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+FAILED tests/test_whitebox_discovery_dirty_set.py::test_bar_count_below_four_marked_dirty - AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+ +  where <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> = DirtyReason.LATEST_BAR_CHANGED
+ +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000002', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+FAILED tests/test_whitebox_discovery_incremental.py::test_daily_bar_update_triggers_latest_bar_changed - AssertionError: assert 2 == 1
+ +  where 2 = len([DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000001', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_...d_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})])
+FAILED tests/test_whitebox_discovery_incremental.py::test_financial_report_update_triggers_financial_report_updated - AssertionError: assert <DirtyReason.FINANCIAL_REPORT_UPDATED: 'financial_report_updated'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+ +  where <DirtyReason.FINANCIAL_REPORT_UPDATED: 'financial_report_updated'> = DirtyReason.FINANCIAL_REPORT_UPDATED
+ +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000010', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+FAILED tests/test_whitebox_discovery_incremental.py::test_multiple_data_updates_aggregate_reasons - AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+ +  where <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> = DirtyReason.LATEST_BAR_CHANGED
+FAILED tests/test_whitebox_discovery_incremental.py::test_universe_resync_triggers_universe_resynced - AssertionError: assert <DirtyReason.UNIVERSE_RESYNCED: 'universe_resynced'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+ +  where <DirtyReason.UNIVERSE_RESYNCED: 'universe_resynced'> = DirtyReason.UNIVERSE_RESYNCED
+ +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000030', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+FAILED tests/test_whitebox_discovery_incremental.py::test_dirty_set_only_contains_changed_symbols - AssertionError: assert 3 == 1
+ +  where 3 = len([DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000060', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_...d_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})])
+FAILED tests/test_whitebox_discovery_incremental.py::test_dirty_set_empty_when_no_data_changed - AssertionError: assert [DirtySymbol(...9T10:00:00'})] == []
+  
+  Left contains 2 more items, first extra item: DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000070', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})
+  
+  Full diff:
+  - []
+  + [
+  +     DirtySymbol(
+  +         universe_symbol_id=1,
+  +         symbol_id=None,
+  +         symbol='000070',
+  +         reasons=[
+  +                     <DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>,
+  +                 ],
+  +         last_changed_at=datetime.datetime(2026, 7, 19, 10, 0),
+  +         detail={
+  +                    'snapshot_id': 1,
+  +                    'snapshot_generated_at': '2026-07-19T10:00:00',
+  +                },
+  +     ),
+  +     DirtySymbol(
+  +         universe_symbol_id=2,
+  +         symbol_id=None,
+  +         symbol='000071',
+  +         reasons=[
+  +                     <DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>,
+  +                 ],
+  +         last_changed_at=datetime.datetime(2026, 7, 19, 10, 0),
+  +         detail={
+  +                    'snapshot_id': 1,
+  +                    'snapshot_generated_at': '2026-07-19T10:00:00',
+  +                },
+  +     ),
+  + ]
+FAILED tests/test_whitebox_discovery_incremental.py::test_dirty_set_includes_new_symbol_added - AssertionError: assert 3 == 1
+ +  where 3 = len([DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000080', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_...d_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})])
+FAILED tests/test_whitebox_discovery_incremental.py::test_dirty_set_bar_count_below_threshold - AssertionError: assert <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> in [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>]
+ +  where <DirtyReason.LATEST_BAR_CHANGED: 'latest_bar_changed'> = DirtyReason.LATEST_BAR_CHANGED
+ +  and   [<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_expired'>] = DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000090', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_e...ed_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'}).reasons
+FAILED tests/test_whitebox_discovery_incremental.py::test_dirty_set_then_incremental_rebuild - AssertionError: assert 2 == 1
+ +  where 2 = len([DirtySymbol(universe_symbol_id=1, symbol_id=None, symbol='000100', reasons=[<DirtyReason.SNAPSHOT_EXPIRED: 'snapshot_...d_at=datetime.datetime(2026, 7, 19, 10, 0), detail={'snapshot_id': 1, 'snapshot_generated_at': '2026-07-19T10:00:00'})])
+FAILED tests/test_whitebox_external_data_gateway.py::TestSourceChainIntegration::test_source_detail_preserved_from_l4 - AssertionError: assert 'l3_duckdb' == 'l4_remote'
+  
+  - l4_remote
+  + l3_duckdb
+FAILED tests/test_whitebox_probe_thread_pool.py::test_probe_logs_timeout - AssertionError: 超时应有 WARNING 日志含 'TIMEOUT'
+assert False
+ +  where False = any(<generator object test_probe_logs_timeout.<locals>.<genexpr> at 0x0000042D659B5B10>)
+FAILED tests/test_whitebox_warehouse_locks.py::test_safe_write_context_raises_when_locked - Failed: DID NOT RAISE WarehouseLockUnavailable
+= 22 failed, 2688 passed, 3 skipped, 375 deselected, 1 xfailed, 1 xpassed, 76 warnings in 8133.69s (2:15:33) =

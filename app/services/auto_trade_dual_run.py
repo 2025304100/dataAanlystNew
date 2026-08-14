@@ -1,4 +1,4 @@
-"""双跑切换（WP6.4）。
+"""双跑切换（WP6.4）与统一自动交易执行入口（P0-AutoTrade）。
 
 新旧来源双轨运行：
 - AUTO_TRADE_MEMBER_SOURCE_ENABLED=false（WP9.5 前默认）：旧来源实际执行，新来源仅 Dry Run
@@ -17,18 +17,40 @@ WP9.5 变更：
 - 全局开关默认值由 False 改为 True（通过 settings.AUTO_TRADE_MEMBER_SOURCE_ENABLED）
 - 环境变量仍可显式覆盖（用于 rollback_to_old_source 运行时回退）
 - 如需回退到旧行为，设置环境变量 AUTO_TRADE_MEMBER_SOURCE_ENABLED=false
+
+P0-AutoTrade 新增：
+- 组合级来源模式由 Portfolio.auto_trade_source_mode 持久化主判定，env 仅作为全局默认或紧急熔断。
+- 统一执行入口：就绪检查 → 构建/双跑 → 执行，所有真实执行与 dry-run 均走 run_dual_trade。
+- 组合级执行锁：避免手动触发与调度任务重复执行同一组合。
 """
 from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+import threading
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.portfolio import (
+    AUTO_TRADE_SOURCE_LEGACY_SCAN,
+    AUTO_TRADE_SOURCE_MEMBERS_ONLY,
+    AUTO_TRADE_SOURCE_MODES,
+    AUTO_TRADE_SOURCE_PORTFOLIO,
+    Portfolio,
+)
 from app.models.portfolio_member import PortfolioMember
+from app.services.auto_trade_readiness import (
+    WARNING_SOURCE_ENV_OVERRIDE,
+    WARNING_SOURCE_MODE_LEGACY_SCAN,
+    ReadinessIssue,
+    get_auto_trade_readiness,
+    readiness_to_dict,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +58,48 @@ logger = logging.getLogger(__name__)
 
 # 环境变量开关
 ENV_FLAG = "AUTO_TRADE_MEMBER_SOURCE_ENABLED"
+
+# 组合级执行锁（P0-AutoTrade：防止手动+调度/重复提交并发下单）
+# 注：当前为进程内锁，在单 uvicorn worker 下即可满足 fail-closed 要求；
+# 后续若迁移多 worker，应改为数据库唯一键或分布式锁。
+_RUN_LOCK: dict[int, threading.Lock] = {}
+_RUN_LOCK_GUARD = threading.Lock()
+_RUN_LOCK_HELD: dict[int, bool] = {}
+
+
+def _acquire_run_lock(portfolio_id: int) -> bool:
+    key = int(portfolio_id)
+    with _RUN_LOCK_GUARD:
+        lock = _RUN_LOCK.setdefault(key, threading.Lock())
+    acquired = lock.acquire(blocking=False)
+    if acquired:
+        with _RUN_LOCK_GUARD:
+            _RUN_LOCK_HELD[key] = True
+    return acquired
+
+
+def _release_run_lock(portfolio_id: int) -> None:
+    key = int(portfolio_id)
+    with _RUN_LOCK_GUARD:
+        lock = _RUN_LOCK.get(key)
+        was_held = bool(_RUN_LOCK_HELD.pop(key, False))
+    if lock is not None and was_held:
+        try:
+            lock.release()
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "auto trade run lock release failed portfolio_id=%s",
+                portfolio_id,
+                exc_info=True,
+            )
+
+
+class AutoTradeNotReadyError(RuntimeError):
+    """readiness 判定为不就绪时抛出，真实执行 fail-closed。"""
+
+    def __init__(self, message: str, blockers: list[ReadinessIssue]) -> None:
+        super().__init__(message)
+        self.blockers = list(blockers)
 
 
 def is_member_source_enabled(portfolio_id: int | None = None) -> bool:
@@ -284,62 +348,280 @@ def run_dual_trade(
     *,
     portfolio_id: int,
     save_diff: bool = True,
+    dry_run: bool = True,
+    buy_candidate_limit: int = 10,
+    for_schedule: bool = False,
+    require_readiness: bool = True,
 ) -> dict:
-    """运行双跑（WP6.4 主入口）。
+    """统一自动交易执行入口（P0-AutoTrade + WP6.4）。
 
-    根据开关决定实际执行来源：
-    - 新来源启用：新逻辑实际执行，旧逻辑 Dry Run
-    - 新来源未启用：旧逻辑实际执行，新逻辑 Dry Run
+    统一流程：
+        执行锁 → 就绪检查（readiness fail-closed 真实执行）
+        → 新旧来源双跑 diff（兼容迁移期）
+        → 按 Portfolio.auto_trade_source_mode + env 熔断选择执行来源
+        → dry_run 或真实执行 → 释放锁 → 返回扁平化 AutoTradeResult 兼容字段
 
-    同时捕获差异（如果 save_diff=True）。
+    Args:
+        db: 数据库会话
+        portfolio_id: 组合 ID
+        save_diff: 是否保存新旧来源差异记录（WP6.4 迁移期保留）
+        dry_run: True 仅返回计划不实际下单；False 真实下单
+        buy_candidate_limit: 旧扫描来源执行路径的买入侧上限（新成员来源按 auto 成员控制，忽略）
+        for_schedule: 是否来自调度入口（影响 schedule_ready 是否升级为 blocker）
+        require_readiness: True 时真实执行强制 readiness.ready=True；dry_run 仍会携带诊断
     """
-    member_source_enabled = is_member_source_enabled(portfolio_id)
+    portfolio: Portfolio | None = db.get(Portfolio, int(portfolio_id))
+    if portfolio is None:
+        raise ValueError(f"Portfolio {portfolio_id} not found")
 
-    result = {
+    # 1) 组合级执行锁：fail-closed 防止手动+调度/重复提交并发
+    if not _acquire_run_lock(int(portfolio_id)):
+        raise RuntimeError(
+            f"Portfolio {portfolio_id} auto-trade already running. "
+            "Please wait for the previous run to finish."
+        )
+    try:
+        return _run_dual_trade_inner(
+            db,
+            portfolio=portfolio,
+            save_diff=save_diff,
+            dry_run=bool(dry_run),
+            buy_candidate_limit=int(buy_candidate_limit or 0),
+            for_schedule=bool(for_schedule),
+            require_readiness=bool(require_readiness),
+        )
+    finally:
+        _release_run_lock(int(portfolio_id))
+
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).replace(tzinfo=timezone.utc).isoformat()
+
+
+def _normalize_source_mode(raw: Any) -> tuple[str, bool]:
+    value = str(raw or AUTO_TRADE_SOURCE_PORTFOLIO).strip() or AUTO_TRADE_SOURCE_PORTFOLIO
+    if value not in AUTO_TRADE_SOURCE_MODES:
+        return AUTO_TRADE_SOURCE_PORTFOLIO, False
+    return value, True
+
+
+def _issue_to_dict(issue: ReadinessIssue) -> dict[str, Any]:
+    return {
+        "code": issue.code,
+        "message": issue.message,
+        "detail": issue.detail,
+    }
+
+
+def _run_dual_trade_inner(
+    db: Session,
+    *,
+    portfolio: Portfolio,
+    save_diff: bool,
+    dry_run: bool,
+    buy_candidate_limit: int,
+    for_schedule: bool,
+    require_readiness: bool,
+) -> dict:
+    portfolio_id = int(portfolio.id)
+    extra_warnings: list[ReadinessIssue] = []
+
+    # 2) 来源模式主判定：Portfolio.auto_trade_source_mode 优先，env 仅做紧急熔断参考
+    source_mode, source_mode_valid = _normalize_source_mode(
+        getattr(portfolio, "auto_trade_source_mode", AUTO_TRADE_SOURCE_PORTFOLIO)
+    )
+    if not source_mode_valid:
+        extra_warnings.append(
+            ReadinessIssue(
+                code="SOURCE_MODE_INVALID",
+                message=f"auto_trade_source_mode 非法，已回退为 {source_mode}",
+            )
+        )
+    if source_mode == AUTO_TRADE_SOURCE_LEGACY_SCAN:
+        extra_warnings.append(
+            ReadinessIssue(
+                code=WARNING_SOURCE_MODE_LEGACY_SCAN,
+                message="当前仍使用旧全局扫描来源，建议迁移为 portfolio/members_only",
+            )
+        )
+
+    env_member_enabled = is_member_source_enabled(portfolio_id)
+    # 组合显式要求新来源，但 env 全局开关被紧急熔断时，安全回退为 legacy_scan 并发出强警告
+    effective_member_source_enabled: bool
+    if source_mode == AUTO_TRADE_SOURCE_LEGACY_SCAN:
+        effective_member_source_enabled = bool(env_member_enabled)
+    else:
+        if not env_member_enabled:
+            extra_warnings.append(
+                ReadinessIssue(
+                    code=WARNING_SOURCE_ENV_OVERRIDE,
+                    message="成员来源全局开关已关闭，真实执行会被安全熔断回退为旧扫描逻辑",
+                )
+            )
+            effective_member_source_enabled = False
+        else:
+            effective_member_source_enabled = True
+
+    executed_source = "new" if effective_member_source_enabled else "old"
+
+    # 3) readiness：dry_run=False 才 fail-closed；dry_run=True 用于诊断，不抛错
+    readiness = get_auto_trade_readiness(
+        db,
+        portfolio_id=portfolio_id,
+        for_schedule=for_schedule,
+    )
+    readiness_dict = readiness_to_dict(readiness)
+    merged_warnings = list(readiness.warnings) + extra_warnings
+    blockers_to_raise = list(readiness.blockers)
+    if (
+        require_readiness
+        and not dry_run
+        and not readiness.ready
+    ):
+        if not blockers_to_raise:
+            blockers_to_raise = [
+                ReadinessIssue(
+                    code="NOT_READY",
+                    message="自动交易未就绪，真实执行已阻断",
+                )
+            ]
+        first_msg = blockers_to_raise[0].message
+        raise AutoTradeNotReadyError(first_msg, blockers_to_raise)
+
+    # 4) 双跑 diff（迁移期保留，save_diff=True）
+    result: dict[str, Any] = {
         "portfolio_id": portfolio_id,
-        "member_source_enabled": member_source_enabled,
+        "dry_run": bool(dry_run),
+        "member_source_enabled": bool(effective_member_source_enabled),
+        "source_mode": source_mode,
+        "executed_source": executed_source,
         "old_trade_set": None,
         "new_trade_set": None,
         "diffs": [],
-        "executed_source": "new" if member_source_enabled else "old",
+        "readiness": readiness_dict,
+        "blockers": [_issue_to_dict(b) for b in readiness.blockers],
+        "warnings": [_issue_to_dict(w) for w in merged_warnings],
+        "errors": [],
+        "sells": [],
+        "buys": [],
+        "executed_at": _iso_now(),
     }
+    try:
+        old_set = capture_trade_set_from_old_logic(db, portfolio_id=portfolio_id)
+        result["old_trade_set"] = old_set.to_dict()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("捕获旧来源交易集合失败 portfolio_id=%s", portfolio_id, exc_info=True)
+        result["errors"].append(f"old_trade_set capture failed: {exc}")
+    try:
+        new_set = capture_trade_set_from_new_logic(db, portfolio_id=portfolio_id)
+        result["new_trade_set"] = new_set.to_dict()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("捕获新来源交易集合失败 portfolio_id=%s", portfolio_id, exc_info=True)
+        result["errors"].append(f"new_trade_set capture failed: {exc}")
+    if save_diff and result["old_trade_set"] is not None and result["new_trade_set"] is not None:
+        try:
+            diffs = diff_trade_sets(old_set, new_set, db, portfolio_id=portfolio_id)
+            result["diffs"] = [
+                {
+                    "symbol_id": d.symbol_id,
+                    "side": d.side,
+                    "old_action": d.old_action,
+                    "new_action": d.new_action,
+                    "reason": d.reason,
+                    "detail": d.detail,
+                }
+                for d in diffs
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("diff 交易集合失败 portfolio_id=%s", portfolio_id, exc_info=True)
+            result["errors"].append(f"diff failed: {exc}")
 
-    # 捕获旧逻辑交易集合（Dry Run）
-    old_set = capture_trade_set_from_old_logic(db, portfolio_id=portfolio_id)
-    result["old_trade_set"] = old_set.to_dict()
+    # 5) 实际执行（或 dry-run 计划）
+    exec_result: dict[str, Any] = {}
+    try:
+        if effective_member_source_enabled:
+            from app.services.auto_trade_member_source import run_idempotent_member_source
 
-    # 捕获新逻辑交易集合（Dry Run）
-    new_set = capture_trade_set_from_new_logic(db, portfolio_id=portfolio_id)
-    result["new_trade_set"] = new_set.to_dict()
+            exec_result = run_idempotent_member_source(
+                db,
+                portfolio_id=portfolio_id,
+                dry_run=bool(dry_run),
+            )
+        else:
+            from app.services.auto_trade_task import run_auto_trade
 
-    # 计算差异
-    if save_diff:
-        diffs = diff_trade_sets(old_set, new_set, db, portfolio_id=portfolio_id)
-        result["diffs"] = [
-            {
-                "symbol_id": d.symbol_id,
-                "side": d.side,
-                "old_action": d.old_action,
-                "new_action": d.new_action,
-                "reason": d.reason,
-                "detail": d.detail,
-            }
-            for d in diffs
-        ]
+            exec_result = run_auto_trade(
+                db,
+                portfolio_id=portfolio_id,
+                dry_run=bool(dry_run),
+                buy_candidate_limit=int(buy_candidate_limit or 10),
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("执行来源失败 portfolio_id=%s source=%s", portfolio_id, executed_source)
+        result["errors"].append(f"execution failed: {exc}")
+        exec_result = {}
 
-    # 实际执行
-    if member_source_enabled:
-        # 新来源实际执行
-        from app.services.auto_trade_member_source import run_idempotent_member_source
+    result["execution_result"] = exec_result
 
-        exec_result = run_idempotent_member_source(db, portfolio_id=portfolio_id)
-        result["execution_result"] = exec_result
-    else:
-        # 旧来源实际执行（dry_run=False 实际下单）
-        from app.services.auto_trade_task import run_auto_trade
+    # 6) 扁平化：为 AutoTradeResult 兼容 schema 提供 sells/buys/errors
+    if exec_result:
+        if "sells" in exec_result and isinstance(exec_result["sells"], list):
+            result["sells"] = list(exec_result["sells"])
+            result["buys"] = list(exec_result.get("buys", []) or [])
+            result["errors"] = list(result["errors"]) + list(exec_result.get("errors", []) or [])
+            if "executed_at" in exec_result and exec_result["executed_at"]:
+                result["executed_at"] = str(exec_result["executed_at"])
+        else:
+            # 新来源（member_source）结构：sell_decisions / buy_decisions / rejected_decisions / executed_orders
+            def _to_plan_item(decision: dict[str, Any], side: str) -> dict[str, Any]:
+                item: dict[str, Any] = {
+                    "symbol_id": int(decision.get("symbol_id") or 0),
+                    "symbol": str(decision.get("symbol") or ""),
+                    "name": str(decision.get("name") or ""),
+                    "action": str(decision.get("action") or side),
+                    "stage": decision.get("stage"),
+                    "ref_price": float(decision.get("ref_price") or 0),
+                    "executed": bool(decision.get("executed") or False),
+                    "order_id": decision.get("order_id"),
+                    "filled_price": decision.get("filled_price"),
+                    "fee": decision.get("fee"),
+                    "reason": decision.get("reason"),
+                    "rejection_code": decision.get("rejection_code"),
+                    "rejection_detail": decision.get("rejection_detail"),
+                    "decision": decision.get("decision"),
+                }
+                if side == "sell":
+                    item["held_quantity"] = decision.get("held_quantity")
+                    item["sell_quantity"] = decision.get("sell_quantity")
+                else:
+                    item["can_open"] = decision.get("can_open")
+                    item["blocked_reasons"] = list(decision.get("blocked_reasons") or [])
+                    item["recommended_amount"] = decision.get("recommended_amount")
+                    item["buy_quantity"] = decision.get("buy_quantity")
+                return item
 
-        exec_result = run_auto_trade(db, portfolio_id=portfolio_id, dry_run=False)
-        result["execution_result"] = exec_result
+            result["sells"] = [
+                _to_plan_item(d, "sell")
+                for d in list(exec_result.get("sell_decisions", []) or [])
+            ]
+            result["buys"] = [
+                _to_plan_item(d, "buy")
+                for d in list(exec_result.get("buy_decisions", []) or [])
+            ]
+            rejected = list(exec_result.get("rejected_decisions", []) or [])
+            for rej in rejected:
+                reason = " | ".join(
+                    x for x in [
+                        str(rej.get("rejection_code") or ""),
+                        str(rej.get("rejection_detail") or ""),
+                    ] if x
+                )
+                if reason:
+                    result["errors"].append(reason)
+            result["errors"] = list(result["errors"]) + list(exec_result.get("errors", []) or [])
+            last_time = exec_result.get("executed_at")
+            if last_time:
+                result["executed_at"] = str(last_time)
 
     return result
 

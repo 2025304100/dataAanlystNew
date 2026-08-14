@@ -194,8 +194,9 @@ def test_universe_no_snapshot_triggers_full_rebuild(db_session):
 
 def test_snapshot_no_data_change_returns_empty(db_session):
     """有快照 + 所有数据 updated_at 都早于快照 → 返回空。"""
-    before_snapshot = datetime(2026, 7, 18, 9, 0, 0)
-    snapshot_time = datetime(2026, 7, 19, 10, 0, 0)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    snapshot_time = now - timedelta(hours=2)  # 2小时前的快照，不会过期
+    before_snapshot = snapshot_time - timedelta(days=1)  # 数据更新时间在快照之前
 
     # 创建 3 个 universe_symbols，bar_count 充足，last_synced_at 早于快照
     for i in range(3):
@@ -204,7 +205,7 @@ def test_snapshot_no_data_change_returns_empty(db_session):
             symbol=f"00000{i}",
             bar_count=10,
             last_synced_at=before_snapshot,
-            created_at=datetime(2026, 7, 1, 0, 0, 0),
+            created_at=before_snapshot - timedelta(days=18),
         )
     db_session.commit()
 

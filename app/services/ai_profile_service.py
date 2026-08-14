@@ -340,8 +340,8 @@ def test_connection(db: Session, profile_id: int) -> dict:
         }
 
 
-def discover_models(db: Session, profile_id: int) -> list[str]:
-    """发现可用模型，返回模型 ID 列表。
+def discover_models(db: Session, profile_id: int) -> list[dict]:
+    """发现可用模型，返回模型对象列表 [{id, owned_by}]。
 
     AI 失败不抛异常，返回空列表。
     """
@@ -368,14 +368,18 @@ def discover_models(db: Session, profile_id: int) -> list[str]:
             raw_models = data.get("data") or data.get("models") or []
         else:
             raw_models = []
-        models: list[str] = []
+        models: list[dict] = []
         for item in raw_models:
             if isinstance(item, str):
-                models.append(item)
+                models.append({"id": item})
             elif isinstance(item, dict):
                 mid = item.get("id") or item.get("name") or item.get("model") or ""
+                owned_by = item.get("owned_by") or item.get("provider") or None
                 if mid:
-                    models.append(str(mid))
+                    entry: dict = {"id": str(mid)}
+                    if owned_by:
+                        entry["owned_by"] = str(owned_by)
+                    models.append(entry)
         return models
     except httpx.TimeoutException:
         logger.warning("discover_models timeout for profile %s", profile_id)

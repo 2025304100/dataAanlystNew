@@ -1,7 +1,7 @@
 """白盒测试 - WP6.4 双跑切换。
 
 守护 auto_trade_dual_run 的关键行为：
-1. is_member_source_enabled 全局/组合级开关（默认 false / 全局 true / 白名单 / 黑名单）
+1. is_member_source_enabled 全局/组合级开关（WP9.5默认 true / 全局显式 / 白名单 / 黑名单）
 2. TradeSet 数据类 to_dict / from_dict 往返
 3. diff_trade_sets 各种差异原因（无差异 / member_missing / member_paused /
    signal_diff / data_expired / risk_blocked）
@@ -111,10 +111,10 @@ def _make_member(
 class TestIsMemberSourceEnabled:
     """守护全局/组合级开关逻辑。"""
 
-    def test_default_false(self, monkeypatch):
-        """【WP6.4】不设置环境变量 → 返回 False。"""
+    def test_default_true(self, monkeypatch):
+        """【WP9.5】不设置环境变量 → 回退到 settings 默认值 True（成员来源为默认）。"""
         monkeypatch.delenv(ENV_FLAG, raising=False)
-        assert is_member_source_enabled() is False
+        assert is_member_source_enabled() is True
 
     def test_global_true(self, monkeypatch):
         """【WP6.4】AUTO_TRADE_MEMBER_SOURCE_ENABLED=true → 返回 True。"""

@@ -1186,6 +1186,7 @@ def check_message_channel_capability(db: Session) -> CapabilityStatus:
     channel_detail = ""
 
     # 优先使用 notification_channels 表（WP-MSG.1 后才存在）
+    use_notification_channels = False
     if _has_table(db, "notification_channels"):
         try:
             from sqlalchemy import text
@@ -1197,21 +1198,24 @@ def check_message_channel_capability(db: Session) -> CapabilityStatus:
                 )
             ).all()
             channel_count = len(rows)
-            channel_configured = channel_count > 0
-            tested_count = sum(
-                1 for row in rows if row.last_test_at is not None
-            )
-            channel_test_passed = channel_configured and tested_count == channel_count
-            channel_detail = (
-                f"已配置 {channel_count} 个渠道，已测试 {tested_count} 个"
-                if channel_configured
-                else "尚未配置任何消息渠道"
-            )
+            if channel_count > 0:
+                # 只有 notification_channels 中有启用的渠道时，才使用该分支
+                use_notification_channels = True
+                channel_configured = True
+                tested_count = sum(
+                    1 for row in rows if row.last_test_at is not None
+                )
+                channel_test_passed = tested_count == channel_count
+                channel_detail = (
+                    f"已配置 {channel_count} 个渠道，已测试 {tested_count} 个"
+                )
+            # 如果 channel_count == 0，则不设置 use_notification_channels，继续走 AlertRule 降级
         except Exception as exc:
             logger.debug("notification_channels query failed: %s", exc)
             channel_detail = f"渠道表查询失败：{exc}"
-    else:
-        # 降级：基于 AlertRule 判定（WP-MSG 之前视为"消息渠道配置"）
+
+    # 如果 notification_channels 表不存在，或存在但为空 → 降级到 AlertRule 判定
+    if not use_notification_channels:
         try:
             from app.models.alert import AlertRule
 
@@ -1220,7 +1224,10 @@ def check_message_channel_capability(db: Session) -> CapabilityStatus:
                 select(func.count(AlertRule.id)).where(AlertRule.enabled == 1)
             ).scalar_one()
             triggered_count = db.execute(
-                select(func.count(AlertRule.id)).where(AlertRule.last_triggered_at.is_not(None))
+                select(func.count(AlertRule.id)).where(
+                    AlertRule.enabled == 1,
+                    AlertRule.last_triggered_at.is_not(None)
+                )
             ).scalar_one()
             channel_count = enabled_rule_count
             channel_configured = enabled_rule_count > 0
@@ -1247,9 +1254,9 @@ def check_message_channel_capability(db: Session) -> CapabilityStatus:
             satisfied=channel_test_passed,
             detail=(
                 f"已测试 {tested_count}/{channel_count} 个渠道"
-                if channel_configured
+                if channel_configured and use_notification_channels
                 else "未配置渠道，无法测试"
-            ) if _has_table(db, "notification_channels") else (
+            ) if use_notification_channels else (
                 "已触发过告警视为渠道可用"
                 if channel_test_passed
                 else "尚未触发过任何告警，建议手动测试"

@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新建组合</title>
+    <style id="theme-vars">
+/* Portfolio Trading Redesign — Professional Calm Finance Theme */
+/* Brand prefix: pt */
+
+:root {
+  /* Neutral scale */
+  --pt-white: #ffffff;
+  --pt-black: #000000;
+  --pt-slate-50: #f8fafc;
+  --pt-slate-100: #f1f5f9;
+  --pt-slate-200: #e2e8f0;
+  --pt-slate-300: #cbd5e1;
+  --pt-slate-400: #94a3b8;
+  --pt-slate-500: #64748b;
+  --pt-slate-600: #475569;
+  --pt-slate-700: #334155;
+  --pt-slate-800: #1e293b;
+  --pt-slate-900: #0f172a;
+  --pt-slate-950: #020617;
+
+  /* Primary cyan scale (single brand hue) */
+  --pt-cyan-50: #ecfeff;
+  --pt-cyan-100: #cffafe;
+  --pt-cyan-200: #a5f3fc;
+  --pt-cyan-300: #67e8f9;
+  --pt-cyan-400: #22d3ee;
+  --pt-cyan-500: #06b6d4;
+  --pt-cyan-600: #0891b2;
+  --pt-cyan-700: #0e7490;
+  --pt-cyan-800: #155e75;
+  --pt-cyan-900: #164e63;
+  --pt-cyan-950: #083344;
+
+  /* State colors (semantic only) */
+  --pt-state-success: #10b981;
+  --pt-state-success-dim: rgba(16, 185, 129, 0.12);
+  --pt-state-warning: #f59e0b;
+  --pt-state-warning-dim: rgba(245, 158, 11, 0.12);
+  --pt-state-error: #ef4444;
+  --pt-state-error-dim: rgba(239, 68, 68, 0.12);
+  --pt-state-info: #3b82f6;
+  --pt-state-info-dim: rgba(59, 130, 246, 0.12);
+
+  /* Semantic aliases */
+  --pt-background: #0b1120;
+  --pt-foreground: #f8fafc;
+  --pt-card: #111827;
+  --pt-card-foreground: #f8fafc;
+  --pt-popover: #111827;
+  --pt-popover-foreground: #f8fafc;
+  --pt-primary: #06b6d4;
+  --pt-primary-foreground: #020617;
+  --pt-muted: #1f2937;
+  --pt-muted-foreground: #94a3b8;
+  --pt-border: #374151;
+  --pt-input: #1f2937;
+  --pt-ring: #06b6d4;
+
+  /* Radius scale (restrained) */
+  --pt-radius-sm: 4px;
+  --pt-radius-md: 8px;
+  --pt-radius-lg: 12px;
+  --pt-radius-full: 9999px;
+
+  /* Surface depth */
+  --pt-surface-1: #0b1120;
+  --pt-surface-2: #111827;
+  --pt-surface-3: #1f2937;
+  --pt-surface-4: #27354f;
+
+  /* Typography */
+  --pt-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  --pt-font-mono: "SF Mono", "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
+
+  /* Spacing scale */
+  --pt-space-1: 4px;
+  --pt-space-2: 8px;
+  --pt-space-3: 12px;
+  --pt-space-4: 16px;
+  --pt-space-5: 20px;
+  --pt-space-6: 24px;
+  --pt-space-8: 32px;
+  --pt-space-10: 40px;
+  --pt-space-12: 48px;
+
+  /* Shadows (only for floating layers, alpha <= 0.15) */
+  --pt-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --pt-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --pt-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
+  --pt-shadow-glow: 0 0 20px rgba(6, 182, 212, 0.15);
+}
+
+/* Base typography classes */
+.pt-text-xs { font-size: 11px; line-height: 16px; }
+.pt-text-sm { font-size: 12px; line-height: 18px; }
+.pt-text-base { font-size: 13px; line-height: 20px; }
+.pt-text-md { font-size: 14px; line-height: 22px; }
+.pt-text-lg { font-size: 16px; line-height: 24px; }
+.pt-text-xl { font-size: 18px; line-height: 28px; }
+.pt-text-2xl { font-size: 20px; line-height: 30px; }
+.pt-text-3xl { font-size: 24px; line-height: 32px; }
+
+.pt-font-normal { font-weight: 400; }
+.pt-font-medium { font-weight: 500; }
+.pt-font-semibold { font-weight: 600; }
+.pt-font-bold { font-weight: 700; }
+
+.pt-tracking-tight { letter-spacing: -0.01em; }
+.pt-tracking-wide { letter-spacing: 0.03em; }
+
+/* Utility color classes */
+.pt-text-primary { color: var(--pt-foreground); }
+.pt-text-secondary { color: var(--pt-muted-foreground); }
+.pt-text-muted { color: var(--pt-slate-500); }
+.pt-text-cyan { color: var(--pt-primary); }
+.pt-text-success { color: var(--pt-state-success); }
+.pt-text-warning { color: var(--pt-state-warning); }
+.pt-text-error { color: var(--pt-state-error); }
+.pt-text-info { color: var(--pt-state-info); }
+
+.pt-bg-background { background-color: var(--pt-background); }
+.pt-bg-card { background-color: var(--pt-card); }
+.pt-bg-muted { background-color: var(--pt-muted); }
+.pt-bg-surface-3 { background-color: var(--pt-surface-3); }
+.pt-bg-primary { background-color: var(--pt-primary); }
+.pt-bg-primary-dim { background-color: rgba(6, 182, 212, 0.12); }
+.pt-bg-success-dim { background-color: var(--pt-state-success-dim); }
+.pt-bg-warning-dim { background-color: var(--pt-state-warning-dim); }
+.pt-bg-error-dim { background-color: var(--pt-state-error-dim); }
+
+.pt-border { border-color: var(--pt-border); }
+.pt-border-primary { border-color: var(--pt-primary); }
+
+/* Financial data styling */
+.pt-mono { font-family: var(--pt-font-mono); }
+.pt-positive { color: var(--pt-state-success); }
+.pt-negative { color: var(--pt-state-error); }
+.pt-neutral { color: var(--pt-muted-foreground); }
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--pt-background);
+    --color-foreground: var(--pt-foreground);
+    --color-card: var(--pt-card);
+    --color-card-foreground: var(--pt-card-foreground);
+    --color-popover: var(--pt-popover);
+    --color-popover-foreground: var(--pt-popover-foreground);
+    --color-primary: var(--pt-primary);
+    --color-primary-foreground: var(--pt-primary-foreground);
+    --color-muted: var(--pt-muted);
+    --color-muted-foreground: var(--pt-muted-foreground);
+    --color-border: var(--pt-border);
+    --color-input: var(--pt-input);
+    --color-ring: var(--pt-ring);
+    --radius-sm: var(--pt-radius-sm);
+    --radius-md: var(--pt-radius-md);
+    --radius-lg: var(--pt-radius-lg);
+  }
+  @layer base {
+    body { background: var(--pt-background); color: var(--pt-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--pt-background); }
+      .text-background { color: var(--pt-background); }
+      .border-background { border-color: var(--pt-background); }
+      .ring-background { --tw-ring-color: var(--pt-background); }
+      .bg-foreground { background-color: var(--pt-foreground); }
+      .text-foreground { color: var(--pt-foreground); }
+      .border-foreground { border-color: var(--pt-foreground); }
+      .ring-foreground { --tw-ring-color: var(--pt-foreground); }
+      .bg-card { background-color: var(--pt-card); }
+      .text-card { color: var(--pt-card); }
+      .border-card { border-color: var(--pt-card); }
+      .ring-card { --tw-ring-color: var(--pt-card); }
+      .bg-card-foreground { background-color: var(--pt-card-foreground); }
+      .text-card-foreground { color: var(--pt-card-foreground); }
+      .border-card-foreground { border-color: var(--pt-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--pt-card-foreground); }
+      .bg-popover { background-color: var(--pt-popover); }
+      .text-popover { color: var(--pt-popover); }
+      .border-popover { border-color: var(--pt-popover); }
+      .ring-popover { --tw-ring-color: var(--pt-popover); }
+      .bg-popover-foreground { background-color: var(--pt-popover-foreground); }
+      .text-popover-foreground { color: var(--pt-popover-foreground); }
+      .border-popover-foreground { border-color: var(--pt-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--pt-popover-foreground); }
+      .bg-primary { background-color: var(--pt-primary); }
+      .text-primary { color: var(--pt-primary); }
+      .border-primary { border-color: var(--pt-primary); }
+      .ring-primary { --tw-ring-color: var(--pt-primary); }
+      .bg-primary-foreground { background-color: var(--pt-primary-foreground); }
+      .text-primary-foreground { color: var(--pt-primary-foreground); }
+      .border-primary-foreground { border-color: var(--pt-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--pt-primary-foreground); }
+      .bg-muted { background-color: var(--pt-muted); }
+      .text-muted { color: var(--pt-muted); }
+      .border-muted { border-color: var(--pt-muted); }
+      .ring-muted { --tw-ring-color: var(--pt-muted); }
+      .bg-muted-foreground { background-color: var(--pt-muted-foreground); }
+      .text-muted-foreground { color: var(--pt-muted-foreground); }
+      .border-muted-foreground { border-color: var(--pt-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--pt-muted-foreground); }
+      .bg-border { background-color: var(--pt-border); }
+      .text-border { color: var(--pt-border); }
+      .border-border { border-color: var(--pt-border); }
+      .ring-border { --tw-ring-color: var(--pt-border); }
+      .bg-input { background-color: var(--pt-input); }
+      .text-input { color: var(--pt-input); }
+      .border-input { border-color: var(--pt-input); }
+      .ring-input { --tw-ring-color: var(--pt-input); }
+      .bg-ring { background-color: var(--pt-ring); }
+      .text-ring { color: var(--pt-ring); }
+      .border-ring { border-color: var(--pt-ring); }
+      .ring-ring { --tw-ring-color: var(--pt-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+
+      /* Custom scrollbar for modal body */
+      .custom-scroll::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scroll::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scroll::-webkit-scrollbar-thumb {
+        background: var(--pt-border);
+        border-radius: 3px;
+      }
+      .custom-scroll::-webkit-scrollbar-thumb:hover {
+        background: var(--pt-slate-500);
+      }
+
+      /* Modal entrance animation */
+      @keyframes modalFadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes modalScaleIn {
+        from {
+          opacity: 0;
+          transform: scale(0.94) translateY(-8px);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+      }
+      .modal-backdrop-animate {
+        animation: modalFadeIn 0.25s ease-out forwards;
+      }
+      .modal-panel-animate {
+        animation: modalScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      /* Section title with cyan bar */
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--pt-foreground);
+      }
+      .section-title::before {
+        content: '';
+        display: inline-block;
+        width: 3px;
+        height: 14px;
+        background: var(--pt-primary);
+        border-radius: 2px;
+      }
+
+      /* Form input styles */
+      .form-input {
+        width: 100%;
+        height: 36px;
+        padding: 0 12px;
+        font-size: 13px;
+        line-height: 20px;
+        color: var(--pt-foreground);
+        background-color: var(--pt-input);
+        border: 1px solid var(--pt-border);
+        border-radius: 6px;
+        outline: none;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      .form-input:hover {
+        border-color: var(--pt-slate-500);
+      }
+      .form-input:focus {
+        border-color: var(--pt-primary);
+        box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12);
+      }
+      .form-input::placeholder {
+        color: var(--pt-slate-500);
+      }
+
+      /* Input with prefix/suffix */
+      .input-with-affix {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+      .input-prefix {
+        position: absolute;
+        left: 12px;
+        font-size: 13px;
+        color: var(--pt-muted-foreground);
+        pointer-events: none;
+      }
+      .input-suffix {
+        position: absolute;
+        right: 12px;
+        font-size: 13px;
+        color: var(--pt-muted-foreground);
+        pointer-events: none;
+      }
+      .input-with-prefix .form-input {
+        padding-left: 28px;
+      }
+      .input-with-suffix .form-input {
+        padding-right: 28px;
+      }
+
+      /* Field label */
+      .field-label {
+        display: block;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--pt-muted-foreground);
+        margin-bottom: 6px;
+      }
+      .field-label .required {
+        color: var(--pt-state-error);
+        margin-left: 2px;
+      }
+
+      /* Field hint */
+      .field-hint {
+        font-size: 11px;
+        color: var(--pt-slate-500);
+        margin-top: 4px;
+      }
+
+      /* Card radio */
+      .card-radio {
+        flex: 1;
+        cursor: pointer;
+        padding: 14px;
+        border: 1px solid var(--pt-border);
+        border-radius: 8px;
+        background: var(--pt-surface-2);
+        transition: all 0.2s ease;
+      }
+      .card-radio:hover {
+        border-color: var(--pt-slate-500);
+        background: var(--pt-surface-3);
+      }
+      .card-radio.active {
+        border-color: var(--pt-primary);
+        background: rgba(6, 182, 212, 0.06);
+        box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.08), 0 2px 8px rgba(6, 182, 212, 0.1);
+      }
+      .card-radio-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--pt-surface-3);
+        color: var(--pt-muted-foreground);
+        margin-bottom: 10px;
+        transition: all 0.2s ease;
+      }
+      .card-radio.active .card-radio-icon {
+        background: rgba(6, 182, 212, 0.15);
+        color: var(--pt-primary);
+      }
+      .card-radio-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--pt-foreground);
+        margin-bottom: 2px;
+      }
+      .card-radio-desc {
+        font-size: 11px;
+        color: var(--pt-slate-500);
+        line-height: 1.4;
+      }
+
+      /* Quick amount buttons */
+      .quick-amount-btn {
+        flex: 1;
+        height: 28px;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--pt-muted-foreground);
+        background: var(--pt-surface-3);
+        border: 1px solid transparent;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .quick-amount-btn:hover {
+        color: var(--pt-primary);
+        border-color: var(--pt-primary);
+        background: rgba(6, 182, 212, 0.08);
+      }
+
+      /* Select wrapper */
+      .select-wrapper {
+        position: relative;
+      }
+      .select-wrapper select {
+        width: 100%;
+        height: 36px;
+        padding: 0 36px 0 12px;
+        font-size: 13px;
+        color: var(--pt-foreground);
+        background-color: var(--pt-input);
+        border: 1px solid var(--pt-border);
+        border-radius: 6px;
+        outline: none;
+        cursor: pointer;
+        appearance: none;
+        -webkit-appearance: none;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      .select-wrapper select:hover {
+        border-color: var(--pt-slate-500);
+      }
+      .select-wrapper select:focus {
+        border-color: var(--pt-primary);
+        box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12);
+      }
+      .select-wrapper .chevron {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--pt-muted-foreground);
+        pointer-events: none;
+      }
+
+      /* Slider + input row */
+      .slider-input-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .slider-input-row .form-input {
+        width: 72px;
+        flex-shrink: 0;
+        text-align: right;
+        padding-right: 24px;
+      }
+      .slider-track {
+        flex: 1;
+        height: 4px;
+        background: var(--pt-surface-3);
+        border-radius: 2px;
+        position: relative;
+        cursor: pointer;
+      }
+      .slider-fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        background: var(--pt-primary);
+        border-radius: 2px;
+      }
+      .slider-thumb {
+        position: absolute;
+        top: 50%;
+        width: 14px;
+        height: 14px;
+        background: var(--pt-primary);
+        border: 2px solid var(--pt-surface-2);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+        cursor: grab;
+      }
+
+      /* Buttons */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 16px;
+        font-size: 13px;
+        font-weight: 500;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+        user-select: none;
+      }
+      .btn-secondary {
+        color: var(--pt-foreground);
+        background: var(--pt-surface-3);
+        border: 1px solid var(--pt-border);
+      }
+      .btn-secondary:hover {
+        background: var(--pt-surface-4);
+        border-color: var(--pt-slate-500);
+      }
+      .btn-primary {
+        color: var(--pt-primary-foreground);
+        background: var(--pt-primary);
+        border: 1px solid var(--pt-primary);
+      }
+      .btn-primary:hover {
+        filter: brightness(1.08);
+      }
+      .btn-primary:active {
+        filter: brightness(0.95);
+      }
+
+      /* Close button */
+      .close-btn {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: var(--pt-surface-3);
+        color: var(--pt-muted-foreground);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        border: none;
+      }
+      .close-btn:hover {
+        background: var(--pt-surface-4);
+        color: var(--pt-foreground);
+      }
+    </style>
+</head>
+<body data-node-id="page-create-portfolio" class="min-h-screen font-sans antialiased" style="font-family: var(--pt-font-sans);">
+
+    <!-- Background backdrop -->
+    <div data-dom-id="modal-backdrop-close"
+         class="modal-backdrop-animate fixed inset-0 z-40"
+         style="background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);">
+    </div>
+
+    <!-- Centered modal wrapper -->
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+
+        <!-- Modal panel 560px -->
+        <div id="modal-panel"
+             class="modal-panel-animate pointer-events-auto flex flex-col"
+             style="width: 560px; max-height: calc(100vh - 80px); background: var(--pt-surface-2); border: 1px solid var(--pt-border); border-radius: 12px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255,255,255,0.02);">
+
+            <!-- ===== Modal Header ===== -->
+            <div class="flex items-start justify-between px-6 pt-5 pb-4"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="flex flex-col gap-1">
+                    <h2 class="text-xl font-semibold text-white m-0 tracking-tight">新建组合</h2>
+                    <p class="text-sm m-0" style="color: var(--pt-muted-foreground);">创建一个新的投资组合，设置基础参数和交易规则</p>
+                </div>
+                <button type="button"
+                        data-dom-id="modal-close-btn"
+                        class="close-btn shrink-0 mt-0.5"
+                        aria-label="关闭">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- ===== Form Body ===== -->
+            <div class="flex-1 overflow-y-auto custom-scroll" style="min-height: 0;">
+                <div class="px-6 py-5 flex flex-col" style="gap: 24px;">
+
+                    <!-- ===== Section 1: 基本信息 ===== -->
+                    <div class="flex flex-col" style="gap: 14px;">
+                        <h3 class="section-title">基本信息</h3>
+
+                        <!-- 组合名称 -->
+                        <div class="form-field">
+                            <label class="field-label">
+                                组合名称<span class="required">*</span>
+                            </label>
+                            <input type="text"
+                                   data-dom-id="input-portfolio-name"
+                                   class="form-input"
+                                   placeholder="请输入组合名称"
+                                   maxlength="20">
+                            <div class="field-hint">最多20个字符，支持中英文数字</div>
+                        </div>
+
+                        <!-- 组合类型 -->
+                        <div class="form-field">
+                            <label class="field-label">组合类型</label>
+                            <div class="flex" style="gap: 12px;">
+                                <!-- 实盘组合 -->
+                                <div class="card-radio"
+                                     data-dom-id="type-real"
+                                     data-type="real">
+                                    <div class="card-radio-icon">
+                                        <i data-lucide="shield" class="w-5 h-5"></i>
+                                    </div>
+                                    <div class="card-radio-title">实盘组合</div>
+                                    <div class="card-radio-desc">真实资金交易，需绑定账户</div>
+                                </div>
+                                <!-- 模拟组合 -->
+                                <div class="card-radio active"
+                                     data-dom-id="type-sim"
+                                     data-type="sim">
+                                    <div class="card-radio-icon">
+                                        <i data-lucide="flask-conical" class="w-5 h-5"></i>
+                                    </div>
+                                    <div class="card-radio-title">模拟组合</div>
+                                    <div class="card-radio-desc">虚拟资金练习，无风险</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ===== Section 2: 资金与成本 ===== -->
+                    <div class="flex flex-col" style="gap: 14px;">
+                        <h3 class="section-title">资金与成本</h3>
+
+                        <!-- 初始资金 -->
+                        <div class="form-field">
+                            <label class="field-label">初始资金</label>
+                            <div class="input-with-affix input-with-prefix">
+                                <span class="input-prefix">¥</span>
+                                <input type="text"
+                                       data-dom-id="input-capital"
+                                       class="form-input pt-mono"
+                                       value="50,000.00"
+                                       style="text-align: left;">
+                            </div>
+                            <!-- 快捷金额 -->
+                            <div class="flex mt-2" style="gap: 6px;">
+                                <button type="button" class="quick-amount-btn" data-dom-id="quick-amount-1" data-value="10000">1万</button>
+                                <button type="button" class="quick-amount-btn" data-dom-id="quick-amount-5" data-value="50000">5万</button>
+                                <button type="button" class="quick-amount-btn" data-dom-id="quick-amount-10" data-value="100000">10万</button>
+                                <button type="button" class="quick-amount-btn" data-dom-id="quick-amount-50" data-value="500000">50万</button>
+                                <button type="button" class="quick-amount-btn" data-dom-id="quick-amount-100" data-value="1000000">100万</button>
+                            </div>
+                        </div>
+
+                        <!-- 佣金率 两列 -->
+                        <div class="grid grid-cols-2" style="gap: 12px;">
+                            <div class="form-field">
+                                <label class="field-label">买入佣金率</label>
+                                <div class="input-with-affix input-with-suffix">
+                                    <input type="text"
+                                           data-dom-id="input-buy-fee"
+                                           class="form-input pt-mono"
+                                           value="0.03">
+                                    <span class="input-suffix">%</span>
+                                </div>
+                            </div>
+                            <div class="form-field">
+                                <label class="field-label">卖出佣金率</label>
+                                <div class="input-with-affix input-with-suffix">
+                                    <input type="text"
+                                           data-dom-id="input-sell-fee"
+                                           class="form-input pt-mono"
+                                           value="0.03">
+                                    <span class="input-suffix">%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-hint" style="margin-top: -8px;">最低佣金5元/笔，印花税0.1%（卖出单边收取）</div>
+                    </div>
+
+                    <!-- ===== Section 3: 风险约束 ===== -->
+                    <div class="flex flex-col" style="gap: 14px;">
+                        <h3 class="section-title">风险约束</h3>
+
+                        <!-- 仓位限制 两列 -->
+                        <div class="grid grid-cols-2" style="gap: 12px;">
+                            <div class="form-field">
+                                <label class="field-label">单票仓位上限</label>
+                                <div class="input-with-affix input-with-suffix">
+                                    <input type="text"
+                                           data-dom-id="input-single-limit"
+                                           class="form-input pt-mono"
+                                           value="15">
+                                    <span class="input-suffix">%</span>
+                                </div>
+                                <!-- slider track visual -->
+                                <div class="slider-track mt-2" data-slider="single-limit">
+                                    <div class="slider-fill" style="width: 15%;"></div>
+                                    <div class="slider-thumb" style="left: 15%;"></div>
+                                </div>
+                            </div>
+                            <div class="form-field">
+                                <label class="field-label">现金保留比例</label>
+                                <div class="input-with-affix input-with-suffix">
+                                    <input type="text"
+                                           data-dom-id="input-cash-reserve"
+                                           class="form-input pt-mono"
+                                           value="5">
+                                    <span class="input-suffix">%</span>
+                                </div>
+                                <!-- slider track visual -->
+                                <div class="slider-track mt-2" data-slider="cash-reserve">
+                                    <div class="slider-fill" style="width: 5%;"></div>
+                                    <div class="slider-thumb" style="left: 5%;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 基准指数 -->
+                        <div class="form-field">
+                            <label class="field-label">基准指数</label>
+                            <div class="select-wrapper">
+                                <select data-dom-id="select-benchmark">
+                                    <option value="hs300" selected>沪深300</option>
+                                    <option value="zz500">中证500</option>
+                                    <option value="cyb">创业板指</option>
+                                    <option value="sz50">上证50</option>
+                                    <option value="kc50">科创50</option>
+                                    <option value="custom">自定义</option>
+                                </select>
+                                <i data-lucide="chevron-down" class="chevron w-4 h-4"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ===== Bottom Action Bar ===== -->
+            <div class="px-6 py-4 flex items-center justify-between"
+                 style="border-top: 1px solid var(--pt-border); background: var(--pt-surface-2); border-radius: 0 0 12px 12px;">
+                <div class="text-xs" style="color: var(--pt-slate-500);">
+                    已有 <span class="font-medium" style="color: var(--pt-muted-foreground);">8</span> 个组合
+                </div>
+                <div class="flex items-center" style="gap: 10px;">
+                    <button type="button"
+                            data-dom-id="btn-modal-cancel"
+                            class="btn btn-secondary">
+                        取消
+                    </button>
+                    <button type="button"
+                            data-dom-id="btn-modal-create"
+                            class="btn btn-primary">
+                        创建组合
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        if (window.lucide) lucide.createIcons();
+
+        // ===== Utility: format number with thousand separators =====
+        function formatCurrency(num) {
+            const n = parseFloat(num) || 0;
+            return n.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+
+        function parseCurrency(str) {
+            return parseFloat(str.replace(/,/g, '')) || 0;
+        }
+
+        // ===== Card radio toggle (组合类型) =====
+        const cardRadios = document.querySelectorAll('.card-radio');
+        cardRadios.forEach(card => {
+            card.addEventListener('click', function() {
+                cardRadios.forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // ===== Initial capital input: format on blur =====
+        const capitalInput = document.querySelector('[data-dom-id="input-capital"]');
+        capitalInput.addEventListener('focus', function() {
+            const val = parseCurrency(this.value);
+            this.value = val ? val : '';
+        });
+        capitalInput.addEventListener('blur', function() {
+            const val = parseCurrency(this.value);
+            this.value = formatCurrency(val);
+        });
+
+        // ===== Quick amount buttons =====
+        const quickBtns = document.querySelectorAll('.quick-amount-btn');
+        quickBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const val = parseFloat(this.getAttribute('data-value')) || 0;
+                capitalInput.value = formatCurrency(val);
+                // brief active state
+                quickBtns.forEach(b => b.style.borderColor = '');
+                this.style.borderColor = 'var(--pt-primary)';
+                this.style.color = 'var(--pt-primary)';
+                setTimeout(() => {
+                    this.style.borderColor = '';
+                    this.style.color = '';
+                }, 300);
+            });
+        });
+
+        // ===== Close modal function =====
+        function closeModal() {
+            const panel = document.getElementById('modal-panel');
+            const backdrop = document.querySelector('[data-dom-id="modal-backdrop-close"]');
+
+            panel.style.transition = 'all 0.2s ease-out';
+            panel.style.opacity = '0';
+            panel.style.transform = 'scale(0.96) translateY(-4px)';
+
+            backdrop.style.transition = 'opacity 0.2s ease-out';
+            backdrop.style.opacity = '0';
+
+            setTimeout(() => {
+                panel.style.display = 'none';
+                backdrop.style.display = 'none';
+            }, 200);
+        }
+
+        // Close on backdrop click
+        document.querySelector('[data-dom-id="modal-backdrop-close"]').addEventListener('click', closeModal);
+        // Close on X button
+        document.querySelector('[data-dom-id="modal-close-btn"]').addEventListener('click', closeModal);
+        // Close on cancel
+        document.querySelector('[data-dom-id="btn-modal-cancel"]').addEventListener('click', closeModal);
+
+        // ===== Create portfolio =====
+        document.querySelector('[data-dom-id="btn-modal-create"]').addEventListener('click', function() {
+            const name = document.querySelector('[data-dom-id="input-portfolio-name"]').value.trim();
+            const typeCard = document.querySelector('.card-radio.active');
+            const type = typeCard ? typeCard.getAttribute('data-type') : 'sim';
+            const capital = parseCurrency(document.querySelector('[data-dom-id="input-capital"]').value);
+            const buyFee = parseFloat(document.querySelector('[data-dom-id="input-buy-fee"]').value) || 0;
+            const sellFee = parseFloat(document.querySelector('[data-dom-id="input-sell-fee"]').value) || 0;
+            const singleLimit = parseFloat(document.querySelector('[data-dom-id="input-single-limit"]').value) || 0;
+            const cashReserve = parseFloat(document.querySelector('[data-dom-id="input-cash-reserve"]').value) || 0;
+            const benchmark = document.querySelector('[data-dom-id="select-benchmark"]').value;
+
+            if (!name) {
+                // shake effect
+                const input = document.querySelector('[data-dom-id="input-portfolio-name"]');
+                input.style.borderColor = 'var(--pt-state-error)';
+                input.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.12)';
+                setTimeout(() => {
+                    input.style.borderColor = '';
+                    input.style.boxShadow = '';
+                }, 1500);
+                return;
+            }
+
+            console.log('Create portfolio:', {
+                name,
+                type,
+                capital,
+                buyFee,
+                sellFee,
+                singleLimit,
+                cashReserve,
+                benchmark
+            });
+
+            closeModal();
+        });
+
+        // ===== Slider interaction for single-limit and cash-reserve =====
+        function setupSlider(inputSelector, trackSelector) {
+            const input = document.querySelector(inputSelector);
+            const track = document.querySelector(trackSelector);
+            const fill = track.querySelector('.slider-fill');
+            const thumb = track.querySelector('.slider-thumb');
+
+            function updateSlider(val) {
+                const pct = Math.max(0, Math.min(100, val));
+                fill.style.width = pct + '%';
+                thumb.style.left = pct + '%';
+            }
+
+            input.addEventListener('input', function() {
+                let val = parseFloat(this.value) || 0;
+                val = Math.max(0, Math.min(100, val));
+                this.value = val;
+                updateSlider(val);
+            });
+
+            // Click on track
+            track.addEventListener('click', function(e) {
+                const rect = track.getBoundingClientRect();
+                const pct = ((e.clientX - rect.left) / rect.width) * 100;
+                const val = Math.round(pct);
+                input.value = val;
+                updateSlider(val);
+            });
+
+            // Initialize
+            updateSlider(parseFloat(input.value) || 0);
+        }
+
+        setupSlider('[data-dom-id="input-single-limit"]', '[data-slider="single-limit"]');
+        setupSlider('[data-dom-id="input-cash-reserve"]', '[data-slider="cash-reserve"]');
+    </script>
+</body>
+</html>

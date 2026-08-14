@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>组合排名</title>
+    <style id="theme-vars">
+/* Portfolio Trading Redesign — Professional Calm Finance Theme */
+/* Brand prefix: pt */
+
+:root {
+  /* Neutral scale */
+  --pt-white: #ffffff;
+  --pt-black: #000000;
+  --pt-slate-50: #f8fafc;
+  --pt-slate-100: #f1f5f9;
+  --pt-slate-200: #e2e8f0;
+  --pt-slate-300: #cbd5e1;
+  --pt-slate-400: #94a3b8;
+  --pt-slate-500: #64748b;
+  --pt-slate-600: #475569;
+  --pt-slate-700: #334155;
+  --pt-slate-800: #1e293b;
+  --pt-slate-900: #0f172a;
+  --pt-slate-950: #020617;
+
+  /* Primary cyan scale (single brand hue) */
+  --pt-cyan-50: #ecfeff;
+  --pt-cyan-100: #cffafe;
+  --pt-cyan-200: #a5f3fc;
+  --pt-cyan-300: #67e8f9;
+  --pt-cyan-400: #22d3ee;
+  --pt-cyan-500: #06b6d4;
+  --pt-cyan-600: #0891b2;
+  --pt-cyan-700: #0e7490;
+  --pt-cyan-800: #155e75;
+  --pt-cyan-900: #164e63;
+  --pt-cyan-950: #083344;
+
+  /* State colors (semantic only) */
+  --pt-state-success: #10b981;
+  --pt-state-success-dim: rgba(16, 185, 129, 0.12);
+  --pt-state-warning: #f59e0b;
+  --pt-state-warning-dim: rgba(245, 158, 11, 0.12);
+  --pt-state-error: #ef4444;
+  --pt-state-error-dim: rgba(239, 68, 68, 0.12);
+  --pt-state-info: #3b82f6;
+  --pt-state-info-dim: rgba(59, 130, 246, 0.12);
+
+  /* Semantic aliases */
+  --pt-background: #0b1120;
+  --pt-foreground: #f8fafc;
+  --pt-card: #111827;
+  --pt-card-foreground: #f8fafc;
+  --pt-popover: #111827;
+  --pt-popover-foreground: #f8fafc;
+  --pt-primary: #06b6d4;
+  --pt-primary-foreground: #020617;
+  --pt-muted: #1f2937;
+  --pt-muted-foreground: #94a3b8;
+  --pt-border: #374151;
+  --pt-input: #1f2937;
+  --pt-ring: #06b6d4;
+
+  /* Radius scale (restrained) */
+  --pt-radius-sm: 4px;
+  --pt-radius-md: 8px;
+  --pt-radius-lg: 12px;
+  --pt-radius-full: 9999px;
+
+  /* Surface depth */
+  --pt-surface-1: #0b1120;
+  --pt-surface-2: #111827;
+  --pt-surface-3: #1f2937;
+  --pt-surface-4: #27354f;
+
+  /* Typography */
+  --pt-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  --pt-font-mono: "SF Mono", "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
+
+  /* Spacing scale */
+  --pt-space-1: 4px;
+  --pt-space-2: 8px;
+  --pt-space-3: 12px;
+  --pt-space-4: 16px;
+  --pt-space-5: 20px;
+  --pt-space-6: 24px;
+  --pt-space-8: 32px;
+  --pt-space-10: 40px;
+  --pt-space-12: 48px;
+
+  /* Shadows (only for floating layers, alpha <= 0.15) */
+  --pt-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --pt-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --pt-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
+  --pt-shadow-glow: 0 0 20px rgba(6, 182, 212, 0.15);
+}
+
+/* Base typography classes */
+.pt-text-xs { font-size: 11px; line-height: 16px; }
+.pt-text-sm { font-size: 12px; line-height: 18px; }
+.pt-text-base { font-size: 13px; line-height: 20px; }
+.pt-text-md { font-size: 14px; line-height: 22px; }
+.pt-text-lg { font-size: 16px; line-height: 24px; }
+.pt-text-xl { font-size: 18px; line-height: 28px; }
+.pt-text-2xl { font-size: 20px; line-height: 30px; }
+.pt-text-3xl { font-size: 24px; line-height: 32px; }
+
+.pt-font-normal { font-weight: 400; }
+.pt-font-medium { font-weight: 500; }
+.pt-font-semibold { font-weight: 600; }
+.pt-font-bold { font-weight: 700; }
+
+.pt-tracking-tight { letter-spacing: -0.01em; }
+.pt-tracking-wide { letter-spacing: 0.03em; }
+
+/* Utility color classes */
+.pt-text-primary { color: var(--pt-foreground); }
+.pt-text-secondary { color: var(--pt-muted-foreground); }
+.pt-text-muted { color: var(--pt-slate-500); }
+.pt-text-cyan { color: var(--pt-primary); }
+.pt-text-success { color: var(--pt-state-success); }
+.pt-text-warning { color: var(--pt-state-warning); }
+.pt-text-error { color: var(--pt-state-error); }
+.pt-text-info { color: var(--pt-state-info); }
+
+.pt-bg-background { background-color: var(--pt-background); }
+.pt-bg-card { background-color: var(--pt-card); }
+.pt-bg-muted { background-color: var(--pt-muted); }
+.pt-bg-surface-3 { background-color: var(--pt-surface-3); }
+.pt-bg-primary { background-color: var(--pt-primary); }
+.pt-bg-primary-dim { background-color: rgba(6, 182, 212, 0.12); }
+.pt-bg-success-dim { background-color: var(--pt-state-success-dim); }
+.pt-bg-warning-dim { background-color: var(--pt-state-warning-dim); }
+.pt-bg-error-dim { background-color: var(--pt-state-error-dim); }
+
+.pt-border { border-color: var(--pt-border); }
+.pt-border-primary { border-color: var(--pt-primary); }
+
+/* Financial data styling */
+.pt-mono { font-family: var(--pt-font-mono); }
+.pt-positive { color: var(--pt-state-success); }
+.pt-negative { color: var(--pt-state-error); }
+.pt-neutral { color: var(--pt-muted-foreground); }
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--pt-background);
+    --color-foreground: var(--pt-foreground);
+    --color-card: var(--pt-card);
+    --color-card-foreground: var(--pt-card-foreground);
+    --color-popover: var(--pt-popover);
+    --color-popover-foreground: var(--pt-popover-foreground);
+    --color-primary: var(--pt-primary);
+    --color-primary-foreground: var(--pt-primary-foreground);
+    --color-muted: var(--pt-muted);
+    --color-muted-foreground: var(--pt-muted-foreground);
+    --color-border: var(--pt-border);
+    --color-input: var(--pt-input);
+    --color-ring: var(--pt-ring);
+    --radius-sm: var(--pt-radius-sm);
+    --radius-md: var(--pt-radius-md);
+    --radius-lg: var(--pt-radius-lg);
+  }
+  @layer base {
+    body { background: var(--pt-background); color: var(--pt-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--pt-background); }
+      .text-background { color: var(--pt-background); }
+      .border-background { border-color: var(--pt-background); }
+      .ring-background { --tw-ring-color: var(--pt-background); }
+      .bg-foreground { background-color: var(--pt-foreground); }
+      .text-foreground { color: var(--pt-foreground); }
+      .border-foreground { border-color: var(--pt-foreground); }
+      .ring-foreground { --tw-ring-color: var(--pt-foreground); }
+      .bg-card { background-color: var(--pt-card); }
+      .text-card { color: var(--pt-card); }
+      .border-card { border-color: var(--pt-card); }
+      .ring-card { --tw-ring-color: var(--pt-card); }
+      .bg-card-foreground { background-color: var(--pt-card-foreground); }
+      .text-card-foreground { color: var(--pt-card-foreground); }
+      .border-card-foreground { border-color: var(--pt-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--pt-card-foreground); }
+      .bg-popover { background-color: var(--pt-popover); }
+      .text-popover { color: var(--pt-popover); }
+      .border-popover { border-color: var(--pt-popover); }
+      .ring-popover { --tw-ring-color: var(--pt-popover); }
+      .bg-popover-foreground { background-color: var(--pt-popover-foreground); }
+      .text-popover-foreground { color: var(--pt-popover-foreground); }
+      .border-popover-foreground { border-color: var(--pt-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--pt-popover-foreground); }
+      .bg-primary { background-color: var(--pt-primary); }
+      .text-primary { color: var(--pt-primary); }
+      .border-primary { border-color: var(--pt-primary); }
+      .ring-primary { --tw-ring-color: var(--pt-primary); }
+      .bg-primary-foreground { background-color: var(--pt-primary-foreground); }
+      .text-primary-foreground { color: var(--pt-primary-foreground); }
+      .border-primary-foreground { border-color: var(--pt-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--pt-primary-foreground); }
+      .bg-muted { background-color: var(--pt-muted); }
+      .text-muted { color: var(--pt-muted); }
+      .border-muted { border-color: var(--pt-muted); }
+      .ring-muted { --tw-ring-color: var(--pt-muted); }
+      .bg-muted-foreground { background-color: var(--pt-muted-foreground); }
+      .text-muted-foreground { color: var(--pt-muted-foreground); }
+      .border-muted-foreground { border-color: var(--pt-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--pt-muted-foreground); }
+      .bg-border { background-color: var(--pt-border); }
+      .text-border { color: var(--pt-border); }
+      .border-border { border-color: var(--pt-border); }
+      .ring-border { --tw-ring-color: var(--pt-border); }
+      .bg-input { background-color: var(--pt-input); }
+      .text-input { color: var(--pt-input); }
+      .border-input { border-color: var(--pt-input); }
+      .ring-input { --tw-ring-color: var(--pt-input); }
+      .bg-ring { background-color: var(--pt-ring); }
+      .text-ring { color: var(--pt-ring); }
+      .border-ring { border-color: var(--pt-ring); }
+      .ring-ring { --tw-ring-color: var(--pt-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body data-node-id="page-ranking-drawer">
+    <!-- Scrim / background overlay -->
+    <div id="drawer-scrim" data-dom-id="drawer-scrim-close"
+         class="drawer-scrim fixed inset-0 z-40"
+         style="background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px);">
+    </div>
+
+    <!-- Drawer panel -->
+    <div id="ranking-drawer"
+         class="drawer-panel fixed top-0 right-0 z-50 h-full flex flex-col"
+         style="width: 480px; background: var(--pt-surface-2); border-left: 1px solid var(--pt-border); box-shadow: var(--pt-shadow-drawer);">
+
+        <!-- Drawer Header -->
+        <div class="flex items-start justify-between px-5 pt-5 pb-4"
+             style="border-bottom: 1px solid var(--pt-border);">
+            <div class="flex flex-col gap-1">
+                <h2 class="pt-text-xl pt-font-semibold text-white m-0">组合排名</h2>
+                <p class="pt-text-sm pt-neutral m-0">按核心指标对比所有组合表现</p>
+            </div>
+            <button type="button"
+                    data-dom-id="drawer-close-btn"
+                    class="pt-btn pt-btn-ghost pt-btn-sm !w-8 !h-8 !p-0 rounded-md"
+                    aria-label="关闭">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="px-5 flex gap-6"
+             style="border-bottom: 1px solid var(--pt-border);">
+            <button type="button"
+                    data-dom-id="ranking-tab-return"
+                    class="pt-tab active"
+                    data-tab="return">
+                收益率
+            </button>
+            <button type="button"
+                    data-dom-id="ranking-tab-drawdown"
+                    class="pt-tab"
+                    data-tab="drawdown">
+                最大回撤
+            </button>
+            <button type="button"
+                    data-dom-id="ranking-tab-sharpe"
+                    class="pt-tab"
+                    data-tab="sharpe">
+                夏普比率
+            </button>
+        </div>
+
+        <!-- Ranking List -->
+        <div class="flex-1 overflow-y-auto custom-scroll">
+            <!-- Row 1 -->
+            <div class="ranking-row flex items-center gap-3 px-5 py-3.5"
+                 data-dom-id="ranking-row-1"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="rank-badge rank-1">1</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="pt-text-md pt-font-medium text-white truncate">稳健增强组合</span>
+                        <span class="tag-badge tag-real">实盘</span>
+                    </div>
+                    <div class="flex items-center gap-3 pt-text-xs pt-neutral">
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="calendar" class="w-3 h-3"></i>
+                            成立 186 天
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="layers" class="w-3 h-3"></i>
+                            8 只标的
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="pt-text-lg pt-font-bold pt-mono pt-positive metric-value" data-metric="return">+35.2%</div>
+                    </div>
+                    <button type="button" class="pt-btn pt-btn-secondary pt-btn-sm shrink-0">
+                        查看
+                    </button>
+                </div>
+            </div>
+
+            <!-- Row 2 -->
+            <div class="ranking-row flex items-center gap-3 px-5 py-3.5"
+                 data-dom-id="ranking-row-2"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="rank-badge rank-2">2</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="pt-text-md pt-font-medium text-white truncate">成长优选组合</span>
+                        <span class="tag-badge tag-real">实盘</span>
+                    </div>
+                    <div class="flex items-center gap-3 pt-text-xs pt-neutral">
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="calendar" class="w-3 h-3"></i>
+                            成立 142 天
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="layers" class="w-3 h-3"></i>
+                            12 只标的
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="pt-text-lg pt-font-bold pt-mono pt-positive metric-value" data-metric="return">+28.7%</div>
+                    </div>
+                    <button type="button" class="pt-btn pt-btn-secondary pt-btn-sm shrink-0">
+                        查看
+                    </button>
+                </div>
+            </div>
+
+            <!-- Row 3 -->
+            <div class="ranking-row flex items-center gap-3 px-5 py-3.5"
+                 data-dom-id="ranking-row-3"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="rank-badge rank-3">3</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="pt-text-md pt-font-medium text-white truncate">低波红利组合</span>
+                        <span class="tag-badge tag-sim">模拟</span>
+                    </div>
+                    <div class="flex items-center gap-3 pt-text-xs pt-neutral">
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="calendar" class="w-3 h-3"></i>
+                            成立 96 天
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="layers" class="w-3 h-3"></i>
+                            6 只标的
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="pt-text-lg pt-font-bold pt-mono pt-positive metric-value" data-metric="return">+22.1%</div>
+                    </div>
+                    <button type="button" class="pt-btn pt-btn-secondary pt-btn-sm shrink-0">
+                        查看
+                    </button>
+                </div>
+            </div>
+
+            <!-- Row 4 -->
+            <div class="ranking-row flex items-center gap-3 px-5 py-3.5"
+                 data-dom-id="ranking-row-4"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="rank-badge rank-default">4</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="pt-text-md pt-font-medium text-white truncate">科技龙头组合</span>
+                        <span class="tag-badge tag-real">实盘</span>
+                    </div>
+                    <div class="flex items-center gap-3 pt-text-xs pt-neutral">
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="calendar" class="w-3 h-3"></i>
+                            成立 210 天
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="layers" class="w-3 h-3"></i>
+                            10 只标的
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="pt-text-lg pt-font-bold pt-mono pt-positive metric-value" data-metric="return">+18.5%</div>
+                    </div>
+                    <button type="button" class="pt-btn pt-btn-secondary pt-btn-sm shrink-0">
+                        查看
+                    </button>
+                </div>
+            </div>
+
+            <!-- Row 5 -->
+            <div class="ranking-row flex items-center gap-3 px-5 py-3.5"
+                 data-dom-id="ranking-row-5"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="rank-badge rank-default">5</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="pt-text-md pt-font-medium text-white truncate">医药创新组合</span>
+                        <span class="tag-badge tag-sim">模拟</span>
+                    </div>
+                    <div class="flex items-center gap-3 pt-text-xs pt-neutral">
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="calendar" class="w-3 h-3"></i>
+                            成立 78 天
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="layers" class="w-3 h-3"></i>
+                            15 只标的
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="pt-text-lg pt-font-bold pt-mono pt-positive metric-value" data-metric="return">+12.3%</div>
+                    </div>
+                    <button type="button" class="pt-btn pt-btn-secondary pt-btn-sm shrink-0">
+                        查看
+                    </button>
+                </div>
+            </div>
+
+            <!-- Row 6 -->
+            <div class="ranking-row flex items-center gap-3 px-5 py-3.5"
+                 data-dom-id="ranking-row-6"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="rank-badge rank-default">6</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="pt-text-md pt-font-medium text-white truncate">消费白马组合</span>
+                        <span class="tag-badge tag-real">实盘</span>
+                    </div>
+                    <div class="flex items-center gap-3 pt-text-xs pt-neutral">
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="calendar" class="w-3 h-3"></i>
+                            成立 165 天
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="layers" class="w-3 h-3"></i>
+                            7 只标的
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="pt-text-lg pt-font-bold pt-mono pt-positive metric-value" data-metric="return">+8.9%</div>
+                    </div>
+                    <button type="button" class="pt-btn pt-btn-secondary pt-btn-sm shrink-0">
+                        查看
+                    </button>
+                </div>
+            </div>
+
+            <!-- Row 7 -->
+            <div class="ranking-row flex items-center gap-3 px-5 py-3.5"
+                 data-dom-id="ranking-row-7"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="rank-badge rank-default">7</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="pt-text-md pt-font-medium text-white truncate">周期轮动组合</span>
+                        <span class="tag-badge tag-sim">模拟</span>
+                    </div>
+                    <div class="flex items-center gap-3 pt-text-xs pt-neutral">
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="calendar" class="w-3 h-3"></i>
+                            成立 54 天
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="layers" class="w-3 h-3"></i>
+                            9 只标的
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="pt-text-lg pt-font-bold pt-mono pt-positive metric-value" data-metric="return">+3.2%</div>
+                    </div>
+                    <button type="button" class="pt-btn pt-btn-secondary pt-btn-sm shrink-0">
+                        查看
+                    </button>
+                </div>
+            </div>
+
+            <!-- Row 8 -->
+            <div class="ranking-row flex items-center gap-3 px-5 py-3.5"
+                 data-dom-id="ranking-row-8"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="rank-badge rank-default">8</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="pt-text-md pt-font-medium text-white truncate">量化对冲组合</span>
+                        <span class="tag-badge tag-real">实盘</span>
+                    </div>
+                    <div class="flex items-center gap-3 pt-text-xs pt-neutral">
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="calendar" class="w-3 h-3"></i>
+                            成立 120 天
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <i data-lucide="layers" class="w-3 h-3"></i>
+                            11 只标的
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="pt-text-lg pt-font-bold pt-mono pt-negative metric-value" data-metric="return">-2.1%</div>
+                    </div>
+                    <button type="button" class="pt-btn pt-btn-secondary pt-btn-sm shrink-0">
+                        查看
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Action Bar -->
+        <div class="flex items-center justify-between px-5 py-3.5"
+             style="border-top: 1px solid var(--pt-border); background: var(--pt-surface-2);">
+            <span class="pt-text-sm pt-neutral">共 8 个组合</span>
+            <button type="button"
+                    data-dom-id="btn-view-all"
+                    class="pt-btn pt-btn-secondary">
+                <span>查看全部</span>
+                <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        if (window.lucide) lucide.createIcons();
+
+        // Tab switching data
+        const metricsData = {
+            return: {
+                values: ['+35.2%', '+28.7%', '+22.1%', '+18.5%', '+12.3%', '+8.9%', '+3.2%', '-2.1%'],
+                positive: [true, true, true, true, true, true, true, false]
+            },
+            drawdown: {
+                values: ['-5.8%', '-8.2%', '-3.5%', '-12.1%', '-15.6%', '-6.4%', '-22.3%', '-4.2%'],
+                positive: [false, false, false, false, false, false, false, false],
+                // For drawdown, smaller (less negative) is better; use warning color for context
+                isDrawdown: true
+            },
+            sharpe: {
+                values: ['2.84', '2.15', '3.02', '1.68', '1.24', '1.93', '0.56', '0.89'],
+                positive: [true, true, true, true, true, true, true, true],
+                isSharpe: true
+            }
+        };
+
+        // Tab switching logic
+        const tabs = document.querySelectorAll('.pt-tab');
+        const metricValues = document.querySelectorAll('.metric-value');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                const tabType = this.getAttribute('data-tab');
+
+                // Update tab active state
+                tabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+
+                // Update metric values
+                const data = metricsData[tabType];
+                metricValues.forEach((el, idx) => {
+                    el.textContent = data.values[idx];
+                    el.classList.remove('pt-positive', 'pt-negative', 'pt-cyan');
+
+                    if (data.isDrawdown) {
+                        // Drawdown: all negative, use error color but rank by magnitude
+                        el.classList.add('pt-negative');
+                    } else if (data.isSharpe) {
+                        // Sharpe ratio: use primary cyan color
+                        el.classList.add('pt-cyan');
+                    } else {
+                        // Return rate
+                        if (data.positive[idx]) {
+                            el.classList.add('pt-positive');
+                        } else {
+                            el.classList.add('pt-negative');
+                        }
+                    }
+                });
+            });
+        });
+
+        // Close drawer functionality
+        function closeDrawer() {
+            const panel = document.getElementById('ranking-drawer');
+            const scrim = document.getElementById('drawer-scrim');
+
+            panel.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+            panel.style.transform = 'translateX(100%)';
+
+            scrim.style.transition = 'opacity 0.2s ease-out';
+            scrim.style.opacity = '0';
+
+            setTimeout(() => {
+                // For demo purposes, just show the closed state
+                panel.style.display = 'none';
+                scrim.style.display = 'none';
+            }, 250);
+        }
+
+        document.getElementById('drawer-scrim').addEventListener('click', closeDrawer);
+        document.querySelector('[data-dom-id="drawer-close-btn"]').addEventListener('click', closeDrawer);
+
+        // Row click handler
+        document.querySelectorAll('.ranking-row').forEach(row => {
+            row.addEventListener('click', function(e) {
+                // Don't trigger if clicking the "查看" button
+                if (e.target.closest('.pt-btn')) return;
+                // Row navigation could go here
+                console.log('Navigate to portfolio:', this.getAttribute('data-dom-id'));
+            });
+        });
+    </script>
+</body>
+</html>

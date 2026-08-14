@@ -10,7 +10,7 @@ from __future__ import annotations
 import threading
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping
 
@@ -818,6 +818,49 @@ class FactorWarehouse:
         """Return diagnostic information about the warehouse file lock."""
         return diagnose_warehouse_lock(self.path)
 
+    def describe_table(self, table_name: str) -> list[str]:
+        """返回指定表的列名列表。
+
+        如果表不存在或查询失败，返回空列表。
+        """
+        try:
+            if not self.path.exists():
+                return []
+            with self.connection(read_only=True) as conn:
+                rows = conn.execute(
+                    f"DESCRIBE {table_name}"
+                ).fetchall()
+                return [row[0] for row in rows]
+        except Exception:
+            return []
+
+    def list_trade_dates(self, *, limit: int | None = None) -> list[date]:
+        """返回仓库中 raw_daily_bars 表的去重交易日列表（按 DESC 排序）。
+
+        如果表不存在或查询失败，返回空列表。
+        """
+        try:
+            if not self.path.exists():
+                return []
+            with self.connection(read_only=True) as conn:
+                tables = {
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = 'main'"
+                    ).fetchall()
+                }
+                if "raw_daily_bars" not in tables:
+                    return []
+                limit_clause = f" LIMIT {int(limit)}" if limit else ""
+                rows = conn.execute(
+                    f"SELECT DISTINCT trade_date FROM raw_daily_bars "
+                    f"ORDER BY trade_date DESC{limit_clause}"
+                ).fetchall()
+                return [row[0] for row in rows]
+        except Exception:
+            return []
+
     @contextmanager
     def safe_write_context(
         self, *, timeout_seconds: float = 30.0
@@ -866,3 +909,84 @@ class FactorWarehouse:
                     raise
         finally:
             release_warehouse_lock(self.path)
+
+    def _table_exists(self, table_name: str) -> bool:
+        """检查表是否存在于 DuckDB warehouse 中。"""
+        try:
+            if not self.path.exists():
+                return False
+            with self.connection(read_only=True) as conn:
+                rows = conn.execute(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = 'main' AND table_name = ?",
+                    [table_name],
+                ).fetchall()
+                return len(rows) > 0
+        except Exception:
+            return False
+
+    def get_latest_target_batch_id(
+        self, target_code: str = "target_5d_return"
+    ) -> str | None:
+        """查询 target_code 下 is_tradable=True 且 tradable_rows>0 的最新批次
+        calc_batch_id，按 created_at DESC LIMIT 1。返回 None 意味着没有批次。
+
+        如果 factor_targets 表不存在也返回 None。
+        """
+        try:
+            if not self._table_exists("factor_targets"):
+                return None
+            with self.connection(read_only=True) as conn:
+                row = conn.execute(
+                    """
+                    SELECT calc_batch_id
+                    FROM (
+                        SELECT
+                            calc_batch_id,
+                            created_at,
+                            SUM(CASE WHEN is_tradable THEN 1 ELSE 0 END) AS tradable_rows
+                        FROM factor_targets
+                        WHERE target_code = ?
+                        GROUP BY calc_batch_id, created_at
+                        HAVING tradable_rows > 0
+                    )
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    [target_code],
+                ).fetchone()
+                return row[0] if row else None
+        except Exception:
+            return None
+
+    def get_target_panel(
+        self, calc_batch_id: str, target_code: str = "target_5d_return"
+    ) -> tuple[Any, str, str]:
+        """返回 (DataFrame 含 columns=[symbol, signal_date, target_value],
+        calc_batch_id, target_code)。
+
+        DataFrame 后续被评估器 pivot(index=signal_date, columns=symbol,
+        values=target_value) 使用。仅返回 is_tradable=True 的行。
+
+        如果 factor_targets 表不存在，返回空 DataFrame。
+        """
+        import pandas as pd
+
+        empty_df = pd.DataFrame(columns=["symbol", "signal_date", "target_value"])
+        try:
+            if not self._table_exists("factor_targets"):
+                return empty_df, calc_batch_id, target_code
+            with self.connection(read_only=True) as conn:
+                df = conn.execute(
+                    """
+                    SELECT symbol, signal_date, target_value
+                    FROM factor_targets
+                    WHERE calc_batch_id = ?
+                      AND target_code = ?
+                      AND is_tradable = TRUE
+                    """,
+                    [calc_batch_id, target_code],
+                ).fetchdf()
+                return df, calc_batch_id, target_code
+        except Exception:
+            return empty_df, calc_batch_id, target_code

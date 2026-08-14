@@ -78,7 +78,7 @@ def match_policies(
         source_types = (
             json.loads(policy.source_types_json) if policy.source_types_json else []
         )
-        if source_type not in source_types:
+        if source_type not in source_types and event_type not in source_types:
             continue
 
         # 2. 检查 severity
@@ -129,6 +129,7 @@ def emit_event(
     scope_type: str | None = None,
     scope_id: int | None = None,
     template_variables: dict | None = None,
+    event_key: str | None = None,
 ) -> list:
     """触发业务事件，匹配策略并写入 Outbox。
 
@@ -155,7 +156,9 @@ def emit_event(
     # 2. 生成 event_key（防重键）
     # 格式：source_type:event_type:source_id（source_id 为空时用时间戳保证不防重）
     # error/critical 默认即时发送，event_key 含时间戳确保不被 enqueue 防重
-    if severity in ("error", "critical"):
+    if event_key:
+        event_key_base = event_key
+    elif severity in ("error", "critical"):
         event_key_base = (
             f"{source_type}:{event_type}:{datetime.now(timezone.utc).isoformat()}"
         )

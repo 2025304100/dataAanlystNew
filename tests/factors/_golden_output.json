@@ -1,0 +1,75 @@
+{
+  "case_A": {
+    "case": "A_oracle",
+    "rank_ic": 0.9995153864282703,
+    "icir": 13097.026717636956,
+    "n_samples": 28500,
+    "gate_result": "passed",
+    "top_bottom_return": 0.11365701251666785,
+    "rank_ic_std": 7.631620580587842e-05,
+    "group_returns": [
+      -0.05537820647422603,
+      -0.022108977655578965,
+      -0.0005993046749044958,
+      0.021541418975534868,
+      0.05827880604244182
+    ],
+    "coverage": 1.0,
+    "monotonicity_score": 0.9950258446858131,
+    "rejection_reasons": [],
+    "n_dates": 95,
+    "data_mode": "SYNTHETIC_FALLBACK"
+  },
+  "case_B": {
+    "case": "B_lower_better",
+    "rank_ic": 0.9995153864282703,
+    "icir": 13097.026717636956,
+    "n_samples": 28500,
+    "gate_result": "passed",
+    "top_bottom_return": 0.11365701251666785,
+    "rank_ic_A": 0.9995153864282703,
+    "ic_diff_abs": 0.0,
+    "data_mode": "SYNTHETIC_FALLBACK"
+  },
+  "case_C": {
+    "case": "C_random",
+    "rank_ic": 0.0021874161174890256,
+    "icir": 0.043332133856109914,
+    "n_samples": 28500,
+    "gate_result": "rejected",
+    "top_bottom_return": -0.0006387096483175994,
+    "data_mode": "SYNTHETIC_FALLBACK"
+  },
+  "case_D": {
+    "case": "D_constant",
+    "rank_ic": 0.0,
+    "icir": 0.0,
+    "n_samples": 28500,
+    "gate_result": "rejected",
+    "top_bottom_return": 0.0,
+    "rejection_reasons": [
+      "rank_ic_non_positive:Rank IC 均值 0.0000 不大于 0",
+      "icir_below_threshold:ICIR 0.0000 低于阈值 0.15",
+      "positive_ic_ratio_low:正 IC 比例 0.00% 低于阈值 55.00%",
+      "net_return_non_positive:成本后收益 0.000000 不大于 0"
+    ],
+    "data_mode": "SYNTHETIC_FALLBACK"
+  },
+  "case_E": {
+    "case": "E_reproducibility",
+    "run1_rank_ic": 0.9995153864282703,
+    "run2_rank_ic": 0.9995153864282703,
+    "run1_icir": 13097.026717636956,
+    "run2_icir": 13097.026717636956,
+    "run1_n_samples": 28500,
+    "run2_n_samples": 28500,
+    "run1_top_bottom_return": 0.11365701251666785,
+    "run2_top_bottom_return": 0.11365701251666785,
+    "data_mode": "SYNTHETIC_FALLBACK"
+  },
+  "_meta": {
+    "generated_at_utc": "2026-08-13T12:04:03.421501Z",
+    "data_mode": "SYNTHETIC_FALLBACK",
+    "evaluator_note": "pure_evaluation_flow: align → apply_direction_alignment → rank_ic → quantile → turnover → cost → gate. No DB writes."
+  }
+}

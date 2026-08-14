@@ -38,6 +38,10 @@ class AsyncTaskRead(BaseModel):
     batch_recovery: list[dict] | None = None
     last_patrol_at: datetime | None = None
     cancel_requested: bool = False
+    # WP5: 幂等检查和前端 fingerprint 展示需要原始 payload JSON（可选，不破坏旧契约）
+    payload_json: str | None = None
+    # WP5: 便捷顶层 fingerprint（可由前端直接展示或用于对比）
+    fingerprint: str | None = None
 
 
 class MarketDataSyncCreate(BaseModel):

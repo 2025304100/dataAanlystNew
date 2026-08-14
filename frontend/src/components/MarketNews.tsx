@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, Card, Empty, Select, Space, Tag, Tooltip, Typography } from "antd";
-import { CalendarOutlined, FilterOutlined, ReloadOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { CalendarOutlined, FilterOutlined, ReloadOutlined, TagsOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { t, template } from "../i18n";
 import type { MarketEvent, MarketEventListResponse } from "../types";
+import ThemeManagementModal from "./ThemeManagementModal";
 
 const { Paragraph, Text } = Typography;
 
@@ -207,6 +208,7 @@ export default function MarketNews() {
   const [data, setData] = useState<MarketEventListResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [collecting, setCollecting] = useState(false);
+  const [themeManagerOpen, setThemeManagerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 筛选状态
@@ -402,6 +404,7 @@ export default function MarketNews() {
           <Button type="primary" icon={<ThunderboltOutlined />} loading={collecting} onClick={handleCollect}>
             {collecting ? t("market_news_collecting") : t("market_news_collect")}
           </Button>
+          <Button icon={<TagsOutlined />} onClick={() => setThemeManagerOpen(true)}>主题管理</Button>
           <Button icon={<FilterOutlined />} onClick={() => setShowFilter(!showFilter)}
             className={showFilter ? "mn-filter-active" : ""}>{t("market_news_filter")}</Button>
 
@@ -603,6 +606,7 @@ export default function MarketNews() {
           </div>
         </>
       )}
+      <ThemeManagementModal open={themeManagerOpen} onClose={() => setThemeManagerOpen(false)} />
     </div>
   );
 }

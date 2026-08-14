@@ -437,6 +437,28 @@ def test_secret_store_master_key_from_env(monkeypatch):
     # 新实例使用相同 master_key 应能解密
     store2 = SecretStore(secrets_path=Path(tempfile.gettempdir()) / "st-test1.enc")
     assert store2.get_secret("k1") == "v1"
+
+
+def test_secret_store_persists_master_key_across_restart(tmp_path):
+    """未配置 APP_MASTER_KEY 时，重启后仍可读取本地保存的 Secret。"""
+    secrets_path = tmp_path / "secrets.enc"
+    first_process = SecretStore(secrets_path=secrets_path)
+    first_process.set_secret("AI_PROFILE_1_TEST", "sk-persist-after-restart")
+
+    restarted_process = SecretStore(secrets_path=secrets_path)
+    assert restarted_process.get_secret("AI_PROFILE_1_TEST") == "sk-persist-after-restart"
+    assert secrets_path.with_suffix(".key").exists()
+
+
+def test_secret_store_recovers_legacy_file_before_first_restart(tmp_path):
+    """升级后可读取旧格式 secrets.enc，并补写持久化主密钥。"""
+    secrets_path = tmp_path / "secrets.enc"
+    legacy_process = SecretStore(secrets_path=secrets_path, master_key="legacy-master-key")
+    legacy_process.set_secret("AI_PROFILE_1_LEGACY", "sk-legacy-value")
+
+    upgraded_process = SecretStore(secrets_path=secrets_path)
+    assert upgraded_process.get_secret("AI_PROFILE_1_LEGACY") == "sk-legacy-value"
+    assert secrets_path.with_suffix(".key").exists()
     # 清理
     Path(tempfile.gettempdir(), "st-test1.enc").unlink(missing_ok=True)
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Any
 
@@ -36,7 +37,10 @@ from app.models.scan import ScanResult, ScanRun
 from app.models.score import Score
 from app.models.sim_account import SimOrder, SimTrade
 from app.models.symbol import Symbol
-from app.services.allocation import compute_position_budget
+from app.services.portfolio_asset_scope import allows_asset_type
+from app.services.allocation import compute_position_budget, get_active_rule
+from app.services.auto_trade_dual_run import run_dual_trade
+from app.services.signal_rules import get_active_signal_rule
 from app.services.async_tasks import (
     _append_error,
     _now,
@@ -239,8 +243,155 @@ def run_auto_trade(
 
     # ========================================================================
     # 2. 买入侧：遍历最新 scan 的 executable 候选
+    #    P2-FIX: 把因子模型与策略规则真正接入（选股池过滤、质量/择时阈值、因子加权排序）
     # ========================================================================
-    scan_results = _latest_scan_results(db, portfolio_id, limit=buy_candidate_limit)
+    # 2a. 读 ActiveRule + SignalRule，推导质量/择时最低准入分、选股池、因子加权权重
+    rule = get_active_rule(db, portfolio_id)
+    stage_obj: dict[str, Any] = {}
+    if rule is not None and getattr(rule, "stage_limits_json", None):
+        try:
+            stage_obj = (
+                json.loads(rule.stage_limits_json)
+                if isinstance(rule.stage_limits_json, str)
+                else dict(rule.stage_limits_json)
+            )
+        except (TypeError, json.JSONDecodeError):
+            stage_obj = {}
+
+    stock_pool: str = str(stage_obj.get("stock_pool") or "全A")
+    factors_cfg: list[dict[str, Any]] | None = None
+    if isinstance(stage_obj.get("factors"), list):
+        factors_cfg = [f for f in stage_obj["factors"] if isinstance(f, dict)]
+    factor_model_run_id: str | None = stage_obj.get("factor_model_run_id") or None
+    if factor_model_run_id:
+        factor_model_run_id = str(factor_model_run_id).strip() or None
+
+    # 从 SignalRule 推导准入分：quality_score_min = clamp(80 - quality_tolerance, 10, 80)
+    quality_score_min: float = 0.0
+    timing_score_min: float = 0.0
+    try:
+        sig = get_active_signal_rule(db, portfolio_id)
+        q_tol = int(getattr(sig, "quality_tolerance", 0) or 0)
+        t_tol = int(getattr(sig, "timing_tolerance", 0) or 0)
+        quality_score_min = float(max(10, min(80, 80 - q_tol)))
+        timing_score_min = float(max(10, min(80, 80 - t_tol)))
+    except Exception:  # noqa: BLE001
+        quality_score_min = 0.0
+        timing_score_min = 0.0
+
+    def _quality_timing_check(sc: Score) -> bool:
+        # 如果绑定的是 validated FactorModelRun → 优先用 factor_quality_score / factor_timing_score
+        if factor_model_run_id and getattr(sc, "factor_model_run_id", None) == factor_model_run_id:
+            fq = getattr(sc, "factor_quality_score", None)
+            ft = getattr(sc, "factor_timing_score", None)
+            if isinstance(fq, (int, float)) and math.isfinite(float(fq)) and float(fq) < quality_score_min:
+                return False
+            if isinstance(ft, (int, float)) and math.isfinite(float(ft)) and float(ft) < timing_score_min:
+                return False
+            return True
+        # 默认回落到 Score.quality_score/timing_score（ridge/manual 模式已经混合）
+        if getattr(sc, "quality_score", None) is not None and float(sc.quality_score) < quality_score_min:
+            return False
+        if getattr(sc, "timing_score", None) is not None and float(sc.timing_score) < timing_score_min:
+            return False
+        return True
+
+    def _candidate_weighted_score(sc: Score) -> float:
+        # 绑定了 validated FactorModelRun → 如果该 Score 正是这个模型算出来的，直接用 model_alpha_score
+        if factor_model_run_id and getattr(sc, "factor_model_run_id", None) == factor_model_run_id:
+            ma = getattr(sc, "model_alpha_score", None)
+            if isinstance(ma, (int, float)) and math.isfinite(float(ma)):
+                return float(ma)
+        # 否则退回 UI 因子权重映射（factors_cfg），最后兜底 priority_score
+        base = float(getattr(sc, "priority_score", 0) or 0)
+        if not factors_cfg:
+            return base
+        acc = 0.0
+        total_w = 0.0
+        for f in factors_cfg:
+            if not bool(f.get("active", True)):
+                continue
+            w = float(f.get("weight") or 0)
+            if w <= 0:
+                continue
+            fname = str(f.get("name") or "")
+            v: float | None = None
+            if fname == "质量":
+                v = getattr(sc, "quality_score", None)
+            elif fname == "动量":
+                v = getattr(sc, "momentum_score", None) or getattr(sc, "trend_score", None)
+            elif fname == "低波":
+                vol = getattr(sc, "volatility_score", None)
+                if isinstance(vol, (int, float)) and 0 <= float(vol) <= 100:
+                    v = 100.0 - float(vol)
+            elif fname == "价值":
+                val = getattr(sc, "factor_quality_score", None)
+                if isinstance(val, (int, float)):
+                    v = float(val)
+                else:
+                    v = getattr(sc, "breadth_score", None) or getattr(sc, "trend_score", None)
+            elif fname == "成长":
+                v = getattr(sc, "pullback_score", None) or getattr(sc, "event_score", None) or getattr(sc, "trend_score", None)
+            elif fname == "规模":
+                v = getattr(sc, "liquidity_score", None) or getattr(sc, "breadth_score", None)
+            if v is None:
+                v = getattr(sc, "quality_score", None) or getattr(sc, "priority_score", None)
+            if isinstance(v, (int, float)) and math.isfinite(float(v)):
+                acc += float(v) * w
+                total_w += w
+        if total_w > 0:
+            return acc / total_w
+        return base
+
+    # 2b. 选股池（轻量启发式过滤；无精确成分股库时仍保证不拦截空结果）
+    def _pass_stock_pool(sym: Symbol) -> bool:
+        # ETF 组合的资产范围已在外层校验；股票指数成分池不适用于 ETF，
+        # 因此不能让历史的“沪深300/中证500”配置误过滤 ETF 候选。
+        if sym.asset_type == "etf":
+            return True
+        if stock_pool in {"全A", "自定义", ""}:
+            return True
+        # 市场过滤：所有 A 股池都要求 market=cn_stock
+        if sym.market and sym.market.lower() not in {"cn_stock", "csa", "a", "ashare"}:
+            # 非 A 股池标的，A 股池选项都跳过
+            return stock_pool == "全A"
+        if stock_pool == "沪深300":
+            # 主板 + 大盘代码前缀；没有精确成分股库时放行主板，对科创板/创业板收紧
+            code = (sym.symbol or "").strip()
+            if code.startswith(("688", "300", "301")):
+                return False  # 跳过 STAR/ChiNext
+            return True
+        if stock_pool == "中证500":
+            # 包含中小盘，仍剔除科创板（不在 500 内）
+            code = (sym.symbol or "").strip()
+            if code.startswith(("688",)):
+                return False
+            return True
+        # STOCK_POOLS 其他选项（未来扩展）默认放过
+        return True
+
+    # 2c. 把 scan_results 跟 Symbol/Score 合并，做过滤 + 加权排序后再取 top N
+    raw_scan = _latest_scan_results(db, portfolio_id, limit=max(buy_candidate_limit * 5, 50))
+    enriched: list[tuple[ScanResult, Symbol, Score, float]] = []
+    for sr in raw_scan:
+        sym = db.get(Symbol, sr.symbol_id)
+        if sym is None:
+            continue
+        if not allows_asset_type(portfolio.asset_scope, sym.asset_type):
+            continue
+        if not _pass_stock_pool(sym):
+            continue
+        sc = _latest_score_for_symbol(db, sym.id)
+        if sc is None:
+            continue
+        if not _quality_timing_check(sc):
+            continue
+        weighted = _candidate_weighted_score(sc)
+        enriched.append((sr, sym, sc, weighted))
+
+    # 按加权分降序，再取 top buy_candidate_limit
+    enriched.sort(key=lambda t: (t[3], float(getattr(t[0], "priority_score", 0) or 0)), reverse=True)
+    scan_results = [t[0] for t in enriched[:buy_candidate_limit]]
 
     for scan_result in scan_results:
         symbol = db.get(Symbol, scan_result.symbol_id)
@@ -488,11 +639,14 @@ def _run_auto_trade_task(
             if task is None or task.status == "cancelled":
                 return
             try:
-                result = run_auto_trade(
+                result = run_dual_trade(
                     db=db,
                     portfolio_id=portfolio.id,
                     dry_run=dry_run,
                     buy_candidate_limit=buy_candidate_limit,
+                    for_schedule=True,
+                    save_diff=True,
+                    require_readiness=True,
                 )
                 portfolio_results.append({
                     "portfolio_id": portfolio.id,
@@ -500,6 +654,9 @@ def _run_auto_trade_task(
                     "sells_count": len(result.get("sells", [])),
                     "buys_count": len(result.get("buys", [])),
                     "errors": result.get("errors", []),
+                    "readiness_ready": (result.get("readiness") or {}).get("ready"),
+                    "blockers": result.get("blockers", []),
+                    "executed_source": result.get("executed_source"),
                 })
                 executed += 1
             except Exception as exc:

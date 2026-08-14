@@ -12,6 +12,7 @@ project_memory 硬约束：
 from __future__ import annotations
 
 import logging
+import json
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -128,6 +129,62 @@ def _http_chat_completion(
         usage.get("total_tokens", prompt_tokens + completion_tokens) or 0
     )
     return (True, raw_text, prompt_tokens, completion_tokens, total_tokens, status_code, None, latency_ms)
+
+
+def stream_llm_completion(
+    db,
+    messages: list[dict[str, Any]],
+    *,
+    profile_id: int,
+    max_tokens: int | None = None,
+    temperature: float = 0.2,
+):
+    """Yield provider text deltas followed by one terminal LLMCallResult."""
+    profile = ai_profile_service.get_profile(db, profile_id)
+    if profile is None or not profile.is_enabled:
+        yield {"type": "result", "result": LLMCallResult(success=False, error_message="指定的 AI Profile 不存在或未启用")}
+        return
+    headers = ai_profile_service._auth_headers(profile, json_content=True)
+    endpoint = ai_profile_service._endpoint_url(profile, "/chat/completions")
+    payload = {
+        "model": profile.model, "messages": messages, "stream": True,
+        "temperature": temperature, "max_tokens": max_tokens or profile.max_tokens,
+    }
+    started = time.time()
+    chunks: list[str] = []
+    usage: dict[str, Any] = {}
+    try:
+        with httpx.Client(timeout=profile.timeout_seconds) as client:
+            with client.stream("POST", endpoint, json=payload, headers=headers) as resp:
+                if resp.status_code >= 400:
+                    result = LLMCallResult(success=False, error_type=_classify_error(resp.status_code), error_message=f"HTTP {resp.status_code}", profile_used=profile)
+                    yield {"type": "result", "result": result}
+                    return
+                for line in resp.iter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data_text = line[5:].strip()
+                    if data_text == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_text)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+                    usage = data.get("usage") or usage
+                    choices = data.get("choices") or []
+                    delta = ((choices[0].get("delta") or {}).get("content") or "") if choices else ""
+                    if delta:
+                        chunks.append(delta)
+                        yield {"type": "delta", "content": delta}
+    except Exception as exc:  # noqa: BLE001
+        latency = int((time.time() - started) * 1000)
+        yield {"type": "result", "result": LLMCallResult(success=False, error_type=_classify_error(None, exc), error_message=type(exc).__name__, profile_used=profile, latency_ms=latency)}
+        return
+    latency = int((time.time() - started) * 1000)
+    pt = int(usage.get("prompt_tokens", 0) or 0)
+    ct = int(usage.get("completion_tokens", 0) or 0)
+    tt = int(usage.get("total_tokens", pt + ct) or 0)
+    yield {"type": "result", "result": LLMCallResult(success=True, raw_response="".join(chunks), profile_used=profile, latency_ms=latency, prompt_tokens=pt, completion_tokens=ct, total_tokens=tt)}
 
 
 def call_llm_with_failover(
@@ -269,4 +326,5 @@ def call_llm_with_failover(
 __all__ = [
     "LLMCallResult",
     "call_llm_with_failover",
+    "stream_llm_completion",
 ]

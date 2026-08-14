@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import importlib
+import logging
+import pkgutil
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, literal, text
 from sqlalchemy.engine import Engine
 
 # ── 双轨迁移策略说明（WP0.2）─────────────────────────────────
@@ -15,13 +18,11 @@ from sqlalchemy.engine import Engine
 #    - 通过 `alembic revision --autogenerate` 生成修订，
 #      `alembic upgrade head` 应用。env.py 从 app.core.config 读取 DB URL。
 #
-# 2. 轻量兼容迁移（本文件中的 `_ensure_sqlite_*_columns` 系列
-#    与 `_ensure_mysql_indicator_version_columns`）
-#    - 用于运行时对已存在表做幂等 schema 补丁（ALTER TABLE ADD COLUMN）。
-#    - 原因：`Base.metadata.create_all` 不会 ALTER 已存在表，旧库升级时
-#      需要这些函数在启动时补齐缺失列。
-#    - 【约束】不得删除或破坏现有 `_ensure_sqlite_*` / `_ensure_mysql_*` 逻辑，
-#      后续新增列补丁也需同步追加到此文件，确保 SQLite/MySQL 双库兼容。
+# 2. 启动兼容迁移（显式 `_ensure_*` 补丁 + 通用模型对齐器）
+#    - 显式补丁负责需要回填、特殊索引或数据库差异处理的复杂变更。
+#    - 通用对齐器自动发现 app.models 下的新模块，并补齐缺表、缺列和普通索引，
+#      避免遗漏显式补丁时旧库直接出现 Unknown column。
+#    - 删除、改名、改类型、唯一约束等有数据破坏风险的操作仍必须走 Alembic。
 #
 # 新增表/列优先走 Alembic 修订；运行时兼容补丁继续在此文件维护。
 # ────────────────────────────────────────────────────────────
@@ -142,6 +143,9 @@ def _ensure_sqlite_score_columns(engine) -> None:
             "model_alpha_score": "REAL",
             "macro_regime": "TEXT",
             "macro_position_multiplier": "REAL",
+            # WP7-05: Score 解释追溯字段
+            "factor_set_id": "TEXT",
+            "factor_member_versions_json": "TEXT",
         },
     )
 
@@ -155,6 +159,17 @@ def _ensure_sqlite_factor_columns(engine) -> None:
             "frequency": "TEXT",
             "default_missing_policy": "TEXT DEFAULT 'exclude'",
             "is_active": "INTEGER DEFAULT 1",
+            # WP1-01: 生命周期与治理字段
+            "origin": "TEXT",
+            "lifecycle_status": "TEXT",
+            "owner": "TEXT",
+            "thesis": "TEXT",
+            "factor_kind": "TEXT",
+            "asset_scope_json": "TEXT",
+            "active_version_id": "INTEGER",
+            "shadow_version_id": "INTEGER",
+            "risk_level": "TEXT",
+            "archived_at": "DATETIME",
         },
     )
 
@@ -1137,6 +1152,9 @@ def _ensure_mysql_indicator_version_columns(engine) -> None:
             ("model_alpha_score", "DOUBLE"),
             ("macro_regime", "VARCHAR(24)"),
             ("macro_position_multiplier", "DOUBLE"),
+            # WP7-05: Score 解释追溯字段
+            ("factor_set_id", "VARCHAR(64)"),
+            ("factor_member_versions_json", "TEXT"),
         ]
         for col_name, col_ddl in score_new_cols:
             result = conn.execute(text(
@@ -1182,6 +1200,17 @@ def _ensure_mysql_indicator_version_columns(engine) -> None:
             ("frequency", "VARCHAR(16)"),
             ("default_missing_policy", "VARCHAR(32) DEFAULT 'exclude'"),
             ("is_active", "INTEGER DEFAULT 1"),
+            # WP1-01: 生命周期与治理字段
+            ("origin", "VARCHAR(32)"),
+            ("lifecycle_status", "VARCHAR(32)"),
+            ("owner", "VARCHAR(128)"),
+            ("thesis", "TEXT"),
+            ("factor_kind", "VARCHAR(32)"),
+            ("asset_scope_json", "TEXT"),
+            ("active_version_id", "INTEGER"),
+            ("shadow_version_id", "INTEGER"),
+            ("risk_level", "VARCHAR(16)"),
+            ("archived_at", "DATETIME"),
         ]
         for col_name, col_ddl in factor_new_cols:
             result = conn.execute(text(
@@ -1435,19 +1464,317 @@ def _ensure_mysql_backtest_snapshot_columns(engine) -> None:
                     )
 
 
+def _sa_type_to_ddl(col, is_mysql: bool) -> str:
+    """将 SQLAlchemy Column 类型翻译为目标数据库（SQLite/MySQL）对应的 DDL 类型片段。"""
+    from sqlalchemy import (
+        BigInteger, Boolean, Date, DateTime, Float, Integer, String, Text,
+    )
+    typ = col.type
+    try:
+        if isinstance(typ, BigInteger):
+            base = "BIGINT" if is_mysql else "INTEGER"
+        elif isinstance(typ, Integer):
+            base = "INTEGER"
+        elif isinstance(typ, Boolean):
+            base = "TINYINT(1)" if is_mysql else "INTEGER"
+        elif isinstance(typ, Float):
+            base = "DOUBLE" if is_mysql else "REAL"
+        elif isinstance(typ, DateTime):
+            base = "DATETIME"
+        elif isinstance(typ, Date):
+            base = "DATE"
+        elif isinstance(typ, Text):
+            base = "TEXT"
+        elif isinstance(typ, String):
+            length = getattr(typ, "length", None)
+            if length:
+                base = f"VARCHAR({int(length)})"
+            else:
+                base = "TEXT"
+        else:
+            base = "TEXT"
+    except Exception:
+        base = "TEXT"
+
+    null_clause = " NOT NULL" if (not col.nullable and not col.primary_key) else " NULL"
+    return base + null_clause
+
+
+def _sa_default_to_literal(col, is_mysql: bool):
+    """提取列上可安全回填的 scalar 默认值（返回 None 表示无法/不应回填）。"""
+    if col.primary_key:
+        return None
+    default = getattr(col, "default", None)
+    if default is None:
+        return None
+    arg = getattr(default, "arg", None)
+    if callable(arg):
+        return None
+    # 允许的标量：字符串 / 整数 / 浮点 / 布尔 / None
+    if arg is None or isinstance(arg, (str, int, float, bool)):
+        return arg
+    return None
+
+
+def _refresh_model_metadata() -> None:
+    """再次确保 app.models 下所有模块都被 import，Base.metadata 里表注册完整。
+
+    说明：from app.models import X 已经在 init_db.py 顶部执行；但某些场景（比如 alembic
+    env.py 直接 from app.db.init_db import 没有先 import models），可能 Base.metadata
+    缺少新表。这里再兜底扫一遍，保证新模块自动生效。
+    """
+    import app.models  # noqa: F401
+    # models/__init__.py 里的自动扫描器在模块 import 时已执行；此处为幂等二次调用，
+    # 确保任何动态添加的子模块也能被发现。
+    if hasattr(app.models, "_auto_discover_models"):
+        app.models._auto_discover_models()  # type: ignore[attr-defined]
+
+
+def _auto_align_all_schema(engine) -> None:
+    """通用 Schema 自动对齐（一站式）：自动扫模型 → 缺表建 → 缺列加 → 缺索引补。
+
+    执行顺序：
+      1. 刷新模型元数据（再 import 一次 app.models，确保新模块都进来）
+      2. 缺表：Base.metadata.create_all 先处理（create_all 天然幂等）
+      3. 缺列：对已存在但缺列的表，ALTER TABLE ADD COLUMN（增量，不破坏数据）
+      4. 缺索引：对每个表，比对 SA Index 与 DB 现存索引，补齐缺失的（幂等）
+
+    安全原则（与之前一致）：
+    - 只做 CREATE / ADD，绝不删除 / 改名 / 改类型 / 删索引
+    - 标识符（表名/列名/索引名）必须匹配 _IDENTIFIER_RE 正则，防注入
+    - 单项 ALTER 失败只打 warning，不中断启动（降级容错）
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    from sqlalchemy import inspect as sa_inspect, Index, text
+
+    # Step 1. 刷新注册
+    _refresh_model_metadata()
+
+    inspector = sa_inspect(engine)
+    is_mysql = "mysql" in engine.dialect.name
+    db_table_names = set(inspector.get_table_names())
+    tables = Base.metadata.tables
+    total_tables_created = 0
+    total_cols_added = 0
+    total_indexes_added = 0
+
+    # Step 2. 缺表处理：先 create_all，再对仍缺失的单独兜底（create_all 本身即 checkfirst=True）
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        logger.warning("[auto-align] create_all 部分失败，继续逐表兜底: %s", exc)
+    for table_name, sa_table in tables.items():
+        if table_name not in inspector.get_table_names():
+            try:
+                sa_table.create(engine, checkfirst=True)
+                logger.info("[auto-align] 创建缺失表: %s", table_name)
+                total_tables_created += 1
+            except Exception as exc:
+                logger.warning("[auto-align] 创建表失败 %s: %s", table_name, exc)
+
+    # 再刷新一次 inspector（表已新建）
+    inspector = sa_inspect(engine)
+
+    # Step 3 & 4. 对每个表：补列 + 补索引
+    for table_name, sa_table in tables.items():
+        if not _IDENTIFIER_RE.match(table_name):
+            continue
+        if table_name not in inspector.get_table_names():
+            continue  # 前面仍没建好，跳过
+
+        # --- 补列 ---
+        try:
+            db_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        except Exception:
+            continue
+
+        for col_name, col in sa_table.columns.items():
+            if col_name in db_cols or col.primary_key:
+                continue
+            if not _IDENTIFIER_RE.match(col_name):
+                logger.warning("[auto-align] 非法列名跳过: %s.%s", table_name, col_name)
+                continue
+            ddl_type = _sa_type_to_ddl(col, is_mysql)
+            alter_sql = (
+                f'ALTER TABLE "{table_name}" ADD COLUMN "{col_name}" {ddl_type}'
+                if not is_mysql
+                else f'ALTER TABLE `{table_name}` ADD COLUMN `{col_name}` {ddl_type}'
+            )
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(alter_sql))
+                logger.info("[auto-align] 补齐缺失列: %s.%s  %s", table_name, col_name, ddl_type)
+                total_cols_added += 1
+            except Exception as exc:
+                logger.warning("[auto-align] 补齐列失败 %s.%s: %s", table_name, col_name, exc)
+
+        # --- 补索引 ---
+        try:
+            existing_indexes = {idx["name"] for idx in inspector.get_indexes(table_name)}
+        except Exception:
+            existing_indexes = set()
+
+        for sa_idx in sa_table.indexes:
+            idx_name = sa_idx.name
+            if idx_name in existing_indexes:
+                continue
+            if not _IDENTIFIER_RE.match(idx_name):
+                logger.warning("[auto-align] 非法索引名跳过: %s@%s", idx_name, table_name)
+                continue
+            # 构造 DDL
+            col_exprs = []
+            safe = True
+            for col in sa_idx.columns:
+                if not _IDENTIFIER_RE.match(col.name):
+                    safe = False
+                    break
+                col_exprs.append(f"`{col.name}`" if is_mysql else f'"{col.name}"')
+            if not safe:
+                continue
+            unique_clause = "UNIQUE " if sa_idx.unique else ""
+            create_sql = (
+                f"CREATE {unique_clause}INDEX `{idx_name}` ON `{table_name}` ({', '.join(col_exprs)})"
+                if is_mysql
+                else f'CREATE {unique_clause}INDEX IF NOT EXISTS "{idx_name}" ON "{table_name}" ({", ".join(col_exprs)})'
+            )
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(create_sql))
+                logger.info("[auto-align] 补齐缺失索引: %s@%s  (%s)", idx_name, table_name, ", ".join(col_exprs))
+                total_indexes_added += 1
+            except Exception as exc:
+                logger.warning("[auto-align] 补索引失败 %s@%s: %s", idx_name, table_name, exc)
+
+    logger.info(
+        "[auto-align] 表/列/索引 对齐完成：新增表%d / 新增列%d / 新增索引%d",
+        total_tables_created, total_cols_added, total_indexes_added,
+    )
+
+
+def _auto_repair_basic_data_integrity(engine) -> None:
+    """基础数据完整性自动修复（安全、幂等、不删数据）。
+
+    修复范围：
+    1) 「NOT NULL 且有 Python scalar 默认值」的列，DB 里却存在 NULL → 按默认值回填。
+       典型历史场景：新列先被 ALTER 成 NULL + 后续改 NOT NULL 时 DB 老数据 NULL 残留。
+    2) 空字符串/零值不处理（避免破坏业务语义）。
+
+    注：外键孤立记录等高风险操作不自动修，只打 warning 提示人工处理。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    from sqlalchemy import inspect as sa_inspect, text
+
+    _refresh_model_metadata()
+    inspector = sa_inspect(engine)
+    is_mysql = "mysql" in engine.dialect.name
+    tables = Base.metadata.tables
+    total_fixed_rows = 0
+
+    for table_name, sa_table in tables.items():
+        if not _IDENTIFIER_RE.match(table_name):
+            continue
+        if table_name not in inspector.get_table_names():
+            continue
+        try:
+            db_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        except Exception:
+            continue
+
+        # 收集候选列：nullable=False + 有默认值（scalar） + DB里确实有该列
+        fill_candidates = []
+        for col_name, col in sa_table.columns.items():
+            if col_name not in db_cols or col.primary_key:
+                continue
+            default_val = _sa_default_to_literal(col, is_mysql)
+            if default_val is None:
+                # 允许 False/0/"" 这类 falsy 默认值
+                arg = getattr(getattr(col, "default", None), "arg", None)
+                if not isinstance(arg, (str, int, float, bool)):
+                    continue
+                default_val = arg
+            if col.nullable:
+                # 列声明上 nullable=True 就不需要强制回填
+                # 但如果 DB 实际 column 是 NOT NULL（类型已改过），也尝试回填：
+                try:
+                    col_info = next(
+                        (c for c in inspector.get_columns(table_name) if c["name"] == col_name), None
+                    )
+                    if not col_info or col_info.get("nullable", True):
+                        continue
+                except Exception:
+                    continue
+            fill_candidates.append((col_name, default_val))
+
+        if not fill_candidates:
+            continue
+
+        # 逐列 UPDATE ... WHERE col IS NULL，幂等；单次只改真的为 NULL 的行
+        for col_name, default_val in fill_candidates:
+            tbl_q = f"`{table_name}`" if is_mysql else f'"{table_name}"'
+            col_q = f"`{col_name}`" if is_mysql else f'"{col_name}"'
+            try:
+                if isinstance(default_val, str):
+                    safe_val = default_val.replace("'", "''")
+                    set_clause = f"{col_q} = '{safe_val}'"
+                elif isinstance(default_val, bool):
+                    set_clause = f"{col_q} = {1 if default_val else 0}"
+                elif isinstance(default_val, (int, float)):
+                    set_clause = f"{col_q} = {default_val}"
+                else:
+                    continue
+                update_sql = f"UPDATE {tbl_q} SET {set_clause} WHERE {col_q} IS NULL"
+                with engine.begin() as conn:
+                    result = conn.execute(text(update_sql))
+                    rows = getattr(result, "rowcount", 0) or 0
+                if rows > 0:
+                    logger.info(
+                        "[auto-repair] 回填 %s.%s IS NULL → 默认值 %s，影响 %d 行",
+                        table_name, col_name, repr(default_val), rows,
+                    )
+                    total_fixed_rows += rows
+            except Exception as exc:
+                logger.warning("[auto-repair] 回填失败 %s.%s: %s", table_name, col_name, exc)
+
+    if total_fixed_rows > 0:
+        logger.info("[auto-repair] 数据完整性修复完成，共回填 %d 行", total_fixed_rows)
+    else:
+        logger.info("[auto-repair] 数据完整性检查通过，无需修复")
+
+
 def init_db() -> None:
-    """初始化数据库：创建表结构，按需执行必要的补丁。"""
+    """初始化数据库：完整顺序的一站式启动初始化。
+
+    执行顺序（严格保证）：
+      0. 预检查 & 环境准备：SQLite 目录、MySQL MyISAM→InnoDB 转换
+      1. 通用 Schema 对齐：_auto_align_all_schema（自动扫模型 + 建表 + 补列 + 补索引）
+      2. 基础数据修复：_auto_repair_basic_data_integrity（NOT NULL+默认值列的 NULL 回填）
+      3. 显式兼容补丁（精细逻辑，如特殊索引、部分唯一索引、字段默认值等）
+      4. 数据迁移脚本（历史数据重打标等幂等 UPDATE）
+      5. 种子数据：评分预设 / 因子定义 / 调度任务 / core 名单 / AI Profile 迁移 等
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
     mgr = DatabaseManager.get()
     eng = mgr.engine
 
+    # --- Step 0: 预检查 ---
     if mgr.is_sqlite:
         db_path = settings.database_url.replace("sqlite:///", "", 1)
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-
     if mgr.is_mysql:
         _convert_myisam_to_innodb(eng)
 
-    Base.metadata.create_all(bind=eng)
+    # --- Step 1: 通用 Schema 对齐（新增模型无需手动写 patch） ---
+    _auto_align_all_schema(eng)
+
+    # --- Step 2: 基础数据修复（再列对齐之后才能做 UPDATE 回填） ---
+    _auto_repair_basic_data_integrity(eng)
+
+    # --- Step 3: 显式兼容补丁（需要精细处理的场景） ---
+    # 通用索引：universe 增量同步覆盖索引
     _ensure_universe_incremental_index(eng)
 
     if mgr.is_sqlite:
@@ -1466,85 +1793,54 @@ def init_db() -> None:
         _ensure_sqlite_async_task_columns(eng)
         _ensure_sqlite_scan_run_cache_columns(eng)
         _ensure_sqlite_watchlist_item_score_snapshot_column(eng)
-        # WP2.1：watchlist_items 正式观察池扩展字段（不含 score_snapshot_json，由上面 WP-P.7 处理）
         _ensure_sqlite_watchlist_item_columns(eng)
         with eng.begin() as conn:
             conn.execute(text("PRAGMA journal_mode=WAL;"))
             conn.execute(text("PRAGMA busy_timeout=30000;"))
     else:
         _ensure_mysql_indicator_version_columns(eng)
-        # WP7.2：backtest_runs 表回测快照字段补丁（MySQL 路径）
         _ensure_mysql_backtest_snapshot_columns(eng)
-        # WP2.1：watchlist_items 正式观察池扩展字段（MySQL 路径）
         _ensure_mysql_watchlist_item_columns(eng)
-        # scan_results 表字段补丁（MySQL 路径）
         _ensure_mysql_scan_result_columns(eng)
-        # WP-P.6：scan_runs 表扫描缓存字段补丁（MySQL 路径）
         _ensure_mysql_scan_run_cache_columns(eng)
 
-    # WP2.1：将历史 watchlist_items 标记为 legacy_manual_unknown（SQLite/MySQL 通用，幂等）
+    # --- Step 4: 数据迁移（幂等 UPDATE，历史数据重打标） ---
     _migrate_legacy_watchlist_items_origin_type(eng)
 
-    # WP2.6：确保 core 名单及 6 个种子观察项存在（幂等，best-effort）
-    # 顺序：先迁移历史项 → 再创建 core 名单 → 再补种子项
+    # --- Step 5: 幂等种子数据 ---
     _ensure_core_watchlist_exists(eng)
     _ensure_core_watchlist_seed_items(eng)
 
-    # WP3.1：确保 opportunity_transition_events 审计表存在（幂等）
     if mgr.is_sqlite:
         _ensure_sqlite_opportunity_transition_events_table(eng)
-    elif mgr.is_mysql:
-        _ensure_mysql_opportunity_transition_events_table(eng)
-
-    # WP4.1：确保 portfolio_members 表存在（幂等，含部分唯一索引）
-    if mgr.is_sqlite:
         _ensure_sqlite_portfolio_members_table(eng)
-    elif mgr.is_mysql:
-        _ensure_mysql_portfolio_members_table(eng)
-
-    # WP-MSG.1：确保 notification_* 表存在（幂等，含 Outbox 部分唯一索引）
-    if mgr.is_sqlite:
         _ensure_sqlite_notification_tables(eng)
-    elif mgr.is_mysql:
-        _ensure_mysql_notification_tables(eng)
-
-    # WP6.1：确保 sim_orders 表归因字段存在（幂等，向后兼容历史订单）
-    if mgr.is_sqlite:
         _ensure_sqlite_sim_orders_attribution_columns(eng)
-    elif mgr.is_mysql:
-        _ensure_mysql_sim_orders_attribution_columns(eng)
-
-    # WP8：确保 portfolio_reviews 复盘记录表存在（幂等）
-    if mgr.is_sqlite:
         _ensure_sqlite_portfolio_reviews_table(eng)
-    elif mgr.is_mysql:
-        _ensure_mysql_portfolio_reviews_table(eng)
-
-    # WP-AI.1：确保 ai_sessions / ai_messages / ai_action_audits 三张表存在（幂等）
-    if mgr.is_sqlite:
         _ensure_sqlite_ai_session_tables(eng)
-    elif mgr.is_mysql:
-        _ensure_mysql_ai_session_tables(eng)
-
-    # WP-AI.2：确保 ai_profiles 表存在（幂等）
-    if mgr.is_sqlite:
         _ensure_sqlite_ai_profiles_table(eng)
     elif mgr.is_mysql:
+        _ensure_mysql_opportunity_transition_events_table(eng)
+        _ensure_mysql_portfolio_members_table(eng)
+        _ensure_mysql_notification_tables(eng)
+        _ensure_mysql_sim_orders_attribution_columns(eng)
+        _ensure_mysql_portfolio_reviews_table(eng)
+        _ensure_mysql_ai_session_tables(eng)
         _ensure_mysql_ai_profiles_table(eng)
 
-    # WP-AI.2：将 ai_config.json 兼容迁移为 AIProfile 记录（幂等，原文件保留）
+    # AI profile json -> DB 迁移
     _migrate_ai_config_json_to_profiles()
 
-    # P0：初始化系统评分预设（幂等）
+    # 系统评分预设 + 因子定义 + 因子运行时 + 调度任务
     _seed_system_scoring_configs()
-
-    # 免费 AkShare 多因子：初始化稳定定义与 V1 公式（幂等）
     _seed_factor_definitions()
     _seed_factor_runtime_state()
     _seed_scheduled_tasks()
 
-    # P2-E：加载第三方接口配置缓存到内存（启动时一次）
+    # Akshare 第三方接口缓存
     _load_akshare_api_config_cache()
+
+    logger.info("init_db() 全流程结束：schema对齐 → 数据修复 → 种子数据，全部完成")
 
 
 def _seed_system_scoring_configs() -> None:

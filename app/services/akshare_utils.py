@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextvars import ContextVar
 import os
 from typing import Any, Callable
 
@@ -41,6 +42,20 @@ _BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
+
+_proxy_bypass_enabled: ContextVar[bool] = ContextVar(
+    'akshare_proxy_bypass_enabled',
+    default=False,
+)
+
+
+@contextmanager
+def request_proxy_bypass():
+    token = _proxy_bypass_enabled.set(True)
+    try:
+        yield
+    finally:
+        _proxy_bypass_enabled.reset(token)
 
 # 默认 HTTP 超时：(连接超时 5s, 读取超时 15s)
 # akshare 内部所有 requests 调用默认 timeout=None 即永久阻塞，当数据源
@@ -119,6 +134,12 @@ def _harden_requests_session() -> None:
         _orig_request = requests.Session.request
 
         def _patched_request(self, method: str, url: str, **kwargs: Any) -> Any:
+            if _proxy_bypass_enabled.get():
+                proxies = dict(kwargs.get('proxies') or {})
+                proxies.setdefault('http', None)
+                proxies.setdefault('https', None)
+                proxies.setdefault('all', None)
+                kwargs['proxies'] = proxies
             if "timeout" not in kwargs or kwargs["timeout"] is None:
                 kwargs["timeout"] = _DEFAULT_TIMEOUT
             _fix_eastmoney_kline_fields2(url, kwargs)

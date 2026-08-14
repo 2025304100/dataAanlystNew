@@ -47,6 +47,7 @@ MESSAGE_SOURCES: dict[str, dict] = {
             {"type": "trade_executed", "name": "成交", "default_severity": "info"},
             {"type": "auto_trade_blocked", "name": "自动交易阻断", "default_severity": "warn"},
             {"type": "drawdown_warning", "name": "回撤预警", "default_severity": "error"},
+            {"type": "max_loss_warning", "name": "最大亏损预警", "default_severity": "error"},
             {"type": "position_changed", "name": "持仓变化", "default_severity": "info"},
         ],
     },

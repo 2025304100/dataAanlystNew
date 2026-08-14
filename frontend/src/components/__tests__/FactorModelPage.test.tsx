@@ -200,6 +200,17 @@ describe("FactorModelPage", () => {
     expect(screen.getByText("factorModelNoModels")).toBeInTheDocument();
   });
 
+  it("falls back to FactorSet id when a historical name is irreversibly garbled", async () => {
+    mockLoadSuccess({ factorSets: [makeFactorSet({ id: "fs-set-3126b70f", name: "?????????" })] });
+
+    render(<FactorModelPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("fs-set-3126b70f").length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText("?????????")).not.toBeInTheDocument();
+  });
+
   it("shows fallback button disabled when weight_mode is manual", async () => {
     mockLoadSuccess({ runtime: makeRuntime({ weight_mode: "manual" }) });
 

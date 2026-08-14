@@ -758,6 +758,7 @@ def _run_universe_incremental_sync(
             return
 
         # 增量同步：单一阶段 0-100%
+        sync_started_at = time.monotonic()
         last_progress_flush_at = 0.0
         last_persisted_progress: tuple[int, int, int, int] | None = None
 
@@ -781,6 +782,8 @@ def _run_universe_incremental_sync(
             last_progress_flush_at = now
             last_persisted_progress = progress_state
             pct = round(min(100, processed / total * 100), 1)
+            elapsed_seconds = max(now - sync_started_at, 0.001)
+            throughput = processed / elapsed_seconds
             try:
                 d = SessionFactory()
                 try:
@@ -791,7 +794,10 @@ def _run_universe_incremental_sync(
                         processed=processed,
                         ok_count=ok,
                         failed_count=failed,
-                        message=f"增量同步中 {processed}/{total}（成功 {ok}，失败 {failed}）",
+                        message=(
+                            f"增量同步中 {processed}/{total}（成功 {ok}，失败 {failed}，"
+                            f"速度 {throughput:.2f} 条/秒）"
+                        ),
                     )
                 finally:
                     d.close()
@@ -840,7 +846,12 @@ def _run_universe_incremental_sync(
             failed = result_summary.get("failed", 0)
             uptodate = result_summary.get("uptodate", 0)
             if final_status == "done":
-                final_message = f"增量同步完成：更新 {ok} 个，无新增 {uptodate} 个，失败 {failed} 个"
+                elapsed = float(result_summary.get("elapsed_seconds", 0) or 0)
+                throughput = float(result_summary.get("throughput_per_second", 0) or 0)
+                final_message = (
+                    f"增量同步完成：更新 {ok} 个，无新增 {uptodate} 个，失败 {failed} 个；"
+                    f"耗时 {elapsed:.1f} 秒，平均 {throughput:.2f} 条/秒"
+                )
             elif final_status == "failed":
                 final_message = f"增量同步失败：{sync_error}"
             else:

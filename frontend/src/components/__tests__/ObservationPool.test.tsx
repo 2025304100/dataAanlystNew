@@ -37,6 +37,7 @@ vi.mock("../../i18n", () => ({
   DOT: " | ",
   stageLabel: (v: string | null | undefined) => v ?? "-",
   actionLabel: (v: string | null | undefined) => v ?? "-",
+  enumLabel: (prefix: string, code: string | null | undefined, fallback = "-") => String(code ?? fallback),
   assetTypeLabel: (v: string | null | undefined) => v ?? "unknown",
   regionShortLabel: (v: string | null | undefined) => v ?? "-",
   getLocale: () => "zh-CN",

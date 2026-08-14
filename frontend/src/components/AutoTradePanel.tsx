@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Badge,
@@ -7,50 +7,36 @@ import {
   InputNumber,
   Modal,
   Skeleton,
+  Space,
   Statistic,
   Switch,
   Table,
   Tag,
   Tooltip,
 } from "antd";
-import { QuestionCircleOutlined, RollbackOutlined } from "@ant-design/icons";
+import { InfoCircleOutlined, QuestionCircleOutlined, RollbackOutlined, SyncOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
+import type { ApiError } from "../api/client";
 import { enumLabel, sideLabel, t } from "../i18n";
 import { money, formatRelativeTime } from "../utils/format";
-import type { AutoTradePlanItem, AutoTradeResult } from "../types";
+import type {
+  AutoTradePlanItem,
+  AutoTradeReadiness,
+  AutoTradeResult,
+  ReadinessIssue,
+} from "../types";
 // WP-S-FIX.4：阻断操作就地处理（按钮替换为 CapabilityGateButton）
 import { CapabilityGateButton } from "./capability/CapabilityGateButton";
 
 /**
- * P2-3：自动交易执行面板。
+ * P0-AutoTrade：自动交易执行面板（对齐最终收口方案）。
  *
- * 数据来源：POST /portfolios/{id}/auto-trade/execute
- * - dry_run=True：只返回买卖计划，不实际下单（推荐首次使用）
- * - dry_run=False：按计划实际下单（含手续费/滑点/T+1校验）
- *
- * 信号源：Score.action 字段
- * - 卖出：action=exit 全卖，action=reduce 卖一半
- * - 买入：action=open/buy_dip 且 compute_position_budget.can_open=True
- *
- * 前置条件：
- * - 组合必须 account_type="simulated"
- * - 组合必须已开启 auto_trade_enabled（在组合管理 Modal 中开启）
- *
- * 交互：
- * - 切换 dry_run 开关 + 调整 buy_candidate_limit
- * - 点击"执行"按钮触发评估
- * - 结果以卖出/买入两张表展示，含执行状态与风控阻断原因
- *
- * WP6.6 增量（不修改以上原有逻辑）：
- * - 成员级执行状态展示（auto/confirm/manual、持仓、风控阻断、数据过期）
- * - dry-run 差异对比可视化（旧 vs 新来源）
- * - 双跑切换 UI（开关状态 + 回退旧来源 + 逐组合切换）
+ * - 真实状态：不再只看 auto_trade_enabled；以 GET readiness 接口 ready 为真正"可运行"。
+ * - 先预演再执行：默认 dry_run=true；dry_run=false 按钮强制 ready=true 或 已完成一次 dry_run。
+ * - 错误结构化：execute 409 BUSINESS_BLOCKED 读取 err.detail.extras.blockers 渲染。
  */
-// ----------------------------------------------------------------------------
-// WP6.6 类型定义（与后端 app/api/routes/auto_trade.py 响应对齐）
-// ----------------------------------------------------------------------------
 
 interface MemberStatusItem {
   member_id: number;
@@ -105,7 +91,6 @@ interface MemberSourceStatus {
   blacklist: number[];
 }
 
-// 时间戳本地化（Asia/Shanghai）显示
 function formatShanghai(dt: string | null): string {
   if (!dt) return "-";
   try {
@@ -117,7 +102,6 @@ function formatShanghai(dt: string | null): string {
   }
 }
 
-// 执行模式本地化
 function executionModeLabel(mode: string): string {
   if (mode === "manual") return t("modeManual");
   if (mode === "confirm") return t("modeConfirm");
@@ -125,7 +109,6 @@ function executionModeLabel(mode: string): string {
   return mode;
 }
 
-// 成员状态本地化
 function memberStatusLabel(status: string): string {
   if (status === "active") return t("statusActive");
   if (status === "paused") return t("statusPaused");
@@ -133,7 +116,6 @@ function memberStatusLabel(status: string): string {
   return status;
 }
 
-// 差异原因本地化
 function diffReasonLabel(reason: string): string {
   switch (reason) {
     case "member_missing":
@@ -151,7 +133,6 @@ function diffReasonLabel(reason: string): string {
   }
 }
 
-// 差异原因颜色
 function diffReasonColor(reason: string): string {
   switch (reason) {
     case "member_missing":
@@ -169,10 +150,37 @@ function diffReasonColor(reason: string): string {
   }
 }
 
+function issueCodeToText(code: string): string {
+  // 后端 blocker/warning code → 本地化的简短说明（缺省时直接用 message）
+  switch (code) {
+    case "AUTO_TRADE_DISABLED":
+      return t("autoTradeSubStatusEnabled");
+    case "ACCOUNT_NOT_SIMULATED":
+      return t("autoTradeSubStatusAccount");
+    case "MARKET_DATA_STALE":
+    case "NO_FRESH_SCORES":
+      return t("autoTradeSubStatusData");
+    case "NO_SOURCE_MODE":
+    case "SOURCE_ENV_OVERRIDE":
+    case "WARNING_SOURCE_ENV_OVERRIDE":
+      return t("autoTradeSubStatusSource");
+    case "NO_SCHEDULED_TASK":
+    case "SCHEDULED_TASK_DISABLED":
+    case "SCHEDULE_WINDOW":
+    case "WARNING_SOURCE_MODE_LEGACY_SCAN":
+      return t("autoTradeSubStatusSchedule");
+    case "NO_RULE":
+    case "NO_TRADEABLE_RANGE":
+    default:
+      return code;
+  }
+}
+
+type UnifiedErrorExtras = Record<string, unknown> & { blockers?: ReadinessIssue[]; warnings?: ReadinessIssue[] };
+
 export default function AutoTradePanel() {
   const ctx = useApp();
   const portfolioId = ctx.portfolioId;
-  // 当前组合对象（用于判断 auto_trade_enabled）
   const currentPortfolio = ctx.portfolios.find((p) => p.id === portfolioId);
   const isSimulated = currentPortfolio?.account_type === "simulated";
   const autoTradeEnabled = Number(currentPortfolio?.auto_trade_enabled) === 1;
@@ -182,49 +190,125 @@ export default function AutoTradePanel() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<AutoTradeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // P0-AutoTrade：记录最新一次结构化 blockers（409 时展示）
+  const [errorBlockers, setErrorBlockers] = useState<ReadinessIssue[] | null>(null);
+  // P0-AutoTrade：dry run 先跑一次的闸门
+  const [hasDryRunThisSession, setHasDryRunThisSession] = useState(false);
 
-  // WP6.6 新增状态
+  // P0-AutoTrade：readiness 状态
+  const [readiness, setReadiness] = useState<AutoTradeReadiness | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
+
+  // WP6.6：成员级 / 双跑 diff / 来源状态
   const [members, setMembers] = useState<MemberStatusItem[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersError, setMembersError] = useState<string | null>(null);
-
   const [diffs, setDiffs] = useState<DryRunDiffItem[]>([]);
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
-
   const [sourceStatus, setSourceStatus] = useState<MemberSourceStatus | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [rollingBack, setRollingBack] = useState(false);
 
+  const loadReadiness = useCallback(async () => {
+    if (!portfolioId) {
+      setReadiness(null);
+      setReadinessError(null);
+      return;
+    }
+    setReadinessLoading(true);
+    setReadinessError(null);
+    try {
+      const data = (await api.getAutoTradeReadiness(portfolioId, { for_schedule: false })) as AutoTradeReadiness;
+      setReadiness(data);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      setReadinessError(msg || t("autoTradeFailed"));
+      setReadiness(null);
+    } finally {
+      setReadinessLoading(false);
+    }
+  }, [portfolioId]);
+
   const execute = useCallback(async () => {
     if (!portfolioId) return;
-    // 实际下单前再次确认（dry_run=False 时）
-    if (!dryRun && !window.confirm(t("autoTradeExecuteConfirm"))) return;
+
+    const isReal = !dryRun;
+    const readyNow = readiness?.ready === true;
+    const blockersNow = readiness?.blockers ?? [];
+
+    // P0-AutoTrade：真实执行必须先 Dry Run 过 或 readiness.ready=true
+    if (isReal && !readyNow && !hasDryRunThisSession) {
+      Modal.warning({
+        title: t("autoTradeRequireDryRunFirst"),
+        content: t("autoTradeNotReadyHint"),
+        okText: t("confirm"),
+      });
+      return;
+    }
+    if (isReal && !readyNow && blockersNow.length > 0) {
+      const lines = blockersNow.map((b, i) => `${i + 1}. [${issueCodeToText(b.code)}] ${b.message}`).join("\n");
+      const ok = window.confirm(
+        `${t("autoTradeNotReadyHint")}\n\n${t("autoTradeBlockers").replace("{count}", String(blockersNow.length))}:\n${lines}\n\n${t("autoTradeExecuteConfirm")}`,
+      );
+      if (!ok) return;
+    } else if (isReal) {
+      if (!window.confirm(t("autoTradeExecuteConfirm"))) return;
+    }
 
     setRunning(true);
     setError(null);
+    setErrorBlockers(null);
     try {
-      const data = await api.executeAutoTrade(portfolioId, {
+      const data = (await api.executeAutoTrade(portfolioId, {
         dry_run: dryRun,
         buy_candidate_limit: buyCandidateLimit,
-      });
-      setResult(data as AutoTradeResult);
+      })) as AutoTradeResult;
+      setResult(data);
+      if (dryRun) setHasDryRunThisSession(true);
+
+      // 若 execute 返回内联 readiness，则用它覆盖最新 readiness（包含最新 blockers）
+      if (data.readiness) {
+        setReadiness({
+          portfolio_id: data.portfolio_id,
+          ready: !!data.readiness.ready,
+          enabled: !!data.readiness.enabled,
+          account_ready: !!data.readiness.account_ready,
+          data_ready: !!data.readiness.data_ready,
+          source_ready: !!data.readiness.source_ready,
+          schedule_ready: !!data.readiness.schedule_ready,
+          blockers: data.readiness.blockers ?? [],
+          warnings: data.readiness.warnings ?? [],
+          source_mode: data.readiness.source_mode,
+          for_schedule: data.readiness.for_schedule,
+          executed_at: data.readiness.executed_at ?? data.executed_at,
+        });
+      }
+
       ctx.showToast("success", t("autoTradeSuccess"));
-      // 实际下单后刷新 workbench（持仓/现金变化）
       if (!dryRun) {
         await ctx.loadWorkbench();
       }
     } catch (err: any) {
-      const msg = err?.message || String(err);
-      setError(msg);
-      ctx.showToast("error", t("autoTradeFailed") + ": " + msg);
+      const apiErr = err as ApiError | undefined;
+      const detail = apiErr?.detail as any;
+      const extras: UnifiedErrorExtras | undefined = detail?.extras;
+      const blockers: ReadinessIssue[] | undefined = extras?.blockers ?? detail?.blockers;
+      const userMessage = apiErr?.user_message ?? apiErr?.message ?? String(err ?? t("autoTradeFailed"));
+
+      setError(userMessage);
+      if (blockers && Array.isArray(blockers)) {
+        setErrorBlockers(blockers as ReadinessIssue[]);
+      }
+      const firstBlockerMsg = blockers?.[0]?.message ?? userMessage;
+      ctx.showToast("error", t("autoTradeFailed") + ": " + firstBlockerMsg);
     } finally {
       setRunning(false);
     }
-  }, [portfolioId, dryRun, buyCandidateLimit, ctx]);
+  }, [portfolioId, dryRun, buyCandidateLimit, readiness, hasDryRunThisSession, ctx]);
 
-  // WP6.6：加载成员级状态
   const loadMembers = useCallback(async () => {
     if (!portfolioId) {
       setMembers([]);
@@ -243,7 +327,6 @@ export default function AutoTradePanel() {
     }
   }, [portfolioId]);
 
-  // WP6.6：加载双跑差异
   const loadDiffs = useCallback(async () => {
     if (!portfolioId) {
       setDiffs([]);
@@ -262,7 +345,6 @@ export default function AutoTradePanel() {
     }
   }, [portfolioId]);
 
-  // WP6.6：加载新来源开关状态
   const loadSourceStatus = useCallback(async () => {
     if (!portfolioId) {
       setSourceStatus(null);
@@ -281,7 +363,6 @@ export default function AutoTradePanel() {
     }
   }, [portfolioId]);
 
-  // WP6.6：回退到旧来源
   const handleRollback = useCallback(async () => {
     if (!portfolioId) return;
     Modal.confirm({
@@ -296,6 +377,7 @@ export default function AutoTradePanel() {
           await api.rollbackAutoTradeToOldSource(portfolioId);
           ctx.showToast("success", t("autoTradeMember.rollbackSuccess"));
           await loadSourceStatus();
+          await loadReadiness();
         } catch (err: any) {
           const msg = err?.message || String(err);
           ctx.showToast("error", t("autoTradeMember.rollbackFailed") + ": " + msg);
@@ -304,28 +386,55 @@ export default function AutoTradePanel() {
         }
       },
     });
-  }, [portfolioId, ctx, loadSourceStatus]);
+  }, [portfolioId, ctx, loadSourceStatus, loadReadiness]);
 
-  // 组合切换时清空旧结果 + 重新加载 WP6.6 数据
+  // 组合切换/开关切换：重置 + 加载依赖
   useEffect(() => {
     setResult(null);
     setError(null);
-    // WP6.6：组合切换时重新加载三大分区数据
-    if (portfolioId && isSimulated && autoTradeEnabled) {
-      loadMembers();
-      loadDiffs();
-      loadSourceStatus();
+    setErrorBlockers(null);
+    setHasDryRunThisSession(false);
+    if (portfolioId && isSimulated) {
+      // readiness 无论是否开启 autoTradeEnabled 都拉（让 ready=false 原因更直观）
+      void loadReadiness();
+      if (autoTradeEnabled) {
+        void loadMembers();
+        void loadDiffs();
+        void loadSourceStatus();
+      } else {
+        setMembers([]);
+        setDiffs([]);
+        setSourceStatus(null);
+      }
     } else {
+      setReadiness(null);
       setMembers([]);
       setDiffs([]);
       setSourceStatus(null);
     }
-  }, [portfolioId, isSimulated, autoTradeEnabled, loadMembers, loadDiffs, loadSourceStatus]);
+  }, [
+    portfolioId,
+    isSimulated,
+    autoTradeEnabled,
+    loadReadiness,
+    loadMembers,
+    loadDiffs,
+    loadSourceStatus,
+  ]);
 
-  // 渲染约束：非模拟组合或未开启自动交易时显示引导
-  if (!portfolioId) {
+  // 派生：ready 语义（允许 UI 在 readiness 加载中给出不同提示）
+  const ready = readiness?.ready === true;
+  const blockers = readiness?.blockers ?? [];
+  const warnings = readiness?.warnings ?? [];
+
+  // 派生：真实执行按钮是否 disabled
+  const realExecDisabledReason = useMemo<string | null>(() => {
+    if (dryRun) return null;
+    if (!ready && !hasDryRunThisSession) return t("autoTradeRequireDryRunFirst");
     return null;
-  }
+  }, [dryRun, ready, hasDryRunThisSession]);
+
+  if (!portfolioId) return null;
   if (!isSimulated) {
     return (
       <section className="band auto-trade-band">
@@ -344,30 +453,14 @@ export default function AutoTradePanel() {
       </section>
     );
   }
-  if (!autoTradeEnabled) {
-    return (
-      <section className="band auto-trade-band">
-        <div className="panel">
-          <div className="panel-head">
-            <div>
-              <p className="panel-kicker">{t("autoTradePanelTitle")}</p>
-              <h2>{t("autoTradePanelTitle")}</h2>
-            </div>
-          </div>
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={t("autoTradeDisabled")}
-          />
-        </div>
-      </section>
-    );
-  }
 
   const sells = result?.sells ?? [];
   const buys = result?.buys ?? [];
   const errors = result?.errors ?? [];
 
-  // 卖出表列定义
+  // ----------------------------------------------------------------------------
+  // 列定义
+  // ----------------------------------------------------------------------------
   const sellColumns = [
     {
       title: t("symbol"),
@@ -376,9 +469,7 @@ export default function AutoTradePanel() {
       render: (v: string, record: AutoTradePlanItem) => (
         <span>
           {v}
-          <span style={{ color: "#94a3b8", marginLeft: 6, fontSize: 12 }}>
-            {record.name}
-          </span>
+          <span style={{ color: "#94a3b8", marginLeft: 6, fontSize: 12 }}>{record.name}</span>
         </span>
       ),
     },
@@ -392,36 +483,19 @@ export default function AutoTradePanel() {
       title: t("quantity"),
       key: "qty",
       render: (_: any, record: AutoTradePlanItem) => (
-        <span>
-          {record.sell_quantity} / {record.held_quantity}
-        </span>
+        <span>{record.sell_quantity} / {record.held_quantity}</span>
       ),
     },
-    {
-      title: t("price"),
-      dataIndex: "ref_price",
-      key: "ref_price",
-      render: (v: number) => money(v, 2),
-    },
+    { title: t("price"), dataIndex: "ref_price", key: "ref_price", render: (v: number) => money(v, 2) },
     {
       title: t("status"),
       key: "status",
       render: (_: any, record: AutoTradePlanItem) =>
-        record.executed ? (
-          <Tag color="green">{t("autoTradeExecuted")}</Tag>
-        ) : (
-          <Tag>{t("autoTradePlanned")}</Tag>
-        ),
+        record.executed ? <Tag color="green">{t("autoTradeExecuted")}</Tag> : <Tag>{t("autoTradePlanned")}</Tag>,
     },
-    {
-      title: t("fee"),
-      dataIndex: "fee",
-      key: "fee",
-      render: (v: number | null) => (v != null ? money(v, 2) : "-"),
-    },
+    { title: t("fee"), dataIndex: "fee", key: "fee", render: (v: number | null) => (v != null ? money(v, 2) : "-") },
   ];
 
-  // 买入表列定义
   const buyColumns = [
     {
       title: t("symbol"),
@@ -430,24 +504,12 @@ export default function AutoTradePanel() {
       render: (v: string, record: AutoTradePlanItem) => (
         <span>
           {v}
-          <span style={{ color: "#94a3b8", marginLeft: 6, fontSize: 12 }}>
-            {record.name}
-          </span>
+          <span style={{ color: "#94a3b8", marginLeft: 6, fontSize: 12 }}>{record.name}</span>
         </span>
       ),
     },
-    {
-      title: t("action"),
-      dataIndex: "action",
-      key: "action",
-      render: (v: string) => <Tag color="green">{v}</Tag>,
-    },
-    {
-      title: t("price"),
-      dataIndex: "ref_price",
-      key: "ref_price",
-      render: (v: number) => money(v, 2),
-    },
+    { title: t("action"), dataIndex: "action", key: "action", render: (v: string) => <Tag color="green">{v}</Tag> },
+    { title: t("price"), dataIndex: "ref_price", key: "ref_price", render: (v: number) => money(v, 2) },
     {
       title: t("quantity"),
       dataIndex: "buy_quantity",
@@ -472,27 +534,15 @@ export default function AutoTradePanel() {
         );
       },
     },
-    {
-      title: t("fee"),
-      dataIndex: "fee",
-      key: "fee",
-      render: (v: number | null) => (v != null ? money(v, 2) : "-"),
-    },
+    { title: t("fee"), dataIndex: "fee", key: "fee", render: (v: number | null) => (v != null ? money(v, 2) : "-") },
   ];
 
-  // ==========================================================================
-  // WP6.6：成员级执行状态表格列定义
-  // ==========================================================================
   const memberColumns: ColumnsType<MemberStatusItem> = [
     {
       title: t("symbol"),
       key: "symbol",
       width: 140,
-      render: (_v, record) => (
-        <span>
-          {record.symbol ?? `#${record.symbol_id}`}
-        </span>
-      ),
+      render: (_v, record) => <span>{record.symbol ?? `#${record.symbol_id}`}</span>,
     },
     {
       title: t("portfolioMemberColumnStatus"),
@@ -604,25 +654,14 @@ export default function AutoTradePanel() {
     },
   ];
 
-  // ==========================================================================
-  // WP6.6：双跑差异表列定义
-  // ==========================================================================
   const diffColumns: ColumnsType<DryRunDiffItem> = [
-    {
-      title: t("symbol"),
-      dataIndex: "symbol_id",
-      key: "symbol_id",
-      width: 100,
-      render: (v: number) => `#${v}`,
-    },
+    { title: t("symbol"), dataIndex: "symbol_id", key: "symbol_id", width: 100, render: (v: number) => `#${v}` },
     {
       title: t("autoTradeMember.diffSide"),
       dataIndex: "side",
       key: "side",
       width: 80,
-      render: (v: string) => (
-        <Tag color={v === "buy" ? "green" : "red"}>{v}</Tag>
-      ),
+      render: (v: string) => <Tag color={v === "buy" ? "green" : "red"}>{v}</Tag>,
     },
     {
       title: t("autoTradeMember.diffOldAction"),
@@ -649,14 +688,12 @@ export default function AutoTradePanel() {
         </Tooltip>
       ),
     },
-    {
-      title: t("autoTradeMember.diffDetail"),
-      dataIndex: "detail",
-      key: "detail",
-      render: (v: string) => <span style={{ fontSize: 12 }}>{v}</span>,
-    },
+    { title: t("autoTradeMember.diffDetail"), dataIndex: "detail", key: "detail", render: (v: string) => <span style={{ fontSize: 12 }}>{v}</span> },
   ];
 
+  // ==========================================================================
+  // 渲染
+  // ==========================================================================
   return (
     <section className="band auto-trade-band">
       <div className="panel">
@@ -666,22 +703,18 @@ export default function AutoTradePanel() {
             <h2>
               {t("autoTradePanelTitle")}
               <Tooltip title={t("autoTradePanelHint")}>
-                <QuestionCircleOutlined
-                  style={{ marginLeft: 8, fontSize: 14, color: "#94a3b8" }}
-                />
+                <QuestionCircleOutlined style={{ marginLeft: 8, fontSize: 14, color: "#94a3b8" }} />
               </Tooltip>
             </h2>
           </div>
+
+          {/* P0-AutoTrade：执行控件组：dry_run 默认，真实执行二次闸门 */}
           <div
             className="panel-meta"
             style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}
           >
             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Switch
-                size="small"
-                checked={dryRun}
-                onChange={setDryRun}
-              />
+              <Switch size="small" checked={dryRun} onChange={setDryRun} />
               <span style={{ fontSize: 12 }}>
                 {dryRun ? t("autoTradeDryRun") : t("autoTradeExecute")}
               </span>
@@ -700,34 +733,179 @@ export default function AutoTradePanel() {
                 style={{ width: 70 }}
               />
             </span>
-            <CapabilityGateButton
-              capabilityKey="auto_trade"
+            <Tooltip title={realExecDisabledReason || (dryRun ? t("autoTradeDryRunHint") : t("autoTradeExecuteHint"))}>
+              <span>
+                <CapabilityGateButton
+                  capabilityKey="auto_trade"
+                  size="small"
+                  type="primary"
+                  onClick={execute}
+                  loading={running}
+                  danger={!dryRun}
+                  disabled={!!realExecDisabledReason}
+                >
+                  {dryRun ? t("autoTradeDryRun") : t("autoTradeExecute")}
+                </CapabilityGateButton>
+              </span>
+            </Tooltip>
+            <Button
               size="small"
-              type="primary"
-              onClick={execute}
-              loading={running}
-              danger={!dryRun}
+              icon={<SyncOutlined />}
+              onClick={loadReadiness}
+              loading={readinessLoading}
             >
-              {dryRun ? t("autoTradeDryRun") : t("autoTradeExecute")}
-            </CapabilityGateButton>
+              {t("autoTradeRefreshReadiness")}
+            </Button>
           </div>
         </div>
 
         {/* 上次执行时间 */}
         {currentPortfolio?.auto_trade_last_run_at && (
           <p className="panel-meta" style={{ fontSize: 11, marginBottom: 8 }}>
-            {t("autoTradeLastRunAt")}:{" "}
-            {formatRelativeTime(currentPortfolio.auto_trade_last_run_at)}
+            {t("autoTradeLastRunAt")}: {formatRelativeTime(currentPortfolio.auto_trade_last_run_at)}
           </p>
         )}
 
+        {/* =====================================================================
+            P0-AutoTrade：就绪状态卡片（取代仅 autoTradeEnabled 的单色语义）
+            ===================================================================== */}
+        <div style={{ marginBottom: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              gap: 12,
+              flexWrap: "wrap",
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid var(--pt-border, #e5e7eb)",
+              background: "var(--pt-surface-2, #f9fafb)",
+            }}
+          >
+            <div style={{ flex: "1 1 240px", minWidth: 200 }}>
+              <Statistic
+                title={
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    {t("autoTradeReadiness")}
+                    <Tooltip
+                      title={
+                        readinessLoading
+                          ? t("autoTradeRunning")
+                          : !readiness
+                          ? t("autoTradeDisabled")
+                          : ready
+                          ? t("autoTradeStatusReady")
+                          : blockers.length
+                          ? t("autoTradeStatusNotReady")
+                          : t("autoTradeStatusEnabledOnly")
+                      }
+                    >
+                      <InfoCircleOutlined style={{ fontSize: 11, color: "#94a3b8" }} />
+                    </Tooltip>
+                  </span>
+                }
+                valueRender={() => {
+                  if (readinessLoading || !readiness) {
+                    return (
+                      <Badge status="default" text={readinessLoading ? t("autoTradeRunning") : "-"} />
+                    );
+                  }
+                  if (ready) {
+                    return <Badge status="success" text={t("autoTradeReady") + " · " + t("autoTradeStatusReady")} />;
+                  }
+                  if (blockers.length) {
+                    return (
+                      <Badge status="error" text={t("autoTradeNotReady") + " · " + t("autoTradeStatusNotReady")} />
+                    );
+                  }
+                  return (
+                    <Badge status="warning" text={t("autoTradePartialReady") + " · " + t("autoTradeStatusEnabledOnly")} />
+                  );
+                }}
+              />
+            </div>
+
+            {readiness && (
+              <Space size={16} wrap style={{ flex: "1 1 380px", alignContent: "center" }}>
+                <Statistic title={t("autoTradeSubStatusEnabled")} valueRender={() => <Badge status={readiness.enabled ? "success" : "default"} text={readiness.enabled ? "OK" : "NO"} />} />
+                <Statistic title={t("autoTradeSubStatusAccount")} valueRender={() => <Badge status={readiness.account_ready ? "success" : "error"} text={readiness.account_ready ? "OK" : "NO"} />} />
+                <Statistic title={t("autoTradeSubStatusData")} valueRender={() => <Badge status={readiness.data_ready ? "success" : "error"} text={readiness.data_ready ? "OK" : "NO"} />} />
+                <Statistic title={t("autoTradeSubStatusSource")} valueRender={() => <Badge status={readiness.source_ready ? "success" : "error"} text={readiness.source_ready ? "OK" : "NO"} />} />
+                <Statistic title={t("autoTradeSubStatusSchedule")} valueRender={() => <Badge status={readiness.schedule_ready ? "success" : "warning"} text={readiness.schedule_ready ? "OK" : "NO"} />} />
+                {readiness.source_mode && (
+                  <Statistic title="Source Mode" value={readiness.source_mode} />
+                )}
+              </Space>
+            )}
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            {readinessError && (
+              <Alert type="warning" message={t("autoTradeFailed") + " (readiness)"} description={readinessError} showIcon style={{ marginBottom: 8 }} />
+            )}
+            {blockers.length > 0 && (
+              <Alert
+                type="error"
+                showIcon
+                message={t("autoTradeBlockers").replace("{count}", String(blockers.length))}
+                description={
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12 }}>
+                    {blockers.map((b, i) => (
+                      <li key={`b-${i}`}>
+                        <Tag color="red">{issueCodeToText(b.code)}</Tag> {b.message}
+                        {typeof b.detail === "string" && b.detail ? (
+                          <span style={{ color: "#94a3b8", marginLeft: 6 }}>（{b.detail}）</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                }
+                style={{ marginBottom: 8 }}
+              />
+            )}
+            {warnings.length > 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                message={t("autoTradeWarnings").replace("{count}", String(warnings.length))}
+                description={
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12 }}>
+                    {warnings.map((w, i) => (
+                      <li key={`w-${i}`}>
+                        <Tag color="orange">{issueCodeToText(w.code)}</Tag> {w.message}
+                      </li>
+                    ))}
+                  </ul>
+                }
+                style={{ marginBottom: 8 }}
+              />
+            )}
+          </div>
+        </div>
+
         {running && <Skeleton active paragraph={{ rows: 3 }} />}
 
+        {/* P0-AutoTrade：execute 失败时结构化展示 blockers */}
         {!running && error && (
           <Alert
             type="error"
-            message={t("autoTradeFailed")}
-            description={error}
+            message={errorBlockers?.length ? t("autoTradeExecBlockedTitle") : t("autoTradeFailed")}
+            description={
+              <div>
+                <div style={{ marginBottom: 6 }}>
+                  {errorBlockers?.length ? t("autoTradeExecBlockedDesc") + " " + t("autoTradeExecBlockedNextStep") : error}
+                </div>
+                {errorBlockers?.length ? (
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12 }}>
+                    {errorBlockers.map((b, i) => (
+                      <li key={`eb-${i}`}>
+                        <Tag color="red">{issueCodeToText(b.code)}</Tag> {b.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            }
             showIcon
             style={{ marginBottom: 12 }}
           />
@@ -739,6 +917,7 @@ export default function AutoTradePanel() {
             description={
               <div>
                 <p>{t("autoTradeDryRunHint")}</p>
+                {!dryRun ? <p style={{ color: "#94a3b8", marginTop: 4 }}>{t("autoTradeRequireDryRunFirst")}</p> : null}
               </div>
             }
           />
@@ -746,13 +925,29 @@ export default function AutoTradePanel() {
 
         {!running && !error && result && (
           <>
-            <div style={{ marginBottom: 8, display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ marginBottom: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <Tag color={result.dry_run ? "blue" : "green"}>
                 {result.dry_run ? t("autoTradeDryRunBadge") : t("autoTradeExecutedBadge")}
               </Tag>
               <span style={{ fontSize: 12, color: "#94a3b8" }}>
                 {new Date(result.executed_at).toLocaleString()}
               </span>
+              {result.executed_source && (
+                <Tag color={result.executed_source === "new" ? "geekblue" : "default"}>
+                  Source: {result.executed_source}
+                </Tag>
+              )}
+              {result.source_mode && <Tag color="purple">Mode: {result.source_mode}</Tag>}
+              {result.blockers?.length ? (
+                <Tag color="red">
+                  {t("autoTradeBlockers").replace("{count}", String(result.blockers.length))}
+                </Tag>
+              ) : null}
+              {result.warnings?.length ? (
+                <Tag color="gold">
+                  {t("autoTradeWarnings").replace("{count}", String(result.warnings.length))}
+                </Tag>
+              ) : null}
             </div>
 
             {/* 卖出计划 */}
@@ -808,222 +1003,202 @@ export default function AutoTradePanel() {
                 </ul>
               </div>
             )}
+
+            {/* 差异列表（execute 内联 diffs） */}
+            {result.diffs?.length ? (
+              <div style={{ marginTop: 16 }}>
+                <h3 style={{ fontSize: 14, marginBottom: 8 }}>{t("autoTradeMember.dryRunDiff")} ({result.diffs.length})</h3>
+                <Table
+                  size="small"
+                  rowKey={(record, idx) => `diffx-${record.symbol_id}-${record.side}-${idx}`}
+                  dataSource={result.diffs as any}
+                  columns={diffColumns as any}
+                  pagination={false}
+                />
+              </div>
+            ) : null}
           </>
         )}
 
         {/* ========================================================================
             WP6.6 新增分区：成员状态 / 双跑差异 / 开关管理
             ======================================================================== */}
-        <div style={{ marginTop: 24, borderTop: "1px dashed #e5e7eb", paddingTop: 16 }}>
-          <h3 style={{ fontSize: 14, marginBottom: 8, display: "flex", alignItems: "center" }}>
-            {t("autoTradeMember.memberStatus")}
-            <Tooltip title={t("autoTradeMember.memberStatusHint")}>
-              <QuestionCircleOutlined style={{ marginLeft: 6, fontSize: 12, color: "#94a3b8" }} />
-            </Tooltip>
-            <Button
-              size="small"
-              type="link"
-              onClick={loadMembers}
-              loading={membersLoading}
-              style={{ marginLeft: "auto", padding: 0 }}
-            >
-              {t("refresh")}
-            </Button>
-          </h3>
-          {membersLoading && <Skeleton active paragraph={{ rows: 2 }} />}
-          {!membersLoading && membersError && (
-            <Alert
-              type="error"
-              message={t("autoTradeMember.loadMembersFailed")}
-              description={membersError}
-              showIcon
-              style={{ marginBottom: 8 }}
-            />
-          )}
-          {!membersLoading && !membersError && members.length === 0 && (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t("autoTradeMember.noMembers")}
-            />
-          )}
-          {!membersLoading && !membersError && members.length > 0 && (
-            <Table
-              size="small"
-              rowKey={(record) => `member-${record.member_id}`}
-              dataSource={members}
-              columns={memberColumns}
-              pagination={false}
-            />
-          )}
-        </div>
-
-        {/* 双跑差异 */}
-        <div style={{ marginTop: 24 }}>
-          <h3 style={{ fontSize: 14, marginBottom: 8, display: "flex", alignItems: "center" }}>
-            {t("autoTradeMember.dryRunDiff")}
-            <Tooltip title={t("autoTradeMember.dryRunDiffHint")}>
-              <QuestionCircleOutlined style={{ marginLeft: 6, fontSize: 12, color: "#94a3b8" }} />
-            </Tooltip>
-            <Button
-              size="small"
-              type="link"
-              onClick={loadDiffs}
-              loading={diffLoading}
-              style={{ marginLeft: "auto", padding: 0 }}
-            >
-              {t("refresh")}
-            </Button>
-          </h3>
-          {diffLoading && <Skeleton active paragraph={{ rows: 2 }} />}
-          {!diffLoading && diffError && (
-            <Alert
-              type="error"
-              message={t("autoTradeMember.loadDiffFailed")}
-              description={diffError}
-              showIcon
-              style={{ marginBottom: 8 }}
-            />
-          )}
-          {!diffLoading && !diffError && diffs.length === 0 && (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t("autoTradeMember.noDiffs")}
-            />
-          )}
-          {!diffLoading && !diffError && diffs.length > 0 && (
-            <Table
-              size="small"
-              rowKey={(record, idx) => `diff-${record.symbol_id}-${record.side}-${idx}`}
-              dataSource={diffs}
-              columns={diffColumns}
-              pagination={false}
-            />
-          )}
-        </div>
-
-        {/* 开关管理 */}
-        <div style={{ marginTop: 24 }}>
-          <h3 style={{ fontSize: 14, marginBottom: 8, display: "flex", alignItems: "center" }}>
-            {t("autoTradeMember.sourceSwitch")}
-            <Tooltip title={t("autoTradeMember.sourceSwitchHint")}>
-              <QuestionCircleOutlined style={{ marginLeft: 6, fontSize: 12, color: "#94a3b8" }} />
-            </Tooltip>
-            <Button
-              size="small"
-              type="link"
-              onClick={loadSourceStatus}
-              loading={sourceLoading}
-              style={{ marginLeft: "auto", padding: 0 }}
-            >
-              {t("refresh")}
-            </Button>
-          </h3>
-          {sourceLoading && <Skeleton active paragraph={{ rows: 2 }} />}
-          {!sourceLoading && sourceError && (
-            <Alert
-              type="error"
-              message={t("autoTradeMember.loadSourceStatusFailed")}
-              description={sourceError}
-              showIcon
-              style={{ marginBottom: 8 }}
-            />
-          )}
-          {!sourceLoading && !sourceError && sourceStatus && (
-            <div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 24,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  marginBottom: 12,
-                }}
-              >
-                <Statistic
-                  title={
-                    <span>
-                      {t("autoTradeMember.sourceEnabled")}
-                      <Tooltip title={t("autoTradeMember.sourceEnabledHint")}>
-                        <QuestionCircleOutlined style={{ marginLeft: 4, fontSize: 11, color: "#94a3b8" }} />
-                      </Tooltip>
-                    </span>
-                  }
-                  valueRender={() => (
-                    <Badge
-                      status={sourceStatus.enabled ? "success" : "default"}
-                      text={
-                        sourceStatus.enabled
-                          ? t("autoTradeMember.sourceEnabledOn")
-                          : t("autoTradeMember.sourceEnabledOff")
-                      }
-                    />
-                  )}
-                />
-                <Statistic
-                  title={t("autoTradeMember.envFlag")}
-                  value={sourceStatus.env_flag}
-                />
-                <Statistic
-                  title={
-                    <span>
-                      {t("autoTradeMember.whitelistMatch")}
-                      <Tooltip title={t("autoTradeMember.whitelistMatchHint")}>
-                        <QuestionCircleOutlined style={{ marginLeft: 4, fontSize: 11, color: "#94a3b8" }} />
-                      </Tooltip>
-                    </span>
-                  }
-                  valueRender={() => (
-                    <Tag color={sourceStatus.whitelist_match ? "green" : "default"}>
-                      {sourceStatus.whitelist_match ? "Yes" : "No"}
-                    </Tag>
-                  )}
-                />
-                <Statistic
-                  title={
-                    <span>
-                      {t("autoTradeMember.blacklistMatch")}
-                      <Tooltip title={t("autoTradeMember.blacklistMatchHint")}>
-                        <QuestionCircleOutlined style={{ marginLeft: 4, fontSize: 11, color: "#94a3b8" }} />
-                      </Tooltip>
-                    </span>
-                  }
-                  valueRender={() => (
-                    <Tag color={sourceStatus.blacklist_match ? "red" : "default"}>
-                      {sourceStatus.blacklist_match ? "Yes" : "No"}
-                    </Tag>
-                  )}
-                />
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <Button
-                  type="primary"
-                  danger
-                  icon={<RollbackOutlined />}
-                  onClick={handleRollback}
-                  loading={rollingBack}
-                  disabled={!sourceStatus.enabled && !sourceStatus.whitelist_match}
-                >
-                  {t("autoTradeMember.rollbackToOldSource")}
-                </Button>
-                <Tooltip title={t("autoTradeMember.rollbackButtonHint")}>
-                  <QuestionCircleOutlined style={{ fontSize: 12, color: "#94a3b8" }} />
+        {autoTradeEnabled && (
+          <>
+            <div style={{ marginTop: 24, borderTop: "1px dashed #e5e7eb", paddingTop: 16 }}>
+              <h3 style={{ fontSize: 14, marginBottom: 8, display: "flex", alignItems: "center" }}>
+                {t("autoTradeMember.memberStatus")}
+                <Tooltip title={t("autoTradeMember.memberStatusHint")}>
+                  <QuestionCircleOutlined style={{ marginLeft: 6, fontSize: 12, color: "#94a3b8" }} />
                 </Tooltip>
-                <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                  {t("autoTradeMember.whitelistLabel")}: [{sourceStatus.whitelist.join(", ") || "-"}]
-                </span>
-                <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                  {t("autoTradeMember.blacklistLabel")}: [{sourceStatus.blacklist.join(", ") || "-"}]
-                </span>
-              </div>
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={loadMembers}
+                  loading={membersLoading}
+                  style={{ marginLeft: "auto", padding: 0 }}
+                >
+                  {t("refresh")}
+                </Button>
+              </h3>
+              {membersLoading && <Skeleton active paragraph={{ rows: 2 }} />}
+              {!membersLoading && membersError && (
+                <Alert type="error" message={t("autoTradeMember.loadMembersFailed")} description={membersError} showIcon style={{ marginBottom: 8 }} />
+              )}
+              {!membersLoading && !membersError && members.length === 0 && (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("autoTradeMember.noMembers")} />
+              )}
+              {!membersLoading && !membersError && members.length > 0 && (
+                <Table size="small" rowKey={(record) => `member-${record.member_id}`} dataSource={members} columns={memberColumns} pagination={false} />
+              )}
             </div>
-          )}
-          {!sourceLoading && !sourceError && !sourceStatus && (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t("autoTradeMember.noSourceStatus")}
-            />
-          )}
-        </div>
+
+            <div style={{ marginTop: 24 }}>
+              <h3 style={{ fontSize: 14, marginBottom: 8, display: "flex", alignItems: "center" }}>
+                {t("autoTradeMember.dryRunDiff")}
+                <Tooltip title={t("autoTradeMember.dryRunDiffHint")}>
+                  <QuestionCircleOutlined style={{ marginLeft: 6, fontSize: 12, color: "#94a3b8" }} />
+                </Tooltip>
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={loadDiffs}
+                  loading={diffLoading}
+                  style={{ marginLeft: "auto", padding: 0 }}
+                >
+                  {t("refresh")}
+                </Button>
+              </h3>
+              {diffLoading && <Skeleton active paragraph={{ rows: 2 }} />}
+              {!diffLoading && diffError && (
+                <Alert type="error" message={t("autoTradeMember.loadDiffFailed")} description={diffError} showIcon style={{ marginBottom: 8 }} />
+              )}
+              {!diffLoading && !diffError && diffs.length === 0 && (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("autoTradeMember.noDiffs")} />
+              )}
+              {!diffLoading && !diffError && diffs.length > 0 && (
+                <Table
+                  size="small"
+                  rowKey={(record, idx) => `diff-${record.symbol_id}-${record.side}-${idx}`}
+                  dataSource={diffs}
+                  columns={diffColumns}
+                  pagination={false}
+                />
+              )}
+            </div>
+
+            <div style={{ marginTop: 24 }}>
+              <h3 style={{ fontSize: 14, marginBottom: 8, display: "flex", alignItems: "center" }}>
+                {t("autoTradeMember.sourceSwitch")}
+                <Tooltip title={t("autoTradeMember.sourceSwitchHint")}>
+                  <QuestionCircleOutlined style={{ marginLeft: 6, fontSize: 12, color: "#94a3b8" }} />
+                </Tooltip>
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={loadSourceStatus}
+                  loading={sourceLoading}
+                  style={{ marginLeft: "auto", padding: 0 }}
+                >
+                  {t("refresh")}
+                </Button>
+              </h3>
+              {sourceLoading && <Skeleton active paragraph={{ rows: 2 }} />}
+              {!sourceLoading && sourceError && (
+                <Alert type="error" message={t("autoTradeMember.loadSourceStatusFailed")} description={sourceError} showIcon style={{ marginBottom: 8 }} />
+              )}
+              {!sourceLoading && !sourceError && sourceStatus && (
+                <div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 24,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Statistic
+                      title={
+                        <span>
+                          {t("autoTradeMember.sourceEnabled")}
+                          <Tooltip title={t("autoTradeMember.sourceEnabledHint")}>
+                            <QuestionCircleOutlined style={{ marginLeft: 4, fontSize: 11, color: "#94a3b8" }} />
+                          </Tooltip>
+                        </span>
+                      }
+                      valueRender={() => (
+                        <Badge
+                          status={sourceStatus.enabled ? "success" : "default"}
+                          text={
+                            sourceStatus.enabled
+                              ? t("autoTradeMember.sourceEnabledOn")
+                              : t("autoTradeMember.sourceEnabledOff")
+                          }
+                        />
+                      )}
+                    />
+                    <Statistic title={t("autoTradeMember.envFlag")} value={sourceStatus.env_flag} />
+                    <Statistic
+                      title={
+                        <span>
+                          {t("autoTradeMember.whitelistMatch")}
+                          <Tooltip title={t("autoTradeMember.whitelistMatchHint")}>
+                            <QuestionCircleOutlined style={{ marginLeft: 4, fontSize: 11, color: "#94a3b8" }} />
+                          </Tooltip>
+                        </span>
+                      }
+                      valueRender={() => (
+                        <Tag color={sourceStatus.whitelist_match ? "green" : "default"}>
+                          {sourceStatus.whitelist_match ? "Yes" : "No"}
+                        </Tag>
+                      )}
+                    />
+                    <Statistic
+                      title={
+                        <span>
+                          {t("autoTradeMember.blacklistMatch")}
+                          <Tooltip title={t("autoTradeMember.blacklistMatchHint")}>
+                            <QuestionCircleOutlined style={{ marginLeft: 4, fontSize: 11, color: "#94a3b8" }} />
+                          </Tooltip>
+                        </span>
+                      }
+                      valueRender={() => (
+                        <Tag color={sourceStatus.blacklist_match ? "red" : "default"}>
+                          {sourceStatus.blacklist_match ? "Yes" : "No"}
+                        </Tag>
+                      )}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <Button
+                      type="primary"
+                      danger
+                      icon={<RollbackOutlined />}
+                      onClick={handleRollback}
+                      loading={rollingBack}
+                      disabled={!sourceStatus.enabled && !sourceStatus.whitelist_match}
+                    >
+                      {t("autoTradeMember.rollbackToOldSource")}
+                    </Button>
+                    <Tooltip title={t("autoTradeMember.rollbackButtonHint")}>
+                      <QuestionCircleOutlined style={{ fontSize: 12, color: "#94a3b8" }} />
+                    </Tooltip>
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                      {t("autoTradeMember.whitelistLabel")}: [{sourceStatus.whitelist.join(", ") || "-"}]
+                    </span>
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                      {t("autoTradeMember.blacklistLabel")}: [{sourceStatus.blacklist.join(", ") || "-"}]
+                    </span>
+                  </div>
+                </div>
+              )}
+              {!sourceLoading && !sourceError && !sourceStatus && (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("autoTradeMember.noSourceStatus")} />
+              )}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );

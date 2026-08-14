@@ -12,6 +12,41 @@ import type {
   AIResponse,
 } from "../types";
 
+// 指数同步异步任务返回结构（与后端 _task_to_dict 字段一致，percent/total/processed/ok_count/result.items）
+export interface IndexSyncTaskRead {
+  id: string;
+  task_type: string;
+  status: "queued" | "running" | "done" | "failed" | "cancelled" | string;
+  stage: string;
+  percent: number;         // 0~100
+  message: string;
+  total: number;           // 指数总数
+  processed: number;       // 已处理数
+  ok_count: number;        // 成功数
+  failed_count: number;    // 失败数
+  current_item: string | null;  // 当前同步中的 symbol
+  // 终态返回：结构与原同步接口 IndexPriceSyncResponse 完全一致
+  result: null | {
+    total: number; success: number; failed: number;
+    items: Array<{
+      symbol: string; name: string;
+      received?: number; written?: number; skipped?: number;
+      first_date?: string | null; last_date?: string | null;
+      error?: string | null;
+    }>;
+  };
+  errors: Array<Record<string, unknown>>;
+  error_code: string | null;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  updated_at?: string | null;
+  heartbeat_at?: string | null;
+  last_progress_at?: string | null;
+  current_step_description?: string | null;
+  cancel_requested?: boolean;
+}
+
 // 通用 API 响应类型：默认 unknown，调用方可显式指定具体类型
 type ApiResponse<T = unknown> = T;
 
@@ -156,7 +191,12 @@ async function executeRequestJson<T>(url: string, options: RequestJsonOptions): 
     if (!response.ok) {
       // 优先识别 WP-S.6 统一错误协议
       if (isUnifiedErrorPayload(payload)) {
-        throw new ApiError(payload.user_message || payload.error_code, {
+        const techMsg = payload.technical_details?.error_message?.trim();
+        // 把 technical_details 里的字段级校验错误详情拼到最终消息里，用户能知道具体是哪个字段出问题
+        const finalMessage = techMsg
+          ? `${payload.user_message || payload.error_code}（${techMsg}）`
+          : (payload.user_message || payload.error_code);
+        throw new ApiError(finalMessage, {
           status_code: response.status,
           error_code: payload.error_code,
           user_message: payload.user_message,
@@ -249,6 +289,123 @@ export type ExternalSyncDataset =
   | "tail_proxy"
   | "capital_flow"
   | "etf";
+
+export interface AIStreamHandlers {
+  onSession?: (sessionId: number) => void;
+  onDelta?: (content: string) => void;
+  onDone?: (sessionId: number, response: AIResponse) => void;
+}
+
+export interface AiChatStreamHandlers {
+  onDelta?: (content: string) => void;
+  onDone?: (response: AiChatResult) => void;
+}
+
+function parseSseBlock(block: string): { event: string; data: Record<string, unknown> } | null {
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+  }
+  if (!dataLines.length) return null;
+  return { event, data: JSON.parse(dataLines.join("\n")) };
+}
+
+export async function streamAISession(
+  payload: { title: string; source_page?: string; message: string; references?: Record<string, unknown> },
+  handlers: AIStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${API}/ai/sessions/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(body.user_message || body.detail || defaultHttpErrorMessage(response.status), {
+      status_code: response.status, detail: body,
+    });
+  }
+  if (!response.body) throw new ApiError("浏览器不支持流式响应");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const dispatch = (block: string) => {
+    let event = "message";
+    const dataLines: string[] = [];
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    }
+    if (!dataLines.length) return;
+    const data = JSON.parse(dataLines.join("\n"));
+    if (event === "session") handlers.onSession?.(Number(data.session_id));
+    if (event === "delta") handlers.onDelta?.(String(data.content ?? ""));
+    if (event === "done") handlers.onDone?.(Number(data.session_id), data.response as AIResponse);
+    if (event === "error") throw new ApiError(String(data.message || "AI 流式响应失败"));
+  };
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      dispatch(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf("\n\n");
+    }
+    if (done) break;
+  }
+  if (buffer.trim()) dispatch(buffer);
+}
+
+export async function streamAIChat(
+  payload: AiChatPayload,
+  handlers: AiChatStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${API}/settings/ai-chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(body.user_message || body.detail || defaultHttpErrorMessage(response.status), {
+      status_code: response.status,
+      detail: body,
+    });
+  }
+  if (!response.body) throw new ApiError("Browser does not support streaming responses");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const dispatch = (block: string) => {
+    const parsed = parseSseBlock(block);
+    if (!parsed) return;
+    const { event, data } = parsed;
+    if (event === "delta") handlers.onDelta?.(String(data.content ?? ""));
+    if (event === "done") handlers.onDone?.(data as unknown as AiChatResult);
+    if (event === "error") throw new ApiError(String(data.message || t("aiChatFailed")));
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      dispatch(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf("\n\n");
+    }
+    if (done) break;
+  }
+  if (buffer.trim()) dispatch(buffer);
+}
 
 export interface ExternalSyncResult {
   dataset: ExternalSyncDataset;
@@ -406,6 +563,8 @@ export const api = {
   },
   getFactorDefinition: (factorCode: string) =>
     requestJson<FactorDefinition>(`${API}/factors/${encodeURIComponent(factorCode)}`),
+  listFactorVersions: (factorCode: string) =>
+    requestJson<FactorVersionListItem[]>(`${API}/factors/${encodeURIComponent(factorCode)}/versions`),
   createFactorDraft: (payload: FactorDraftPayload) =>
     requestJson<FactorDefinition>(`${API}/factors`, {
       method: "POST",
@@ -442,6 +601,19 @@ export const api = {
     }),
 
   // WP5-07: 评估实验室 API
+  preflightFactorEvaluation: (params: PreflightFactorEvaluationParams) => {
+    const body: Record<string, unknown> = { factor_code: params.factorCode };
+    if (params.factorVersionId != null) body.factor_version_id = params.factorVersionId;
+    if (params.universe != null) body.universe = params.universe;
+    if (params.startDate != null) body.start_date = params.startDate;
+    if (params.endDate != null) body.end_date = params.endDate;
+    if (params.targetHorizon != null) body.target_horizon = params.targetHorizon;
+    return requestJson<PreflightResponse>(`${API}/factor-evaluation/preflight`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
   createEvaluationTask: (payload: EvaluationTaskCreatePayload) =>
     requestJson<EvaluationTaskRead>(`${API}/factor-evaluation/tasks`, {
       method: "POST",
@@ -505,6 +677,9 @@ export const api = {
 
   // Portfolios
   getPortfolios: () => requestJson<any[]>(`${API}/portfolios`),
+  // 读取单个组合详情（含 active_rule / allocation），供总览页配置值回显
+  getPortfolioDetail: (portfolioId: number) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}`),
   // P0-6：组合 CRUD 补全
   createPortfolio: (payload: unknown) =>
     requestJson<any>(`${API}/portfolios`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
@@ -551,6 +726,16 @@ export const api = {
       body: JSON.stringify(payload),
       timeoutMs: 60000,
     }),
+  // P0-AutoTrade：自动交易就绪检查（for_schedule=true 时把调度状态升级为 blocker）
+  getAutoTradeReadiness: (portfolioId: number, options?: { for_schedule?: boolean }) => {
+    const params = new URLSearchParams();
+    if (options?.for_schedule) params.set("for_schedule", "1");
+    const qs = params.toString();
+    return requestJson<any>(
+      `${API}/portfolios/${portfolioId}/auto-trade/readiness${qs ? `?${qs}` : ""}`,
+      { timeoutMs: 30000 },
+    );
+  },
   // WP6.6：自动交易双跑与成员级状态
   getAutoTradeDryRunDiff: (portfolioId: number) =>
     requestJson<{
@@ -790,6 +975,19 @@ export const api = {
     requestJson<any>(`${API}/portfolios/${portfolioId}/rules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   getAllocation: (portfolioId: number) =>
     requestJson<any>(`${API}/portfolios/${portfolioId}/allocation`),
+  // P1-FIX: 组合成员 API
+  getMembers: (portfolioId: number) =>
+    requestJson<any[]>(`${API}/portfolios/${portfolioId}/members`),
+  getPortfolioCandidates: (portfolioId: number) =>
+    requestJson<any[]>(`${API}/portfolios/${portfolioId}/candidates`),
+  addPortfolioCandidate: (portfolioId: number, payload: unknown) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}/candidates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  addPortfolioMember: (portfolioId: number, payload: unknown) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}/members`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  updatePortfolioMember: (portfolioId: number, memberId: number, payload: unknown) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}/members/${memberId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  archivePortfolioMember: (portfolioId: number, memberId: number, force = false) =>
+    requestJson<any>(`${API}/portfolios/${portfolioId}/members/${memberId}/archive`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force }) }),
 
   // News
   updateNews: (payload: unknown) =>
@@ -842,6 +1040,23 @@ export const api = {
     requestJson<{ deleted: number; skipped_frozen: number }>(`${API}/discovery/results/cleanup`, { method: "POST" }),
   getLatestDiscoveryCandidates: (minScore = 0, limit = 50, scope?: string) =>
     requestJson<any[]>(`${API}/discovery/latest-candidates?min_score=${minScore}&limit=${limit}${scope ? `&scope=${scope}` : ""}`),
+  getDiscoveryCandidatePools: (
+    pool: "all" | "factor" | "technical" | "theme" = "all",
+    minScore = 0,
+    limit = 100,
+    assetType?: "stock" | "etf",
+    region?: "cn" | "hk" | "us" | "other",
+    board?: "sh_main" | "sz_main" | "chinext" | "star" | "bse",
+  ) =>
+    requestJson<any>(`${API}/discovery/candidate-pools?pool=${pool}&min_score=${minScore}&limit=${limit}${assetType ? `&asset_type=${assetType}` : ""}${region ? `&region=${region}` : ""}${board ? `&board=${board}` : ""}`),
+  getInvestmentThemes: (activeOnly = true) =>
+    requestJson<any[]>(`${API}/investment-themes?active_only=${activeOnly ? "true" : "false"}`),
+  createInvestmentTheme: (payload: unknown) =>
+    requestJson<any>(`${API}/investment-themes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  mapInvestmentThemeSymbol: (themeId: number, payload: unknown) =>
+    requestJson<any>(`${API}/investment-themes/${themeId}/symbols`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  addInvestmentThemeCatalyst: (themeId: number, payload: unknown) =>
+    requestJson<any>(`${API}/investment-themes/${themeId}/catalysts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
 
   // P1：挖掘候选手动晋升 API
   listDiscoveryCandidates: (params: { scanRunId?: number; isPromoted?: 0 | 1; limit?: number; offset?: number } = {}) => {
@@ -1013,6 +1228,45 @@ export const api = {
     requestJson<any>(`${API}/universe/backfill/cancel`, { method: "POST" }),
   getUniverseStats: () => requestJson<any>(`${API}/universe/stats`),
 
+  // ── 指数日线同步（回测基准曲线数据：index_prices 表）──
+  listIndexPrices: (symbol: string, params?: { start_date?: string; end_date?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    q.set("symbol", symbol);
+    if (params?.start_date) q.set("start_date", params.start_date);
+    if (params?.end_date) q.set("end_date", params.end_date);
+    if (params?.limit != null) q.set("limit", String(params.limit));
+    return requestJson<any>(`${API}/index-prices?${q.toString()}`);
+  },
+  getIndexPricesStatus: (symbols?: string) => {
+    const url = symbols ? `${API}/index-prices/status?symbols=${encodeURIComponent(symbols)}` : `${API}/index-prices/status`;
+    return requestJson<{
+      items: Array<{
+        symbol: string; name: string; bar_count: number;
+        first_date: string | null; last_date: string | null;
+        freshness_days: number | null; linearity_dev_pct: number | null;
+      }>;
+    }>(url);
+  },
+  syncIndexPrices: (payload: { symbols?: string[]; history_days?: number; end_date?: string }) =>
+    requestJson<IndexSyncTaskRead>(`${API}/index-prices/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      timeoutMs: 90_000,  // 专用 90s 提交超时（防 Windows Defender/线程池排队 > 默认 20s）
+      dedupe: false,
+    }),
+  getIndexPricesSyncTask: (taskId: string) =>
+    requestJson<IndexSyncTaskRead>(`${API}/index-prices/sync-tasks/${encodeURIComponent(taskId)}`, {
+      timeoutMs: 30_000,
+      dedupe: false,
+    }),
+  syncAllBenchmarkIndices: () =>
+    requestJson<IndexSyncTaskRead>(`${API}/index-prices/sync-all-benchmarks`, {
+      method: "POST",
+      timeoutMs: 90_000,
+      dedupe: false,
+    }),
+
   // Market Events
   getMarketEvents: (params: {
     impact_scope?: string;
@@ -1089,7 +1343,7 @@ export const api = {
     ),
   // P2-2: 组合整体回测（symbol_ids 与 rule_config 由后端自动推导）
   // WP7.3: 新增 only_auto 参数（仅回测 auto 成员，跳过 manual/confirm）
-  runPortfolioBacktest: (portfolioId: number, payload: { start_date: string; end_date: string; run_name?: string; only_auto?: boolean }) =>
+  runPortfolioBacktest: (portfolioId: number, payload: { start_date: string; end_date: string; run_name?: string; only_auto?: boolean; current_universe?: boolean; benchmark?: string }) =>
     requestJson<any>(`${API}/backtest/portfolio/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1360,6 +1614,7 @@ export const api = {
     ),
 
   // WP-AI.7：AI 会话管理
+  streamAIChat,
   getAISessions: (limit: number = 20, offset: number = 0) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     return requestJson<{ items: AISession[]; limit: number; offset: number; include_archived: boolean }>(
@@ -1368,6 +1623,7 @@ export const api = {
   },
   getAISession: (sessionId: number) =>
     requestJson<AISession>(`${API}/ai/sessions/${sessionId}`),
+  streamAISession,
   createAISession: (payload: { title: string; source_page?: string; message?: string; references?: Record<string, unknown> }) =>
     requestJson<{ session_id: number; response: AIResponse }>(
       `${API}/ai/sessions`,
@@ -1433,6 +1689,31 @@ export const api = {
     requestJson<AIProfileUsage>(`${API}/ai/profiles/${id}/usage`),
   getAIHealth: () =>
     requestJson<AIHealth[]>(`${API}/ai/health`),
+
+  // P2-FIX: 通知下拉使用的 inbox API（替代原纯本地 INITIAL_NOTIFICATIONS）
+  // 失败时调用方兜底本地态即可，保证不影响整体使用
+  getInboxNotifications: (params: { limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.limit != null) q.set("limit", String(params.limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return requestJson<
+      Array<{
+        id: number;
+        type: "success" | "warning" | "error" | "info";
+        title: string;
+        description: string;
+        time: string;
+        created_at: string | null;
+        read: boolean;
+      }>
+    >(`${API}/notifications/inbox${suffix}`);
+  },
+  markInboxItemRead: (itemId: number) =>
+    requestJson<{ ok: boolean; id: number; read: boolean }>(`${API}/notifications/inbox/${itemId}/read`, { method: "PUT" }),
+  markInboxAllRead: () =>
+    requestJson<{ ok: boolean; count: number }>(`${API}/notifications/inbox/read-all`, { method: "PUT" }),
+  viewAllInbox: () =>
+    requestJson<{ ok: boolean; total: number; hint?: string }>(`${API}/notifications/inbox/view-all`, { method: "POST" }),
 };
 
 // ----------------------------------------------------------------------------
@@ -1648,10 +1929,52 @@ export interface FactorPipelineEta {
 export interface EvaluationTaskCreatePayload {
   factor_code: string;
   factor_kind?: "continuous" | "event" | "regime";
+  factor_version_id?: string | number | null;
+  universe?: string;
+  start_date?: string | null;
+  end_date?: string | null;
   target_horizon?: number;
   n_groups?: number;
   cost_rate?: number;
+  direction?: "higher_better" | "lower_better" | "nonlinear" | string;
   created_by?: string;
+}
+
+export interface PreflightFixLink {
+  tab?: string;
+  subtab?: string;
+  label_zh?: string;
+}
+
+export interface PreflightCheckItem {
+  code: string;
+  severity: "pass" | "warn" | "error" | "info";
+  category: string;
+  title_zh: string;
+  detail_zh: string;
+  evidence: Record<string, unknown>;
+  fix_link?: PreflightFixLink | null;
+  retryable: boolean;
+}
+
+export interface PreflightOverall {
+  passed: boolean;
+  blocking_count: number;
+  recommended_date_range?: [string, string] | null;
+}
+
+export interface PreflightResponse {
+  overall: PreflightOverall;
+  items: PreflightCheckItem[];
+}
+
+export interface PreflightFactorEvaluationParams {
+  factorCode: string;
+  factorVersionId?: string;
+  universe?: string;
+  startDate?: string;
+  endDate?: string;
+  targetHorizon?: number;
 }
 
 /** 评估异步任务（结构与 AsyncTaskRead 对齐，复用通用任务协议字段） */
@@ -2046,6 +2369,13 @@ export interface AiChatPayload {
   message: string;
   formula?: string;
   history?: Array<{ role: string; content: string }>;
+  formula_mode?: "indicator" | "factor";
+  /** 因子编辑器上下文：方向 */
+  factor_direction?: string;
+  /** 因子编辑器上下文：版本说明 */
+  factor_change_note?: string;
+  /** 因子编辑器上下文：参数JSON文本 */
+  factor_params_text?: string;
 }
 
 export interface AiChatResult {
@@ -2122,6 +2452,32 @@ export interface FactorVersionDefinition {
   created_via: string | null;
   validation_status: string | null;
   validation_errors: Array<Record<string, unknown>> | null;
+}
+
+export interface FactorVersionListItem {
+  factor_code: string;
+  version: number;
+  formula_expr: string;
+  params: Record<string, unknown>;
+  direction: string;
+  source_mapping: Record<string, unknown>;
+  effective_from: string | null;
+  change_note: string;
+  is_latest: boolean;
+  created_at: string | null;
+}
+
+export interface FactorVersionListItem {
+  factor_code: string;
+  version: number;
+  formula_expr: string;
+  params: Record<string, unknown>;
+  direction: string;
+  source_mapping: Record<string, unknown>;
+  effective_from: string | null;
+  change_note: string;
+  is_latest: boolean;
+  created_at: string | null;
 }
 
 export interface FactorReferenceInfo {
@@ -2241,4 +2597,3 @@ export interface FactorPreviewResult {
   values: FactorPreviewValueItem[];
   missing_reasons: Record<string, string>;
 }
-

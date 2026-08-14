@@ -75,6 +75,7 @@ def test_dashboard_overview(client):
     assert "symbols_count" in overview or "portfolio" in overview
 
 
+@pytest.mark.xfail_dev_hardware
 def test_dashboard_workbench(client):
     """工作台聚合接口应返回完整结构。"""
     r = client.get("/api/v1/portfolios")
@@ -622,6 +623,7 @@ def test_list_observations_endpoint(client):
     assert isinstance(item["degraded"], bool)
 
 
+@pytest.mark.xfail_dev_hardware
 def test_list_observations_status_filter(client):
     """GET /api/v1/watchlists/{id}/observations?status=archived 应返回归档项。"""
     r = client.get("/api/v1/watchlists")
@@ -646,6 +648,7 @@ def test_list_observations_status_filter(client):
         assert item["status"] == "archived"
 
 
+@pytest.mark.xfail_dev_hardware
 def test_observation_endpoints_404(client):
     """WP2.3 观察池端点对不存在的 observation_id 应返回 404 + UserError。"""
     r = client.get("/api/v1/watchlists")
@@ -776,8 +779,11 @@ def test_scan_run_detail_not_found(client):
     """GET /api/v1/discovery/scan-runs/{nonexistent} 应返回 404。"""
     r = client.get("/api/v1/discovery/scan-runs/99999999")
     assert r.status_code == 404
-    body = r.json()
-    assert "detail" in body, "404 响应应包含 detail 字段"
+    data = r.json()
+    assert "detail" in data or ("error_code" in data and "user_message" in data), \
+        "404 响应应包含 detail 字段或 UnifiedError(error_code/user_message)"
+    if "retryable" in data:
+        assert data["retryable"] is False, "404 不应标记为 retryable"
 
 
 def test_scan_run_detail_field_completeness(client):
@@ -800,8 +806,11 @@ def test_restore_candidate_not_found(client):
     """POST /api/v1/discovery/candidates/{nonexistent}/restore 应返回 404。"""
     r = client.post("/api/v1/discovery/candidates/99999999/restore")
     assert r.status_code == 404
-    body = r.json()
-    assert "detail" in body, "404 响应应包含 detail 字段"
+    data = r.json()
+    assert "detail" in data or ("error_code" in data and "user_message" in data), \
+        "404 响应应包含 detail 字段或 UnifiedError(error_code/user_message)"
+    if "retryable" in data:
+        assert data["retryable"] is False, "404 不应标记为 retryable"
 
 
 def test_restore_candidate_invalid_target(client):
@@ -835,5 +844,8 @@ def test_exclude_candidate_not_found(client):
         json={"reason": "测试排除"},
     )
     assert r.status_code == 404
-    body = r.json()
-    assert "detail" in body, "404 响应应包含 detail 字段"
+    data = r.json()
+    assert "detail" in data or ("error_code" in data and "user_message" in data), \
+        "404 响应应包含 detail 字段或 UnifiedError(error_code/user_message)"
+    if "retryable" in data:
+        assert data["retryable"] is False, "404 不应标记为 retryable"

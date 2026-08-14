@@ -103,7 +103,7 @@ def get_ready_snapshot(db: Session, scope: str) -> DiscoveryScoreSnapshot | None
             DiscoveryScoreSnapshot.scope == normalized,
             DiscoveryScoreSnapshot.status == "ready",
         )
-        .order_by(DiscoveryScoreSnapshot.generated_at.desc().nullslast())
+        .order_by(DiscoveryScoreSnapshot.generated_at.desc())
         .limit(1)
     )
     return db.execute(stmt).scalars().first()
@@ -129,7 +129,7 @@ def get_latest_historical_snapshot(db: Session, scope: str) -> DiscoveryScoreSna
             DiscoveryScoreSnapshot.scope == normalized,
             DiscoveryScoreSnapshot.status.in_(["ready", "superseded", "failed"]),
         )
-        .order_by(DiscoveryScoreSnapshot.generated_at.desc().nullslast())
+        .order_by(DiscoveryScoreSnapshot.generated_at.desc())
         .limit(1)
     )
     return db.execute(stmt).scalars().first()
@@ -794,7 +794,7 @@ def _find_cached_scan_run(
     )
     if snapshot.generated_at is not None:
         stmt = stmt.where(ScanRun.created_at >= snapshot.generated_at)
-    stmt = stmt.order_by(ScanRun.created_at.desc().nullslast()).limit(1)
+    stmt = stmt.order_by(ScanRun.created_at.desc()).limit(1)
     return db.execute(stmt).scalars().first()
 
 

@@ -604,36 +604,55 @@ def _sync_one_concurrent(universe_symbol_id: int, history_days: int) -> dict:
         sub_db.close()
 
 
+def _incremental_timed_result(
+    result: dict,
+    started_at: float,
+    *,
+    fetch_seconds: float = 0.0,
+    database_seconds: float = 0.0,
+) -> dict:
+    result['fetch_seconds'] = round(fetch_seconds, 4)
+    result['database_seconds'] = round(database_seconds, 4)
+    result['elapsed_seconds'] = round(time.perf_counter() - started_at, 4)
+    return result
+
+
 def sync_one_universe_symbol_incremental(
     db: Session,
     universe_symbol: UniverseSymbol,
     target_date: date,
 ) -> dict:
     """Sync only the missing tail represented by UniverseSymbol metadata."""
+    started_at = time.perf_counter()
+    database_seconds = 0.0
     if universe_symbol.sync_failed >= SYNC_FAILED_THRESHOLD:
-        return {
-            "symbol": universe_symbol.symbol,
-            "status": "skipped",
-            "reason": "sync_failed threshold reached",
-        }
+        return _incremental_timed_result({
+            'symbol': universe_symbol.symbol,
+            'status': 'skipped',
+            'reason': 'sync_failed threshold reached',
+        }, started_at)
 
     if universe_symbol.last_bar_date is not None:
         start_date = universe_symbol.last_bar_date + timedelta(days=1)
         if start_date > target_date:
-            return {
-                "symbol": universe_symbol.symbol,
-                "status": "uptodate",
-                "inserted": 0,
-                "updated": 0,
-            }
+            return _incremental_timed_result({
+                'symbol': universe_symbol.symbol,
+                'status': 'uptodate',
+                'inserted': 0,
+                'updated': 0,
+            }, started_at)
     else:
         # is_synced without a last bar usually means suspended/delisted.
         start_date = target_date
 
+    database_started_at = time.perf_counter()
     db.commit()
+    database_seconds += time.perf_counter() - database_started_at
+    fetch_started_at = time.perf_counter()
     try:
         frame = _fetch_universe_history(universe_symbol, start_date, target_date)
     except Exception as exc:
+        fetch_seconds = time.perf_counter() - fetch_started_at
         logger.warning(
             "fetch incremental universe history failed: %s: %s",
             universe_symbol.symbol,
@@ -641,15 +660,32 @@ def sync_one_universe_symbol_incremental(
         )
         universe_symbol.sync_failed += 1
         universe_symbol.last_synced_at = _now()
+        database_started_at = time.perf_counter()
         db.commit()
-        return {"symbol": universe_symbol.symbol, "status": "failed", "error": str(exc)}
+        database_seconds += time.perf_counter() - database_started_at
+        return _incremental_timed_result(
+            {'symbol': universe_symbol.symbol, 'status': 'failed', 'error': str(exc)},
+            started_at,
+            fetch_seconds=fetch_seconds,
+            database_seconds=database_seconds,
+        )
+
+    fetch_seconds = time.perf_counter() - fetch_started_at
 
     universe_symbol.last_synced_at = _now()
     universe_symbol.is_synced = 1
     if frame.empty:
+        database_started_at = time.perf_counter()
         db.commit()
-        return {"symbol": universe_symbol.symbol, "status": "empty", "inserted": 0, "updated": 0}
+        database_seconds += time.perf_counter() - database_started_at
+        return _incremental_timed_result(
+            {'symbol': universe_symbol.symbol, 'status': 'empty', 'inserted': 0, 'updated': 0},
+            started_at,
+            fetch_seconds=fetch_seconds,
+            database_seconds=database_seconds,
+        )
 
+    database_started_at = time.perf_counter()
     inserted, updated = _upsert_universe_bars(db, universe_symbol.id, frame)
     universe_symbol.sync_failed = 0
     universe_symbol.last_bar_date = max(
@@ -657,12 +693,18 @@ def sync_one_universe_symbol_incremental(
     )
     universe_symbol.bar_count = int(universe_symbol.bar_count or 0) + inserted
     db.commit()
-    return {
-        "symbol": universe_symbol.symbol,
-        "status": "ok",
-        "inserted": inserted,
-        "updated": updated,
-    }
+    database_seconds += time.perf_counter() - database_started_at
+    return _incremental_timed_result(
+        {
+            'symbol': universe_symbol.symbol,
+            'status': 'ok',
+            'inserted': inserted,
+            'updated': updated,
+        },
+        started_at,
+        fetch_seconds=fetch_seconds,
+        database_seconds=database_seconds,
+    )
 
 
 def _sync_one_incremental_concurrent(universe_symbol_id: int, target_date: date) -> dict:
@@ -1817,6 +1859,7 @@ def incremental_sync(
         {"total": int, "processed": int, "ok": int, "failed": int, "skipped": int, "uptodate": int}
     """
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
+    run_started_at = time.perf_counter()
 
     # 分批限速配置：与初始化同步一致
     BATCH_SIZE = 50
@@ -1879,7 +1922,21 @@ def incremental_sync(
             target_dates,
             scopes or "all",
         )
-        return {"total": 0, "processed": 0, "ok": 0, "failed": 0, "skipped": 0, "uptodate": 0}
+        return {
+            'total': 0,
+            'processed': 0,
+            'ok': 0,
+            'failed': 0,
+            'skipped': 0,
+            'uptodate': 0,
+            'attempts': 0,
+            'fetch_seconds_total': 0.0,
+            'database_seconds_total': 0.0,
+            'average_fetch_seconds': 0.0,
+            'average_database_seconds': 0.0,
+            'elapsed_seconds': round(time.perf_counter() - run_started_at, 4),
+            'throughput_per_second': 0.0,
+        }
 
     logger.info(
         "incremental_sync start: total=%d workers=%d scopes=%s (target_dates=%s)",
@@ -1895,14 +1952,24 @@ def incremental_sync(
     uptodate_count = 0  # 已是最新无需同步的标的
     failed_ids: list[int] = []  # P2.1：第一轮失败的标的，用于重试
     consecutive_failures = 0  # P2.2：连续失败计数（熔断降级）
+    attempt_count = 0
+    fetch_seconds_total = 0.0
+    database_seconds_total = 0.0
 
     # P2.2：整体熔断阈值——连续 CIRCUIT_BREAKER_CONSECUTIVE_FAILS 个标的都失败时整体停止
     # 避免数据源异常时持续无效请求
     CIRCUIT_BREAKER_CONSECUTIVE_FAILS = 50
 
+    def _record_timings(result: dict) -> None:
+        nonlocal attempt_count, fetch_seconds_total, database_seconds_total
+        attempt_count += 1
+        fetch_seconds_total += float(result.get('fetch_seconds') or 0.0)
+        database_seconds_total += float(result.get('database_seconds') or 0.0)
+
     def _handle_result(result: dict, uid: int) -> None:
         """统一处理单标的同步结果，更新计数器。"""
         nonlocal processed, ok_count, failed_count, skipped_count, uptodate_count, consecutive_failures
+        _record_timings(result)
         processed += 1
         status = result.get("status")
         if status == "ok":
@@ -2019,6 +2086,7 @@ def incremental_sync(
                     if is_cancelled and is_cancelled():
                         break
                     result = _sync_one_incremental_concurrent(uid, target_date_by_id[uid])
+                    _record_timings(result)
                     status = result.get("status")
                     if status == "ok":
                         ok_count += 1
@@ -2049,6 +2117,7 @@ def incremental_sync(
                             break
                         try:
                             result = future.result()
+                            _record_timings(result)
                             status = result.get("status")
                             if status == "ok":
                                 ok_count += 1
@@ -2065,9 +2134,15 @@ def incremental_sync(
                         if progress_callback:
                             progress_callback(processed, total, ok_count, failed_count)
 
+    elapsed_seconds = max(time.perf_counter() - run_started_at, 0.0001)
+    throughput = processed / elapsed_seconds
+    average_fetch_seconds = fetch_seconds_total / attempt_count if attempt_count else 0.0
+    average_database_seconds = database_seconds_total / attempt_count if attempt_count else 0.0
     logger.info(
-        "incremental_sync done: total=%d processed=%d ok=%d uptodate=%d failed=%d skipped=%d",
+        "incremental_sync done: total=%d processed=%d ok=%d uptodate=%d failed=%d skipped=%d "
+        "elapsed=%.2fs rate=%.2f/s avg_fetch=%.3fs avg_db=%.3fs attempts=%d",
         total, processed, ok_count, uptodate_count, failed_count, skipped_count,
+        elapsed_seconds, throughput, average_fetch_seconds, average_database_seconds, attempt_count,
     )
     return {
         "total": total,
@@ -2076,4 +2151,11 @@ def incremental_sync(
         "failed": failed_count,
         "skipped": skipped_count,
         "uptodate": uptodate_count,
+        "attempts": attempt_count,
+        "fetch_seconds_total": round(fetch_seconds_total, 4),
+        "database_seconds_total": round(database_seconds_total, 4),
+        "average_fetch_seconds": round(average_fetch_seconds, 4),
+        "average_database_seconds": round(average_database_seconds, 4),
+        "elapsed_seconds": round(elapsed_seconds, 4),
+        "throughput_per_second": round(throughput, 4),
     }

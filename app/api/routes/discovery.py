@@ -33,6 +33,7 @@ from app.services.discovery_results import evaluate_discovery_indicators, get_la
 from app.services.discovery_cleanup import cleanup_expired_discovery_results
 from app.services.candidate_promote import (
     get_latest_scan_run_candidates,
+    get_latest_candidate_pools,
     list_candidates,
     promote_candidate,
     promote_candidates_batch,
@@ -92,6 +93,32 @@ def get_latest_candidates(
     避免切换挖掘范围后丢失之前 scope 的结果。
     """
     return get_latest_scan_run_candidates(db, min_score=min_score, limit=limit, scope=scope)
+
+
+@router.get("/discovery/candidate-pools")
+def get_candidate_pools(
+    pool: str = Query(default="all", pattern="^(all|factor|technical|theme)$"),
+    min_score: float = Query(default=0.0, ge=0.0, le=100.0),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    scope: str | None = Query(default=None),
+    asset_type: str | None = Query(default=None, pattern="^(stock|etf)$"),
+    region: str | None = Query(default=None, pattern="^(cn|hk|us|other)$"),
+    board: str | None = Query(default=None, pattern="^(sh_main|sz_main|chinext|star|bse)$"),
+    db: Session = Depends(get_db),
+):
+    """Latest discovery candidates grouped by explainable factor/signal/theme rules."""
+    return get_latest_candidate_pools(
+        db,
+        pool=pool,
+        min_score=min_score,
+        limit=limit,
+        offset=offset,
+        scope=scope,
+        asset_type=asset_type,
+        region=region,
+        board=board,
+    )
 
 
 @router.get("/discovery/tasks", response_model=list[DiscoveryTaskRead])

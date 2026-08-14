@@ -70,6 +70,11 @@ function factorSetStatusColor(status: string): string {
   return map[status] || "default";
 }
 
+function factorSetDisplayName(name: string | null | undefined, id: string): string {
+  const normalized = name?.trim() || "";
+  return normalized && !/^[?\uFFFD\s]+$/.test(normalized) ? normalized : id;
+}
+
 function formatNumber(value: unknown, digits = 4): string {
   if (value == null || value === "") return "-";
   const num = typeof value === "number" ? value : Number(value);
@@ -264,7 +269,7 @@ export default function FactorModelPage() {
         const fs = factorSets.find((s) => s.id === fsId);
         return (
           <Tooltip title={fsId}>
-            <Tag color="blue">{fs?.name ?? fsId.slice(0, 12) + "..."}</Tag>
+            <Tag color="blue">{fs ? factorSetDisplayName(fs.name, fs.id) : fsId}</Tag>
           </Tooltip>
         );
       },
@@ -312,7 +317,7 @@ export default function FactorModelPage() {
       key: "name",
       render: (name: string, record: FactorSet) => (
         <Space direction="vertical" size={0}>
-          <Text strong>{name}</Text>
+          <Text strong>{factorSetDisplayName(name, record.id)}</Text>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {record.id}
           </Text>
@@ -560,7 +565,7 @@ export default function FactorModelPage() {
               <Descriptions.Item label={t("factorModelSamples")}>
                 {selectedModel.sample_count}
               </Descriptions.Item>
-              <Descriptions.Item label="FactorSet">
+              <Descriptions.Item label={t("factorModelFactorSet")}>
                 {(selectedModel.hyperparameters?.factor_set_id as string) ?? "-"}
               </Descriptions.Item>
               <Descriptions.Item label={t("factorModelTrainRange")}>

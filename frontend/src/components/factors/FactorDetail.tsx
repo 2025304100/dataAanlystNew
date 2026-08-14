@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApp } from "../../context/AppContext";
-import { t } from "../../i18n";
+import { t, factorLabel, factorCategoryLabel, factorDirectionLabel } from "../../i18n";
 import {
   api,
   requestJson,
@@ -339,10 +339,10 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
       <Card title={t("factorDetailBasicInfo")} style={{ marginBottom: 16 }} size="small">
         <Descriptions column={{ xs: 1, sm: 2, md: 3 }} size="small" bordered>
           <Descriptions.Item label={t("factorColCode")}>{factor.code}</Descriptions.Item>
-          <Descriptions.Item label={t("factorColName")}>{factor.name || "-"}</Descriptions.Item>
-          <Descriptions.Item label={t("factorColCategory")}>{factor.category || "-"}</Descriptions.Item>
+          <Descriptions.Item label={t("factorColName")}>{factorLabel(factor.code, factor.name)}</Descriptions.Item>
+          <Descriptions.Item label={t("factorColCategory")}>{factorCategoryLabel(factor.category)}</Descriptions.Item>
           <Descriptions.Item label={t("factorColDirection")}>
-            {directionLabel(factor.direction)}
+            {factorDirectionLabel(factor.direction)}
           </Descriptions.Item>
           <Descriptions.Item label={t("factorColStatus")}>
             <Tag color={statusColor(lifecycleStatus)}>{statusLabel(lifecycleStatus)}</Tag>
@@ -444,7 +444,7 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
         okText={t("factorTransitionOk")}
         cancelText={t("factorTransitionCancel")}
         okButtonProps={{ danger: modalState.danger, loading: transitioning }}
-        destroyOnClose
+        destroyOnHidden
       >
         <Input.TextArea
           placeholder={t("factorTransitionReasonPlaceholder")}

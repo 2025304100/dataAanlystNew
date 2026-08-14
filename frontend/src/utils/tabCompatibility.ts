@@ -25,6 +25,7 @@ export const LEGACY_TAB_MAPPING: Record<string, string> = {
   portfolio: "portfolio",
   discovery: "opportunity",
   investment: "research",
+  "ai-settings": "settings",
 };
 
 /**

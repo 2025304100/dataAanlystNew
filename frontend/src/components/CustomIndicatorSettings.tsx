@@ -1018,7 +1018,7 @@ export default function CustomIndicatorSettings({ onOpenHistoryInit }: CustomInd
         okText={t("ciPromoteConfirm")}
         cancelText={t("ciPromoteCancel")}
         okButtonProps={{ loading: promoteLoading }}
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Alert

@@ -179,7 +179,14 @@ def test_incremental_sync_filters_pending_symbols_by_scope(monkeypatch, db_sessi
     def fake_sync_one(universe_symbol_id: int, incremental_target: date) -> dict:
         called_ids.append(universe_symbol_id)
         assert incremental_target == target_date
-        return {"symbol": str(universe_symbol_id), "status": "ok", "inserted": 1, "updated": 0}
+        return {
+            "symbol": str(universe_symbol_id),
+            "status": "ok",
+            "inserted": 1,
+            "updated": 0,
+            "fetch_seconds": 1.25,
+            "database_seconds": 0.05,
+        }
 
     monkeypatch.setattr(universe_sync, "_sync_one_incremental_concurrent", fake_sync_one)
 
@@ -194,6 +201,9 @@ def test_incremental_sync_filters_pending_symbols_by_scope(monkeypatch, db_sessi
     assert result["processed"] == 1
     assert result["ok"] == 1
     assert result["failed"] == 0
+    assert result["attempts"] == 1
+    assert result["average_fetch_seconds"] == pytest.approx(1.25)
+    assert result["average_database_seconds"] == pytest.approx(0.05)
 
 
 def test_incremental_sync_uses_market_specific_target_dates(monkeypatch, db_session):

@@ -53,12 +53,16 @@ window.getComputedStyle = ((elt: Element, pseudoElt?: string | null) => {
   return originalGetComputedStyle(elt);
 }) as typeof window.getComputedStyle;
 
-// 抑制 antd 在 jsdom 下的已知警告噪声（Spin tip、Modal destroyOnClose 等）
+// 抑制 antd 在 jsdom 下的已知警告噪声（Spin tip、Modal destroyOnClose/destroyOnHidden 等）
 const originalConsoleWarn = console.warn;
 const suppressedWarnPatterns = [
   "destroyOnClose is deprecated",
   "`destroyOnClose` is deprecated",
+  "destroyOnHidden is deprecated",
+  "`destroyOnHidden` is deprecated",
   "Spin `tip`",
+  "Static function can not consume context",
+  "The ticks may be not readable when set min: 0, max: 100 and alignTicks: true",
 ];
 console.warn = (...args: unknown[]) => {
   const msg = String(args[0] ?? "");

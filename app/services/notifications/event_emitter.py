@@ -227,6 +227,7 @@ def emit_drawdown_warning(
     drawdown_pct: float,
     threshold_pct: float,
     current_value: float | None = None,
+    event_key: str | None = None,
 ) -> list:
     """触发回撤预警事件。"""
     severity = "critical" if drawdown_pct >= threshold_pct * 1.5 else "error"
@@ -245,6 +246,51 @@ def emit_drawdown_warning(
             "drawdown_pct": f"{drawdown_pct:.2f}",
             "threshold_pct": f"{threshold_pct:.2f}",
         },
+        event_key=event_key,
+    )
+
+
+def emit_max_loss_warning(
+    db: Session,
+    *,
+    portfolio_id: int,
+    source_id: int,
+    symbol: str,
+    loss_pct: float,
+    threshold_pct: float,
+    current_price: float,
+    avg_cost: float,
+    realized_pnl: float | None = None,
+    event_key: str | None = None,
+) -> list:
+    """Emit a per-position or realized-trade maximum-loss warning."""
+    severity = "critical" if loss_pct >= threshold_pct * 1.5 else "error"
+    realized_text = (
+        f", realized P/L={realized_pnl:.2f}" if realized_pnl is not None else ""
+    )
+    return emit_event(
+        db,
+        source_type="portfolio",
+        source_id=source_id,
+        event_type="max_loss_warning",
+        severity=severity,
+        title=f"最大亏损预警: {symbol}",
+        body=(
+            f"标的={symbol}, 当前亏损={loss_pct:.2f}%, "
+            f"阈值={threshold_pct:.2f}%, 当前价={current_price:.2f}, "
+            f"平均成本={avg_cost:.2f}{realized_text}"
+        ),
+        scope_type="portfolio",
+        scope_id=portfolio_id,
+        template_variables={
+            "symbol": symbol,
+            "loss_pct": f"{loss_pct:.2f}",
+            "threshold_pct": f"{threshold_pct:.2f}",
+            "current_price": f"{current_price:.2f}",
+            "avg_cost": f"{avg_cost:.2f}",
+            "realized_pnl": f"{realized_pnl:.2f}" if realized_pnl is not None else "",
+        },
+        event_key=event_key,
     )
 
 
@@ -257,4 +303,5 @@ __all__ = [
     "emit_signal_matched",
     "emit_auto_trade_blocked",
     "emit_drawdown_warning",
+    "emit_max_loss_warning",
 ]

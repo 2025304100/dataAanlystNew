@@ -39,6 +39,7 @@ from app.core.config import settings
 from app.models.backtest import BacktestRun, BacktestTrade
 from app.models.daily_bar import DailyBar
 from app.models.portfolio import Portfolio, PortfolioRule, Position
+from app.models.portfolio_candidate import PortfolioCandidate
 from app.models.portfolio_member import (
     EXECUTION_AUTO,
     EXECUTION_CONFIRM,
@@ -52,12 +53,52 @@ from app.models.scan import ScanResult, ScanRun
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.services.portfolio_backtest import (
+    _derive_current_universe_symbol_ids,
+    _derive_symbol_ids,
     compare_new_old_engine,
     get_effective_members_for_date,
     get_member_symbols_for_date,
     run_portfolio_backtest,
     validate_member_eligibility,
 )
+
+
+def test_portfolio_candidate_is_available_to_legacy_backtest_source(db_session):
+    """组合专属候选池应被旧来源识别，不能误报“无候选标的”。"""
+    portfolio = _make_portfolio(db_session, "QA-candidate-legacy")
+    symbol = _make_symbol(db_session, "600901")
+    db_session.add(PortfolioCandidate(portfolio_id=portfolio.id, symbol_id=symbol.id))
+    db_session.commit()
+
+    assert _derive_symbol_ids(db_session, portfolio.id) == [symbol.id]
+
+
+def test_current_universe_ignores_historical_membership_date_and_keeps_candidates(db_session):
+    """当前组合配置回测不应按历史区间排除今天才加入的候选或成员。"""
+    portfolio = _make_portfolio(db_session, "QA-current-universe")
+    candidate_symbol = _make_symbol(db_session, "600902")
+    member_symbol = _make_symbol(db_session, "600903")
+    manual_symbol = _make_symbol(db_session, "600904")
+    db_session.add(PortfolioCandidate(portfolio_id=portfolio.id, symbol_id=candidate_symbol.id))
+    _make_member(
+        db_session,
+        portfolio_id=portfolio.id,
+        symbol_id=member_symbol.id,
+        execution_mode=EXECUTION_AUTO,
+        effective_from=datetime(2026, 8, 7),
+    )
+    _make_member(
+        db_session,
+        portfolio_id=portfolio.id,
+        symbol_id=manual_symbol.id,
+        execution_mode=EXECUTION_MANUAL,
+        effective_from=datetime(2026, 8, 7),
+    )
+    db_session.commit()
+
+    assert _derive_current_universe_symbol_ids(
+        db_session, portfolio.id, only_auto=True
+    ) == sorted([candidate_symbol.id, member_symbol.id])
 
 
 pytestmark = pytest.mark.whitebox

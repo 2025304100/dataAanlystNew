@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
 import { message } from "antd";
+import type { MessageInstance } from "antd/es/message/interface";
 import { api, onRequestChange } from "../api/client";
 import { setLocale, t, template } from "../i18n";
 import {
@@ -67,6 +68,7 @@ interface AppState {
   globalLoading: boolean;
   capabilities: CapabilitiesResponse | null;
   capabilitiesLoading: boolean;
+  antdMessageApi: MessageInstance | null;
 }
 
 export interface AppContextValue extends AppState {
@@ -85,18 +87,25 @@ export interface AppContextValue extends AppState {
   setSimPrice: (price: string) => void;
   setCandidateSearch: (search: string) => void;
   setSignalSampleLimit: (limit: number | null) => void;
-  showToast: (type: "success" | "error" | "info", msg: string) => void;
+  setAntdMessageApi: (api: MessageInstance | null) => void;
+  showToast: (type: "success" | "error" | "info", msg: ReactNode) => void;
   loadPortfolios: () => Promise<void>;
   // P0-7：组合管理方法（切换/创建/更新/删除）
   switchPortfolio: (portfolioId: number) => Promise<void>;
   createPortfolio: (payload: {
     name: string;
     account_type: string;
+    asset_scope?: "stock" | "etf" | "mixed";
     total_capital: number;
     investable_ratio: number;
     cash_reserve_ratio: number;
     currency?: string;
     is_default?: boolean;
+    // P1-FIX: 创建组合时新增 4 个落库字段（比例已乘 100 转成 ratio）
+    buy_fee_pct?: number;
+    sell_fee_pct?: number;
+    default_single_position_pct?: number;
+    benchmark_code?: string;
   }) => Promise<Portfolio | null>;
   updatePortfolio: (portfolioId: number, payload: {
     name?: string;
@@ -105,6 +114,11 @@ export interface AppContextValue extends AppState {
     cash_reserve_ratio?: number;
     currency?: string;
     is_default?: boolean;
+    auto_trade_enabled?: number;
+    buy_fee_pct?: number;
+    sell_fee_pct?: number;
+    default_single_position_pct?: number;
+    benchmark_code?: string;
   }) => Promise<Portfolio | null>;
   deletePortfolio: (portfolioId: number) => Promise<boolean>;
   loadWorkbench: () => Promise<void>;
@@ -168,7 +182,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     locale: "zh-CN",
     marketGroup: "all",
     activeTab: "decision",
-    activeSubTab: "portfolio-workbench",
+    // 组合交易改造（Task 2）：activeSubTab 在 portfolio Tab 下表示 4 子 Tab 状态
+    // （overview/members/strategy/backtest），默认 'overview'；不再表示「工作台/模拟交易」。
+    // 旧值 'portfolio-workbench' / 'portfolio-trading' 由 PortfolioTradingShell.resolveSubTab 兜底回退 'overview'。
+    activeSubTab: "overview",
     activeSymbolId: null,
     workbench: null,
     detail: null,
@@ -198,6 +215,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     globalLoading: false,
     capabilities: null,
     capabilitiesLoading: false,
+    antdMessageApi: null,
   });
 
   const [signalRulePreview, setSignalRulePreview] = useState<SignalRulePreviewResult | null>(null);
@@ -222,12 +240,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (partial.detailCache !== undefined) detailCacheRef.current = partial.detailCache;
   }, []);
 
-  const showToast = useCallback((type: "success" | "error" | "info", msg: string) => {
+  const showToast = useCallback((type: "success" | "error" | "info", msg: ReactNode) => {
     if (!msg) return;
-    if (type === "error") message.error(msg);
-    else if (type === "success") message.success(msg);
-    else message.info(msg);
-  }, []);
+    // 优先使用 antd <App> 上下文注入的 messageApi，消除静态调用警告；
+    // 回退到静态 message.*（测试/服务端渲染时依然可用）
+    if (state.antdMessageApi) {
+      const api = state.antdMessageApi;
+      if (type === "error") api.error(msg);
+      else if (type === "success") api.success(msg);
+      else api.info(msg);
+    } else {
+      if (type === "error") message.error(msg);
+      else if (type === "success") message.success(msg);
+      else message.info(msg);
+    }
+  }, [state.antdMessageApi]);
+
+  const setAntdMessageApi = useCallback((api: MessageInstance | null) => {
+    update({ antdMessageApi: api });
+  }, [update]);
 
   const setLocaleValue = useCallback((locale: "zh-CN" | "en-US") => {
     setLocale(locale);
@@ -409,11 +440,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const createPortfolio = useCallback(async (payload: {
     name: string;
     account_type: string;
+    asset_scope?: "stock" | "etf" | "mixed";
     total_capital: number;
     investable_ratio: number;
     cash_reserve_ratio: number;
     currency?: string;
     is_default?: boolean;
+    buy_fee_pct?: number;
+    sell_fee_pct?: number;
+    default_single_position_pct?: number;
+    benchmark_code?: string;
   }): Promise<Portfolio | null> => {
     try {
       const newPortfolio = await api.createPortfolio(payload);
@@ -430,11 +466,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // P0-7：更新组合属性
   const updatePortfolio = useCallback(async (portfolioId: number, payload: {
     name?: string;
+    asset_scope?: "stock" | "etf" | "mixed";
     total_capital?: number;
     investable_ratio?: number;
     cash_reserve_ratio?: number;
     currency?: string;
     is_default?: boolean;
+    auto_trade_enabled?: number;
+    buy_fee_pct?: number;
+    sell_fee_pct?: number;
+    default_single_position_pct?: number;
+    benchmark_code?: string;
   }): Promise<Portfolio | null> => {
     try {
       const updated = await api.updatePortfolio(portfolioId, payload);
@@ -1054,6 +1096,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSimPrice,
     setCandidateSearch,
     setSignalSampleLimit,
+    setAntdMessageApi,
     showToast,
     loadPortfolios,
     // P0-7：组合管理方法
@@ -1095,6 +1138,4 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
-
-
 

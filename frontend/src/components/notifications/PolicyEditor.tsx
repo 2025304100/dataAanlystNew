@@ -160,6 +160,7 @@ const MESSAGE_SOURCE_GROUPS: Array<{
       { type: "trade_executed", labelKey: "sourceEventTradeExecuted", default_severity: "info" },
       { type: "auto_trade_blocked", labelKey: "sourceEventAutoTradeBlocked", default_severity: "warn" },
       { type: "drawdown_warning", labelKey: "sourceEventDrawdownWarning", default_severity: "error" },
+      { type: "max_loss_warning", labelKey: "sourceEventMaxLossWarning", default_severity: "error" },
       { type: "position_changed", labelKey: "sourceEventPositionChanged", default_severity: "info" },
     ],
   },

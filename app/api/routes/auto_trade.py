@@ -3,6 +3,7 @@
 在现有 `POST /portfolios/{id}/auto-trade/execute`（定义于 portfolios.py）基础上，
 本模块追加以下端点（路径前缀沿用 `/portfolios/{portfolio_id}/auto-trade/...`）：
 
+- GET  /portfolios/{portfolio_id}/auto-trade/readiness
 - GET  /portfolios/{portfolio_id}/auto-trade/dry-run-diff
 - GET  /portfolios/{portfolio_id}/auto-trade/member-source-status
 - POST /portfolios/{portfolio_id}/auto-trade/rollback-to-old-source
@@ -35,6 +36,10 @@ from app.services.auto_trade_dual_run import (
     diff_trade_sets,
     is_member_source_enabled,
     rollback_to_old_source,
+)
+from app.services.auto_trade_readiness import (
+    get_auto_trade_readiness,
+    readiness_to_dict,
 )
 from app.services.auto_trade_safety import check_data_health
 from app.services.portfolio_members import has_position, list_members
@@ -142,6 +147,54 @@ def get_dry_run_diff(
             for d in diffs
         ],
     }
+
+
+# ----------------------------------------------------------------------------
+# 1. readiness：就绪检查（P0-AutoTrade 统一入口）
+# ----------------------------------------------------------------------------
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/auto-trade/readiness",
+    tags=["auto-trade"],
+)
+def get_auto_trade_readiness_route(
+    portfolio_id: int,
+    for_schedule: bool = False,
+    db: Session = Depends(get_db),
+):
+    """P0-AutoTrade：自动交易就绪检查。
+
+    - 不存在组合：404 Portfolio not found。
+    - 非模拟组合：仍 200，但会返回 account_ready=false 与对应 blocker。
+    - ready=true：允许真实执行；ready=false 只保留 dry-run 与诊断能力。
+
+    Query 参数：
+    - for_schedule：若来自调度入口则把 schedule_ready 升级为 blocker。
+    """
+    _get_portfolio_or_404(db, portfolio_id)
+
+    try:
+        result = get_auto_trade_readiness(
+            db,
+            portfolio_id=portfolio_id,
+            for_schedule=bool(for_schedule),
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("readiness 计算失败 portfolio_id=%s", portfolio_id)
+        raise HTTPException(
+            status_code=500,
+            detail="就绪检查失败，请稍后重试",
+        ) from exc
+
+    response = readiness_to_dict(result)
+    response["portfolio_id"] = portfolio_id
+    return response
 
 
 # ----------------------------------------------------------------------------

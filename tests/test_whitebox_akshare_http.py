@@ -4,7 +4,7 @@
 覆盖：
 1. HTTP monkey-patch 注入的 headers（UA + Connection: close，无 Referer）
 2. call_akshare_with_retry 的重试/退避/状态记录逻辑
-3. market_data._proxy_lock 可重入性（RLock 守护）
+3. 请求级代理绕过不修改全局环境，也不串行化并发 worker
 4. slow 联网测试：真实 akshare 接口可达性（守护深交所 WAF 问题）
 """
 from __future__ import annotations
@@ -282,51 +282,81 @@ def test_call_akshare_with_retry_passes_args_kwargs():
 
 
 # ============================================================================
-# 3. market_data._proxy_lock 可重入性守护（RLock 事件回归）
+# 3. 请求级代理绕过并发守护
 # ============================================================================
 
-def test_proxy_lock_is_reentrant():
-    """【回归守护】market_data._proxy_lock 应为 RLock，允许同线程嵌套 acquire。
-
-    历史事件：_proxy_lock 曾是 Lock()，_proxy_bypass 同线程嵌套调用导致死锁。
-    注意：threading.RLock 是工厂函数（非类），不能用 isinstance 判断，
-    通过验证"同线程二次 acquire 不阻塞"来确认是可重入锁。
-    """
-    from app.services.market_data import _proxy_lock
-
-    # 验证可重入：同线程连续两次 acquire 不阻塞（Lock 会第二次返回 False）
-    acquired1 = _proxy_lock.acquire(blocking=False)
-    acquired2 = _proxy_lock.acquire(blocking=False)
-    try:
-        assert acquired1 is True, "第一次 acquire 应成功"
-        assert acquired2 is True, (
-            "RLock 同线程第二次 acquire 应成功 —— "
-            "若返回 False 说明是 Lock（不可重入），会导致 _proxy_bypass 嵌套死锁"
-        )
-    finally:
-        # 释放两次以保持平衡（RLock 需要对应次数的 release）
-        try:
-            _proxy_lock.release()
-        except RuntimeError:
-            pass
-        try:
-            _proxy_lock.release()
-        except RuntimeError:
-            pass
-
-
 def test_proxy_bypass_nested_context_manager():
-    """_proxy_bypass 嵌套调用不死锁（RLock 守护的实际场景）。"""
+    """嵌套代理绕过不修改进程级环境变量。"""
     from app.services.market_data import _proxy_bypass
     import os
 
-    # 模拟同线程嵌套调用 _proxy_bypass（如 _fetch_history 内部又调用 _proxy_bypass）
-    with _proxy_bypass():
-        # 内层嵌套不应死锁
+    original = os.environ.get("HTTP_PROXY")
+    os.environ["HTTP_PROXY"] = "http://proxy.invalid:8080"
+    try:
         with _proxy_bypass():
-            assert "HTTP_PROXY" not in os.environ
-        # 内层退出后外层仍有效
-        assert "HTTP_PROXY" not in os.environ
+            with _proxy_bypass():
+                assert os.environ["HTTP_PROXY"] == "http://proxy.invalid:8080"
+        assert os.environ["HTTP_PROXY"] == "http://proxy.invalid:8080"
+    finally:
+        if original is None:
+            os.environ.pop("HTTP_PROXY", None)
+        else:
+            os.environ["HTTP_PROXY"] = original
+
+
+def test_proxy_bypass_does_not_serialize_workers():
+    """两个 worker 可以同时进入代理绕过上下文。"""
+    import threading
+    from app.services.market_data import _proxy_bypass
+
+    barrier = threading.Barrier(2)
+    errors: list[Exception] = []
+
+    def enter_context() -> None:
+        try:
+            with _proxy_bypass():
+                barrier.wait(timeout=1)
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=enter_context) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert errors == []
+    assert all(not thread.is_alive() for thread in threads)
+
+
+def test_proxy_bypass_disables_environment_proxy(monkeypatch):
+    from requests import Response
+    from requests.adapters import BaseAdapter
+    from app.services.market_data import _proxy_bypass
+
+    captured: dict = {}
+
+    class CapturingAdapter(BaseAdapter):
+        def send(self, request, **kwargs):
+            captured['proxies'] = dict(kwargs.get('proxies') or {})
+            response = Response()
+            response.status_code = 200
+            response.request = request
+            response.url = request.url
+            return response
+
+        def close(self):
+            return None
+
+    monkeypatch.setenv('HTTP_PROXY', 'http://proxy.invalid:8080')
+    session = requests.Session()
+    session.mount('http://', CapturingAdapter())
+
+    with _proxy_bypass():
+        response = session.get('http://example.test')
+
+    assert response.status_code == 200
+    assert not captured['proxies'].get('http')
 
 
 # ============================================================================

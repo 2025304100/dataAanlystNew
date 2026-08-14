@@ -222,7 +222,7 @@ export default function FactorDraftConfirmModal({
       open={open}
       onCancel={onClose}
       width={720}
-      destroyOnClose
+      destroyOnHidden
       footer={
         <Space wrap>
           <Button onClick={onClose}>{t("aiDraftCancel")}</Button>

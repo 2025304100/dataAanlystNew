@@ -16,6 +16,19 @@ function confidenceTag(confidence: number | null | undefined): { color: string; 
   return { color: "red", label: t("aiAssistant.confidenceLow") };
 }
 
+function displayEnum(domain: string, value: unknown, fallback: string): string {
+  const raw = value == null ? "" : String(value).trim();
+  if (!raw) return fallback;
+  const label = enumLabel(domain, raw);
+  return label && label !== "-" ? label : raw;
+}
+
+function evidenceContent(item: Record<string, unknown>): string {
+  const value = item.content ?? item.text ?? item.description ?? item.value ?? item.quote ?? item.title;
+  if (value != null && String(value).trim()) return String(value);
+  return JSON.stringify(item);
+}
+
 export default function ExplanationCard({ response, onActionClick }: ExplanationCardProps) {
   const hasEvidence = response.evidence && response.evidence.length > 0;
   const hasWarnings = response.warnings && response.warnings.length > 0;
@@ -45,11 +58,11 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
               <List.Item key={idx}>
                 <Space direction="vertical" size={2} style={{ width: "100%" }}>
                   <Space>
-                    <Tag color="blue">{enumLabel("aiEvidenceType", item.type)}</Tag>
+                    <Tag color="blue">{displayEnum("aiEvidenceType", item.type ?? (item as Record<string, unknown>).kind, "上下文")}</Tag>
                     <Tag color={tag.color}>{tag.label}</Tag>
-                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{enumLabel("aiEvidenceSource", item.source)}</span>
+                    <span style={{ fontSize: 12, color: "#64748b" }}>{displayEnum("aiEvidenceSource", item.source ?? (item as Record<string, unknown>).origin, "AI")}</span>
                   </Space>
-                  <span style={{ fontSize: 13 }}>{item.content}</span>
+                  <span style={{ fontSize: 13 }}>{evidenceContent(item as unknown as Record<string, unknown>)}</span>
                 </Space>
               </List.Item>
             );

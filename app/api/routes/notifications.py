@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -1028,6 +1028,182 @@ def retry_outbox(outbox_id: int, db: Session = Depends(get_db)):
             user_message="重发失败，请稍后重试",
         )
     return {"ok": True, "id": outbox_id, "status": updated.status}
+
+
+# ============================================================================
+# Real inbox API for the top navigation notification dropdown.
+# The data source is the same persisted Outbox populated by Settings policies;
+# only in_app channel rows are exposed, and an empty database returns [].
+# ============================================================================
+
+_SEVERITY_TO_TYPE: dict[str, str] = {
+    "error": "error",
+    "critical": "error",
+    "alert": "error",
+    "warning": "warning",
+    "warn": "warning",
+    "success": "success",
+    "info": "info",
+    "notice": "info",
+}
+
+_EVENT_TYPE_TO_TITLE_PREFIX: dict[str, str] = {
+    "portfolio_rebalance": "调仓执行",
+    "portfolio_backtest": "回测完成",
+    "risk_alert": "风险预警",
+    "auto_trade": "自动交易",
+    "system": "系统通知",
+    "strategy_update": "策略更新",
+    "channel_test": "渠道测试",
+}
+
+
+def _parse_payload_title_body(outbox: NotificationOutbox) -> tuple[str, str]:
+    try:
+        payload = json.loads(outbox.payload_json) if outbox.payload_json else {}
+    except Exception:
+        payload = {}
+    title = ""
+    body = ""
+    if isinstance(payload, dict):
+        title = str(payload.get("title") or payload.get("subject") or "")
+        body = str(payload.get("body") or payload.get("content") or payload.get("message") or "")
+    if not title:
+        prefix = _EVENT_TYPE_TO_TITLE_PREFIX.get(outbox.event_type or "", outbox.event_type or "通知")
+        title = f"{prefix}：{outbox.event_key or '#' + str(outbox.id)}"
+    if not body:
+        body = f"event_key={outbox.event_key or outbox.id}"
+    return title, body
+
+
+def _relative_time(created_at: datetime | None) -> str:
+    if created_at is None:
+        return "刚刚"
+    try:
+        now = _now_utc_naive()
+        delta = now - created_at
+        secs = max(int(delta.total_seconds()), 0)
+    except Exception:
+        return "刚刚"
+    if secs < 60:
+        return f"{secs} 秒前"
+    mins = secs // 60
+    if mins < 60:
+        return f"{mins} 分钟前"
+    hours = mins // 60
+    if hours < 24:
+        return f"{hours} 小时前"
+    days = hours // 24
+    if days < 7:
+        return f"{days} 天前"
+    return created_at.strftime("%Y-%m-%d %H:%M")
+
+
+def _outbox_to_inbox_item(outbox: NotificationOutbox) -> dict[str, Any]:
+    title, description = _parse_payload_title_body(outbox)
+    ntype = _SEVERITY_TO_TYPE.get((outbox.severity or "info").lower(), "info")
+    return {
+        "id": outbox.id,
+        "type": ntype,
+        "title": title,
+        "description": description,
+        "time": _relative_time(outbox.created_at),
+        "created_at": outbox.created_at.isoformat() if outbox.created_at else None,
+        "read": outbox.read_at is not None,
+        "status": outbox.status,
+        "source_type": outbox.source_type,
+        "event_type": outbox.event_type,
+        "channel_id": outbox.channel_id,
+    }
+
+
+@router.get("/notifications/inbox")
+def list_inbox(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Return persisted Outbox messages routed through the in-app channel."""
+    rows = db.execute(
+        select(NotificationOutbox)
+        .join(
+            NotificationChannel,
+            NotificationChannel.id == NotificationOutbox.channel_id,
+        )
+        .where(NotificationChannel.channel_type == CHANNEL_TYPE_IN_APP)
+        .order_by(NotificationOutbox.id.desc())
+        .limit(limit)
+    ).scalars().all()
+    return [_outbox_to_inbox_item(row) for row in rows]
+
+
+@router.put("/notifications/inbox/{item_id:int}/read")
+def mark_inbox_item_read(item_id: int, db: Session = Depends(get_db)):
+    """Persist the read receipt for one real in-app outbox item."""
+    outbox = db.execute(
+        select(NotificationOutbox)
+        .join(
+            NotificationChannel,
+            NotificationChannel.id == NotificationOutbox.channel_id,
+        )
+        .where(
+            NotificationOutbox.id == item_id,
+            NotificationChannel.channel_type == CHANNEL_TYPE_IN_APP,
+        )
+    ).scalars().first()
+    if outbox is None:
+        _raise(
+            "NOT_FOUND",
+            status_code=404,
+            user_message=f"站内通知不存在：id={item_id}",
+        )
+    outbox.read_at = outbox.read_at or _now_utc_naive()
+    db.commit()
+    return {"ok": True, "id": item_id, "read": True}
+
+
+@router.put("/notifications/inbox/read-all")
+def mark_inbox_all_read(
+    limit: int = Query(500, ge=1, le=5000),
+    db: Session = Depends(get_db),
+):
+    """Persist read receipts for the latest unread in-app messages."""
+    rows = db.execute(
+        select(NotificationOutbox)
+        .join(
+            NotificationChannel,
+            NotificationChannel.id == NotificationOutbox.channel_id,
+        )
+        .where(
+            NotificationChannel.channel_type == CHANNEL_TYPE_IN_APP,
+            NotificationOutbox.read_at.is_(None),
+        )
+        .order_by(NotificationOutbox.id.desc())
+        .limit(limit)
+    ).scalars().all()
+    now = _now_utc_naive()
+    for row in rows:
+        row.read_at = now
+    db.commit()
+    return {"ok": True, "count": len(rows)}
+
+
+@router.post("/notifications/inbox/view-all")
+def inbox_view_all(payload: dict[str, Any] | None = None, db: Session = Depends(get_db)):
+    """Return the real in-app total before the UI opens delivery history."""
+    total = db.execute(
+        select(func.count())
+        .select_from(NotificationOutbox)
+        .join(
+            NotificationChannel,
+            NotificationChannel.id == NotificationOutbox.channel_id,
+        )
+        .where(NotificationChannel.channel_type == CHANNEL_TYPE_IN_APP)
+    ).scalar() or 0
+    return {
+        "ok": True,
+        "total": total,
+        "hint": "已打开设置中的消息投递记录。",
+    }
 
 
 __all__ = ["router"]

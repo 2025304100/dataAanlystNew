@@ -21,6 +21,8 @@ const PACKAGE_URLS = [
   { prefix: "antd", url: "https://esm.sh/antd@5.21.0?bundle&deps=react@18.3.1,react-dom@18.3.1" },
   { prefix: "antd/", url: "https://esm.sh/antd@5.21.0/" },
   { prefix: "echarts-for-react", url: "https://esm.sh/echarts-for-react@3.0.6?bundle&deps=react@18.3.1" },
+  { prefix: "lucide-react", url: "https://esm.sh/lucide-react@1.29.0?bundle&deps=react@18.3.1" },
+  { prefix: "lucide-react/", url: "https://esm.sh/lucide-react@1.29.0/" },
   { prefix: "dayjs", url: "https://esm.sh/dayjs@1.11.13" },
   { prefix: "dayjs/", url: "https://esm.sh/dayjs@1.11.13/" },
 ];

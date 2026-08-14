@@ -232,33 +232,20 @@ def compute_dirty_symbols(
     if not universe_symbols:
         return []
 
-    # 解析快照 generated_at，判断是否需要全量 dirty
+    # 解析快照 generated_at
     snapshot_generated_at: datetime | None = None
-    snapshot_expired = False
     if current_snapshot is not None:
         snapshot_generated_at = _safe_datetime(current_snapshot.generated_at)
-        if snapshot_generated_at is None:
-            # 快照无 generated_at（异常状态，如 building），视为过期
-            snapshot_expired = True
-        else:
-            age = _now() - snapshot_generated_at
-            if age > timedelta(days=snapshot_max_age_days):
-                snapshot_expired = True
+        # generated_at 缺失：视为异常 snapshot（building / 损坏），交给调用方通过
+        # should_trigger_full_rebuild 决定是否 full rebuild；此处仍做增量 dirty 判定
+        # 避免在 compute_dirty 层短路导致全量 dirty 与增量分支结果不一致
 
-    # 全量 dirty：快照不存在或过期
-    if current_snapshot is None or snapshot_expired:
-        reason = (
-            DirtyReason.NEW_SYMBOL_ADDED
-            if current_snapshot is None
-            else DirtyReason.SNAPSHOT_EXPIRED
-        )
+    # 全量 dirty：首次构建（完全没有 snapshot）
+    # 注意：snapshot 过期不再在本函数内直接短路为 SNAPSHOT_EXPIRED 全量 dirty。
+    # 过期判定应通过 should_trigger_full_rebuild(...) 触发 full rebuild；
+    # 本函数始终执行增量 dirty 检查，确保测试和运行时的行为一致。
+    if current_snapshot is None:
         now = _now()
-        # 过期时使用快照 generated_at 作为 last_changed_at 下界，无快照时使用当前时间
-        baseline = (
-            snapshot_generated_at
-            if snapshot_expired and snapshot_generated_at is not None
-            else now
-        )
         results: list[DirtySymbol] = []
         for us in universe_symbols:
             results.append(
@@ -266,23 +253,27 @@ def compute_dirty_symbols(
                     universe_symbol_id=us.id,
                     symbol_id=None,  # 全量 dirty 分支不做 symbol_id join
                     symbol=us.symbol,
-                    reasons=[reason],
-                    last_changed_at=baseline,
+                    reasons=[DirtyReason.NEW_SYMBOL_ADDED],
+                    last_changed_at=now,
                     detail={
-                        "snapshot_id": current_snapshot.id if current_snapshot else None,
-                        "snapshot_generated_at": (
-                            snapshot_generated_at.isoformat()
-                            if snapshot_generated_at is not None
-                            else None
-                        ),
+                        "snapshot_id": None,
+                        "snapshot_generated_at": None,
                     },
                 )
             )
-        # 全量 dirty 时所有标的 last_changed_at 相同，按 symbol 排序保持稳定
         results.sort(key=lambda d: d.symbol)
         return results
 
-    # 增量 dirty：快照存在且未过期，逐表聚合检查
+    # generated_at 仍为 None：无法比较，保守返回空（调用方应通过 status 重建）
+    if snapshot_generated_at is None:
+        return []
+
+    # 检测快照是否过期（用于叠加 SNAPSHOT_EXPIRED 原因，不短路增量检查）
+    now_for_age = _now()
+    age = now_for_age - snapshot_generated_at
+    snapshot_expired = age > timedelta(days=snapshot_max_age_days)
+
+    # 增量 dirty：逐表聚合检查（无论 snapshot 是否过期，都按增量规则计算）
     # 1. 拉取所有 universe_symbol 的 symbol_id（按 symbol code join symbols 表）
     sym_codes = [us.symbol for us in universe_symbols]
     symbol_rows = db.execute(
@@ -321,6 +312,13 @@ def compute_dirty_symbols(
                 else None
             ),
         }
+
+        # SNAPSHOT_EXPIRED: 快照过期，所有标的至少带此原因
+        if snapshot_expired:
+            reasons.append(DirtyReason.SNAPSHOT_EXPIRED)
+            change_timestamps.append(snapshot_generated_at)
+            detail["snapshot_expired"] = True
+            detail["snapshot_age_days"] = age.days
 
         # NEW_SYMBOL_ADDED: universe_symbol 在快照后新增
         us_created_at = _safe_datetime(us.created_at)
@@ -432,6 +430,7 @@ def should_trigger_full_rebuild(
     new_scoring_config_version: int | None = None,
     new_weight_mode: str | None = None,
     new_factor_model_run_id: str | None = None,
+    snapshot_max_age_days: int = 7,
 ) -> tuple[bool, str | None]:
     """判断是否需要触发新版本全量快照。
 
@@ -442,6 +441,7 @@ def should_trigger_full_rebuild(
     4. 修改影响全市场的宏观权重或基础公式（暂用 scoring_config_version 变化替代）
     5. current_snapshot 为 None（首次构建）
     6. current_snapshot.status == 'failed' 或 'superseded'
+    7. current_snapshot.generated_at 距今超过 snapshot_max_age_days（快照过期）
 
     Args:
         db: 数据库会话
@@ -451,6 +451,7 @@ def should_trigger_full_rebuild(
         new_scoring_config_version: 新激活的评分配置版本号
         new_weight_mode: 新权重模式（manual / shadow / ridge）
         new_factor_model_run_id: 新因子模型 run_id
+        snapshot_max_age_days: 快照最大有效期天数，超过需 full rebuild
 
     Returns:
         (是否触发全量重建, 触发原因码)
@@ -461,6 +462,13 @@ def should_trigger_full_rebuild(
     # 条件 6：当前快照不可用
     if current_snapshot.status in ("failed", "superseded"):
         return True, "snapshot_not_ready"
+    # 条件 7：快照超过最大有效期
+    generated_at = _safe_datetime(current_snapshot.generated_at)
+    if generated_at is None:
+        return True, "snapshot_no_generated_at"
+    age = _now() - generated_at
+    if age > timedelta(days=snapshot_max_age_days):
+        return True, "snapshot_expired"
     # 条件 1：评分配置版本变化
     if new_scoring_config_version is not None:
         cur_version = current_snapshot.scoring_config_version

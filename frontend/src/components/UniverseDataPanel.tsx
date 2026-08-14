@@ -1,6 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { Card, Button, Progress, Statistic, Row, Col, InputNumber, Select, Space, Alert, Tag, Tooltip, Checkbox, Tabs, message } from "antd";
-import { PlayCircleOutlined, ReloadOutlined, StopOutlined, QuestionCircleOutlined, ThunderboltOutlined, HistoryOutlined, ToolOutlined } from "@ant-design/icons";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Card, Button, Progress, Statistic, Row, Col, InputNumber, Select, Space, Alert, Tag, Tooltip, Checkbox, Tabs, Table, message, Input, Popconfirm } from "antd";
+import type { IndexSyncTaskRead } from "../api/client";
+import {
+  PlayCircleOutlined, ReloadOutlined, StopOutlined, QuestionCircleOutlined,
+  ThunderboltOutlined, HistoryOutlined, ToolOutlined, LineChartOutlined,
+  CloudSyncOutlined, PlusOutlined, CloseCircleOutlined,
+} from "@ant-design/icons";
 import { api } from "../api/client";
 import { t } from "../i18n";
 
@@ -244,6 +249,44 @@ function saveUniverseConfig(cfg: Record<string, unknown>) {
   }
 }
 
+// ─── 基准指数数据同步类型 ───
+interface IndexStatusItem {
+  symbol: string; name: string; bar_count: number;
+  first_date: string | null; last_date: string | null;
+  freshness_days: number | null; linearity_dev_pct: number | null;
+  is_custom?: boolean;  // 是否用户自定义
+  last_sync_error?: string | null;
+  last_sync_result?: {
+    received?: number; written?: number; skipped?: number;
+    error?: string | null;
+  } | null;
+}
+const INDEX_HISTORY_DAYS_OPTIONS = [
+  { label: "近1年", value: 365 },
+  { label: "近2年", value: 730 },
+  { label: "近3年", value: 1095 },
+  { label: "近5年 (推荐)", value: 1825 },
+  { label: "近10年", value: 3650 },
+];
+const CUSTOM_INDEX_KEY = "benchmark.custom_indices.v1";
+interface CustomIndexEntry { symbol: string; name: string }
+const DEFAULT_5_SYMBOLS = ["000300", "000905", "399006", "000016", "000688"];
+const DEFAULT_5_NAMES: Record<string, string> = {
+  "000300": "沪深300", "000905": "中证500", "399006": "创业板指",
+  "000016": "上证50", "000688": "科创50",
+};
+function loadCustomIndices(): CustomIndexEntry[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_INDEX_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((x) => x && typeof x.symbol === "string") : [];
+  } catch { return []; }
+}
+function saveCustomIndices(list: CustomIndexEntry[]) {
+  try { localStorage.setItem(CUSTOM_INDEX_KEY, JSON.stringify(list || [])); } catch {}
+}
+
 export default function UniverseDataPanel() {
   const _savedCfg = loadUniverseConfig();
   const [stats, setStats] = useState<UniverseStats | null>(null);
@@ -278,6 +321,313 @@ export default function UniverseDataPanel() {
   const [repairChunkDays, setRepairChunkDays] = useState<number>(_savedCfg?.repairChunkDays ?? 90);
   const [repairScopes, setRepairScopes] = useState<string[]>(_savedCfg?.repairScopes ?? ["cn-stock"]);
   const [repairSyncLimit, setRepairSyncLimit] = useState<number>(_savedCfg?.repairSyncLimit ?? 0);
+
+  // ─── 基准指数同步状态 ───
+  const [indexStatusList, setIndexStatusList] = useState<IndexStatusItem[]>([]);
+  const [indexStatusLoading, setIndexStatusLoading] = useState(false);
+  const [indexSyncRunning, setIndexSyncRunning] = useState(false);
+  const [indexSyncTask, setIndexSyncTask] = useState<IndexSyncTaskRead | null>(null);
+  const indexSyncPollRef = useRef<number | null>(null);  // 心跳轮询 interval id，用于卸载/重新开始时清理
+  const indexSyncPollInFlightRef = useRef(false);
+  const [indexSelectedSymbols, setIndexSelectedSymbols] = useState<string[]>([]);
+  const [indexHistoryDays, setIndexHistoryDays] = useState<number>(1825);
+  // 自定义指数（localStorage）
+  const [customIndices, setCustomIndices] = useState<CustomIndexEntry[]>(() => loadCustomIndices());
+  const [addSymbol, setAddSymbol] = useState("");
+  const [addName, setAddName] = useState("");
+  const [addLoading, setAddLoading] = useState(false);
+
+  const effectiveSymbolsToQuery = useMemo(() => {
+    const set = new Map<string, { symbol: string; name: string; is_custom: boolean }>();
+    DEFAULT_5_SYMBOLS.forEach((s) => set.set(s, { symbol: s, name: DEFAULT_5_NAMES[s] || s, is_custom: false }));
+    customIndices.forEach((c) => set.set(c.symbol, { symbol: c.symbol, name: c.name || c.symbol, is_custom: true }));
+    return Array.from(set.values());
+  }, [customIndices]);
+
+  const loadIndexStatus = useCallback(async (silent = true) => {
+    if (!silent) setIndexStatusLoading(true);
+    try {
+      const symbolsParam = effectiveSymbolsToQuery.map((e) => e.symbol).join(",");
+      const res = await api.getIndexPricesStatus(symbolsParam);
+      // 补全自定义标记 + 自定义名称
+      const customMap = new Map<string, string>();
+      effectiveSymbolsToQuery.forEach((e) => {
+        if (e.is_custom) customMap.set(e.symbol, e.name);
+      });
+      const base = (res?.items || []).map((it) => ({
+        ...it,
+        name: customMap.get(it.symbol) || it.name || DEFAULT_5_NAMES[it.symbol] || it.symbol,
+        is_custom: customMap.has(it.symbol),
+      }));
+      // 若有 customIndices 不在 base 里（后端尚未写入时的占位条目），补占位
+      customIndices.forEach((c) => {
+        if (!base.find((b) => b.symbol === c.symbol)) {
+          base.push({
+            symbol: c.symbol, name: c.name || c.symbol, bar_count: 0,
+            first_date: null, last_date: null, freshness_days: null,
+            linearity_dev_pct: null, is_custom: true,
+          });
+        }
+      });
+      setIndexStatusList(base);
+      // 只在当前无选中项（首次加载 / 用户从未勾选时）智能预选：仅选中需要同步的（无数据或疑似直线）
+      // 修复：之前如果全部健康会 fallback 到"全选"，导致一打开5个基准都被勾选染绿背景，误以为无法取消
+      if (indexSelectedSymbols.length === 0) {
+        const pick = base
+          .filter((it) => it.bar_count === 0 || (it.linearity_dev_pct ?? 0) < 0.1)
+          .map((it) => it.symbol);
+        // 注意：即便 pick 为空（全部健康），也保持空数组，不做全选
+        setIndexSelectedSymbols(pick);
+      }
+    } catch (e: any) {
+      if (!silent) message.error("基准指数状态加载失败: " + (e?.message ?? String(e)));
+    } finally {
+      if (!silent) setIndexStatusLoading(false);
+    }
+  }, [effectiveSymbolsToQuery, indexSelectedSymbols.length, customIndices]);
+
+  useEffect(() => {
+    loadIndexStatus(true).catch(() => {});
+    const t = setInterval(() => loadIndexStatus(true).catch(() => {}), 60_000);
+    return () => clearInterval(t);
+  }, [loadIndexStatus]);
+
+  // 同步心跳只在组件真正卸载时终止；不能依赖 loadIndexStatus 的变化清理，
+  // 否则用户切换勾选项会意外停止已提交的后台任务轮询。
+  useEffect(() => () => {
+    if (indexSyncPollRef.current != null) {
+      clearInterval(indexSyncPollRef.current);
+      indexSyncPollRef.current = null;
+    }
+  }, []);
+
+  const addCustomIndex = async () => {
+    const sym = (addSymbol || "").trim();
+    if (!sym) {
+      message.warning("请输入指数代码，例如 000001（上证指数）、000010（上证180）、399005（中小板指）");
+      return;
+    }
+    // 不允许加默认 5 （避免重复）
+    if (DEFAULT_5_SYMBOLS.includes(sym)) {
+      message.warning("该基准已存在于默认 5 大基准中，无需重复添加");
+      return;
+    }
+    if (customIndices.find((c) => c.symbol === sym)) {
+      message.warning("该指数已存在于自定义列表中");
+      return;
+    }
+    setAddLoading(true);
+    try {
+      const name = (addName || "").trim() || sym;
+      const next = [...customIndices, { symbol: sym, name }];
+      setCustomIndices(next);
+      saveCustomIndices(next);
+      message.success(`已添加：${name}（${sym}）。可以勾选后点击「同步选中」拉取历史行情。`);
+      setAddSymbol("");
+      setAddName("");
+      await loadIndexStatus(false);
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
+  const removeCustomIndex = (symbol: string) => {
+    const next = customIndices.filter((c) => c.symbol !== symbol);
+    setCustomIndices(next);
+    saveCustomIndices(next);
+    setIndexSelectedSymbols((prev) => prev.filter((s) => s !== symbol));
+    setIndexStatusList((prev) => prev.filter((p) => p.symbol !== symbol || DEFAULT_5_SYMBOLS.includes(p.symbol)));
+    message.success(`已从自定义列表移除：${symbol}`);
+  };
+
+  // 指数同步进度 Toast 渲染（带 Progress + 文字状态）
+  const renderIndexSyncProgress = (t: IndexSyncTaskRead, extra?: string) => {
+    const percent = Math.max(0, Math.min(100, Math.round(t.percent ?? 0)));
+    const total = t.total ?? 0;
+    const processed = t.processed ?? 0;
+    const ok = t.ok_count ?? 0;
+    const failed = t.failed_count ?? 0;
+    return (
+      <div style={{ minWidth: 320 }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>
+          {t.message || "同步中..."}
+          {t.current_item ? <span style={{ color: "var(--text-muted, #888)", fontSize: 12, marginLeft: 8 }}>[当前 {t.current_item}]</span> : null}
+        </div>
+        <Progress percent={percent} status={t.status === "failed" ? "exception" : undefined} showInfo style={{ marginBottom: 6 }} />
+        <div style={{ fontSize: 12, color: "var(--text-muted, #888)", display: "flex", justifyContent: "space-between" }}>
+          <span>进度：{processed}/{total > 0 ? total : "-"}</span>
+          <span>
+            <span style={{ color: "var(--color-success, #16a34a)" }}>成功 {ok}</span>
+            {failed > 0 ? <span style={{ color: "var(--color-danger, #dc2626)", marginLeft: 8 }}>失败 {failed}</span> : null}
+          </span>
+        </div>
+        {extra ? <div style={{ marginTop: 4, fontSize: 12, color: "var(--color-primary, #1677ff)" }}>{extra}</div> : null}
+      </div>
+    );
+  };
+
+  const handleSyncIndexPrices = async (all = false, symbolsOverride?: string[]) => {
+    // 表格单行同步必须使用显式入参。不能依赖刚 setState 的选中项，
+    // 否则 React 尚未提交状态时会把上一轮勾选的指数提交到后台。
+    const symbols = all ? undefined : (symbolsOverride ?? indexSelectedSymbols);
+    if (!all && (!symbols || symbols.length === 0)) {
+      message.warning("请至少选择一个指数");
+      return;
+    }
+    // 清理之前的轮询，防止并发多跑
+    if (indexSyncPollRef.current != null) {
+      clearInterval(indexSyncPollRef.current);
+      indexSyncPollRef.current = null;
+    }
+    indexSyncPollInFlightRef.current = false;
+    setIndexSyncRunning(true);
+    const toastKey = `index-sync-${Date.now()}`;
+
+    try {
+      // Step 1: 异步提交，立即返回 task_id，不再阻塞 HTTP
+      const submitted: IndexSyncTaskRead = all
+        ? await api.syncAllBenchmarkIndices()
+        : await api.syncIndexPrices({
+            symbols: symbols && symbols.length > 0 ? symbols : undefined,
+            history_days: indexHistoryDays,
+          });
+      setIndexSyncTask(submitted);
+
+      message.open({
+        key: toastKey,
+        type: "loading",
+        duration: 0, // 0 = 常驻，心跳刷新；到终态再手动关闭/替换
+        content: renderIndexSyncProgress(submitted, "已提交任务，后台 worker 启动中..."),
+      });
+
+      // Step 2: 2 秒心跳轮询进度（Experience #835588 模式：失败重试5次兜底）
+      const taskId = submitted.id;
+      let consecPollFails = 0;
+
+      indexSyncPollRef.current = window.setInterval(async () => {
+        // 心跳请求还未返回时，不再并发发起下一次请求，避免慢网络下旧响应覆盖新进度。
+        if (indexSyncPollInFlightRef.current) return;
+        indexSyncPollInFlightRef.current = true;
+        try {
+          const latest: IndexSyncTaskRead = await api.getIndexPricesSyncTask(taskId);
+          consecPollFails = 0;
+          setIndexSyncTask(latest);
+
+          const isTerminal = ["done", "failed", "cancelled"].includes(latest.status);
+          if (!isTerminal) {
+            // 非终态：只更新动态 Progress Toast，不做别的
+            message.open({
+              key: toastKey,
+              type: "loading",
+              duration: 0,
+              content: renderIndexSyncProgress(latest),
+            });
+            return;
+          }
+
+          // ── 到达终态：清理轮询 + 更新行状态 + 结果 Toast ──
+          if (indexSyncPollRef.current != null) {
+            clearInterval(indexSyncPollRef.current);
+            indexSyncPollRef.current = null;
+          }
+
+          // 把结果写回到每行 last_sync_result / last_sync_error（与原逻辑一致，字段兼容）
+          const resultPayload = latest.result;
+          if (resultPayload?.items) {
+            setIndexStatusList((prev) => prev.map((row) => {
+              const it = resultPayload.items.find((i) => i.symbol === row.symbol);
+              if (!it) return row;
+              return {
+                ...row,
+                last_sync_error: it.error ?? null,
+                last_sync_result: {
+                  received: (it as any).received,
+                  written: (it as any).written,
+                  skipped: (it as any).skipped,
+                  error: it.error ?? null,
+                },
+              };
+            }));
+          }
+
+          const total = latest.total ?? resultPayload?.total ?? 0;
+          const ok = latest.ok_count ?? resultPayload?.success ?? 0;
+          const failed = latest.failed_count ?? resultPayload?.failed ?? 0;
+          const total_written = (resultPayload?.items || []).reduce(
+            (s, i) => s + ((i as any).written ?? 0), 0,
+          );
+
+          if (latest.status === "done") {
+            if (failed > 0) {
+              message.open({
+                key: toastKey,
+                type: "error",
+                duration: 10,
+                content: (
+                  <div>
+                    <Progress percent={100} status="exception" showInfo={false} style={{ marginBottom: 6 }} />
+                    {`同步完成：${ok}/${total} 成功，累计写入 ${total_written} 条，失败 ${failed}。可点击每行左侧"+"展开查看错误详情。`}
+                  </div>
+                ),
+              });
+            } else {
+              message.open({
+                key: toastKey,
+                type: "success",
+                duration: 5,
+                content: (
+                  <div>
+                    <Progress percent={100} status="success" showInfo={false} style={{ marginBottom: 6 }} />
+                    {`同步完成：${ok}/${total} 个指数，累计写入 ${total_written} 条`}
+                  </div>
+                ),
+              });
+            }
+          } else if (latest.status === "cancelled") {
+            message.open({ key: toastKey, type: "warning", duration: 5, content: latest.message || "同步已取消" });
+          } else {
+            // failed
+            const errText = latest.message || (latest.errors?.[0] as any)?.error || "未知错误";
+            message.open({
+              key: toastKey, type: "error", duration: 10,
+              content: `同步失败：${errText}`,
+            });
+          }
+
+          setIndexSyncRunning(false);
+          await loadIndexStatus(false);
+        } catch (pollErr: any) {
+          // 轮询失败：连续5次才兜底停止，单/偶发网络抖动继续尝试
+          consecPollFails += 1;
+          if (consecPollFails >= 5) {
+            if (indexSyncPollRef.current != null) {
+              clearInterval(indexSyncPollRef.current);
+              indexSyncPollRef.current = null;
+            }
+            setIndexSyncRunning(false);
+            message.open({
+              key: toastKey,
+              type: "warning",
+              duration: 8,
+              content: `进度查询连续失败：${pollErr?.message ?? String(pollErr)}。任务仍可能在后台继续，稍后可点"刷新状态"查看最新结果。`,
+            });
+          }
+        } finally {
+          indexSyncPollInFlightRef.current = false;
+        }
+      }, 2000);
+    } catch (e: any) {
+      // 提交阶段就失败（还没拿到 task_id）
+      setIndexSyncRunning(false);
+      setIndexSyncTask(null);
+      if (indexSyncPollRef.current != null) {
+        clearInterval(indexSyncPollRef.current);
+        indexSyncPollRef.current = null;
+      }
+      message.error("提交同步任务失败: " + (e?.message ?? String(e)));
+      console.error(e);
+    }
+  };
 
   const showToast = useCallback((type: "success" | "error", text: string) => {
     if (!text) return;
@@ -356,10 +706,13 @@ export default function UniverseDataPanel() {
     try {
       const data = await api.getUniverseIncrementalSyncStatus();
       setIncrTask(data as UniverseTask | null);
+      if (data && !["running", "queued"].includes(data.status)) {
+        void refreshStats();
+      }
     } catch {
       // ignore
     }
-  }, []);
+  }, [refreshStats]);
 
   const refreshBfTask = useCallback(async () => {
     try {
@@ -418,11 +771,12 @@ export default function UniverseDataPanel() {
     if (!incrTask || (incrTask.status !== "running" && incrTask.status !== "queued")) {
       return;
     }
-    const timer = setInterval(() => {
-      refreshIncrTask();
-      refreshStats();
-    }, 5000);
-    return () => clearInterval(timer);
+    const statusTimer = setInterval(refreshIncrTask, 1000);
+    const statsTimer = setInterval(refreshStats, 10000);
+    return () => {
+      clearInterval(statusTimer);
+      clearInterval(statsTimer);
+    };
   }, [incrTask?.status, incrTask?.id, refreshIncrTask, refreshStats]);
 
   // 历史回补任务轮询
@@ -634,6 +988,9 @@ export default function UniverseDataPanel() {
   const repairIsRunning = repairTask?.status === "running" || repairTask?.status === "queued";
   // 任意同步任务运行中时，禁用其他启动按钮
   const anyRunning = smartIsRunning || isRunning || incrIsRunning || bfIsRunning || repairIsRunning;
+  const incrAttempts = toSafeNumber(incrTask?.result?.attempts);
+  const incrAverageFetch = toSafeNumber(incrTask?.result?.average_fetch_seconds);
+  const incrAverageDatabase = toSafeNumber(incrTask?.result?.average_database_seconds);
   const backfillScopeSummaries = getBackfillSummaries(bfTask?.result);
   const backfillSummary = backfillScopeSummaries.reduce(
     (acc, item) => ({
@@ -777,6 +1134,10 @@ export default function UniverseDataPanel() {
       [syncTab]: panel,
     }));
   }, [syncTab]);
+
+  const indexProgressPercent = Math.max(0, Math.min(100, Math.round(indexSyncTask?.percent ?? 0)));
+  const indexSyncActive = Boolean(indexSyncTask && ["queued", "running"].includes(indexSyncTask.status));
+  const indexTaskUpdatedAt = indexSyncTask?.heartbeat_at ?? indexSyncTask?.updated_at ?? indexSyncTask?.last_progress_at;
 
   return (
     <div className="settings-tab-container" data-settings-content="settings-universe">
@@ -924,6 +1285,323 @@ export default function UniverseDataPanel() {
                 )}
               </>
             ) : null}
+          </Card>
+
+          {/* ─── 基准指数数据同步（回测基准曲线 + 板块同步） ─── */}
+          <Card
+            title={
+              <Space wrap>
+                <LineChartOutlined style={{ color: "#0f766e" }} />
+                <span>基准指数 / 板块同步</span>
+                <Tag color="blue">回测基准曲线数据源</Tag>
+                {customIndices.length > 0 ? (
+                  <Tag color="purple">{`含 ${customIndices.length} 个自定义`}</Tag>
+                ) : null}
+              </Space>
+            }
+            size="small"
+            style={{ marginBottom: 16 }}
+            extra={
+              <Space size="small" wrap>
+                <span style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>历史范围:</span>
+                <Select
+                  size="small"
+                  value={indexHistoryDays}
+                  onChange={(v) => setIndexHistoryDays(v)}
+                  disabled={indexSyncRunning}
+                  style={{ width: 130 }}
+                  options={INDEX_HISTORY_DAYS_OPTIONS}
+                />
+                <Button
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  onClick={() => loadIndexStatus(false)}
+                  loading={indexStatusLoading}
+                  disabled={indexSyncRunning}
+                >
+                  刷新状态
+                </Button>
+                <Button
+                  size="small"
+                  icon={<CloudSyncOutlined />}
+                  onClick={() => handleSyncIndexPrices(false)}
+                  loading={indexSyncRunning}
+                  type="primary"
+                >
+                  同步选中
+                </Button>
+                <Button
+                  size="small"
+                  icon={<PlayCircleOutlined />}
+                  onClick={() => handleSyncIndexPrices(true)}
+                  loading={indexSyncRunning}
+                >
+                  一键同步全部5大基准
+                </Button>
+              </Space>
+            }
+          >
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message={'板块/基准指数日线数据 (index_prices) 是回测中心基准曲线的数据源。若基准线呈直线，点击「一键同步」或先添加自定义指数再同步。'}
+              description={'支持 Akshare 能解析的全部指数：默认 5 大基准（沪深300、中证500、创业板指、上证50、科创50）+ 自定义（如上证指数 000001 / 上证180 000010 / 中小板指 399005 / 深证成指 399001 等）。数据源：东财 / 新浪 / 腾讯 三源容灾 fallback。'}
+            />
+
+            {indexSyncTask ? (
+              <div
+                data-testid="index-sync-total-progress"
+                style={{
+                  marginBottom: 12,
+                  padding: "12px 14px",
+                  border: `1px solid ${indexSyncActive ? "#91caff" : "var(--border-color, #d9d9d9)"}`,
+                  borderRadius: 8,
+                  background: indexSyncActive ? "#f0f7ff" : "var(--settings-block, #fafafa)",
+                }}
+              >
+                <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                  <Space wrap style={{ justifyContent: "space-between", width: "100%" }}>
+                    <Space size={8} wrap>
+                      <strong>同步总进度</strong>
+                      <Tag color={indexSyncTask.status === "failed" ? "error" : indexSyncTask.status === "cancelled" ? "warning" : indexSyncTask.status === "done" ? "success" : "processing"}>
+                        {indexSyncTask.status === "queued" ? "排队中" : indexSyncTask.status === "running" ? "同步中" : indexSyncTask.status === "done" ? "已完成" : indexSyncTask.status === "failed" ? "同步失败" : "已取消"}
+                      </Tag>
+                      {indexSyncTask.current_item ? <Tag>{`当前：${indexSyncTask.current_item}`}</Tag> : null}
+                    </Space>
+                    {indexTaskUpdatedAt ? (
+                      <span style={{ color: "var(--text-muted, #888)", fontSize: 12 }}>
+                        心跳更新：{new Date(indexTaskUpdatedAt).toLocaleTimeString("zh-CN", { hour12: false })}
+                      </span>
+                    ) : null}
+                  </Space>
+                  <Progress
+                    percent={indexProgressPercent}
+                    status={indexSyncTask.status === "failed" ? "exception" : indexSyncTask.status === "done" ? "success" : "active"}
+                    strokeColor={indexSyncTask.status === "failed" ? undefined : "#0f766e"}
+                  />
+                  <Space wrap size={[16, 4]} style={{ color: "var(--text-muted, #666)", fontSize: 12 }}>
+                    <span>已处理 {indexSyncTask.processed ?? 0} / {indexSyncTask.total || "—"} 个指数</span>
+                    <span style={{ color: "#16a34a" }}>成功 {indexSyncTask.ok_count ?? 0}</span>
+                    {(indexSyncTask.failed_count ?? 0) > 0 ? <span style={{ color: "#dc2626" }}>失败 {indexSyncTask.failed_count}</span> : null}
+                    <span>{indexSyncTask.current_step_description || indexSyncTask.message || "正在等待后台任务更新…"}</span>
+                  </Space>
+                </Space>
+              </div>
+            ) : null}
+
+            {/* 添加自定义指数行 */}
+            <div
+              style={{
+                marginBottom: 12,
+                padding: 12,
+                border: "1px dashed var(--border-color, #d9d9d9)",
+                borderRadius: 6,
+                background: "var(--settings-block, #fafafa)",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <strong style={{ fontSize: 12, color: "var(--text-muted, #666)" }}>＋ 添加自定义指数：</strong>
+              <Input
+                size="small"
+                value={addSymbol}
+                onChange={(e) => setAddSymbol(e.target.value)}
+                onPressEnter={addCustomIndex}
+                placeholder="指数代码，如 000001 / 399001 / 000010"
+                style={{ width: 200 }}
+                disabled={indexSyncRunning || addLoading}
+              />
+              <Input
+                size="small"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                onPressEnter={addCustomIndex}
+                placeholder="名称（可选，默认使用代码）"
+                style={{ width: 180 }}
+                disabled={indexSyncRunning || addLoading}
+              />
+              <Button
+                size="small"
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={addCustomIndex}
+                loading={addLoading}
+                disabled={indexSyncRunning}
+              >
+                添加到列表
+              </Button>
+              <Tooltip title={"常见指数参考：上证指数(000001)、深证成指(399001)、上证180(000010)、沪深300(000300，默认已有)、中证500(000905，默认已有)、中小板指(399005)、创业板指(399006，默认已有)、上证50(000016，默认已有)、深证100(399330)、中证1000(000852)、科创50(000688，默认已有)"}>
+                <QuestionCircleOutlined style={{ color: "var(--text-muted, #888)" }} />
+              </Tooltip>
+            </div>
+
+            <Table<IndexStatusItem>
+              className="benchmark-index-table"
+              size="small"
+              rowKey="symbol"
+              loading={indexStatusLoading}
+              dataSource={indexStatusList}
+              pagination={false}
+              scroll={{ x: 860 }}
+              rowSelection={{
+                columnWidth: 50,
+                selectedRowKeys: indexSelectedSymbols,
+                onChange: (keys) => setIndexSelectedSymbols(keys as string[]),
+                getCheckboxProps: () => ({ disabled: indexSyncRunning }),
+                checkStrictly: false,
+              }}
+              expandable={{
+                expandedRowKeys: indexStatusList.filter((r) => r.last_sync_error != null).map((r) => r.symbol),
+                expandedRowRender: (r) => {
+                  const res = r.last_sync_result;
+                  const err = r.last_sync_error;
+                  return (
+                    <div style={{ padding: "4px 20px" }}>
+                      {res ? (
+                        <Row gutter={16}>
+                          <Col><Statistic title="收到" value={res.received ?? 0} /></Col>
+                          <Col><Statistic title="写入" value={res.written ?? 0} valueStyle={{ color: "#16a34a" }} /></Col>
+                          <Col><Statistic title="跳过" value={res.skipped ?? 0} /></Col>
+                        </Row>
+                      ) : null}
+                      {err ? (
+                        <Alert
+                          style={{ marginTop: 8 }}
+                          type="error"
+                          showIcon
+                          message="同步错误详情"
+                          description={
+                            <pre style={{
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                              margin: 0,
+                              fontSize: 12,
+                              color: "#7f1d1d",
+                              background: "#fff1f2",
+                              padding: 8,
+                              borderRadius: 4,
+                            }}>{err}</pre>
+                          }
+                        />
+                      ) : null}
+                    </div>
+                  );
+                },
+              }}
+              columns={[
+                {
+                  title: "指数", dataIndex: "name", key: "name", width: 150, fixed: "left" as const,
+                  render: (_, r) => (
+                    <Space direction="vertical" size={0} style={{ minWidth: 120 }}>
+                      <Space size={4} wrap>
+                        <strong>{r.name}</strong>
+                        {r.is_custom ? (
+                          <Tag color="purple" style={{ margin: 0 }}>自定义</Tag>
+                        ) : (
+                          <Tag color="geekblue" style={{ margin: 0 }}>默认</Tag>
+                        )}
+                      </Space>
+                      <span style={{ fontSize: 11, color: "var(--text-muted, #888)", fontFamily: "monospace" }}>{r.symbol}</span>
+                    </Space>
+                  ),
+                },
+                {
+                  title: "状态", dataIndex: "bar_count", key: "status", width: 130,
+                  render: (_, r) => {
+                    const result = r.last_sync_result;
+                    const resultTag = (() => {
+                      if (result?.error != null) return <Tag color="red" style={{ marginLeft: 0 }}>同步失败</Tag>;
+                      if (result && (result.written ?? 0) > 0) return <Tag color="green" style={{ marginLeft: 0 }}>已写入{result.written}</Tag>;
+                      if (result && (result.received ?? 0) > 0 && (result.written ?? 0) === 0) return <Tag color="blue" style={{ marginLeft: 0 }}>已跳过{result.skipped}</Tag>;
+                      return null;
+                    })();
+                    let tag: any;
+                    if ((r.bar_count ?? 0) === 0) {
+                      tag = <Tag color="red">无数据，需同步</Tag>;
+                    } else if ((r.linearity_dev_pct ?? 0) < 0.1) {
+                      tag = <Tag color="orange">疑似直线，需同步</Tag>;
+                    } else if ((r.freshness_days ?? 9999) > 5) {
+                      tag = <Tag color="gold">有数据，但偏旧</Tag>;
+                    } else {
+                      tag = <Tag color="green">已就绪</Tag>;
+                    }
+                    return (
+                      <Space direction="vertical" size={2} style={{ minWidth: 120 }}>
+                        {tag}
+                        {resultTag}
+                      </Space>
+                    );
+                  },
+                },
+                {
+                  title: "K线条数", dataIndex: "bar_count", key: "count", width: 80,
+                  render: (v: number) => v?.toLocaleString?.() ?? v,
+                  align: "right" as const,
+                },
+                {
+                  title: "覆盖区间", key: "range", width: 210,
+                  render: (_, r) => (
+                    <Space direction="vertical" size={0} style={{ minWidth: 190 }}>
+                      <span style={{ fontSize: 12 }}>{r.first_date ?? "—"} 起</span>
+                      <span style={{ fontSize: 12, color: "var(--text-muted, #888)" }}>
+                        {r.last_date ?? "—"} 止
+                        {r.freshness_days != null ? (
+                          <span style={{ marginLeft: 6 }}>
+                            ({r.freshness_days}d前)
+                          </span>
+                        ) : null}
+                      </span>
+                    </Space>
+                  ),
+                },
+                {
+                  title: "线性偏离度", key: "dev", width: 100, align: "right" as const,
+                  render: (_, r) => {
+                    const pct = r.linearity_dev_pct;
+                    if (pct == null) return <span style={{ color: "var(--text-muted, #999)" }}>—</span>;
+                    const color = pct >= 1 ? "var(--color-success, #16a34a)" : (pct >= 0.1 ? "var(--color-warning, #d97706)" : "var(--color-danger, #dc2626)");
+                    return (
+                      <span style={{ color, fontWeight: 600 }}>{pct.toFixed(2)}%</span>
+                    );
+                  },
+                },
+                {
+                  title: "操作", key: "action", width: 150, fixed: "right" as const,
+                  render: (_, r) => (
+                    <Space size={2}>
+                      <Button
+                        size="small"
+                        icon={<CloudSyncOutlined />}
+                        onClick={() => {
+                          setIndexSelectedSymbols([r.symbol]);
+                          void handleSyncIndexPrices(false, [r.symbol]);
+                        }}
+                        loading={indexSyncRunning}
+                        disabled={indexSyncRunning}
+                      >
+                        同步
+                      </Button>
+                      {r.is_custom ? (
+                        <Popconfirm
+                          title={`确定移除自定义指数 ${r.name} (${r.symbol})？`}
+                          description={"只会从列表移除，数据库中已同步的数据会保留（下次再加回来仍可见）"}
+                          onConfirm={() => removeCustomIndex(r.symbol)}
+                          okText="移除"
+                          cancelText="取消"
+                        >
+                          <Button size="small" danger icon={<CloseCircleOutlined />}>
+                            移除
+                          </Button>
+                        </Popconfirm>
+                      ) : null}
+                    </Space>
+                  ),
+                },
+              ]}
+            />
           </Card>
 
           {/* 智能同步任务 */}
@@ -1201,6 +1879,13 @@ export default function UniverseDataPanel() {
                 {incrTask.total > 0 && (
                   <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
                     {t("universeProcessed")} {incrTask.processed} / {incrTask.total}，{t("universeSuccess")} {incrTask.ok_count}，{t("universeFail")} {incrTask.failed_count}
+                  </p>
+                )}
+                {incrAttempts > 0 && (
+                  <p style={{ color: "var(--text-muted, #888)", fontSize: 12, marginBottom: 8 }}>
+                    {t("universeIncrementalTimingBreakdown")
+                      .replace("{fetch}", incrAverageFetch.toFixed(2))
+                      .replace("{database}", incrAverageDatabase.toFixed(2))}
                   </p>
                 )}
                 {incrTask.errors && incrTask.errors.length > 0 && (

@@ -433,6 +433,8 @@ class NotificationOutbox(Base):
         comment="最近错误消息（脱敏，不暴露完整 Token/Secret/密码）",
     )
 
+    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+
     sent_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True,
         comment="发送成功时间",

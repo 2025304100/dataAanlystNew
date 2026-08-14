@@ -30,6 +30,8 @@ from app.models.symbol import Symbol
 from app.models.universe import UniverseSymbol
 from app.models.watchlist import Watchlist, WatchlistItem
 from app.services.factors.score_scope import get_active_score_scope
+from app.services.investment_themes import get_active_theme_opportunities
+from app.services.regions import region_from_market
 
 logger = logging.getLogger(__name__)
 
@@ -320,17 +322,15 @@ def list_candidates(
 
     # 通过 symbol code 反查 Symbol.id，再批量查 Score 表获取分项评分
     codes = [c.symbol for c in rows if c.symbol]
-    sym_id_map: dict[str, int] = {}
+    symbol_by_code: dict[str, Symbol] = {}
     if codes:
-        sym_rows = db.execute(
-            select(Symbol.id, Symbol.symbol).where(Symbol.symbol.in_(codes))
-        ).all()
-        sym_id_map = {s.symbol: s.id for s in sym_rows}
+        sym_rows = db.execute(select(Symbol).where(Symbol.symbol.in_(codes))).scalars().all()
+        symbol_by_code = {symbol.symbol: symbol for symbol in sym_rows}
 
-    symbol_ids = list(set(sym_id_map.values()))
+    symbol_ids = list({symbol.id for symbol in symbol_by_code.values()})
     score_map = _batch_latest_scores(db, symbol_ids)
 
-    return [_candidate_to_dict(c, score_map, sym_id_map) for c in rows]
+    return [_candidate_to_dict(c, score_map, symbol_by_code) for c in rows]
 
 
 def get_latest_scan_run_candidates(
@@ -376,6 +376,254 @@ def get_latest_scan_run_candidates(
         scan_run_id,
     )
     return _fallback_legacy_candidates(db, scan_run_id=scan_run_id, min_score=min_score, limit=limit)
+
+
+def _parse_json_list(value: Any) -> list[str]:
+    """Normalize historical plain tags and newer JSON tag arrays."""
+    if not value:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if item is not None]
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return [value]
+    if isinstance(parsed, list):
+        return [str(item) for item in parsed if item is not None]
+    return [str(parsed)]
+
+
+def _parse_json_object(value: str | None) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _score_at_least(value: Any, threshold: float) -> bool:
+    try:
+        return float(value) >= threshold
+    except (TypeError, ValueError):
+        return False
+
+
+def _pool_memberships(candidate: dict[str, Any]) -> list[str]:
+    """Apply one explicit, explainable admission policy to the latest scan snapshot.
+
+    Memberships deliberately overlap.  A high-quality candidate can be both a
+    factor and technical opportunity; the UI must show both rather than hiding
+    the second reason behind an arbitrary exclusive tab.
+    """
+    memberships: list[str] = []
+    has_factor_evidence = bool(
+        candidate.get("dimension_scores_json")
+        or candidate.get("scoring_config_snapshot_json")
+        or candidate.get("scoring_preset_key")
+        or candidate.get("scoring_preset_name")
+        or candidate.get("quality_score") is not None
+    )
+    if has_factor_evidence and _score_at_least(candidate.get("quality_score"), 60) and _score_at_least(candidate.get("priority_score"), 60):
+        memberships.append("factor")
+
+    stage = str(candidate.get("stage") or "").lower()
+    action = str(candidate.get("action") or "").lower()
+    has_technical_score = candidate.get("trend_score") is not None or candidate.get("momentum_score") is not None
+    # Scoring engine emits start/open and accel/hold (and may emit buy_dip for
+    # an executable pullback).  Keep the pool vocabulary aligned with the
+    # persisted Score.action values rather than an unrelated UI label set.
+    if has_technical_score and stage in {"start", "accel"} and action in {"open", "hold", "buy_dip"}:
+        memberships.append("technical")
+
+    # Theme membership requires a governed symbol mapping and a non-expired
+    # catalyst.  Legacy Symbol.theme values such as a-share/cn-etf are never
+    # treated as investment opportunities.
+    if candidate.get("theme_opportunity"):
+        memberships.append("theme")
+    return memberships
+
+
+def _candidate_board(symbol: Symbol) -> str | None:
+    """Normalize A-share board keys for candidate filtering and display."""
+    if symbol.asset_type != "stock":
+        return None
+    raw = (symbol.board or "").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "sh_main": "sh_main", "sh": "sh_main", "sse": "sh_main", "上证": "sh_main", "沪市": "sh_main",
+        "sz_main": "sz_main", "sz": "sz_main", "深证": "sz_main", "深市": "sz_main",
+        "chinext": "chinext", "gem": "chinext", "创业板": "chinext",
+        "star": "star", "kcb": "star", "科创板": "star",
+        "bse": "bse", "bj": "bse", "北交所": "bse",
+    }
+    if raw in aliases:
+        return aliases[raw]
+    code = (symbol.symbol or "").strip()
+    market = (symbol.market or "").strip().lower()
+    if market == "bj" or code.startswith(("4", "8", "92")):
+        return "bse"
+    if code.startswith(("300", "301")):
+        return "chinext"
+    if code.startswith(("688", "689")):
+        return "star"
+    if market == "sh":
+        return "sh_main"
+    if market == "sz":
+        return "sz_main"
+    return None
+
+
+def get_latest_candidate_pools(
+    db: Session,
+    *,
+    pool: str = "all",
+    min_score: float = 0.0,
+    limit: int = 100,
+    offset: int = 0,
+    scope: str | None = None,
+    asset_type: str | None = None,
+    region: str | None = None,
+    board: str | None = None,
+) -> dict[str, Any]:
+    """Return pool memberships and admission evidence from one latest scan run.
+
+    This is intentionally not a UI-only filter: the policy, counts and evidence
+    all share the same server-side scan snapshot.
+    """
+    if pool not in {"all", "factor", "technical", "theme"}:
+        raise ValueError("pool must be one of: all, factor, technical, theme")
+    if asset_type not in {None, "stock", "etf"}:
+        raise ValueError("asset_type must be stock or etf")
+    if region not in {None, "cn", "hk", "us", "other"}:
+        raise ValueError("region must be cn, hk, us or other")
+    if board not in {None, "sh_main", "sz_main", "chinext", "star", "bse"}:
+        raise ValueError("unsupported board")
+
+    source = get_latest_scan_run_candidates(db, min_score=min_score, limit=500, scope=scope)
+    source_symbol_ids = [int(item["symbol_id"]) for item in source if item.get("symbol_id")]
+    symbols_by_id = {
+        symbol.id: symbol
+        for symbol in db.execute(select(Symbol).where(Symbol.id.in_(source_symbol_ids))).scalars().all()
+    }
+
+    def matches_filters(candidate: dict[str, Any], symbol: Symbol | None) -> bool:
+        candidate_asset_type = symbol.asset_type if symbol is not None else candidate.get("asset_type")
+        if asset_type is not None and candidate_asset_type != asset_type:
+            return False
+        candidate_region = region_from_market(symbol.market) if symbol is not None else None
+        if region is not None and candidate_region != region:
+            return False
+        return board is None or (symbol is not None and _candidate_board(symbol) == board)
+
+    source = [
+        item
+        for item in source
+        if matches_filters(item, symbols_by_id.get(int(item["symbol_id"])))
+    ]
+    symbol_ids = [int(item["symbol_id"]) for item in source if item.get("symbol_id")]
+    theme_opportunities = get_active_theme_opportunities(db, symbol_ids)
+
+    # A governed theme mapping is itself a valid opportunity evidence chain;
+    # it must not depend on a symbol also appearing in the latest scan run.
+    # Otherwise a newly mapped symbol would remain invisible in the Theme pool
+    # until an unrelated discovery job happened to scan it.
+    if pool in {"all", "theme"}:
+        all_theme_opportunities = get_active_theme_opportunities(db)
+        source_ids = set(symbol_ids)
+        for theme_symbol_id, opportunity in all_theme_opportunities.items():
+            if theme_symbol_id in source_ids:
+                continue
+            symbol = db.get(Symbol, theme_symbol_id)
+            if symbol is None:
+                continue
+            if not matches_filters({}, symbol):
+                continue
+            symbols_by_id[symbol.id] = symbol
+            source.append(
+                {
+                    "symbol_id": symbol.id,
+                    "symbol": symbol.symbol,
+                    "name": symbol.name,
+                    "asset_type": symbol.asset_type,
+                    "priority_score": opportunity["catalyst"]["score"],
+                    "quality_score": None,
+                    "timing_score": None,
+                    "stage": None,
+                    "action": None,
+                    "trend_score": None,
+                    "momentum_score": None,
+                    "reason_tags": [],
+                    "theme_opportunity": opportunity,
+                    "scan_run_id": None,
+                    "created_at": None,
+                    "valid_days": None,
+                    "warning_days": None,
+                    "scoring_config_version": None,
+                    "scoring_preset_name": None,
+                    "dimension_scores_json": None,
+                }
+            )
+    enriched: list[dict[str, Any]] = []
+    counts = {"all": 0, "factor": 0, "technical": 0, "theme": 0}
+    for candidate in source:
+        symbol_id = int(candidate["symbol_id"]) if candidate.get("symbol_id") else None
+        candidate["theme_opportunity"] = theme_opportunities.get(symbol_id) if symbol_id else None
+        memberships = _pool_memberships(candidate)
+        if not memberships:
+            continue
+        for membership in memberships:
+            counts[membership] += 1
+        counts["all"] += 1
+        item = dict(candidate)
+        symbol = symbols_by_id.get(symbol_id) if symbol_id else None
+        if symbol is not None:
+            item["asset_type"] = symbol.asset_type
+            item["market"] = symbol.market
+            item["region"] = region_from_market(symbol.market)
+            item["board"] = _candidate_board(symbol)
+        else:
+            item["asset_type"] = item.get("asset_type")
+            item["market"] = None
+            item["region"] = None
+            item["board"] = None
+        item["reason_tags"] = _parse_json_list(candidate.get("reason_tags"))
+        item["pool_memberships"] = memberships
+        item["factor"] = {
+            "quality_score": candidate.get("quality_score"),
+            "priority_score": candidate.get("priority_score"),
+            "preset_name": candidate.get("scoring_preset_name"),
+            "config_version": candidate.get("scoring_config_version"),
+            "dimension_scores": _parse_json_object(candidate.get("dimension_scores_json")),
+        }
+        item["technical"] = {
+            "stage": candidate.get("stage"),
+            "action": candidate.get("action"),
+            "trend_score": candidate.get("trend_score"),
+            "momentum_score": candidate.get("momentum_score"),
+        }
+        item["theme_opportunity"] = candidate.get("theme_opportunity")
+        item["validity"] = {
+            "created_at": candidate.get("created_at"),
+            "valid_days": candidate.get("valid_days"),
+            "warning_days": candidate.get("warning_days"),
+        }
+        enriched.append(item)
+
+    if pool != "all":
+        enriched = [item for item in enriched if pool in item["pool_memberships"]]
+    enriched.sort(key=lambda item: float(item.get("priority_score") or 0), reverse=True)
+    snapshot_item = enriched[0] if enriched else (source[0] if source else {})
+    return {
+        "snapshot": {
+            "scan_run_id": snapshot_item.get("scan_run_id"),
+            "created_at": snapshot_item.get("created_at"),
+            "scoring_config_version": snapshot_item.get("scoring_config_version"),
+        },
+        "counts": counts,
+        "items": enriched[offset: offset + limit],
+        "total": len(enriched),
+    }
 
 
 def _fallback_legacy_candidates(
@@ -430,6 +678,7 @@ def _fallback_legacy_candidates(
             "symbol_id": symbol.id,
             "symbol": symbol.symbol,
             "name": symbol.name,
+            "theme": symbol.theme,
             "market": symbol.market,
             "region": region_from_market(symbol.market),
             "asset_type": symbol.asset_type,
@@ -451,6 +700,7 @@ def _fallback_legacy_candidates(
             "scoring_config_snapshot_json": score.scoring_config_snapshot_json if score else None,
             "stage": scan_result.stage,
             "action": scan_result.action,
+            "reason_tags": _parse_json_list(scan_result.reason_tags),
             "warning_days": scan_result.warning_days,
             "valid_days": scan_result.valid_days,
             "is_promoted": None,  # 历史数据无晋升状态
@@ -463,7 +713,7 @@ def _fallback_legacy_candidates(
 def _candidate_to_dict(
     c: DiscoveryCandidate,
     score_map: dict[int, Score] | None = None,
-    sym_id_map: dict[str, int] | None = None,
+    symbol_by_code: dict[str, Symbol] | None = None,
 ) -> dict[str, Any]:
     """把 DiscoveryCandidate ORM 对象转为前端可用的 dict。
 
@@ -490,7 +740,8 @@ def _candidate_to_dict(
         region = "cn"
 
     # 从 Score 表预加载数据中取分项评分（含 event_score 消息面维度）
-    symbol_id = sym_id_map.get(c.symbol) if sym_id_map else None
+    symbol = symbol_by_code.get(c.symbol) if symbol_by_code else None
+    symbol_id = symbol.id if symbol else None
     score = score_map.get(symbol_id) if (score_map and symbol_id) else None
 
     return {
@@ -501,6 +752,7 @@ def _candidate_to_dict(
         "symbol_id": symbol_id,
         "symbol": c.symbol,
         "name": c.name,
+        "theme": symbol.theme if symbol else None,
         "market": market,
         "region": region,
         "asset_type": c.asset_type,
@@ -523,6 +775,7 @@ def _candidate_to_dict(
         "scoring_config_snapshot_json": c.scoring_config_snapshot_json,
         "stage": c.stage,
         "action": c.action,
+        "reason_tags": _parse_json_list(c.reason_tags),
         "warning_days": c.warning_days,
         "valid_days": c.valid_days,
         "is_promoted": c.is_promoted,

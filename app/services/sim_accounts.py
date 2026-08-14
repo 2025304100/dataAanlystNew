@@ -22,6 +22,7 @@ from app.services.market_rules import (
     round_to_tick,
     validate_market_rules,
 )
+from app.services.portfolio_asset_scope import ensure_symbol_in_scope
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +203,13 @@ def place_sim_order(
         raise HTTPException(status_code=400, detail="Order side must be buy or sell")
     if order_type not in {"market", "limit"}:
         raise HTTPException(status_code=400, detail="Order type must be market or limit")
+    # A narrowed portfolio may still sell a historical out-of-scope holding,
+    # but cannot open or add to one through the generic simulated-order API.
+    if side == "buy":
+        try:
+            ensure_symbol_in_scope(portfolio, symbol)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     ensure_sim_account_seed(db, portfolio)
 
@@ -322,6 +330,41 @@ def place_sim_order(
             "emit_trade_executed failed for portfolio=%s symbol=%s side=%s (non-blocking)",
             portfolio.id, symbol.symbol, side, exc_info=True,
         )
+    if side == "sell" and realized_pnl is not None and realized_pnl < 0:
+        try:
+            from app.services.allocation import get_active_rule
+            from app.services.notifications.event_emitter import emit_max_loss_warning
+
+            rule = get_active_rule(db, portfolio.id)
+            threshold_ratio = float(
+                rule.max_loss_per_trade_pct if rule is not None else 0
+            )
+            if threshold_ratio > 1:
+                threshold_ratio /= 100.0
+            cost_basis = float(filled_amount) - float(realized_pnl)
+            loss_ratio = (
+                -float(realized_pnl) / cost_basis if cost_basis > 0 else 0.0
+            )
+            if threshold_ratio > 0 and loss_ratio >= threshold_ratio:
+                emit_max_loss_warning(
+                    db,
+                    portfolio_id=portfolio.id,
+                    source_id=trade.id,
+                    symbol=symbol.symbol,
+                    loss_pct=loss_ratio * 100,
+                    threshold_pct=threshold_ratio * 100,
+                    current_price=float(fill_price),
+                    avg_cost=cost_basis / float(normalized_quantity),
+                    realized_pnl=float(realized_pnl),
+                    event_key=f"portfolio:max_loss_warning:trade:{trade.id}",
+                )
+        except Exception:
+            logger.warning(
+                "emit_max_loss_warning failed for portfolio=%s trade=%s (non-blocking)",
+                portfolio.id,
+                trade.id,
+                exc_info=True,
+            )
     return order, trade
 
 

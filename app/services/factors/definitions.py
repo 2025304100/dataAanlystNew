@@ -42,9 +42,7 @@ FACTOR_DEFINITIONS: tuple[FactorDefinition, ...] = (
         name="ROE YoY Growth (ppt)",
         category="fundamental",
         direction="higher_better",
-        formula=(
-            "latest announced roe_ttm - same-period prior-year roe_ttm"
-        ),
+        formula="roe_ttm - ref(roe_ttm, 250)",
         frequency="quarterly",
     ),
     FactorDefinition(
@@ -52,14 +50,14 @@ FACTOR_DEFINITIONS: tuple[FactorDefinition, ...] = (
         name="5-day Main Inflow / Turnover",
         category="capital_flow",
         direction="higher_better",
-        formula="sum(main_net_inflow, 5d) / sum(amount, 5d)",
+        formula="sum(main_net_inflow, 5) / sum(amount, 5)",
     ),
     FactorDefinition(
         code="lhb_institution_net_ratio",
         name="LHB Institution Net / Turnover",
         category="capital_flow",
         direction="higher_better",
-        formula="lhb_institution_net / amount on listed event day",
+        formula="lhb_institution_net / amount",
         missing_policy="exclude",
         model_enabled=False,
         health_required=False,
@@ -69,14 +67,14 @@ FACTOR_DEFINITIONS: tuple[FactorDefinition, ...] = (
         name="20-day Turnover Z-Score",
         category="sentiment",
         direction="nonlinear",
-        formula="(turnover - mean_20d) / stddev_pop_20d",
+        formula="(turnover - mean(turnover, 20)) / stddev(turnover, 20)",
     ),
     FactorDefinition(
         code="hot_rank_attention",
         name="EastMoney Hot-Rank Attention",
         category="sentiment",
         direction="nonlinear",
-        formula="1 - hot_rank_pct / 100 for current top-100 snapshot",
+        formula="1 - hot_rank_pct / 100",
         missing_policy="exclude",
         model_enabled=False,
         health_required=False,
@@ -87,7 +85,7 @@ FACTOR_DEFINITIONS: tuple[FactorDefinition, ...] = (
         category="capital_flow",
         direction="higher_better",
         formula=(
-            "log(tail_avg_amount/pre_tail_avg_amount) "
+            "log(tail_activity_ratio) "
             "+ 20*tail_return + close_location - 0.5"
         ),
         missing_policy="exclude",

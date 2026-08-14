@@ -97,7 +97,12 @@ interface ProfileFormValues {
   is_fallback: boolean;
 }
 
-export default function AISettings() {
+interface AISettingsProps {
+  /** 是否嵌入到设置页中（省略外层布局） */
+  embedded?: boolean;
+}
+
+export default function AISettings({ embedded = false }: AISettingsProps) {
   const [profiles, setProfiles] = useState<AIProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -270,7 +275,15 @@ export default function AISettings() {
     setDiscoveredModels([]);
     try {
       const resp = await api.discoverAIModels(profile.id);
-      setDiscoveredModels(resp.models || []);
+      // 兼容处理：后端可能返回字符串数组或对象数组
+      const rawModels = resp.models || [];
+      const normalizedModels = rawModels.map((m: any) => {
+        if (typeof m === "string") {
+          return { id: m };
+        }
+        return { id: m.id || m.name || m.model || "", owned_by: m.owned_by || m.provider };
+      }).filter((m: { id: string }) => m.id);
+      setDiscoveredModels(normalizedModels);
     } catch (err: any) {
       message.error(err?.message || t("aiSettings.noModels"));
     } finally {
@@ -407,10 +420,8 @@ export default function AISettings() {
     },
   ];
 
-  return (
-    <div className="tab-container" data-tab-content="ai-settings" data-testid="ai-settings-page">
-      <div className="settings-layout">
-        <div className="settings-content" style={{ padding: 16 }}>
+  const content = (
+    <>
           {/* 健康状态总览 */}
           <Card
             size="small"
@@ -514,8 +525,22 @@ export default function AISettings() {
               })}
             </Card>
           )}
+    </>
+  );
+
+  return (
+    <>
+      {embedded ? (
+        <div style={{ padding: 0 }}>{content}</div>
+      ) : (
+        <div className="tab-container" data-tab-content="ai-settings" data-testid="ai-settings-page">
+          <div className="settings-layout">
+            <div className="settings-content" style={{ padding: 16 }}>
+              {content}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 新增/编辑 Modal */}
       <Modal
@@ -527,7 +552,7 @@ export default function AISettings() {
         okText={t("save")}
         cancelText={t("cancel")}
         width={600}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
@@ -606,7 +631,8 @@ export default function AISettings() {
         title={`${t("aiSettings.availableModels")} - ${modelsProfileName}`}
         onCancel={() => setModelsModalOpen(false)}
         footer={null}
-        width={500}
+        width={600}
+        styles={{ body: { maxHeight: "60vh", overflowY: "auto" } }}
       >
         {modelsLoading ? (
           <div style={{ textAlign: "center", padding: 24 }}><Spin /></div>
@@ -618,15 +644,17 @@ export default function AISettings() {
             dataSource={discoveredModels}
             renderItem={(model) => (
               <List.Item>
-                <Space>
-                  <Tag color="blue">{model.id}</Tag>
-                  {model.owned_by && <Text type="secondary">{model.owned_by}</Text>}
+                <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                  <Space>
+                    <Tag color="blue" style={{ margin: 0, fontFamily: "monospace" }}>{model.id}</Tag>
+                  </Space>
+                  {model.owned_by && <Text type="secondary" style={{ fontSize: 12 }}>{model.owned_by}</Text>}
                 </Space>
               </List.Item>
             )}
           />
         )}
       </Modal>
-    </div>
+    </>
   );
 }

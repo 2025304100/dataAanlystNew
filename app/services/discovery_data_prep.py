@@ -516,7 +516,7 @@ def _get_ready_snapshot_internal(
             DiscoveryScoreSnapshot.scope == normalized,
             DiscoveryScoreSnapshot.status == "ready",
         )
-        .order_by(DiscoveryScoreSnapshot.generated_at.desc().nullslast())
+        .order_by(DiscoveryScoreSnapshot.generated_at.desc())
         .limit(1)
     )
     return db.execute(stmt).scalars().first()
@@ -670,7 +670,7 @@ def _get_ready_snapshot_internal_excluding(
             DiscoveryScoreSnapshot.status == "ready",
             DiscoveryScoreSnapshot.id != exclude_snapshot_id,
         )
-        .order_by(DiscoveryScoreSnapshot.generated_at.desc().nullslast())
+        .order_by(DiscoveryScoreSnapshot.generated_at.desc())
         .limit(1)
     )
     return db.execute(stmt).scalars().first()

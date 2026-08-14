@@ -42,6 +42,7 @@ from app.models.portfolio_member import (
 from app.models.score import Score
 from app.models.sim_account import SimOrder
 from app.models.symbol import Symbol
+from app.services.portfolio_asset_scope import allows_asset_type, ensure_symbol_in_scope
 from app.services.portfolio_members import has_position, list_members
 
 logger = logging.getLogger(__name__)
@@ -227,6 +228,10 @@ def get_buy_candidates(
 
     manual/confirm 模式的成员不进入此列表（由 get_signal_candidates 处理）。
     """
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        return []
+
     # 1. 获取 active 成员（list_members 默认排除归档）
     members = list_members(
         db,
@@ -239,6 +244,9 @@ def get_buy_candidates(
     for member in members:
         # 只处理 auto 模式（confirm/manual 在 get_signal_candidates 中处理）
         if member.execution_mode != EXECUTION_AUTO:
+            continue
+        symbol = db.get(Symbol, member.symbol_id)
+        if symbol is None or not allows_asset_type(portfolio.asset_scope, symbol.asset_type):
             continue
 
         # 2. 检查当前无持仓
@@ -689,6 +697,10 @@ def _execute_order(db: Session, decision: TradeDecision) -> SimOrder:
     symbol = db.get(Symbol, decision.symbol_id)
     if symbol is None:
         raise ValueError(f"Symbol {decision.symbol_id} not found")
+    # A legacy out-of-scope holding may always be sold to unwind risk, but it
+    # must never produce a new buy after a portfolio is narrowed to one asset.
+    if decision.side == "buy":
+        ensure_symbol_in_scope(portfolio, symbol)
 
     # 获取实际价格
     price = _get_latest_price(db, decision.symbol_id)

@@ -471,6 +471,7 @@ export interface Portfolio {
   id: number;
   name: string;
   account_type: string;
+  asset_scope: "stock" | "etf" | "mixed";
   total_capital: number;
   investable_ratio: number;
   cash_reserve_ratio: number;
@@ -486,6 +487,7 @@ export interface Portfolio {
 export interface PortfolioCreatePayload {
   name: string;
   account_type: string;  // "simulated" | "manual"
+  asset_scope?: "stock" | "etf" | "mixed";
   total_capital: number;
   investable_ratio: number;
   cash_reserve_ratio: number;
@@ -496,6 +498,7 @@ export interface PortfolioCreatePayload {
 
 export interface PortfolioUpdatePayload {
   name?: string;
+  asset_scope?: "stock" | "etf" | "mixed";
   total_capital?: number;
   investable_ratio?: number;
   cash_reserve_ratio?: number;
@@ -528,6 +531,39 @@ export interface AutoTradePlanItem {
   buy_quantity?: number | null;
 }
 
+// P0-AutoTrade：就绪检查 issue（blocker/warning 通用结构）
+export interface ReadinessIssue {
+  code: string;
+  message: string;
+  detail?: unknown;
+}
+
+// P0-AutoTrade：自动交易就绪状态（对齐 /auto-trade/readiness 响应）
+export interface AutoTradeReadiness {
+  portfolio_id: number;
+  for_schedule?: boolean;
+  ready: boolean;
+  enabled: boolean;
+  account_ready: boolean;
+  data_ready: boolean;
+  source_ready: boolean;
+  schedule_ready: boolean;
+  blockers: ReadinessIssue[];
+  warnings: ReadinessIssue[];
+  source_mode?: string;
+  executed_at?: string | null;
+}
+
+// P0-AutoTrade：dry-run diff（与后端 auto_trade_dual_run diffs 对齐）
+export interface AutoTradeDryRunDiff {
+  symbol_id: number;
+  side: "buy" | "sell" | string;
+  old_action: string | null;
+  new_action: string | null;
+  reason: string;
+  detail: string;
+}
+
 export interface AutoTradeResult {
   portfolio_id: number;
   dry_run: boolean;
@@ -535,6 +571,14 @@ export interface AutoTradeResult {
   buys: AutoTradePlanItem[];
   errors: string[];
   executed_at: string;
+  // P0-AutoTrade：新增诊断字段
+  executed_source?: "old" | "new" | string | null;
+  member_source_enabled?: boolean;
+  source_mode?: string | null;
+  readiness?: Omit<AutoTradeReadiness, "portfolio_id"> | null;
+  blockers?: ReadinessIssue[];
+  warnings?: ReadinessIssue[];
+  diffs?: AutoTradeDryRunDiff[];
 }
 
 // P2-2: 组合整体回测结果
@@ -1638,4 +1682,3 @@ export interface SnapshotStatusRead {
   last_fast_scan_timings: Record<string, unknown> | null;
   last_fast_scan_status: string | null;
 }
-

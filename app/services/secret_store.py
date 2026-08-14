@@ -14,8 +14,8 @@
   （与 app/utils/secret_mask.py 同策略，后续可替换为 AES-256-GCM）
 - 系统凭据后端：预留接口（Windows Credential Manager / macOS Keychain /
   Linux secret-service），第一阶段未实现，返回 None
-- master key 从环境变量 APP_MASTER_KEY 读取，若不存在生成随机值
-  （仅当前进程有效，重启后加密文件后端的 secret 不可解密）
+- master key 优先从环境变量 APP_MASTER_KEY 读取；未配置时使用本机受限文件
+  持久化，确保重启后仍可解密 secrets.enc
 
 project_memory 硬约束：
 - 永不返回明文 Secret 到日志
@@ -42,6 +42,11 @@ _DEFAULT_SECRETS_PATH = Path(
         str(Path(__file__).resolve().parents[2] / "config" / "secrets.enc"),
     )
 ).expanduser()
+
+
+def _default_master_key_path(secrets_path: Path) -> Path:
+    """Return the local, persistent master-key path for a secrets file."""
+    return secrets_path.with_suffix(".key")
 
 
 class SecretStore:
@@ -136,12 +141,67 @@ class SecretStore:
     # ── 内部方法 ──────────────────────────────────────────────
 
     def _load_or_generate_master_key(self) -> str:
-        """从环境变量 APP_MASTER_KEY 读取，若不存在生成随机值。"""
+        """Load an environment key or create a stable local key for this store."""
         env_key = os.environ.get("APP_MASTER_KEY")
         if env_key:
             return env_key
-        # 生成随机值（仅当前进程有效）
-        return _pysecrets.token_urlsafe(32)
+
+        master_key_path = _default_master_key_path(self._secrets_path)
+        try:
+            existing_key = master_key_path.read_text(encoding="ascii").strip()
+            if existing_key:
+                return existing_key
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            logger.warning("SecretStore: failed to read local master key: %s", exc)
+
+        # Compatibility for the former file format. Its base64 payload contains
+        # the master-key prefix, so persist it before a restart makes the file
+        # impossible to open with a newly generated in-memory key.
+        master_key = self._recover_legacy_master_key() or _pysecrets.token_urlsafe(32)
+        try:
+            master_key_path.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(
+                master_key_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+            )
+            with os.fdopen(fd, "w", encoding="ascii") as handle:
+                handle.write(master_key)
+                handle.flush()
+                os.fsync(handle.fileno())
+            try:
+                os.chmod(str(master_key_path), 0o600)
+            except OSError:
+                pass
+            return master_key
+        except FileExistsError:
+            # Another application process initialized the store concurrently.
+            try:
+                existing_key = master_key_path.read_text(encoding="ascii").strip()
+                if existing_key:
+                    return existing_key
+            except OSError as exc:
+                logger.warning("SecretStore: failed to read concurrent master key: %s", exc)
+        except OSError as exc:
+            logger.warning("SecretStore: failed to persist local master key: %s", exc)
+
+        # Keep the service available when the local filesystem is read-only.
+        return master_key
+
+    def _recover_legacy_master_key(self) -> str | None:
+        """Recover the master key embedded by the pre-persistence file format."""
+        if not self._secrets_path.exists():
+            return None
+        try:
+            decoded = base64.b64decode(self._secrets_path.read_bytes(), validate=True)
+            prefix, separator, payload = decoded.decode("utf-8").partition(":")
+            if separator and prefix and payload:
+                return prefix
+        except (OSError, UnicodeDecodeError, ValueError):
+            pass
+        return None
 
     def _get_from_system_credential(self, key: str) -> str | None:
         """从系统凭据存储获取（第一阶段未实现）。"""

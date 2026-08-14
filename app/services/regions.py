@@ -1,5 +1,6 @@
 REGION_MARKETS = {
     "cn": {"sh", "sz", "bj", "cn"},
+    "hk": {"hk", "hkex", "hongkong"},
     "us": {"us", "nasdaq", "nyse", "amex"},
 }
 

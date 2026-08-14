@@ -59,7 +59,34 @@ export function FirstScanWizard({ open, onClose }: FirstScanWizardProps) {
   }, [open, overallBlocked, ctx.capabilities, onClose]);
 
   if (!overallBlocked) return null;
-  if (steps.length === 0) return null;
+
+  // 当 overall blocked 但无 discovery 相关步骤时（如 ai / message_channel 被阻塞），
+  // 显示"核心能力已就绪，可继续扫描"的提示，而非静默返回 null。
+  if (steps.length === 0) {
+    return (
+      <Modal
+        open={open}
+        title={t("capability.firstScanTitle")}
+        onCancel={onClose}
+        footer={[
+          <Button key="close" onClick={onClose}>
+            {t("cancel")}
+          </Button>,
+          <Button key="proceed" type="primary" onClick={onClose}>
+            {t("capability.proceedAnyway")}
+          </Button>,
+        ]}
+      >
+        <Alert
+          message={t("capability.overallBlocked")}
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+        <Paragraph>{t("capability.firstScanCoreReady")}</Paragraph>
+      </Modal>
+    );
+  }
 
   const handleStepAction = () => {
     const step = steps[currentStep];

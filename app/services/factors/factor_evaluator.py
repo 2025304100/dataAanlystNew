@@ -878,13 +878,65 @@ def run_evaluation(
         existing_reasons = (
             json.loads(existing_run.rejection_reasons_json) if existing_run.rejection_reasons_json else []
         )
+        split_metrics = existing_metrics.get("time_split", {})
+        if not isinstance(split_metrics, dict):
+            split_metrics = {}
+
+        def _stored_date(metric_name: str, fallback: date | datetime | None) -> date | None:
+            value = split_metrics.get(metric_name, fallback)
+            if isinstance(value, datetime):
+                return value.date()
+            if isinstance(value, date):
+                return value
+            if isinstance(value, str):
+                try:
+                    return date.fromisoformat(value[:10])
+                except ValueError:
+                    return None
+            return None
+
+        train_start = _stored_date("train_start", existing_run.train_start_date)
+        train_end = _stored_date("train_end", existing_run.train_end_date)
+        validation_start = _stored_date("validation_start", existing_run.validation_start_date)
+        validation_end = _stored_date("validation_end", existing_run.validation_end_date)
+        existing_time_split = None
+        if train_start and train_end and validation_start and validation_end:
+            existing_time_split = TimeSplit(
+                train_start=train_start,
+                train_end=train_end,
+                validation_start=validation_start,
+                validation_end=validation_end,
+                test_start=_stored_date("test_start", None),
+                test_end=_stored_date("test_end", None),
+                purge_days=int(split_metrics.get("purge_days", config.purge_days)),
+                embargo_days=int(split_metrics.get("embargo_days", config.embargo_days)),
+                target_horizon=config.target_horizon,
+            )
+
+        # 兼容早期创建的评估记录：旧记录可能没有保存时间切分字段。
+        # 任务 worker 仍需要验证区间执行压力测试，因此使用当前冻结数据重建切分，
+        # 不改变不可变的历史运行记录或其指标。
+        if existing_time_split is None:
+            try:
+                existing_time_split = build_time_split(
+                    all_dates=sorted(set(factor_values.index.tolist() + forward_returns.index.tolist())),
+                    target_horizon=config.target_horizon,
+                    train_ratio=config.train_ratio,
+                    validation_ratio=config.validation_ratio,
+                    purge_days=config.purge_days,
+                    embargo_days=config.embargo_days,
+                )
+            except ValueError:
+                # 数据不足时保留 None；调用方可跳过依赖验证区间的可选压力测试。
+                existing_time_split = None
+
         return EvaluationOutcome(
             run_id=existing_run.id,
             config_hash=config_hash,
             gate_result=existing_run.gate_result,  # type: ignore[arg-type]
             rejection_reasons=existing_reasons,
             metrics=existing_metrics,
-            time_split=None,
+            time_split=existing_time_split,
             coverage=CoverageMetrics(0.0, 0.0, 0.0, 0, 0),
         )
 

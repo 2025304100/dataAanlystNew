@@ -34,6 +34,7 @@ from app.services.async_tasks import (
     list_async_tasks,
 )
 from app.services.sim_accounts import build_sim_account_summary
+from app.services.portfolio_risk_notifications import evaluate_snapshot_risk_notifications
 
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,7 @@ def snapshot_all_simulated_portfolios(db: Session) -> dict:
                     PortfolioEquitySnapshot.snapshot_date == today,
                 )
             ).scalar_one_or_none()
-            upsert_snapshot(
+            snapshot = upsert_snapshot(
                 db,
                 portfolio_id=portfolio.id,
                 snapshot_date=today,
@@ -157,6 +158,16 @@ def snapshot_all_simulated_portfolios(db: Session) -> dict:
                 unrealized_pnl=summary["unrealized_pnl"],
                 position_count=summary["position_count"],
             )
+            try:
+                evaluate_snapshot_risk_notifications(
+                    db, portfolio=portfolio, snapshot=snapshot
+                )
+            except Exception:
+                logger.warning(
+                    "Risk notification evaluation failed for portfolio %s",
+                    portfolio.id,
+                    exc_info=True,
+                )
             if existed:
                 updated += 1
             else:
@@ -250,7 +261,7 @@ def _run_snapshot_task(task_id: str) -> None:
                         PortfolioEquitySnapshot.snapshot_date == today,
                     )
                 ).scalar_one_or_none()
-                upsert_snapshot(
+                snapshot = upsert_snapshot(
                     db,
                     portfolio_id=portfolio.id,
                     snapshot_date=today,
@@ -261,6 +272,16 @@ def _run_snapshot_task(task_id: str) -> None:
                     unrealized_pnl=summary["unrealized_pnl"],
                     position_count=summary["position_count"],
                 )
+                try:
+                    evaluate_snapshot_risk_notifications(
+                        db, portfolio=portfolio, snapshot=snapshot
+                    )
+                except Exception:
+                    logger.warning(
+                        "Risk notification evaluation failed for portfolio %s",
+                        portfolio.id,
+                        exc_info=True,
+                    )
                 if existed:
                     updated += 1
                 else:

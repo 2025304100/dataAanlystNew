@@ -731,8 +731,13 @@ export default function Discovery({
   }, [defaultIndicatorKey]);
 
   const handleStart = useCallback(async () => {
-    // WP-S-FIX.3: 如果整体 blocked，打开向导而非直接执行
-    if (ctx.capabilities?.overall_status === "blocked") {
+    // WP-S-FIX.3: 只检查 discovery 相关能力（market_data / scoring / discovery），
+    // 非相关能力（如 ai、message_channel）的 blocked 不应阻止扫描。
+    const relevantBlocked =
+      ctx.isCapabilityBlocked("market_data") ||
+      ctx.isCapabilityBlocked("scoring") ||
+      ctx.isCapabilityBlocked("discovery");
+    if (relevantBlocked) {
       setWizardOpen(true);
       return;
     }
