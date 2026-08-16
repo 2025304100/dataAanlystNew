@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+from contextlib import nullcontext
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -97,6 +98,92 @@ def _fetch_spot_valuation(db: Session, symbol: Symbol) -> dict[str, Any]:
         return {}
 
 
+def sync_market_valuation_snapshot(
+    db: Session,
+    symbols: list[Symbol],
+    trade_date: date | None = None,
+) -> set[int]:
+    """Fetch the A-share valuation snapshot once and upsert the requested symbols.
+
+    The previous per-symbol path downloaded ``stock_zh_a_spot_em`` for every
+    symbol even though the provider already returns the complete market. This
+    batch boundary is used by the daily incremental task and keeps provider
+    traffic independent of the number of symbols.
+    """
+    target_date = trade_date or date.today()
+    eligible = [
+        symbol for symbol in symbols
+        if symbol.asset_type == "stock" and region_from_market(symbol.market) == "cn"
+    ]
+    if not eligible:
+        return set()
+    try:
+        with _proxy_bypass(), quiet_akshare_output():
+            frame = call_akshare_with_retry(
+                ak.stock_zh_a_spot_em,
+                api_key="stock_zh_a_spot_em",
+                db=db,
+            )
+    except Exception as exc:
+        logger.warning("market valuation snapshot failed: %s", exc)
+        raise
+    if frame is None or frame.empty or "代码" not in frame.columns:
+        raise RuntimeError("market valuation snapshot returned no usable rows")
+
+    def value(row: Any, *names: str) -> float | None:
+        for name in names:
+            if name in row.index:
+                parsed = _safe_float(row.get(name))
+                if parsed is not None:
+                    return parsed
+        return None
+
+    by_code = {
+        str(code).split(".")[-1].zfill(6): row
+        for _, row in frame.iterrows()
+        for code in [row.get("代码")]
+        if code is not None
+    }
+    symbol_ids = [symbol.id for symbol in eligible]
+    existing = {
+        row.symbol_id: row
+        for row in db.execute(
+            select(StockValuation).where(
+                StockValuation.symbol_id.in_(symbol_ids),
+                StockValuation.trade_date == target_date,
+            )
+        ).scalars().all()
+    }
+    synced: set[int] = set()
+    for symbol in eligible:
+        row = by_code.get(_market_code_for_akshare(symbol).zfill(6))
+        if row is None:
+            continue
+        pe_ttm = value(row, "市盈率-动态", "市盈率(动态)", "市盈率")
+        pb = value(row, "市净率")
+        total_market_cap = value(row, "总市值")
+        circulating_market_cap = value(row, "流通市值")
+        if pe_ttm is None and pb is None and total_market_cap is None:
+            continue
+        valuation = existing.get(symbol.id)
+        if valuation is None:
+            valuation = StockValuation(symbol_id=symbol.id, trade_date=target_date)
+            db.add(valuation)
+        valuation.pe_ttm = pe_ttm
+        valuation.pb = pb
+        valuation.total_market_cap = total_market_cap
+        valuation.circulating_market_cap = circulating_market_cap
+        valuation.industry = symbol.industry
+        valuation.industry_pe_percentile = None
+        valuation.pe_history_percentile = None
+        valuation.pe_score = calc_pe_score(pe_ttm, None, None)
+        valuation.source = "akshare:stock_zh_a_spot_em"
+        valuation.raw_json = json.dumps(row.to_dict(), ensure_ascii=False, default=str)
+        synced.add(symbol.id)
+    db.flush()
+    return synced
+
+
 def _fetch_individual_info(db: Session, symbol: Symbol) -> dict[str, Any]:
     """从 ak.stock_individual_info_em 拉取个股基本信息（行业）。"""
     code = _market_code_for_akshare(symbol)
@@ -150,6 +237,114 @@ def _fetch_value_history(
             "stock_value_em failed for %s: %s", symbol.symbol, exc
         )
         return {}
+
+
+def _fetch_value_history_rows(
+    db: Session,
+    symbol: Symbol,
+    *,
+    start_date: date,
+    end_date: date,
+    quiet_output: bool = True,
+) -> list[dict[str, Any]]:
+    """Read only the real historical valuation rows returned by the provider."""
+    code = _market_code_for_akshare(symbol)
+    try:
+        output_context = quiet_akshare_output() if quiet_output else nullcontext()
+        with _proxy_bypass(), output_context:
+            frame = call_akshare_with_retry(
+                ak.stock_value_em,
+                symbol=code,
+                api_key="stock_value_em",
+                db=db,
+            )
+        normalized = normalize_stock_value_frame(frame, symbol=code)
+        if normalized.empty:
+            return []
+        eligible = normalized[
+            (normalized["trade_date"] >= start_date)
+            & (normalized["trade_date"] <= end_date)
+        ].sort_values("trade_date")
+        return [
+            {
+                "trade_date": row["trade_date"],
+                "pe_ttm": _safe_float(row["pe_ttm"]),
+                "pb": _safe_float(row["pb"]),
+                "total_market_cap": _safe_float(row["total_market_cap"]),
+                "circulating_market_cap": _safe_float(
+                    row["circulating_market_cap"]
+                ),
+            }
+            for _, row in eligible.iterrows()
+        ]
+    except Exception as exc:
+        logger.warning("stock_value_em history failed for %s: %s", symbol.symbol, exc)
+        return []
+
+
+def _upsert_valuation_history_row(
+    db: Session,
+    symbol: Symbol,
+    valuation_data: dict[str, Any],
+    *,
+    industry: str | None,
+) -> StockValuation | None:
+    """Persist one provider observation without synthesizing missing dates."""
+    actual_date = valuation_data.get("trade_date")
+    if not isinstance(actual_date, date):
+        return None
+    if all(
+        valuation_data.get(field) is None
+        for field in ("pe_ttm", "pb", "total_market_cap")
+    ):
+        return None
+    existing = db.execute(
+        select(StockValuation).where(
+            StockValuation.symbol_id == symbol.id,
+            StockValuation.trade_date == actual_date,
+        )
+    ).scalars().first()
+    if existing is None:
+        existing = StockValuation(symbol_id=symbol.id, trade_date=actual_date)
+        db.add(existing)
+    existing.pe_ttm = valuation_data.get("pe_ttm")
+    existing.pb = valuation_data.get("pb")
+    existing.total_market_cap = valuation_data.get("total_market_cap")
+    existing.circulating_market_cap = valuation_data.get("circulating_market_cap")
+    existing.industry = industry
+    existing.industry_pe_percentile = None
+    existing.pe_history_percentile = None
+    existing.pe_score = calc_pe_score(existing.pe_ttm, None, None)
+    existing.source = "akshare:stock_value_em"
+    existing.raw_json = json.dumps(valuation_data, ensure_ascii=False, default=str)
+    db.flush()
+    return existing
+
+
+def sync_symbol_valuation_range(
+    db: Session,
+    symbol: Symbol,
+    *,
+    start_date: date,
+    end_date: date,
+    quiet_output: bool = True,
+) -> int:
+    """Upsert historical PE/PB rows for a bounded, provider-backed range."""
+    if start_date > end_date:
+        raise ValueError("start_date must be on or before end_date")
+    if symbol.asset_type != "stock" or region_from_market(symbol.market) != "cn":
+        return 0
+    # Historical valuation rows do not require a second per-symbol industry
+    # request. The symbol master already carries the latest industry label;
+    # avoiding this call halves provider traffic during a full backfill.
+    industry = symbol.industry
+    rows = _fetch_value_history_rows(
+        db, symbol, start_date=start_date, end_date=end_date, quiet_output=quiet_output
+    )
+    return sum(
+        _upsert_valuation_history_row(db, symbol, row, industry=industry) is not None
+        for row in rows
+    )
 
 
 def calc_pe_score(

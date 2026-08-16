@@ -16,6 +16,7 @@ from app.db.dialect import days_since
 from app.db.manager import DatabaseManager
 from app.db.session import get_db
 from app.models.daily_bar import DailyBar
+from app.models.data_sync_plan import DataSyncPartition, DataSyncPlan
 from app.models.async_task import AsyncTaskRecord
 from app.models.discovery import DiscoveryTaskRecord
 from app.models.journal_entry import JournalEntry
@@ -28,6 +29,21 @@ from app.models.symbol import Symbol
 
 router = APIRouter()
 BAR_ISSUE_SAMPLE_LIMIT = 8
+_TASK_DOMAIN_SLOTS = {"market": 1, "external": 1, "discovery": 1, "other": 2}
+
+
+def _task_domain(task_type: str) -> str:
+    if task_type.startswith("external_sync_"):
+        return "external"
+    if task_type in {
+        "market_data_sync", "history_initialization", "universe_sync",
+        "universe_incremental_sync", "universe_backfill", "universe_smart_sync",
+        "universe_range_repair",
+    }:
+        return "market"
+    if task_type == "discovery_mining":
+        return "discovery"
+    return "other"
 
 
 def _now() -> datetime:
@@ -461,7 +477,20 @@ def list_unified_tasks(
 
     # --- async_tasks (market_data_sync / history_initialization) ---
     stmt_async = select(AsyncTaskRecord).order_by(AsyncTaskRecord.created_at.desc()).limit(limit)
-    for row in db.execute(stmt_async).scalars().all():
+    async_rows = db.execute(stmt_async).scalars().all()
+    external_task_ids = [
+        row.id for row in async_rows if row.task_type.startswith("external_sync_")
+    ]
+    latest_external_plans: dict[str, DataSyncPlan] = {}
+    if external_task_ids:
+        plans = db.execute(
+            select(DataSyncPlan)
+            .where(DataSyncPlan.task_id.in_(external_task_ids))
+            .order_by(DataSyncPlan.created_at.desc())
+        ).scalars().all()
+        for plan in plans:
+            latest_external_plans.setdefault(plan.task_id, plan)
+    for row in async_rows:
         errors = []
         if row.errors_json:
             try:
@@ -474,6 +503,23 @@ def list_unified_tasks(
                 result = _json.loads(row.result_json)
             except Exception:
                 pass
+        plan = latest_external_plans.get(row.id)
+        if plan is not None:
+            result = {
+                **result,
+                "sync_plan": {
+                    "id": plan.id,
+                    "dataset": plan.dataset,
+                    "mode": plan.mode,
+                    "status": plan.status,
+                    "requested_start_date": plan.requested_start_date.isoformat(),
+                    "requested_end_date": plan.requested_end_date.isoformat(),
+                    "total_partitions": plan.total_partitions,
+                    "completed_partitions": plan.completed_partitions,
+                    "skipped_partitions": plan.skipped_partitions,
+                    "failed_partitions": plan.failed_partitions,
+                },
+            }
         payload = {}
         if row.payload_json:
             try:
@@ -582,6 +628,83 @@ def list_unified_tasks(
         items = [i for i in items if i["task_type"] == task_type]
 
     return {"tasks": items[:limit]}
+
+
+@router.get("/system/task-observability")
+def get_task_observability(db: Session = Depends(get_db)):
+    """Expose cross-domain slots, waiting reasons and live throughput."""
+    active = db.execute(
+        select(AsyncTaskRecord)
+        .where(AsyncTaskRecord.status.in_(("queued", "running")))
+        .order_by(AsyncTaskRecord.created_at.desc())
+    ).scalars().all()
+    domains = {
+        name: {"slot_limit": limit, "running": 0, "queued": 0, "waiting": 0}
+        for name, limit in _TASK_DOMAIN_SLOTS.items()
+    }
+    tasks = []
+    now = _now()
+    for row in active:
+        domain = _task_domain(row.task_type)
+        state = domains[domain]
+        if row.status == "running":
+            state["running"] += 1
+        else:
+            state["queued"] += 1
+        waiting_reason = row.message if str(row.stage).startswith("waiting_") else None
+        if waiting_reason:
+            state["waiting"] += 1
+        elapsed = (now - row.started_at).total_seconds() if row.started_at else None
+        throughput = (row.processed / elapsed) if elapsed and elapsed > 0 else None
+        tasks.append({
+            "id": row.id, "task_type": row.task_type, "domain": domain,
+            "status": row.status, "stage": row.stage, "processed": row.processed,
+            "total": row.total, "elapsed_seconds": round(elapsed, 1) if elapsed else None,
+            "throughput_per_second": round(throughput, 4) if throughput is not None else None,
+            "waiting_reason": waiting_reason,
+        })
+    for state in domains.values():
+        state["available_slots"] = max(0, state["slot_limit"] - state["running"])
+    return {"generated_at": now.isoformat(), "domains": domains, "active_tasks": tasks}
+
+
+@router.get("/system/tasks/{task_id}/batch")
+def get_unified_task_batch(task_id: str, db: Session = Depends(get_db)):
+    """Return a task's frozen plan and partition detail when it has one."""
+    plan = db.execute(
+        select(DataSyncPlan)
+        .where(DataSyncPlan.task_id == task_id)
+        .order_by(DataSyncPlan.created_at.desc())
+    ).scalars().first()
+    if plan is not None:
+        partitions = db.execute(
+            select(DataSyncPartition)
+            .where(DataSyncPartition.plan_id == plan.id)
+            .order_by(DataSyncPartition.created_at, DataSyncPartition.id)
+            .limit(300)
+        ).scalars().all()
+        return {
+            "task_id": task_id,
+            "kind": "external_sync_plan",
+            "plan": {
+                "id": plan.id, "dataset": plan.dataset, "mode": plan.mode,
+                "status": plan.status, "start_date": plan.requested_start_date.isoformat(),
+                "end_date": plan.requested_end_date.isoformat(),
+                "total_partitions": plan.total_partitions,
+                "completed_partitions": plan.completed_partitions,
+                "skipped_partitions": plan.skipped_partitions,
+                "failed_partitions": plan.failed_partitions,
+            },
+            "partitions": [{
+                "id": item.id, "key": item.partition_key, "symbol": item.symbol,
+                "status": item.status, "attempts": item.attempts,
+                "rows_written": item.rows_written, "error_message": item.error_message,
+            } for item in partitions],
+        }
+    task = db.get(AsyncTaskRecord, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task_not_found")
+    return {"task_id": task_id, "kind": "task", "plan": None, "partitions": []}
 
 
 @router.post("/system/backup")

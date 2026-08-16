@@ -415,7 +415,26 @@ export interface ExternalSyncResult {
   failed: number;
   records: number;
   errors: string[];
+  plan?: ExternalDataSyncPlan;
 }
+
+export interface ExternalDataSyncPlan {
+  dataset: ExternalSyncDataset;
+  mode: "incremental" | "backfill";
+  requested_start_date: string;
+  requested_end_date: string;
+  requested_span_days: number;
+  provider_history_limit_days: number | null;
+  provider_reason: string;
+  partition_strategy: string;
+  symbol_batch_size: number;
+}
+
+export type ExternalDataSyncCapabilities = Record<ExternalSyncDataset, {
+  modes: Array<"incremental" | "backfill">;
+  history_limit_days: number | null;
+  reason: string;
+}>;
 
 export interface ExternalSyncTask {
   id: string;
@@ -431,6 +450,12 @@ export interface ExternalSyncTask {
   current_item: string | null;
   result: ExternalSyncResult | null;
   errors: Array<{ stage?: string; error?: string }>;
+  batch_recovery: {
+    plan?: ExternalDataSyncPlan;
+    last_symbol_id?: number;
+    processed?: number;
+    total?: number;
+  } | null;
   created_at: string | null;
   started_at: string | null;
   finished_at: string | null;
@@ -455,6 +480,102 @@ export interface ExternalDataOverview {
   refreshed_at: string;
 }
 
+export interface ExternalFieldCoverage {
+  field: string;
+  availability: "available" | "limited" | "event" | "snapshot" | "blocked" | "unknown";
+  evaluation_enabled: boolean;
+  first_date: string | null;
+  latest_date: string | null;
+  nonnull_rows: number;
+  table_rows: number;
+  distinct_symbols: number;
+  distinct_dates: number;
+  continuity_days: number;
+  daily_coverage_p50: number | null;
+  daily_coverage_p90: number | null;
+  latest_daily_coverage: number | null;
+  reason: string;
+}
+
+export interface ExternalDatasetCoverage {
+  dataset: ExternalSyncDataset;
+  readiness: "available" | "limited" | "event" | "snapshot" | "blocked" | "unknown" | "not_applicable";
+  reason: string;
+  fields: ExternalFieldCoverage[];
+}
+
+export interface ExternalDataCoverage {
+  datasets: ExternalDatasetCoverage[];
+  generated_at: string;
+}
+
+export interface DataQualitySnapshot {
+  id: string;
+  dataset: string;
+  field: string;
+  readiness: string;
+  evaluation_mode: string;
+  row_count: number;
+  nonnull_rows: number;
+  distinct_symbols: number;
+  distinct_dates: number;
+  first_date: string | null;
+  latest_date: string | null;
+  failure_reason: string | null;
+  metrics: Record<string, unknown>;
+  captured_at: string | null;
+}
+
+export interface ExternalDataGapItem {
+  symbol_id: number;
+  symbol: string;
+  trade_date: string;
+}
+
+export interface ExternalDataGapReport {
+  dataset: "fundamental" | "financial" | "capital_flow";
+  start_date: string;
+  end_date: string;
+  total_missing: number;
+  truncated: boolean;
+  gaps: ExternalDataGapItem[];
+}
+
+export interface ExternalSyncPartition {
+  id: string;
+  partition_key: string;
+  symbol_id: number | null;
+  symbol: string | null;
+  start_date: string;
+  end_date: string;
+  status: "queued" | "running" | "done" | "skipped" | "failed" | "cancelled";
+  attempts: number;
+  rows_written: number;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface ExternalSyncPlanDetails {
+  task_id: string;
+  plan: {
+    id: string;
+    parent_plan_id: string | null;
+    dataset: ExternalSyncDataset;
+    mode: "incremental" | "backfill";
+    source: string;
+    status: "queued" | "running" | "done" | "partial" | "failed" | "cancelled";
+    requested_start_date: string;
+    requested_end_date: string;
+    partition_strategy: string;
+    total_partitions: number;
+    completed_partitions: number;
+    skipped_partitions: number;
+    failed_partitions: number;
+  } | null;
+  partitions: ExternalSyncPartition[];
+}
+
 // TODO: 待后续类型强化——下方 requestJson<any>/requestJson<any[]> 调用保留 any 是为了
 // 兼容各调用方对返回值字段的直接访问（如 .id / .symbol 等），避免大面积级联报错。
 export const api = {
@@ -474,6 +595,8 @@ export const api = {
     }),
   initializeFactorWarehouse: () =>
     requestJson<FactorOverview>(`${API}/factors/warehouse/initialize`, { method: "POST" }),
+  getFactorFormulaCatalog: () =>
+    requestJson<FactorFormulaCatalog>(`${API}/factors/formula-catalog`),
   getFactorModels: (status?: string, limit: number = 20) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (status) params.set("status", status);
@@ -1473,6 +1596,10 @@ export const api = {
   // Unified task history
   getTaskHistory: (taskType?: string, limit: number = 30) =>
     requestJson<{ tasks: any[] }>(`${API}/system/tasks?limit=${limit}${taskType ? `&task_type=${encodeURIComponent(taskType)}` : ""}`),
+  getTaskObservability: () =>
+    requestJson<{ generated_at: string; domains: Record<string, { slot_limit: number; running: number; queued: number; waiting: number; available_slots: number }>; active_tasks: any[] }>(`${API}/system/task-observability`),
+  getTaskBatch: (taskId: string) =>
+    requestJson<any>(`${API}/system/tasks/${encodeURIComponent(taskId)}/batch`),
 
   // Cross-platform scheduled tasks
   getScheduledTaskDefinitions: () =>
@@ -1521,20 +1648,83 @@ export const api = {
   // P2: External data sync (valuation / financial reports / flow / ETF)
   getExternalDataOverview: () =>
     requestJson<ExternalDataOverview>(`${API}/external-data/overview`),
+  getExternalDataCoverage: () =>
+    requestJson<ExternalDataCoverage>(`${API}/external-data/coverage`),
+  getExternalDataQualitySnapshots: () =>
+    requestJson<{ captured_at: string | null; fields: DataQualitySnapshot[] }>(`${API}/external-data/quality-snapshots`),
+  getExternalDataQualityHistory: (field: string, limit: number = 30) =>
+    requestJson<{ field: string; snapshots: DataQualitySnapshot[] }>(`${API}/external-data/quality-snapshots/${encodeURIComponent(field)}?limit=${limit}`),
+  refreshExternalDataQualitySnapshots: () =>
+    requestJson<{ captured_at: string; fields: number; trigger: string }>(`${API}/external-data/quality-snapshots/refresh`, { method: "POST" }),
+  getExternalDataGaps: (
+    dataset: "fundamental" | "financial" | "capital_flow",
+    startDate: string,
+    endDate: string,
+    limit: number = 200,
+  ) => requestJson<ExternalDataGapReport>(
+    `${API}/external-data/gaps?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}&limit=${limit}`,
+  ),
+  repairExternalDataGaps: (payload: {
+    dataset: "fundamental" | "financial" | "capital_flow";
+    start_date: string;
+    end_date: string;
+    gaps: ExternalDataGapItem[];
+  }) => requestJson<ExternalSyncTask>(`${API}/external-data/gaps/repair`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }),
+  importTailProxyMinutes: (payload: { csv_text: string; filename?: string }) =>
+    requestJson<{ source: string; written_sessions: number; rejected_sessions: number; rejected: Array<{ symbol: string; trade_date: string; reason: string }>; formula_evaluation: string }>(`${API}/external-data/tail-proxy/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
   startExternalDataSync: (payload: {
     dataset: ExternalSyncDataset;
     source: "watchlist" | "positions" | "all";
     include_northbound?: boolean;
+    mode?: "incremental" | "backfill";
+    start_date?: string;
+    end_date?: string;
     lookback_days?: number;
     limit?: number;
+    max_workers?: number;
   }) =>
     requestJson<ExternalSyncTask>(`${API}/external-data/sync-tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
+  getExternalDataSyncCapabilities: () =>
+    requestJson<ExternalDataSyncCapabilities>(`${API}/external-data/sync-capabilities`),
+  previewExternalDataSyncPlan: (payload: {
+    dataset: ExternalSyncDataset;
+    source: "watchlist" | "positions" | "all";
+    include_northbound?: boolean;
+    mode?: "incremental" | "backfill";
+    start_date?: string;
+    end_date?: string;
+    lookback_days?: number;
+    limit?: number;
+    max_workers?: number;
+  }) => requestJson<ExternalDataSyncPlan>(`${API}/external-data/sync-plans/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }),
   getExternalDataSyncTask: (taskId: string) =>
     requestJson<ExternalSyncTask>(`${API}/external-data/sync-tasks/${encodeURIComponent(taskId)}`),
+  getExternalDataSyncTaskPartitions: (taskId: string) =>
+    requestJson<ExternalSyncPlanDetails>(`${API}/external-data/sync-tasks/${encodeURIComponent(taskId)}/partitions`),
+  cancelExternalDataSyncTask: (taskId: string) =>
+    requestJson<ExternalSyncTask>(`${API}/external-data/sync-tasks/${encodeURIComponent(taskId)}/cancel`, {
+      method: "POST",
+    }),
+  retryExternalDataSyncTask: (taskId: string) =>
+    requestJson<ExternalSyncTask>(`${API}/external-data/sync-tasks/${encodeURIComponent(taskId)}/retry`, {
+      method: "POST",
+    }),
 
   // Legacy blocking endpoints kept for compatibility with existing callers.
   syncFundamental: (source: "watchlist" | "positions" | "all") =>
@@ -2558,10 +2748,21 @@ export interface FactorValidatePayload {
   source_mapping?: Record<string, unknown>;
 }
 
+export interface FactorFormulaDiagnostic {
+  error_code: string;
+  message: string;
+  detail: Record<string, unknown>;
+  start: number | null;
+  end: number | null;
+  line: number | null;
+  column: number | null;
+  token: string | null;
+}
+
 export interface FactorValidateResult {
   is_valid: boolean;
   execution_plan: Record<string, unknown> | null;
-  errors: Array<Record<string, unknown>>;
+  errors: FactorFormulaDiagnostic[];
   data_dependencies: Record<string, unknown> | null;
 }
 
@@ -2580,15 +2781,18 @@ export interface FactorPreviewValueItem {
   symbol: string;
   trade_date: string;
   raw_value: number | null;
+  processed_value?: number | null;
   winsorized_value: number | null;
   normalized_value: number | null;
   eligible: boolean;
+  data_source?: string | null;
+  missing_reason?: string | null;
 }
 
 export interface FactorPreviewResult {
   is_valid: boolean;
   execution_plan: Record<string, unknown> | null;
-  errors: Array<Record<string, unknown>>;
+  errors: FactorFormulaDiagnostic[];
   data_cutoff_at: string | null;
   selected_trade_date: string | null;
   complete_trade_day_evidence: Record<string, unknown> | null;
@@ -2596,4 +2800,101 @@ export interface FactorPreviewResult {
   data_dependencies: Record<string, unknown> | null;
   values: FactorPreviewValueItem[];
   missing_reasons: Record<string, string>;
+  attempted_count: number;
+  valid_count: number;
+  missing_count: number;
+  coverage_rate: number;
+  missing_rate: number;
+  distribution: Record<string, number | null>;
+  outlier_count: number;
+  elapsed_ms: number;
+  data_fix_links: Array<{
+    section: "universe" | "external";
+    source_table: string;
+    label: string;
+  }>;
+  evaluation_supported: boolean;
+  evaluation_mode: "continuous" | "event" | "snapshot" | "mixed" | string;
+  blocking_fields: FactorFormulaFieldReadiness[];
+  readiness_warnings: FactorFormulaFieldReadiness[];
+}
+
+export interface FactorFormulaFieldReadiness {
+  field?: string;
+  availability: "available" | "limited" | "event" | "snapshot" | "blocked" | "unknown";
+  data_mode: "continuous" | "point_in_time" | "event" | "snapshot" | "derived" | "blocked" | string;
+  reason?: string;
+  status_reason?: string;
+  first_date?: string | null;
+  latest_date?: string | null;
+  nonnull_rows?: number;
+  distinct_symbols?: number;
+  distinct_dates?: number;
+}
+
+export interface FactorFormulaCatalogField {
+  key: string;
+  label_zh: string;
+  label_en: string;
+  description: string;
+  dtype: string;
+  source_table: string;
+  layer: string;
+  point_in_time: boolean;
+  snippet: string;
+  enabled: boolean;
+  availability: FactorFormulaFieldReadiness["availability"];
+  data_mode: FactorFormulaFieldReadiness["data_mode"];
+  evaluation_enabled: boolean;
+  preview_enabled: boolean;
+  draft_enabled: boolean;
+  status_reason: string;
+  table_rows: number;
+  nonnull_rows: number;
+  distinct_symbols: number;
+  distinct_dates: number;
+  first_date: string | null;
+  latest_date: string | null;
+  derived: boolean;
+  derived_from: string[];
+}
+
+export interface FactorFormulaCatalogFunction {
+  key: string;
+  label_zh: string;
+  label_en: string;
+  description?: string;
+  category: string;
+  signature: string;
+  snippet: string;
+  params?: string[];
+  min_args?: number;
+  max_args?: number;
+  window_arg_index?: number | null;
+  enabled: boolean;
+  disabled_reason?: string;
+}
+
+export interface FactorFormulaCatalogOperator {
+  key: string;
+  label: string;
+  snippet: string;
+  description: string;
+}
+
+export interface FactorFormulaCatalogTemplate {
+  key: string;
+  name_zh: string;
+  name_en: string;
+  formula: string;
+}
+
+export interface FactorFormulaCatalog {
+  dsl_version: string;
+  compiler_version: string;
+  fields: FactorFormulaCatalogField[];
+  functions: FactorFormulaCatalogFunction[];
+  disabled_functions: FactorFormulaCatalogFunction[];
+  operators: FactorFormulaCatalogOperator[];
+  templates: FactorFormulaCatalogTemplate[];
 }

@@ -124,7 +124,7 @@ export default function FactorDraftConfirmModal({
         });
         const errorMessages = (resp.errors ?? []).map((e) => {
           if (typeof e === "string") return e;
-          const obj = e as Record<string, unknown>;
+          const obj = e as unknown as Record<string, unknown>;
           return String(obj.message ?? obj.error_code ?? JSON.stringify(e));
         });
         result = {

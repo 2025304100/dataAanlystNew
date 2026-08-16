@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Collapse, Empty, Modal, Progress, Select, Space, Spin, Tag, Timeline } from "antd";
+import { Button, Collapse, Empty, Modal, Progress, Select, Space, Spin, Tag, Timeline, Typography } from "antd";
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -49,6 +49,10 @@ const TASK_TYPE_LABELS: Record<string, string> = {
   factor_pipeline: "taskTypeFactorPipeline",
 };
 
+function isExternalSyncTask(taskType: string): boolean {
+  return taskType.startsWith("external_sync_");
+}
+
 function formatDuration(sec?: number): string {
   if (sec == null || sec < 0) return "-";
   if (sec < 60) return `${Math.round(sec)}s`;
@@ -76,12 +80,21 @@ export default function TaskCenter() {
   const [filter, setFilter] = useState<string>("all");
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [abortingId, setAbortingId] = useState<string | null>(null);
+  const [observability, setObservability] = useState<{
+    domains: Record<string, { slot_limit: number; running: number; queued: number; waiting: number; available_slots: number }>;
+  } | null>(null);
+  const [batchDetail, setBatchDetail] = useState<any | null>(null);
+  const [batchLoadingId, setBatchLoadingId] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.getTaskHistory(undefined, 50);
+      const [data, observation] = await Promise.all([
+        api.getTaskHistory(undefined, 50),
+        api.getTaskObservability(),
+      ]);
       setTasks(data.tasks);
+      setObservability(observation);
     } catch (error: unknown) {
       // 收窄 unknown 类型，安全提取错误消息
       const msg = error instanceof Error ? error.message : "";
@@ -125,6 +138,8 @@ export default function TaskCenter() {
                 await api.cancelMacroUpdateTask(task.id);
               } else if (task.task_type === "factor_pipeline") {
                 await api.cancelFactorPipelineTask(task.id);
+              } else if (isExternalSyncTask(task.task_type)) {
+                await api.cancelExternalDataSyncTask(task.id);
               } else {
                 throw new Error(`Unsupported async task type: ${task.task_type}`);
               }
@@ -148,16 +163,30 @@ export default function TaskCenter() {
     [showToast, loadTasks]
   );
 
+  const openBatchDetail = useCallback(async (taskId: string) => {
+    setBatchLoadingId(taskId);
+    try {
+      setBatchDetail(await api.getTaskBatch(taskId));
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "";
+      showToast("error", msg || t("loadFailed"));
+    } finally {
+      setBatchLoadingId(null);
+    }
+  }, [showToast]);
+
   const filteredTasks = useMemo(() => {
     if (filter === "all") return tasks;
     if (filter === "active") return tasks.filter((task) => ["running", "queued"].includes(task.status));
     if (filter === "failed") return tasks.filter((task) => task.status === "failed");
+    if (filter === "external") return tasks.filter((task) => isExternalSyncTask(task.task_type));
     return tasks.filter((task) => task.task_type === filter);
   }, [tasks, filter]);
 
   const activeCount = tasks.filter((task) => ["running", "queued"].includes(task.status)).length;
 
   const taskTypeLabel = (taskType: string): string => {
+    if (isExternalSyncTask(taskType)) return `外部数据 · ${taskType.slice("external_sync_".length)}`;
     const key = TASK_TYPE_LABELS[taskType];
     return key ? t(key) : taskType;
   };
@@ -194,6 +223,14 @@ export default function TaskCenter() {
                 onClick={() => handleAbort(task)}
               >
                 {isAborting ? t("taskAbortRunning") : t("taskAbort")}
+              </Button>
+            )}
+            {isExternalSyncTask(task.task_type) && (
+              <Button
+                loading={batchLoadingId === task.id}
+                onClick={() => void openBatchDetail(task.id)}
+              >
+                查看批次
               </Button>
             )}
             {/* WP-AI.7：让 AI 解释（携带 task_id） */}
@@ -300,6 +337,11 @@ export default function TaskCenter() {
           {activeCount > 0 && (
             <Tag color="blue" icon={<LoadingOutlined />}>{activeCount} {t("taskActive")}</Tag>
           )}
+          {observability && Object.entries(observability.domains).map(([domain, slot]) => (
+            <Tag key={domain} color={slot.waiting ? "warning" : "default"}>
+              {domain} {slot.running}/{slot.slot_limit}{slot.waiting ? ` · waiting ${slot.waiting}` : ""}
+            </Tag>
+          ))}
         </div>
         <Space>
           <Select
@@ -316,6 +358,7 @@ export default function TaskCenter() {
               { value: "universe_incremental_sync", label: t("taskTypeUniverseIncremental") },
               { value: "macro_update", label: t("taskTypeMacro") },
               { value: "factor_pipeline", label: t("taskTypeFactorPipeline") },
+              { value: "external", label: "外部数据同步" },
             ]}
           />
           <Button icon={<ReloadOutlined />} onClick={loadTasks} loading={loading}>
@@ -354,6 +397,34 @@ export default function TaskCenter() {
           }))}
         />
       )}
+      <Modal
+        title="同步计划与分片"
+        open={batchDetail !== null}
+        footer={null}
+        width={780}
+        onCancel={() => setBatchDetail(null)}
+      >
+        {batchDetail?.plan && <>
+          <pre className="task-detail-json">{JSON.stringify(batchDetail.plan, null, 2)}</pre>
+          <TableLikePartitions partitions={batchDetail.partitions || []} />
+        </>}
+      </Modal>
     </div>
   );
+}
+
+function TableLikePartitions({ partitions }: { partitions: any[] }) {
+  if (!partitions.length) return <Empty description="暂无分片" />;
+  return <div className="task-error-list" style={{ maxHeight: 360, overflow: "auto" }}>
+    {partitions.map((partition) => (
+      <div className="task-detail-row" key={partition.id}>
+        <span>{partition.symbol || partition.key}</span>
+        <Space size="small">
+          <Tag>{partition.status}</Tag>
+          <span>{partition.rows_written} rows</span>
+          {partition.error_message && <Typography.Text type="danger" ellipsis={{ tooltip: partition.error_message }}>失败：{partition.error_message}</Typography.Text>}
+        </Space>
+      </div>
+    ))}
+  </div>;
 }

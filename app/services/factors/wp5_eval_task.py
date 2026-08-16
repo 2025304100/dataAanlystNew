@@ -665,7 +665,7 @@ def preflight_factor_evaluation(
         params=params,
         postprocess=postprocess,
         direction=direction_from_db,
-        strict_fields=False,
+        strict_fields=True,
     )
     if compile_result.is_valid:
         items.append({
@@ -724,7 +724,19 @@ def preflight_factor_evaluation(
     available_all: set[str] = set()
     for cols in available.values():
         available_all.update(cols)
-    missing = sorted({f for f in needed_fields if f and f not in available_all})
+    derived_fields: dict[str, list[str]] = {
+        "prev_close": ["close"],
+    }
+    missing = sorted({
+        field_name
+        for field_name in needed_fields
+        if field_name
+        and field_name not in available_all
+        and not all(
+            dependency in available_all
+            for dependency in derived_fields.get(field_name, [])
+        )
+    })
 
     if not missing:
         items.append({
@@ -740,6 +752,11 @@ def preflight_factor_evaluation(
                 "source_tables": source_tables,
                 "available": available,
                 "missing": [],
+                "derived_fields": {
+                    field: dependencies
+                    for field, dependencies in derived_fields.items()
+                    if field in needed_fields
+                },
             },
             "retryable": True,
         })
@@ -924,7 +941,11 @@ def preflight_factor_evaluation(
     # ⑤ pit_risk
     # ─────────────────────────────────────────────────────────
     pit_fields: list[str] = sorted({
-        str(f) for f in (deps.get("pit_fields") or [])
+        str(f) for f in (
+            deps.get("point_in_time_fields")
+            or deps.get("pit_fields")
+            or []
+        )
     }) if plan is not None else []
     if pit_fields:
         items.append({

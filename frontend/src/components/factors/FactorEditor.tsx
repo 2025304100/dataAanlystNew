@@ -37,6 +37,7 @@ import {
 import { api } from "../../api/client";
 import type {
   FactorDefinition,
+  FactorFormulaCatalog,
   FactorPreviewResult,
   FactorValidateResult,
   FactorPreviewValueItem,
@@ -95,12 +96,6 @@ const DEFAULT_POSTPROCESS: PostprocessConfig = {
   rankAscending: true,
   missingPolicy: "exclude",
 };
-
-const FORMULA_TEMPLATES = [
-  { key: "ep", name: "EP (盈利收益率)", formula: "1 / pe_ttm", category: "valuation" },
-  { key: "turnover_z", name: "换手ZScore", formula: "sma(turnover_rate, 20)", category: "volume" },
-  { key: "momentum", name: "动量", formula: "pct_change(close, 20)", category: "momentum" },
-];
 
 const DIRECTION_OPTIONS: { value: Direction; label: string }[] = [
   { value: "higher_better", label: t("factorEditorDirHigherBetter") },
@@ -200,6 +195,9 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
 
   // 公式编辑
   const [formulaExpr, setFormulaExpr] = useState("");
+  const [formulaCatalog, setFormulaCatalog] = useState<FactorFormulaCatalog | null>(null);
+  const [formulaCatalogLoading, setFormulaCatalogLoading] = useState(false);
+  const [formulaCatalogError, setFormulaCatalogError] = useState<string | null>(null);
   const [aiFormulaOpen, setAiFormulaOpen] = useState(false);
   const [formulaEditorOpen, setFormulaEditorOpen] = useState(false);
   const formulaTextAreaRef = useRef<TextAreaRef>(null);
@@ -229,6 +227,18 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
 
   // 保存
   const [saving, setSaving] = useState(false);
+
+  const loadFormulaCatalog = () => {
+    setFormulaCatalogLoading(true);
+    setFormulaCatalogError(null);
+    api
+      .getFactorFormulaCatalog()
+      .then(setFormulaCatalog)
+      .catch((err: unknown) => {
+        setFormulaCatalogError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setFormulaCatalogLoading(false));
+  };
 
   // 加载已有因子基本信息（只读展示 + 默认值预填）
   useEffect(() => {
@@ -499,17 +509,6 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
     }
   };
 
-  // 应用模板
-  const applyTemplate = (tmpl: (typeof FORMULA_TEMPLATES)[number]) => {
-    setFormulaExpr(tmpl.formula);
-    if (isNewDraft) {
-      setCategory(tmpl.category);
-    }
-    setValidateResult(null);
-    setPreviewResult(null);
-    message.info(isZh ? `已应用模板: ${tmpl.name}` : `Applied template: ${tmpl.name}`);
-  };
-
   const handleFormulaChange = (value: string) => {
     setFormulaExpr(value);
     // 校验结果只对应当时的公式文本；编辑后必须重新校验，不能复用旧绿灯。
@@ -527,6 +526,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
       previewResult,
     };
     formulaSelectionRef.current = { start: formulaExpr.length, end: formulaExpr.length };
+    if (!formulaCatalog && !formulaCatalogLoading) loadFormulaCatalog();
     setFormulaEditorOpen(true);
   };
 
@@ -951,7 +951,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
                             type="error"
                             showIcon
                             className="factor-editor-error-alert"
-                            message={valOrEmpty(err.error_code) || valOrEmpty(err.code) || `Error ${idx + 1}`}
+                            message={valOrEmpty(err.error_code) || `Error ${idx + 1}`}
                             description={valOrEmpty(err.message) || valOrEmpty(err.detail) || numText(err)}
                           />
                         ))}
@@ -1017,7 +1017,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
                             type="error"
                             showIcon
                             className="factor-editor-error-alert"
-                            message={valOrEmpty(err.error_code) || valOrEmpty(err.code) || `Error ${idx + 1}`}
+                            message={valOrEmpty(err.error_code) || `Error ${idx + 1}`}
                             description={valOrEmpty(err.message) || valOrEmpty(err.detail) || numText(err)}
                           />
                         ))}
@@ -1173,7 +1173,11 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         versionDirection={versionDirection}
         changeNote={changeNote}
         paramsText={paramsText}
-        templates={FORMULA_TEMPLATES}
+        catalog={formulaCatalog}
+        catalogLoading={formulaCatalogLoading}
+        catalogError={formulaCatalogError}
+        validateResult={validateResult}
+        previewResult={previewResult}
         validating={validating}
         previewing={previewing}
         validationState={validateResult ? (validateResult.is_valid ? "valid" : "invalid") : "idle"}
@@ -1186,7 +1190,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
         onPreview={handlePreview}
         onInsert={insertFormulaSnippet}
         onUseExample={useFormulaExample}
-        onApplyTemplate={applyTemplate}
+        onRetryCatalog={loadFormulaCatalog}
         onFormulaChange={handleFormulaChange}
         onRememberSelection={rememberFormulaSelection}
         onDirectionChange={(value) => {

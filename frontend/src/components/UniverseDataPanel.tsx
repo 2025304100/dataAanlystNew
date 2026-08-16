@@ -145,6 +145,36 @@ function statusTag(status: TaskStatus) {
   return <Tag color={cfg.color}>{t(cfg.key)}</Tag>;
 }
 
+/** Turn task error payloads into an actionable message instead of exposing API JSON. */
+function getUniverseTaskErrorText(taskError: Record<string, unknown>): string {
+  const rawError = taskError.error ?? taskError;
+  let payload: Record<string, unknown> | null = null;
+
+  if (rawError && typeof rawError === "object" && !Array.isArray(rawError)) {
+    payload = rawError as Record<string, unknown>;
+  } else if (typeof rawError === "string") {
+    try {
+      const parsed = JSON.parse(rawError);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        payload = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Plain-text errors are displayed below without parsing.
+    }
+  }
+
+  if (payload?.code === "BACKEND_RESTART_INTERRUPTED") {
+    const correlationId = payload.correlation_id;
+    const correlationText = typeof correlationId === "string" && correlationId
+      ? ` ${t("universeErrorCorrelation").replace("{id}", correlationId)}`
+      : "";
+    return `${t("universeBackendRestartInterrupted")}${correlationText}`;
+  }
+
+  const detail = payload?.detail_zh ?? payload?.message ?? payload?.error ?? rawError;
+  return typeof detail === "string" ? detail : JSON.stringify(detail);
+}
+
 // 配置 localStorage 持久化
 type RepairScopeSummary = {
   key: string;
@@ -1856,6 +1886,28 @@ export default function UniverseDataPanel() {
                 {incrTask ? statusTag(incrTask.status) : null}
               </Space>
             }
+            extra={
+              incrIsRunning ? (
+                <Button
+                  danger
+                  icon={<StopOutlined />}
+                  onClick={handleIncrCancel}
+                  loading={incrCancelling}
+                >
+                  {incrCancelling ? t("universeCanceling") : t("universeIncrementalCancel")}
+                </Button>
+              ) : (
+                <Button
+                  type="primary"
+                  icon={<PlayCircleOutlined />}
+                  onClick={handleIncrStart}
+                  loading={incrStarting}
+                  disabled={anyRunning || initScopes.length === 0}
+                >
+                  {t("universeIncrementalStart")}
+                </Button>
+              )
+            }
             size="small"
             style={{ marginBottom: 16 }}
           >
@@ -1893,7 +1945,7 @@ export default function UniverseDataPanel() {
                     message={t("universeRecentErrors").replace("{n}", String(incrTask.errors.length))}
                     description={incrTask.errors.slice(-3).map((e, i) => (
                       <div key={i} style={{ fontSize: 12, color: "#ff4d4f" }}>
-                        {String(e.stage || "")} {String(e.error || JSON.stringify(e))}
+                        {String(e.stage || "")} {getUniverseTaskErrorText(e)}
                       </div>
                     ))}
                     type="warning"
@@ -1933,27 +1985,6 @@ export default function UniverseDataPanel() {
                     disabled={anyRunning}
                     style={{ width: 80 }}
                   />
-                  {!incrIsRunning && (
-                    <Button
-                      type="default"
-                      icon={<PlayCircleOutlined />}
-                      onClick={handleIncrStart}
-                      loading={incrStarting}
-                      disabled={anyRunning || initScopes.length === 0}
-                    >
-                      {t("universeIncrementalStart")}
-                    </Button>
-                  )}
-                  {incrIsRunning && (
-                    <Button
-                      danger
-                      icon={<StopOutlined />}
-                      onClick={handleIncrCancel}
-                      loading={incrCancelling}
-                    >
-                      {incrCancelling ? t("universeCanceling") : t("universeIncrementalCancel")}
-                    </Button>
-                  )}
                   <Tooltip title={t("universeIncrementalTip")}>
                     <QuestionCircleOutlined style={{ color: "var(--text-muted, #999)" }} />
                   </Tooltip>

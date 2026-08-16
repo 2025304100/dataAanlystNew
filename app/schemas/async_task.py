@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -35,7 +36,9 @@ class AsyncTaskRead(BaseModel):
     last_progress_percent: float | None = None
     current_step_description: str | None = None
     suggested_action: str | None = None
-    batch_recovery: list[dict] | None = None
+    # Legacy workers store batch checkpoints as a list; range/partitioned
+    # workers store a single recovery object (plan, cursor, progress).
+    batch_recovery: list[dict[str, Any]] | dict[str, Any] | None = None
     last_patrol_at: datetime | None = None
     cancel_requested: bool = False
     # WP5: 幂等检查和前端 fingerprint 展示需要原始 payload JSON（可选，不破坏旧契约）

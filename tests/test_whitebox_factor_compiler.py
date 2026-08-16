@@ -158,8 +158,8 @@ class TestASTLimits:
 
     def test_depth_exceeded(self):
         """深度超限被拒绝。"""
-        # 构造深度 5 的表达式：((((a + 1) + 1) + 1) + 1)
-        deep_formula = "((((pe_ttm + 1) + 1) + 1) + 1)"
+        # 构造超过当前 DSL 上限的深层表达式。
+        deep_formula = "((((((pe_ttm + 1) + 1) + 1) + 1) + 1) + 1)"
         result = compile_formula(
             formula=deep_formula, strict_fields=False
         )

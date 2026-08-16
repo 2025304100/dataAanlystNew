@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
+import statistics
+import time
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -381,6 +384,15 @@ def get_data_source_roadmap(db: Session = Depends(get_db)):
 # WP2-05: 公式校验与预览 API
 # ---------------------------------------------------------------------------
 
+@router.get('/factors/formula-catalog')
+def get_factor_formula_catalog(db: Session = Depends(get_db)):
+    """Return compiler capability plus live field-level data readiness."""
+    from app.services.factors.formula_catalog import build_formula_catalog
+
+    config = get_factor_system_config(db)
+    return build_formula_catalog(FactorWarehouse(config.warehouse_path))
+
+
 @router.post('/factors/validate')
 def validate_factor_formula(
     payload: FactorValidateRequest,
@@ -428,6 +440,7 @@ def preview_factor_formula(
     预览默认选择最近完整交易日，不选择残缺横截面。
     返回数据来源、缺失原因和 data_cutoff_at。
     """
+    started_at = time.perf_counter()
     from app.schemas.factor_library import (
         FactorPreviewResponse,
         FactorPreviewValueItem,
@@ -443,13 +456,14 @@ def preview_factor_formula(
         params=payload.params,
         direction=payload.direction,
         postprocess=payload.postprocess,
-        strict_fields=False,  # 预览允许未知字段（可能是参数引用）
+        strict_fields=True,
     )
 
     if not result.is_valid:
         return FactorPreviewResponse(
             is_valid=False,
             errors=[e.to_dict() for e in result.errors],
+            elapsed_ms=round((time.perf_counter() - started_at) * 1000, 3),
         ).model_dump()
 
     plan = result.execution_plan
@@ -461,21 +475,28 @@ def preview_factor_formula(
     data_cutoff_at = None
     try:
         ctd_evidence = latest_complete_trade_date(db)
-        selected_trade_date = str(ctd_evidence.selected_trade_date)
-        data_cutoff_at = selected_trade_date
+        selected_trade_date = payload.trade_date or str(ctd_evidence.selected_trade_date)
+        data_cutoff_at = str(ctd_evidence.selected_trade_date)
         evidence = {
-            'selected_trade_date': str(ctd_evidence.selected_trade_date),
+            'selected_trade_date': selected_trade_date,
+            'latest_complete_trade_date': str(ctd_evidence.selected_trade_date),
             'observed_symbols': ctd_evidence.observed_symbols,
             'expected_symbols': ctd_evidence.expected_symbols,
             'completeness_ratio': ctd_evidence.completeness_ratio,
             'fallback_reason': ctd_evidence.fallback_reason,
         }
     except Exception:
-        pass
+        selected_trade_date = payload.trade_date
 
     # 3. 评估数据 readiness（基于依赖的源表）
     data_readiness = None
     missing_reasons: dict[str, str] = {}
+    data_fix_links: list[dict[str, object]] = []
+    blocking_fields: list[dict[str, object]] = []
+    readiness_warnings: list[dict[str, object]] = []
+    evaluation_supported = True
+    evaluation_mode = "continuous"
+    warehouse: FactorWarehouse | None = None
     try:
         config = get_factor_system_config(db)
         warehouse = FactorWarehouse(config.warehouse_path)
@@ -494,19 +515,134 @@ def preview_factor_formula(
                 }
                 if rows == 0:
                     missing_reasons[table] = 'source_table_empty'
+                    data_fix_links.append({
+                        'section': 'universe' if table == 'raw_daily_bars' else 'external',
+                        'source_table': table,
+                        'label': '去补充基础行情数据' if table == 'raw_daily_bars' else '去同步外部数据',
+                    })
             data_readiness = {
                 'source_tables': readiness_fields,
                 'point_in_time_fields': deps.get('point_in_time_fields', []),
                 'max_lookback': deps.get('max_lookback', 1),
             }
-    except Exception:
-        pass
+
+            from app.services.factors.formula_catalog import build_formula_catalog
+
+            live_catalog = build_formula_catalog(warehouse)
+            capability_by_field = {
+                str(item.get('key')): item
+                for item in live_catalog.get('fields', [])
+            }
+            dependency_capabilities: dict[str, dict[str, object]] = {}
+            dependency_names = [str(field) for field in deps.get('fields', [])]
+            modes = {
+                str(capability_by_field.get(field_name, {}).get(
+                    'evaluation_mode',
+                    capability_by_field.get(field_name, {}).get('data_mode', 'continuous'),
+                ))
+                for field_name in dependency_names
+                if capability_by_field.get(field_name)
+            }
+            non_continuous_modes = {
+                mode for mode in modes if mode in {'event', 'snapshot'}
+            }
+            # Event/snapshot formulas are evaluated at their latest actual
+            # observation, not at the latest daily-bar date.  This avoids a
+            # genuine event being presented as unavailable merely because it
+            # did not occur on today's trading session.
+            if payload.trade_date is None and len(non_continuous_modes) == 1:
+                special_dates = [
+                    str(capability_by_field[field_name]['latest_date'])
+                    for field_name in dependency_names
+                    if str(capability_by_field.get(field_name, {}).get(
+                        'evaluation_mode', capability_by_field.get(field_name, {}).get('data_mode', ''),
+                    )) in non_continuous_modes
+                    and capability_by_field.get(field_name, {}).get('latest_date')
+                ]
+                if special_dates:
+                    selected_trade_date = min(special_dates)
+                    data_cutoff_at = selected_trade_date
+                    if evidence is not None:
+                        evidence['evaluation_source_date'] = selected_trade_date
+                        evidence['evaluation_date_policy'] = 'latest_real_event_or_snapshot'
+            requested_date = selected_trade_date
+            for field_name in deps.get('fields', []):
+                capability = capability_by_field.get(str(field_name), {})
+                if not capability:
+                    continue
+                dependency_capabilities[str(field_name)] = capability
+                availability = str(capability.get('availability', 'unknown'))
+                field_mode = str(capability.get('data_mode', 'continuous'))
+                modes.add(str(capability.get('evaluation_mode', field_mode)))
+                field_issue = {
+                    'field': str(field_name),
+                    'availability': availability,
+                    'data_mode': field_mode,
+                    'reason': str(capability.get('status_reason', '')),
+                    'first_date': capability.get('first_date'),
+                    'latest_date': capability.get('latest_date'),
+                    'nonnull_rows': int(capability.get('nonnull_rows', 0) or 0),
+                    'distinct_symbols': int(capability.get('distinct_symbols', 0) or 0),
+                    'distinct_dates': int(capability.get('distinct_dates', 0) or 0),
+                }
+                preview_enabled = bool(capability.get('preview_enabled', False))
+                if not preview_enabled or availability in {'blocked', 'unknown'}:
+                    blocking_fields.append(field_issue)
+                    missing_reasons[f'field:{field_name}'] = str(
+                        capability.get('status_reason', 'field_data_unavailable')
+                    )
+                    continue
+                first_date = capability.get('first_date')
+                if requested_date and first_date and str(requested_date) < str(first_date):
+                    field_issue['reason'] = (
+                        f"requested_date_before_coverage: {requested_date} < {first_date}"
+                    )
+                    blocking_fields.append(field_issue)
+                    missing_reasons[f'field:{field_name}'] = str(field_issue['reason'])
+                    continue
+                if availability != 'available':
+                    readiness_warnings.append(field_issue)
+                if (
+                    not bool(capability.get('evaluation_enabled', False))
+                    and field_mode not in {'event', 'snapshot'}
+                ):
+                    evaluation_supported = False
+
+            if blocking_fields:
+                evaluation_supported = False
+            if non_continuous_modes:
+                evaluation_mode = (
+                    next(iter(non_continuous_modes))
+                    if len(non_continuous_modes) == 1
+                    else 'mixed'
+                )
+                # A pure event/snapshot formula can be previewed and assessed
+                # in its own mode. Mixed event+snapshot expressions remain
+                # blocked until an explicit combined-evaluation contract exists.
+                if evaluation_mode == 'mixed':
+                    evaluation_supported = False
+                    missing_reasons['evaluation_mode'] = 'mixed_event_snapshot_not_supported'
+            data_readiness['fields'] = dependency_capabilities
+            data_readiness['evaluation_supported'] = evaluation_supported
+            data_readiness['evaluation_mode'] = evaluation_mode
+            data_readiness['evaluation_scope'] = (
+                'event_date_only' if evaluation_mode == 'event'
+                else 'snapshot_time_only' if evaluation_mode == 'snapshot'
+                else 'continuous_trade_dates'
+            )
+    except Exception as exc:
+        missing_reasons['warehouse'] = f'readiness_error: {type(exc).__name__}'
+        evaluation_supported = False
 
     # 4. 构建预览值（WP2-06：接入 DuckDB 兼容执行）
     values: list[FactorPreviewValueItem] = []
     try:
         from app.services.factors.factor_executor import FactorExecutor
 
+        if warehouse is None:
+            raise RuntimeError('factor_warehouse_unavailable')
+        if blocking_fields:
+            raise RuntimeError('formula_data_blocked')
         executor = FactorExecutor(warehouse)
         preview_td = (
             date.fromisoformat(selected_trade_date)
@@ -514,7 +650,10 @@ def preview_factor_formula(
             else None
         )
         preview_outcome = executor.preview(
-            plan, trade_date=preview_td, limit=20
+            plan,
+            trade_date=preview_td,
+            limit=payload.max_symbols,
+            symbols=payload.symbols,
         )
         for v in preview_outcome.values:
             values.append(FactorPreviewValueItem(
@@ -524,12 +663,91 @@ def preview_factor_formula(
                 winsorized_value=v.get("winsorized_value"),
                 normalized_value=v.get("normalized_value"),
                 eligible=v.get("eligible", False),
+                missing_reason=None if v.get("eligible", False) else "formula_result_missing",
             ))
         # 补充执行错误到 missing_reasons
         for err in preview_outcome.errors:
             missing_reasons[f"preview_error_{len(missing_reasons)}"] = err
-    except Exception:
-        pass  # 预览失败不阻断响应，返回已有信息
+    except Exception as exc:
+        missing_reasons['preview'] = f'preview_error: {type(exc).__name__}: {exc}'
+
+    # Explicitly requested symbols remain visible even when no source row exists.
+    if payload.symbols:
+        requested = list(dict.fromkeys(
+            str(symbol).strip() for symbol in payload.symbols if str(symbol).strip()
+        ))[:payload.max_symbols]
+        present = {item.symbol for item in values}
+        for symbol in requested:
+            if symbol in present:
+                continue
+            values.append(FactorPreviewValueItem(
+                symbol=symbol,
+                trade_date=selected_trade_date or "",
+                eligible=False,
+                missing_reason="symbol_data_missing",
+            ))
+            missing_reasons[f"symbol:{symbol}"] = "symbol_data_missing"
+
+    attempted_count = len(values)
+    valid_values = [
+        float(item.raw_value)
+        for item in values
+        if item.eligible and item.raw_value is not None and math.isfinite(float(item.raw_value))
+    ]
+    valid_count = len(valid_values)
+    missing_count = max(0, attempted_count - valid_count)
+    coverage_rate = valid_count / attempted_count if attempted_count else 0.0
+    missing_rate = missing_count / attempted_count if attempted_count else 0.0
+    if valid_count == 0:
+        evaluation_supported = False
+        missing_reasons.setdefault('evaluation', 'no_valid_preview_values')
+    elif evaluation_mode == 'continuous' and coverage_rate < 0.05:
+        evaluation_supported = False
+        missing_reasons.setdefault('evaluation', 'preview_coverage_below_5_percent')
+    if data_readiness is not None:
+        data_readiness['evaluation_supported'] = evaluation_supported
+
+    def _quantile(numbers: list[float], ratio: float) -> float | None:
+        if not numbers:
+            return None
+        ordered = sorted(numbers)
+        position = (len(ordered) - 1) * ratio
+        lower = int(position)
+        upper = min(lower + 1, len(ordered) - 1)
+        fraction = position - lower
+        return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
+
+    q1 = _quantile(valid_values, 0.25)
+    q3 = _quantile(valid_values, 0.75)
+    distribution = {
+        'min': min(valid_values) if valid_values else None,
+        'p25': q1,
+        'median': _quantile(valid_values, 0.5),
+        'p75': q3,
+        'max': max(valid_values) if valid_values else None,
+        'mean': statistics.fmean(valid_values) if valid_values else None,
+        'stddev': statistics.pstdev(valid_values) if len(valid_values) > 1 else (0.0 if valid_values else None),
+    }
+    outlier_count = 0
+    if q1 is not None and q3 is not None:
+        iqr = q3 - q1
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
+        outlier_count = sum(value < lower_bound or value > upper_bound for value in valid_values)
+
+    if missing_reasons and not data_fix_links:
+        source_tables = deps.get('source_tables', [])
+        for table in source_tables:
+            data_fix_links.append({
+                'section': 'universe' if table == 'raw_daily_bars' else 'external',
+                'source_table': table,
+                'label': '去补充基础行情数据' if table == 'raw_daily_bars' else '去同步外部数据',
+            })
+
+    deduped_fix_links = list({
+        (str(link.get('section')), str(link.get('source_table'))): link
+        for link in data_fix_links
+    }.values())
 
     return FactorPreviewResponse(
         is_valid=True,
@@ -542,6 +760,19 @@ def preview_factor_formula(
         data_dependencies=deps,
         values=values,
         missing_reasons=missing_reasons,
+        attempted_count=attempted_count,
+        valid_count=valid_count,
+        missing_count=missing_count,
+        coverage_rate=round(coverage_rate, 6),
+        missing_rate=round(missing_rate, 6),
+        distribution=distribution,
+        outlier_count=outlier_count,
+        elapsed_ms=round((time.perf_counter() - started_at) * 1000, 3),
+        data_fix_links=deduped_fix_links,
+        evaluation_supported=evaluation_supported,
+        evaluation_mode=evaluation_mode,
+        blocking_fields=blocking_fields,
+        readiness_warnings=readiness_warnings,
     ).model_dump()
 
 

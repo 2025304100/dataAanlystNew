@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.capital_flow import CapitalFlow
+from app.models.etf_indicator import EtfIndicator
 from app.models.financial_report import StockFinancialReport
 from app.models.hot_rank_snapshot import StockHotRankSnapshot
 from app.models.lhb_institution_trade import LhbInstitutionTrade
@@ -37,6 +38,7 @@ FINANCIAL_REPORT_SOURCE_KEY = "sql.stock_financial_reports"
 LHB_INSTITUTION_SOURCE_KEY = "sql.lhb_institution_trades"
 HOT_RANK_SOURCE_KEY = "sql.stock_hot_rank_snapshots"
 TAIL_PROXY_SOURCE_KEY = "sql.tail_accumulation_snapshots"
+ETF_INDICATOR_SOURCE_KEY = "sql.etf_indicators"
 MACRO_SOURCE_KEY = "sql.macro_indicator_values"
 CancelCheck = Callable[[], bool]
 
@@ -49,6 +51,7 @@ class FactorInputMirrorResult:
     lhb_institution_rows: int = 0
     hot_rank_rows: int = 0
     tail_proxy_rows: int = 0
+    etf_indicator_rows: int = 0
     fund_flow_rows: int = 0
     macro_rows: int = 0
     valuation_watermark: int = 0
@@ -56,6 +59,7 @@ class FactorInputMirrorResult:
     lhb_institution_watermark: int = 0
     hot_rank_watermark: int = 0
     tail_proxy_watermark: int = 0
+    etf_indicator_watermark: int = 0
     fund_flow_watermark: int = 0
     macro_watermark: int = 0
 
@@ -70,6 +74,7 @@ class FactorInputMirrorResult:
             + self.financial_report_rows
             + self.sentiment_rows
             + self.tail_proxy_rows
+            + self.etf_indicator_rows
             + self.fund_flow_rows
             + self.macro_rows
         )
@@ -598,6 +603,47 @@ def _mirror_tail_proxy(
     result.tail_proxy_watermark = cursor
 
 
+def _mirror_etf_indicators(
+    db: Session, warehouse: FactorWarehouse, result: FactorInputMirrorResult,
+    *, start_date: date | None, end_date: date | None, batch_size: int,
+    full_refresh: bool, should_cancel: CancelCheck | None,
+) -> None:
+    if _cancelled(should_cancel):
+        return
+    source_key = _watermark_key(ETF_INDICATOR_SOURCE_KEY, start_date, end_date)
+    cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    while True:
+        if _cancelled(should_cancel):
+            break
+        rows = db.execute(
+            select(EtfIndicator, Symbol)
+            .join(Symbol, Symbol.id == EtfIndicator.symbol_id)
+            .where(
+                EtfIndicator.id > cursor,
+                *_date_filters(EtfIndicator.trade_date, start_date, end_date),
+            )
+            .order_by(EtfIndicator.id).limit(batch_size)
+        ).all()
+        if not rows:
+            break
+        ingested_at = _utcnow_naive()
+        records = [{
+            "symbol": _symbol_code(symbol.symbol), "trade_date": item.trade_date,
+            "nav": item.nav, "close": item.close,
+            "premium_discount": item.premium_discount, "fund_size": item.fund_size,
+            "total_shares": item.total_shares, "shares_change": item.shares_change,
+            "tracking_error": item.tracking_error,
+            "premium_discount_score": item.premium_discount_score,
+            "source": item.source or "business_sql", "ingested_at": ingested_at,
+            "batch_id": result.batch_id,
+        } for item, symbol in rows]
+        cursor = int(rows[-1][0].id)
+        result.etf_indicator_rows += warehouse.upsert_records(
+            "raw_etf_indicators", records, source_key=source_key, watermark=cursor,
+        )
+    result.etf_indicator_watermark = cursor
+
+
 def mirror_factor_inputs(
     db: Session,
     *,
@@ -610,6 +656,7 @@ def mirror_factor_inputs(
     include_fund_flows: bool = True,
     include_sentiment: bool = True,
     include_tail_proxy: bool = True,
+    include_etf_indicators: bool = True,
     include_macro: bool = True,
     full_refresh: bool = False,
     should_cancel: CancelCheck | None = None,
@@ -624,6 +671,7 @@ def mirror_factor_inputs(
             include_fund_flows,
             include_sentiment,
             include_tail_proxy,
+            include_etf_indicators,
             include_macro,
         )
     ):
@@ -701,6 +749,12 @@ def mirror_factor_inputs(
             end_date=end_date,
             batch_size=batch_size,
             full_refresh=full_refresh,
+            should_cancel=should_cancel,
+        )
+    if include_etf_indicators and not _cancelled(should_cancel):
+        _mirror_etf_indicators(
+            db, target, result, start_date=start_date, end_date=end_date,
+            batch_size=batch_size, full_refresh=full_refresh,
             should_cancel=should_cancel,
         )
     if include_macro and not _cancelled(should_cancel):

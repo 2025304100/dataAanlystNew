@@ -23,7 +23,7 @@ from app.schemas.scheduled_task import ScheduledTaskCreate, ScheduledTaskUpdate
 
 logger = logging.getLogger(__name__)
 SCHEDULER_CHECK_INTERVAL_SECONDS = 30
-DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v6"
+DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v7"
 
 TASK_DEFINITIONS: dict[str, dict] = {
     "universe_incremental_sync": {
@@ -95,6 +95,17 @@ TASK_DEFINITIONS: dict[str, dict] = {
         "description": "同步沪深300等指数日线到 index_prices 表，供组合绩效 benchmark 对比曲线使用",
         "default_payload": {"symbol": "000300", "lookback_days": 5},
     },
+    "external_data_sync": {
+        "name": "因子输入估值增量同步",
+        "description": "每天抓取全市场 A 股最新 PE/PB/市值快照，供因子公式使用",
+        "default_payload": {
+            "dataset": "fundamental",
+            "source": "all",
+            "include_northbound": False,
+            "mode": "incremental",
+            "lookback_days": 1,
+        },
+    },
     # P2-3：自动交易执行（基于评分+候选池+风控自动触发模拟买卖）
     "portfolio_auto_trade": {
         "name": "组合自动交易",
@@ -111,6 +122,15 @@ DEFAULT_SCHEDULES = (
         "time_of_day": "18:00",
         "weekdays": [],
         "payload": TASK_DEFINITIONS["universe_incremental_sync"]["default_payload"],
+        "enabled": True,
+    },
+    {
+        "name": "每日因子估值增量同步",
+        "task_type": "external_data_sync",
+        "frequency": "daily",
+        "time_of_day": "19:00",
+        "weekdays": [],
+        "payload": TASK_DEFINITIONS["external_data_sync"]["default_payload"],
         "enabled": True,
     },
     {
@@ -409,6 +429,26 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
         if not 1 <= lookback_days <= 365:
             raise ValueError("lookback_days must be between 1 and 365")
         return {"symbol": symbol, "lookback_days": lookback_days}
+    if task_type == "external_data_sync":
+        dataset = str(payload.get("dataset") or "fundamental")
+        if dataset != "fundamental":
+            raise ValueError("scheduled external sync currently supports fundamental only")
+        source = str(payload.get("source") or "all")
+        if source not in {"watchlist", "positions", "all"}:
+            raise ValueError("unsupported external sync source")
+        mode = str(payload.get("mode") or "incremental")
+        if mode != "incremental":
+            raise ValueError("scheduled external sync must use incremental mode")
+        lookback_days = int(payload.get("lookback_days", 1))
+        if not 1 <= lookback_days <= 30:
+            raise ValueError("lookback_days must be between 1 and 30")
+        return {
+            "dataset": dataset,
+            "source": source,
+            "include_northbound": bool(payload.get("include_northbound", False)),
+            "mode": mode,
+            "lookback_days": lookback_days,
+        }
     if task_type == "portfolio_auto_trade":
         # P2-3：自动交易 payload 必须含 dry_run(bool) 和 buy_candidate_limit(int, 1-50)
         dry_run = bool(payload.get("dry_run", False))
@@ -564,6 +604,11 @@ def _dispatch_task(item: ScheduledTask):
         symbol = str(payload.get("symbol", "000300"))
         lookback_days = int(payload.get("lookback_days", 5))
         return "async", create_index_daily_sync_task(symbol=symbol, lookback_days=lookback_days)
+    if item.task_type == "external_data_sync":
+        from app.services.external_data_sync_task import start_external_data_sync
+
+        dataset = str(payload.get("dataset") or "fundamental")
+        return "async", start_external_data_sync(dataset, payload)
     if item.task_type == "portfolio_auto_trade":
         from app.services.auto_trade_task import (
             create_portfolio_auto_trade_task,

@@ -21,6 +21,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,7 +30,8 @@ from typing import Any
 # WP2-04: 编译器版本与限制常量
 # ══════════════════════════════════════════════════════════
 
-COMPILER_VERSION = "wp2-1.0.0"
+COMPILER_VERSION = "dsl-2.0.0"
+DSL_VERSION = "2.0"
 
 # 公式长度限制（字符数）
 MAX_FORMULA_LENGTH = 2000
@@ -91,13 +93,245 @@ class CompileError:
     error_code: str
     message: str
     detail: dict[str, Any] = field(default_factory=dict)
+    start: int | None = None
+    end: int | None = None
+    line: int | None = None
+    column: int | None = None
+    token: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "error_code": self.error_code,
             "message": self.message,
             "detail": self.detail,
+            "start": self.start,
+            "end": self.end,
+            "line": self.line,
+            "column": self.column,
+            "token": self.token,
         }
+
+
+def _line_column(source: str, offset: int) -> tuple[int, int]:
+    """Return one-based line and column for a zero-based source offset."""
+    safe_offset = max(0, min(offset, len(source)))
+    return source.count("\n", 0, safe_offset) + 1, safe_offset - source.rfind("\n", 0, safe_offset)
+
+
+def _locate_token(source: str, token: str | None) -> tuple[int | None, int | None, int | None, int | None, str | None]:
+    if not token:
+        return None, None, None, None, None
+    match = re.search(rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])", source)
+    if not match:
+        return None, None, None, None, token
+    line, column = _line_column(source, match.start())
+    return match.start(), match.end(), line, column, match.group(0)
+
+
+def _error_at_token(
+    *,
+    source: str,
+    error_code: str,
+    message: str,
+    detail: dict[str, Any] | None = None,
+    token: str | None = None,
+) -> CompileError:
+    start, end, line, column, located = _locate_token(source, token)
+    return CompileError(
+        error_code=error_code,
+        message=message,
+        detail=detail or {},
+        start=start,
+        end=end,
+        line=line,
+        column=column,
+        token=located,
+    )
+
+
+def _split_top_level(source: str, delimiter: str = ",") -> list[str]:
+    """Split a DSL fragment without cutting nested calls or quoted strings."""
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(source):
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth = max(0, depth - 1)
+        elif char == delimiter and depth == 0:
+            parts.append(source[start:index])
+            start = index + 1
+    parts.append(source[start:])
+    return parts
+
+
+def _rewrite_ternary(source: str) -> str:
+    """Rewrite JS-like ternaries into the existing safe Python expression subset."""
+    rebuilt: list[str] = []
+    index = 0
+    quote: str | None = None
+    escaped = False
+    while index < len(source):
+        char = source[index]
+        if quote:
+            rebuilt.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            rebuilt.append(char)
+            index += 1
+            continue
+        if char == "(":
+            depth = 1
+            inner_quote: str | None = None
+            inner_escaped = False
+            closing = index + 1
+            while closing < len(source) and depth:
+                current = source[closing]
+                if inner_quote:
+                    if inner_escaped:
+                        inner_escaped = False
+                    elif current == "\\":
+                        inner_escaped = True
+                    elif current == inner_quote:
+                        inner_quote = None
+                elif current in {"'", '"'}:
+                    inner_quote = current
+                elif current == "(":
+                    depth += 1
+                elif current == ")":
+                    depth -= 1
+                closing += 1
+            if depth == 0:
+                content = source[index + 1:closing - 1]
+                pieces = _split_top_level(content)
+                rebuilt.append("(" + ",".join(_rewrite_ternary(piece) for piece in pieces) + ")")
+                index = closing
+                continue
+        rebuilt.append(char)
+        index += 1
+
+    nested = "".join(rebuilt)
+    depth = 0
+    quote = None
+    escaped = False
+    question_index: int | None = None
+    nested_questions = 0
+    colon_index: int | None = None
+    for index, char in enumerate(nested):
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth = max(0, depth - 1)
+        elif depth == 0 and char == "?":
+            if question_index is None:
+                question_index = index
+            else:
+                nested_questions += 1
+        elif depth == 0 and char == ":" and question_index is not None:
+            if nested_questions:
+                nested_questions -= 1
+            else:
+                colon_index = index
+                break
+    if question_index is None or colon_index is None:
+        return nested
+    condition = nested[:question_index].strip()
+    truthy = nested[question_index + 1:colon_index].strip()
+    falsy = nested[colon_index + 1:].strip()
+    return f"({_rewrite_ternary(truthy)} if {_rewrite_ternary(condition)} else {_rewrite_ternary(falsy)})"
+
+
+def _normalize_dsl_surface(source: str) -> str:
+    """Normalize JS-like operators while leaving quoted strings untouched."""
+    out: list[str] = []
+    index = 0
+    quote: str | None = None
+    escaped = False
+    while index < len(source):
+        char = source[index]
+        if quote:
+            out.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            out.append(char)
+            index += 1
+            continue
+        if source.startswith("&&", index):
+            out.append(" and ")
+            index += 2
+            continue
+        if source.startswith("||", index):
+            out.append(" or ")
+            index += 2
+            continue
+        if char == "!" and not source.startswith("!=", index):
+            out.append(" not ")
+            index += 1
+            continue
+        if source.startswith("if", index):
+            before = source[index - 1] if index else ""
+            after = source[index + 2] if index + 2 < len(source) else ""
+            if (not before or not (before.isalnum() or before == "_")) and (not after or after.isspace() or after == "("):
+                probe = index + 2
+                while probe < len(source) and source[probe].isspace():
+                    probe += 1
+                if probe < len(source) and source[probe] == "(":
+                    out.append("iif")
+                    index += 2
+                    continue
+        out.append(char)
+        index += 1
+    return _rewrite_ternary("".join(out)).strip()
+
+
+class _ConditionalCallTransformer(ast.NodeTransformer):
+    """Normalize iif(condition, a, b) into the same IfExp AST as ternaries."""
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        self.generic_visit(node)
+        if isinstance(node.func, ast.Name) and node.func.id == "iif" and len(node.args) == 3 and not node.keywords:
+            replacement = ast.IfExp(test=node.args[0], body=node.args[1], orelse=node.args[2])
+            return ast.copy_location(replacement, node)
+        return node
 
 
 # ══════════════════════════════════════════════════════════
@@ -176,6 +410,15 @@ FIELD_CATALOG: dict[str, FieldSpec] = {
     # C 层尾盘代理（raw_tail_proxy）
     "proxy_score": FieldSpec(
         "proxy_score", "raw_tail_proxy", "float", "尾盘代理分数", layer="C"
+    ),
+    "etf_premium_discount": FieldSpec(
+        "etf_premium_discount", "raw_etf_indicators", "float", "ETF 溢折价率", layer="B"
+    ),
+    "etf_tracking_error": FieldSpec(
+        "etf_tracking_error", "raw_etf_indicators", "float", "ETF 跟踪误差", layer="B"
+    ),
+    "etf_fund_size": FieldSpec(
+        "etf_fund_size", "raw_etf_indicators", "float", "ETF 基金规模", layer="B"
     ),
 }
 
@@ -811,20 +1054,37 @@ class FactorCompiler:
             return CompilationResult(success=False, errors=errors)
 
         # 2. AST 解析
+        source_formula = formula.strip()
+        normalized_formula = _normalize_dsl_surface(source_formula)
         try:
-            tree: ast.Expression = ast.parse(formula.strip(), mode="eval")
+            tree: ast.Expression = ast.parse(normalized_formula, mode="eval")
+            tree = _ConditionalCallTransformer().visit(tree)
+            ast.fix_missing_locations(tree)
         except SyntaxError as exc:
+            syntax_line = max(1, exc.lineno or 1)
+            source_lines = source_formula.splitlines() or [source_formula]
+            source_line = source_lines[min(syntax_line - 1, len(source_lines) - 1)]
+            source_column = max(1, exc.offset or 1)
+            line_start = sum(len(line) + 1 for line in source_lines[:syntax_line - 1])
+            start = min(len(source_formula), line_start + source_column - 1)
+            token_match = re.search(r"[A-Za-z_][A-Za-z0-9_]*|\S", source_line[max(0, source_column - 1):])
+            token = token_match.group(0) if token_match else None
             return CompilationResult(
                 success=False,
                 errors=[CompileError(
                     error_code="formula_syntax_error",
                     message=f"syntax error: {exc.msg}",
                     detail={"line": exc.lineno, "offset": exc.offset},
+                    start=start,
+                    end=min(len(source_formula), start + (len(token) if token else 1)),
+                    line=syntax_line,
+                    column=source_column,
+                    token=token,
                 )],
             )
 
         # 3. AST 节点白名单校验
-        node_errors = self._validate_nodes(tree)
+        node_errors = self._validate_nodes(tree, source_formula)
         errors.extend(node_errors)
 
         # 4. 深度/节点数/函数调用数限制
@@ -852,7 +1112,7 @@ class FactorCompiler:
             ))
 
         # 5. 函数白名单和参数校验
-        func_errors = self._validate_functions(tree)
+        func_errors = self._validate_functions(tree, source_formula)
         errors.extend(func_errors)
 
         # 6. 依赖收集
@@ -863,10 +1123,12 @@ class FactorCompiler:
             param_keys = set(params.keys()) if params else set()
             for name in deps.unknown_names:
                 if name not in param_keys:
-                    errors.append(CompileError(
+                    errors.append(_error_at_token(
+                        source=source_formula,
                         error_code="field_not_in_catalog",
                         message=f"unknown field: {name}",
                         detail={"field": name},
+                        token=name,
                     ))
 
         # 回看窗口限制
@@ -894,7 +1156,11 @@ class FactorCompiler:
 
         plan = ExecutionPlan(
             compiler_version=COMPILER_VERSION,
-            formula=formula.strip(),
+            formula=(
+                ast.unparse(tree)
+                if normalized_formula != source_formula or "iif" in normalized_formula
+                else source_formula
+            ),
             formula_ast=_serialize_ast(tree),
             params=_normalize_params(params),
             postprocess=_normalize_postprocess(postprocess),
@@ -911,31 +1177,37 @@ class FactorCompiler:
 
     # ── AST 节点校验 ──────────────────────────────────────
 
-    def _validate_nodes(self, tree: ast.AST) -> list[CompileError]:
+    def _validate_nodes(self, tree: ast.AST, source_formula: str) -> list[CompileError]:
         """校验 AST 节点白名单。"""
         errors: list[CompileError] = []
         for child in ast.walk(tree):
             # 显式禁止的节点（精确错误码）
             forbidden_code = _FORBIDDEN_NODE_MAP.get(type(child))
             if forbidden_code is not None:
-                errors.append(CompileError(
+                node_token = ast.unparse(child) if hasattr(ast, "unparse") else type(child).__name__
+                errors.append(_error_at_token(
+                    source=source_formula,
                     error_code=forbidden_code,
                     message=f"forbidden AST node: {type(child).__name__}",
                     detail={"node_type": type(child).__name__},
+                    token=node_token,
                 ))
                 continue
             # 不在白名单中的节点
             if not isinstance(child, _ALLOWED_NODES):
-                errors.append(CompileError(
+                node_token = ast.unparse(child) if hasattr(ast, "unparse") else type(child).__name__
+                errors.append(_error_at_token(
+                    source=source_formula,
                     error_code="ast_node_forbidden",
                     message=f"unsupported AST node: {type(child).__name__}",
                     detail={"node_type": type(child).__name__},
+                    token=node_token,
                 ))
         return errors
 
     # ── 函数校验 ──────────────────────────────────────────
 
-    def _validate_functions(self, tree: ast.AST) -> list[CompileError]:
+    def _validate_functions(self, tree: ast.AST, source_formula: str) -> list[CompileError]:
         """校验函数调用白名单和参数。"""
         errors: list[CompileError] = []
         for child in ast.walk(tree):
@@ -943,69 +1215,91 @@ class FactorCompiler:
                 continue
             # 函数名必须是 ast.Name（禁止属性调用）
             if not isinstance(child.func, ast.Name):
-                errors.append(CompileError(
+                errors.append(_error_at_token(
+                    source=source_formula,
                     error_code="function_not_allowed",
                     message="only direct function calls are allowed (no attribute calls)",
+                    token=ast.unparse(child.func) if hasattr(ast, "unparse") else None,
                 ))
                 continue
             func_name = child.func.id
             # 关键字参数禁止
             if child.keywords:
-                errors.append(CompileError(
+                errors.append(_error_at_token(
+                    source=source_formula,
                     error_code="function_keyword_args",
                     message=f"keyword arguments are not allowed in function: {func_name}",
                     detail={"function": func_name},
+                    token=func_name,
                 ))
             # 函数必须在目录中
-            spec = FUNCTION_CATALOG.get(func_name)
+            spec = (
+                FunctionSpec("iif", "conditional", 3, 3, "条件函数")
+                if func_name == "iif"
+                else FUNCTION_CATALOG.get(func_name)
+            )
             if spec is None:
-                errors.append(CompileError(
+                display_name = "if" if func_name == "iif" else func_name
+                errors.append(_error_at_token(
+                    source=source_formula,
                     error_code="function_not_in_catalog",
-                    message=f"unknown function: {func_name}",
-                    detail={"function": func_name},
+                    message=f"unknown function: {display_name}",
+                    detail={"function": display_name},
+                    token=display_name,
                 ))
                 continue
             # 参数数量检查
             arg_count = len(child.args)
             if arg_count < spec.min_args or arg_count > spec.max_args:
-                errors.append(CompileError(
+                display_name = "if" if func_name == "iif" else func_name
+                errors.append(_error_at_token(
+                    source=source_formula,
                     error_code="function_arg_count",
-                    message=f"function {func_name} expects {spec.min_args}-{spec.max_args} args, got {arg_count}",
+                    message=f"function {display_name} expects {spec.min_args}-{spec.max_args} args, got {arg_count}",
                     detail={
-                        "function": func_name,
+                        "function": display_name,
                         "expected_min": spec.min_args,
                         "expected_max": spec.max_args,
                         "actual": arg_count,
                     },
+                    token=display_name,
                 ))
             # 窗口参数校验（滚动函数）
             if spec.window_arg_index is not None and arg_count > spec.window_arg_index:
                 window_arg = child.args[spec.window_arg_index]
                 if not isinstance(window_arg, ast.Constant):
-                    errors.append(CompileError(
+                    errors.append(_error_at_token(
+                        source=source_formula,
                         error_code="function_window_invalid",
                         message=f"function {func_name} window must be a constant integer",
                         detail={"function": func_name},
+                        token=func_name,
                     ))
                 elif not isinstance(window_arg.value, (int, float)):
-                    errors.append(CompileError(
+                    errors.append(_error_at_token(
+                        source=source_formula,
                         error_code="function_window_invalid",
                         message=f"function {func_name} window must be numeric, got {type(window_arg.value).__name__}",
                         detail={"function": func_name},
+                        token=func_name,
                     ))
                 else:
                     window_val = int(window_arg.value)
                     if window_val <= 0:
-                        errors.append(CompileError(
+                        errors.append(_error_at_token(
+                            source=source_formula,
                             error_code="negative_lag",
                             message=f"function {func_name} window must be positive, got {window_val}",
                             detail={"function": func_name, "window": window_val},
+                            token=str(window_arg.value),
                         ))
                     elif window_val > self.max_lookback:
-                        errors.append(CompileError(
+                        errors.append(_error_at_token(
+                            source=source_formula,
                             error_code="lookback_window_exceeded",
                             message=f"function {func_name} window {window_val} exceeds limit {self.max_lookback}",
                             detail={"function": func_name, "window": window_val},
+                            token=str(window_arg.value),
                         ))
         return errors
 

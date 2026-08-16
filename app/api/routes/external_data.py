@@ -14,7 +14,10 @@
 """
 from __future__ import annotations
 
+import csv
+import io
 import logging
+import re
 import time
 from datetime import date, datetime, timedelta
 from typing import Literal
@@ -28,10 +31,24 @@ from app.models.symbol import Symbol
 from app.schemas.async_task import AsyncTaskRead
 from app.services.external_data_sync_task import (
     ExternalDataset,
+    ExternalSyncMode,
+    build_external_sync_plan,
+    cancel_external_data_sync,
+    get_external_sync_capabilities,
+    get_external_data_coverage,
+    get_external_data_gaps,
     get_external_data_overview,
+    get_external_sync_partitions,
     get_external_sync_task,
     resolve_external_symbols,
+    retry_external_data_sync,
     start_external_data_sync,
+    start_external_gap_repair,
+)
+from app.services.data_quality import (
+    capture_field_quality_snapshots,
+    list_field_quality_history,
+    list_latest_field_quality,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,8 +75,12 @@ class ExternalSyncTaskCreate(BaseModel):
     dataset: ExternalDataset
     source: Literal["watchlist", "positions", "all"] = "watchlist"
     include_northbound: bool = True
-    lookback_days: int = Field(default=30, ge=1, le=31)
+    mode: ExternalSyncMode = "incremental"
+    start_date: date | None = None
+    end_date: date | None = None
+    lookback_days: int = Field(default=30, ge=1, le=100)
     limit: int = Field(default=20, ge=1, le=50)
+    max_workers: int = Field(default=4, ge=1, le=8)
 
 
 class ExternalDatasetOverview(BaseModel):
@@ -80,6 +101,26 @@ class ExternalDataOverview(BaseModel):
     refreshed_at: datetime
 
 
+class ExternalDataGapItem(BaseModel):
+    symbol_id: int
+    symbol: str
+    trade_date: date
+
+
+class ExternalDataGapRepairRequest(BaseModel):
+    dataset: Literal["fundamental", "financial", "capital_flow"]
+    start_date: date
+    end_date: date
+    gaps: list[ExternalDataGapItem] = Field(min_length=1, max_length=1000)
+
+
+class TailMinuteImportRequest(BaseModel):
+    """Controlled CSV import: symbol,timestamp,open,high,low,close,volume,amount."""
+
+    csv_text: str = Field(min_length=1, max_length=20_000_000)
+    filename: str | None = Field(default=None, max_length=160)
+
+
 def _resolve_symbols(db: Session, source: Literal["watchlist", "positions", "all"], asset_type: str | None) -> list[Symbol]:
     """解析目标 symbol 列表。"""
     return resolve_external_symbols(db, source, asset_type)
@@ -89,6 +130,87 @@ def _resolve_symbols(db: Session, source: Literal["watchlist", "positions", "all
 def external_data_overview(db: Session = Depends(get_db)):
     """Return real inventory and latest task status for all external datasets."""
     return get_external_data_overview(db)
+
+
+@router.get("/external-data/coverage")
+def external_data_coverage(db: Session = Depends(get_db)):
+    """Return field coverage and readiness from the factor warehouse cache."""
+    return get_external_data_coverage(db)
+
+
+@router.get("/external-data/quality-snapshots")
+def latest_external_data_quality_snapshots(db: Session = Depends(get_db)):
+    """Return the latest persisted field-quality evidence and failure reasons."""
+    return list_latest_field_quality(db)
+
+
+@router.get("/external-data/quality-snapshots/{field}")
+def external_data_quality_history(
+    field: str,
+    limit: int = Query(30, ge=2, le=180),
+    db: Session = Depends(get_db),
+):
+    """Return a bounded history for a single formula-input field."""
+    return list_field_quality_history(db, field, limit=limit)
+
+
+@router.post("/external-data/quality-snapshots/refresh")
+def refresh_external_data_quality_snapshots(db: Session = Depends(get_db)):
+    """Capture data quality now; source tables remain strictly read-only."""
+    return capture_field_quality_snapshots(db, trigger="manual")
+
+
+@router.post("/external-data/tail-proxy/import")
+def import_tail_proxy_minutes(
+    payload: TailMinuteImportRequest,
+    db: Session = Depends(get_db),
+):
+    """Import validated minute bars; it remains candidate/manual data, not market history."""
+    from app.services.tail_proxy_import import import_tail_minute_csv
+
+    try:
+        return import_tail_minute_csv(
+            db, csv_text=payload.csv_text, filename=payload.filename or "upload.csv"
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/external-data/gaps")
+def external_data_gaps(
+    dataset: Literal["fundamental", "financial", "capital_flow"],
+    start_date: date,
+    end_date: date,
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    """Find missing real external rows using the existing local daily-bar scope."""
+    try:
+        return get_external_data_gaps(
+            db,
+            dataset=dataset,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/external-data/gaps/repair", response_model=AsyncTaskRead)
+def repair_external_data_gaps(payload: ExternalDataGapRepairRequest):
+    """Create a retryable backfill task from selected missing points."""
+    try:
+        return start_external_gap_repair(
+            payload.dataset,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            gaps=[item.model_dump() for item in payload.gaps],
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/external-data/sync-tasks", response_model=AsyncTaskRead)
@@ -101,6 +223,26 @@ def create_external_data_sync_task(payload: ExternalSyncTaskCreate):
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/external-data/sync-capabilities")
+def external_data_sync_capabilities():
+    """Expose provider history boundaries before users create a sync task."""
+    return get_external_sync_capabilities()
+
+
+@router.post("/external-data/sync-plans/preview")
+def preview_external_data_sync_plan(payload: ExternalSyncTaskCreate):
+    """Validate range/mode without performing network calls or creating a task."""
+    try:
+        return build_external_sync_plan(
+            payload.dataset,
+            payload.model_dump(exclude={"dataset"}),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/external-data/sync-tasks/{task_id}", response_model=AsyncTaskRead)
@@ -109,6 +251,36 @@ def external_data_sync_task_status(task_id: str):
     if task is None:
         raise HTTPException(status_code=404, detail="External-data sync task not found")
     return task
+
+
+@router.get("/external-data/sync-tasks/{task_id}/partitions")
+def external_data_sync_task_partitions(task_id: str):
+    """Inspect frozen range, partition outcomes, attempts, and errors."""
+    result = get_external_sync_partitions(task_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="External-data sync task not found")
+    return result
+
+
+@router.post("/external-data/sync-tasks/{task_id}/cancel", response_model=AsyncTaskRead)
+def cancel_external_data_sync_task(task_id: str):
+    """Cancel an external task; completed rows remain available and retryable."""
+    try:
+        return cancel_external_data_sync(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/external-data/sync-tasks/{task_id}/retry", response_model=AsyncTaskRead)
+def retry_external_data_sync_task(task_id: str):
+    """Resume an interrupted range task after its persisted symbol cursor."""
+    try:
+        return retry_external_data_sync(task_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        status_code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @router.post("/external-data/fundamental/sync", response_model=SyncResult)

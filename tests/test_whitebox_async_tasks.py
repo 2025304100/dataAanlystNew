@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.models.async_task import AsyncTaskRecord
@@ -77,6 +79,22 @@ def test_json_loads_fallback():
     assert async_tasks._json_loads(None, []) == []
     assert async_tasks._json_loads("not json", {}) == {}
     assert async_tasks._json_loads("[1, 2]", []) == [1, 2]
+
+
+def test_task_to_read_accepts_object_recovery_metadata():
+    """Partitioned sync tasks keep plan/cursor recovery as one JSON object."""
+    recovery = {"plan": {"dataset": "fundamental"}, "processed": 0}
+    task = AsyncTaskRecord(
+        id="qa-recovery-object",
+        task_type="external_sync_fundamental",
+        status="queued",
+        stage="queued",
+        percent=0.0,
+        message="created",
+        batch_recovery_json=json.dumps(recovery),
+    )
+
+    assert async_tasks._task_to_read(task).batch_recovery == recovery
 
 
 # ---------- 终态保护 ----------

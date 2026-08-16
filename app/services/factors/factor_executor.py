@@ -526,6 +526,101 @@ class FactorExecutor:
     def __init__(self, warehouse: FactorWarehouse):
         self.warehouse = warehouse
 
+    @staticmethod
+    def _select_field_expressions(table_name: str, table_fields: list[str]) -> list[str]:
+        """Return safe SQL projections, including virtual warehouse fields."""
+        expressions: list[str] = []
+        for field_name in table_fields:
+            if table_name == "raw_daily_bars" and field_name == "prev_close":
+                expressions.append(
+                    "LAG(close) OVER (PARTITION BY symbol ORDER BY trade_date) AS prev_close"
+                )
+            else:
+                expressions.append(field_name)
+        return expressions
+
+    @staticmethod
+    def _merge_financial_asof(
+        spine: pd.DataFrame,
+        financial: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """PIT-join financial fields using the latest announced report.
+
+        ``announcement_date <= trade_date`` is the core future-leakage guard.
+        Multiple reports announced on the same date are reduced to the latest
+        report period before the as-of merge.
+        """
+        if spine.empty or financial.empty:
+            return spine
+        left = spine.copy()
+        right = financial.copy()
+        left["trade_date"] = pd.to_datetime(left["trade_date"], errors="coerce")
+        right["announcement_date"] = pd.to_datetime(
+            right["announcement_date"], errors="coerce"
+        )
+        left = left.dropna(subset=["symbol", "trade_date"])
+        right = right.dropna(subset=["symbol", "announcement_date"])
+        if "report_period" in right.columns:
+            right["report_period"] = pd.to_datetime(
+                right["report_period"], errors="coerce"
+            )
+            right = right.sort_values(
+                ["symbol", "announcement_date", "report_period"]
+            ).drop_duplicates(["symbol", "announcement_date"], keep="last")
+        else:
+            right = right.drop_duplicates(["symbol", "announcement_date"], keep="last")
+
+        # pandas merge_asof requires the join key to be globally monotonic.
+        left = left.sort_values(["trade_date", "symbol"])
+        right = right.sort_values(["announcement_date", "symbol"])
+        merged = pd.merge_asof(
+            left,
+            right,
+            left_on="trade_date",
+            right_on="announcement_date",
+            by="symbol",
+            direction="backward",
+            allow_exact_matches=True,
+        )
+        merged = merged.drop(
+            columns=[column for column in ("announcement_date", "report_period") if column in merged.columns]
+        )
+        merged["trade_date"] = merged["trade_date"].dt.date
+        return merged.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
+
+    @staticmethod
+    def _merge_valuation_asof(
+        spine: pd.DataFrame,
+        valuation: pd.DataFrame,
+        *,
+        max_age_days: int = 7,
+    ) -> pd.DataFrame:
+        """Join the latest valuation snapshot without looking into the future."""
+        if spine.empty or valuation.empty:
+            return spine
+        left = spine.copy()
+        right = valuation.copy()
+        left["trade_date"] = pd.to_datetime(left["trade_date"], errors="coerce")
+        right["trade_date"] = pd.to_datetime(right["trade_date"], errors="coerce")
+        left = left.dropna(subset=["symbol", "trade_date"])
+        right = right.dropna(subset=["symbol", "trade_date"])
+        right = right.sort_values(["symbol", "trade_date"]).drop_duplicates(
+            ["symbol", "trade_date"], keep="last"
+        )
+        left = left.sort_values(["trade_date", "symbol"])
+        right = right.sort_values(["trade_date", "symbol"])
+        merged = pd.merge_asof(
+            left,
+            right,
+            on="trade_date",
+            by="symbol",
+            direction="backward",
+            tolerance=pd.Timedelta(days=max_age_days),
+            allow_exact_matches=True,
+        )
+        merged["trade_date"] = merged["trade_date"].dt.date
+        return merged.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
+
     # ── 冻结批次读取 ──────────────────────────────────────
 
     def _read_source_data(
@@ -563,12 +658,14 @@ class FactorExecutor:
             return pd.DataFrame(), structured_errors
 
         # 计算读取日期范围
+        range_start: date | pd.Timestamp | None = None
+        range_end: date | None = trade_date
         if trade_date is not None:
             # 读足够多的历史数据用于滚动计算
             history_days = max(lookback_days, max_lookback + 10)
-            start_date = trade_date - pd.Timedelta(days=history_days)
+            range_start = trade_date - pd.Timedelta(days=history_days)
             date_clause = (
-                f"trade_date >= '{start_date}' AND trade_date <= '{trade_date}'"
+                f"trade_date >= '{range_start}' AND trade_date <= '{trade_date}'"
             )
         else:
             date_clause = ""
@@ -576,11 +673,65 @@ class FactorExecutor:
         # 冻结批次读取：read_only 连接
         try:
             with self.warehouse.connection(read_only=True) as conn:
-                frames: list[pd.DataFrame] = []
+                frames: dict[str, pd.DataFrame] = {}
+                financial_frame = pd.DataFrame()
+                valuation_frame = pd.DataFrame()
                 for table_name in set(field_to_table.values()):
                     table_fields = [
                         f for f, t in field_to_table.items() if t == table_name
                     ]
+                    if table_name == "raw_financial_reports":
+                        financial_conditions: list[str] = []
+                        if range_end is not None:
+                            financial_conditions.append(
+                                f"announcement_date <= '{range_end}'"
+                            )
+                        financial_where = (
+                            f"WHERE {' AND '.join(financial_conditions)}"
+                            if financial_conditions
+                            else ""
+                        )
+                        sql = (
+                            "SELECT symbol, announcement_date, report_period, "
+                            f"{', '.join(table_fields)} FROM {table_name} {financial_where}"
+                        )
+                        try:
+                            financial_frame = conn.execute(sql).fetchdf()
+                        except Exception as exc:
+                            structured_errors.append({
+                                "source_table": table_name,
+                                "required_fields": list(table_fields),
+                                "category": "sql",
+                                "correlation_id": _uuid.uuid4().hex[:8],
+                                "message": f"{type(exc).__name__}: {exc}",
+                                "sql": sql,
+                            })
+                        continue
+                    if table_name == "raw_valuation_snapshots":
+                        valuation_conditions: list[str] = []
+                        if range_end is not None:
+                            valuation_conditions.append(f"trade_date <= '{range_end}'")
+                        valuation_where = (
+                            f"WHERE {' AND '.join(valuation_conditions)}"
+                            if valuation_conditions
+                            else ""
+                        )
+                        sql = (
+                            f"SELECT symbol, trade_date, {', '.join(table_fields)} "
+                            f"FROM {table_name} {valuation_where}"
+                        )
+                        try:
+                            valuation_frame = conn.execute(sql).fetchdf()
+                        except Exception as exc:
+                            structured_errors.append({
+                                "source_table": table_name,
+                                "required_fields": list(table_fields),
+                                "category": "sql",
+                                "correlation_id": _uuid.uuid4().hex[:8],
+                                "message": f"{type(exc).__name__}: {exc}",
+                                "sql": sql,
+                            })
+                        continue
                     # 构建 WHERE 子句
                     conditions: list[str] = []
                     if table_name == "raw_daily_bars":
@@ -592,14 +743,15 @@ class FactorExecutor:
                         if conditions
                         else ""
                     )
+                    select_fields = self._select_field_expressions(table_name, table_fields)
                     sql = (
-                        f"SELECT symbol, trade_date, {', '.join(table_fields)} "
+                        f"SELECT symbol, trade_date, {', '.join(select_fields)} "
                         f"FROM {table_name} {where_sql}"
                     )
                     try:
                         df = conn.execute(sql).fetchdf()
                         if not df.empty:
-                            frames.append(df)
+                            frames[table_name] = df
                     except Exception as exc:
                         structured_errors.append({
                             "source_table": table_name,
@@ -610,6 +762,28 @@ class FactorExecutor:
                             "sql": sql,
                         })
                         continue
+
+                if (not financial_frame.empty or not valuation_frame.empty) and "raw_daily_bars" not in frames:
+                    spine_conditions = ["adjust = 'qfq'"]
+                    if date_clause:
+                        spine_conditions.append(date_clause)
+                    spine_sql = (
+                        "SELECT symbol, trade_date FROM raw_daily_bars "
+                        f"WHERE {' AND '.join(spine_conditions)}"
+                    )
+                    try:
+                        spine = conn.execute(spine_sql).fetchdf()
+                        if not spine.empty:
+                            frames["raw_daily_bars"] = spine
+                    except Exception as exc:
+                        structured_errors.append({
+                            "source_table": "raw_daily_bars",
+                            "required_fields": ["symbol", "trade_date"],
+                            "category": "sql",
+                            "correlation_id": _uuid.uuid4().hex[:8],
+                            "message": f"{type(exc).__name__}: {exc}",
+                            "sql": spine_sql,
+                        })
         except Exception as exc:
             structured_errors.append({
                 "source_table": None,
@@ -624,9 +798,15 @@ class FactorExecutor:
             return pd.DataFrame(), structured_errors
 
         # 合并所有表的数据（按 symbol + trade_date 外连接）
-        result = frames[0]
-        for df in frames[1:]:
+        exact_frames = list(frames.values())
+        result = exact_frames[0]
+        for df in exact_frames[1:]:
             result = result.merge(df, on=["symbol", "trade_date"], how="outer")
+
+        if not financial_frame.empty:
+            result = self._merge_financial_asof(result, financial_frame)
+        if not valuation_frame.empty:
+            result = self._merge_valuation_asof(result, valuation_frame)
 
         # 按 symbol, trade_date 排序
         result = result.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
@@ -688,6 +868,7 @@ class FactorExecutor:
         *,
         trade_date: date | None = None,
         limit: int = 20,
+        symbols: list[str] | None = None,
     ) -> PreviewOutcome:
         """预览因子值（只读，不写入 DuckDB）。
 
@@ -722,12 +903,9 @@ class FactorExecutor:
                 errors=["no_source_data"],
             )
 
-        # 如果指定了 trade_date，过滤到该日期
-        if trade_date is not None:
-            td_str = str(trade_date)
-            source_data = source_data[
-                source_data["trade_date"].astype(str) == td_str
-            ]
+        if symbols:
+            requested_symbols = {str(symbol).strip() for symbol in symbols if str(symbol).strip()}
+            source_data = source_data[source_data["symbol"].astype(str).isin(requested_symbols)]
 
         if source_data.empty:
             return PreviewOutcome(
@@ -738,7 +916,7 @@ class FactorExecutor:
                 errors=["no_data_for_trade_date"],
             )
 
-        # 2. 评估公式
+        # 2. 在完整预热历史上评估公式，随后才截取目标交易日。
         try:
             raw_values = self._evaluate(plan, source_data)
         except Exception as exc:
@@ -750,8 +928,29 @@ class FactorExecutor:
                 errors=[f"eval_error: {exc}"],
             )
 
-        # 3. 后处理
-        winsorized, normalized = apply_postprocess(raw_values, plan.postprocess)
+        # 3. 后处理按交易日横截面执行，避免把不同日期混在一起。
+        winsorized, normalized = apply_postprocess_cross_sectional(
+            raw_values, source_data["trade_date"], plan.postprocess
+        )
+
+        if trade_date is not None:
+            target_mask = source_data["trade_date"].astype(str) == str(trade_date)
+        else:
+            latest_trade_date = source_data["trade_date"].max()
+            target_mask = source_data["trade_date"] == latest_trade_date
+        source_data = source_data.loc[target_mask].reset_index(drop=True)
+        raw_values = raw_values.loc[target_mask].reset_index(drop=True)
+        winsorized = winsorized.loc[target_mask].reset_index(drop=True)
+        normalized = normalized.loc[target_mask].reset_index(drop=True)
+
+        if source_data.empty:
+            return PreviewOutcome(
+                values=[],
+                trade_date=str(trade_date) if trade_date else None,
+                symbol_count=0,
+                coverage=0.0,
+                errors=["no_data_for_trade_date"],
+            )
 
         # 4. 构建预览值
         eligible = raw_values.notna()
@@ -841,8 +1040,26 @@ class FactorExecutor:
                 errors=[f"eval_error: {exc}"],
             )
 
-        # 3. 后处理
-        winsorized, normalized = apply_postprocess(raw_values, plan.postprocess)
+        # 3. 后处理按交易日横截面执行；滚动公式仍使用完整预热历史。
+        winsorized, normalized = apply_postprocess_cross_sectional(
+            raw_values, source_data["trade_date"], plan.postprocess
+        )
+        if trade_date is not None:
+            target_mask = source_data["trade_date"].astype(str) == str(trade_date)
+            source_data = source_data.loc[target_mask].reset_index(drop=True)
+            raw_values = raw_values.loc[target_mask].reset_index(drop=True)
+            winsorized = winsorized.loc[target_mask].reset_index(drop=True)
+            normalized = normalized.loc[target_mask].reset_index(drop=True)
+            if source_data.empty:
+                return ExecutionOutcome(
+                    calc_batch_id=batch_id,
+                    rows_written=0,
+                    eligible_rows=0,
+                    trade_date_count=0,
+                    symbol_count=0,
+                    coverage=0.0,
+                    errors=["no_data_for_trade_date"],
+                )
         eligible = raw_values.notna()
 
         # 4. 构建输出 DataFrame
@@ -937,24 +1154,62 @@ class FactorExecutor:
 
         try:
             with self.warehouse.connection(read_only=True) as conn:
-                frames: list[pd.DataFrame] = []
+                frames: dict[str, pd.DataFrame] = {}
+                financial_frame = pd.DataFrame()
+                valuation_frame = pd.DataFrame()
                 for table_name in set(field_to_table.values()):
                     table_fields = [
                         f for f, t in field_to_table.items() if t == table_name
                     ]
+                    if table_name == "raw_financial_reports":
+                        sql = (
+                            "SELECT symbol, announcement_date, report_period, "
+                            f"{', '.join(table_fields)} FROM {table_name} "
+                            f"WHERE announcement_date <= '{end_date}'"
+                        )
+                        try:
+                            financial_frame = conn.execute(sql).fetchdf()
+                        except Exception as exc:
+                            structured_errors.append({
+                                "source_table": table_name,
+                                "required_fields": list(table_fields),
+                                "category": "sql",
+                                "correlation_id": _uuid.uuid4().hex[:8],
+                                "message": f"{type(exc).__name__}: {exc}",
+                                "sql": sql,
+                            })
+                        continue
+                    if table_name == "raw_valuation_snapshots":
+                        sql = (
+                            f"SELECT symbol, trade_date, {', '.join(table_fields)} "
+                            f"FROM {table_name} WHERE trade_date <= '{end_date}'"
+                        )
+                        try:
+                            valuation_frame = conn.execute(sql).fetchdf()
+                        except Exception as exc:
+                            structured_errors.append({
+                                "source_table": table_name,
+                                "required_fields": list(table_fields),
+                                "category": "sql",
+                                "correlation_id": _uuid.uuid4().hex[:8],
+                                "message": f"{type(exc).__name__}: {exc}",
+                                "sql": sql,
+                            })
+                        continue
                     conditions: list[str] = []
                     if table_name == "raw_daily_bars":
                         conditions.append("adjust = 'qfq'")
                     conditions.append(date_clause)
                     where_sql = f"WHERE {' AND '.join(conditions)}"
+                    select_fields = self._select_field_expressions(table_name, table_fields)
                     sql = (
-                        f"SELECT symbol, trade_date, {', '.join(table_fields)} "
+                        f"SELECT symbol, trade_date, {', '.join(select_fields)} "
                         f"FROM {table_name} {where_sql}"
                     )
                     try:
                         df = conn.execute(sql).fetchdf()
                         if not df.empty:
-                            frames.append(df)
+                            frames[table_name] = df
                     except Exception as exc:
                         structured_errors.append({
                             "source_table": table_name,
@@ -965,6 +1220,25 @@ class FactorExecutor:
                             "sql": sql,
                         })
                         continue
+
+                if (not financial_frame.empty or not valuation_frame.empty) and "raw_daily_bars" not in frames:
+                    spine_sql = (
+                        "SELECT symbol, trade_date FROM raw_daily_bars "
+                        "WHERE adjust = 'qfq' AND " + date_clause
+                    )
+                    try:
+                        spine = conn.execute(spine_sql).fetchdf()
+                        if not spine.empty:
+                            frames["raw_daily_bars"] = spine
+                    except Exception as exc:
+                        structured_errors.append({
+                            "source_table": "raw_daily_bars",
+                            "required_fields": ["symbol", "trade_date"],
+                            "category": "sql",
+                            "correlation_id": _uuid.uuid4().hex[:8],
+                            "message": f"{type(exc).__name__}: {exc}",
+                            "sql": spine_sql,
+                        })
         except Exception as exc:
             structured_errors.append({
                 "source_table": None,
@@ -978,9 +1252,15 @@ class FactorExecutor:
         if not frames:
             return pd.DataFrame(), structured_errors
 
-        result = frames[0]
-        for df in frames[1:]:
+        exact_frames = list(frames.values())
+        result = exact_frames[0]
+        for df in exact_frames[1:]:
             result = result.merge(df, on=["symbol", "trade_date"], how="outer")
+
+        if not financial_frame.empty:
+            result = self._merge_financial_asof(result, financial_frame)
+        if not valuation_frame.empty:
+            result = self._merge_valuation_asof(result, valuation_frame)
 
         result = result.sort_values(["symbol", "trade_date"]).reset_index(drop=True)
         return result, structured_errors

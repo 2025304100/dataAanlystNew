@@ -109,6 +109,28 @@ def _seed_valuation(warehouse: FactorWarehouse, rows: list[dict]):
         conn.unregister("incoming_val")
 
 
+def _seed_financial_reports(warehouse: FactorWarehouse, rows: list[dict]):
+    """向 raw_financial_reports 表插入公告日 PIT 测试数据。"""
+    now = datetime.now(timezone.utc)
+    for row in rows:
+        row.setdefault("report_type", "annual")
+        row.setdefault("source", "test")
+        row.setdefault("ingested_at", now)
+        row.setdefault("batch_id", "test-seed")
+    df = pd.DataFrame(rows)
+    with warehouse._write_lock, warehouse.connection() as conn:
+        conn.register("incoming_financial", df)
+        conn.execute("""
+            INSERT INTO raw_financial_reports
+            (symbol, report_period, announcement_date, report_type,
+             roe_ttm, source, ingested_at, batch_id)
+            SELECT symbol, report_period, announcement_date, report_type,
+                   roe_ttm, source, ingested_at, batch_id
+            FROM incoming_financial
+        """)
+        conn.unregister("incoming_financial")
+
+
 # ══════════════════════════════════════════════════════════
 # WP2-06: 后处理函数测试
 # ══════════════════════════════════════════════════════════
@@ -403,6 +425,66 @@ class TestFactorExecutorPreview:
         assert outcome.values[1]["raw_value"] == 20.0
         assert outcome.symbol_count == 2
         assert outcome.coverage == 1.0
+
+    def test_preview_derives_prev_close_without_physical_column(self, tmp_warehouse):
+        rows = [
+            {"symbol": "000001", "trade_date": "2026-07-23", "adjust": "qfq",
+             "close": 10.0, "open": 10.0, "high": 10.0, "low": 10.0,
+             "volume": 1000.0, "amount": 10000.0, "turnover_rate": 0.05,
+             "source": "test", "source_origin": "test", "source_row_id": 1},
+            {"symbol": "000001", "trade_date": "2026-07-24", "adjust": "qfq",
+             "close": 11.0, "open": 11.0, "high": 11.0, "low": 11.0,
+             "volume": 1000.0, "amount": 11000.0, "turnover_rate": 0.05,
+             "source": "test", "source_origin": "test", "source_row_id": 2},
+        ]
+        _seed_daily_bars(tmp_warehouse, rows)
+        result = compile_formula(formula="prev_close", strict_fields=True)
+
+        outcome = FactorExecutor(tmp_warehouse).preview(
+            result.execution_plan, trade_date=date(2026, 7, 24)
+        )
+
+        assert outcome.errors == []
+        assert outcome.values[0]["raw_value"] == 10.0
+
+    def test_preview_valuation_uses_backward_asof_with_max_age(self, tmp_warehouse):
+        _seed_daily_bars(tmp_warehouse, [{
+            "symbol": "000001", "trade_date": "2026-07-24", "adjust": "qfq",
+            "close": 11.0, "open": 11.0, "high": 11.0, "low": 11.0,
+            "volume": 1000.0, "amount": 11000.0, "turnover_rate": 0.05,
+            "source": "test", "source_origin": "test", "source_row_id": 1,
+        }])
+        _seed_valuation(tmp_warehouse, [
+            {"symbol": "000001", "trade_date": "2026-07-22", "pe_ttm": 10.0},
+        ])
+        result = compile_formula(formula="pe_ttm", strict_fields=True)
+
+        outcome = FactorExecutor(tmp_warehouse).preview(
+            result.execution_plan, trade_date=date(2026, 7, 24)
+        )
+
+        assert outcome.errors == []
+        assert outcome.values[0]["raw_value"] == 10.0
+
+    def test_preview_financial_uses_announcement_date_asof(self, tmp_warehouse):
+        _seed_daily_bars(tmp_warehouse, [{
+            "symbol": "000001", "trade_date": "2026-07-24", "adjust": "qfq",
+            "close": 11.0, "open": 11.0, "high": 11.0, "low": 11.0,
+            "volume": 1000.0, "amount": 11000.0, "turnover_rate": 0.05,
+            "source": "test", "source_origin": "test", "source_row_id": 1,
+        }])
+        _seed_financial_reports(tmp_warehouse, [
+            {"symbol": "000001", "report_period": "2025-12-31", "announcement_date": "2026-07-23", "roe_ttm": 0.10},
+            {"symbol": "000001", "report_period": "2026-03-31", "announcement_date": "2026-07-25", "roe_ttm": 0.20},
+        ])
+        result = compile_formula(formula="roe_ttm", strict_fields=True)
+
+        outcome = FactorExecutor(tmp_warehouse).preview(
+            result.execution_plan, trade_date=date(2026, 7, 24)
+        )
+
+        assert outcome.errors == []
+        assert outcome.values[0]["raw_value"] == 0.10
 
     def test_preview_ep_formula(self, tmp_warehouse):
         """EP 公式预览。"""

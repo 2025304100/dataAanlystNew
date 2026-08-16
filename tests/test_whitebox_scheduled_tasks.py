@@ -33,17 +33,18 @@ def test_calculate_next_daily_and_weekly_run_in_configured_timezone():
 
 
 def test_seed_default_schedules_is_idempotent(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 12
+    assert scheduled_tasks.seed_default_schedules(db_session) == 13
     db_session.commit()
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     rows = db_session.query(ScheduledTask).all()
-    assert len(rows) == 12
+    assert len(rows) == 13
     enabled = [item for item in rows if item.enabled]
     # 默认启用：行情增量同步 + 组合净值快照 + 指数日线同步（自动交易默认关闭，需用户主动开启）
     assert {item.task_type for item in enabled} == {
         "universe_incremental_sync",
         "portfolio_equity_snapshot",
         "index_daily_sync",
+        "external_data_sync",
     }
     assert all(item.next_run_at is not None for item in enabled)
     # P2-3：portfolio_auto_trade 应在默认调度中且默认关闭
@@ -54,13 +55,44 @@ def test_seed_default_schedules_is_idempotent(db_session):
 
 
 def test_deleted_or_renamed_defaults_are_not_reseeded(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 12
+    assert scheduled_tasks.seed_default_schedules(db_session) == 13
     db_session.commit()
     item = db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").one()
     scheduled_tasks.delete_schedule(db_session, item.id)
 
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     assert db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").count() == 0
+
+
+def test_external_data_schedule_validates_and_dispatches_incremental_sync(monkeypatch):
+    payload = scheduled_tasks.validate_task_payload(
+        "external_data_sync",
+        {"dataset": "fundamental", "source": "all", "include_northbound": False},
+    )
+    assert payload == {
+        "dataset": "fundamental",
+        "source": "all",
+        "include_northbound": False,
+        "mode": "incremental",
+        "lookback_days": 1,
+    }
+
+    captured = {}
+    monkeypatch.setattr(
+        "app.services.external_data_sync_task.start_external_data_sync",
+        lambda dataset, task_payload: captured.update(dataset=dataset, payload=task_payload)
+        or SimpleNamespace(id="external-1", status="queued", message="queued"),
+    )
+    item = SimpleNamespace(
+        task_type="external_data_sync",
+        payload_json=__import__("json").dumps(payload),
+    )
+
+    source, task = scheduled_tasks._dispatch_task(item)
+
+    assert source == "async"
+    assert task.id == "external-1"
+    assert captured == {"dataset": "fundamental", "payload": payload}
 
 
 def test_portfolio_auto_trade_payload_validation(db_session):

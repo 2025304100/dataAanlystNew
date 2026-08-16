@@ -181,7 +181,7 @@ def update_progress(
     total: int | None = None,
     percent: float | None = None,
     current_step_description: str | None = None,
-    batch_recovery: list[dict] | None = None,
+    batch_recovery: list[dict] | dict[str, Any] | None = None,
     db: Session | None = None,
 ) -> None:
     """更新任务进度，自动维护 last_progress_at / last_progress_percent。

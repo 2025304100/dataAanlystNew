@@ -435,6 +435,9 @@ class FactorPreviewValueItem(BaseModel):
     trade_date: str
     raw_value: float | None = None
     processed_value: float | None = None
+    winsorized_value: float | None = None
+    normalized_value: float | None = None
+    eligible: bool = False
     data_source: str | None = None
     missing_reason: str | None = None
 
@@ -452,6 +455,19 @@ class FactorPreviewResponse(BaseModel):
     data_dependencies: dict[str, Any] | None = None
     values: list[FactorPreviewValueItem] = Field(default_factory=list)
     missing_reasons: dict[str, str] = Field(default_factory=dict)
+    attempted_count: int = 0
+    valid_count: int = 0
+    missing_count: int = 0
+    coverage_rate: float = 0.0
+    missing_rate: float = 0.0
+    distribution: dict[str, float | None] = Field(default_factory=dict)
+    outlier_count: int = 0
+    elapsed_ms: float = 0.0
+    data_fix_links: list[dict[str, Any]] = Field(default_factory=list)
+    evaluation_supported: bool = False
+    evaluation_mode: str = "continuous"
+    blocking_fields: list[dict[str, Any]] = Field(default_factory=list)
+    readiness_warnings: list[dict[str, Any]] = Field(default_factory=list)
 
 
 # ══════════════════════════════════════════════════════════

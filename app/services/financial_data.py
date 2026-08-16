@@ -111,18 +111,34 @@ def _fetch_financial_analysis(
     )
 
 
-def sync_symbol_financial_reports(db: Session, symbol: Symbol) -> int:
-    """Fetch and upsert all available report versions for one A-share."""
+def sync_symbol_financial_reports(
+    db: Session,
+    symbol: Symbol,
+    *,
+    announcement_start: date | None = None,
+    announcement_end: date | None = None,
+) -> int:
+    """Fetch and upsert report versions within an optional announcement range."""
     if symbol.asset_type != "stock":
         return 0
     if region_from_market(symbol.market) != "cn":
         return 0
+    if (
+        announcement_start is not None
+        and announcement_end is not None
+        and announcement_start > announcement_end
+    ):
+        raise ValueError("announcement_start must be on or before announcement_end")
 
     normalized, raw_rows = _fetch_financial_analysis(db, symbol)
     written = 0
     for row in normalized.to_dict("records"):
         report_period = row["report_period"]
         announcement_date = row["announcement_date"]
+        if announcement_start is not None and announcement_date < announcement_start:
+            continue
+        if announcement_end is not None and announcement_date > announcement_end:
+            continue
         report_type = str(row["report_type"])
         source = str(row["source"])
         existing = db.execute(

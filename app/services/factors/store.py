@@ -200,6 +200,24 @@ SCHEMA_STATEMENTS = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS raw_etf_indicators (
+        symbol VARCHAR NOT NULL,
+        trade_date DATE NOT NULL,
+        nav DOUBLE,
+        close DOUBLE,
+        premium_discount DOUBLE,
+        fund_size DOUBLE,
+        total_shares DOUBLE,
+        shares_change DOUBLE,
+        tracking_error DOUBLE,
+        premium_discount_score DOUBLE,
+        source VARCHAR NOT NULL,
+        ingested_at TIMESTAMP NOT NULL,
+        batch_id VARCHAR NOT NULL,
+        PRIMARY KEY (symbol, trade_date, source)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS raw_macro (
         indicator_key VARCHAR NOT NULL,
         period DATE NOT NULL,
@@ -411,6 +429,11 @@ _UPSERT_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
         "ingested_at",
         "batch_id",
     ),
+    "raw_etf_indicators": (
+        "symbol", "trade_date", "nav", "close", "premium_discount",
+        "fund_size", "total_shares", "shares_change", "tracking_error",
+        "premium_discount_score", "source", "ingested_at", "batch_id",
+    ),
     "raw_macro": (
         "indicator_key",
         "period",
@@ -462,6 +485,7 @@ _UPSERT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "raw_fund_flows": ("symbol", "trade_date", "source"),
     "raw_sentiment": ("symbol", "trade_date", "source"),
     "raw_tail_proxy": ("symbol", "trade_date", "source"),
+    "raw_etf_indicators": ("symbol", "trade_date", "source"),
     "raw_macro": ("indicator_key", "period", "source"),
     "factor_values": (
         "symbol",

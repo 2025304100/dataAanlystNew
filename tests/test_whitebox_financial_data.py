@@ -92,6 +92,47 @@ def test_financial_sync_skips_non_cn_stock_without_network(db_session):
     fetch.assert_not_called()
 
 
+def test_financial_backfill_filters_by_announcement_date(db_session):
+    symbol = Symbol(
+        symbol="600519",
+        name="test",
+        asset_type="stock",
+        market="sh",
+    )
+    db_session.add(symbol)
+    db_session.flush()
+    frame = pd.DataFrame(
+        [
+            {
+                "REPORT_DATE": "2025-12-31",
+                "NOTICE_DATE": "2026-03-30",
+                "ROEJQ": "18.2",
+            },
+            {
+                "REPORT_DATE": "2026-03-31",
+                "NOTICE_DATE": "2026-04-25",
+                "ROEJQ": "19.1",
+            },
+        ]
+    )
+
+    with patch(
+        "app.services.financial_data.call_akshare_with_retry",
+        return_value=frame,
+    ):
+        written = sync_symbol_financial_reports(
+            db_session,
+            symbol,
+            announcement_start=date(2026, 4, 1),
+            announcement_end=date(2026, 4, 30),
+        )
+        db_session.commit()
+
+    rows = db_session.execute(select(StockFinancialReport)).scalars().all()
+    assert written == 1
+    assert [row.announcement_date for row in rows] == [date(2026, 4, 25)]
+
+
 def test_financial_sync_route_reports_symbol_and_record_counts(db_session):
     from app.api.routes.external_data import sync_financial_reports
 

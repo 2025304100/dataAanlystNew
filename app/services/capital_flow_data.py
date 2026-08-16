@@ -65,10 +65,18 @@ def _market_prefix(symbol: Symbol) -> str:
     return "sh"
 
 
-def _fetch_individual_fund_flow(db: Session, symbol: Symbol, trade_date: date) -> dict[str, Any]:
-    """拉取个股资金流（akshare 返回近 100 天日频数据）。
+def _fetch_individual_fund_flow_history(
+    db: Session,
+    symbol: Symbol,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch the provider's real daily fund-flow rows without inventing gaps.
 
-    返回 dict：{ trade_date, main_net_inflow, super_large_net_inflow, ... }
+    AKShare currently returns a bounded recent history (usually about 100
+    trading days).  Callers receive only rows that the provider actually
+    returned; a requested date range is a filter, never a fill policy.
     """
     code = _market_code_for_akshare(symbol)
     market = _market_prefix(symbol)
@@ -76,28 +84,42 @@ def _fetch_individual_fund_flow(db: Session, symbol: Symbol, trade_date: date) -
         with _proxy_bypass(), quiet_akshare_output():
             df = call_akshare_with_retry(ak.stock_individual_fund_flow, stock=code, market=market, api_key="stock_individual_fund_flow", db=db)
         if df is None or df.empty:
-            return {}
+            return []
         # 列名：日期、收盘价、涨跌幅、主力净流入-净额、主力净流入-净占比、
         #       超大单净流入-净额、超大单净流入-净占比、大单...、中单...、小单...
         df["日期"] = pd.to_datetime(df["日期"]).dt.date
-        recent = df[df["日期"] <= trade_date]
-        if recent.empty:
-            recent = df.iloc[[-1]]
-        else:
-            recent = recent.iloc[[-1]]
-        row = recent.iloc[0]
-        return {
-            "trade_date": row["日期"],
-            "main_net_inflow": _safe_float(row.get("主力净流入-净额")),
-            "main_net_inflow_pct": _safe_float(row.get("主力净流入-净占比")),
-            "super_large_net_inflow": _safe_float(row.get("超大单净流入-净额")),
-            "large_net_inflow": _safe_float(row.get("大单净流入-净额")),
-            "medium_net_inflow": _safe_float(row.get("中单净流入-净额")),
-            "small_net_inflow": _safe_float(row.get("小单净流入-净额")),
-        }
+        eligible = df
+        if start_date is not None:
+            eligible = eligible[eligible["日期"] >= start_date]
+        if end_date is not None:
+            eligible = eligible[eligible["日期"] <= end_date]
+        return [
+            {
+                "trade_date": row["日期"],
+                "main_net_inflow": _safe_float(row.get("主力净流入-净额")),
+                "main_net_inflow_pct": _safe_float(row.get("主力净流入-净占比")),
+                "super_large_net_inflow": _safe_float(row.get("超大单净流入-净额")),
+                "large_net_inflow": _safe_float(row.get("大单净流入-净额")),
+                "medium_net_inflow": _safe_float(row.get("中单净流入-净额")),
+                "small_net_inflow": _safe_float(row.get("小单净流入-净额")),
+            }
+            for _, row in eligible.sort_values("日期").iterrows()
+        ]
     except Exception as exc:
         logger.debug("stock_individual_fund_flow failed for %s: %s", symbol.symbol, exc)
+        return []
+
+
+def _fetch_individual_fund_flow(
+    db: Session, symbol: Symbol, trade_date: date
+) -> dict[str, Any]:
+    """Backward-compatible latest-row adapter for scoring callers."""
+    rows = _fetch_individual_fund_flow_history(
+        db, symbol, end_date=trade_date
+    )
+    if not rows:
         return {}
+    return rows[-1]
 
 
 def calc_main_net_inflow_score(
@@ -138,8 +160,79 @@ def calc_main_net_inflow_score(
     return max(20.0, min(95.0, score))
 
 
+def _upsert_capital_flow(
+    db: Session,
+    symbol: Symbol,
+    flow_data: dict[str, Any],
+) -> CapitalFlow | None:
+    """Persist one provider row and compute its score from real prior rows."""
+    actual_date = flow_data.get("trade_date")
+    if not isinstance(actual_date, date):
+        return None
+    main_net_inflow = flow_data.get("main_net_inflow")
+    if main_net_inflow is None:
+        return None
+
+    history_rows = db.execute(
+        select(CapitalFlow.main_net_inflow)
+        .where(
+            CapitalFlow.symbol_id == symbol.id,
+            CapitalFlow.trade_date < actual_date,
+        )
+        .order_by(desc(CapitalFlow.trade_date))
+        .limit(_FLOW_LOOKBACK_DAYS - 1)
+    ).scalars().all()
+    history_inflows = [main_net_inflow] + [
+        value for value in history_rows if value is not None
+    ]
+    score = calc_main_net_inflow_score(main_net_inflow, history_inflows)
+
+    existing = db.execute(
+        select(CapitalFlow).where(
+            CapitalFlow.symbol_id == symbol.id,
+            CapitalFlow.trade_date == actual_date,
+        )
+    ).scalars().first()
+    if existing is None:
+        existing = CapitalFlow(symbol_id=symbol.id, trade_date=actual_date)
+        db.add(existing)
+    existing.main_net_inflow = main_net_inflow
+    existing.super_large_net_inflow = flow_data.get("super_large_net_inflow")
+    existing.large_net_inflow = flow_data.get("large_net_inflow")
+    existing.medium_net_inflow = flow_data.get("medium_net_inflow")
+    existing.small_net_inflow = flow_data.get("small_net_inflow")
+    existing.main_net_inflow_pct = flow_data.get("main_net_inflow_pct")
+    existing.main_net_inflow_score = score
+    existing.source = "akshare"
+    existing.raw_json = json.dumps(flow_data, ensure_ascii=False, default=str)
+    db.flush()
+    return existing
+
+
+def sync_symbol_capital_flow_range(
+    db: Session,
+    symbol: Symbol,
+    *,
+    start_date: date,
+    end_date: date,
+) -> int:
+    """Upsert all real fund-flow rows in a requested bounded date range."""
+    if start_date > end_date:
+        raise ValueError("start_date must be on or before end_date")
+    if symbol.asset_type != "stock" or region_from_market(symbol.market) != "cn":
+        return 0
+    rows = _fetch_individual_fund_flow_history(
+        db, symbol, start_date=start_date, end_date=end_date
+    )
+    written = 0
+    for row in rows:
+        if _upsert_capital_flow(db, symbol, row) is not None:
+            written += 1
+    return written
+
+
 def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | None = None) -> CapitalFlow | None:
-    """同步单个 symbol 的资金流数据。"""
+    """同步单个 symbol 的最新可用资金流快照。"""
     if symbol.asset_type != "stock":
         return None
     region = region_from_market(symbol.market)
@@ -152,53 +245,7 @@ def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | Non
         logger.info("No fund flow data for %s, skip", symbol.symbol)
         return None
 
-    actual_date = flow_data.get("trade_date") or target_date
-    main_net_inflow = flow_data.get("main_net_inflow")
-
-    # 计算评分：需要历史数据
-    history_rows = db.execute(
-        select(CapitalFlow.main_net_inflow)
-        .where(
-            CapitalFlow.symbol_id == symbol.id,
-            CapitalFlow.trade_date <= actual_date,
-        )
-        .order_by(desc(CapitalFlow.trade_date))
-        .limit(_FLOW_LOOKBACK_DAYS)
-    ).scalars().all()
-    history_inflows = [v for v in history_rows if v is not None]
-    if main_net_inflow is not None:
-        history_inflows = [main_net_inflow] + history_inflows
-
-    score = calc_main_net_inflow_score(main_net_inflow, history_inflows)
-
-    # 写库 upsert
-    existing = db.execute(
-        select(CapitalFlow).where(
-            CapitalFlow.symbol_id == symbol.id,
-            CapitalFlow.trade_date == actual_date,
-        )
-    ).scalars().first()
-
-    raw_json = json.dumps(flow_data, ensure_ascii=False, default=str)
-
-    if existing is None:
-        existing = CapitalFlow(
-            symbol_id=symbol.id,
-            trade_date=actual_date,
-        )
-        db.add(existing)
-
-    existing.main_net_inflow = main_net_inflow
-    existing.super_large_net_inflow = flow_data.get("super_large_net_inflow")
-    existing.large_net_inflow = flow_data.get("large_net_inflow")
-    existing.medium_net_inflow = flow_data.get("medium_net_inflow")
-    existing.small_net_inflow = flow_data.get("small_net_inflow")
-    existing.main_net_inflow_pct = flow_data.get("main_net_inflow_pct")
-    existing.main_net_inflow_score = score
-    existing.source = "akshare"
-    existing.raw_json = raw_json
-    db.flush()
-    return existing
+    return _upsert_capital_flow(db, symbol, flow_data)
 
 
 def get_latest_capital_flow(db: Session, symbol_id: int) -> CapitalFlow | None:

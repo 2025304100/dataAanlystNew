@@ -252,7 +252,7 @@ class TestPreflightApi:
         ) as FCMock:
             wh = MagicMock()
             WHMock.return_value = wh
-            # 故意没有 prev_close（只有 close/open/high/low/volume）
+            # 仓库没有 prev_close 物理列，但执行器会由 close 历史序列派生。
             wh.describe_table.return_value = [
                 "symbol", "trade_date", "open", "high", "low", "close", "volume",
             ]
@@ -285,18 +285,17 @@ class TestPreflightApi:
         ]
         assert dep_items, "data_dependencies 检查项未找到"
         dep = dep_items[0]
-        # prev_close 必须出现在 missing 中
+        # prev_close 不应再被误判为物理列缺失；证据应记录派生关系。
         missing_fields = dep["evidence"].get("missing") or []
-        assert "prev_close" in missing_fields, (
-            f"prev_close should be missing, got missing={missing_fields}"
+        assert "prev_close" not in missing_fields, (
+            f"prev_close should be derived, got missing={missing_fields}"
         )
+        assert dep["evidence"].get("derived_fields", {}).get("prev_close") == ["close"]
         # evidence 必须有 available 列表（非空结构）
         assert "available" in dep["evidence"], "evidence 需要包含 available 字段"
         assert isinstance(dep["evidence"]["available"], dict)
-        # severity=error → overall.passed=false
-        assert dep["severity"] == "error"
-        assert result["overall"]["passed"] is False
-        assert result["overall"]["blocking_count"] >= 1
+        # 依赖检查本身应通过；其余样本门禁仍可独立决定最终结果。
+        assert dep["severity"] == "pass"
 
     def test_preflight_horizon_10_unavailable(self, db_session):
         """horizon=10 且无批次 → target_availability severity=error，overall.passed=false。"""
