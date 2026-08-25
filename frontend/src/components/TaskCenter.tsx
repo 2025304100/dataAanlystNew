@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Collapse, Empty, Modal, Progress, Select, Space, Spin, Tag, Timeline, Typography } from "antd";
+import { Button, Collapse, Empty, Modal, Progress, Select, Space, Spin, Tag, Timeline, Tooltip, Typography } from "antd";
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
   ExceptionOutlined,
   LoadingOutlined,
+  LockOutlined,
   PauseCircleOutlined,
   PoweroffOutlined,
   ReloadOutlined,
@@ -108,8 +109,9 @@ export default function TaskCenter() {
     loadTasks();
   }, [loadTasks]);
 
-  // 判断任务是否可中止:运行中/排队中/已暂停(discovery)均可中止
+  // 判断任务是否可中止:运行中/排队中/已暂停(discovery)均可中止，但若 is_terminal_locked=true 一律禁止（FR-P1-2 终态锁）
   const canAbort = useCallback((task: UnifiedTask): boolean => {
+    if (task.is_terminal_locked === true) return false;
     if (["running", "queued"].includes(task.status)) return true;
     // discovery 任务的 paused 状态也允许中止(等同于 cancel)
     if (task.source === "discovery" && task.status === "paused") return true;
@@ -141,7 +143,10 @@ export default function TaskCenter() {
               } else if (isExternalSyncTask(task.task_type)) {
                 await api.cancelExternalDataSyncTask(task.id);
               } else {
-                throw new Error(`Unsupported async task type: ${task.task_type}`);
+                // FR-P1-2/AC-10 兜底：系统级通用取消端点（对齐 /system/tasks/{id}/cancel）
+                // 处理 auto_simulation_* / portfolio_resume_* / evaluate_research_* 等
+                // 所有未在上面显式分派的 async 任务类型，不再抛 Unsupported 导致前端消费失败。
+                await api.cancelAsyncTask(task.id, { timeout_seconds: 60 });
               }
             } else if (task.source === "discovery") {
               // discovery task id 是 uuid hex 字符串,client 签名历史遗留为 number,运行时拼接到 URL 无影响
@@ -207,6 +212,7 @@ export default function TaskCenter() {
     const duration = task.duration_sec;
     const abortable = canAbort(task);
     const isAborting = abortingId === task.id;
+    const locked = task.is_terminal_locked === true;
     // WPD-05：优先用 error_code → i18n 翻译，兜底历史乱码 message
     const displayMessage = getTaskErrorMessage(task, t);
 
@@ -215,7 +221,13 @@ export default function TaskCenter() {
         {/* Actions */}
         <div className="task-detail-section task-detail-actions">
           <Space size="small">
-            {abortable && (
+            {locked ? (
+              <Tooltip title={t("terminalLock.rowDisabled")}>
+                <Tag color="red" icon={<LockOutlined />} style={{ border: "1px dashed #b42318" }}>
+                  {t("terminalLock.isLocked")}
+                </Tag>
+              </Tooltip>
+            ) : abortable && (
               <Button
                 danger
                 icon={<PoweroffOutlined />}
@@ -302,6 +314,48 @@ export default function TaskCenter() {
           </div>
         )}
 
+        {/* FR-P1-2 / AC-10 可靠性扩展字段（async 来源填充） */}
+        {(task.heartbeat_at != null ||
+          task.stage_budget_seconds != null ||
+          task.last_progress_at != null ||
+          task.cancel_requested === true ||
+          task.suggested_action != null ||
+          task.correlation_id != null ||
+          task.cancelled_timeout_at != null) && (
+          <div className="task-detail-section" style={{ border: "1px dashed var(--pt-border-subtle)", padding: 10, borderRadius: 8 }}>
+            <span className="task-detail-label" style={{ fontSize: 12, color: "#6366f1", fontWeight: 700 }}>
+              可靠性元信息 · Reliability
+            </span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6, marginTop: 8, fontSize: 12 }}>
+              {task.heartbeat_at != null && (
+                <div>💓 最近心跳：<b>{formatTime(task.heartbeat_at)}</b></div>
+              )}
+              {task.stage_budget_seconds != null && (
+                <div>⏱ 阶段预算：<b>{formatDuration(task.stage_budget_seconds)}</b></div>
+              )}
+              {task.last_progress_at != null && (
+                <div>📈 进度更新：<b>{formatTime(task.last_progress_at)}</b>
+                  {task.last_progress_percent != null && ` (@${Math.round(task.last_progress_percent)}%)`}
+                </div>
+              )}
+              {task.cancel_requested === true && (
+                <div style={{ color: "#b42318", fontWeight: 600 }}>🚫 取消请求已下发
+                  {task.cancelled_timeout_at != null && ` · 超时点 ${formatTime(task.cancelled_timeout_at)}`}
+                </div>
+              )}
+              {task.suggested_action != null && (
+                <div>🧭 建议动作：<span style={{ color: "#15803d", fontWeight: 600 }}>{task.suggested_action}</span></div>
+              )}
+              {task.idempotency_key != null && (
+                <div title={task.idempotency_key}>🔑 幂等键：<code style={{ fontSize: 11 }}>{task.idempotency_key.slice(0, 16)}…</code></div>
+              )}
+              {task.correlation_id != null && (
+                <div title={task.correlation_id}>🔗 Correlation：<code style={{ fontSize: 11 }}>{task.correlation_id.slice(0, 16)}…</code></div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Errors */}
         {hasErrors && (
           <div className="task-detail-section">
@@ -378,23 +432,40 @@ export default function TaskCenter() {
           expandIconPosition="end"
           activeKey={expandedKeys}
           onChange={(keys) => setExpandedKeys(keys as string[])}
-          items={filteredTasks.map((task) => ({
-            key: task.id,
-            label: (
-              <div className="task-list-item">
-                <div className="task-list-item-main">
-                  {statusTag(task.status)}
-                  <Tag>{taskTypeLabel(task.task_type)}</Tag>
-                  <span className="task-list-item-stage">{enumLabel("taskStage", task.stage)}</span>
-                </div>
-                <div className="task-list-item-meta">
-                  <span>{task.processed}/{task.total}</span>
-                  <span className="task-list-item-time">{formatTime(task.created_at)}</span>
-                </div>
-              </div>
-            ),
-            children: renderTaskDetail(task),
-          }))}
+          items={filteredTasks.map((task) => {
+            const tLocked = task.is_terminal_locked === true;
+            return {
+              key: task.id,
+              label: (
+                <Tooltip title={tLocked ? t("terminalLock.rowDisabled") : undefined}>
+                  <div
+                    className="task-list-item"
+                    style={{
+                      opacity: tLocked ? 0.62 : undefined,
+                      filter: tLocked ? "grayscale(0.35)" : undefined,
+                      cursor: tLocked ? "not-allowed" : undefined,
+                    }}
+                  >
+                    <div className="task-list-item-main">
+                      {statusTag(task.status)}
+                      {tLocked && (
+                        <Tag color="red" icon={<LockOutlined />} style={{ border: "1px dashed #b42318" }}>
+                          {t("taskTerminalLocked")}
+                        </Tag>
+                      )}
+                      <Tag>{taskTypeLabel(task.task_type)}</Tag>
+                      <span className="task-list-item-stage">{enumLabel("taskStage", task.stage)}</span>
+                    </div>
+                    <div className="task-list-item-meta">
+                      <span>{task.processed}/{task.total}</span>
+                      <span className="task-list-item-time">{formatTime(task.created_at)}</span>
+                    </div>
+                  </div>
+                </Tooltip>
+              ),
+              children: renderTaskDetail(task),
+            };
+          })}
         />
       )}
       <Modal

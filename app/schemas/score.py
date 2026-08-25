@@ -6,6 +6,13 @@ from pydantic import BaseModel, ConfigDict
 class ScoreCalculationRequest(BaseModel):
     symbol_ids: list[int]
     trade_date: date
+    # WP0-7：Score 溯源字段（C-06/C-07）
+    # - weight_mode：manual / ridge
+    # - factor_set_id：FactorSet ID（推荐配合 weight_mode="ridge" 传入）
+    # - factor_model_run_id：FactorModelRun ID（与 Score 表 factor_model_run_id 一致）
+    weight_mode: str = "manual"
+    factor_set_id: str | None = None
+    factor_model_run_id: str | None = None
 
 
 class ScoreRead(BaseModel):

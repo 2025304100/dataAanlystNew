@@ -1,7 +1,7 @@
 """E2E 测试 - 接口管理流程（P2-2）。
 
 完整链路验证接口管理：
-- 设置 Tab → 接口管理区域 → 接口列表（18 行）→ 单接口探测 → 批量探测。
+- 设置 Tab → 接口管理区域 → 接口列表（与注册表数量一致）→ 单接口探测 → 批量探测。
 
 E2E 测试需要前后端同时运行：
     cd d:/ai_project/dataAanlystNew && python -m uvicorn app.main:app --port 8000
@@ -10,6 +10,8 @@ E2E 测试需要前后端同时运行：
 from __future__ import annotations
 
 import pytest
+import httpx
+import os
 
 pytestmark = pytest.mark.e2e
 
@@ -21,8 +23,9 @@ REFRESH_LABELS = ("刷新", "Refresh")
 PROBE_ALL_LABELS = ("批量探测", "Probe All")
 PROBE_LABELS = ("探测", "Probe")
 
-# AKSHARE_API_REGISTRY 中预置 18 条接口元数据
-EXPECTED_API_ROW_COUNT = 18
+# The registry is intentionally extensible.  The UI contract is that it
+# renders every API returned by the live registry, rather than a stale count.
+BACKEND_URL = os.getenv("E2E_BACKEND_URL", "http://localhost:8000").rstrip("/")
 
 
 def _click_view_tab(page, labels):
@@ -76,10 +79,7 @@ def test_api_mgmt_tab_visible(page):
 
 
 def test_api_list_loaded(page):
-    """【P2-2 E2E】接口列表加载（18 行）。
-
-    AKSHARE_API_REGISTRY 预置 18 条接口元数据。
-    """
+    """【P2-2 E2E】接口列表完整加载并与后端注册表一致。"""
     _goto_api_mgmt(page)
 
     # 等待表格行加载
@@ -87,8 +87,19 @@ def test_api_list_loaded(page):
     # 给表格加载留出时间
     page.wait_for_timeout(1000)
     count = rows.count()
-    assert count == EXPECTED_API_ROW_COUNT, (
-        f"接口列表行数应为 {EXPECTED_API_ROW_COUNT}，实际为 {count}"
+    response = httpx.get(
+        f"{BACKEND_URL}/api/v1/external-data/apis",
+        params={"locale": "zh-CN"},
+        timeout=10.0,
+        trust_env=False,
+    )
+    assert response.status_code == 200, (
+        f"接口注册表请求失败：HTTP {response.status_code}: {response.text[:300]}"
+    )
+    registry = response.json()
+    assert isinstance(registry, list) and registry, "接口注册表为空"
+    assert count == len(registry), (
+        f"接口列表应展示注册表全部 {len(registry)} 项，实际为 {count}"
     )
 
 

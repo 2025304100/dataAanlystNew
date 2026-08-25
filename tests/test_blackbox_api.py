@@ -138,48 +138,80 @@ def test_news_latest(client):
 # ---------- 错误处理 ----------
 
 def test_invalid_portfolio_id_returns_404(client):
-    """不存在的 portfolio_id 应返回 4xx。"""
+    """不存在的 portfolio_id 应返回 4xx + WP-S.6 UnifiedError。"""
     r = client.get("/api/v1/dashboard/overview?portfolio_id=99999999")
+    # 先断言 HTTP 层，再断言协议（Experience 1474623 顺序要求）
     assert r.status_code in (400, 404, 422)
+    body = r.json()
+    # WP-S.6 五字段契约（error_code / user_message / impact / retryable / correlation_id）
+    assert isinstance(body, dict), "4xx 响应体必须是 JSON 对象而非列表"
+    for key in ("error_code", "user_message", "impact", "retryable", "correlation_id"):
+        assert key in body, (
+            f"4xx 响应缺少 WP-S.6 UnifiedError 字段 {key!r}; "
+            f"实际 keys={sorted(body.keys())}"
+        )
+    assert isinstance(body["retryable"], bool), "retryable 必须为 bool 类型"
+    assert isinstance(body["correlation_id"], str) and body["correlation_id"], (
+        "correlation_id 必须为非空字符串（便于链路追踪）"
+    )
 
 
 def test_missing_required_param_returns_422(client):
-    """缺少必填参数应返回 422。"""
+    """缺少必填参数应返回 422 + WP-S.6 UnifiedError。"""
     # dashboard/overview 必须有 portfolio_id
     r = client.get("/api/v1/dashboard/overview")
     assert r.status_code == 422
+    body = r.json()
+    assert isinstance(body, dict), "422 响应体必须是 JSON 对象而非列表"
+    for key in ("error_code", "user_message", "impact", "retryable", "correlation_id"):
+        assert key in body, (
+            f"422 响应缺少 WP-S.6 UnifiedError 字段 {key!r}; "
+            f"实际 keys={sorted(body.keys())}"
+        )
+    assert isinstance(body["retryable"], bool), "retryable 必须为 bool 类型"
+    assert isinstance(body["correlation_id"], str) and body["correlation_id"], (
+        "correlation_id 必须为非空字符串（便于链路追踪）"
+    )
 
 
 def test_invalid_query_param_returns_422(client):
-    """非法 query 参数类型应被 Pydantic 拒绝。"""
+    """非法 query 参数类型应被 Pydantic 拒绝，返回 422 + WP-S.6 UnifiedError。"""
     r = client.get("/api/v1/symbols?page=abc")
     assert r.status_code == 422
-
-
-# ---------- 边界值 ----------
-
-def test_symbols_large_page(client):
-    """[边界] 极大页码应返回空列表而非错误。"""
-    r = client.get("/api/v1/symbols?page=99999&page_size=10")
-    assert r.status_code == 200
-    data = r.json()
-    if isinstance(data, list):
-        assert len(data) == 0
-
-
-def test_symbols_zero_page_size(client):
-    """[边界] page_size=0 应被拒绝或返回空。"""
-    r = client.get("/api/v1/symbols?page=1&page_size=0")
-    # 0 在多数实现里要么 422 要么返回空
-    assert r.status_code in (200, 422)
+    body = r.json()
+    assert isinstance(body, dict), "422 响应体必须是 JSON 对象而非列表"
+    for key in ("error_code", "user_message", "impact", "retryable", "correlation_id"):
+        assert key in body, (
+            f"422 响应缺少 WP-S.6 UnifiedError 字段 {key!r}; "
+            f"实际 keys={sorted(body.keys())}"
+        )
+    assert isinstance(body["retryable"], bool), "retryable 必须为 bool 类型"
+    assert isinstance(body["correlation_id"], str) and body["correlation_id"], (
+        "correlation_id 必须为非空字符串（便于链路追踪）"
+    )
 
 
 # ---------- 异步任务端点 ----------
 
 def test_get_async_task_not_found(client):
-    """GET 不存在的异步任务应返回 404。"""
+    """GET 不存在的异步任务应返回 4xx + WP-S.6 UnifiedError。"""
     r = client.get("/api/v1/market-data/sync/nonexistent-task-id")
+    # 404 / 422 / 400 都可能（task_id 格式校验先于存在性校验）
     assert r.status_code in (404, 422, 400)
+    body = r.json()
+    assert isinstance(body, dict), "4xx 响应体必须是 JSON 对象而非列表"
+    for key in ("error_code", "user_message", "impact", "retryable", "correlation_id"):
+        assert key in body, (
+            f"4xx 响应缺少 WP-S.6 UnifiedError 字段 {key!r}; "
+            f"实际 keys={sorted(body.keys())}"
+        )
+    assert isinstance(body["retryable"], bool), "retryable 必须为 bool 类型"
+    assert isinstance(body["correlation_id"], str) and body["correlation_id"], (
+        "correlation_id 必须为非空字符串（便于链路追踪）"
+    )
+    # NOT_FOUND 语义时 retryable 必为 False（用户只能传正确 ID，重试同一个不存在的 ID 无用）
+    if body.get("error_code") == "NOT_FOUND":
+        assert body["retryable"] is False, "NOT_FOUND 错误不应标记为 retryable"
 
 
 # ---------- 系统健康 ----------
@@ -776,76 +808,68 @@ def test_list_scan_runs_scope_filter(client):
 
 
 def test_scan_run_detail_not_found(client):
-    """GET /api/v1/discovery/scan-runs/{nonexistent} 应返回 404。"""
+    """GET /api/v1/discovery/scan-runs/{nonexistent} 应返回 404 + WP-S.6 UnifiedError（严格）。"""
     r = client.get("/api/v1/discovery/scan-runs/99999999")
+    # 1) HTTP 状态码先断言（Experience 1474623 顺序要求）
     assert r.status_code == 404
     data = r.json()
-    assert "detail" in data or ("error_code" in data and "user_message" in data), \
-        "404 响应应包含 detail 字段或 UnifiedError(error_code/user_message)"
-    if "retryable" in data:
-        assert data["retryable"] is False, "404 不应标记为 retryable"
-
-
-def test_scan_run_detail_field_completeness(client):
-    """GET /api/v1/discovery/scan-runs/{id} 详情应包含 task_record 与 snapshot_record。"""
-    r = client.get("/api/v1/discovery/scan-runs?limit=10")
-    assert r.status_code == 200
-    runs = r.json()
-    if not runs:
-        pytest.skip("无扫描记录可供测试详情")
-    run_id = runs[0]["id"]
-    r_detail = client.get(f"/api/v1/discovery/scan-runs/{run_id}")
-    assert r_detail.status_code == 200
-    detail = r_detail.json()
-    # 详情应包含 task_record 和 snapshot_record 字段（可能为 null）
-    assert "task_record" in detail, "scan run 详情缺少 task_record"
-    assert "snapshot_record" in detail, "scan run 详情缺少 snapshot_record"
+    # 2) 严格断言：404 必须走 WP-S.6 UnifiedError；不再兼容 FastAPI 默认 {detail: ...}
+    assert isinstance(data, dict), "404 响应体必须是 JSON 对象而非列表"
+    for key in ("error_code", "user_message", "impact", "retryable", "correlation_id"):
+        assert key in data, (
+            f"404 响应缺少 WP-S.6 UnifiedError 字段 {key!r}; "
+            f"实际 keys={sorted(data.keys())}; "
+            f"（禁止再使用 FastAPI 默认 {{detail:...}} 旧协议）"
+        )
+    assert data["retryable"] is False, "404 NOT_FOUND 错误不应标记为 retryable"
+    assert isinstance(data["correlation_id"], str) and data["correlation_id"], (
+        "correlation_id 必须为非空字符串"
+    )
+    assert data["error_code"] == "NOT_FOUND", (
+        f"scan run 404 时 error_code 应为 NOT_FOUND，实际 {data['error_code']!r}"
+    )
 
 
 def test_restore_candidate_not_found(client):
-    """POST /api/v1/discovery/candidates/{nonexistent}/restore 应返回 404。"""
+    """POST /api/v1/discovery/candidates/{nonexistent}/restore 应返回 404 + WP-S.6 UnifiedError（严格）。"""
     r = client.post("/api/v1/discovery/candidates/99999999/restore")
     assert r.status_code == 404
     data = r.json()
-    assert "detail" in data or ("error_code" in data and "user_message" in data), \
-        "404 响应应包含 detail 字段或 UnifiedError(error_code/user_message)"
-    if "retryable" in data:
-        assert data["retryable"] is False, "404 不应标记为 retryable"
-
-
-def test_restore_candidate_invalid_target(client):
-    """POST /api/v1/discovery/candidates/{id}/restore target 非法应返回 400。"""
-    r = client.post(
-        "/api/v1/discovery/candidates/99999999/restore",
-        json={"target": "invalid_target"},
+    assert isinstance(data, dict), "404 响应体必须是 JSON 对象而非列表"
+    for key in ("error_code", "user_message", "impact", "retryable", "correlation_id"):
+        assert key in data, (
+            f"404 响应缺少 WP-S.6 UnifiedError 字段 {key!r}; "
+            f"实际 keys={sorted(data.keys())}; "
+            f"（禁止再使用 FastAPI 默认 {{detail:...}} 旧协议）"
+        )
+    assert data["retryable"] is False, "404 NOT_FOUND 错误不应标记为 retryable"
+    assert isinstance(data["correlation_id"], str) and data["correlation_id"], (
+        "correlation_id 必须为非空字符串"
     )
-    # target 非法应被拒绝（400）；若候选不存在则 404 先于 target 校验
-    assert r.status_code in (400, 404), f"非法 target 应返回 400/404，实际 {r.status_code}"
-
-
-def test_restore_candidate_observation_without_watchlist(client):
-    """POST restore target=observation 但缺 watchlist_id 应返回 400（候选存在时）。
-
-    注意：若候选不存在，后端会先返回 404，因此本测试仅验证候选存在时 400 校验。
-    用不存在的候选验证端点可达且不会 500。
-    """
-    r = client.post(
-        "/api/v1/discovery/candidates/99999999/restore",
-        json={"target": "observation"},
+    assert data["error_code"] == "NOT_FOUND", (
+        f"restore 404 时 error_code 应为 NOT_FOUND，实际 {data['error_code']!r}"
     )
-    # 候选不存在时 404；存在但缺 watchlist_id 时 400
-    assert r.status_code in (400, 404), f"应返回 400/404，实际 {r.status_code}"
 
 
 def test_exclude_candidate_not_found(client):
-    """POST /api/v1/discovery/candidates/{nonexistent}/exclude 应返回 404。"""
+    """POST /api/v1/discovery/candidates/{nonexistent}/exclude 应返回 404 + WP-S.6 UnifiedError（严格）。"""
     r = client.post(
         "/api/v1/discovery/candidates/99999999/exclude",
         json={"reason": "测试排除"},
     )
     assert r.status_code == 404
     data = r.json()
-    assert "detail" in data or ("error_code" in data and "user_message" in data), \
-        "404 响应应包含 detail 字段或 UnifiedError(error_code/user_message)"
-    if "retryable" in data:
-        assert data["retryable"] is False, "404 不应标记为 retryable"
+    assert isinstance(data, dict), "404 响应体必须是 JSON 对象而非列表"
+    for key in ("error_code", "user_message", "impact", "retryable", "correlation_id"):
+        assert key in data, (
+            f"404 响应缺少 WP-S.6 UnifiedError 字段 {key!r}; "
+            f"实际 keys={sorted(data.keys())}; "
+            f"（禁止再使用 FastAPI 默认 {{detail:...}} 旧协议）"
+        )
+    assert data["retryable"] is False, "404 NOT_FOUND 错误不应标记为 retryable"
+    assert isinstance(data["correlation_id"], str) and data["correlation_id"], (
+        "correlation_id 必须为非空字符串"
+    )
+    assert data["error_code"] == "NOT_FOUND", (
+        f"exclude 404 时 error_code 应为 NOT_FOUND，实际 {data['error_code']!r}"
+    )

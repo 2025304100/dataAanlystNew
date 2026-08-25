@@ -70,6 +70,18 @@ export default function Settings() {
   }, [activeSection]);
 
   useEffect(() => {
+    const handleSettingsNavigate = (event: Event) => {
+      const target = (event as CustomEvent<string>).detail;
+      const section = target === "api-management" ? "api-mgmt" : target;
+      if (["factor-model", "factor-center", "data-center", "api-mgmt"].includes(section)) {
+        setActiveSection(section as typeof activeSection);
+      }
+    };
+    window.addEventListener("settings:navigate", handleSettingsNavigate);
+    return () => window.removeEventListener("settings:navigate", handleSettingsNavigate);
+  }, []);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("settings_indicator_subtab", activeIndicatorTab);
     }

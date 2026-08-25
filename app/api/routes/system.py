@@ -7,7 +7,8 @@ import tempfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,7 @@ from app.models.market_event import MarketEvent
 from app.models.scan import ScanResult
 from app.models.score import Score
 from app.models.symbol import Symbol
+from app.schemas.async_task import AsyncTaskRead
 
 
 router = APIRouter()
@@ -705,6 +707,85 @@ def get_unified_task_batch(task_id: str, db: Session = Depends(get_db)):
     if task is None:
         raise HTTPException(status_code=404, detail="task_not_found")
     return {"task_id": task_id, "kind": "task", "plan": None, "partitions": []}
+
+
+# ============================================================================
+# FR-P1-2 / AC-10 可靠性端点：Cancel + Status
+# ============================================================================
+class AsyncTaskCancelRequest(BaseModel):
+    timeout_seconds: int = Field(default=60, ge=1, le=3600,
+                                 description="CANCEL 请求宽容期（秒）。Worker 在此时段内应自止写入终态；过期后巡检升级 CANCELLED_TIMEOUT 审计记录")
+
+
+class AsyncTaskCancelResponse(BaseModel):
+    task_id: str
+    status: str
+    stage: str
+    cancel_requested: bool
+    cancelled_timeout_at: datetime | None = None
+    correlation_id: str | None = None
+    idempotency_key: str | None = None
+    is_terminal_locked: bool = False
+    error_code: str | None = None
+
+
+@router.get("/system/tasks/{task_id}", response_model=AsyncTaskRead,
+            tags=["reliability"])
+@router.head("/system/tasks/{task_id}", tags=["reliability"])
+def get_async_task_status(task_id: str, db: Session = Depends(get_db)):
+    """通用任务状态查询。
+
+    GET 返回完整 AsyncTaskRead 结构；
+    HEAD 仅返回状态头（200=存在, 404=不存在），供前端轮询做轻量检查。
+    """
+    from app.services.async_tasks import get_async_task as _get_async_task
+    row = _get_async_task(task_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "eval.task.not_found",
+            "title_zh": "任务不存在",
+            "detail_zh": f"未找到任务 task_id={task_id}",
+        })
+    return row
+
+
+@router.post("/system/tasks/{task_id}/cancel",
+             response_model=AsyncTaskCancelResponse,
+             tags=["reliability"])
+def cancel_async_task_route(task_id: str,
+                            payload: AsyncTaskCancelRequest | None = Body(default=None),
+                            db: Session = Depends(get_db)):
+    """取消任务（FR-P1-2 可靠性版）。
+
+    错误码契约：
+    - 200：取消请求被受理（或已处终态直接返回）。
+    - 404 eval.task.not_found：任务不存在。
+    - 409 eval.task.terminal_locked：任务已处终态锁定状态，拒绝再写 cancel（幂等安全）。
+      （注：默认实现里已处终态直接 200 返回，不抛 409；仅当显式 X-Strict-Cancel: 1 时抛 409）
+    """
+    from app.services.async_tasks import cancel_async_task as _cancel, get_async_task as _get
+    task = _get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "eval.task.not_found",
+            "title_zh": "任务不存在",
+            "detail_zh": f"未找到任务 task_id={task_id}",
+        })
+    timeout = 60
+    if payload is not None:
+        timeout = payload.timeout_seconds
+    updated = _cancel(task_id, timeout_seconds=timeout)
+    return AsyncTaskCancelResponse(
+        task_id=updated.id,
+        status=updated.status,
+        stage=updated.stage,
+        cancel_requested=bool(updated.cancel_requested),
+        cancelled_timeout_at=updated.cancelled_timeout_at,
+        correlation_id=updated.correlation_id,
+        idempotency_key=updated.idempotency_key,
+        is_terminal_locked=bool(updated.is_terminal_locked),
+        error_code=updated.error_code,
+    )
 
 
 @router.post("/system/backup")

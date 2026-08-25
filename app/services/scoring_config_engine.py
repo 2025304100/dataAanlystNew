@@ -25,6 +25,7 @@ from statistics import mean, pstdev
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.models.daily_bar import DailyBar
@@ -298,7 +299,7 @@ def get_active_scoring_config(db: Session, asset_type: str, *, use_cache: bool =
 
 def _query_active_scoring_config(db: Session, asset_type: str) -> ScoringConfig | None:
     """实际查询 DB（无缓存）。"""
-    return db.execute(
+    stmt = (
         select(ScoringConfig)
         .where(
             ScoringConfig.asset_type == asset_type,
@@ -306,7 +307,34 @@ def _query_active_scoring_config(db: Session, asset_type: str) -> ScoringConfig 
             ScoringConfig.is_latest == 1,
         )
         .limit(1)
-    ).scalars().first()
+    )
+    for attempt in range(2):
+        try:
+            return db.execute(stmt).scalars().first()
+        except OperationalError as exc:
+            message = str(exc).lower()
+            transient_disconnect = any(
+                marker in message
+                for marker in ("2013", "2006", "lost connection", "gone away", "10053")
+            )
+            if attempt == 0 and transient_disconnect:
+                # The socket can die during the query even with pool_pre_ping.
+                # Invalidate this session's connection so the retry checks out
+                # a fresh socket instead of reusing the broken DBAPI handle.
+                try:
+                    db.rollback()
+                    db.invalidate()
+                except Exception:
+                    pass
+                logger.warning(
+                    "Retrying active scoring config query after transient DB disconnect "
+                    "(asset_type=%s): %s",
+                    asset_type,
+                    exc,
+                )
+                continue
+            raise
+    return None
 
 
 def invalidate_active_config_cache() -> None:

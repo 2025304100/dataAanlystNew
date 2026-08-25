@@ -110,12 +110,16 @@ def test_start_creates_persisted_observable_task(db_session, monkeypatch):
     assert plan_details["partitions"][0]["symbol"] == "600001"
 
 
-def test_prevents_duplicate_external_sync_tasks(db_session, monkeypatch):
+def test_serializes_same_dataset_but_allows_independent_external_syncs(db_session, monkeypatch):
+    """Each external table is serialized independently; unrelated inputs may run."""
     monkeypatch.setattr(service.threading, "Thread", lambda **kwargs: _DeferredThread(**kwargs))
     service.start_external_data_sync("hot_rank", {"source": "watchlist"})
 
+    independent = service.start_external_data_sync("financial", {"source": "watchlist"})
+    assert independent.task_type == "external_sync_financial"
+
     with pytest.raises(RuntimeError, match="already running"):
-        service.start_external_data_sync("financial", {"source": "watchlist"})
+        service.start_external_data_sync("hot_rank", {"source": "watchlist"})
 
 
 def test_market_data_task_has_priority_over_new_external_task(db_session, monkeypatch):
@@ -134,6 +138,46 @@ def test_market_data_task_has_priority_over_new_external_task(db_session, monkey
 
     with pytest.raises(RuntimeError, match="Market-data synchronization has priority"):
         service.start_external_data_sync("hot_rank", {"source": "watchlist"})
+
+
+def test_tail_proxy_bulk_sync_honors_selected_scope(db_session, monkeypatch):
+    """The async tail-proxy path must preserve watchlist/position scope."""
+    task = AsyncTaskRecord(
+        id="tail-scope-test",
+        task_type="external_sync_tail_proxy",
+        status="queued",
+        stage="prepare",
+        payload_json=json.dumps({"source": "watchlist", "limit": 7}),
+    )
+    db_session.add(task)
+    db_session.commit()
+    captured: dict[str, object] = {}
+
+    class Summary:
+        total = 1
+        written = 1
+        skipped = 0
+        failed = 0
+        errors = ()
+
+    monkeypatch.setattr(service, "_wait_for_market_priority", lambda *_args: True)
+
+    def fake_sync(_db, **kwargs):
+        captured.update(kwargs)
+        return Summary()
+
+    monkeypatch.setattr(
+        "app.services.tail_proxy_data.sync_tail_proxy_snapshots", fake_sync
+    )
+    result = service._run_bulk_sync(
+        db_session,
+        task.id,
+        "tail_proxy",
+        {"source": "watchlist", "limit": 7},
+    )
+
+    assert result["success"] == 1
+    assert captured == {"source": "watchlist", "limit": 7}
 
 
 def test_cancel_and_retry_resume_from_frozen_external_plan(db_session, monkeypatch):

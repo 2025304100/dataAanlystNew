@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import alerts, auto_trade, backtest, custom_indicators, dashboard, db_config, discovery, discovery_plans, external_data, akshare_apis, factor_evaluation, factor_models, factor_pipeline, factor_sets, factor_shadow, factors, investment_themes, journals, linkage, macro, market_data, market_events, news, notifications, portfolios, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_drafts, ai_profiles, ai_sessions
+from app.api.routes import alerts, auto_trade, backtest, custom_indicators, dashboard, db_config, decision_engine, discovery, discovery_plans, external_data, akshare_apis, factor_evaluation, factor_models, factor_pipeline, factor_sets, factor_shadow, factors, investment_themes, journals, linkage, macro, market_data, market_events, news, notifications, portfolios, portfolio_factor_usage, portfolio_governance, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_drafts, ai_profiles, ai_sessions
 from app.core.config import settings
 
 
@@ -58,3 +58,9 @@ api_router.include_router(ai_sessions.router, tags=["ai-sessions"])
 api_router.include_router(ai_drafts.router, tags=["ai-drafts"])
 # WP-MSG.6：通知消息管理（渠道/策略/模板/发送记录）
 api_router.include_router(notifications.router, tags=["notifications"])
+# G1-WP0-2g：组合因子绑定 + 策略执行快照
+api_router.include_router(portfolio_factor_usage.router, tags=["portfolio-factor-usage"])
+# G1-WP0-3c：DecisionEngine 评估 + 证据链查询
+api_router.include_router(decision_engine.router, tags=["decision-engine"])
+# G3-G4：对账 + 7 状态状态机治理（/portfolios/{pid}/status|reconcile|confirm-reconciliation|transition-state）
+api_router.include_router(portfolio_governance.router)

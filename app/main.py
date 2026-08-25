@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import asyncio
 import logging
+import os
 import socket
 import time
 import traceback
@@ -62,20 +63,41 @@ def _get_session_local():
     return DatabaseManager.get().session_factory
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    # 从配置文件初始化数据库引擎
-    cfg = load_db_config()
+def initialize_runtime_database() -> None:
+    """Initialize the process database, honoring an explicit environment URL.
+
+    ``config/db_config.json`` is an operator-managed default.  A process-level
+    ``DATABASE_URL`` is intentionally higher priority so isolated test, preview,
+    and container processes cannot silently connect to the shared MySQL instance.
+    """
+    explicit_url = os.environ.get("DATABASE_URL")
     mgr = DatabaseManager.get()
 
+    if explicit_url:
+        db_type = "mysql" if explicit_url.lower().startswith("mysql") else "sqlite"
+        logger.info("Initializing database from explicit DATABASE_URL (%s)", db_type)
+        mgr.initialize(explicit_url, db_type=db_type)
+        return
+
+    cfg = load_db_config()
     if cfg.get("use_mysql") and cfg.get("mysql", {}).get("host"):
         url = build_mysql_url(cfg)
-        logger.info("Initializing MySQL engine: %s:%s/%s",
-                     cfg["mysql"]["host"], cfg["mysql"]["port"], cfg["mysql"]["database"])
+        logger.info(
+            "Initializing MySQL engine: %s:%s/%s",
+            cfg["mysql"]["host"],
+            cfg["mysql"]["port"],
+            cfg["mysql"]["database"],
+        )
         mgr.initialize(url, db_type="mysql")
     else:
         logger.info("Initializing SQLite engine: %s", settings.database_url)
         mgr.initialize(settings.database_url, db_type="sqlite")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    initialize_runtime_database()
+    mgr = DatabaseManager.get()
 
     init_db()
 
@@ -486,8 +508,10 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     error_code = "UNKNOWN_ERROR"
     if exc.status_code == 404:
         error_code = "NOT_FOUND"
-    elif exc.status_code in (401, 403):
-        error_code = "UNAUTHORIZED"
+    elif exc.status_code == 401:
+        error_code = "AUTH_MISSING"
+    elif exc.status_code == 403:
+        error_code = "FORBIDDEN"
     elif exc.status_code == 422:
         error_code = "VALIDATION_ERROR"
     elif exc.status_code == 409:
@@ -502,14 +526,31 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     detail = exc.detail
     extras: dict | None = None
     override_user_message: str | None = None
+    override_impact: str | None = None
+    extra_next_actions: list[dict] | None = None
     if isinstance(detail, dict):
-        # P0-AutoTrade：透传扩展字段（blockers/warnings/readiness）
+        # G4：若业务方 raise HTTPException(status=4xx, detail={"error_code": "INVALID_FILTER",
+        #   "user_message": "...", "impact": "...", "next_actions": [...]})
+        #   则优先使用 detail 里的结构化错误码、文案、操作建议。
+        inner_ec = detail.get("error_code")
+        if isinstance(inner_ec, str) and inner_ec.strip():
+            error_code = inner_ec.strip()
         extras = {}
         for k, v in detail.items():
-            if k == "error_message" and isinstance(v, str) and v.strip():
+            if k == "error_code":
+                # 已优先映射为外层 error_code，不重复放 extras
+                continue
+            elif k == "user_message" and isinstance(v, str) and v.strip():
                 override_user_message = v.strip()
             elif k == "message" and isinstance(v, str) and v.strip() and not override_user_message:
                 override_user_message = v.strip()
+            elif k == "impact" and isinstance(v, str) and v.strip():
+                override_impact = v.strip()
+            elif k == "next_actions" and isinstance(v, list):
+                try:
+                    extra_next_actions = [a for a in v if isinstance(a, dict)]
+                except Exception:
+                    extra_next_actions = None
             else:
                 extras[k] = v
         if not extras:
@@ -526,6 +567,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             error_message=sanitize_message(str(exc.detail))[:500],
         ),
         override_user_message=override_user_message,
+        override_impact=override_impact,
+        extra_next_actions=extra_next_actions,
         extras=extras,
     )
     return JSONResponse(

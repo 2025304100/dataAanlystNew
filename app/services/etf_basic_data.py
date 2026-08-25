@@ -57,6 +57,14 @@ def _parse_pct(val: Any) -> float | None:
     return _safe_float(s)
 
 
+def _first_present(*values: Any) -> Any:
+    """Return the first non-None value; numeric zero is a valid observation."""
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def _etf_code(symbol: Symbol) -> str:
     return symbol.symbol.split(".")[-1] if "." in symbol.symbol else symbol.symbol
 
@@ -79,10 +87,15 @@ def _fetch_etf_spot(db: Session, symbol: Symbol) -> dict[str, Any]:
         if row.empty:
             return {}
         row = row.iloc[0]
+        premium = next(
+            (_parse_pct(row.get(name)) for name in ("折价率", "溢价率", "折溢价率")
+             if row.get(name) is not None),
+            None,
+        )
         return {
-            "close": _safe_float(row.get("最新价")),
-            "nav": _safe_float(row.get("单位净值")),
-            "premium_discount": _parse_pct(row.get("折价率")),
+            "close": _safe_float(_first_present(row.get("最新价"), row.get("市价"))),
+            "nav": _safe_float(_first_present(row.get("单位净值"), row.get("基金净值"))),
+            "premium_discount": premium,
         }
     except Exception as exc:
         logger.debug("fund_etf_spot_em failed for %s: %s", symbol.symbol, exc)
@@ -137,7 +150,11 @@ def _fetch_etf_fund_daily(db: Session, symbol: Symbol) -> dict[str, Any]:
         nav = _safe_float(row.get(nav_col)) if nav_col else None
         # 市价、折价率是固定列名
         close = _safe_float(row.get("市价"))
-        premium_discount = _parse_pct(row.get("折价率"))
+        premium_discount = next(
+            (_parse_pct(row.get(name)) for name in ("折价率", "溢价率", "折溢价率")
+             if row.get(name) is not None),
+            None,
+        )
         return {
             "nav": nav,
             "close": close,
@@ -201,9 +218,11 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
     spot_data = _fetch_etf_spot(db, symbol)
 
     # 优先级：fund_daily > fund_info > spot
-    nav = fund_daily.get("nav") or fund_info.get("nav") or spot_data.get("nav")
-    close = fund_daily.get("close") or spot_data.get("close")
-    premium_discount = fund_daily.get("premium_discount") or spot_data.get("premium_discount")
+    nav = _first_present(fund_daily.get("nav"), fund_info.get("nav"), spot_data.get("nav"))
+    close = _first_present(fund_daily.get("close"), spot_data.get("close"))
+    premium_discount = _first_present(
+        fund_daily.get("premium_discount"), spot_data.get("premium_discount")
+    )
 
     if nav is None and close is None and premium_discount is None:
         logger.info("No ETF indicator data for %s, skip", symbol.symbol)
@@ -218,7 +237,10 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
     tracking_error = None
 
     score = calc_premium_discount_score(premium_discount)
-    actual_date = fund_info.get("trade_date") or target_date
+    # This is a snapshot for the requested sync date.  The historical NAV
+    # provider may return its latest available date, but using that date here
+    # makes backfill/current coverage and retry resumptions consistent.
+    actual_date = target_date
 
     existing = db.execute(
         select(EtfIndicator).where(

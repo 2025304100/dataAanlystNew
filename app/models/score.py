@@ -79,4 +79,29 @@ class Score(Base):
     calc_batch_id: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # -- G0-WP0-2b / Q4 PIT: disclosure timestamps --
+    # WP0-6 TR-06.5 升级：published_at NOT NULL（migration 033 已对历史行回填 created_at）
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, index=True,
+        default=lambda: datetime.now(timezone.utc),
+        comment="First publication datetime (UTC naive DB). Backfill = created_at if missing.",
+    )
+    first_published_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
+        comment="First-ever publish of this fact (audit)",
+    )
+    revision_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
+        comment="Latest revision time of this fact; published_at may be backdated",
+    )
+    pit_flag: Mapped[str] = mapped_column(
+        String(16), default="NOT_CHECKED", server_default="NOT_CHECKED",
+        comment="(Legacy) PIT_SAFE|NOT_PIT_SAFE|NOT_CHECKED. Kept for downgrade compatibility.",
+    )
+    # WP0-6 TR-06.5：正式 PIT 状态列（migration 033 新增；生产链路查询 WHERE pit_safety='PIT_VERIFIED'）
+    pit_safety: Mapped[str] = mapped_column(
+        String(16), default="NOT_PIT_SAFE", server_default="NOT_PIT_SAFE", index=True,
+        comment="NOT_PIT_SAFE | PIT_VERIFIED. Set explicitly by data pipeline after publish.",
+    )
+
     symbol_ref = relationship("Symbol", back_populates="scores")

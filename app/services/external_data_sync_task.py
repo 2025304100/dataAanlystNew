@@ -89,6 +89,7 @@ def resolve_external_symbols(
     db: Session,
     source: Literal["watchlist", "positions", "all"],
     asset_type: str | None,
+    watchlist_id: int | None = None,
 ) -> list[Symbol]:
     """Resolve the symbol scope shared by legacy and asynchronous endpoints."""
     if source == "all":
@@ -136,10 +137,15 @@ def resolve_external_symbols(
         from app.models.watchlist import WatchlistItem
 
         stmt = (
-            select(Symbol)
+            select(Symbol).distinct()
             .join(WatchlistItem, WatchlistItem.symbol_id == Symbol.id)
-            .where(Symbol.is_active == 1)
+            .where(
+                Symbol.is_active == 1,
+                WatchlistItem.status.in_(("watching", "ready")),
+            )
         )
+        if watchlist_id is not None:
+            stmt = stmt.where(WatchlistItem.watchlist_id == watchlist_id)
     elif source == "positions":
         from app.models.portfolio import Position
 
@@ -161,9 +167,20 @@ def _update_task(db: Session, task_id: str, **updates) -> AsyncTaskRecord | None
         return None
     if task.status in ("done", "failed", "cancelled"):
         return task
+    # cancel_async_task marks a running task with a cancellation token first;
+    # do not let a late worker checkpoint move it forward while it is stopping.
+    if int(getattr(task, "cancel_requested", 0) or 0) == 1 and updates.get("status") != "cancelled":
+        return task
     for key, value in updates.items():
         setattr(task, key, value)
+    if task.status in ("done", "failed", "cancelled"):
+        task.is_terminal_locked = 1
+        if task.finished_at is None:
+            task.finished_at = _now()
     task.updated_at = _now()
+    if task.status in ("queued", "running"):
+        task.heartbeat_at = _now()
+        task.last_progress_at = task.last_progress_at or _now()
     db.commit()
     db.refresh(task)
     return task
@@ -171,7 +188,21 @@ def _update_task(db: Session, task_id: str, **updates) -> AsyncTaskRecord | None
 
 def _is_cancelled(db: Session, task_id: str) -> bool:
     task = db.get(AsyncTaskRecord, task_id)
-    return task is None or task.status == "cancelled"
+    return task is None or task.status == "cancelled" or int(getattr(task, "cancel_requested", 0) or 0) == 1
+
+
+def _mark_cancelled(db: Session, task_id: str, message: str = "Sync cancelled by user") -> None:
+    """Persist the cancellation request as a terminal task state."""
+    task = db.get(AsyncTaskRecord, task_id)
+    if task is None or task.status in ("done", "failed", "cancelled"):
+        return
+    task.status = "cancelled"
+    task.stage = "cancelled"
+    task.message = message
+    task.finished_at = _now()
+    task.updated_at = _now()
+    task.is_terminal_locked = 1
+    db.commit()
 
 
 def _active_market_priority_task(db: Session) -> AsyncTaskRecord | None:
@@ -300,7 +331,7 @@ def _create_persisted_sync_plan(
         if dataset in _SYMBOL_PARTITION_DATASETS:
             asset_type = "etf" if dataset == "etf" else "stock"
             symbols = resolve_external_symbols(
-                db, payload.get("source", "watchlist"), asset_type
+                db, payload.get("source", "watchlist"), asset_type, payload.get("watchlist_id")
             )
             partition_specs = [
                 {
@@ -666,7 +697,7 @@ def _run_symbol_sync(
         }
         _refresh_sync_plan(db, sync_plan_id)
     else:
-        symbols = resolve_external_symbols(db, source, asset_type)
+        symbols = resolve_external_symbols(db, source, asset_type, payload.get("watchlist_id"))
         resume_after_symbol_id = payload.get("resume_after_symbol_id")
         if resume_after_symbol_id is not None:
             try:
@@ -700,9 +731,18 @@ def _run_symbol_sync(
     if dataset == "fundamental" and plan.get("mode") != "backfill":
         from app.services.fundamental_data import sync_market_valuation_snapshot
 
-        synced_ids = sync_market_valuation_snapshot(db, symbols, range_end)
+        if _is_cancelled(db, task_id):
+            return None
+        try:
+            synced_ids = sync_market_valuation_snapshot(db, symbols, range_end) or set()
+        except Exception as exc:
+            db.rollback()
+            synced_ids = set()
+            result["failed"] = max(len(symbols), 1)
+            result["errors"].append(f"provider: {type(exc).__name__}: {exc}")
+            logger.warning("fundamental snapshot sync failed: %s", exc, exc_info=True)
         result["success"] = len(synced_ids)
-        result["skipped"] = max(len(symbols) - len(synced_ids), 0)
+        result["skipped"] = max(len(symbols) - len(synced_ids), 0) if not result["failed"] else 0
         result["records"] = len(synced_ids)
         for symbol_id, partition in partitions_by_symbol.items():
             partition.status = "done" if symbol_id in synced_ids else "skipped"
@@ -711,6 +751,8 @@ def _run_symbol_sync(
             partition.finished_at = _now()
             partition.updated_at = _now()
         db.commit()
+        if _is_cancelled(db, task_id):
+            return None
         _update_task(
             db,
             task_id,
@@ -975,56 +1017,71 @@ def _run_bulk_sync(
         message=f"Fetching {dataset} data from source",
         started_at=_now(),
     )
-    if dataset == "lhb":
-        from app.services.lhb_data import sync_lhb_institution_trades
+    try:
+        if dataset == "lhb":
+            from app.services.lhb_data import sync_lhb_institution_trades
 
-        plan = payload.get("plan") or build_external_sync_plan(dataset, payload)
-        start_date = _as_date(plan.get("requested_start_date")) or date.today()
-        end_date = _as_date(plan.get("requested_end_date")) or date.today()
-        summary = sync_lhb_institution_trades(
-            db,
-            start_date=start_date,
-            end_date=end_date,
-        )
+            plan = payload.get("plan") or build_external_sync_plan(dataset, payload)
+            start_date = _as_date(plan.get("requested_start_date")) or date.today()
+            end_date = _as_date(plan.get("requested_end_date")) or date.today()
+            summary = sync_lhb_institution_trades(db, start_date=start_date, end_date=end_date)
+            result = {
+                "dataset": dataset, "total": summary.received,
+                "success": summary.written, "skipped": summary.unmatched,
+                "failed": 0, "records": summary.written, "errors": [],
+            }
+        elif dataset == "hot_rank":
+            from app.services.hot_rank_data import sync_hot_rank_snapshot
+
+            summary = sync_hot_rank_snapshot(db)
+            result = {
+                "dataset": dataset, "total": summary.received,
+                "success": summary.written, "skipped": summary.unmatched,
+                "failed": 0, "records": summary.written, "errors": [],
+            }
+        else:
+            from app.services.tail_proxy_data import sync_tail_proxy_snapshots
+
+            summary = sync_tail_proxy_snapshots(
+                db, source=str(payload.get("source") or "candidates"),
+                limit=int(payload.get("limit", 20)),
+            )
+            result = {
+                "dataset": dataset, "total": summary.total,
+                "success": summary.written, "skipped": summary.skipped,
+                "failed": summary.failed, "records": summary.written,
+                "errors": list(summary.errors),
+            }
+    except Exception as exc:
+        # Provider outages and schema drift should remain inspectable in the
+        # task result instead of collapsing into a vague top-level failure.
+        db.rollback()
         result = {
             "dataset": dataset,
-            "total": summary.received,
-            "success": summary.written,
-            "skipped": summary.unmatched,
-            "failed": 0,
-            "records": summary.written,
-            "errors": [],
+            "total": 0,
+            "success": 0,
+            "skipped": 0,
+            "failed": 1,
+            "records": 0,
+            "errors": [f"{type(exc).__name__}: {exc}"],
         }
-    elif dataset == "hot_rank":
-        from app.services.hot_rank_data import sync_hot_rank_snapshot
-
-        summary = sync_hot_rank_snapshot(db)
-        result = {
-            "dataset": dataset,
-            "total": summary.received,
-            "success": summary.written,
-            "skipped": summary.unmatched,
-            "failed": 0,
-            "records": summary.written,
-            "errors": [],
-        }
-    else:
-        from app.services.tail_proxy_data import sync_tail_proxy_snapshots
-
-        summary = sync_tail_proxy_snapshots(
-            db,
-            source="candidates",
-            limit=int(payload.get("limit", 20)),
-        )
-        result = {
-            "dataset": dataset,
-            "total": summary.total,
-            "success": summary.written,
-            "skipped": summary.skipped,
-            "failed": summary.failed,
-            "records": summary.written,
-            "errors": list(summary.errors),
-        }
+        logger.warning("%s provider sync failed: %s", dataset, exc, exc_info=True)
+    # Provider work is complete; expose the finalization phase explicitly so
+    # a task cannot look frozen at the initial fetch checkpoint.
+    _update_task(
+        db,
+        task_id,
+        status="running",
+        stage="sync",
+        percent=95,
+        total=result["total"],
+        processed=result["success"] + result["skipped"] + result["failed"],
+        ok_count=result["success"],
+        failed_count=result["failed"],
+        current_item=None,
+        message=("Provider sync finished; finalizing results" if not result["failed"]
+                 else "Provider sync finished with errors; finalizing results"),
+    )
     db.commit()
     if result["failed"]:
         _set_partition_status(
@@ -1112,13 +1169,20 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         else:
             result = _run_bulk_sync(db, task_id, dataset, payload)
         if result is None or _is_cancelled(db, task_id):
+            _mark_cancelled(db, task_id)
             return
         plan = payload.get("plan") or build_external_sync_plan(dataset, payload)
         result["plan"] = plan
+        if _is_cancelled(db, task_id):
+            _mark_cancelled(db, task_id)
+            return
         mirror = _mirror_external_factor_inputs(db, task_id, dataset, plan)
         result["warehouse_mirror"] = mirror
         if mirror.get("status") == "warning":
             result["errors"].append(f"warehouse_mirror: {mirror['error']}")
+        if _is_cancelled(db, task_id):
+            _mark_cancelled(db, task_id)
+            return
         try:
             from app.services.data_quality import capture_field_quality_snapshots
 
@@ -1129,6 +1193,9 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
             logger.warning("quality snapshot failed after external task %s: %s", task_id, exc)
             result["errors"].append(f"quality_snapshot: {exc}")
         processed = result["success"] + result["skipped"] + result["failed"]
+        if _is_cancelled(db, task_id):
+            _mark_cancelled(db, task_id)
+            return
         _update_task(
             db,
             task_id,
@@ -1151,6 +1218,12 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
             ),
             finished_at=_now(),
         )
+        # Explicitly persist the terminal lock so startup patrol cannot claim
+        # a successfully completed external task after a late refresh.
+        task = db.get(AsyncTaskRecord, task_id)
+        if task is not None:
+            task.is_terminal_locked = 1
+            db.commit()
     except Exception as exc:
         db.rollback()
         logger.exception("external data task %s failed", task_id)
@@ -1179,6 +1252,13 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         if task is not None and task.status not in ("done", "failed", "cancelled"):
             task.status = "failed"
             task.stage = "failed"
+            # A terminal failure must not leave the UI at the fetch-stage 10%
+            # checkpoint; 100% here means the task lifecycle is finished.
+            task.percent = 100
+            task.total = task.total or 0
+            task.processed = task.processed or 0
+            task.ok_count = task.ok_count or 0
+            task.failed_count = max(task.failed_count or 0, 1)
             task.message = str(exc)
             task.errors_json = json.dumps(
                 [{"stage": task.stage, "error": str(exc)}],
@@ -1200,10 +1280,12 @@ def start_external_data_sync(dataset: ExternalDataset, payload: dict[str, Any]) 
     task_payload = {"dataset": dataset, **payload, "plan": plan}
     db = SessionLocal()
     try:
+        # Different datasets may run concurrently.  Keep only the same dataset
+        # serialized so two requests cannot write the same external table at once.
         existing = db.execute(
             select(AsyncTaskRecord)
             .where(
-                AsyncTaskRecord.task_type.like("external_sync_%"),
+                AsyncTaskRecord.task_type == _TASK_TYPES[dataset],
                 AsyncTaskRecord.status.in_(("queued", "running")),
             )
             .order_by(desc(AsyncTaskRecord.created_at))

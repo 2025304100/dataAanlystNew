@@ -1,0 +1,17 @@
+{
+  "dialect": "sqlite",
+  "db_url_scheme": "sqlite",
+  "backup_file": "backup_sqlite_20260817_114212.db",
+  "bytes": 1884160,
+  "md5": "e998d4b9b32c8f25fba71eea7319b061",
+  "sha256": "85719b5c67013358945a437cb1e665ebc62aff1f095067d0ff07b44635eaed76",
+  "created_at": "2026-08-17T11:42:12",
+  "alembic_version": "wps_0023_026_drop_legacy_last_successful_trade_date",
+  "sqlite_table_count": 88,
+  "mysqldump_version": null,
+  "notes": [
+    "label=g0-smoke"
+  ],
+  "manifest_version": "1.0",
+  "schema": "quant-workbench/g0-backup/v1"
+}

@@ -1,0 +1,221 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: main_work_v0.8
+nodes_managed: true
+exported_at: "2026-08-19T16:30:10Z"
+modules:
+    backend_api:
+        dir_name: backend_api
+        title: backend_api
+        scope:
+            - app/
+        source_files: []
+        children:
+            - backend_api/ai_services
+            - backend_api/backtest_analysis
+            - backend_api/decision_engine
+            - backend_api/discovery_scoring
+            - backend_api/factors_engine
+            - backend_api/market_data_sources
+            - backend_api/market_data_sync
+            - backend_api/portfolio_trading
+        depends_on: []
+        related_to: []
+    backend_api/ai_services:
+        dir_name: AI Profile、会话与降级缓存服务
+        title: AI Profile、会话与降级缓存服务
+        scope:
+            - app/services/ai_cache.py
+            - app/services/ai_failover.py
+            - app/services/ai_profile_service.py
+            - app/services/ai_session_service.py
+            - app/services/ai_profile_migration.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/backtest_analysis:
+        dir_name: backtest_analysis
+        title: backtest_analysis
+        scope:
+            - app/services/backtest*.py
+            - app/services/vectorbt_backtest.py
+            - app/services/analysis.py
+            - app/services/portfolio_backtest*.py
+            - app/services/portfolio_performance.py
+            - app/services/portfolio_reconciliation.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/decision_engine:
+        dir_name: decision_engine
+        title: decision_engine
+        scope:
+            - app/services/decision_*.py
+            - app/services/task_heartbeat_service.py
+            - app/services/task_state_machine.py
+            - app/services/scheduled_tasks.py
+            - app/services/async_tasks.py
+            - app/services/governance_outbox.py
+            - app/services/idempotency.py
+            - app/services/local_persistence.py
+            - app/services/migration.py
+            - app/services/data_governance_audit.py
+            - app/services/reconciliation_conservation.py
+            - app/services/secret_store.py
+            - app/services/metrics.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/discovery_scoring:
+        dir_name: 发现与评分引擎（候选池_热点排行）
+        title: 发现与评分引擎（候选池/热点排行）
+        scope:
+            - app/services/discovery_*.py
+            - app/services/scoring_config_engine.py
+            - app/services/score_query_service.py
+            - app/services/candidate_pool_rules.py
+            - app/services/candidate_promote.py
+            - app/services/hot_rank_*.py
+            - app/services/tri_entry_candidate_snapshot.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/factors_engine:
+        dir_name: factors_engine
+        title: factors_engine
+        scope:
+            - app/api/routes/factors.py
+            - app/api/routes/factor_models.py
+            - app/api/routes/factor_pipeline.py
+            - app/api/routes/factor_sets.py
+            - app/api/routes/factor_shadow.py
+            - app/api/routes/factor_evaluation.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/market_data_sources:
+        dir_name: market_data_sources
+        title: market_data_sources
+        scope:
+            - app/api/routes/market_data.py
+            - app/api/routes/akshare_apis.py
+            - app/api/routes/macro.py
+            - app/api/routes/news.py
+            - app/api/routes/symbols.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/market_data_sync:
+        dir_name: market_data_sync
+        title: market_data_sync
+        scope:
+            - app/services/market_data*.py
+            - app/services/bar_queries.py
+            - app/services/index_data*.py
+            - app/services/macro*.py
+            - app/services/news.py
+            - app/services/market_events.py
+            - app/services/lhb_*.py
+            - app/services/financial_data.py
+            - app/services/fundamental_data.py
+            - app/services/capital_flow_data.py
+            - app/services/tail_proxy_*.py
+            - app/services/universe_sync*.py
+            - app/services/symbol_cleanup.py
+            - app/services/symbol_names.py
+            - app/services/symbol_relationships.py
+            - app/services/regions.py
+            - app/services/akshare_registry.py
+            - app/services/akshare_utils.py
+            - app/services/external_data_sync_task.py
+            - app/services/data_quality.py
+            - app/services/benchmark_health_service.py
+            - app/services/etf_basic_data.py
+            - app/services/observations.py
+            - app/services/opportunity_transitions.py
+            - app/services/market_rules.py
+            - app/services/indicator_ast_sandbox.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/portfolio_trading:
+        dir_name: 组合交易与模拟撮合服务
+        title: 组合交易与模拟撮合服务
+        scope:
+            - app/services/portfolio_*.py
+            - app/services/sim_accounts.py
+            - app/services/auto_trade_*.py
+            - app/services/trade_plans.py
+            - app/services/simulation_matching_engine.py
+            - app/services/allocation.py
+            - app/services/cost_model.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    ci_and_tooling:
+        dir_name: CI_CD 流水线与项目规范文档
+        title: CI/CD 流水线与项目规范文档
+        scope:
+            - .github/
+            - .trae/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    docs_reports:
+        dir_name: 项目文档与验收报告集
+        title: 项目文档与验收报告集
+        scope:
+            - docs/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_app:
+        dir_name: frontend_app
+        title: frontend_app
+        scope:
+            - frontend/
+        source_files: []
+        children:
+            - frontend_app/app_shell
+        depends_on: []
+        related_to: []
+    frontend_app/app_shell:
+        dir_name: 应用外壳与入口装配
+        title: 应用外壳与入口装配
+        scope:
+            - frontend/src/App.tsx
+            - frontend/src/main.tsx
+            - frontend/src/universe-standalone.tsx
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    migrations:
+        dir_name: Alembic 数据库版本化迁移
+        title: Alembic 数据库版本化迁移
+        scope:
+            - alembic/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    tests:
+        dir_name: 量化因子平台测试套件（白盒_集成_E2E_性能）
+        title: 量化因子平台测试套件（白盒/集成/E2E/性能）
+        scope:
+            - tests/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

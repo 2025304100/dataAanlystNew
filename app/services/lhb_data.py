@@ -102,9 +102,14 @@ def sync_lhb_institution_trades(
             f"date range must not exceed {_MAX_RANGE_DAYS} calendar days"
         )
 
-    normalized, raw_payloads = _fetch_lhb_institution(
-        db, start_date, end_date
-    )
+    normalized, raw_payloads = _fetch_lhb_institution(db, start_date, end_date)
+    # Some provider responses are empty or normalized by a compatibility
+    # adapter to ``None``. Treat that as an empty result, not a subscript/type
+    # error that aborts the whole async task.
+    if normalized is None:
+        normalized = normalize_lhb_institution_frame(pd.DataFrame())
+    if raw_payloads is None:
+        raw_payloads = {}
     written = 0
     unmatched = 0
     for row in normalized.to_dict("records"):
@@ -148,9 +153,8 @@ def sync_lhb_institution_trades(
             row["institution_net_pct"]
         )
         existing.turnover_rate = _nullable_float(row["turnover_rate"])
-        existing.reason = (
-            str(row["reason"]) if not pd.isna(row["reason"]) else None
-        )
+        reason = row.get("reason")
+        existing.reason = str(reason) if reason is not None and not pd.isna(reason) else None
         existing.raw_json = raw_payloads.get((code, trade_date))
         written += 1
     db.flush()

@@ -7,11 +7,17 @@ import operator
 from collections import Counter
 from datetime import date, datetime, timezone
 from math import floor, sqrt
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.backtest import BacktestRun, BacktestTrade
+from app.models.backtest import (
+    BacktestExecutionFill,
+    BacktestRun,
+    BacktestTrade,
+    BacktestValuationSnapshot,
+)
 from app.models.custom_indicator import CustomIndicator
 from app.models.daily_bar import DailyBar
 from app.models.factor_model import FactorModelRun
@@ -37,6 +43,903 @@ EXECUTION_TIMING_MODES = {"signal_open", "signal_close", "next_open"}
 # 此处保留导入以维持向后兼容（外部模块可能 from app.services.backtest import DEFAULT_COST_CONFIG）。
 
 logger = logging.getLogger(__name__)
+
+
+def _persist_backtest_decision_chain(
+    db: Session,
+    *,
+    portfolio_id: int,
+    strategy_snapshot_id: str,
+    trade_dates: list[date],
+    match_mode: str | None = None,
+) -> tuple[list[str], list[Any], list[Any]]:
+    """Persist one unified DecisionRun per backtest decision date.
+
+    Backtest matching remains the source of fills, while DecisionEngine is the
+    source of the auditable decision/evidence record.  Both run in the same DB
+    transaction; callers only commit after this function and trade linkage
+    have completed.
+    """
+    from app.models.decision_engine import DecisionEvidence, DecisionRun
+    from app.services.decision_engine import default_engine
+
+    run_ids: list[str] = []
+    order_plans: list[Any] = []
+    normalized_dates = sorted({d for d in trade_dates if isinstance(d, date)})
+    existing_ids = set(db.execute(
+        select(DecisionRun.id).where(
+            DecisionRun.strategy_snapshot_id == str(strategy_snapshot_id),
+            DecisionRun.run_type.in_(("backtest", "dry_run")),
+            DecisionRun.trade_date.in_(normalized_dates),
+        )
+    ).scalars().all()) if normalized_dates else set()
+    try:
+        for trade_date in normalized_dates:
+            result = default_engine.evaluate(
+                db,
+                portfolio_id=portfolio_id,
+                strategy_snapshot_id=str(strategy_snapshot_id),
+                trade_date=trade_date,
+                run_type="backtest",
+                dry_run=False,
+                match_mode=match_mode or "NEXT_OPEN",
+                allow_t_close_research_override=True,
+            )
+            if not result.persisted:
+                raise RuntimeError(
+                    f"DecisionEngine 未持久化 backtest DecisionRun: {result.decision_run_id}"
+                )
+            run_ids.append(str(result.decision_run_id))
+            order_plans.extend(result.order_plans)
+    except Exception:
+        # Preserve a failed audit record for runs created by this invocation.
+        # Existing idempotent runs belong to an earlier backtest and must not
+        # be downgraded when a later invocation fails.
+        failed_ids = set(db.execute(
+            select(DecisionRun.id).where(
+                DecisionRun.strategy_snapshot_id == str(strategy_snapshot_id),
+                DecisionRun.run_type.in_(("backtest", "dry_run")),
+                DecisionRun.trade_date.in_(normalized_dates),
+            )
+        ).scalars().all()) - existing_ids if normalized_dates else set()
+        finished = datetime.now(timezone.utc).replace(tzinfo=None)
+        for failed_id in failed_ids:
+            failed_run = db.get(DecisionRun, failed_id)
+            if failed_run is None:
+                continue
+            failed_run.status = "FAILED"
+            failed_run.finished_at = finished
+            if failed_run.started_at is not None:
+                failed_run.duration_ms = max(
+                    0, int((finished - failed_run.started_at).total_seconds() * 1000)
+                )
+        if failed_ids:
+            db.flush()
+        raise
+
+    if not run_ids:
+        return [], [], []
+    evidence_rows = list(db.execute(
+        select(DecisionEvidence)
+        .where(DecisionEvidence.decision_run_id.in_(run_ids))
+        .order_by(DecisionEvidence.trade_date, DecisionEvidence.symbol_id)
+    ).scalars().all())
+    # Every evidence item must have exactly one deterministic plan value.  The
+    # plan is not a second database decision record; the evidence ID remains
+    # the durable audit foreign key until the order-plan table is introduced.
+    evidence_ids = {
+        str(row.id) for row in evidence_rows
+        if getattr(row, "id", None) is not None
+    }
+    if {str(plan.evidence_id) for plan in order_plans} != evidence_ids:
+        raise RuntimeError(
+            "DecisionOrderPlan 与 DecisionEvidence 数量/ID 不一致"
+        )
+    return run_ids, evidence_rows, order_plans
+
+
+def _apply_order_plan_evidence(
+    trade: BacktestTrade,
+    *,
+    entry_plan: Any | None = None,
+    exit_plan: Any | None = None,
+) -> None:
+    """Bind a trade only from the exact plan that produced its fill.
+
+    There is intentionally no symbol/date lookup here.  The decision-driven
+    loop owns the plan object at the point of matching, so a repeated entry or
+    exit for one symbol cannot accidentally reuse an older evidence row.
+    """
+    if entry_plan is not None:
+        if int(trade.symbol_id) != int(entry_plan.symbol_id):
+            raise ValueError("entry order plan symbol does not match trade")
+        if str(entry_plan.action) != "BUY":
+            raise ValueError("entry order plan must be BUY")
+        trade.decision_evidence_id = str(entry_plan.evidence_id)
+        trade.intended_entry_price = entry_plan.intended_price
+        trade.slippage_bps = getattr(entry_plan, "slippage_bps", None)
+    if exit_plan is not None:
+        if int(trade.symbol_id) != int(exit_plan.symbol_id):
+            raise ValueError("exit order plan symbol does not match trade")
+        if str(exit_plan.action) != "SELL":
+            raise ValueError("exit order plan must be SELL")
+        trade.exit_evidence_id = str(exit_plan.evidence_id)
+
+
+def _rehydrate_persisted_order_plans(
+    db: Session,
+    decision_run: Any,
+) -> list[Any] | None:
+    """Rebuild immutable order-plan values from a successful DecisionRun.
+
+    A replay with different execution parameters must not invoke the decision
+    engine again or accidentally share trades with the original BacktestRun.
+    Evidence is the durable decision boundary, so the adapter can safely
+    reconstruct the value objects needed by the matching layer from that row.
+    ``None`` is reserved for a malformed/missing run; an empty list is a valid
+    decision with no actionable evidence.
+    """
+    from app.models.decision_engine import DecisionEvidence
+    from app.services.decision_engine import DecisionOrderPlan, utc_naive_to_shanghai
+
+    if decision_run is None or str(getattr(decision_run, "status", "")) != "SUCCEEDED":
+        return None
+
+    rows = list(db.execute(
+        select(DecisionEvidence)
+        .where(DecisionEvidence.decision_run_id == str(decision_run.id))
+        .order_by(DecisionEvidence.symbol_id, DecisionEvidence.id)
+    ).scalars().all())
+    plans: list[Any] = []
+    for row in rows:
+        try:
+            versions = json.loads(row.versions_json or "{}")
+        except (TypeError, json.JSONDecodeError):
+            versions = {}
+        if not isinstance(versions, dict):
+            versions = {}
+        try:
+            reason_codes = json.loads(row.reason_codes_json or "[]")
+        except (TypeError, json.JSONDecodeError):
+            reason_codes = []
+        if not isinstance(reason_codes, list):
+            reason_codes = []
+        try:
+            rejection_trace = json.loads(row.rejections_trace_json or "[]")
+        except (TypeError, json.JSONDecodeError):
+            rejection_trace = []
+        if not isinstance(rejection_trace, list):
+            rejection_trace = []
+        try:
+            action = str(versions.get("order_plan_action") or row.action)
+            signal_date = row.trade_date
+            raw_signal_date = versions.get("order_plan_signal_date")
+            if isinstance(raw_signal_date, str):
+                signal_date = date.fromisoformat(raw_signal_date)
+            execution_at = row.execution_at or getattr(decision_run, "execution_at", None)
+            execution_date = (
+                utc_naive_to_shanghai(execution_at).date()
+                if isinstance(execution_at, datetime) else signal_date
+            )
+            raw_execution_date = versions.get("order_plan_execution_date")
+            if isinstance(raw_execution_date, str):
+                execution_date = date.fromisoformat(raw_execution_date)
+            delta = row.target_qty_delta
+            if delta is None:
+                delta = row.target_quantity if row.action in {"BUY", "SELL"} else 0.0
+            target_quantity = abs(float(
+                versions.get("order_plan_target_quantity", delta) or 0.0
+            ))
+            original_trace = versions.get("order_plan_rejection_trace", rejection_trace)
+            if not isinstance(original_trace, list):
+                original_trace = rejection_trace
+            plans.append(DecisionOrderPlan(
+                decision_run_id=str(decision_run.id),
+                evidence_id=str(row.id),
+                symbol_id=int(row.symbol_id),
+                action=action,
+                signal_date=signal_date,
+                execution_date=execution_date,
+                target_quantity=target_quantity,
+                direction=versions.get(
+                    "order_plan_direction",
+                    action if action in {"BUY", "SELL"} else None,
+                ),
+                intended_price=(
+                    float(versions["order_plan_intended_price"])
+                    if versions.get("order_plan_intended_price") is not None
+                    else (
+                        float(row.intended_price)
+                        if row.intended_price is not None else None
+                    )
+                ),
+                reason_code=versions.get(
+                    "order_plan_reason_code",
+                    row.rejection_reason
+                    or row.action_subtype
+                    or (reason_codes[0] if reason_codes else None),
+                ),
+                rejection_trace=[
+                    dict(item) for item in original_trace
+                    if isinstance(item, dict)
+                ],
+            ))
+        except (TypeError, ValueError):
+            # A malformed evidence row must never be silently treated as a
+            # valid plan.  Let the caller fall back to a fresh evaluation.
+            return None
+
+    return plans
+
+
+def _run_backtest_decision_driven(
+    db: Session,
+    *,
+    run: BacktestRun,
+    portfolio_id: int,
+    symbol_ids: list[int],
+    start_date: date,
+    end_date: date,
+    strategy_snapshot_id: str,
+    initial_capital: float,
+    cost_config: dict[str, Any],
+    match_mode: str = "NEXT_OPEN",
+) -> BacktestRun:
+    """Run a backtest from DecisionEngine order plans.
+
+    The adapter owns only historical state and matching.  Candidate selection,
+    action, target quantity, intended price and rejection reasons come from
+    DecisionEngine; the legacy signal functions are deliberately not called
+    on this path.
+    """
+    from app.models.decision_engine import DecisionEvidence, DecisionRun
+    from app.services.decision_engine import (
+        DecisionStateContext,
+        default_engine,
+        requires_strict_market_data_pit,
+    )
+
+    run.match_mode = str(match_mode).upper()
+    strict_market_data_pit = requires_strict_market_data_pit(
+        default_engine.load_snapshot(db, strategy_snapshot_id)
+    )
+
+    def _bar_available_at(bar: DailyBar | None) -> datetime | None:
+        value = getattr(bar, "created_at", None)
+        if not isinstance(value, datetime):
+            return None
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    date_bars = list(db.execute(
+        select(DailyBar.trade_date)
+        .where(
+            DailyBar.symbol_id.in_(symbol_ids),
+            DailyBar.trade_date >= start_date,
+            DailyBar.trade_date <= end_date,
+        )
+        .distinct()
+        .order_by(DailyBar.trade_date)
+    ).scalars().all())
+    if not date_bars:
+        raise ValueError("No trading data found in date range")
+
+    all_bars = list(db.execute(
+        select(DailyBar)
+        .where(
+            DailyBar.symbol_id.in_(symbol_ids),
+            DailyBar.trade_date >= start_date,
+            DailyBar.trade_date <= end_date,
+        )
+        .order_by(DailyBar.symbol_id, DailyBar.trade_date)
+    ).scalars().all())
+    bars_by_symbol: dict[int, list[DailyBar]] = {}
+    for bar in all_bars:
+        bars_by_symbol.setdefault(int(bar.symbol_id), []).append(bar)
+    bar_by_key = {
+        (int(bar.symbol_id), bar.trade_date): bar for bar in all_bars
+    }
+
+    symbols = {
+        int(row.id): row for row in db.execute(
+            select(Symbol).where(Symbol.id.in_(symbol_ids))
+        ).scalars().all()
+    }
+    cash = float(initial_capital)
+    open_trades: dict[int, BacktestTrade] = {}
+    completed_trades: list[BacktestTrade] = []
+    plans_by_execution: dict[date, list[Any]] = {}
+    # Execution progress belongs to this BacktestRun.  DecisionEvidence may
+    # be reused by an idempotent replay, but fills from an earlier run must
+    # never become the starting quantity for this run's matching lifecycle.
+    execution_progress: dict[str, dict[str, float]] = {}
+    decision_run_ids: list[str] = []
+    # Freeze the idempotent rows that belonged to an earlier invocation.  A
+    # failed replay may downgrade only runs created by this invocation; an
+    # already-succeeded DecisionRun is immutable audit history.
+    existing_decision_runs = list(db.execute(
+        select(DecisionRun).where(
+            DecisionRun.strategy_snapshot_id == str(strategy_snapshot_id),
+            DecisionRun.run_type.in_(('backtest', 'dry_run')),
+            DecisionRun.trade_date.in_(date_bars),
+        )
+    ).scalars().all())
+    existing_decision_run_ids: set[str] = {
+        str(row.id) for row in existing_decision_runs
+    }
+    # Only a completed run is safe to replay without invoking the engine.  A
+    # FAILED/RUNNING row is retried through the normal path so a prior fault
+    # cannot be mistaken for a valid immutable decision.
+    persisted_success_by_date: dict[date, DecisionRun] = {}
+    for row in existing_decision_runs:
+        if str(row.status) != "SUCCEEDED":
+            continue
+        # Prefer a backtest DecisionRun when legacy dry_run rows happen to
+        # share the same snapshot/date (their identities normally differ).
+        previous = persisted_success_by_date.get(row.trade_date)
+        if previous is None or str(row.run_type) == "backtest":
+            persisted_success_by_date[row.trade_date] = row
+    created_decision_run_ids: set[str] = set()
+
+    def _state_context(current_date: date) -> DecisionStateContext:
+        def _bar_price(bar: DailyBar | None, field: str) -> float | None:
+            if bar is None:
+                return None
+            value = getattr(bar, field, None)
+            try:
+                return float(value) if value is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        current: dict[int, dict[str, Any]] = {}
+        asset_pct: dict[str, float] = {}
+        sector_pct: dict[str, float] = {}
+        for sid, trade in open_trades.items():
+            bar = bar_by_key.get((sid, current_date))
+            mark = _bar_price(bar, "close") or float(trade.entry_price)
+            market_value = mark * float(trade.quantity)
+            pct = market_value / initial_capital if initial_capital > 0 else 0.0
+            sym = symbols.get(sid)
+            asset = str(getattr(sym, "asset_type", "stock") or "stock").lower()
+            sector = str(getattr(sym, "industry", "unclassified") or "unclassified")
+            current[sid] = {
+                "qty": float(trade.quantity),
+                "pct": pct,
+                "market_value": market_value,
+                "asset_type": asset,
+                "sector": sector,
+            }
+            asset_pct[asset] = asset_pct.get(asset, 0.0) + pct
+            sector_pct[sector] = sector_pct.get(sector, 0.0) + pct
+        prices: dict[int, dict[str, Any]] = {}
+        for sid in symbol_ids:
+            bar = bar_by_key.get((int(sid), current_date))
+            if bar is None:
+                if strict_market_data_pit:
+                    # Keep an explicit row so DecisionEngine records the
+                    # missing market input as DATA_BLOCKED instead of silently
+                    # treating the absent symbol as a valid no-price case.
+                    prices[int(sid)] = {}
+                continue
+            previous_candidates = [
+                b for b in bars_by_symbol.get(int(sid), []) if b.trade_date < current_date
+            ]
+            previous = previous_candidates[-1] if previous_candidates else None
+            # DecisionEngine's intended price is the first executable NEXT_OPEN.
+            next_bar = next(
+                (b for b in bars_by_symbol.get(int(sid), []) if b.trade_date > current_date),
+                None,
+            )
+            intended_open = _bar_price(next_bar, "open") or _bar_price(next_bar, "close") or _bar_price(bar, "open")
+            prices[int(sid)] = {
+                "open_price": intended_open,
+                "close_price": _bar_price(bar, "close"),
+                "high_price": _bar_price(bar, "high"),
+                "low_price": _bar_price(bar, "low"),
+                "volume": int(bar.volume or 0),
+                "prev_close_price": _bar_price(previous, "close"),
+                "is_suspended_today": bool((bar.volume or 0) <= 0),
+                # DailyBar has no separate publication column. Its immutable
+                # creation time is therefore the availability proof for a
+                # strict historical replay.
+                "available_at": getattr(bar, "created_at", None),
+                "_backtest_signal_open": float(bar.open),
+            }
+        return DecisionStateContext(
+            current_by_symbol=current,
+            current_asset_pct=asset_pct,
+            current_sector_pct=sector_pct,
+            available_cash=cash,
+            total_capital=initial_capital,
+            pending_orders={},
+            price_data_by_symbol=prices,
+            cost_config=dict(cost_config),
+        )
+
+    def _mark_rejected(plan: Any, reason: str, detail: str | None = None) -> None:
+        evidence = db.get(DecisionEvidence, str(plan.evidence_id))
+        if evidence is not None:
+            evidence.rejection_reason = reason
+            evidence.rejection_detail = detail or reason
+            evidence.executed_price = None
+            evidence.slippage_bps = None
+            try:
+                versions = json.loads(evidence.versions_json or "{}")
+            except (TypeError, json.JSONDecodeError):
+                versions = {}
+            # A retry keeps the original order/evidence identity.  Never
+            # discard its already-filled leg when a later retry is rejected.
+            plan_key = str(
+                getattr(plan, "order_plan_id", None)
+                or getattr(plan, "evidence_id", "")
+            )
+            progress = execution_progress.setdefault(
+                plan_key,
+                {
+                    "requested": float(plan.target_quantity or 0),
+                    "filled": 0.0,
+                },
+            )
+            progress["requested"] = max(
+                float(progress.get("requested", 0.0) or 0.0),
+                float(plan.target_quantity or 0),
+            )
+            requested_quantity = float(progress.get("requested", 0.0) or 0.0)
+            filled_quantity = min(
+                requested_quantity,
+                max(0.0, float(progress.get("filled", 0.0) or 0.0)),
+            )
+            progress["filled"] = filled_quantity
+            remaining_quantity = max(0.0, requested_quantity - filled_quantity)
+            versions.update({
+                "order_plan_status": "PARTIAL_FILL" if filled_quantity > 0 else "REJECTED",
+                "order_plan_requested_quantity": requested_quantity,
+                "order_plan_filled_quantity": filled_quantity,
+                "order_plan_remaining_quantity": remaining_quantity,
+                "order_plan_unfilled_reason": str(reason),
+            })
+            evidence.versions_json = json.dumps(versions, ensure_ascii=False, sort_keys=True)
+            db.flush()
+
+    def _record_execution_fill(
+        *,
+        plan: Any,
+        execution_date: date,
+        trade: BacktestTrade,
+        quantity: float,
+        executed_price: float,
+        cost: float,
+    ) -> None:
+        """Persist one successful matcher fill before updating aggregate views.
+
+        The aggregate ``BacktestTrade`` may retain its first entry date across
+        partial retries.  This separate immutable event is therefore the only
+        source used to reconstruct per-session holdings and cash.
+        """
+        db.flush()
+        db.add(BacktestExecutionFill(
+            run_id=int(run.id),
+            backtest_trade_id=int(trade.id) if trade.id is not None else None,
+            symbol_id=int(plan.symbol_id),
+            execution_date=execution_date,
+            side=str(plan.action),
+            quantity=float(quantity),
+            executed_price=float(executed_price),
+            cost=float(cost),
+            decision_evidence_id=str(plan.evidence_id),
+            order_plan_id=str(plan.order_plan_id),
+        ))
+        db.flush()
+
+    def _execute_plan(plan: Any, execution_date: date) -> None:
+        nonlocal cash
+        from app.services.simulation_matching_engine import (
+            CostModelConfig,
+            MarketBar,
+            OrderPlan as MatchingOrderPlan,
+            OrderSide,
+            match_order_plan,
+        )
+        sid = int(plan.symbol_id)
+        if plan.action not in {"BUY", "SELL"} or float(plan.target_quantity or 0) <= 0:
+            return
+        plan_key = str(
+            getattr(plan, "order_plan_id", None)
+            or getattr(plan, "evidence_id", "")
+        )
+        progress = execution_progress.setdefault(
+            plan_key,
+            {
+                "requested": float(plan.target_quantity or 0),
+                "filled": 0.0,
+            },
+        )
+        progress["requested"] = max(
+            float(progress.get("requested", 0.0) or 0.0),
+            float(plan.target_quantity or 0),
+        )
+        bar = bar_by_key.get((sid, execution_date))
+        if bar is None:
+            _mark_rejected(plan, "DATA_BLOCKED", "execution bar missing")
+            return
+        if strict_market_data_pit:
+            # NEXT_OPEN may only use an execution bar that was visible by the
+            # actual market-open timestamp, not a later historical revision.
+            from app.services.decision_clock import resolve as resolve_clock
+
+            execution_cutoff = resolve_clock(
+                execution_date,
+                execution_offset_days=0,
+            ).execution_at
+            available_at = _bar_available_at(bar)
+            if available_at is None or available_at > execution_cutoff:
+                _mark_rejected(
+                    plan,
+                    "DAILY_BAR_AVAILABLE_AFTER_EXECUTION_CUTOFF",
+                    (
+                        f"symbol_id={sid} available_at="
+                        f"{available_at.isoformat() if available_at else 'missing'} "
+                        f"> execution_cutoff_at={execution_cutoff.isoformat()}"
+                    ),
+                )
+                return
+        previous_candidates = [
+            b for b in bars_by_symbol.get(sid, []) if b.trade_date < execution_date
+        ]
+        previous = previous_candidates[-1] if previous_candidates else None
+        prev_close = float(previous.close) if previous is not None else None
+        symbol = symbols.get(sid)
+        lot = 100 if symbol is not None and getattr(symbol, "market", None) in {"SH", "SZ", "BJ"} else 1
+        open_price = float(bar.open or 0.0)
+        upper_limit = round(prev_close * 1.10, 4) if prev_close else None
+        lower_limit = round(prev_close * 0.90, 4) if prev_close else None
+        matching_cfg = CostModelConfig(
+            commission_rate=float(cost_config.get("commission_rate", 0.0003) or 0.0003),
+            min_commission=float(cost_config.get("min_commission", 5.0) or 0.0),
+            stamp_tax_rate=float(cost_config.get("stamp_tax_rate", 0.001) or 0.0),
+            transfer_fee_rate=float(cost_config.get("transfer_fee_rate", 0.00001) or 0.0),
+            slippage_buy_bps=int(float(cost_config.get("slippage_buy_bps", 5.0) or 0.0)),
+            slippage_sell_bps=int(float(cost_config.get("slippage_sell_bps", 5.0) or 0.0)),
+            volume_limit_pct=(
+                float(cost_config["volume_limit_pct"])
+                if cost_config.get("volume_limit_pct") is not None else None
+            ),
+        )
+        matching_plan = MatchingOrderPlan(
+            order_plan_id=str(plan.order_plan_id),
+            symbol_id=sid,
+            portfolio_id=portfolio_id,
+            trade_date=execution_date,
+            price_type="T_CLOSE" if str(match_mode).upper() == "T_CLOSE" else "NEXT_OPEN",
+            side=OrderSide.BUY if plan.action == "BUY" else OrderSide.SELL,
+            target_quantity=int(float(plan.target_quantity)),
+            min_lot_size=lot,
+            intended_price=plan.intended_price,
+            is_risk_exit=(str(plan.reason_code or "").upper() in {"STOP_LOSS", "RISK_EXIT"}),
+        )
+        matching_bar = MarketBar(
+            trade_date=execution_date,
+            open=float(bar.open) if bar.open is not None else None,
+            high=float(bar.high) if bar.high is not None else None,
+            low=float(bar.low) if bar.low is not None else None,
+            close=float(bar.close) if bar.close is not None else None,
+            pre_close=prev_close,
+            volume=float(bar.volume or 0),
+            amount=float(bar.amount or 0) if bar.amount is not None else None,
+            halted=bool((bar.volume or 0) <= 0),
+            upper_limit_price=upper_limit,
+            lower_limit_price=lower_limit,
+            limit_up_locked=bool(upper_limit is not None and open_price >= upper_limit and float(bar.high or open_price) <= open_price),
+            limit_down_locked=bool(lower_limit is not None and open_price <= lower_limit and float(bar.low or open_price) >= open_price),
+        )
+        match_result = match_order_plan(matching_plan, matching_bar, cfg=matching_cfg)
+        if match_result.final_status not in {"FILLED", "PARTIAL_FILL"}:
+            reason = match_result.reason_codes[0] if match_result.reason_codes else match_result.final_status
+            _mark_rejected(plan, reason, match_result.note or ",".join(match_result.reason_codes))
+            return
+        quantity = float(match_result.filled_quantity)
+        executed_price = float(match_result.executed_price or 0.0)
+        bps = float(match_result.slippage_bps or 0.0)
+        evidence = db.get(DecisionEvidence, str(plan.evidence_id))
+        fill_trade: BacktestTrade
+        execution_cost: float
+        if plan.action == "BUY":
+            trade = open_trades.get(sid)
+            is_partial_retry = (
+                trade is not None
+                and str(trade.decision_evidence_id) == str(plan.evidence_id)
+            )
+            if trade is not None and not is_partial_retry:
+                _mark_rejected(plan, "POSITION_ALREADY_OPEN")
+                return
+            entry_cost = float(match_result.total_cost)
+            total_cost = executed_price * quantity + entry_cost
+            if total_cost > cash + 1e-9:
+                next_execution_date = next((d for d in date_bars if d > execution_date), None)
+                if next_execution_date is not None:
+                    # Preserve the same plan/evidence identity while deferring
+                    # the fill to the next available session.
+                    plans_by_execution.setdefault(next_execution_date, []).append(plan)
+                    _mark_rejected(
+                        plan,
+                        "INSUFFICIENT_CASH_DEFERRED",
+                        f"required={total_cost}, available={cash}, deferred_to={next_execution_date}",
+                    )
+                else:
+                    _mark_rejected(plan, "INSUFFICIENT_CASH", f"required={total_cost}, available={cash}")
+                return
+            if is_partial_retry:
+                # Partial fills from the same immutable plan are one entry
+                # lifecycle.  Preserve the original trade/evidence foreign
+                # key while accumulating both quantity and actual execution
+                # cost; a newly emitted BUY plan is still rejected above.
+                previous_quantity = float(trade.quantity or 0.0)
+                cumulative_quantity = previous_quantity + quantity
+                if cumulative_quantity > 0:
+                    trade.entry_price = (
+                        float(trade.entry_price) * previous_quantity
+                        + executed_price * quantity
+                    ) / cumulative_quantity
+                trade.quantity = cumulative_quantity
+                trade.entry_cost = float(trade.entry_cost or 0.0) + entry_cost
+                trade.slippage_bps = bps
+            else:
+                trade = BacktestTrade(
+                    run_id=run.id, symbol_id=sid, entry_date=execution_date,
+                    entry_price=executed_price, quantity=quantity, entry_cost=entry_cost,
+                )
+                _apply_order_plan_evidence(trade, entry_plan=plan)
+                trade.slippage_bps = bps
+                db.add(trade)
+                db.flush()
+            cash -= total_cost
+            open_trades[sid] = trade
+            fill_trade = trade
+            execution_cost = entry_cost
+        else:
+            trade = open_trades.get(sid)
+            if trade is None:
+                _mark_rejected(plan, "NO_POSITION_TO_SELL")
+                return
+            quantity = min(quantity, float(trade.quantity))
+            exit_cost = float(match_result.total_cost)
+            pnl = (executed_price - trade.entry_price) * quantity - trade.entry_cost - exit_cost
+            if quantity < float(trade.quantity):
+                # Split a partial sell into a realized child lot and keep the
+                # remainder open for a later DecisionOrderPlan.
+                ratio = quantity / float(trade.quantity)
+                partial_trade = BacktestTrade(
+                    run_id=run.id, symbol_id=sid, entry_date=trade.entry_date,
+                    entry_price=trade.entry_price, quantity=quantity,
+                    entry_cost=trade.entry_cost * ratio,
+                    exit_date=execution_date, exit_price=executed_price,
+                    exit_reason=plan.reason_code or "DECISION_SELL",
+                    exit_cost=exit_cost, pnl=round(pnl, 2),
+                    pnl_pct=round(pnl / (trade.entry_price * quantity), 4) if trade.entry_price and quantity else 0.0,
+                    hold_days=(execution_date - trade.entry_date).days,
+                    intended_entry_price=trade.intended_entry_price,
+                    slippage_bps=trade.slippage_bps,
+                )
+                partial_trade.decision_evidence_id = trade.decision_evidence_id
+                _apply_order_plan_evidence(partial_trade, exit_plan=plan)
+                db.add(partial_trade)
+                trade.quantity -= quantity
+                trade.entry_cost -= trade.entry_cost * ratio
+                completed_trades.append(partial_trade)
+                fill_trade = partial_trade
+            else:
+                trade.exit_date = execution_date
+                trade.exit_price = executed_price
+                trade.exit_reason = plan.reason_code or "DECISION_SELL"
+                trade.exit_cost = exit_cost
+                trade.pnl = round(pnl, 2)
+                trade.pnl_pct = round(pnl / (trade.entry_price * quantity), 4) if trade.entry_price and quantity else 0.0
+                trade.hold_days = (execution_date - trade.entry_date).days
+                _apply_order_plan_evidence(trade, exit_plan=plan)
+                completed_trades.append(trade)
+                del open_trades[sid]
+                fill_trade = trade
+            cash += executed_price * quantity - exit_cost
+            execution_cost = exit_cost
+        _record_execution_fill(
+            plan=plan,
+            execution_date=execution_date,
+            trade=fill_trade,
+            quantity=quantity,
+            executed_price=executed_price,
+            cost=execution_cost,
+        )
+        if evidence is not None:
+            evidence.executed_price = executed_price
+            evidence.slippage_bps = bps
+            try:
+                versions = json.loads(evidence.versions_json or "{}")
+            except (TypeError, json.JSONDecodeError):
+                versions = {}
+            # A replacement plan contains only the remaining quantity.  The
+            # evidence remains the durable record for the original request,
+            # so execution fields must accumulate rather than be overwritten.
+            requested_quantity = float(progress.get("requested", 0.0) or 0.0)
+            filled_before = min(
+                requested_quantity,
+                max(0.0, float(progress.get("filled", 0.0) or 0.0)),
+            )
+            filled_quantity = min(
+                requested_quantity,
+                max(0.0, filled_before) + quantity,
+            )
+            progress["filled"] = filled_quantity
+            remaining_quantity = max(0.0, requested_quantity - filled_quantity)
+            pending_retry = remaining_quantity >= lot
+            versions.update({
+                "order_plan_status": "PARTIAL_FILL" if pending_retry else "FILLED",
+                "order_plan_requested_quantity": requested_quantity,
+                "order_plan_filled_quantity": filled_quantity,
+                "order_plan_remaining_quantity": remaining_quantity,
+                "order_plan_unfilled_reason": "VOLUME_LIMIT" if pending_retry else None,
+                # Preserve the unified matcher precision on the durable
+                # evidence row.  Account adapters may settle the same amount
+                # to currency cents, but audit/reconciliation needs the
+                # unrounded component values.
+                "order_plan_commission": float(match_result.commission),
+                "order_plan_stamp_tax": float(match_result.stamp_tax),
+                "order_plan_transfer_fee": float(match_result.transfer_fee),
+                "order_plan_total_cost": float(match_result.total_cost),
+            })
+            evidence.versions_json = json.dumps(versions, ensure_ascii=False, sort_keys=True)
+            if pending_retry:
+                evidence.rejection_reason = "PARTIAL_FILL"
+                evidence.rejection_detail = (
+                    f"requested={requested_quantity}, filled={filled_quantity}"
+                )
+                next_execution_date = next((d for d in date_bars if d > execution_date), None)
+                if next_execution_date is not None:
+                    from dataclasses import replace
+                    plans_by_execution.setdefault(next_execution_date, []).append(
+                        replace(plan, target_quantity=remaining_quantity)
+                    )
+            else:
+                evidence.rejection_reason = None
+                evidence.rejection_detail = None
+        db.flush()
+
+    try:
+        for current_date in date_bars:
+            # Match only plans whose declared execution date is today; SELLs
+            # precede BUYs so released cash and slots are immediately usable.
+            due = sorted(
+                plans_by_execution.pop(current_date, []),
+                key=lambda p: (0 if p.action == "SELL" else 1, int(p.symbol_id)),
+            )
+            for plan in due:
+                _execute_plan(plan, current_date)
+
+            persisted_run = persisted_success_by_date.get(current_date)
+            result_plans: list[Any]
+            if persisted_run is not None:
+                # Reuse the immutable decision/evidence boundary.  Matching
+                # still runs from scratch for this BacktestRun, so execution
+                # parameters and fills never leak across replay runs.
+                result_plans = _rehydrate_persisted_order_plans(db, persisted_run)
+                if result_plans is None:
+                    persisted_run = None
+
+            if persisted_run is None:
+                state = _state_context(current_date)
+                try:
+                    result = default_engine.evaluate(
+                        db,
+                        portfolio_id=portfolio_id,
+                        strategy_snapshot_id=strategy_snapshot_id,
+                        trade_date=current_date,
+                        run_type="backtest",
+                        dry_run=False,
+                        state_context=state,
+                        match_mode=match_mode,
+                    )
+                except Exception:
+                    # The engine may have flushed a DecisionRun before an
+                    # evidence constraint fails. Preserve that audit row as
+                    # FAILED rather than leaving an orphan RUNNING record, but
+                    # do not downgrade an idempotent row from an earlier run.
+                    failed = list(db.execute(
+                        select(DecisionRun).where(
+                            DecisionRun.strategy_snapshot_id == str(strategy_snapshot_id),
+                            DecisionRun.trade_date == current_date,
+                            DecisionRun.run_type == "backtest",
+                        )
+                    ).scalars())
+                    for failed_run in failed:
+                        if str(failed_run.id) in existing_decision_run_ids:
+                            continue
+                        failed_run.status = "FAILED"
+                        failed_run.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                        created_decision_run_ids.add(str(failed_run.id))
+                    db.flush()
+                    raise
+                if not result.persisted:
+                    raise RuntimeError(f"DecisionEngine did not persist {result.decision_run_id}")
+                decision_run_id = str(result.decision_run_id)
+                result_plans = result.order_plans
+            else:
+                decision_run_id = str(persisted_run.id)
+
+            decision_run_ids.append(decision_run_id)
+            if decision_run_id not in existing_decision_run_ids:
+                created_decision_run_ids.add(decision_run_id)
+            run.decision_run_ids_json = json.dumps(decision_run_ids, ensure_ascii=False)
+            db.flush()
+            for plan in result_plans:
+                effective_execution_date = (
+                    plan.signal_date if str(match_mode).upper() == "T_CLOSE" else plan.execution_date
+                )
+                plans_by_execution.setdefault(effective_execution_date, []).append(plan)
+
+        # Plans beyond the supplied range have no executable bar and remain
+        # auditable as pending; they must not be guessed into a trade.
+        run.decision_run_ids_json = json.dumps(decision_run_ids, ensure_ascii=False)
+        all_trades = completed_trades + list(open_trades.values())
+        close_prices = {
+            (int(bar.symbol_id), bar.trade_date): float(bar.close) for bar in all_bars
+        }
+        execution_fills = list(db.execute(
+            select(BacktestExecutionFill)
+            .where(BacktestExecutionFill.run_id == run.id)
+            .order_by(
+                BacktestExecutionFill.execution_date,
+                BacktestExecutionFill.id,
+            )
+        ).scalars().all())
+        equity_curve = _compute_equity_curve_from_execution_fills(
+            execution_fills,
+            initial_capital,
+            date_bars,
+            close_prices,
+        )
+        _persist_backtest_valuation_snapshots(
+            db,
+            run_id=int(run.id),
+            fills=execution_fills,
+            date_range=date_bars,
+            equity_curve=equity_curve,
+            bars=all_bars,
+        )
+        stats = _compute_statistics(all_trades, initial_capital, equity_curve)
+        run.status = "completed"
+        run.finished_at = datetime.now(timezone.utc)
+        for key in ("total_return", "total_return_pct", "max_drawdown", "max_drawdown_pct", "sharpe_ratio", "win_rate", "profit_factor", "trade_count", "avg_holding_days"):
+            setattr(run, key, stats[key])
+        run.equity_curve_json = json.dumps(equity_curve, ensure_ascii=False, allow_nan=False)
+        db.flush()
+        db.commit()
+        return run
+    except Exception as exc:
+        # Keep a traceable failed run while removing every partially-created
+        # trade. Existing idempotent decision runs remain successful; only
+        # rows created by this invocation are marked FAILED.
+        for fill in list(db.execute(
+            select(BacktestExecutionFill).where(BacktestExecutionFill.run_id == run.id)
+        ).scalars()):
+            db.delete(fill)
+        for valuation in list(db.execute(
+            select(BacktestValuationSnapshot).where(
+                BacktestValuationSnapshot.run_id == run.id
+            )
+        ).scalars()):
+            db.delete(valuation)
+        for trade in list(db.execute(select(BacktestTrade).where(BacktestTrade.run_id == run.id)).scalars()):
+            db.delete(trade)
+        for run_id in created_decision_run_ids:
+            decision_run = db.get(DecisionRun, run_id)
+            if decision_run is not None:
+                decision_run.status = "FAILED"
+                decision_run.finished_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        run.status = "failed"
+        run.error_message = f"decision-driven backtest failed: {exc}"
+        run.finished_at = datetime.now(timezone.utc)
+        db.flush()
+        raise
 
 
 def _execution_timing_mode(rule_config: dict, prefix: str, default: str = "signal_close") -> str:
@@ -143,10 +1046,10 @@ def _build_score_map(
             Score.trade_date <= end_date,
             Score.weight_mode == score_weight_mode,
         )
-    if score_weight_mode == 'ridge':
-        stmt = stmt.where(
-            Score.factor_model_run_id == factor_model_run_id
-        )
+    # A bound model is an explicit immutable scope, regardless of weight mode.
+    # Only an unbound manual run may use the legacy (symbol/date) fallback.
+    if factor_model_run_id is not None:
+        stmt = stmt.where(Score.factor_model_run_id == factor_model_run_id)
     rows = db.execute(
         stmt.order_by(Score.symbol_id, Score.trade_date, Score.id)
     ).scalars().all()
@@ -156,7 +1059,13 @@ def _build_score_map(
     return score_map
 
 
-def _latest_score_on_or_before(score_map: dict[int, list[Score]], symbol_id: int, target_date: date) -> Score | None:
+def _latest_score_on_or_before(
+    score_map: dict[int, list[Score]],
+    symbol_id: int,
+    target_date: date,
+    *,
+    published_cutoff_at: datetime | None = None,
+) -> Score | None:
     """用 bisect 在 score_map[symbol_id]（按 trade_date 升序）中查找 <= target_date 的最新 Score。
 
     等价于 select(Score).where(symbol_id=..., trade_date<=target_date).order_by(trade_date.desc()).first()
@@ -168,9 +1077,18 @@ def _latest_score_on_or_before(score_map: dict[int, list[Score]], symbol_id: int
         return None
     # bisect_right 返回第一个 > target_date 的索引，-1 即 <= target_date 的最后一个
     idx = bisect.bisect_right(sym_scores, target_date, key=lambda s: s.trade_date) - 1
-    if idx < 0:
-        return None
-    return sym_scores[idx]
+    # Walk backwards over same/previous trade dates until the publication is
+    # known to be available at the decision cutoff. This prevents a future
+    # revision for an earlier trade_date from leaking into a replay.
+    while idx >= 0:
+        candidate = sym_scores[idx]
+        published_at = getattr(candidate, "published_at", None)
+        if published_cutoff_at is None or (
+            published_at is not None and published_at <= published_cutoff_at
+        ):
+            return candidate
+        idx -= 1
+    return None
 
 
 def _compute_price_context(bars: list[DailyBar], lookback_days: int) -> dict:
@@ -1092,6 +2010,125 @@ def _first_match_reason_v2(
         return field if passed else None
 
 
+def _compute_equity_curve_from_execution_fills(
+    fills: list[BacktestExecutionFill],
+    initial_capital: float,
+    date_range: list[date],
+    close_prices: dict[tuple[int, date], float],
+) -> list[dict]:
+    """Rebuild decision-driven equity from immutable execution events.
+
+    A single aggregate trade can contain fills from more than one session.
+    Applying its final quantity at the original entry date leaks future shares
+    into historical cash and holdings.  Event rows avoid that temporal error
+    while the old aggregate-based function remains available for legacy runs.
+    """
+    fills_by_date: dict[date, list[BacktestExecutionFill]] = {}
+    for fill in fills:
+        fills_by_date.setdefault(fill.execution_date, []).append(fill)
+
+    equity_curve: list[dict] = []
+    cash = float(initial_capital)
+    quantities: dict[int, float] = {}
+    last_execution_prices: dict[int, float] = {}
+
+    for current_date in date_range:
+        for fill in fills_by_date.get(current_date, []):
+            symbol_id = int(fill.symbol_id)
+            quantity = max(0.0, float(fill.quantity or 0.0))
+            price = float(fill.executed_price or 0.0)
+            cost = float(fill.cost or 0.0)
+            if quantity <= 0 or price <= 0:
+                continue
+            if str(fill.side).upper() == "BUY":
+                cash -= price * quantity + cost
+                quantities[symbol_id] = quantities.get(symbol_id, 0.0) + quantity
+            else:
+                cash += price * quantity - cost
+                quantities[symbol_id] = max(
+                    0.0,
+                    quantities.get(symbol_id, 0.0) - quantity,
+                )
+            last_execution_prices[symbol_id] = price
+
+        position_value = 0.0
+        for symbol_id, quantity in quantities.items():
+            if quantity <= 0:
+                continue
+            close_price = close_prices.get(
+                (symbol_id, current_date),
+                last_execution_prices.get(symbol_id),
+            )
+            if close_price is not None:
+                position_value += float(close_price) * quantity
+
+        equity = cash + position_value
+        equity_curve.append({
+            "date": current_date.isoformat() if hasattr(current_date, "isoformat") else str(current_date),
+            "equity": round(equity, 2),
+            "cash": round(cash, 2),
+            "position_value": round(position_value, 2),
+        })
+
+    return equity_curve
+
+
+def _persist_backtest_valuation_snapshots(
+    db: Session,
+    *,
+    run_id: int,
+    fills: list[BacktestExecutionFill],
+    date_range: list[date],
+    equity_curve: list[dict],
+    bars: list[DailyBar],
+) -> None:
+    """Persist the marks used by the completed execution-event ledger."""
+    if not fills:
+        return
+    bars_by_key = {(int(bar.symbol_id), bar.trade_date): bar for bar in bars}
+    fills_by_date: dict[date, list[BacktestExecutionFill]] = {}
+    for fill in fills:
+        fills_by_date.setdefault(fill.execution_date, []).append(fill)
+    equity_by_date = {
+        str(point.get("date")): float(point["equity"])
+        for point in equity_curve
+        if isinstance(point, dict) and point.get("date") is not None
+    }
+    quantities: dict[int, float] = {}
+    active_symbols: set[int] = set()
+    for current_date in date_range:
+        for fill in fills_by_date.get(current_date, []):
+            symbol_id = int(fill.symbol_id)
+            active_symbols.add(symbol_id)
+            quantity = max(0.0, float(fill.quantity or 0.0))
+            if str(fill.side).upper() == "BUY":
+                quantities[symbol_id] = quantities.get(symbol_id, 0.0) + quantity
+            else:
+                quantities[symbol_id] = max(
+                    0.0, quantities.get(symbol_id, 0.0) - quantity
+                )
+        equity = equity_by_date.get(current_date.isoformat())
+        for symbol_id in active_symbols:
+            quantity = quantities.get(symbol_id, 0.0)
+            bar = bars_by_key.get((symbol_id, current_date))
+            mark_price = float(bar.close) if bar is not None and bar.close is not None else None
+            market_value = mark_price * quantity if mark_price is not None else None
+            weight = market_value / equity if market_value is not None and equity else None
+            db.add(BacktestValuationSnapshot(
+                run_id=run_id,
+                trade_date=current_date,
+                symbol_id=symbol_id,
+                mark_price=mark_price,
+                market_value=market_value,
+                portfolio_equity=equity,
+                weight=weight,
+                price_bar_id=int(bar.id) if bar is not None else None,
+                price_source=str(bar.source) if bar is not None and bar.source else None,
+                price_available_at=bar.created_at if bar is not None else None,
+            ))
+    db.flush()
+
+
 def _compute_equity_curve(
     trades: list[BacktestTrade],
     initial_capital: float,
@@ -1277,7 +2314,11 @@ def _build_trade_trace_map(
     for trade in trades:
         entry_signal_day = _signal_day(trade.symbol_id, trade.entry_date, entry_timing)
         entry_signal_bar, entry_prev_bar, entry_history = _bar_context(trade.symbol_id, entry_signal_day) if entry_signal_day else (None, None, [])
-        score = _latest_score_on_or_before(score_map, trade.symbol_id, (entry_signal_day or trade.entry_date))
+        entry_score_day = entry_signal_day or trade.entry_date
+        score = _latest_score_on_or_before(
+            score_map, trade.symbol_id, entry_score_day,
+            published_cutoff_at=datetime.combine(entry_score_day, datetime.max.time()),
+        )
         entry_traces = _collect_condition_traces(
             buy_tree,
             score,
@@ -1301,7 +2342,11 @@ def _build_trade_trace_map(
 
         if trade.exit_date:
             exit_signal_day = _signal_day(trade.symbol_id, trade.exit_date, exit_timing)
-            exit_score = _latest_score_on_or_before(score_map, trade.symbol_id, (exit_signal_day or trade.exit_date))
+            exit_score_day = exit_signal_day or trade.exit_date
+            exit_score = _latest_score_on_or_before(
+                score_map, trade.symbol_id, exit_score_day,
+                published_cutoff_at=datetime.combine(exit_score_day, datetime.max.time()),
+            )
             exit_bar, exit_prev_bar, exit_history = _bar_context(trade.symbol_id, exit_signal_day) if exit_signal_day else (None, None, [])
             trade_window = [
                 item for item in _history_with_current(exit_history, exit_bar)
@@ -1409,7 +2454,15 @@ def build_backtest_detail_context(db: Session, run: BacktestRun, trades: list[Ba
 
     for bar in bars:
         checked_days += 1
-        score = _latest_score_on_or_before(score_map, bar.symbol_id, bar.trade_date)
+        # PIT cutoff: a score revision is usable only once published on the
+        # decision day (DB timestamps are stored as naive UTC datetimes).
+        pit_cutoff = datetime.combine(bar.trade_date, datetime.max.time())
+        score = _latest_score_on_or_before(
+            score_map,
+            bar.symbol_id,
+            bar.trade_date,
+            published_cutoff_at=pit_cutoff,
+        )
 
         # history_bars 与 prev_bar 对齐
         sym_bars = bars_by_sym.get(bar.symbol_id, [])
@@ -1676,6 +2729,7 @@ def run_backtest(
     run_name: str | None = None,
     score_weight_mode: str | None = None,
     factor_model_run_id: str | None = None,
+    initial_capital: float | None = None,
     *,
     member_snapshot_json: str | None = None,
     symbol_ids_json: str | None = None,
@@ -1686,6 +2740,14 @@ def run_backtest(
     engine_name: str | None = None,
     engine_version: str | None = None,
     source_type: str | None = None,
+    reproducibility_reason: str | None = None,
+    # WP0-5a / Q29.1：扩展字段（migration 已加列）
+    strategy_snapshot_id: str | None = None,
+    factor_set_id: int | None = None,
+    pit_mode: str | None = None,
+    rebalance_frequency: str | None = None,
+    volume_limit_pct: float | None = None,
+    price_type: str | None = None,
 ) -> BacktestRun:
     """Doc."""
     # Execute a backtest run for the selected portfolio and symbols.
@@ -1712,8 +2774,26 @@ def run_backtest(
     rule_config = _prepare_rule_config(db, rule_config)
 
     cost_config = cost_config or DEFAULT_COST_CONFIG
+    # WP0-5 TR-05.3：将契约参数中尚未独立列化的参数并入 cost_config_json 快照，
+    # 确保 run 级参数可溯源，而不必新增 migration 列。
+    cost_config = dict(cost_config)
+    if rebalance_frequency is not None:
+        cost_config["rebalance_frequency"] = rebalance_frequency
+    if volume_limit_pct is not None:
+        cost_config["volume_limit_pct"] = float(volume_limit_pct)
+    if price_type is not None:
+        cost_config["price_type"] = price_type
 
-    initial_capital = float(portfolio.total_capital)
+    # WP0-5 C-05：显式 initial_capital 优先；None 时回退 portfolio.total_capital（历史兼容）
+    effective_initial_capital: float
+    if isinstance(initial_capital, (int, float)) and initial_capital > 0:
+        effective_initial_capital = float(initial_capital)
+    elif portfolio.total_capital and float(portfolio.total_capital) > 0:
+        effective_initial_capital = float(portfolio.total_capital)
+    else:
+        raise ValueError(
+            "run_backtest: initial_capital 无效；需请求体传正数或 portfolio.total_capital 为正。"
+        )
 
     run = BacktestRun(
         portfolio_id=portfolio_id,
@@ -1726,8 +2806,13 @@ def run_backtest(
         factor_data_cutoff_at=factor_data_cutoff_at,
         start_date=start_date,
         end_date=end_date,
-        initial_capital=initial_capital,
+        initial_capital=effective_initial_capital,
         status="running",
+        reproducibility_status=("reproducible" if strategy_snapshot_id else "legacy/non_reproducible"),
+        reproducibility_reason=(
+            reproducibility_reason
+            or (None if strategy_snapshot_id else "历史运行未绑定策略执行快照和统一决策链")
+        ),
         started_at=datetime.now(timezone.utc),
         # WP7.2/WP7.3 快照字段（全部可选，None 时保持历史回测行为不变）
         member_snapshot_json=member_snapshot_json,
@@ -1739,11 +2824,31 @@ def run_backtest(
         engine_name=engine_name,
         engine_version=engine_version,
         source_type=source_type,
+        strategy_snapshot_id=strategy_snapshot_id,
+        factor_set_id=factor_set_id,
+        pit_mode=pit_mode,
     )
     db.add(run)
     db.flush()
 
     try:
+        if strategy_snapshot_id:
+            # Stage 1 contract: a snapshot-backed backtest is driven solely by
+            # DecisionEngine order plans.  The legacy signal loop below remains
+            # available for historical runs that predate execution snapshots.
+            return _run_backtest_decision_driven(
+                db,
+                run=run,
+                portfolio_id=portfolio_id,
+                symbol_ids=symbol_ids,
+                start_date=start_date,
+                end_date=end_date,
+                strategy_snapshot_id=strategy_snapshot_id,
+                initial_capital=effective_initial_capital,
+                cost_config=cost_config,
+                match_mode="T_CLOSE" if str(price_type or "").upper() == "T_CLOSE" else "NEXT_OPEN",
+            )
+
         date_bars = db.execute(
             select(DailyBar.trade_date)
             .where(
@@ -1778,7 +2883,7 @@ def run_backtest(
         entry_price_field = _execution_price_field_for_timing(entry_timing)
         exit_price_field = _execution_price_field_for_timing(exit_timing)
 
-        cash = initial_capital
+        cash = effective_initial_capital
         open_trades: dict[int, BacktestTrade] = {}
         completed_trades: list[BacktestTrade] = []
         peak_prices: dict[int, float] = {}
@@ -1835,7 +2940,7 @@ def run_backtest(
             if entry_price <= 0:
                 return None
             if position_type == "fixed_pct":
-                position_amount = initial_capital * position_value
+                position_amount = effective_initial_capital * position_value
             else:
                 position_amount = position_value
             symbol = db.get(Symbol, symbol_id)
@@ -1927,7 +3032,10 @@ def run_backtest(
                 # Bug fix: v1 _evaluate_sell_signal 也支持 score_actions 检查，
                 # 但此前仅 v2 fetch score。统一 fetch 以让 v1 的 score_actions 生效。
                 # score_map 是内存查找（O(log n) bisect），无 DB 性能影响。
-                score = _latest_score_on_or_before(score_map, symbol_id, current_date)
+                score = _latest_score_on_or_before(
+                    score_map, symbol_id, current_date,
+                    published_cutoff_at=datetime.combine(current_date, datetime.max.time()),
+                )
 
                 should_sell, exit_reason = _evaluate_sell_signal(
                     trade,
@@ -1988,7 +3096,10 @@ def run_backtest(
                 if bar is None:
                     continue
 
-                score = _latest_score_on_or_before(score_map, symbol_id, current_date)
+                score = _latest_score_on_or_before(
+                    score_map, symbol_id, current_date,
+                    published_cutoff_at=datetime.combine(current_date, datetime.max.time()),
+                )
 
                 if not _evaluate_buy_signal(symbol_id, current_date, bar, score, rule_config, history_bars=history, prev_bar=prev_bar):
                     continue
@@ -2028,8 +3139,12 @@ def run_backtest(
                 peak_prices[symbol_id] = float(bar.high)
 
         all_trades = completed_trades + list(open_trades.values())
-        equity_curve = _compute_equity_curve(all_trades, initial_capital, date_bars, close_prices)
-        stats = _compute_statistics(all_trades, initial_capital, equity_curve)
+        # Snapshot-backed runs return through _run_backtest_decision_driven
+        # above. This legacy branch intentionally has no post-hoc evidence
+        # matching, preventing a second decision interpretation.
+
+        equity_curve = _compute_equity_curve(all_trades, effective_initial_capital, date_bars, close_prices)
+        stats = _compute_statistics(all_trades, effective_initial_capital, equity_curve)
 
         run.status = "completed"
         run.finished_at = datetime.now(timezone.utc)
@@ -2070,7 +3185,3 @@ def run_backtest(
             logger.error("回测异常分支提交失败", exc_info=True)
             db.rollback()
         raise
-
-
-
-

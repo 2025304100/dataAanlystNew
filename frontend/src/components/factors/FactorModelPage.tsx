@@ -30,6 +30,7 @@ import {
   ThunderboltOutlined,
   RollbackOutlined,
 } from "@ant-design/icons";
+import { Snowflake } from "lucide-react";
 import { t } from "../../i18n";
 import {
   api,
@@ -87,6 +88,9 @@ function formatDateTime(value: string | null | undefined): string {
   return value.replace("T", " ").slice(0, 19);
 }
 
+// WP0-8/WP1-1：与 PortfolioStrategyRules.tsx 统一表单字段 label 风格
+const fieldLabelStyle: React.CSSProperties = { fontSize: 12, color: "var(--pt-muted-foreground)" };
+
 interface AuditEntry {
   id: number;
   action: string;
@@ -120,6 +124,19 @@ export default function FactorModelPage() {
   const [fallbackModalOpen, setFallbackModalOpen] = useState(false);
   const [fallbackReason, setFallbackReason] = useState("");
   const [fallingBack, setFallingBack] = useState(false);
+
+  // WP0-8：冻结 FactorSet Modal
+  const [freezeModalOpen, setFreezeModalOpen] = useState(false);
+  const [freezeTarget, setFreezeTarget] = useState<FactorSet | null>(null);
+  const [freezeReason, setFreezeReason] = useState("E2E 冻结：离线训练前");
+  const [freezing, setFreezing] = useState(false);
+
+  // WP0-8：离线最小训练 Modal（mode=offline_minimal，不需要 FactorWarehouse 环境）
+  const [trainModalOpen, setTrainModalOpen] = useState(false);
+  const [trainTarget, setTrainTarget] = useState<FactorSet | null>(null);
+  const [trainAssetType, setTrainAssetType] = useState<"STOCK" | "ETF" | "US_STOCK" | "HK_STOCK">("STOCK");
+  const [trainMode, setTrainMode] = useState<"offline_minimal" | "warehouse">("offline_minimal");
+  const [training, setTraining] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -203,6 +220,70 @@ export default function FactorModelPage() {
       message.error(t("factorModelActionFailed") + ": " + String(err));
     } finally {
       setFallingBack(false);
+    }
+  };
+
+  // WP0-8：冻结 FactorSet 确认
+  const handleFreeze = async () => {
+    if (!freezeTarget) return;
+    setFreezing(true);
+    try {
+      const updated = await api.freezeFactorSet(freezeTarget.id, freezeReason.trim() || "UI 手动冻结");
+      setFactorSets((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      message.success(`FactorSet 已冻结：${updated.id}`);
+      setFreezeModalOpen(false);
+      setFreezeReason("E2E 冻结：离线训练前");
+      await loadData();
+    } catch (err) {
+      message.error("冻结 FactorSet 失败：" + String(err));
+    } finally {
+      setFreezing(false);
+    }
+  };
+
+  // WP0-8：训练模型确认（离线最小 / 仓库）
+  const handleTrain = async () => {
+    if (!trainTarget) return;
+    if (!trainTarget.id) {
+      message.warning("请先选择要训练的 FactorSet");
+      return;
+    }
+    if (trainTarget.status !== "frozen" && trainMode === "warehouse") {
+      const ok = await new Promise<boolean>((resolve) => {
+        modal.confirm({
+          title: "FactorSet 未冻结",
+          content: `当前 FactorSet（${trainTarget.id}）状态为 ${trainTarget.status}。生产环境建议先冻结以保证版本一致性，是否仍继续训练？`,
+          okText: "仍继续",
+          cancelText: "取消",
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!ok) return;
+    }
+    setTraining(true);
+    try {
+      const created = await api.trainFactorModel({
+        factor_set_id: trainTarget.id,
+        factor_set_version: trainTarget.version,
+        asset_type: trainAssetType,
+        mode: trainMode,
+        actor: "local_user",
+        note: "WP0-8 前端发起（FactorModelPage）",
+      });
+      message.success(
+        trainMode === "offline_minimal"
+          ? `离线最小模型训练成功：${created.id.slice(0, 12)}…（status=${created.status}）`
+          : `仓库训练已提交：${created.id.slice(0, 12)}…`,
+      );
+      setTrainModalOpen(false);
+      setSelectedModel(created);
+      await loadData();
+    } catch (err: any) {
+      const errMsg = err?.message ? String(err.message) : String(err);
+      message.error("训练失败：" + errMsg);
+    } finally {
+      setTraining(false);
     }
   };
 
@@ -345,6 +426,48 @@ export default function FactorModelPage() {
       key: "frozen_at",
       width: 160,
       render: (v: string | null) => formatDateTime(v),
+    },
+    // WP0-8 C-08：FactorSet 真实操作列（冻结 / 训练）—— 去除"规划中控件"，接入真实路由契约
+    {
+      title: "操作（真实 API）",
+      key: "actions",
+      width: 220,
+      render: (_: unknown, record: FactorSet) => {
+        const canFreeze = record.status === "draft";
+        const canTrain = record.status === "frozen" || record.status === "draft";
+        return (
+          <Space size="small">
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              disabled={!canFreeze}
+              onClick={() => {
+                setFreezeTarget(record);
+                setFreezeReason(`UI 冻结 ${record.id}（${new Date().toISOString().slice(0, 10)}）`);
+                setFreezeModalOpen(true);
+              }}
+              title={canFreeze ? undefined : "仅 draft 状态 FactorSet 可冻结"}
+            >
+              冻结
+            </Button>
+            <Button
+              size="small"
+              type="primary"
+              disabled={!canTrain}
+              onClick={() => {
+                setTrainTarget(record);
+                setTrainAssetType(record.asset_type as any || "STOCK");
+                setTrainMode(record.status === "frozen" ? "offline_minimal" : "offline_minimal");
+                setTrainModalOpen(true);
+              }}
+              title={canTrain ? undefined : "请先冻结 FactorSet 后再训练（保证版本可溯源）"}
+            >
+              训练模型
+            </Button>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -716,6 +839,123 @@ export default function FactorModelPage() {
           rows={3}
           maxLength={1000}
         />
+      </Modal>
+
+      {/* WP0-8：冻结 FactorSet Modal */}
+      <Modal
+        title={<Space><Snowflake />冻结 FactorSet（保证版本可溯源）</Space>}
+        open={freezeModalOpen}
+        onOk={handleFreeze}
+        onCancel={() => setFreezeModalOpen(false)}
+        confirmLoading={freezing}
+        okText="确认冻结"
+        cancelText={t("cancel")}
+      >
+        {freezeTarget && (
+          <>
+            <Descriptions size="small" column={1} bordered style={{ marginBottom: 12 }}>
+              <Descriptions.Item label="FactorSet ID">{freezeTarget.id}</Descriptions.Item>
+              <Descriptions.Item label="名称 / 状态">
+                {factorSetDisplayName(freezeTarget.name, freezeTarget.id)}
+                <Tag style={{ marginLeft: 8 }} color={factorSetStatusColor(freezeTarget.status)}>{freezeTarget.status}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="成员数 / version">
+                {freezeTarget.n_members ?? "—"} 人 · v{freezeTarget.version ?? 1}
+              </Descriptions.Item>
+            </Descriptions>
+            <Input.TextArea
+              value={freezeReason}
+              onChange={(e) => setFreezeReason(e.target.value)}
+              placeholder="冻结原因（会写入 audit，例如：E2E 冻结/生产前冻结）"
+              rows={3}
+              maxLength={500}
+            />
+          </>
+        )}
+      </Modal>
+
+      {/* WP0-8：训练模型 Modal（offline_minimal / warehouse） */}
+      <Modal
+        title={<Space><ThunderboltOutlined />训练 FactorModel（基于冻结 FactorSet）</Space>}
+        open={trainModalOpen}
+        onOk={handleTrain}
+        onCancel={() => setTrainModalOpen(false)}
+        confirmLoading={training}
+        okText={trainMode === "offline_minimal" ? "立即训练（离线最小）" : "提交仓库训练"}
+        cancelText={t("cancel")}
+      >
+        {trainTarget && (
+          <>
+            <Descriptions size="small" column={1} bordered style={{ marginBottom: 12 }}>
+              <Descriptions.Item label="FactorSet ID / 状态">
+                {trainTarget.id}
+                <Tag
+                  style={{ marginLeft: 8 }}
+                  color={factorSetStatusColor(trainTarget.status)}
+                >
+                  {trainTarget.status}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="名称 / version / 成员">
+                {factorSetDisplayName(trainTarget.name, trainTarget.id)}
+                {" · v"}{trainTarget.version ?? 1}
+                {" · "}{trainTarget.n_members ?? 0} 因子
+              </Descriptions.Item>
+              {trainTarget.status !== "frozen" ? (
+                <Descriptions.Item label="⚠️ 未冻结提示">
+                  <Text type="warning">当前 FactorSet 非 frozen。若使用"仓库真实 PIT 训练"请先冻结；离线最小（offline_minimal）模式仍可执行 E2E 闭环。</Text>
+                </Descriptions.Item>
+              ) : null}
+            </Descriptions>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={{ ...fieldLabelStyle, display: "block", marginBottom: 4 }}>资产类型</label>
+                <select
+                  className="pt-select"
+                  style={{ width: "100%" }}
+                  value={trainAssetType}
+                  onChange={(e) => setTrainAssetType(e.target.value as any)}
+                >
+                  <option value="STOCK">STOCK（A 股）</option>
+                  <option value="ETF">ETF</option>
+                  <option value="US_STOCK">US_STOCK</option>
+                  <option value="HK_STOCK">HK_STOCK</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ ...fieldLabelStyle, display: "block", marginBottom: 4 }}>训练模式（WP0-7 真实路由契约）</label>
+                <select
+                  className="pt-select"
+                  style={{ width: "100%" }}
+                  value={trainMode}
+                  onChange={(e) => setTrainMode(e.target.value as any)}
+                  title="offline_minimal：不需要 FactorWarehouse；warehouse：真实 PIT 训练，需 ENABLE_FACTOR_MODEL_WAREHOUSE_TRAIN=1"
+                >
+                  <option value="offline_minimal">offline_minimal（推荐 E2E / 不依赖仓库）</option>
+                  <option value="warehouse">warehouse（真实 PIT 训练）</option>
+                </select>
+              </div>
+            </div>
+            {trainMode === "offline_minimal" ? (
+              <Alert
+                style={{ marginTop: 12 }}
+                type="info"
+                showIcon
+                message="offline_minimal 行为"
+                description="直接基于 FactorSet 成员生成 status=validated 的最小 Ridge 模型 + 等权 FactorWeightSnapshot，并写 hyperparameters.factor_set_id。适合 E2E 闭环与前端联调。"
+              />
+            ) : (
+              <Alert
+                style={{ marginTop: 12 }}
+                type="warning"
+                showIcon
+                message="warehouse 行为"
+                description="调用真实 PIT 训练（若后端环境未启用会返回 503 CAPABILITY_BLOCKED，并给出 next_actions 指引）。生产环境使用需先保证 FactorWarehouse 可用。"
+              />
+            )}
+          </>
+        )}
       </Modal>
     </div>
   );

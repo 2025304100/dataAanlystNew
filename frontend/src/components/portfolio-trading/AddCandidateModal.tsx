@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, X, Check, Info } from "lucide-react";
+import { Search, X, Check, Info, AlertTriangle, ShieldAlert } from "lucide-react";
 import { api, requestJson } from "../../api/client";
 import { useApp } from "../../context/AppContext";
 import { t } from "../../i18n";
 import ThemeManagementModal from "../ThemeManagementModal";
+import type { PortfolioStatePermissions, PortfolioStatusResponse } from "../../types";
 
 /**
  * AddCandidateModal — 添加候选标的弹窗
@@ -24,6 +25,10 @@ interface AddCandidateModalProps {
   onClose: () => void;
   portfolioId: number;
   onSuccess?: () => void;
+  // FR-P0-10/P1-8a HG1 字段：组合当前治理状态与权限，未传时 fail-closed 禁止新买单
+  portfolioStatus?: PortfolioStatusResponse | null;
+  perm?: PortfolioStatePermissions;
+  statusLoading?: boolean;
 }
 
 type PoolKey = "all" | "watchlist" | "strategy" | "watch";
@@ -254,8 +259,24 @@ const FilterSelect: React.FC<{
   </label>
 );
 
-const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, portfolioId, onSuccess }) => {
+const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, portfolioId, onSuccess, portfolioStatus, perm, statusLoading }) => {
   const { showToast, portfolios } = useApp();
+  // FR-P1-8a：HG1 权限，fail-closed（未传时禁止）。外部 shell 会保证传正确的值。
+  const allowNewBuys = perm?.allow_new_buys ?? false;
+  const portfolioCurrentState = portfolioStatus?.current_state ?? "UNKNOWN";
+  // 9 状态简化提示中文 map（与 Shell/TodayDecision 一致）
+  const STATE_HINT: Record<string, string> = {
+    PENDING_INITIAL_REVIEW: "新建组合尚未通过管理员合规审查，暂不允许添加候选/建仓。",
+    RECONCILIATION_BLOCKED: "昨日对账存在非零差异，已被治理保护；需管理员在治理 Tab 单人确认后恢复。",
+    ADMIN_PAUSED: "管理员已触发紧急暂停（ADMIN_PAUSED）：禁止新买单/风险退出/自动恢复。",
+    DATA_INCOMPLETE_PAUSED: "行情/因子/Score 数据缺口(HEAVY)，禁止新增买单；数据补齐后将自动恢复。",
+    MODEL_INACTIVE: "绑定的因子模型不在 active 状态，禁止新增买单；请在模型设置或治理 Tab 激活/切换模型。",
+    SCORE_STALE: "今日 Score 覆盖率<95% 或新鲜度>18h，禁止新增买单；数据补齐/重新跑分后自动解除。",
+    INTERRUPTED: "自动推演/回测 Worker 心跳超时（异常中断），禁止新增买单；恢复扫描器或人工介入后解除。",
+    RUNNING_AUTO_SIMULATION: "自动推演仍在运行中，理论上允许；但建议等待当日推演结果（约 20:30）落盘后再手动加入候选。",
+    RUNNING_BACKTEST: "后台回测不影响前台交易；但请注意，回测任务运行中若您同时修改候选池，可能导致回测对比结论失真（建议回测结束后再调整）。",
+    UNKNOWN: "尚未从治理 API 读取到当前组合状态；为安全起见，已默认禁止新增候选。请稍后重试或在治理 Tab 查看状态。",
+  };
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<TabKey>("all");
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("all");
@@ -385,6 +406,10 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, po
 
   // 确认添加：补充到当前组合的候选池（不会自动加入持仓成员）。
   const handleConfirm = useCallback(async () => {
+    if (!allowNewBuys) {
+      showToast("error", "HG1 门禁：当前组合状态禁止新增候选/建仓，请先在治理 Tab 解除限制。");
+      return;
+    }
     if (selectedRows.length === 0 || submitting) return;
     // 过滤无效 symbol_id（<=0 为占位/mock 数据，不可提交）
     const validRows = selectedRows.filter((r) => Number(r.symbol_id) > 0);
@@ -412,17 +437,22 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, po
           }),
         ),
       );
-      const failed = results.filter((r) => r.status === "rejected").length;
+      const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+      const failed = rejected.length;
+      const failureMessages = rejected
+        .map((item) => item.reason instanceof Error ? item.reason.message : String(item.reason || ""))
+        .filter(Boolean);
+      const failureHint = failureMessages[0] || "请检查组合状态、资产类型和候选来源是否仍有效";
       if (failed === 0) {
         showToast("success", tt("portfolioTrading.addCandidate.confirmSuccess", "添加成功"));
         onSuccess?.();
         onClose();
       } else if (failed < results.length) {
-        showToast("error", tt("portfolioTrading.addCandidate.partialFailed", "部分标的添加失败"));
+        showToast("error", `${tt("portfolioTrading.addCandidate.partialFailed", "部分标的添加失败")}：${failureHint}`);
         onSuccess?.();
         onClose();
       } else {
-        showToast("error", tt("portfolioTrading.addCandidate.confirmFailed", "添加失败"));
+        showToast("error", `${tt("portfolioTrading.addCandidate.confirmFailed", "添加失败")}：${failureHint}`);
         setSubmitting(false);
       }
     } catch (err) {
@@ -514,6 +544,39 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, po
               <p style={{ margin: 0, fontSize: 12, color: "var(--pt-muted-foreground)" }}>
                 {tt("portfolioTrading.addCandidate.subtitle", "从候选池中选择标的加入当前组合")}
               </p>
+              {/* FR-P1-8a HG1 门禁：非 READY / allowNewBuys=false 时在标题下方展示醒目横幅 */}
+              {(() => {
+                if (allowNewBuys && portfolioCurrentState === "READY") return null;
+                const isWarn = portfolioCurrentState === "RUNNING_AUTO_SIMULATION" || portfolioCurrentState === "RUNNING_BACKTEST";
+                const isDanger = !allowNewBuys && !isWarn;
+                const hint = STATE_HINT[portfolioCurrentState] ?? STATE_HINT.UNKNOWN;
+                return (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: `1px solid ${isDanger ? "var(--pt-state-error, #ef4444)" : "var(--pt-state-warning, #f59e0b)"}`,
+                      background: isDanger ? "rgba(239,68,68,0.08)" : "rgba(245,158,11,0.08)",
+                      color: isDanger ? "var(--pt-state-error, #ef4444)" : "var(--pt-state-warning, #f59e0b)",
+                      fontSize: 12,
+                      lineHeight: 1.55,
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    {isDanger ? <ShieldAlert size={14} style={{ marginTop: 1, flexShrink: 0 }} /> : <AlertTriangle size={14} style={{ marginTop: 1, flexShrink: 0 }} />}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600 }}>
+                        🔒 HG1 门禁：当前组合状态「{portfolioCurrentState}」{isDanger ? "禁止新增候选/建仓" : "允许但需注意"}
+                        {perm?.requires_manual_ack ? "（需人工确认/解除）" : ""}
+                      </div>
+                      <div style={{ marginTop: 2, opacity: 0.9 }}>{hint}</div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button
@@ -971,11 +1034,17 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, po
                 type="button"
                 className="pt-btn pt-btn-primary"
                 onClick={handleConfirm}
-                disabled={selectedRows.length === 0 || submitting}
+                disabled={!allowNewBuys || selectedRows.length === 0 || submitting || statusLoading}
+                title={!allowNewBuys ? "HG1 门禁：当前组合状态禁止新增候选/建仓" : statusLoading ? "加载组合 HG1 状态中..." : undefined}
+                style={{ opacity: !allowNewBuys || statusLoading ? 0.55 : 1, cursor: (!allowNewBuys || statusLoading) ? "not-allowed" : undefined }}
               >
                 {submitting
                   ? tt("portfolioTrading.addCandidate.adding", "添加中...")
-                  : tt("portfolioTrading.addCandidate.confirm", "确认添加")}
+                  : statusLoading
+                    ? "加载 HG1 状态..."
+                    : !allowNewBuys
+                      ? "🔒 禁止新增（HG1）"
+                      : tt("portfolioTrading.addCandidate.confirm", "确认添加")}
               </button>
             </div>
           </div>

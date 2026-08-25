@@ -58,6 +58,17 @@ from app.models import review
 from app.models import ai_session
 # WP9.6：API 废弃访问日志
 from app.models import api_deprecation_log
+# G0-WP0-2a：决策引擎核心表（契约快照+运行+逐证券证据+因子绑定）
+from app.models import decision_engine  # noqa: F401
+from app.models.decision_engine import (  # noqa: F401
+    DecisionEvidence,
+    DecisionRun,
+    DecisionOrderPlanRecord,
+    PortfolioFactorUsage,
+    StrategyExecutionSnapshot,
+)
+# G0-WP0-2d：幂等记录 + 组合调度时间表（防重 + 默认20:30调度）
+from app.models import idempotency_record, portfolio_cron_schedule  # noqa: F401
 
 
 # ── 兜底：自动扫描本目录所有 .py 模块并 import（新模块无需手动加） ──────
@@ -72,7 +83,7 @@ def _auto_discover_models() -> List[str]:
     for module_info in pkgutil.iter_modules([str(pkg_path)]):
         mod_name = module_info.name
         # 跳过显式导入过的模块（避免重复副作用）+ 私有模块
-        if mod_name.startswith("_"):
+        if mod_name.startswith("_") or mod_name == "strategy_execution_snapshot":
             continue
         full_mod_name = f"app.models.{mod_name}"
         try:
@@ -99,4 +110,10 @@ __all__ = [
     "discovery_score_snapshot", "opportunity_transition_event",
     "portfolio_member", "portfolio_candidate", "notification", "ai_profile", "review",
     "ai_session", "api_deprecation_log",
+    # G0-WP0-2a
+    "decision_engine",
+    "DecisionEvidence", "DecisionRun", "DecisionOrderPlanRecord",
+    "StrategyExecutionSnapshot", "PortfolioFactorUsage",
+    # G0-WP0-2d
+    "idempotency_record", "portfolio_cron_schedule",
 ]

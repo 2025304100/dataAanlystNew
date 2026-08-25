@@ -98,7 +98,12 @@ def append_log_banner(label: str, out_log: Path, err_log: Path) -> None:
     stamp = f"[{now_text()}] {label}"
     for path in (out_log, err_log):
         try:
-            if path.exists() and path.stat().st_size > MAX_LOG_BYTES:
+            # A fresh launch gets a fresh log. Keeping old startup exceptions
+            # in stderr makes the launcher look failed even after a later
+            # process started successfully.
+            if path.name == "backend.err.log":
+                path.write_text("", encoding="utf-8")
+            elif path.exists() and path.stat().st_size > MAX_LOG_BYTES:
                 path.write_text("", encoding="utf-8")
         except OSError:
             # A stale elevated process may still own the file. Startup will
@@ -205,9 +210,16 @@ def start_backend(state: dict[str, Any]) -> tuple[dict[str, Any], bool]:
 
     out_log, err_log = service_logs("backend")
     proc = launch_process(backend_command(), ROOT, out_log, err_log)
-    if not wait_for_port(BACKEND_PORT, proc, timeout=20.0):
+    # Backend startup performs MySQL initialization and may take longer than
+    # the frontend. Avoid killing a healthy process while it is still warming
+    # up on a cold database connection.
+    if not wait_for_port(BACKEND_PORT, proc, timeout=120.0):
         stop_pid(proc.pid)
-        raise RuntimeError(f"backend failed to start; check {err_log}")
+        exit_code = proc.poll()
+        raise RuntimeError(
+            f"backend failed to start within 120s (pid={proc.pid}, exit_code={exit_code}, "
+            f"port_open={is_port_open(BACKEND_PORT)}); check {err_log}"
+        )
 
     record = record_for("backend", proc.pid, BACKEND_PORT, "uvicorn", ROOT, backend_command(), out_log, err_log)
     state["backend"] = record

@@ -18,7 +18,7 @@ import pandas as pd
 import pytest
 
 from app.models.factor import Factor
-from app.models.factor_evaluation import ShadowObservation, TransitionAudit
+from app.models.factor_evaluation import EvaluationRun, ShadowObservation, TransitionAudit
 from app.models.factor_model import FactorVersion
 from app.schemas.factor_library import FactorTransitionRequest
 from app.services.factors.factor_correlation import (
@@ -109,6 +109,23 @@ def _make_factor_and_version(
     db_session.add(version)
     db_session.flush()
     return factor, version
+
+
+def _ensure_evidence_run(db_session, factor_version_id: int, run_id: str = "eval-1-abc-20260801") -> None:
+    """为 wp6 审批流程需要的 evidence_run_id 外键插入占位评估运行记录（不存在时）。"""
+    existing = db_session.get(EvaluationRun, run_id)
+    if existing is not None:
+        return
+    run = EvaluationRun(
+        id=run_id,
+        factor_version_id=factor_version_id,
+        data_cutoff_at=datetime(2026, 8, 1),
+        config_json="{}",
+        metrics_json="{}",
+        gate_result="passed",
+    )
+    db_session.add(run)
+    db_session.flush()
 
 
 def _make_panel_df(
@@ -1248,6 +1265,7 @@ class TestActivationApproval:
     def test_request_activation_meets_requirements(self, db_session):
         """满足门禁的申请成功。"""
         factor, version = _make_factor_and_version(db_session)
+        _ensure_evidence_run(db_session, version.id)
         db_session.commit()
 
         _record_n_valid_observations(
@@ -1274,6 +1292,7 @@ class TestActivationApproval:
     def test_approve_activation_executes_transition(self, db_session):
         """批准激活执行状态迁移 shadow → active。"""
         factor, version = _make_factor_and_version(db_session)
+        _ensure_evidence_run(db_session, version.id)
         db_session.commit()
 
         _record_n_valid_observations(
@@ -1439,6 +1458,7 @@ class TestActivationApproval:
     def test_approve_activation_idempotent_with_request_id(self, db_session):
         """带 request_id 的批准幂等。"""
         factor, version = _make_factor_and_version(db_session)
+        _ensure_evidence_run(db_session, version.id)
         db_session.commit()
 
         _record_n_valid_observations(

@@ -23,6 +23,7 @@ const { mockContext, mockApi, mockHook } = vi.hoisted(() => ({
     locale: "zh-CN" as const,
     activeSymbolId: null as number | null,
     setActiveTab: vi.fn((_tab: string) => {}),
+    setActiveSubTab: vi.fn((_tab: string) => {}),
     loadWorkbench: vi.fn(async () => {}),
     loadSymbolDetail: vi.fn(async (_id: number) => {}),
     showToast: vi.fn((_type: string, _msg: string) => {}),
@@ -32,6 +33,19 @@ const { mockContext, mockApi, mockHook } = vi.hoisted(() => ({
     getMarketEvents: vi.fn(async () => ({ events: [] })),
     getDataHealth: vi.fn(async () => makeDataHealth(0)),
     getFactorOverview: vi.fn(async () => null),
+    getPortfolioStatus: vi.fn(async (_portfolioId: number) => ({
+      current_state: "READY",
+      last_decision_trade_date: null,
+      last_reconciled_trade_date: null,
+      is_auto_simulation_eligible: true,
+      permissions: { allow_new_buys: true, allow_risk_exit: true, allow_auto_recovery: true },
+    })),
+    preflightAutoSimulation: vi.fn(async (_portfolioId: number, _payload: unknown) => ({
+      proceed: true,
+      gate: "PASSED",
+      reason_codes: [],
+      trade_date: "2026-07-24",
+    })),
     repairSymbolMarketData: vi.fn(async (_id: number, _payload: unknown) => ({ success: true })),
     repairAllSymbolMarketData: vi.fn(async (_payload: unknown) => ({
       success: true,
@@ -161,12 +175,42 @@ function makeDataHealth(count: number, options: MakeDataHealthOptions = {}): Dat
 
 describe("TodayDecision 待修复样本交互测试", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // 显式逐个 reset，避免 vi.clearAllMocks 把未在 beforeEach 中重新赋默认值的 mock（getPortfolioStatus 等）清空
+    mockContext.setActiveTab.mockClear();
+    mockContext.setActiveSubTab.mockClear();
+    mockContext.showToast.mockClear();
+    mockContext.loadWorkbench.mockClear();
+    mockContext.loadSymbolDetail.mockClear();
     mockContext.workbench = null;
     mockContext.newsSnapshot = null;
     mockContext.activeSymbolId = null;
+
+    mockApi.getMacroOverview.mockReset();
+    mockApi.getMacroOverview.mockResolvedValue({ snapshot: { market_score: 60 } });
+    mockApi.getMarketEvents.mockReset();
+    mockApi.getMarketEvents.mockResolvedValue({ events: [] });
+    mockApi.getFactorOverview.mockReset();
+    mockApi.getFactorOverview.mockResolvedValue(null);
+    mockApi.getPortfolioStatus.mockReset();
+    mockApi.getPortfolioStatus.mockResolvedValue({
+      current_state: "READY",
+      last_decision_trade_date: null,
+      last_reconciled_trade_date: null,
+      is_auto_simulation_eligible: true,
+      permissions: { allow_new_buys: true, allow_risk_exit: true, allow_auto_recovery: true },
+    });
+    mockApi.preflightAutoSimulation.mockReset();
+    mockApi.preflightAutoSimulation.mockResolvedValue({
+      proceed: true,
+      gate: "PASSED",
+      reason_codes: [],
+      trade_date: "2026-07-24",
+    });
+    mockApi.getDataHealth.mockReset();
     mockApi.getDataHealth.mockResolvedValue(makeDataHealth(0));
+    mockApi.repairSymbolMarketData.mockReset();
     mockApi.repairSymbolMarketData.mockResolvedValue({ success: true });
+    mockApi.repairAllSymbolMarketData.mockReset();
     mockApi.repairAllSymbolMarketData.mockResolvedValue({
       success: true,
       total: 0,
@@ -175,6 +219,10 @@ describe("TodayDecision 待修复样本交互测试", () => {
       failed_count: 0,
       missing_count: 0,
     });
+    mockApi.cleanupDiscoveryResults.mockReset();
+    mockApi.cleanupDiscoveryResults.mockResolvedValue({ deleted: 0 });
+    mockApi.createDiscoveryTask.mockReset();
+    mockApi.createDiscoveryTask.mockResolvedValue({ id: "task-1", status: "pending" });
   });
 
   it("无待修复样本时显示空状态且一键修复禁用", async () => {
@@ -185,6 +233,21 @@ describe("TodayDecision 待修复样本交互测试", () => {
     });
     expect(screen.getByText("tdNoRepairSamples")).toBeInTheDocument();
     expect(screen.getByText("tdRepairAll").closest("button")).toBeDisabled();
+  });
+
+  it("非 READY 状态的治理诊断按钮同时切换组合页和治理子 Tab", async () => {
+    mockApi.getPortfolioStatus.mockResolvedValue({
+      current_state: "ADMIN_PAUSED",
+      last_decision_trade_date: null,
+      last_reconciled_trade_date: null,
+      is_auto_simulation_eligible: false,
+      permissions: { allow_new_buys: false, allow_risk_exit: false, allow_auto_recovery: false },
+    });
+    render(<TodayDecision />);
+    const button = await screen.findByRole("button", { name: "前往治理诊断 →" });
+    fireEvent.click(button);
+    expect(mockContext.setActiveSubTab).toHaveBeenCalledWith("governance");
+    expect(mockContext.setActiveTab).toHaveBeenCalledWith("portfolio");
   });
 
   it("≤6 个样本完整展示且无查看更多", async () => {

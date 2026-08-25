@@ -1,0 +1,33 @@
+schema_version: 1
+module_path: backend_api/market_data_sync
+title: market_data_sync
+scope:
+    - app/services/market_data*.py
+    - app/services/bar_queries.py
+    - app/services/index_data*.py
+    - app/services/macro*.py
+    - app/services/news.py
+    - app/services/market_events.py
+    - app/services/lhb_*.py
+    - app/services/financial_data.py
+    - app/services/fundamental_data.py
+    - app/services/capital_flow_data.py
+    - app/services/tail_proxy_*.py
+    - app/services/universe_sync*.py
+    - app/services/symbol_cleanup.py
+    - app/services/symbol_names.py
+    - app/services/symbol_relationships.py
+    - app/services/regions.py
+    - app/services/akshare_registry.py
+    - app/services/akshare_utils.py
+    - app/services/external_data_sync_task.py
+    - app/services/data_quality.py
+    - app/services/benchmark_health_service.py
+    - app/services/etf_basic_data.py
+    - app/services/observations.py
+    - app/services/opportunity_transitions.py
+    - app/services/market_rules.py
+    - app/services/indicator_ast_sandbox.py
+source_files: []
+depends_on: []
+related_to: []

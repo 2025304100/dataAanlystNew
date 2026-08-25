@@ -65,6 +65,8 @@ describe("AddCandidateModal", () => {
         open
         onClose={vi.fn()}
         portfolioId={7}
+        portfolioStatus={{ current_state: "READY" } as any}
+        perm={{ allow_new_buys: true } as any}
       />,
     );
 
@@ -84,6 +86,8 @@ describe("AddCandidateModal", () => {
         onClose={onClose}
         onSuccess={onSuccess}
         portfolioId={7}
+        portfolioStatus={{ current_state: "READY" } as any}
+        perm={{ allow_new_buys: true } as any}
       />,
     );
 

@@ -2,7 +2,8 @@ import json
 from datetime import date as date_type
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -132,7 +133,10 @@ def add_portfolio_candidate(
         )
     ).scalar_one_or_none()
     if existing is not None:
-        raise HTTPException(status_code=409, detail="Candidate already exists in this portfolio")
+        # Adding from a shared discovery snapshot can race with a refresh or a
+        # second click. Treat an existing row as an idempotent success so the
+        # UI does not report a false failure for a candidate already admitted.
+        return _candidate_read(existing, symbol)
 
     source = None
     if payload.source_candidate_id is not None:
@@ -173,6 +177,7 @@ def add_portfolio_candidate(
     candidate = PortfolioCandidate(
         portfolio_id=portfolio_id,
         symbol_id=payload.symbol_id,
+        effective_from=date_type.today(),
         source_candidate_id=source.id if source else None,
         source_type=source_type,
         source_scan_run_id=source.scan_run_id if source else payload.source_scan_run_id,
@@ -546,6 +551,20 @@ def execute_auto_trade(
     - sells / buys / errors：兼容旧 AutoTradeResult 字段
     - readiness / blockers / warnings / diffs / executed_source：就绪与来源诊断
     """
+    # Keep the public endpoint's resource contract explicit before entering
+    # the diagnostic dual-run adapter.  The adapter intentionally returns a
+    # dry-run blocker payload, so these request-level invariants must not be
+    # swallowed into a 200 response.
+    portfolio = db.get(Portfolio, int(portfolio_id))
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail=f"Portfolio {portfolio_id} not found")
+    if portfolio.account_type != "simulated":
+        raise HTTPException(status_code=400, detail=f"Portfolio {portfolio_id} is not simulated")
+    if not portfolio.auto_trade_enabled:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Portfolio {portfolio_id} auto_trade_enabled is 0. Enable auto-trade first.",
+        )
     try:
         result = run_dual_trade(
             db=db,
@@ -593,6 +612,73 @@ def execute_auto_trade(
         raise HTTPException(status_code=500, detail="自动交易执行失败，请稍后重试") from exc
 
 
+def _normalize_stage_limits_for_c04(
+    stage_limits,
+    *,
+    max_single_position_pct: float = 20.0,
+    max_open_positions: int = 10,
+) -> dict:
+    """C-04 修复：补齐「资产类型 → 分阶段仓位」统一结构，避免 legacy 格式导致 stage_not_allowed。"""
+    import json as _json
+    if isinstance(stage_limits, str):
+        try:
+            stage_limits = _json.loads(stage_limits)
+        except (TypeError, ValueError, _json.JSONDecodeError):
+            stage_limits = None
+    base: dict = {
+        "stock_pool": "全A",
+        "factors": [],
+        "stages": {
+            "stock": {"S": 0.05, "M": 0.10, "L": 0.20},
+            "etf": {"S": 0.10, "M": 0.20, "L": 0.40},
+        },
+        "limits": {
+            "stock": {
+                "max_single_position_pct": float(max_single_position_pct or 0.0),
+                "max_open_positions": int(max_open_positions or 0),
+            },
+            "etf": {
+                "max_single_position_pct": float(max_single_position_pct or 0.0),
+                "max_open_positions": int(max_open_positions or 0),
+            },
+        },
+    }
+    if isinstance(stage_limits, dict):
+        for k, v in stage_limits.items():
+            if v is None:
+                continue
+            if k in ("stages", "limits") and isinstance(v, dict):
+                for asset, val in v.items():
+                    if isinstance(val, dict):
+                        base.setdefault(k, {}).setdefault(asset, {})
+                        for subk, subv in val.items():
+                            base[k][asset][subk] = subv
+                    else:
+                        base.setdefault(k, {})[asset] = val
+            else:
+                base[k] = v
+    # 最终兜底：stock/etf 双资产类型都必须存在
+    base.setdefault("stages", {})
+    base["stages"].setdefault("stock", {"S": 0.05, "M": 0.10, "L": 0.20})
+    base["stages"].setdefault("etf", {"S": 0.10, "M": 0.20, "L": 0.40})
+    base.setdefault("limits", {})
+    base["limits"].setdefault(
+        "stock",
+        {
+            "max_single_position_pct": float(max_single_position_pct or 0.0),
+            "max_open_positions": int(max_open_positions or 0),
+        },
+    )
+    base["limits"].setdefault(
+        "etf",
+        {
+            "max_single_position_pct": float(max_single_position_pct or 0.0),
+            "max_open_positions": int(max_open_positions or 0),
+        },
+    )
+    return base
+
+
 @router.post("/portfolios/{portfolio_id}/rules")
 def upsert_portfolio_rule(portfolio_id: int, payload: PortfolioRuleUpsert, db: Session = Depends(get_db)):
     portfolio = db.get(Portfolio, portfolio_id)
@@ -604,6 +690,17 @@ def upsert_portfolio_rule(portfolio_id: int, payload: PortfolioRuleUpsert, db: S
         for rule in active_rules:
             rule.is_active = 0
 
+    # C-04：写入前归一化 stage_limits_json 结构（stock/etf 分阶段 + limits 双资产映射）
+    normalized_stage_limits = _normalize_stage_limits_for_c04(
+        payload.stage_limits_json,
+        max_single_position_pct=payload.max_single_position_pct,
+        max_open_positions=payload.max_open_positions,
+    )
+    # C-07：Schema 一级新增 factor_set_id / factor_model_run_id 溯源字段，与 stage_limits_json 双写
+    if payload.factor_set_id and "factor_set_id" not in normalized_stage_limits:
+        normalized_stage_limits["factor_set_id"] = payload.factor_set_id
+    if payload.factor_model_run_id and "factor_model_run_id" not in normalized_stage_limits:
+        normalized_stage_limits["factor_model_run_id"] = payload.factor_model_run_id
     rule = PortfolioRule(
         portfolio_id=portfolio_id,
         rule_name=payload.rule_name,
@@ -613,10 +710,61 @@ def upsert_portfolio_rule(portfolio_id: int, payload: PortfolioRuleUpsert, db: S
         max_etf_position_pct=payload.max_etf_position_pct,
         max_loss_per_trade_pct=payload.max_loss_per_trade_pct,
         max_open_positions=payload.max_open_positions,
-        stage_limits_json=json.dumps(payload.stage_limits_json, ensure_ascii=True),
+        stage_limits_json=json.dumps(normalized_stage_limits, ensure_ascii=True),
         is_active=int(payload.is_active),
     )
     db.add(rule)
+
+    # C-11：原子保存（同一事务）——同步写入/刷新 SignalRule（避免 rule+signal 半保存）
+    #   - 若存在 active SignalRule：保持与 rule.is_active 状态对齐（rule 激活时 signal 同步激活）
+    #   - 若不存在 active SignalRule：创建默认 balanced 模式的 signal_rule
+    from app.models.signal_rule import SignalRule as _SignalRule
+    from app.services.signal_rules import PRESETS as _SR_PRESETS, get_active_signal_rule as _get_active_sr
+    try:
+        active_sr = _get_active_sr(db, portfolio_id)
+    except Exception:  # noqa: BLE001 - 信号规则失败时兜底创建
+        active_sr = None
+    if active_sr is None:
+        default_preset = _SR_PRESETS["balanced"]
+        sr = _SignalRule(
+            portfolio_id=portfolio_id,
+            rule_name=default_preset.rule_name,
+            mode=default_preset.mode,
+            quality_tolerance=default_preset.quality_tolerance,
+            timing_tolerance=default_preset.timing_tolerance,
+            min_sample_count=default_preset.min_sample_count,
+            max_samples=default_preset.max_samples,
+            same_region=1 if default_preset.same_region else 0,
+            same_asset_type=1 if default_preset.same_asset_type else 0,
+            same_stage=1 if default_preset.same_stage else 0,
+            same_action=1 if default_preset.same_action else 0,
+            is_active=1 if payload.is_active else 0,
+        )
+        db.add(sr)
+    else:
+        # 对齐状态：PortfolioRule 激活 → SignalRule 同步激活；反之则禁用
+        existing_signal_rows = db.execute(
+            select(_SignalRule).where(
+                _SignalRule.portfolio_id == portfolio_id, _SignalRule.is_active == 1
+            )
+        ).scalars().all()
+        target_active = 1 if payload.is_active else 0
+        for r in existing_signal_rows:
+            r.is_active = target_active
+        if active_sr is not None:
+            if getattr(active_sr, "id", None) is not None:
+                sr_same = db.get(_SignalRule, int(active_sr.id))
+                if sr_same is not None:
+                    sr_same.is_active = target_active
+
+    # C-11：自动交易开关联动（Portfolio.auto_trade_enabled）——规则激活时建议同步打开自动交易
+    #   写入规则：若 rule.is_active=1 且 portfolio 当前 auto_trade_enabled=0 → 自动置为 1；
+    #   否则不强制修改（保留用户显式关闭的决定）。
+    if portfolio.auto_trade_enabled is None or int(portfolio.auto_trade_enabled or 0) == 0:
+        portfolio.auto_trade_enabled = 1 if payload.is_active else 0
+    elif not payload.is_active:
+        portfolio.auto_trade_enabled = 0
+
     db.commit()
     db.refresh(rule)
     return {"id": rule.id, "portfolio_id": portfolio_id}
@@ -1161,3 +1309,353 @@ def create_portfolio_review(
     db.commit()
     db.refresh(review)
     return ReviewRead.model_validate(review)
+
+
+# ============================================================================
+# FR-P1-2 / AC-10 Portfolio Resume（逐日补算 + 幂等防重复）
+# ============================================================================
+class PortfolioResumePlanRequest(BaseModel):
+    max_days: int = Field(default=20, ge=1, le=60)
+    today: date_type | None = None
+
+
+class PortfolioResumeExecuteRequest(BaseModel):
+    max_days: int = Field(default=20, ge=1, le=60)
+    today: date_type | None = None
+    task_type: str = Field(default="portfolio_resume", max_length=64)
+    dry_run: bool = Field(default=True, description="True=仅返回 plan（不创建任务），False=实际创建异步任务执行恢复")
+
+
+@router.post("/portfolios/{portfolio_id}/resume/plan", tags=["reliability"])
+def portfolio_resume_plan(portfolio_id: int,
+                          payload: PortfolioResumePlanRequest | None = Body(default=None),
+                          db: Session = Depends(get_db)):
+    """组合恢复计划（仅查询，不创建任务）。
+
+    返回待补交易日列表、各日幂等键、决策是否已完成、任务是否已存在，
+    前端用此展示「恢复预览」给运维确认。
+    """
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "eval.portfolio.not_found",
+            "title_zh": "组合不存在",
+            "detail_zh": f"未找到 portfolio_id={portfolio_id}",
+        })
+    from app.services.portfolio_resume_service import plan_portfolio_resume
+    p = payload or PortfolioResumePlanRequest()
+    try:
+        return plan_portfolio_resume(
+            db, portfolio_id,
+            today=p.today,
+            max_days=p.max_days,
+            operator_id="api:resume_plan",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={
+            "code": "eval.portfolio.resume_invalid",
+            "title_zh": "恢复计划参数异常",
+            "detail_zh": str(exc),
+        })
+
+
+@router.post("/portfolios/{portfolio_id}/resume", tags=["reliability"])
+def portfolio_resume_execute(portfolio_id: int,
+                             payload: PortfolioResumeExecuteRequest | None = Body(default=None),
+                             db: Session = Depends(get_db)):
+    """组合恢复执行（dry_run=True 仅 plan；False=创建异步任务逐日补算）。
+
+    错误码契约：
+    - 200：计划 OK / 任务已创建。
+    - 404 eval.portfolio.not_found：组合不存在。
+    - 400 eval.portfolio.resume_invalid：参数校验失败或无待补交易日。
+    - 409 eval.portfolio.resume_race：另一线程已为某交易日创建任务（罕见，不视为错误，前端告警即可）。
+    """
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "eval.portfolio.not_found",
+            "title_zh": "组合不存在",
+            "detail_zh": f"未找到 portfolio_id={portfolio_id}",
+        })
+    from app.services.portfolio_resume_service import (
+        plan_portfolio_resume, create_resume_tasks_from_plan,
+    )
+    p = payload or PortfolioResumeExecuteRequest()
+    try:
+        plan = plan_portfolio_resume(
+            db, portfolio_id,
+            today=p.today,
+            max_days=p.max_days,
+            operator_id="api:resume_execute",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={
+            "code": "eval.portfolio.resume_invalid",
+            "title_zh": "恢复计划参数异常",
+            "detail_zh": str(exc),
+        })
+    if plan["will_create_tasks"] <= 0 and not plan["pending_days"]:
+        raise HTTPException(status_code=400, detail={
+            "code": "eval.portfolio.resume_nothing_to_do",
+            "title_zh": "当前组合无待补交易日",
+            "detail_zh": "next_unprocessed_trade_date 不存在，或所有待补交易日已有成功决策/已存在任务。",
+            "next_unprocessed_trade_date": plan["next_unprocessed_trade_date"],
+        })
+    if p.dry_run:
+        return {"mode": "dry_run", **plan}
+    created = create_resume_tasks_from_plan(db, plan, task_type=p.task_type)
+    return {
+        "mode": "execute",
+        "resumption_correlation_id": plan["resumption_correlation_id"],
+        "next_unprocessed_trade_date": plan["next_unprocessed_trade_date"],
+        "pending_days": plan["pending_days"],
+        "created_tasks": created,
+        "created_count": len(created),
+        "skipped_count": plan["will_skip_days"],
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# T-A9 Q7.4：数据阻断人工处理入口
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class DataBlockedListRequest(BaseModel):
+    """列出指定交易日内的 DATA_BLOCKED 证据 + 已登记的 ManualPriceOverride。"""
+
+    trade_date: date_type | None = Field(
+        default=None,
+        description="目标交易日；缺省取组合下一个待处理交易日 (next_unprocessed_trade_date)",
+    )
+    strategy_snapshot_id: str | None = None
+
+
+class DataBlockedResolveRequest(BaseModel):
+    """T-A9.2：人工数据阻断处理（单 symbol / 或 portfolio 级批量 continue_forward/keep_paused）。
+
+    resolved_mode 三选一 严格校验：
+      - confirm_manual_price：必须传 symbol_id + manual_price（> 0）
+      - continue_forward：symbol_id=NULL=portfolio 级批量，或传单 symbol 只跳过这一个
+      - keep_paused：同上，保持 DATA_BLOCKED 不推进（无价格注入、无 HOLD 标记，下次仍提示阻断）
+    """
+
+    trade_date: date_type = Field(description="作用交易日")
+    symbol_id: int | None = Field(
+        default=None,
+        description="NULL = portfolio 级批处理；否则 = 指定 single symbol 处理",
+    )
+    resolved_mode: str = Field(pattern=r"^(confirm_manual_price|continue_forward|keep_paused)$")
+    manual_price: float | None = Field(
+        default=None, gt=0,
+        description="confirm_manual_price 模式必填；其他模式必须=NULL",
+    )
+    source_note: str | None = Field(default=None, max_length=2048)
+    strategy_snapshot_id: str | None = None
+    previous_data_gap_days: int | None = None
+    operator_id: str = Field(default="api:data_block_resolve", max_length=128)
+    correlation_id: str | None = None
+
+
+@router.post("/portfolios/{portfolio_id}/data-blocked/list", tags=["T-A9"])
+def portfolio_data_blocked_list(
+    portfolio_id: int,
+    payload: DataBlockedListRequest = Body(default_factory=DataBlockedListRequest),
+    db: Session = Depends(get_db),
+):
+    """T-A9：列出某交易日当前阻断成员和已处理状态。
+
+    错误码契约：
+      - 404 eval.portfolio.not_found
+      - 400 eval.data_blocked.no_trade_date：组合 next_unprocessed_trade_date 也不存在
+      - 200：{ trade_date, items:[DATA_BLOCKED evidence+symbol 行], pending_overrides:[ManualPriceOverride consumed=0 行] }
+    """
+    from app.models.decision_engine import DecisionEvidence, ManualPriceOverride
+    from app.services.portfolio_resume_service import _next_unprocessed_trade_date  # 复用计算函数
+
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "eval.portfolio.not_found",
+            "title_zh": "组合不存在",
+            "detail_zh": f"未找到 portfolio_id={portfolio_id}",
+        })
+
+    trade_date = payload.trade_date
+    if trade_date is None:
+        # 复用已有逻辑：next_unprocessed_trade_date
+        d = _next_unprocessed_trade_date(db, portfolio)
+        if d is None:
+            raise HTTPException(status_code=400, detail={
+                "code": "eval.data_blocked.no_trade_date",
+                "title_zh": "无可处理交易日",
+                "detail_zh": "trade_date 未传且组合 next_unprocessed_trade_date 为 NULL",
+            })
+        trade_date = d
+
+    # -- 查询该日 + portfolio_id == blocked 证据
+    ev_stmt = (
+        select(DecisionEvidence, Symbol)
+        .join(Symbol, Symbol.id == DecisionEvidence.symbol_id)
+        .where(DecisionEvidence.portfolio_id == portfolio_id)
+        .where(DecisionEvidence.trade_date == trade_date)
+        .where(DecisionEvidence.action == "DATA_BLOCKED")
+        .order_by(DecisionEvidence.symbol_id)
+    )
+    rows = db.execute(ev_stmt).all()
+    blocked_items = []
+    for ev, sym in rows:
+        blocked_items.append({
+            "symbol_id": ev.symbol_id,
+            "symbol": sym.symbol,
+            "symbol_name": getattr(sym, "name", None),
+            "decision_evidence_id": ev.id,
+            "decision_run_id": ev.decision_run_id,
+            "action": ev.action,
+            "action_subtype": ev.action_subtype,
+            "rejection_reason": ev.rejection_reason,
+            "blocking_reason": ev.blocking_reason,
+            "score_value": ev.score_value,
+            "target_qty_delta": ev.target_qty_delta,
+        })
+
+    # -- 已登记未消费 override（供前端显示“这个 symbol 已经人工处理了”）
+    ov_stmt = (
+        select(ManualPriceOverride, Symbol)
+        .outerjoin(Symbol, Symbol.id == ManualPriceOverride.symbol_id)
+        .where(ManualPriceOverride.portfolio_id == portfolio_id)
+        .where(ManualPriceOverride.trade_date == trade_date)
+        .where(ManualPriceOverride.consumed_flag == 0)
+        .order_by(ManualPriceOverride.symbol_id.is_(None), ManualPriceOverride.symbol_id)
+    )
+    ov_rows = db.execute(ov_stmt).all()
+    overrides = []
+    for ov, sym in ov_rows:
+        overrides.append({
+            "id": ov.id,
+            "portfolio_level": ov.symbol_id is None,
+            "symbol_id": ov.symbol_id,
+            "symbol": sym.symbol if sym else None,
+            "resolved_mode": ov.resolved_mode,
+            "manual_executable_price": ov.manual_executable_price,
+            "source_note": ov.source_note,
+            "previous_data_gap_days": ov.previous_data_gap_days,
+            "operator_id": ov.operator_id,
+            "created_at": ov.created_at.isoformat(timespec="seconds"),
+        })
+
+    return {
+        "portfolio_id": portfolio_id,
+        "trade_date": trade_date.isoformat(),
+        "strategy_snapshot_id": payload.strategy_snapshot_id,
+        "blocked_count": len(blocked_items),
+        "blocked_items": blocked_items,
+        "pending_overrides_count": len(overrides),
+        "pending_overrides": overrides,
+    }
+
+
+@router.post("/portfolios/{portfolio_id}/data-blocked/resolve", tags=["T-A9"], status_code=201)
+def portfolio_data_blocked_resolve(
+    portfolio_id: int,
+    payload: DataBlockedResolveRequest,
+    db: Session = Depends(get_db),
+):
+    """T-A9.2：写入人工处理决议（ManualPriceOverride）+ DATA_BLOCK_RESOLUTION 审计。
+
+    契约：
+      - 3 resolved_mode，严格模式化校验
+      - symbol_id=NULL 仅允许 continue_forward / keep_paused（portfolio 级批量决议）
+      - confirm_manual_price 必填 symbol_id + manual_price > 0
+      - 幂等：同日 + 同 portfolio + 同 symbol 唯一键冲突 → 忽略（IGNORE），返回 existing=true
+    """
+    from app.models.decision_engine import ManualPriceOverride
+    from app.services.data_governance_audit import audit_data_block_resolution
+
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "eval.portfolio.not_found",
+            "title_zh": "组合不存在",
+            "detail_zh": f"未找到 portfolio_id={portfolio_id}",
+        })
+
+    # 模式级校验（HTTP 422 先由 pydantic pattern 处理 resolved_mode；这里仅补语义校验）
+    if payload.resolved_mode == "confirm_manual_price":
+        if payload.symbol_id is None or payload.manual_price is None or payload.manual_price <= 0:
+            raise HTTPException(status_code=400, detail={
+                "code": "eval.data_blocked.invalid_confirm_manual_price",
+                "title_zh": "人工价格模式参数缺失",
+                "detail_zh": "confirm_manual_price 必须同时传 symbol_id + manual_price>0",
+            })
+    else:
+        # continue_forward / keep_paused：manual_price 必须空
+        if payload.manual_price is not None:
+            raise HTTPException(status_code=400, detail={
+                "code": "eval.data_blocked.manual_price_not_allowed",
+                "title_zh": "非价格模式不得指定 manual_price",
+                "detail_zh": f"resolved_mode={payload.resolved_mode}，manual_price 必须=NULL",
+            })
+
+    # 查重：若同日同 portfolio+symbol 已存在（无论 consumed），返回已有记录 + existing=true（保证幂等）
+    existing_stmt = select(ManualPriceOverride).where(
+        ManualPriceOverride.portfolio_id == portfolio_id,
+        ManualPriceOverride.trade_date == payload.trade_date,
+    )
+    if payload.symbol_id is None:
+        existing_stmt = existing_stmt.where(ManualPriceOverride.symbol_id.is_(None))
+    else:
+        existing_stmt = existing_stmt.where(ManualPriceOverride.symbol_id == payload.symbol_id)
+    existing = db.execute(existing_stmt).scalars().first()
+    if existing is not None:
+        return {
+            "existing": True,
+            "id": existing.id,
+            "portfolio_id": portfolio_id,
+            "trade_date": payload.trade_date.isoformat(),
+            "symbol_id": payload.symbol_id,
+            "resolved_mode": existing.resolved_mode,
+            "manual_executable_price": existing.manual_executable_price,
+            "operator_id": existing.operator_id,
+        }
+
+    # 插入新 override
+    row = ManualPriceOverride(
+        portfolio_id=portfolio_id,
+        strategy_snapshot_id=payload.strategy_snapshot_id,
+        symbol_id=payload.symbol_id,
+        trade_date=payload.trade_date,
+        resolved_mode=payload.resolved_mode,
+        manual_executable_price=payload.manual_price,
+        source_note=payload.source_note,
+        previous_data_gap_days=payload.previous_data_gap_days,
+        consumed_flag=0,
+        operator_id=payload.operator_id,
+        correlation_id=payload.correlation_id,
+    )
+    db.add(row)
+    db.flush()
+
+    # 写 DATA_BLOCK_RESOLUTION 审计（与 override 同事务）
+    audit_data_block_resolution(
+        db, portfolio_id,
+        resolved_mode=payload.resolved_mode,  # type: ignore[arg-type]
+        symbol_id=payload.symbol_id,
+        manual_price=payload.manual_price,
+        previous_data_gap_days=payload.previous_data_gap_days,
+        operator_id=payload.operator_id,
+        correlation_id=payload.correlation_id,
+        trade_date=payload.trade_date,
+    )
+
+    return {
+        "existing": False,
+        "id": row.id,
+        "portfolio_id": portfolio_id,
+        "trade_date": payload.trade_date.isoformat(),
+        "symbol_id": payload.symbol_id,
+        "resolved_mode": payload.resolved_mode,
+        "manual_executable_price": payload.manual_price,
+        "operator_id": payload.operator_id,
+        "correlation_id": payload.correlation_id,
+    }

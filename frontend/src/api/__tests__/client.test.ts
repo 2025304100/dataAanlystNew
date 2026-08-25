@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { requestJson } from '../client';
+import { api, requestJson } from '../client';
 import { setLocale } from '../../i18n';
 
 describe('requestJson deduplication', () => {
@@ -60,6 +60,27 @@ describe('requestJson deduplication', () => {
       message: '该任务正在运行',
       status_code: 409,
     });
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('daily backtest position ledger client', () => {
+  it('keeps the existing pagination and position-filter query contract', async () => {
+    const response = { ok: true, json: async () => ({ items: [] }) } as Response;
+    const fetchMock = vi.fn().mockResolvedValue(response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.getBacktestPositions(42, {
+      page: 2,
+      pageSize: 50,
+      asOfDate: '2025-01-31',
+      status: 'CLOSED',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/backtest/runs/42/positions?page=2&page_size=50&as_of_date=2025-01-31&status=CLOSED',
+      expect.any(Object),
+    );
     vi.unstubAllGlobals();
   });
 });

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, timedelta
 
 import akshare as ak
 import pandas as pd
@@ -12,6 +12,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.discovery_candidate import DiscoveryCandidate
+from app.models.daily_bar import DailyBar
 from app.models.portfolio import Position
 from app.models.symbol import Symbol
 from app.models.tail_accumulation_snapshot import (
@@ -108,6 +109,32 @@ def resolve_tail_proxy_symbols(
     )
 
 
+def resolve_tail_proxy_trade_date(
+    db: Session, requested_date: date | None = None
+) -> date:
+    """Resolve the latest usable trading date for an automatic snapshot.
+
+    Scheduled jobs often run on weekends or exchange holidays.  Using
+    ``date.today()`` directly makes the minute endpoint return an empty frame
+    even though the most recent trading session is available locally.  The
+    daily-bar table is the local trading-day calendar; use its latest date and
+    only fall back to the previous weekday when the market database is empty.
+    Explicit dates remain unchanged for replay/tests.
+    """
+    if requested_date is not None:
+        return requested_date
+    today = date.today()
+    latest = db.scalar(
+        select(func.max(DailyBar.trade_date)).where(DailyBar.trade_date <= today)
+    )
+    if latest is not None:
+        return latest
+    fallback = today
+    while fallback.weekday() >= 5:
+        fallback -= timedelta(days=1)
+    return fallback
+
+
 def _fetch_minute_frame(
     db: Session, *, symbol: str, trade_date: date
 ) -> pd.DataFrame:
@@ -134,7 +161,7 @@ def sync_tail_proxy_snapshots(
     limit: int = 20,
     trade_date: date | None = None,
 ) -> TailProxySyncResult:
-    target_date = trade_date or date.today()
+    target_date = resolve_tail_proxy_trade_date(db, trade_date)
     symbols = resolve_tail_proxy_symbols(db, source=source, limit=limit)
     written = 0
     skipped = 0
@@ -208,5 +235,6 @@ def sync_tail_proxy_snapshots(
 __all__ = [
     "TailProxySyncResult",
     "resolve_tail_proxy_symbols",
+    "resolve_tail_proxy_trade_date",
     "sync_tail_proxy_snapshots",
 ]

@@ -74,6 +74,7 @@ class ExternalSyncTaskCreate(BaseModel):
 
     dataset: ExternalDataset
     source: Literal["watchlist", "positions", "all"] = "watchlist"
+    watchlist_id: int | None = None
     include_northbound: bool = True
     mode: ExternalSyncMode = "incremental"
     start_date: date | None = None

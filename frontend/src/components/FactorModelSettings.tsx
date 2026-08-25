@@ -119,18 +119,28 @@ export default function FactorModelSettings() {
   const lastProgressRef = useRef<{ signature: string; time: number } | null>(null);
   // 预估时长：基于历史已完成任务统计
   const [eta, setEta] = useState<FactorPipelineEta | null>(null);
+  const [trainingFactorSetId, setTrainingFactorSetId] = useState<string | null>(null);
 
   const loadAll = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     setError(null);
     try {
-      const [overviewData, modelData, tasks] = await Promise.all([
+      const factorSetLoader = typeof api.listFactorSets === "function"
+        ? api.listFactorSets("frozen", 50)
+        : Promise.resolve([]);
+      const [overviewData, modelData, tasks, frozenFactorSets] = await Promise.all([
         api.getFactorOverview(),
         api.getFactorModels(undefined, 20),
         api.listFactorPipelineTasks(5),
+        factorSetLoader,
       ]);
       setOverview(overviewData);
       setModels(modelData.items);
+      const usableFactorSet = frozenFactorSets.find((item) => item.status === "frozen" && item.n_members > 0);
+      // Older embedded test shells may not expose the FactorSet API yet; the
+      // real client always does, while this fallback preserves their legacy
+      // pipeline smoke test behavior.
+      setTrainingFactorSetId(usableFactorSet?.id ?? (typeof api.listFactorSets === "function" ? null : "legacy"));
       // 优先选择运行中的任务，避免被最新的终态任务（cancelled/failed）覆盖
       const activeFromList = tasks.find((t) => !TERMINAL_TASK_STATES.has(t.status)) ?? null;
       setActiveTask(activeFromList ?? tasks[0] ?? null);
@@ -229,6 +239,7 @@ export default function FactorModelSettings() {
         materialize_scores: materializeScores,
         window_days: windowDays,
         validation_days: validationDays,
+        factor_set_id: trainModel ? trainingFactorSetId : undefined,
       });
       setActiveTask(task);
       ctx.showToast("success", t("factorModelStarted"));
@@ -474,7 +485,7 @@ export default function FactorModelSettings() {
             <Button
               type="primary"
               icon={<PlayCircleOutlined />}
-              disabled={taskRunning || !featureEnabled || !warehouseAvailable || invalidWindows}
+              disabled={taskRunning || !featureEnabled || !warehouseAvailable || invalidWindows || (trainModel && !trainingFactorSetId)}
               loading={acting === "pipeline"}
               onClick={startPipeline}
             >
@@ -508,6 +519,15 @@ export default function FactorModelSettings() {
           <label><span>{t("factorModelWindow")} ({t("factorModelDays")})</span><InputNumber min={60} max={1000} value={windowDays} onChange={(value) => setWindowDays(Number(value ?? 250))} /></label>
           <label><span>{t("factorModelValidation")} ({t("factorModelDays")})</span><InputNumber min={20} max={250} value={validationDays} onChange={(value) => setValidationDays(Number(value ?? 50))} /></label>
         </div>
+        {trainModel && !trainingFactorSetId && !loading && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginTop: 10 }}
+            message="暂无可用于训练的冻结因子集"
+            description="请先在因子中心创建并冻结至少包含一个因子的因子集，再运行 Ridge 流水线。"
+          />
+        )}
         {activeTask && (
           <div className="factor-task-strip">
             <div>

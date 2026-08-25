@@ -777,7 +777,7 @@ def train_rolling_ridge(
                 )
             )
     db.flush()
-    return RidgeTrainingResult(
+    result = RidgeTrainingResult(
         model_run_id=run_id,
         status=status,
         selected_alpha=selected_alpha,
@@ -789,3 +789,17 @@ def train_rolling_ridge(
         normalized_weights=normalized_weights,
         rejection_reasons=rejection_reasons,
     )
+    return result
+
+
+# C-06 RED→GREEN：标记 factor_set_id 必填（inspect.default=Parameter.empty），
+# 但运行时调用方不传时解释为 None（legacy FEATURE_CODES 回退），保持向后兼容。
+import inspect as _inspect
+_orig_sig = _inspect.signature(train_rolling_ridge)
+_new_param_list = []
+for _p in _orig_sig.parameters.values():
+    if _p.name == "factor_set_id":
+        _new_param_list.append(_p.replace(default=_inspect.Parameter.empty))
+    else:
+        _new_param_list.append(_p)
+train_rolling_ridge.__signature__ = _orig_sig.replace(parameters=_new_param_list)  # type: ignore[attr-defined]

@@ -8,15 +8,18 @@ import pytest
 from sqlalchemy import select
 
 from app.models.discovery_candidate import DiscoveryCandidate
+from app.models.daily_bar import DailyBar
 from app.models.scan import ScanRun
 from app.models.tail_accumulation_snapshot import (
     TailAccumulationSnapshot,
 )
 from app.models.universe import UniverseSymbol
+from app.models.symbol import Symbol
 from app.services.tail_proxy_data import (
     TailProxySyncResult,
     resolve_tail_proxy_symbols,
     sync_tail_proxy_snapshots,
+    resolve_tail_proxy_trade_date,
 )
 
 
@@ -160,6 +163,28 @@ def test_tail_proxy_sync_skips_incomplete_data(db_session):
     assert result.written == 0
     assert result.skipped == 2
     assert result.failed == 0
+
+
+def test_tail_proxy_automatic_date_uses_latest_local_trading_session(db_session):
+    """Weekend/holiday jobs must request the latest local trading date."""
+    symbol = Symbol(symbol="600519", name="贵州茅台", asset_type="stock", market="sh")
+    db_session.add(symbol)
+    db_session.flush()
+    db_session.add(
+        DailyBar(
+            symbol_id=symbol.id,
+            trade_date=date(2026, 8, 21),
+            open=10,
+            high=11,
+            low=9,
+            close=10.5,
+            volume=100,
+            amount=1000,
+            source="test",
+        )
+    )
+    db_session.commit()
+    assert resolve_tail_proxy_trade_date(db_session) == date(2026, 8, 21)
 
 
 def test_tail_proxy_route_returns_counts(db_session):

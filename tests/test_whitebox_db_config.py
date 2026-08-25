@@ -32,6 +32,31 @@ pytestmark = pytest.mark.whitebox
 
 
 # ----------------------------------------------------------------------------
+# 0. Process-level DATABASE_URL override (isolated verification / containers)
+# ----------------------------------------------------------------------------
+
+def test_runtime_database_url_env_overrides_persisted_mysql_config(monkeypatch):
+    """An explicit environment URL must win over the persisted MySQL config."""
+    from unittest.mock import MagicMock
+
+    from app import main
+
+    manager = MagicMock()
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///D:/tmp/isolated-ui.db")
+    monkeypatch.setattr(main, "load_db_config", lambda: {
+        "use_mysql": True,
+        "mysql": {"host": "shared-db", "port": 3306, "database": "prod"},
+    })
+    monkeypatch.setattr(main.DatabaseManager, "get", lambda: manager)
+
+    main.initialize_runtime_database()
+
+    manager.initialize.assert_called_once_with(
+        "sqlite:///D:/tmp/isolated-ui.db", db_type="sqlite"
+    )
+
+
+# ----------------------------------------------------------------------------
 # helpers
 # ----------------------------------------------------------------------------
 

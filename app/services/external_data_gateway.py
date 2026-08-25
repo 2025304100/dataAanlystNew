@@ -453,11 +453,25 @@ def _default_l4_daily_bars(params: Mapping[str, Any]) -> tuple[Any, str]:
         source_detail = "registered_source_chain"
     else:
         chain = get_chain(symbol_snapshot)
-        # SourceChain 不直接返回 source 名称；从链中找第一个成功的源
-        # 通过尝试每个源来记录 source_detail
-        # 这里简化：使用 frame 的隐式来源（无法精确得到，给统一标识）
         source_detail = "source_chain"
-    frame = chain.fetch(symbol_snapshot, start, end, adjust)
+
+    # New SourceChain instances expose the concrete primary/backup source.
+    # Keep the old ``fetch`` fallback for injected third-party chains that
+    # implement only the original protocol.
+    fetch_with_lineage = getattr(chain, "fetch_with_lineage", None)
+    if callable(fetch_with_lineage):
+        # Validate the value object explicitly. This preserves compatibility
+        # with duck-typed or MagicMock chains that expose arbitrary attributes.
+        from app.services.market_data_sources.chain import SourceFetchResult
+
+        lineage = fetch_with_lineage(symbol_snapshot, start, end, adjust)
+        if isinstance(lineage, SourceFetchResult):
+            frame = lineage.frame
+            source_detail = str(lineage.source_name)
+        else:
+            frame = chain.fetch(symbol_snapshot, start, end, adjust)
+    else:
+        frame = chain.fetch(symbol_snapshot, start, end, adjust)
     return frame, source_detail
 
 

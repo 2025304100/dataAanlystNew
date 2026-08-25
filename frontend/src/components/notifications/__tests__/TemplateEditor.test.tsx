@@ -91,6 +91,7 @@ describe("TemplateEditor 模板编辑体验", () => {
       "discovery_new",
       "auto_trade_blocked",
       "drawdown_warning",
+      "max_loss_warning",
     ]);
   });
 

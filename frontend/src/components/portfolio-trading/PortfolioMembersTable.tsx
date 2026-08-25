@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, RefreshCw, Search } from "lucide-react";
+import { Download, RefreshCw, Search, AlertTriangle, ShieldAlert } from "lucide-react";
 import { api, requestJson } from "../../api/client";
 import { useApp } from "../../context/AppContext";
 import { t } from "../../i18n";
-import type { Position, WorkbenchCandidate } from "../../types";
+import type { PortfolioStatePermissions, PortfolioStatusResponse, Position, WorkbenchCandidate } from "../../types";
 
 /**
  * PortfolioMembersTable — 组合成员子 Tab（Task 5）
@@ -27,6 +27,9 @@ import type { Position, WorkbenchCandidate } from "../../types";
 interface PortfolioMembersTableProps {
   portfolioId: number;
   onNavigate?: (tab: string) => void;
+  // FR-P1-8a HG1 治理字段
+  portfolioStatus?: PortfolioStatusResponse | null;
+  perm?: PortfolioStatePermissions;
 }
 
 // 扩展 Position：target_weight_pct / deviation_pct 可能由后端附加（前端兼容处理）
@@ -113,8 +116,13 @@ const factorTone = (tag: string): { bg: string; color: string } =>
 /* 主组件                                                              */
 /* ------------------------------------------------------------------ */
 
-const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolioId }) => {
+const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolioId, onNavigate, portfolioStatus, perm }) => {
   const { showToast } = useApp();
+  // FR-P1-8a HG1 权限：fail-closed，未传时默认全部禁止
+  const allowNewBuys = perm?.allow_new_buys ?? false;
+  const allowRiskExits = perm?.allow_risk_exits ?? false;
+  const currentState = portfolioStatus?.current_state ?? "UNKNOWN";
+
   const [positions, setPositions] = useState<PositionRow[]>([]);
   const [candidates, setCandidates] = useState<WorkbenchCandidate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -267,8 +275,20 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
 
   // 手动触发再平衡：POST /portfolios/{id}/auto-trade/execute（实际下单），失败 toast
   // P1-FIX: 增加二次确认，dry_run=false 直接真实下单必须确认
+  // FR-P1-8a：再平衡 = NEW_BUY + RISK_EXIT 双权限
+  const rebalanceDisabled = !allowNewBuys || !allowRiskExits;
+  const rebalanceHint = (() => {
+    if (!allowNewBuys && !allowRiskExits) return "HG1 门禁：禁止新买单/风险退出，再平衡不可用";
+    if (!allowNewBuys) return "HG1 门禁：禁止新买单，再平衡不可用（需 NEW_BUY 权限）";
+    if (!allowRiskExits) return "HG1 门禁：禁止风险退出，再平衡不可用（需 RISK_EXIT 权限）";
+    return "";
+  })();
   const handleRebalance = useCallback(async () => {
     if (!portfolioId) return;
+    if (rebalanceDisabled) {
+      showToast("error", "HG1 门禁：当前组合状态禁止再平衡（缺少 NEW_BUY 或 RISK_EXIT 权限）");
+      return;
+    }
     const confirmed = window.confirm(
       "确认对当前组合执行【手动再平衡】？\n\n这将触发自动交易执行（dry_run=false），根据策略规则实时生成买卖单并以模拟价直接撮合成交。\n\n请确认资金、持仓偏离度与风控阈值均符合预期，确认后不可撤销。",
     );
@@ -284,13 +304,18 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
     } finally {
       setRebalancing(false);
     }
-  }, [portfolioId, showToast, load]);
+  }, [portfolioId, showToast, load, rebalanceDisabled]);
 
   // 行内「清仓 / 一键清仓」：提交模拟卖单卖出全部持仓量，成功后删除持仓并刷新
   // P1-FIX: 增加二次确认（全卖单只可能造成踏空/止盈/止损，必须用户确认）
+  // FR-P1-8a：HG1 门禁，清仓/风险退出 = RISK_EXIT 权限
   const handleClosePosition = useCallback(
     async (p: PositionRow) => {
       if (!portfolioId) return;
+      if (!allowRiskExits) {
+        showToast("error", "HG1 门禁：当前组合状态禁止风险退出（缺少 RISK_EXIT 权限）");
+        return;
+      }
       const qty = Number(p.quantity);
       if (!Number.isFinite(qty) || qty <= 0) {
         showToast("info", t("portfolioTrading.members.closeFailed"));
@@ -319,10 +344,11 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
         setRowActionSymbolId(null);
       }
     },
-    [portfolioId, showToast, load],
+    [portfolioId, showToast, load, allowRiskExits],
   );
 
   // 行内「调仓」：按 target_weight_pct 计算目标股数并提交模拟买/卖单向目标靠拢
+  // FR-P1-8a：HG1 门禁，调仓 diff>0 需 NEW_BUY，diff<0 需 RISK_EXIT
   const handleRebalanceRow = useCallback(
     async (p: PositionRow) => {
       if (!portfolioId) return;
@@ -347,6 +373,15 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
         showToast("info", t("portfolioTrading.members.rebalanceRowSuccess"));
         return;
       }
+      // FR-P1-8a HG1 检查
+      if (diff > 0 && !allowNewBuys) {
+        showToast("error", "HG1 门禁：调仓方向为买入，当前组合禁止新买单（需 NEW_BUY 权限）");
+        return;
+      }
+      if (diff < 0 && !allowRiskExits) {
+        showToast("error", "HG1 门禁：调仓方向为卖出，当前组合禁止风险退出（需 RISK_EXIT 权限）");
+        return;
+      }
       setRowActionSymbolId(p.symbol_id);
       try {
         await api.submitSimOrder(portfolioId, {
@@ -365,12 +400,17 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
         setRowActionSymbolId(null);
       }
     },
-    [portfolioId, showToast, load],
+    [portfolioId, showToast, load, allowNewBuys, allowRiskExits],
   );
 
   // 加入组合：POST /portfolios/{id}/members
+  // FR-P1-8a：HG1 门禁，加入组合（从候选池→正式成员）= NEW_BUY
   const handleAddMember = useCallback(
     async (candidate: WorkbenchCandidate) => {
+      if (!allowNewBuys) {
+        showToast("error", "HG1 门禁：当前组合禁止新增候选/建仓（需 NEW_BUY 权限）");
+        return;
+      }
       try {
         await requestJson(`/api/v1/portfolios/${portfolioId}/members`, {
           method: "POST",
@@ -391,7 +431,7 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
         showToast("error", msg || t("portfolioTrading.members.addMemberFailed"));
       }
     },
-    [portfolioId, showToast, load],
+    [portfolioId, showToast, load, allowNewBuys],
   );
 
   if (loading) {
@@ -409,6 +449,37 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
 
   return (
     <section style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* FR-P1-8a HG1 顶部提示：非 READY 状态时显示组合状态与风险提示 */}
+      {currentState !== "READY" && (
+        <div
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: `1px solid ${!allowNewBuys || !allowRiskExits ? "rgba(239,68,68,0.35)" : "rgba(245,158,11,0.35)"}`,
+            background: !allowNewBuys || !allowRiskExits ? "rgba(239,68,68,0.06)" : "rgba(245,158,11,0.06)",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            fontSize: 12.5,
+            lineHeight: 1.55,
+          }}
+        >
+          {!allowNewBuys || !allowRiskExits ? (
+            <ShieldAlert size={16} style={{ marginTop: 1, color: "var(--pt-state-error, #ef4444)", flexShrink: 0 }} />
+          ) : (
+            <AlertTriangle size={16} style={{ marginTop: 1, color: "var(--pt-state-warning, #f59e0b)", flexShrink: 0 }} />
+          )}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: (!allowNewBuys || !allowRiskExits) ? "var(--pt-state-error, #ef4444)" : "var(--pt-state-warning, #f59e0b)" }}>
+              🔒 HG1 组合治理状态：「{currentState}」
+            </div>
+            <div style={{ marginTop: 2, color: "var(--pt-muted-foreground)" }}>
+              NEW_BUY: {allowNewBuys ? "✅ 允许" : "🚫 禁止"}　|　RISK_EXIT: {allowRiskExits ? "✅ 允许" : "🚫 禁止"}
+              &nbsp;&nbsp;·&nbsp;&nbsp;详细说明与解除步骤请前往「治理」子 Tab 查看。
+            </div>
+          </div>
+        </div>
+      )}
       {/* ========== SubTask 5.1: 操作栏 ========== */}
       <div className="pt-card" style={{ padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -427,10 +498,12 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
               type="button"
               className="pt-btn pt-btn-primary pt-btn-sm"
               onClick={handleRebalance}
-              disabled={rebalancing}
+              disabled={rebalanceDisabled || rebalancing}
+              title={rebalanceDisabled ? rebalanceHint : undefined}
+              style={{ opacity: rebalanceDisabled ? 0.55 : 1, cursor: rebalanceDisabled ? "not-allowed" : undefined }}
             >
               <RefreshCw size={14} />
-              {t("portfolioTrading.members.rebalance")}
+              {rebalanceDisabled ? "🔒 再平衡（HG1）" : t("portfolioTrading.members.rebalance")}
             </button>
           </div>
 
@@ -585,31 +658,40 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
                           <button
                             type="button"
                             className="pt-btn pt-btn-sm"
-                            style={{ background: "var(--pt-state-warning)", color: "#000", fontWeight: 600 }}
+                            style={{ background: "var(--pt-state-warning)", color: "#000", fontWeight: 600, opacity: !allowRiskExits ? 0.5 : 1, cursor: !allowRiskExits ? "not-allowed" : undefined }}
                             onClick={() => handleClosePosition(p)}
-                            disabled={rowActionSymbolId === p.symbol_id}
+                            disabled={!allowRiskExits || rowActionSymbolId === p.symbol_id}
+                            title={!allowRiskExits ? "HG1 门禁：当前组合禁止风险退出" : undefined}
                           >
-                            {t("portfolioTrading.members.actionClear")}
+                            {!allowRiskExits ? "🔒 " : ""}{t("portfolioTrading.members.actionClear")}
                           </button>
                         ) : (
                           <>
+                            {/* 调仓：diff>0 需要 NEW_BUY，diff<0 需要 RISK_EXIT；简化判断：当两者任一允许时启用，由 handleRebalanceRow 再细分 */}
+                            {(() => {
+                              const rowRebalanceDisabled = !allowNewBuys && !allowRiskExits;
+                              return (
+                                <button
+                                  type="button"
+                                  className="pt-btn pt-btn-ghost pt-btn-sm"
+                                  style={{ color: "var(--pt-primary)", opacity: rowRebalanceDisabled ? 0.5 : 1, cursor: rowRebalanceDisabled ? "not-allowed" : undefined }}
+                                  onClick={() => handleRebalanceRow(p)}
+                                  disabled={rowRebalanceDisabled || rowActionSymbolId === p.symbol_id}
+                                  title={rowRebalanceDisabled ? "HG1 门禁：当前组合禁止调仓（新买单/风险退出均不可用）" : undefined}
+                                >
+                                  {rowRebalanceDisabled ? "🔒 " : ""}{t("portfolioTrading.members.actionRebalance")}
+                                </button>
+                              );
+                            })()}
                             <button
                               type="button"
                               className="pt-btn pt-btn-ghost pt-btn-sm"
-                              style={{ color: "var(--pt-primary)" }}
-                              onClick={() => handleRebalanceRow(p)}
-                              disabled={rowActionSymbolId === p.symbol_id}
-                            >
-                              {t("portfolioTrading.members.actionRebalance")}
-                            </button>
-                            <button
-                              type="button"
-                              className="pt-btn pt-btn-ghost pt-btn-sm"
-                              style={{ color: "var(--pt-state-error)" }}
+                              style={{ color: "var(--pt-state-error)", opacity: !allowRiskExits ? 0.5 : 1, cursor: !allowRiskExits ? "not-allowed" : undefined }}
                               onClick={() => handleClosePosition(p)}
-                              disabled={rowActionSymbolId === p.symbol_id}
+                              disabled={!allowRiskExits || rowActionSymbolId === p.symbol_id}
+                              title={!allowRiskExits ? "HG1 门禁：当前组合禁止风险退出" : undefined}
                             >
-                              {t("portfolioTrading.members.actionClose")}
+                              {!allowRiskExits ? "🔒 " : ""}{t("portfolioTrading.members.actionClose")}
                             </button>
                           </>
                         )}
@@ -705,8 +787,11 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
                           type="button"
                           className="pt-btn pt-btn-primary pt-btn-sm"
                           onClick={() => handleAddMember(c)}
+                          disabled={!allowNewBuys}
+                          title={!allowNewBuys ? "HG1 门禁：当前组合禁止新增候选/建仓（需 NEW_BUY 权限）" : undefined}
+                          style={{ opacity: !allowNewBuys ? 0.55 : 1, cursor: !allowNewBuys ? "not-allowed" : undefined }}
                         >
-                          {t("portfolioTrading.members.candidateActionAdd")}
+                          {!allowNewBuys ? "🔒 " : ""}{t("portfolioTrading.members.candidateActionAdd")}
                         </button>
                       </td>
                     </tr>

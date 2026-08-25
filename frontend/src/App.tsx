@@ -102,7 +102,7 @@ export default function App() {
       {/* 顶部全局导航栏：左侧一级 Tab 导航（结构不动）+ 右侧通知/帮助（SubTask 12.5 新增）
           外层 sticky 容器接管原 .view-tabs 的 sticky 行为，使整个顶部栏（含右侧）固定置顶。
           .pt-theme-scope 包裹右侧通知/帮助，使 --pt-* 变量在该容器内生效（变量定义在组合交易 Tab scoped 主题内）。 */}
-      <div style={{ position: "sticky", top: 0, zIndex: 50, display: "flex", alignItems: "flex-start", gap: 12 }}>
+      <div className="app-global-nav" style={{ position: "sticky", top: 0, zIndex: 50, display: "flex", alignItems: "flex-start", gap: 12 }}>
         <nav className="view-tabs" aria-label={t("ariaMainViews")} style={{ flex: 1, minWidth: 0, position: "static" }}>
           <button
             className={`view-tab${ctx.activeTab === "decision" ? " active" : ""}`}
@@ -155,7 +155,7 @@ export default function App() {
 
         {/* SubTask 12.5：顶部栏右侧通知/帮助（全局功能，所有 Tab 下均显示）
             互斥逻辑：打开一个时主动关闭另一个，避免 forceClose 持续 true 阻止打开 */}
-        <div className="pt-theme-scope" style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginTop: 6 }}>
+        <div className="pt-theme-scope global-nav-tools" style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginTop: 6 }}>
           <NotificationDropdown
             forceClose={helpOpen}
             onViewAll={() => {

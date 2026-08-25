@@ -7,6 +7,7 @@ from app.services.async_tasks import (
     list_async_tasks,
 )
 from app.services.factors.pipeline_task import (
+    FactorPipelineBindingError,
     TASK_TYPE,
     create_factor_pipeline_task,
     get_pipeline_eta,
@@ -32,6 +33,8 @@ def get_eta(
 def create_pipeline_task(payload: FactorPipelineCreate):
     try:
         return create_factor_pipeline_task(payload)
+    except FactorPipelineBindingError as exc:
+        raise HTTPException(status_code=422, detail=exc.to_dict()) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

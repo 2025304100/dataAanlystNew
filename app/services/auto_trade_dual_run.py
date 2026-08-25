@@ -29,7 +29,7 @@ import logging
 import os
 import threading
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import and_, select
@@ -100,6 +100,52 @@ class AutoTradeNotReadyError(RuntimeError):
     def __init__(self, message: str, blockers: list[ReadinessIssue]) -> None:
         super().__init__(message)
         self.blockers = list(blockers)
+
+
+def resolve_applied_snapshot_id(
+    db: Session,
+    *,
+    portfolio_id: int,
+    strategy_snapshot_id: str | None = None,
+) -> str | None:
+    """Return a portfolio-owned ``save_and_apply`` execution snapshot.
+
+    Automatic simulation can replay an explicitly supplied applied snapshot,
+    otherwise it must start from the latest applied snapshot for the target
+    portfolio.  ``None`` means the portfolio has never been applied and the
+    caller must fail closed rather than falling back to member-side rules.
+    """
+    from app.models.decision_engine import StrategyExecutionSnapshot
+
+    if strategy_snapshot_id:
+        snapshot = db.get(StrategyExecutionSnapshot, str(strategy_snapshot_id))
+        if snapshot is None:
+            raise ValueError(
+                f"StrategyExecutionSnapshot {strategy_snapshot_id} not found"
+            )
+        if int(snapshot.portfolio_id) != int(portfolio_id):
+            raise ValueError(
+                "StrategyExecutionSnapshot does not belong to the target portfolio"
+            )
+        if str(snapshot.snapshot_type) != "save_and_apply":
+            raise ValueError(
+                "StrategyExecutionSnapshot is not an applied save_and_apply snapshot"
+            )
+        return str(snapshot.id)
+
+    latest = db.execute(
+        select(StrategyExecutionSnapshot.id)
+        .where(
+            StrategyExecutionSnapshot.portfolio_id == int(portfolio_id),
+            StrategyExecutionSnapshot.snapshot_type == "save_and_apply",
+        )
+        .order_by(
+            StrategyExecutionSnapshot.snapshot_no.desc(),
+            StrategyExecutionSnapshot.created_at.desc(),
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    return str(latest) if latest is not None else None
 
 
 def is_member_source_enabled(portfolio_id: int | None = None) -> bool:
@@ -206,14 +252,38 @@ def capture_trade_set_from_old_logic(db: Session, *, portfolio_id: int) -> Trade
         return TradeSet()
 
 
-def capture_trade_set_from_new_logic(db: Session, *, portfolio_id: int) -> TradeSet:
-    """从新逻辑捕获交易集合（WP6.4）。
+def capture_trade_set_from_new_logic(
+    db: Session,
+    *,
+    portfolio_id: int,
+    strategy_snapshot_id: str | None = None,
+    trade_date: date | None = None,
+) -> TradeSet:
+    """Capture a dry-run set from the same applied-snapshot decision seam.
 
-    调用 auto_trade_member_source 的 dry_run。
+    A missing applied snapshot is reported as a rejected set. It must never
+    trigger the historical member-side rule interpreter, even for comparison.
     """
     from app.services.auto_trade_member_source import execute_member_source
 
-    result = execute_member_source(db, portfolio_id=portfolio_id, dry_run=True)
+    resolved_snapshot_id = resolve_applied_snapshot_id(
+        db,
+        portfolio_id=portfolio_id,
+        strategy_snapshot_id=strategy_snapshot_id,
+    )
+    if resolved_snapshot_id is None:
+        return TradeSet(rejected=[{
+            "rejection_code": "STRATEGY_SNAPSHOT_REQUIRED",
+            "rejection_detail": "自动模拟交易需要已应用的策略执行快照",
+        }])
+
+    result = execute_member_source(
+        db,
+        portfolio_id=portfolio_id,
+        dry_run=True,
+        strategy_snapshot_id=resolved_snapshot_id,
+        trade_date=trade_date,
+    )
     trade_set = TradeSet(
         buys=result.get("buy_decisions", []),
         sells=result.get("sell_decisions", []),
@@ -352,6 +422,8 @@ def run_dual_trade(
     buy_candidate_limit: int = 10,
     for_schedule: bool = False,
     require_readiness: bool = True,
+    strategy_snapshot_id: str | None = None,
+    trade_date: date | None = None,
 ) -> dict:
     """统一自动交易执行入口（P0-AutoTrade + WP6.4）。
 
@@ -389,6 +461,8 @@ def run_dual_trade(
             buy_candidate_limit=int(buy_candidate_limit or 0),
             for_schedule=bool(for_schedule),
             require_readiness=bool(require_readiness),
+            strategy_snapshot_id=strategy_snapshot_id,
+            trade_date=trade_date,
         )
     finally:
         _release_run_lock(int(portfolio_id))
@@ -422,6 +496,8 @@ def _run_dual_trade_inner(
     buy_candidate_limit: int,
     for_schedule: bool,
     require_readiness: bool,
+    strategy_snapshot_id: str | None = None,
+    trade_date: date | None = None,
 ) -> dict:
     portfolio_id = int(portfolio.id)
     extra_warnings: list[ReadinessIssue] = []
@@ -446,7 +522,8 @@ def _run_dual_trade_inner(
         )
 
     env_member_enabled = is_member_source_enabled(portfolio_id)
-    # 组合显式要求新来源，但 env 全局开关被紧急熔断时，安全回退为 legacy_scan 并发出强警告
+    # 组合显式要求新来源，但 env 全局开关被紧急熔断时，真实执行必须
+    # fail-closed；旧扫描逻辑只能保留为双跑对照，不能代替 DecisionEngine。
     effective_member_source_enabled: bool
     if source_mode == AUTO_TRADE_SOURCE_LEGACY_SCAN:
         effective_member_source_enabled = bool(env_member_enabled)
@@ -455,14 +532,44 @@ def _run_dual_trade_inner(
             extra_warnings.append(
                 ReadinessIssue(
                     code=WARNING_SOURCE_ENV_OVERRIDE,
-                    message="成员来源全局开关已关闭，真实执行会被安全熔断回退为旧扫描逻辑",
+                    message="成员来源全局开关已关闭，真实自动模拟执行将被阻断",
                 )
             )
             effective_member_source_enabled = False
         else:
             effective_member_source_enabled = True
 
-    executed_source = "new" if effective_member_source_enabled else "old"
+    source_blocker: ReadinessIssue | None = None
+    if not effective_member_source_enabled:
+        source_blocker = ReadinessIssue(
+            code="DECISION_ENGINE_SOURCE_REQUIRED",
+            message="自动模拟交易只能通过 DecisionEngine 的订单计划执行",
+            detail="请启用成员来源并使用已应用的策略执行快照；旧扫描逻辑仅可用于双跑对照。",
+        )
+    executed_source = "new" if effective_member_source_enabled else "blocked"
+
+    resolved_snapshot_id: str | None = None
+    snapshot_blocker: ReadinessIssue | None = None
+    resolved_snapshot_id = resolve_applied_snapshot_id(
+        db,
+        portfolio_id=portfolio_id,
+        strategy_snapshot_id=strategy_snapshot_id,
+    )
+    if resolved_snapshot_id is None:
+        snapshot_blocker = ReadinessIssue(
+            code="STRATEGY_SNAPSHOT_REQUIRED",
+            message="自动模拟交易需要已应用的策略执行快照",
+            detail="请先完成策略预检并保存应用，再触发自动模拟交易。",
+        )
+    else:
+        strategy_snapshot_id = resolved_snapshot_id
+        if trade_date is None:
+            from app.services.decision_clock import (
+                utc_naive_to_shanghai,
+                utcnow_naive,
+            )
+
+            trade_date = utc_naive_to_shanghai(utcnow_naive()).date()
 
     # 3) readiness：dry_run=False 才 fail-closed；dry_run=True 用于诊断，不抛错
     readiness = get_auto_trade_readiness(
@@ -473,10 +580,22 @@ def _run_dual_trade_inner(
     readiness_dict = readiness_to_dict(readiness)
     merged_warnings = list(readiness.warnings) + extra_warnings
     blockers_to_raise = list(readiness.blockers)
+    if source_blocker is not None:
+        blockers_to_raise.append(source_blocker)
+    if snapshot_blocker is not None:
+        blockers_to_raise.append(snapshot_blocker)
     if (
-        require_readiness
+        (
+            require_readiness
+            or source_blocker is not None
+            or snapshot_blocker is not None
+        )
         and not dry_run
-        and not readiness.ready
+        and (
+            not readiness.ready
+            or source_blocker is not None
+            or snapshot_blocker is not None
+        )
     ):
         if not blockers_to_raise:
             blockers_to_raise = [
@@ -495,11 +614,12 @@ def _run_dual_trade_inner(
         "member_source_enabled": bool(effective_member_source_enabled),
         "source_mode": source_mode,
         "executed_source": executed_source,
+        "strategy_snapshot_id": resolved_snapshot_id,
         "old_trade_set": None,
         "new_trade_set": None,
         "diffs": [],
         "readiness": readiness_dict,
-        "blockers": [_issue_to_dict(b) for b in readiness.blockers],
+        "blockers": [_issue_to_dict(b) for b in blockers_to_raise],
         "warnings": [_issue_to_dict(w) for w in merged_warnings],
         "errors": [],
         "sells": [],
@@ -513,7 +633,18 @@ def _run_dual_trade_inner(
         logger.warning("捕获旧来源交易集合失败 portfolio_id=%s", portfolio_id, exc_info=True)
         result["errors"].append(f"old_trade_set capture failed: {exc}")
     try:
-        new_set = capture_trade_set_from_new_logic(db, portfolio_id=portfolio_id)
+        if snapshot_blocker is not None:
+            new_set = TradeSet(rejected=[{
+                "rejection_code": snapshot_blocker.code,
+                "rejection_detail": snapshot_blocker.message,
+            }])
+        else:
+            new_set = capture_trade_set_from_new_logic(
+                db,
+                portfolio_id=portfolio_id,
+                strategy_snapshot_id=resolved_snapshot_id,
+                trade_date=trade_date,
+            )
         result["new_trade_set"] = new_set.to_dict()
     except Exception as exc:  # noqa: BLE001
         logger.warning("捕获新来源交易集合失败 portfolio_id=%s", portfolio_id, exc_info=True)
@@ -539,22 +670,33 @@ def _run_dual_trade_inner(
     # 5) 实际执行（或 dry-run 计划）
     exec_result: dict[str, Any] = {}
     try:
-        if effective_member_source_enabled:
+        execution_blocker = source_blocker or snapshot_blocker
+        if execution_blocker is not None:
+            exec_result = {
+                "portfolio_id": portfolio_id,
+                "strategy_snapshot_id": resolved_snapshot_id,
+                "buy_decisions": [],
+                "sell_decisions": [],
+                "signal_decisions": [],
+                "rejected_decisions": [{
+                    "rejection_code": execution_blocker.code,
+                    "rejection_detail": execution_blocker.message,
+                }],
+                "executed_orders": [],
+                "pending_orders": [],
+                "skipped_orders": [],
+                "errors": [execution_blocker.message],
+                "blocked": True,
+            }
+        else:
             from app.services.auto_trade_member_source import run_idempotent_member_source
 
             exec_result = run_idempotent_member_source(
                 db,
                 portfolio_id=portfolio_id,
                 dry_run=bool(dry_run),
-            )
-        else:
-            from app.services.auto_trade_task import run_auto_trade
-
-            exec_result = run_auto_trade(
-                db,
-                portfolio_id=portfolio_id,
-                dry_run=bool(dry_run),
-                buy_candidate_limit=int(buy_candidate_limit or 10),
+                strategy_snapshot_id=resolved_snapshot_id,
+                trade_date=trade_date,
             )
     except Exception as exc:  # noqa: BLE001
         logger.exception("执行来源失败 portfolio_id=%s source=%s", portfolio_id, executed_source)
@@ -658,17 +800,53 @@ def can_switch_to_member_source(
     portfolio_id: int,
     min_runs: int = 3,
     max_diff_ratio: float = 0.1,
+    g5_summary: Any | None = None,
 ) -> tuple[bool, str]:
     """检查是否可以切换到新来源（WP6.4）。
 
     条件：
-    - 至少 3 次有效运行
-    - 差异比例 < max_diff_ratio（10%）
-    - 差异已人工确认
+    - 必须提供 G5 双跑汇总；没有持久化/可追溯汇总时 fail-closed
+    - 至少 10 个有效交易日，且不存在漏跑日期
+    - P0/P1 未解释差异均为零
+
+    ``min_runs`` 和 ``max_diff_ratio`` 保留用于兼容旧调用方；旧的“3 次
+    运行即可切换”语义已废弃，不能绕过 G5 门禁。
     """
-    # TODO: 查询历史差异记录
-    # 第一阶段：返回 True（占位）
-    return True, "第一阶段默认允许切换"
+    if g5_summary is None:
+        from app.services.g5_dual_run_audit import latest_g5_summary
+
+        g5_summary = latest_g5_summary(db, portfolio_id=portfolio_id)
+    if g5_summary is None:
+        return False, "缺少可追溯的 G5 双跑汇总，禁止切换"
+
+    # 外部传入的旧/测试字典不能绕过持久化审计来源证明；正式入口应读取
+    # latest_g5_summary() 返回的不可变报告。
+    if isinstance(g5_summary, dict):
+        from app.services.g5_dual_run_audit import _g5_provenance_errors
+
+        provenance_errors = _g5_provenance_errors(g5_summary)
+        if provenance_errors:
+            return False, "G5 来源证明不完整，禁止切换"
+
+    def _value(name: str, default: Any = None) -> Any:
+        if isinstance(g5_summary, dict):
+            return g5_summary.get(name, default)
+        return getattr(g5_summary, name, default)
+
+    days_replayed = int(_value("days_replayed", 0) or 0)
+    skipped_days = list(_value("skipped_days", []) or [])
+    p0 = int(_value("total_p0_unexplained", 0) or 0)
+    p1 = int(_value("total_p1_hold_noaction_flip", 0) or 0)
+    eligible = bool(_value("g5_eligible_for_g6", False))
+    if days_replayed < 10:
+        return False, f"G5 有效交易日仅 {days_replayed} 天，至少需要 10 天"
+    if skipped_days:
+        return False, f"G5 存在 {len(skipped_days)} 个漏跑/故障日，禁止切换"
+    if p0 or p1:
+        return False, f"G5 仍有未解释差异：P0={p0}, P1={p1}"
+    if not eligible:
+        return False, "G5 汇总未达到 G6 准入条件，禁止切换"
+    return True, "G5 通过：连续交易日完整且 P0/P1 未解释差异为零，允许切换"
 
 
 def rollback_to_old_source(portfolio_id: int | None = None) -> None:

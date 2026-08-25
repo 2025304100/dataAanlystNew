@@ -4,7 +4,7 @@ import { Modal } from "antd";
 import { useApp } from "../../context/AppContext";
 import { api } from "../../api/client";
 import { t, template } from "../../i18n";
-import type { Portfolio } from "../../types";
+import type { Portfolio, PortfolioStatus } from "../../types";
 
 /**
  * PortfolioSelectorDropdown — 组合选择下拉面板
@@ -40,11 +40,28 @@ interface PortfolioItem {
   establishedDays: number;
   symbolCount: number;
   returnPct: number;
+  // FR-P0-10：9 状态（未提供 = null，前端降级隐藏徽章）
+  status: PortfolioStatus | string | null;
 }
 
 /* 真实组合无 performance/标的数时的 mock 池（按 id 取模分配，保证稳定；与 PortfolioRankingDrawer 一致） */
 const MOCK_PERF_RETURNS = [35.2, 28.7, 22.1, 18.5, 12.3, 8.9, 3.2, -2.1];
 const MOCK_SYMBOL_COUNTS = [8, 12, 6, 10, 15, 7, 9, 11];
+
+/** 9 状态色板（与 PortfolioGovernanceTab 一致，未识别值降级为灰色） */
+const STATUS_STYLES: Partial<Record<PortfolioStatus | string, { bg: string; fg: string; border: string; dot: string }>> = {
+  PENDING_INITIAL_REVIEW: { bg: "#fef3c7", fg: "#7c2d12", border: "#f59e0b", dot: "#f59e0b" },
+  READY:                    { bg: "#ecfdf5", fg: "#065f46", border: "#10b981", dot: "#10b981" },
+  RUNNING_AUTO_SIMULATION:  { bg: "#eff6ff", fg: "#1e3a8a", border: "#3b82f6", dot: "#3b82f6" },
+  RUNNING_BACKTEST:         { bg: "#eef2ff", fg: "#3730a3", border: "#6366f1", dot: "#6366f1" },
+  DATA_INCOMPLETE_PAUSED:   { bg: "#fef9c3", fg: "#713f12", border: "#eab308", dot: "#eab308" },
+  RECONCILIATION_BLOCKED:   { bg: "#fee2e2", fg: "#7f1d1d", border: "#ef4444", dot: "#ef4444" },
+  MODEL_INACTIVE:           { bg: "#f3f4f6", fg: "#1f2937", border: "#6b7280", dot: "#6b7280" },
+  SCORE_STALE:              { bg: "#fff7ed", fg: "#7c2d12", border: "#f97316", dot: "#f97316" },
+  INTERRUPTED:              { bg: "#fae8ff", fg: "#701a75", border: "#d946ef", dot: "#d946ef" },
+  ADMIN_PAUSED:             { bg: "#fef2f2", fg: "#7f1d1d", border: "#dc2626", dot: "#dc2626" },
+};
+const STATUS_FALLBACK = { bg: "#f3f4f6", fg: "#374151", border: "#9ca3af", dot: "#9ca3af" };
 
 /** 将真实 Portfolio 派生为下拉项（returnPct/symbolCount 用 mock 池稳定分配）。 */
 function deriveItem(p: Portfolio): PortfolioItem {
@@ -69,6 +86,7 @@ function deriveItem(p: Portfolio): PortfolioItem {
     establishedDays,
     symbolCount: MOCK_SYMBOL_COUNTS[seed],
     returnPct: MOCK_PERF_RETURNS[seed],
+    status: p.portfolio_status ?? null,
   };
 }
 
@@ -399,11 +417,47 @@ const PortfolioSelectorDropdown: React.FC<PortfolioSelectorDropdownProps> = ({
                       marginTop: 2,
                       fontSize: 11,
                       color: "var(--pt-slate-500)",
+                      display: "flex",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 6,
                     }}
                   >
                     {template("portfolioTrading.selector.established", { days: item.establishedDays })}
                     {" · "}
                     {template("portfolioTrading.selector.symbols", { count: item.symbolCount })}
+                    {item.status && (
+                      <>
+                        {" · "}
+                        {(() => {
+                          const st = STATUS_STYLES[item.status] ?? STATUS_FALLBACK;
+                          return (
+                            <span
+                              title={`组合状态: ${item.status}`}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                padding: "1px 7px",
+                                borderRadius: 999,
+                                border: `1px solid ${st.border}`,
+                                background: st.bg,
+                                color: st.fg,
+                                fontWeight: 600,
+                                fontSize: 10,
+                                lineHeight: "16px",
+                              }}
+                            >
+                              <span style={{
+                                width: 6, height: 6, borderRadius: 3,
+                                background: st.dot, display: "inline-block",
+                              }} />
+                              {t(`portfolioStatus.${item.status}` as any) || item.status}
+                            </span>
+                          );
+                        })()}
+                      </>
+                    )}
                   </div>
                 </div>
 

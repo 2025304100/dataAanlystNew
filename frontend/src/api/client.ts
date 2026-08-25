@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import type { AIDraftDetail, AIDraftExecuteResult, AIDraftPreviewResult, AsyncTaskRead, CapabilitiesResponse, CustomIndicatorPreviewRead, CustomIndicatorPromoteResponse, SignalRule, SignalRulePreviewResult, SnapshotStatusRead } from "../types";
+import type { AIDraftDetail, AIDraftExecuteResult, AIDraftPreviewResult, AsyncTaskCancelRequest, AsyncTaskCancelResponse, AsyncTaskRead, AutoSimulationPreflightRequest, AutoSimulationPreflightResponse, BacktestPosition, BacktestRun, BacktestTrade, CapabilitiesResponse, CustomIndicatorPreviewRead, CustomIndicatorPromoteResponse, PortfolioBacktestResult, PortfolioResumeExecuteRequest, PortfolioResumeExecuteResponse, PortfolioResumePlanRequest, PortfolioResumePlanResponse, SignalRule, SignalRulePreviewResult, SnapshotStatusRead } from "../types";
 import type { AttributionReport, Review } from "../types";
 import type { SymbolRelationships } from "../types/symbolRelationships";
 import type {
@@ -10,6 +10,21 @@ import type {
   AIProfileUsage,
   AIHealth,
   AIResponse,
+  // ---- FR-P1-8a 组合治理契约（4 对账治理 API + 审计事件 + G5 双跑）----
+  PortfolioStatusResponse,
+  ReconciliationResponse,
+  ConfirmReconciliationRequest,
+  ConfirmReconciliationResponse,
+  StateTransitionRequest,
+  StateTransitionResponse,
+  AuditEventFilter,
+  AuditEventPageResponse,
+  G5DualRunLaunchRequest,
+  G5DualRunLaunchResponse,
+  G5DualRunSummaryResponse,
+  G7OperationalStatus,
+  G6RolloutResult,
+  DecisionOrderPlanRead,
 } from "../types";
 
 // 指数同步异步任务返回结构（与后端 _task_to_dict 字段一致，percent/total/processed/ok_count/result.items）
@@ -183,10 +198,48 @@ async function executeRequestJson<T>(url: string, options: RequestJsonOptions): 
     timedOut = true;
     controller.abort();
   }, timeoutMs);
+
+  // ── FR-P1-8a Strict Auth: X-Trusted-User / X-Trusted-Role Header 注入 ──
+  // 优先级：调用方显式传入 header > STRICT_AUTH_HEADER_* env > 不注入。
+  // requestJson / executeRequestJson 是所有 API 的唯一 fetch 入口，统一注入保证任何治理端点都不会漏带。
+  const rawHeaders = new Headers(options.headers);
+  const injectTrustedHeader = (key: string, envKey: string) => {
+    if (!rawHeaders.has(key)) {
+      // 浏览器前端可通过 .env（Vite import.meta.env）或 window.__APP_CFG__ 注入；两者任一存在即注入
+      const fromEnv =
+        (typeof import.meta !== "undefined" && (import.meta as any).env)
+          ? ((import.meta as any).env[envKey] as string | undefined)
+          : undefined;
+      const fromWindowCfg =
+        typeof window !== "undefined" && (window as any).__APP_CFG__
+          ? ((window as any).__APP_CFG__[envKey] as string | undefined)
+          : undefined;
+      const value = fromEnv ?? fromWindowCfg;
+      if (value && String(value).trim().length > 0) {
+        rawHeaders.set(key, String(value).trim());
+      }
+    }
+  };
+  injectTrustedHeader("X-Trusted-User", "STRICT_AUTH_TRUSTED_USER");
+  injectTrustedHeader("X-Trusted-Role", "STRICT_AUTH_TRUSTED_ROLE");
+  // 同时携带 STRICT_AUTH_SOURCE（override/env/default 三层回退诊断端点会用到）
+  const headerSource =
+    (typeof import.meta !== "undefined" && (import.meta as any).env?.STRICT_AUTH_SOURCE) ||
+    (typeof window !== "undefined" && (window as any).__APP_CFG__?.STRICT_AUTH_SOURCE) ||
+    null;
+  if (headerSource && !rawHeaders.has("X-Strict-Auth-Source")) {
+    rawHeaders.set("X-Strict-Auth-Source", String(headerSource));
+  }
+
   // 移除自定义字段，保留标准 RequestInit 字段
   const { timeoutMs: _timeoutMs, dedupe: _dedupe, ...requestOptions } = options;
   try {
-    const response = await fetch(url, { ...requestOptions, signal: requestOptions.signal ?? controller.signal });
+    const mergedOptions: RequestInit = {
+      ...requestOptions,
+      headers: rawHeaders,
+      signal: requestOptions.signal ?? controller.signal,
+    };
+    const response = await fetch(url, mergedOptions);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       // 优先识别 WP-S.6 统一错误协议
@@ -578,6 +631,43 @@ export interface ExternalSyncPlanDetails {
 
 // TODO: 待后续类型强化——下方 requestJson<any>/requestJson<any[]> 调用保留 any 是为了
 // 兼容各调用方对返回值字段的直接访问（如 .id / .symbol 等），避免大面积级联报错。
+export interface PaginatedBacktestTrades {
+  total: number;
+  page: number;
+  page_size: number;
+  items: BacktestTrade[];
+}
+
+export interface PaginatedBacktestEvidence {
+  total: number;
+  page: number;
+  page_size: number;
+  decision_run_ids: string[];
+  items: DecisionEvidenceRead[];
+}
+
+export type BacktestPositionLedgerMode =
+  | "EXECUTION_EVENTS"
+  | "LEGACY_TRADE_APPROXIMATION";
+
+export interface PaginatedBacktestPositions {
+  total: number;
+  page: number;
+  page_size: number;
+  as_of_date: string;
+  status: "OPEN" | "CLOSED" | null;
+  ledger_mode: BacktestPositionLedgerMode;
+  items: BacktestPosition[];
+}
+
+/** Query controls retained by the daily position-ledger endpoint. */
+export interface BacktestPositionListOptions {
+  page?: number;
+  pageSize?: number;
+  asOfDate?: string;
+  status?: "OPEN" | "CLOSED";
+}
+
 export const api = {
   // System
   getDataHealth: () => requestJson<any>(SYSTEM_HEALTH_URL),
@@ -609,6 +699,26 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode, actor: "local_user", note }),
+    }),
+  // WP0-8: 训练因子模型（真实路由入口。默认 mode=offline_minimal 不需要 FactorWarehouse 环境）
+  trainFactorModel: (payload: {
+    factor_set_id: string;
+    factor_set_version?: number;
+    asset_type?: "STOCK" | "ETF" | "US_STOCK" | "HK_STOCK";
+    target_code?: string;
+    train_start_date?: string;
+    train_end_date?: string;
+    validation_start_date?: string;
+    validation_end_date?: string;
+    mode?: "warehouse" | "offline_minimal";
+    actor?: string;
+    note?: string;
+  }) =>
+    requestJson<FactorModelRun>(`${API}/factor-models/train`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor: "local_user", ...payload }),
+      timeoutMs: 180000,
     }),
   fallbackFactorModel: (reason: string) =>
     requestJson<FactorRuntime>(`${API}/factor-models/fallback`, {
@@ -1447,11 +1557,58 @@ export const api = {
 
   // Backtest
   runBacktest: (payload: unknown) =>
-    requestJson<any>(`${API}/backtest/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 120000 }),
+    requestJson<BacktestRun>(`${API}/backtest/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 120000 }),
   getBacktestRuns: (portfolioId: number, limit = 20) =>
-    requestJson<any[]>(`${API}/backtest/runs?portfolio_id=${portfolioId}&limit=${limit}`),
+    requestJson<BacktestRun[]>(`${API}/backtest/runs?portfolio_id=${portfolioId}&limit=${limit}`),
   getBacktestRun: (runId: number) =>
-    requestJson<any>(`${API}/backtest/runs/${runId}`),
+    requestJson<BacktestRun>(`${API}/backtest/runs/${runId}`),
+  getBacktestTrades: (
+    runId: number,
+    options: {
+      page?: number;
+      pageSize?: number;
+      action?: "BUY" | "SELL";
+      symbolId?: number;
+      startDate?: string;
+      endDate?: string;
+      executionStatus?: "filled" | "open" | "rejected";
+      sortBy?: "signal_at" | "execution_at" | "symbol_id" | "price" | "quantity" | "cost";
+      sortDir?: "asc" | "desc";
+    } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (options.page) q.set("page", String(options.page));
+    if (options.pageSize) q.set("page_size", String(options.pageSize));
+    if (options.action) q.set("action", options.action);
+    if (options.symbolId != null) q.set("symbol_id", String(options.symbolId));
+    if (options.startDate) q.set("start_date", options.startDate);
+    if (options.endDate) q.set("end_date", options.endDate);
+    if (options.executionStatus) q.set("execution_status", options.executionStatus);
+    if (options.sortBy) q.set("sort_by", options.sortBy);
+    if (options.sortDir) q.set("sort_dir", options.sortDir);
+    return requestJson<PaginatedBacktestTrades>(`${API}/backtest/runs/${runId}/trades${q.size ? `?${q}` : ""}`);
+  },
+  getBacktestEvidence: (
+    runId: number,
+    options: { page?: number; pageSize?: number; action?: string } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (options.page) q.set("page", String(options.page));
+    if (options.pageSize) q.set("page_size", String(options.pageSize));
+    if (options.action) q.set("action", options.action);
+    return requestJson<PaginatedBacktestEvidence>(`${API}/backtest/runs/${runId}/evidence${q.size ? `?${q}` : ""}`);
+  },
+  getBacktestPositions: (
+    runId: number,
+    options: BacktestPositionListOptions = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (options.page) q.set("page", String(options.page));
+    if (options.pageSize) q.set("page_size", String(options.pageSize));
+    if (options.asOfDate) q.set("as_of_date", options.asOfDate);
+    if (options.status) q.set("status", options.status);
+    return requestJson<PaginatedBacktestPositions>(`${API}/backtest/runs/${runId}/positions${q.size ? `?${q}` : ""}`);
+  },
   deleteBacktestRun: (runId: number) =>
     requestJson<any>(`${API}/backtest/runs/${runId}`, { method: "DELETE" }),
   applyBacktestToPortfolio: (runId: number, portfolioId: number, clearExisting = false) =>
@@ -1466,12 +1623,33 @@ export const api = {
     ),
   // P2-2: 组合整体回测（symbol_ids 与 rule_config 由后端自动推导）
   // WP7.3: 新增 only_auto 参数（仅回测 auto 成员，跳过 manual/confirm）
-  runPortfolioBacktest: (portfolioId: number, payload: { start_date: string; end_date: string; run_name?: string; only_auto?: boolean; current_universe?: boolean; benchmark?: string }) =>
-    requestJson<any>(`${API}/backtest/portfolio/run`, {
+  // WP0-8/WP0-7 C-02：8 项契约参数必须真实提交（score_weight_mode/factor_model_run_id/initial_capital/use_strategy_rule/cost_config 三项）
+  runPortfolioBacktest: (
+    portfolioId: number,
+    payload: {
+      start_date: string;
+      end_date: string;
+      run_name?: string;
+      benchmark?: string;
+      strategy_snapshot_id?: string;
+      score_weight_mode?: "manual" | "ridge";
+      factor_model_run_id?: string;
+      // WP0-5 / C-05：8 契约参数（后端 extra="forbid"，必须严格按字段名传，不得注入旧字段 only_auto/current_universe/cost_config）
+      initial_capital?: number;
+      commission_rate?: number;
+      stamp_tax_rate?: number;
+      slippage_bps?: number;
+      price_type?: "NEXT_OPEN" | "T_CLOSE";
+      volume_limit_pct?: number;
+      rebalance_frequency?: "daily" | "weekly" | "monthly" | "on_signal";
+      pit_mode?: "legacy_research" | "research_pit" | "production_pit";
+    },
+  ) =>
+    requestJson<PortfolioBacktestResult>(`${API}/backtest/portfolio/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ portfolio_id: portfolioId, ...payload }),
-      timeoutMs: 120000,
+      timeoutMs: 300000,
     }),
   // WP7.4: 组合回测标的来源开关状态
   getPortfolioBacktestSourceStatus: (portfolioId: number) =>
@@ -1600,6 +1778,44 @@ export const api = {
     requestJson<{ generated_at: string; domains: Record<string, { slot_limit: number; running: number; queued: number; waiting: number; available_slots: number }>; active_tasks: any[] }>(`${API}/system/task-observability`),
   getTaskBatch: (taskId: string) =>
     requestJson<any>(`${API}/system/tasks/${encodeURIComponent(taskId)}/batch`),
+
+  // FR-P1-2/AC-10 可靠性：系统级通用任务状态/取消（对齐新 /system/tasks/{id} 契约）
+  getAsyncTask: (taskId: string) =>
+    requestJson<AsyncTaskRead>(`${API}/system/tasks/${encodeURIComponent(taskId)}`),
+  cancelAsyncTask: (taskId: string, payload?: AsyncTaskCancelRequest) =>
+    requestJson<AsyncTaskCancelResponse>(`${API}/system/tasks/${encodeURIComponent(taskId)}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload ? JSON.stringify(payload) : undefined,
+    }),
+
+  // FR-P1-3 三硬门禁：auto_simulation 启动前预检
+  preflightAutoSimulation: (portfolioId: number, payload: AutoSimulationPreflightRequest) =>
+    requestJson<AutoSimulationPreflightResponse>(
+      `${API}/portfolios/${portfolioId}/auto-simulation/preflight`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    ),
+
+  // FR-P1-2 组合恢复：断点续跑 plan & execute
+  planPortfolioResume: (portfolioId: number, payload?: PortfolioResumePlanRequest) =>
+    requestJson<PortfolioResumePlanResponse>(
+      `${API}/portfolios/${portfolioId}/resume/plan`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload ? JSON.stringify(payload) : undefined,
+      },
+    ),
+  executePortfolioResume: (portfolioId: number, payload: PortfolioResumeExecuteRequest) =>
+    requestJson<PortfolioResumeExecuteResponse>(`${API}/portfolios/${portfolioId}/resume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
 
   // Cross-platform scheduled tasks
   getScheduledTaskDefinitions: () =>
@@ -1904,7 +2120,409 @@ export const api = {
     requestJson<{ ok: boolean; count: number }>(`${API}/notifications/inbox/read-all`, { method: "PUT" }),
   viewAllInbox: () =>
     requestJson<{ ok: boolean; total: number; hint?: string }>(`${API}/notifications/inbox/view-all`, { method: "POST" }),
+
+  // ==========================================================================
+  // FR-P1-8a / FR-P0-10 组合治理 4 API + 审计事件 + G5 双跑契约
+  // 注意：所有请求都会在 executeRequestJson 统一注入 X-Trusted-User / X-Trusted-Role / X-Strict-Auth-Source
+  // ==========================================================================
+
+  /** 1. GET /portfolios/{pid}/status：9 状态机当前态 + 出边矩阵 allowed_transitions */
+  getPortfolioStatus: (portfolioId: number) =>
+    requestJson<PortfolioStatusResponse>(`${API}/portfolios/${portfolioId}/status`),
+
+  /** 2. POST /portfolios/{pid}/reconcile：执行一次对账，返回 10 字段守恒明细 */
+  triggerPortfolioReconcile: (portfolioId: number, payload?: { as_of_trade_date?: string | null; trade_date?: string | null; correlation_id?: string | null } | undefined) =>
+    requestJson<any>(
+      `${API}/portfolios/${portfolioId}/reconcile`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User": "local_user" },
+        body: JSON.stringify({ trade_date: payload?.trade_date ?? payload?.as_of_trade_date ?? new Date(Date.now() - 86400000).toISOString().slice(0, 10) }),
+        timeoutMs: 45000,   // 对账可能涉及订单/成交/持仓/现金/证据5张表 join，给更长超时
+      },
+    ).then((raw: any) => {
+      // 后端治理契约使用 differences/status；兼容页面既有 10 列模型。
+      const differences = Array.isArray(raw?.differences) ? raw.differences : [];
+      const items = differences.map((d: any) => ({
+        dimension: d.kind ?? "unknown",
+        expected_value: d.expected ?? null,
+        actual_value: d.actual ?? null,
+        diff_value: typeof d.expected === "number" && typeof d.actual === "number" ? d.actual - d.expected : null,
+        explain_note: d.detail ?? null,
+      }));
+      return {
+        ...raw,
+        as_of_at: raw?.as_of_at ?? null,
+        items,
+        differences_found: raw?.status === "BLOCKED" || items.some((d: any) => d.diff_value !== 0),
+        zero_sum_check_passed: raw?.status === "PASSED" && items.every((d: any) => d.diff_value === 0),
+      } as ReconciliationResponse;
+    }),
+
+  /** 3. POST /portfolios/{pid}/confirm-reconciliation：单人确认 ack + review_note；428/400/409 三状态码 */
+  confirmPortfolioReconciliation: (portfolioId: number, payload: ConfirmReconciliationRequest) =>
+    requestJson<ConfirmReconciliationResponse>(
+      `${API}/portfolios/${portfolioId}/confirm-reconciliation`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User": "local_user" },
+        body: JSON.stringify({
+          trade_date: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
+          acknowledge_all_diffs_cleared: payload.ack,
+          force_skip_re_reconcile: payload.force_skip ?? false,
+          operator_id: payload.operator_id == null ? undefined : String(payload.operator_id),
+        }),
+      },
+    ),
+
+  /** 4. POST /portfolios/{pid}/transition-state：9 状态机 ANY → ADMIN_PAUSED 刹车 / ADMIN → READY 解除 / RECON→READY */
+  transitionPortfolioState: (portfolioId: number, payload: StateTransitionRequest) =>
+    requestJson<StateTransitionResponse>(
+      `${API}/portfolios/${portfolioId}/transition-state`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User": "local_user" },
+        body: JSON.stringify({ to_state: payload.target_state, reason: payload.trigger_reason }),
+      },
+    ).then((raw: any) => ({
+      ...raw,
+      transition_applied: raw?.status === "OK",
+      noop_detected: raw?.status === "NOOP",
+      trigger_reason: payload.trigger_reason,
+    } as StateTransitionResponse)),
+
+  /** 5. GET /portfolios/{pid}/audit-events：组合级审计事件分页过滤（事件类型/严重级别/日期范围/关键词） */
+  listPortfolioAuditEvents: (portfolioId: number, filter: AuditEventFilter & { page?: number; page_size?: number } = {}) => {
+    const params = new URLSearchParams();
+    const { page = 1, page_size = 20, event_type, severity, start_date, end_date, query } = filter;
+    params.set("page", String(page));
+    params.set("page_size", String(page_size));
+    params.set("X-User", "local_user");
+    if (event_type) params.set("action", String(event_type));
+    if (severity) params.set("severity", String(severity));
+    if (start_date) params.set("occurred_from", `${String(start_date)}T00:00:00`);
+    if (end_date) params.set("occurred_to", `${String(end_date)}T23:59:59`);
+    if (query) params.set("attributes_q", String(query));
+    return requestJson<AuditEventPageResponse>(
+      `${API}/portfolios/${portfolioId}/audit-events?${params.toString()}`,
+    );
+  },
+
+  /** 6. POST /portfolios/{pid}/g5-dual-run：启动 G5 双跑连续 10 交易日对账 */
+  launchG5DualRun: (portfolioId: number, payload: G5DualRunLaunchRequest) =>
+    requestJson<G5DualRunLaunchResponse>(
+      `${API}/portfolios/${portfolioId}/g5-dual-run`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        timeoutMs: 60000,
+      },
+    ),
+
+  /** 7. GET /portfolios/{pid}/g5-dual-run/{replayId}：查询 G5 重放结果汇总（含 6×6 混淆矩阵 + eligible_g6 准入布尔） */
+  queryG5DualRunResult: (portfolioId: number, replayId: string) =>
+    requestJson<G5DualRunSummaryResponse>(
+      `${API}/portfolios/${portfolioId}/g5-dual-run/${encodeURIComponent(replayId)}`,
+      { timeoutMs: 60000 },
+    ),
+
+  /** 8. GET /portfolios/{pid}/auto-trade/g7-operational-status：G7 运维状态聚合 */
+  getG7OperationalStatus: (portfolioId: number) =>
+    requestJson<G7OperationalStatus>(
+      `${API}/portfolios/${portfolioId}/auto-trade/g7-operational-status`,
+    ),
+
+  /** G6 单组合灰度控制：启动/回滚均由服务端准入门禁和事务审计保护。 */
+  startG6Rollout: (portfolioId: number, payload: { operator_id?: string; correlation_id?: string }) =>
+    requestJson<G6RolloutResult>(`${API}/portfolios/${portfolioId}/auto-trade/g6-start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operator_id: "ui:g6", ...payload }),
+    }),
+  rollbackG6Rollout: (portfolioId: number, payload: { operator_id?: string; correlation_id?: string; reason?: string }) =>
+    requestJson<G6RolloutResult>(`${API}/portfolios/${portfolioId}/auto-trade/g6-rollback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operator_id: "ui:g6", ...payload }),
+    }),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WP1-1：证据与归因（DecisionRun + DecisionEvidence 真实 API）
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** POST /portfolios/{pid}/evaluate：dry-run 或 persist 决策评估；默认 persist=True 会写入 DecisionRun/DecisionEvidence 表 */
+  evaluatePortfolioDecision: (
+    portfolioId: number,
+    payload: {
+      strategy_snapshot_id: string;
+      trade_date: string;
+      run_type?: DecisionRunType;
+      persist?: boolean;
+      decision_at?: string;
+    },
+  ) =>
+    requestJson<DecisionEvaluateResponse>(`${API}/portfolios/${portfolioId}/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      timeoutMs: 120000,
+    }),
+
+  /** GET /decision-runs/{runId}：获取单个 DecisionRun 元数据 */
+  getDecisionRun: (runId: string) =>
+    requestJson<DecisionRunRead>(`${API}/decision-runs/${encodeURIComponent(runId)}`),
+
+  /** GET /portfolios/{pid}/decision-runs：按组合分页 DecisionRun（trade_date DESC） */
+  listPortfolioDecisionRuns: (
+    portfolioId: number,
+    params: { limit?: number; offset?: number } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (params.limit != null) q.set("limit", String(params.limit));
+    if (params.offset != null) q.set("offset", String(params.offset));
+    return requestJson<{ total: number; limit: number; offset: number; items: DecisionRunRead[] }>(
+      `${API}/portfolios/${portfolioId}/decision-runs${q.toString() ? `?${q.toString()}` : ""}`,
+    );
+  },
+
+  /** GET /decision-runs/{runId}/evidence：DecisionRun 证据分页；action 过滤（REJECTED,DATA_BLOCKED=拒绝记录） */
+  listDecisionRunEvidence: (
+    runId: string,
+    params: { action?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (params.action) q.set("action", params.action);
+    if (params.limit != null) q.set("limit", String(params.limit));
+    if (params.offset != null) q.set("offset", String(params.offset));
+    return requestJson<{ total: number; limit: number; offset: number; items: DecisionEvidenceRead[] }>(
+      `${API}/decision-runs/${encodeURIComponent(runId)}/evidence${q.toString() ? `?${q.toString()}` : ""}`,
+    );
+  },
+
+  /** GET /decision-runs/{runId}/evidence/{symbolId}: a precise row explanation. */
+  getDecisionRunEvidence: (runId: string, symbolId: number) =>
+    requestJson<DecisionEvidenceRead>(
+      `${API}/decision-runs/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(String(symbolId))}`,
+    ),
+
+  /** GET /decision-runs/{runId}/order-plans：独立订单计划账本分页查询 */
+  listDecisionRunOrderPlans: (
+    runId: string,
+    params: { action?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (params.action) q.set("action", params.action);
+    if (params.limit != null) q.set("limit", String(params.limit));
+    if (params.offset != null) q.set("offset", String(params.offset));
+    return requestJson<{ total: number; limit: number; offset: number; items: DecisionOrderPlanRead[] }>(
+      `${API}/decision-runs/${encodeURIComponent(runId)}/order-plans${q.toString() ? `?${q.toString()}` : ""}`,
+    );
+  },
+
+  /** GET /portfolios/{pid}/today-preview：今日决策只读视图（不写行，不复制 Evidence） */
+  getTodayDecisionPreview: (portfolioId: number, tradeDate: string) => {
+    const q = new URLSearchParams({ trade_date: tradeDate });
+    return requestJson<any>(`${API}/portfolios/${portfolioId}/today-preview?${q.toString()}`);
+  },
+
+  // G1-WP0-2g：FactorUsage 绑定与预检 API（供 WP1-1 / 策略规则页共用）
+  getCurrentFactorUsage: (portfolioId: number) =>
+    requestJson<{
+      current: any | null;
+      history: any[];
+      latest_snapshot_id: string | null;
+    }>(`${API}/portfolios/${portfolioId}/factor-usage`),
+
+  getFactorUsageOptions: (portfolioId: number) =>
+    requestJson<{
+      global_active_model_run_id: string | null;
+      global_weight_mode: string;
+      runtime_version: number;
+      factor_models: Array<{ factor_model_run_id: string; factor_set_id: string | null; trained_at?: string | null; is_global_active?: boolean }>;
+      factor_sets: Array<{ factor_set_id: string; name: string; status: string; member_count: number; frozen_at?: string | null }>;
+      portfolio_rules: Array<{ rule_id: number; rule_name: string; rule_version: number; has_stage_limits_complete?: boolean }>;
+      defaults: Record<string, any>;
+      blocking_reasons: string[];
+    }>(`${API}/portfolios/${portfolioId}/factor-usage-options`),
+
+  saveAndApplyFactorUsage: (portfolioId: number, payload: {
+    factor_model_run_id: string;
+    factor_set_id?: string | null;
+    rule_id?: number | null;
+    rule_version?: number | null;
+    run_mode?: "research" | "production_pit" | "production_sim";
+    pit_mode?: "best_effort" | "strict_pit_safe";
+    score_sla_coverage_pct?: number;
+    score_sla_max_age_days?: number;
+    rollback_target_model_run_id?: string | null;
+    key_members_json?: number[] | null;
+  }) =>
+    requestJson<{
+      factor_usage: any;
+      strategy_snapshot_id: string;
+      snapshot_hash: string;
+      idempotency_key: string;
+      effective_from: string;
+      warnings: Array<{ severity: "info" | "warning" | "blocking"; code: string; message: string; detail?: Record<string, any> | null }>;
+    }>(`${API}/portfolios/${portfolioId}/factor-usage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      timeoutMs: 60000,
+    }),
+
+  strategyPreflight: (portfolioId: number, payload: {
+    factor_model_run_id: string;
+    factor_set_id?: string | null;
+    rule_id?: number | null;
+    rule_version?: number | null;
+    run_mode?: "research" | "production_pit" | "production_sim";
+    pit_mode?: "best_effort" | "strict_pit_safe";
+    score_sla_coverage_pct?: number;
+    score_sla_max_age_days?: number;
+  }) =>
+    requestJson<{
+      ok: boolean;
+      preflight_snapshot_hash: string;
+      gate_policy_version: string | null;
+      gate_result_json?: Record<string, any> | null;
+      warnings: Array<{ severity: "info" | "warning" | "blocking"; code: string; message: string; detail?: Record<string, any> | null }>;
+      snapshot_preview: Record<string, any>;
+      decision_clock: Record<string, any>;
+      score_coverage_pct: number | null;
+      score_max_age_days: number | null;
+      member_count: number;
+      universe_count: number;
+      idempotency_key: string;
+    }>(`${API}/portfolios/${portfolioId}/strategy-preflight`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      timeoutMs: 60000,
+    }),
 };
+
+// ----------------------------------------------------------------------------
+// WP1-1：证据与归因（DecisionRun + DecisionEvidence 类型，与后端 schemas/decision_engine.py 严格对齐）
+// ----------------------------------------------------------------------------
+
+/** 决策运行类型（research_preflight / backtest / auto_simulation） */
+export type DecisionRunType = "research_preflight" | "backtest" | "auto_simulation";
+
+/** 决策动作类型（6 值枚举严格对齐后端 CK 约束） */
+export type DecisionAction = "BUY" | "SELL" | "HOLD" | "NO_ACTION" | "REJECTED" | "DATA_BLOCKED";
+
+/** PIT 安全标志 */
+export type PitSafeFlag = "PIT_SAFE" | "NOT_PIT_SAFE" | "UNKNOWN";
+
+/** 撮合模式 */
+export type MatchMode = "NEXT_OPEN" | "T_CLOSE";
+
+/** 阻断状态（READY / DATA_INCOMPLETE_PAUSED / RECONCILIATION_BLOCKED / MODEL_INACTIVE / SCORE_STALE） */
+export type DecisionBlockingStatus =
+  | "READY"
+  | "DATA_INCOMPLETE_PAUSED"
+  | "RECONCILIATION_BLOCKED"
+  | "MODEL_INACTIVE"
+  | "SCORE_STALE";
+
+/** DecisionRun 元数据（与 DecisionRunRead schema 对齐） */
+export interface DecisionRunRead {
+  id: string;
+  strategy_snapshot_id: string;
+  portfolio_id: number;
+  run_type: DecisionRunType;
+  trade_date: string;
+  decision_at: string;
+  data_cutoff_at: string;
+  execution_at: string;
+  run_mode: "research" | "production_pit" | "production_sim";
+  pit_mode: "best_effort" | "strict_pit_safe";
+
+  universe_count: number;
+  member_count: number;
+  score_count_expected: number | null;
+  score_count_actual: number | null;
+  score_coverage_pct: number | null;
+  score_max_age_days: number | null;
+
+  blocking_status: DecisionBlockingStatus;
+  blocking_reasons_json: any;
+  versions_json: any;
+
+  idempotency_key: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  is_result_production_eligible: boolean;
+  created_at: string;
+}
+
+/** DecisionEvidence 原子决策证据（与 DecisionEvidenceRead schema 对齐；所有 JSON 字段在 JSON_TEXT_FIELDS 中被 Text→dict 自动解包） */
+export interface DecisionEvidenceRead {
+  id: string;
+  decision_run_id: string;
+  strategy_snapshot_id: string;
+  portfolio_id: number;
+  symbol_id: number;
+  trade_date: string;
+  decision_at: string;
+  data_cutoff_at: string;
+  execution_at: string;
+
+  action: DecisionAction;
+  action_subtype: string | null;
+
+  target_position_pct: number | null;
+  min_lot_size: number;
+  target_quantity: number | null;
+
+  intended_price: number | null;
+  executed_price: number | null;
+  slippage_bps: number | null;
+  rejection_reason: string | null;
+  rejection_detail: string | null;
+
+  score_id: number | null;
+  score_value: number | null;
+  score_rank: number | null;
+  score_published_at: string | null;
+  pit_safe_flag: PitSafeFlag;
+
+  // 证据归因核心：约束/版本/原因码/因子贡献
+  constraints_json: any;
+  versions_json: any;
+  reason_codes_json: any;
+  factor_contributions_json: any;
+
+  legacy_fallback_flag: boolean;
+  stop_loss_verified_price_source: string | null;
+  stop_loss_triggered: boolean;
+  match_mode: MatchMode;
+
+  content_hash: string;
+}
+
+/** DecisionEvaluateRequest 响应 */
+export interface DecisionEvaluateResponse {
+  decision_run_id: string;
+  blocking_status: DecisionBlockingStatus | string;
+  blocking_reasons: Array<Record<string, any>>;
+  clock: Record<string, string>;
+  score_coverage_pct: number | null;
+  score_max_age_days: number | null;
+  evidence_count: number;
+  persisted: boolean;
+  dry_run: boolean;
+  evidence_preview: DecisionEvidenceRead[];
+  warnings: Array<{
+    severity: "info" | "warning" | "blocking";
+    code: string;
+    message: string;
+    detail: Record<string, any> | null;
+  }>;
+}
 
 // ----------------------------------------------------------------------------
 // P2-E: Akshare API management types
@@ -2069,6 +2687,10 @@ export interface FactorSet {
   updated_at: string | null;
   n_members: number;
   members: FactorSetMember[];
+  /** 版本号（后端 FactorSet.version，冻结时自增），用于训练溯源 */
+  version?: number;
+  /** 资产类型（STOCK / ETF / US_STOCK / HK_STOCK），与后端对齐 */
+  asset_type?: string | null;
 }
 
 export interface FactorPipelineCreate {
@@ -2080,6 +2702,7 @@ export interface FactorPipelineCreate {
   materialize_scores?: boolean;
   window_days?: number;
   validation_days?: number;
+  factor_set_id?: string | null;
 }
 
 export interface FactorPipelineTask {

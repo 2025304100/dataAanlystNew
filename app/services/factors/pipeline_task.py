@@ -10,7 +10,7 @@ from pathlib import Path
 from statistics import median
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
@@ -34,10 +34,15 @@ from app.services.factors.config import (
 )
 from app.services.factors.data_sync import mirror_factor_inputs
 from app.services.factors.factor_engine import calculate_stock_factors
+from app.services.factor_set_service import factor_set_readiness
 from app.services.factors.ridge_model import train_rolling_ridge
 from app.services.factors.runtime import get_factor_runtime_snapshot
 from app.services.factors.scoring_bridge import materialize_factor_scores
 from app.services.factors.store import FactorWarehouse
+from app.models.score import Score
+from app.models.decision_engine import DecisionEvidence
+from app.models.journal_entry import JournalEntry
+from app.models.trade_setup import TradeSetup
 from app.services.factors.target_engine import calculate_targets
 
 
@@ -52,6 +57,80 @@ DEFAULT_ETA_SECONDS = {
     (True, True): 3600,
 }
 TASK_HEARTBEAT_SECONDS = 15.0
+
+
+def _prune_unreferenced_scores(db, *, keep_batches: int = 30) -> dict[str, object]:
+    """Bound SQLite/MySQL score growth while preserving all live references."""
+    if keep_batches < 1:
+        raise ValueError("keep_batches must be at least 1")
+    rows = db.execute(
+        select(Score.calc_batch_id, func.max(Score.created_at))
+        .where(Score.calc_batch_id.is_not(None))
+        .group_by(Score.calc_batch_id)
+        .order_by(func.max(Score.created_at).desc(), Score.calc_batch_id.desc())
+    ).all()
+    retained = {str(row[0]) for row in rows[:keep_batches]}
+    if not retained:
+        return {"score_rows_deleted": 0, "protected_factor_batch_ids": []}
+    referenced: set[int] = set()
+    for model in (DecisionEvidence, JournalEntry, TradeSetup):
+        try:
+            referenced.update(
+                int(value[0])
+                for value in db.execute(
+                    select(model.score_id).where(model.score_id.is_not(None))
+                ).all()
+            )
+        except Exception:
+            # Legacy databases may not yet have every optional table/column.
+            continue
+    candidates = db.execute(
+        select(Score.id).where(
+            Score.calc_batch_id.not_in(retained),
+            ~Score.id.in_(referenced) if referenced else True,
+        )
+    ).scalars().all()
+    if candidates:
+        db.execute(delete(Score).where(Score.id.in_(candidates)))
+    remaining_details = db.execute(select(Score.factor_scores_json)).all()
+    protected_factor_batches: set[str] = set()
+    for (raw_detail,) in remaining_details:
+        if not raw_detail:
+            continue
+        try:
+            payload = json.loads(raw_detail)
+        except (TypeError, ValueError):
+            continue
+        dynamic = payload.get("_dynamic_model") or payload
+        batch_id = dynamic.get("factor_calc_batch_id") if isinstance(dynamic, dict) else None
+        if batch_id:
+            protected_factor_batches.add(str(batch_id))
+    return {
+        "score_rows_deleted": len(candidates),
+        "protected_factor_batch_ids": sorted(protected_factor_batches),
+    }
+
+
+class FactorPipelineBindingError(ValueError):
+    """A public training request lacks a release-qualified FactorSet."""
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        readiness: dict | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.readiness = readiness or {}
+
+    def to_dict(self) -> dict:
+        return {
+            'error_code': self.code,
+            'message': str(self),
+            'factor_set_readiness': self.readiness,
+        }
 
 
 def resolve_pipeline_dates(
@@ -266,12 +345,47 @@ def get_pipeline_eta(
     }
 
 
+def _require_ready_training_factor_set(payload: FactorPipelineCreate) -> None:
+    """Fail before queueing when a public training job lacks immutable lineage."""
+    if not payload.train_model:
+        return
+
+    factor_set_id = (payload.factor_set_id or '').strip()
+    if not factor_set_id:
+        raise FactorPipelineBindingError(
+            'FACTOR_SET_REQUIRED',
+            'train_model=true requires a frozen, readiness-qualified factor_set_id',
+        )
+
+    SessionLocal = get_session_local()
+    db = SessionLocal()
+    try:
+        readiness = factor_set_readiness(
+            db,
+            factor_set_id,
+            require_frozen=True,
+        )
+    finally:
+        db.close()
+
+    if not readiness['ready']:
+        raise FactorPipelineBindingError(
+            f"FACTOR_SET_{readiness['code']}",
+            readiness['message'],
+            readiness=readiness,
+        )
+
+    # Persist the canonical non-whitespace ID used for the readiness check.
+    payload.factor_set_id = factor_set_id
+
+
 def create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
     factor_config = get_current_factor_system_config()
     if not factor_config.feature_enabled:
         raise ValueError(
             'Factor pipeline is disabled; enable it in Settings > Factor Models'
         )
+    _require_ready_training_factor_set(payload)
     existing = list_async_tasks(task_type=TASK_TYPE, limit=1)
     if existing and existing[0].status in {'queued', 'running'}:
         return existing[0].model_dump()
@@ -560,6 +674,27 @@ def _run_factor_pipeline(task_id: str) -> None:
                 )
                 db.commit()
                 results['scoring_bridge'] = asdict(bridge)
+        # Retain a bounded calculation history so repeated score refreshes do
+        # not grow the analytical warehouse without limit. Audit metadata and
+        # SQLite Score rows remain intact for decision/evidence traceability.
+        try:
+            score_retention = _prune_unreferenced_scores(db)
+            db.commit()
+            results['batch_retention'] = warehouse.prune_calculation_batches(
+                protected_batch_ids=score_retention.get('protected_factor_batch_ids', []),
+            )
+            results['batch_retention']['score_rows_deleted'] = score_retention['score_rows_deleted']
+        except Exception as cleanup_exc:
+            logger.warning(
+                'Factor batch retention cleanup skipped for %s: %s',
+                task_id,
+                cleanup_exc,
+                exc_info=True,
+            )
+            results['batch_retention'] = {
+                'status': 'SKIPPED',
+                'reason': str(cleanup_exc),
+            }
         results['runtime'] = runtime.to_dict()
         results['trained_model_auto_activated'] = False
 

@@ -25,6 +25,43 @@ def calculate_scores(payload: ScoreCalculationRequest, db: Session = Depends(get
     scores: list[Score] = []
     failed: list[dict] = []
 
+    # WP0-7：对请求传入的 weight_mode / factor_set_id / factor_model_run_id 进行基本合法性校验
+    #   - weight_mode 仅允许 manual / ridge（与 ScoreRead.weight_mode 对齐）
+    #   - 若 weight_mode == "ridge"，要求至少 factor_model_run_id 或 factor_set_id 其中之一非空
+    valid_weight_modes = {"manual", "ridge"}
+    request_weight_mode = (payload.weight_mode or "manual").strip().lower()
+    if request_weight_mode not in valid_weight_modes:
+        raise HTTPException(
+            status_code=422,
+            detail=f"weight_mode 仅允许 manual/ridge，实际 '{payload.weight_mode}'",
+        )
+    if request_weight_mode == "ridge":
+        if not payload.factor_model_run_id or not payload.factor_set_id:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "weight_mode=ridge 时 factor_model_run_id 和 factor_set_id 均为必填，"
+                    "用于精确的模型/因子版本溯源"
+                ),
+            )
+        from app.services.factor_model_contract import assess_factor_model_readiness
+
+        readiness = assess_factor_model_readiness(
+            db,
+            model_run_id=payload.factor_model_run_id,
+            expected_factor_set_id=payload.factor_set_id,
+            require_runtime_active=True,
+        )
+        if not readiness.ready:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": readiness.code,
+                    "message": readiness.message,
+                    "detail": readiness.to_dict(),
+                },
+            )
+
     # 风控加固：批量预加载 Symbol 避免 N+1（原循环内 db.get 改为 dict 查找）
     symbol_rows = db.execute(
         select(Symbol).where(Symbol.id.in_(payload.symbol_ids))
@@ -38,6 +75,15 @@ def calculate_scores(payload: ScoreCalculationRequest, db: Session = Depends(get
             continue
         try:
             score = calculate_symbol_score(db, symbol, payload.trade_date)
+            # WP0-7：写入 Score 溯源字段（覆盖 calculate_symbol_score 的默认值，
+            #  保证 Score → FactorSet → FactorModelRun 的 factor_set_id 溯源链完整）
+            if request_weight_mode:
+                score.weight_mode = request_weight_mode
+            if payload.factor_set_id:
+                score.factor_set_id = payload.factor_set_id
+            if payload.factor_model_run_id:
+                score.factor_model_run_id = payload.factor_model_run_id
+            db.add(score)
             db.commit()  # 立即提交，保护已成功 score 不被后续 rollback
             db.refresh(score)
             scores.append(score)

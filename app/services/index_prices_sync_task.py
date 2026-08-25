@@ -74,6 +74,12 @@ def create_index_prices_sync_task(
     - end_date: 可选截止日期（默认今天）
 
     说明：不做并发去重，允许用户连续发起不同范围的同步（彼此独立入库，Upsert 幂等）。
+
+    【性能关键点】use_control_plane=True：创建任务走 NullPool 控制平面引擎，
+    不参与主 QueuePool 30 连接池排队（主池通常被 universe_init 8 worker
+    长时间持连接扫 K 线）。这样提交 HTTP 接口即使在最忙的数据同步时段也能
+    <50ms 返回 task_id，前端不会触发 axios 90s 超时 → 用户截图的
+    『提交同步任务失败: 请求超时』不会再出现。
     """
     targets = _default_symbols(symbols)
     end = end_date or date.today()
@@ -86,14 +92,18 @@ def create_index_prices_sync_task(
         "history_days": history_days,
     }
 
-    task_read = create_async_task(TASK_TYPE, payload)
+    task_read = create_async_task(TASK_TYPE, payload, use_control_plane=True)
     _start_worker(task_read.id, _run_index_prices_sync)
     return task_read.model_dump()
 
 
 def get_index_prices_sync_task(task_id: str) -> dict | None:
-    """查询指数同步任务状态。返回 dict，与 create_index_prices_sync_task 格式一致。"""
-    task_read = get_async_task(task_id)
+    """查询指数同步任务状态（心跳轮询）。返回 dict。
+
+    【性能关键点】use_control_plane=True：心跳每 2s 一次，SELECT BY PK 用
+    NullPool 新连接直达 DB，不跟主池重任务抢连接，保证 <10ms 响应。
+    """
+    task_read = get_async_task(task_id, use_control_plane=True)
     if task_read is None:
         return None
     return task_read.model_dump()

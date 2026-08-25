@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from hashlib import sha256
 
 import pytest
 
@@ -739,16 +740,30 @@ class TestDataMigrationAudit:
 
         baseline_events = []
         for i in range(95):
+            # 对齐 models.alert.AlertEvent 新契约：dedupe_key / window_start_at NOT NULL，
+            # dedupe_key 按规范为 SHA256(portfolio_id:alert_code:severity:window_start)
+            severity = "warn" if i % 3 != 0 else "error"
+            severity_level = "L3" if severity == "warn" else "L2"
+            created_at = _utcnow_naive() - timedelta(hours=i)
+            # 向下对齐 30 分钟窗口起点
+            window_start_at = created_at.replace(minute=(created_at.minute // 30) * 30, second=0, microsecond=0)
+            raw_key = f"None:score_drop:{severity_level}:{window_start_at.isoformat()}"
+            dedupe_key = sha256(raw_key.encode("utf-8")).hexdigest()
             ev = AlertEvent(
                 rule_id=rule.id,
                 alert_type="score_drop",
-                severity="warn" if i % 3 != 0 else "error",
+                severity=severity,
+                severity_level=severity_level,
                 title=f"告警-{i:03d}",
                 message=f"标的 {i} 触发分数下降告警",
                 symbol_id=i + 1,
                 data_json=f'{{"score":{80 - i % 50}}}',
                 acknowledged=1 if i % 5 == 0 else 0,
-                created_at=_utcnow_naive() - timedelta(hours=i),
+                dedupe_key=dedupe_key,
+                incident_no=1,
+                status="ACTIVE",
+                window_start_at=window_start_at,
+                created_at=created_at,
             )
             db_session.add(ev)
             baseline_events.append(ev)

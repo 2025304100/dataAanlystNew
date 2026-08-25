@@ -172,6 +172,8 @@ def place_sim_order(
     enforce_rules: bool = True,
     apply_fees: bool = True,
     cost_config: dict | None = None,
+    fee_override: float | None = None,
+    execution_price_is_final: bool = False,
 ) -> tuple[SimOrder, SimTrade]:
     """下模拟订单。
 
@@ -193,6 +195,9 @@ def place_sim_order(
         enforce_rules: 是否强制市场规则（T+1/涨跌停），默认 True
         apply_fees: 是否计算真实手续费/滑点，默认 True
         cost_config: 自定义成本配置，None 时用 DEFAULT_COST_CONFIG
+        fee_override: 统一撮合器已计算的费用；传入后跳过本地费用重算。
+        execution_price_is_final: ``price`` 已由统一撮合器确定；跳过本地
+            tick 取整和滑点，保留跨入口的精确成交价。
 
     Returns:
         (SimOrder, SimTrade)
@@ -221,12 +226,14 @@ def place_sim_order(
         )
 
     latest_price = latest_price_for_symbol(db, symbol.id)
-    base_price = _round_money(price if price and price > 0 else (latest_price or 0.0))
+    raw_price = price if price and price > 0 else (latest_price or 0.0)
+    base_price = float(raw_price) if execution_price_is_final else _round_money(raw_price)
     if base_price <= 0:
         raise HTTPException(status_code=400, detail="No usable price for simulated fill")
 
     # 圆整到最小变动价位（A 股 0.01，ETF 0.001）
-    base_price = round_to_tick(base_price, symbol)
+    if not execution_price_is_final:
+        base_price = round_to_tick(base_price, symbol)
 
     # 应用滑点：买入成交价上浮，卖出成交价下浮（模拟真实撮合摩擦）
     if apply_fees:
@@ -235,7 +242,9 @@ def place_sim_order(
         fill_price = base_price
 
     # 计算真实手续费（佣金 + 印花税 + 滑点成本）
-    if apply_fees:
+    if fee_override is not None:
+        fee = _round_money(float(fee_override))
+    elif apply_fees:
         fee = _round_money(compute_cost(fill_price, normalized_quantity, side, cost_config))
     else:
         fee = 0.0
@@ -366,6 +375,125 @@ def place_sim_order(
                 exc_info=True,
             )
     return order, trade
+
+
+def apply_sim_order_fill(
+    db: Session,
+    portfolio: Portfolio,
+    symbol: Symbol,
+    order: SimOrder,
+    side: str,
+    quantity: float,
+    price: float,
+    *,
+    fee_override: float = 0.0,
+    note: str | None = None,
+) -> SimTrade:
+    """Apply a later fill to an existing partial simulated order.
+
+    ``client_order_key`` identifies the immutable order plan, so a retry must
+    accumulate on the original ``SimOrder`` instead of creating a second
+    order with a duplicate key.  Each fill remains an individual ``SimTrade``
+    for cash/position reconciliation.
+    """
+    if side not in {"buy", "sell"}:
+        raise HTTPException(status_code=400, detail="Order side must be buy or sell")
+    if order.id is None or order.portfolio_id != portfolio.id or order.symbol_id != symbol.id:
+        raise ValueError("partial order does not belong to portfolio/symbol")
+    if order.side != side:
+        raise ValueError("partial order side mismatch")
+    if order.status not in {"partial", "pending", "pending_retry"}:
+        raise ValueError(f"order is not retryable: {order.status}")
+
+    ensure_sim_account_seed(db, portfolio)
+    normalized_quantity = normalize_order_quantity(symbol, quantity)
+    if normalized_quantity <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Quantity must be at least one lot ({lot_size_for_symbol(symbol)}) for this market",
+        )
+    fill_price = float(price)
+    if fill_price <= 0:
+        raise HTTPException(status_code=400, detail="No usable price for simulated fill")
+    fee = _round_money(float(fee_override))
+    filled_amount = _round_money(normalized_quantity * fill_price)
+    if side == "buy" and cash_balance(db, portfolio.id) < filled_amount + fee:
+        raise HTTPException(status_code=400, detail="Not enough simulated cash")
+
+    _, realized_pnl = _upsert_position(
+        db=db,
+        portfolio=portfolio,
+        symbol=symbol,
+        side=side,
+        quantity=normalized_quantity,
+        fill_price=fill_price,
+    )
+    cash_delta = -(filled_amount + fee) if side == "buy" else (filled_amount - fee)
+    append_cash_ledger(
+        db=db,
+        portfolio_id=portfolio.id,
+        entry_type=side,
+        amount=cash_delta,
+        ref_type="sim_order",
+        ref_id=order.id,
+        note=note or f"Simulated retry {side} {symbol.symbol}",
+    )
+
+    previous_quantity = float(order.filled_quantity or 0.0)
+    previous_price = float(order.filled_price or 0.0)
+    total_quantity = previous_quantity + float(normalized_quantity)
+    order.filled_quantity = total_quantity
+    order.filled_amount = _round_money(float(order.filled_amount or 0.0) + filled_amount)
+    order.fee = _round_money(float(order.fee or 0.0) + fee)
+    order.filled_price = (
+        (previous_price * previous_quantity + fill_price * normalized_quantity) / total_quantity
+        if total_quantity > 0 else 0.0
+    )
+    requested_quantity = float(order.quantity or 0.0)
+    if requested_quantity > 0 and total_quantity >= requested_quantity - 1e-9:
+        order.filled_quantity = requested_quantity
+        order.status = "filled"
+        order.rejection_code = None
+        order.rejection_detail = None
+    else:
+        order.status = "partial"
+    order.filled_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    if note:
+        order.note = note
+
+    trade = SimTrade(
+        portfolio_id=portfolio.id,
+        symbol_id=symbol.id,
+        order_id=order.id,
+        side=side,
+        quantity=normalized_quantity,
+        price=fill_price,
+        amount=filled_amount,
+        fee=fee,
+        realized_pnl=realized_pnl,
+        note=note,
+    )
+    db.add(trade)
+    db.flush()
+    try:
+        from app.services.notifications.event_emitter import emit_trade_executed
+
+        emit_trade_executed(
+            db,
+            trade_id=trade.id,
+            portfolio_id=portfolio.id,
+            symbol_id=symbol.id,
+            symbol=symbol.symbol,
+            action=side,
+            quantity=float(normalized_quantity),
+            price=float(fill_price),
+        )
+    except Exception:
+        logger.warning(
+            "emit_trade_executed failed for retry portfolio=%s symbol=%s side=%s",
+            portfolio.id, symbol.symbol, side, exc_info=True,
+        )
+    return trade
 
 
 def build_sim_account_summary(db: Session, portfolio: Portfolio) -> dict:

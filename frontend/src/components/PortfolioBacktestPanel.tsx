@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Button,
-  Checkbox,
   Collapse,
   DatePicker,
   Input,
@@ -12,7 +11,6 @@ import {
   Tag,
   Tooltip,
 } from "antd";
-import { QuestionCircleOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
@@ -53,7 +51,6 @@ export default function PortfolioBacktestPanel() {
     dayjs(),
   ]);
   const [runName, setRunName] = useState("");
-  const [onlyAuto, setOnlyAuto] = useState(false);
   const [running, setRunning] = useState(false);
   const [summary, setSummary] = useState<PortfolioBacktestResult | null>(null);
   const [detail, setDetail] = useState<BacktestRun | null>(null);
@@ -137,7 +134,6 @@ export default function PortfolioBacktestPanel() {
         start_date: range[0].format("YYYY-MM-DD"),
         end_date: range[1].format("YYYY-MM-DD"),
         run_name: runName.trim() || undefined,
-        only_auto: onlyAuto,
       });
       setSummary(data as PortfolioBacktestResult);
       ctx.showToast("success", t("portBtSuccess"));
@@ -155,7 +151,7 @@ export default function PortfolioBacktestPanel() {
     } finally {
       setRunning(false);
     }
-  }, [portfolioId, canRun, range, runName, onlyAuto, ctx]);
+  }, [portfolioId, canRun, range, runName, ctx]);
 
   const runCompare = useCallback(async () => {
     if (!portfolioId || !canCompare) return;
@@ -329,20 +325,8 @@ export default function PortfolioBacktestPanel() {
           </label>
         </div>
 
-        {/* WP7.4 分区 2：成员资格校验 */}
+        {/* 成员资格由执行快照统一决定，前端不再提供 only_auto 覆盖开关。 */}
         <div style={{ marginTop: 12 }}>
-          <Space wrap align="center">
-            <Tooltip title={t("portfolioBacktest.onlyAutoHint")}>
-              <Checkbox
-                checked={onlyAuto}
-                onChange={(e) => setOnlyAuto(e.target.checked)}
-                data-testid="only-auto-checkbox"
-              >
-                {t("portfolioBacktest.onlyAuto")}
-                <QuestionCircleOutlined style={{ color: "#999", marginLeft: 4 }} />
-              </Checkbox>
-            </Tooltip>
-          </Space>
           {hasManualConfirmMembers && (
             <Alert
               type="warning"

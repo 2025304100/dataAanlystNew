@@ -5,11 +5,13 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 import threading
-from datetime import datetime, timedelta, timezone
+from contextlib import nullcontext
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy import desc, select
@@ -27,6 +29,10 @@ STALE_RUNNING_DEADLINE = timedelta(minutes=30)
 
 # 8 位 hex correlation_id 正则（用于验证已有 corr_id 格式）
 _CORR_ID_RE = re.compile(r"^[0-9a-fA-F]{8}$")
+
+# 同一进程内串行化带幂等键的创建，避免 SQLite/非唯一索引场景下的
+# "先查询后插入"竞争；跨进程竞争仍由数据库唯一约束 + IntegrityError 回读兜底。
+_IDEMPOTENT_CREATE_LOCK = threading.RLock()
 
 
 def _gen_correlation_id() -> str:
@@ -253,6 +259,11 @@ def _task_to_dict(task: AsyncTaskRecord) -> dict:
         "payload_json": task.payload_json,
         # WP5: fingerprint 留空，由调用方在特定 task_type 下填充
         "fingerprint": None,
+        # FR-P1-2 可靠性：cid/幂等/终态锁/取消超时
+        "correlation_id": task.correlation_id,
+        "idempotency_key": task.idempotency_key,
+        "is_terminal_locked": bool(getattr(task, "is_terminal_locked", 0) or False),
+        "cancelled_timeout_at": _as_utc(getattr(task, "cancelled_timeout_at", None)),
     }
 
 
@@ -261,13 +272,19 @@ def _task_to_read(task: AsyncTaskRecord) -> AsyncTaskRead:
 
 
 def _expire_stale_tasks(db: Session) -> None:
-    """将超时未更新的任务标记为 failed。"""
+    """将超时未更新的任务标记为 failed。
+
+    FR-P1-2 强化：
+    - 仅处理 is_terminal_locked!= 1 的任务（终态已锁定不得再改 status）。
+    - 写入 status 之后立即把 is_terminal_locked 置 1。
+    """
     cutoff = _now() - STALE_RUNNING_DEADLINE
     rows = (
         db.execute(
             select(AsyncTaskRecord).where(
                 AsyncTaskRecord.status.in_(("queued", "running")),
                 AsyncTaskRecord.updated_at < cutoff,
+                (AsyncTaskRecord.is_terminal_locked == 0) | (AsyncTaskRecord.is_terminal_locked.is_(None)),
             )
         )
         .scalars()
@@ -278,6 +295,7 @@ def _expire_stale_tasks(db: Session) -> None:
         task.stage = "failed"
         task.message = "Task expired (no update for 30 minutes)"
         task.finished_at = _now()
+        task.is_terminal_locked = 1
     if rows:
         db.commit()
 
@@ -297,11 +315,15 @@ def _run_patrol(db: Session) -> None:
 
 
 def interrupt_orphaned_async_tasks(db: Session) -> list[str]:
-    """Fail queued/running in-process tasks left behind by a backend restart."""
+    """Fail queued/running in-process tasks left behind by a backend restart.
+
+    FR-P1-2 强化：仅处理 is_terminal_locked!= 1 的任务；写入终态立即锁定。
+    """
     rows = (
         db.execute(
             select(AsyncTaskRecord).where(
-                AsyncTaskRecord.status.in_(("queued", "running"))
+                AsyncTaskRecord.status.in_(("queued", "running")),
+                (AsyncTaskRecord.is_terminal_locked == 0) | (AsyncTaskRecord.is_terminal_locked.is_(None)),
             )
         )
         .scalars()
@@ -316,6 +338,7 @@ def interrupt_orphaned_async_tasks(db: Session) -> list[str]:
                 "code": "BACKEND_RESTART_INTERRUPTED",
                 "stage": previous_stage,
                 "error": "Backend restarted before the in-process worker completed",
+                "correlation_id": task.correlation_id or _gen_correlation_id(),
             },
         )
         task.status = "failed"
@@ -323,13 +346,21 @@ def interrupt_orphaned_async_tasks(db: Session) -> list[str]:
         task.message = "Backend restarted before task completed"
         task.finished_at = interrupted_at
         task.updated_at = interrupted_at
+        task.is_terminal_locked = 1
     if rows:
         db.commit()
     return [task.id for task in rows]
 
 
 def _set_task(db: Session, task_id: str, **updates) -> AsyncTaskRecord:
-    """原子更新任务字段并提交。如果任务已处于终态则不再覆盖 status/stage。"""
+    """原子更新任务字段并提交。
+
+    FR-P1-2 终态保护（对齐 project_memory #8）：
+    - 若 is_terminal_locked == 1（SQL/ORM 层判定），禁止修改 status/stage/is_terminal_locked。
+      （避免 worker 线程/巡检/恢复覆盖终态，导致订单/持仓终态不一致。）
+    - 若本次更新把 status 置为 done/failed/cancelled 终态，则同步设置
+      is_terminal_locked=1 +（若无 correlation_id）生成 correlation_id 归档。
+    """
     try:
         from sqlalchemy.exc import PendingRollbackError
         db.connection()
@@ -343,14 +374,30 @@ def _set_task(db: Session, task_id: str, **updates) -> AsyncTaskRecord:
     task = db.get(AsyncTaskRecord, task_id)
     if task is None:
         raise ValueError(f"Async task not found: {task_id}")
-    # 终态保护：已完成的任务不允许被覆盖回 running 等状态
-    if task.status in ("done", "failed", "cancelled"):
-        # 只允许更新非状态字段（如 updated_at），不覆盖 status/stage
-        updates = {k: v for k, v in updates.items() if k not in ("status", "stage")}
+
+    # 终态硬锁：任何线程/巡检/恢复都不得改动 status/stage/终态锁
+    if int(getattr(task, "is_terminal_locked", 0) or 0) == 1:
+        updates = {
+            k: v for k, v in updates.items()
+            if k not in ("status", "stage", "is_terminal_locked")
+        }
         if not updates:
             return task
+    else:
+        # 非锁定：如果原有 status 已是终态（虽 is_terminal_locked 未锁），仍按旧逻辑保护 status/stage
+        if task.status in ("done", "failed", "cancelled"):
+            updates = {k: v for k, v in updates.items() if k not in ("status", "stage")}
+
     for key, value in updates.items():
         setattr(task, key, value)
+
+    # 自动锁终态：进入 done/failed/cancelled 即 is_terminal_locked=1，并归档 correlation_id
+    if task.status in ("done", "failed", "cancelled"):
+        if int(getattr(task, "is_terminal_locked", 0) or 0) != 1:
+            task.is_terminal_locked = 1
+        if not task.correlation_id:
+            task.correlation_id = _gen_correlation_id()
+
     task.updated_at = _now()
     db.commit()
     db.refresh(task)
@@ -365,7 +412,13 @@ def _append_error(task: AsyncTaskRecord, error: dict) -> None:
 
 
 def _start_worker(task_id: str, worker_func) -> None:
-    """启动守护线程执行 worker 函数。"""
+    """启动守护线程执行 worker 函数。
+
+    FR-P1-2 强化：Worker crash 时：
+    - 若 is_terminal_locked==1 则不覆盖（_set_task 内部已保证，这里前置加速退出）。
+    - 把 correlation_id 写回 task.correlation_id 以便跨表查询。
+    - 进入终态后 is_terminal_locked 自动置 1。
+    """
     def _run():
         try:
             worker_func(task_id)
@@ -378,7 +431,7 @@ def _start_worker(task_id: str, worker_func) -> None:
                 db = SessionLocal()
                 try:
                     task = db.get(AsyncTaskRecord, task_id)
-                    if task and task.status not in ("done", "failed", "cancelled"):
+                    if task and int(getattr(task, "is_terminal_locked", 0) or 0) != 1 and task.status not in ("done", "failed", "cancelled"):
                         code, category, title_zh = _classify_exception_code(exc)
                         msg_limited = str(exc)
                         if len(msg_limited) > 4000:
@@ -425,6 +478,10 @@ def _start_worker(task_id: str, worker_func) -> None:
                             task.result_json = json.dumps(rj, ensure_ascii=False, default=str)
                         task.finished_at = _now()
                         task.updated_at = _now()
+                        # FR-P1-2：归档 correlation_id + 终态锁
+                        if not task.correlation_id:
+                            task.correlation_id = cid
+                        task.is_terminal_locked = 1
                         db.commit()
                 finally:
                     try:
@@ -441,38 +498,129 @@ def _start_worker(task_id: str, worker_func) -> None:
 # ── 公共 API ──────────────────────────────────────────────
 
 
-def create_async_task(task_type: str, payload: dict) -> AsyncTaskRead:
+def _compute_idempotency_key(task_type: str, payload: dict) -> str | None:
+    """按 AC-10 约定生成幂等键（task_type + portfolio_id + date + payload_hash + cid）。
+
+    仅当 payload 可识别业务上下文时生成（含 portfolio_id / date / start_date 等）；
+    否则返回 None，调用方在不幂等保护的任务上不设此字段。
+    """
+    try:
+        pid = payload.get("portfolio_id") if isinstance(payload, dict) else None
+        d = payload.get("date") or payload.get("start_date") if isinstance(payload, dict) else None
+        if isinstance(d, (datetime, date)):
+            d = d.isoformat()
+        elif d is not None:
+            d = str(d)
+        if d is None and isinstance(payload, dict):
+            for k in ("trade_date", "target_date", "asof_date", "data_cutoff_date"):
+                if k in payload and payload[k] is not None:
+                    d = payload[k].isoformat() if isinstance(payload[k], (datetime, date)) else str(payload[k])
+                    break
+        payload_canon = json.dumps(
+            payload if isinstance(payload, dict) else {},
+            sort_keys=True, ensure_ascii=False, default=str,
+        )
+        ph = hashlib.sha1(payload_canon.encode("utf-8")).hexdigest()[:16]
+        return f"{task_type}|{pid}|{d or ''}|{ph}"
+    except Exception:
+        return None
+
+
+def _pick_session_factory(use_control_plane: bool):
+    """根据 use_control_plane 标志选择 SessionFactory：
+    - False → 主 QueuePool（数据面重任务 / 长事务用）
+    - True  → NullPool 控制平面：提交 / 心跳 / 列表 等对延迟敏感的轻量接口，
+               不参与主 30 连接大池排队，避免触发前端 axios 90s 超时。
+    """
+    if use_control_plane:
+        from app.db.session import get_control_session_local
+        return get_control_session_local()
+    return get_session_local()
+
+
+def create_async_task(
+    task_type: str,
+    payload: dict,
+    *,
+    use_control_plane: bool = False,
+) -> AsyncTaskRead:
     """创建异步任务并启动后台 worker（需调用方传入 worker_func 并自行调用 _start_worker）。
 
     此函数仅创建 DB 记录，不启动线程。
     返回任务快照供调用方立即响应前端。
+
+    FR-P1-2 强化：
+    - 创建时生成 correlation_id（用于跨 outbox/decision/audit 串联）。
+    - 按业务上下文生成 idempotency_key（AC-10 重复投递 0 重复下单）。
+    - 初始化 is_terminal_locked=0。
+
+    use_control_plane：提交请求是轻 INSERT，传 True 可绕过主连接池排队。
     """
-    SessionLocal = get_session_local()
+    SessionLocal = _pick_session_factory(use_control_plane)
     db = SessionLocal()
     try:
         _run_patrol(db)
         _expire_stale_tasks(db)
-        task_id = uuid4().hex
-        task = AsyncTaskRecord(
-            id=task_id,
-            task_type=task_type,
-            status="queued",
-            stage="queued",
-            percent=0,
-            message="Task created",
-            payload_json=json.dumps(payload, ensure_ascii=False, default=str),
-        )
-        db.add(task)
-        db.commit()
-        db.refresh(task)
-        return _task_to_read(task)
+        idempotency_key = _compute_idempotency_key(task_type, payload)
+
+        # 幂等键为空的任务保持原有语义：每次调用都创建新任务。
+        # 有幂等键时先回读，终态也必须复用，显式重跑应由调用方生成新业务键。
+        create_guard = _IDEMPOTENT_CREATE_LOCK if idempotency_key else nullcontext()
+        with create_guard:
+            if idempotency_key:
+                existing = db.execute(
+                    select(AsyncTaskRecord)
+                    .where(AsyncTaskRecord.idempotency_key == idempotency_key)
+                    .order_by(AsyncTaskRecord.created_at.asc())
+                    .limit(1)
+                ).scalar_one_or_none()
+                if existing is not None:
+                    return _task_to_read(existing)
+
+            task_id = uuid4().hex
+            cid = _gen_correlation_id()
+            task = AsyncTaskRecord(
+                id=task_id,
+                task_type=task_type,
+                status="queued",
+                stage="queued",
+                percent=0,
+                message="Task created",
+                payload_json=json.dumps(payload, ensure_ascii=False, default=str),
+                correlation_id=cid,
+                idempotency_key=idempotency_key,
+                is_terminal_locked=0,
+            )
+            db.add(task)
+            try:
+                db.commit()
+            except IntegrityError:
+                # MySQL/新 SQLite 库上的唯一索引可能在并发请求间先触发；
+                # 回滚后回读已提交任务，只有找不到同键记录时才保留原异常。
+                db.rollback()
+                if idempotency_key:
+                    existing = db.execute(
+                        select(AsyncTaskRecord)
+                        .where(AsyncTaskRecord.idempotency_key == idempotency_key)
+                        .order_by(AsyncTaskRecord.created_at.asc())
+                        .limit(1)
+                    ).scalar_one_or_none()
+                    if existing is not None:
+                        return _task_to_read(existing)
+                raise
+            db.refresh(task)
+            return _task_to_read(task)
     finally:
         db.close()
 
 
-def get_async_task(task_id: str) -> AsyncTaskRead | None:
-    """查询任务状态。"""
-    SessionLocal = get_session_local()
+def get_async_task(
+    task_id: str,
+    *,
+    use_control_plane: bool = False,
+) -> AsyncTaskRead | None:
+    """查询任务状态。use_control_plane=True 心跳轮询走 NullPool 不排队。"""
+    SessionLocal = _pick_session_factory(use_control_plane)
     db = SessionLocal()
     try:
         _run_patrol(db)
@@ -499,19 +647,33 @@ def list_async_tasks(task_type: str | None = None, limit: int = 20) -> list[Asyn
         db.close()
 
 
-def cancel_async_task(task_id: str) -> AsyncTaskRead:
-    """取消任务。"""
-    import uuid as _uuid
+def cancel_async_task(task_id: str, *, timeout_seconds: int = 60) -> AsyncTaskRead:
+    """取消任务（FR-P1-2/AC-10 增强版）。
+
+    - 若已处终态或 is_terminal_locked==1 → 直接返回，绝不覆盖。
+    - 否则写入 cancel_requested=1，cancelled_timeout_at=now+timeout（供巡检升级
+      CANCELLED_TIMEOUT 审计记录，而不破坏 status=cancelled 的语义）。
+    - 把 correlation_id 写回 errors_json，便于 outbox/audit 串联。
+    - 如果原本已是 queued（无 Worker 运行），则直接置 cancelled + is_terminal_locked=1；
+      若为 running，仅置 cancel_requested + cancelled_timeout_at，让 Worker 自检
+      `cancel_requested==1` 后自止，置 cancelled + 终态锁（见 heartbeat 自检）。
+    """
     SessionLocal = get_session_local()
     db = SessionLocal()
     try:
         task = db.get(AsyncTaskRecord, task_id)
         if task is None:
             raise ValueError("Async task not found")
+
+        # 终态硬锁：不改动 status/stage
+        if int(getattr(task, "is_terminal_locked", 0) or 0) == 1:
+            return _task_to_read(task)
         if task.status in ("done", "failed", "cancelled"):
             return _task_to_read(task)
-        # T3-9: 写入结构化 cancelled code 到 errors_json
-        cid = _uuid.uuid4().hex[:8]
+
+        cid = task.correlation_id or _gen_correlation_id()
+        if not task.correlation_id:
+            task.correlation_id = cid
         cancelled_blocker = {
             "code": "eval.task.cancelled_by_user",
             "severity": "warn",
@@ -519,10 +681,10 @@ def cancel_async_task(task_id: str) -> AsyncTaskRead:
             "title_zh": "任务已被用户取消",
             "detail_zh": (
                 "用户主动调用了任务取消接口，评估流程提前终止。"
-                f"correlation_id={cid}"
+                f"correlation_id={cid} timeout_seconds={timeout_seconds}"
             ),
             "correlation_id": cid,
-            "evidence": {"cancelled_by_user": True, "correlation_id": cid},
+            "evidence": {"cancelled_by_user": True, "correlation_id": cid, "timeout_seconds": timeout_seconds},
             "retryable": True,
         }
         try:
@@ -531,13 +693,21 @@ def cancel_async_task(task_id: str) -> AsyncTaskRead:
                 prev = []
             prev.append(cancelled_blocker)
             task.errors_json = json.dumps(prev[-20:], ensure_ascii=False)
-        except Exception:  # noqa: BLE001
+        except Exception:
             task.errors_json = json.dumps([cancelled_blocker], ensure_ascii=False)
-        task.status = "cancelled"
-        task.stage = "cancelled"
-        task.message = "Task cancelled by user"
-        task.finished_at = _now()
+
+        task.cancel_requested = 1
+        task.cancelled_timeout_at = _now() + timedelta(seconds=max(1, int(timeout_seconds or 60)))
         task.updated_at = _now()
+
+        # queued 阶段没有 Worker 可以自止，直接置 cancelled + 终态锁
+        if task.status == "queued":
+            task.status = "cancelled"
+            task.stage = "cancelled"
+            task.message = "Task cancelled by user"
+            task.finished_at = _now()
+            task.is_terminal_locked = 1
+
         db.commit()
         db.refresh(task)
         return _task_to_read(task)

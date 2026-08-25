@@ -79,6 +79,11 @@ def _setup_config(db_session, warehouse_path) -> None:
     db_session.commit()
 
 
+def _data_prep_payload() -> FactorPipelineCreate:
+    """State-machine tests do not request model training or a FactorSet binding."""
+    return FactorPipelineCreate(train_model=False, materialize_scores=False)
+
+
 def _count_pipeline_tasks(db_session) -> int:
     rows = (
         db_session.execute(
@@ -102,7 +107,7 @@ def test_create_pipeline_task_creates_queued_task(db_session, tmp_path):
     _setup_config(db_session, tmp_path / "create_queued.duckdb")
 
     with patch("app.services.factors.pipeline_task._start_worker"):
-        result = create_factor_pipeline_task(FactorPipelineCreate())
+        result = create_factor_pipeline_task(_data_prep_payload())
 
     assert result["task_type"] == "factor_pipeline"
     assert result["status"] == "queued"
@@ -127,7 +132,7 @@ def test_single_flight_rejects_duplicate_running_task(db_session, tmp_path):
     before = _count_pipeline_tasks(db_session)
 
     with patch("app.services.factors.pipeline_task._start_worker"):
-        result = create_factor_pipeline_task(FactorPipelineCreate())
+        result = create_factor_pipeline_task(_data_prep_payload())
 
     after = _count_pipeline_tasks(db_session)
     # 单飞：返回既有任务，任务总数不增加
@@ -147,7 +152,7 @@ def test_single_flight_allows_new_task_after_previous_done(db_session, tmp_path)
     )
 
     with patch("app.services.factors.pipeline_task._start_worker"):
-        result = create_factor_pipeline_task(FactorPipelineCreate())
+        result = create_factor_pipeline_task(_data_prep_payload())
 
     assert result["id"] != done_task.id
     db_session.expire_all()
@@ -255,7 +260,7 @@ def test_rerun_after_failure_creates_new_task(db_session, tmp_path):
     )
 
     with patch("app.services.factors.pipeline_task._start_worker"):
-        result = create_factor_pipeline_task(FactorPipelineCreate())
+        result = create_factor_pipeline_task(_data_prep_payload())
 
     assert result["id"] != failed_task.id
     db_session.expire_all()
@@ -275,7 +280,7 @@ def test_rerun_after_cancel_creates_new_task(db_session, tmp_path):
     )
 
     with patch("app.services.factors.pipeline_task._start_worker"):
-        result = create_factor_pipeline_task(FactorPipelineCreate())
+        result = create_factor_pipeline_task(_data_prep_payload())
 
     assert result["id"] != cancelled_task.id
     db_session.expire_all()
@@ -289,7 +294,7 @@ def test_rerun_produces_different_task_id(db_session, tmp_path):
     _setup_config(db_session, tmp_path / "rerun_diff_id.duckdb")
 
     with patch("app.services.factors.pipeline_task._start_worker"):
-        result1 = create_factor_pipeline_task(FactorPipelineCreate())
+        result1 = create_factor_pipeline_task(_data_prep_payload())
 
     # 将首个任务标记为 done，使其不阻塞单飞
     _set_task(
@@ -297,7 +302,7 @@ def test_rerun_produces_different_task_id(db_session, tmp_path):
     )
 
     with patch("app.services.factors.pipeline_task._start_worker"):
-        result2 = create_factor_pipeline_task(FactorPipelineCreate())
+        result2 = create_factor_pipeline_task(_data_prep_payload())
 
     assert result1["id"] != result2["id"]
 

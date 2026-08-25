@@ -68,7 +68,7 @@
     "data_mode": "SYNTHETIC_FALLBACK"
   },
   "_meta": {
-    "generated_at_utc": "2026-08-13T12:04:03.421501Z",
+    "generated_at_utc": "2026-08-18T07:32:08.640559Z",
     "data_mode": "SYNTHETIC_FALLBACK",
     "evaluator_note": "pure_evaluation_flow: align → apply_direction_alignment → rank_ic → quantile → turnover → cost → gate. No DB writes."
   }

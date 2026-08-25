@@ -89,6 +89,34 @@ class SimOrder(Base):
         comment="拒绝详情（脱敏后的拒绝说明）",
     )
 
+    # -- G0-WP0-2b / Q12 manual review contract --
+    review_status: Mapped[str | None] = mapped_column(
+        String(24), nullable=True, index=True,
+        comment="None | PENDING_REVIEW | APPROVED | REJECTED | TIMED_OUT_CANCELLED",
+    )
+    review_by: Mapped[str | None] = mapped_column(
+        String(128), nullable=True,
+        comment="User who performed approve/reject",
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
+    )
+    review_deadline_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
+        comment="Default: created_at + 24h. After => TIMED_OUT_CANCELLED",
+    )
+    review_reason: Mapped[str | None] = mapped_column(
+        String(255), nullable=True,
+        comment="Trigger: LARGE_SINGLE_POS_CHANGE|HIGH_DAILY_TURNOVER|LARGE_AMOUNT",
+    )
+    review_note: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+    )
+    decision_evidence_id: Mapped[str | None] = mapped_column(
+        ForeignKey("decision_evidence.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+
     __table_args__ = (
         Index("idx_sim_orders_member", "member_id"),
         Index("idx_sim_orders_source", "source_type", "source_id"),

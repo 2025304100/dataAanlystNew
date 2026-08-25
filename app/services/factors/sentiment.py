@@ -41,7 +41,8 @@ def normalize_hot_rank_frame(
     normalized["trade_date"] = as_of
     normalized["hot_rank_total"] = total
     normalized["hot_rank_pct"] = (
-        normalized["hot_rank"] / total * 100 if total else pd.NA
+        (normalized["hot_rank"] / total * 100).clip(lower=0, upper=100)
+        if total else pd.NA
     )
     normalized["source"] = "akshare:stock_hot_rank_em"
     return normalized.dropna(subset=["hot_rank"])[columns]

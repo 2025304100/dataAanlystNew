@@ -320,11 +320,11 @@ class TestRunDualTrade:
     """守护 run_dual_trade 主入口。"""
 
     def test_old_source_executed_when_disabled(self, db_session, monkeypatch):
-        """【WP6.4】AUTO_TRADE_MEMBER_SOURCE_ENABLED=false → executed_source=old。"""
+        """新契约：旧来源只做对照，成员来源关闭时真实执行必须阻断。"""
         monkeypatch.setenv(ENV_FLAG, "false")
         p = _make_portfolio(db_session, name="QA-DualRun-Old")
         result = run_dual_trade(db_session, portfolio_id=p.id)
-        assert result["executed_source"] == "old"
+        assert result["executed_source"] == "blocked"
         assert result["member_source_enabled"] is False
         assert result["portfolio_id"] == p.id
         # 应同时返回新旧交易集合快照
@@ -424,12 +424,43 @@ class TestRollbackToOldSource:
 class TestCanSwitchToMemberSource:
     """守护切换检查逻辑。"""
 
-    def test_returns_true_in_first_phase(self, db_session):
-        """【WP6.4】第一阶段默认允许切换。"""
+    def test_blocks_without_a_g5_summary(self, db_session):
+        """没有真实 G5 汇总不得用旧的占位语义放行。"""
         p = _make_portfolio(db_session, name="QA-Switch-Check")
         can_switch, reason = can_switch_to_member_source(
             db_session, portfolio_id=p.id
         )
-        assert can_switch is True
-        assert isinstance(reason, str)
-        assert "允许切换" in reason
+        assert can_switch is False
+        assert "缺少" in reason
+
+    def test_rejects_unproven_external_g5_summary(self, db_session):
+        p = _make_portfolio(db_session, name="QA-Switch-G5")
+        can_switch, reason = can_switch_to_member_source(
+            db_session,
+            portfolio_id=p.id,
+            g5_summary={
+                "days_replayed": 10,
+                "skipped_days": [],
+                "total_p0_unexplained": 0,
+                "total_p1_hold_noaction_flip": 0,
+                "g5_eligible_for_g6": True,
+            },
+        )
+        assert can_switch is False
+        assert "来源证明" in reason
+
+    def test_blocks_a_g5_summary_with_a_failed_day(self, db_session):
+        p = _make_portfolio(db_session, name="QA-Switch-G5-Failed")
+        can_switch, reason = can_switch_to_member_source(
+            db_session,
+            portfolio_id=p.id,
+            g5_summary={
+                "days_replayed": 12,
+                "skipped_days": ["2026-08-19"],
+                "total_p0_unexplained": 0,
+                "total_p1_hold_noaction_flip": 0,
+                "g5_eligible_for_g6": False,
+            },
+        )
+        assert can_switch is False
+        assert "来源证明" in reason

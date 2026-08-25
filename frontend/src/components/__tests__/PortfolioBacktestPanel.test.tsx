@@ -296,23 +296,18 @@ describe("PortfolioBacktestPanel WP7.4 组件测试", () => {
     expect(screen.getByText("portfolioBacktest.manualMembersWarning")).toBeInTheDocument();
   });
 
-  // 4. only_auto 复选框触发请求
-  it("test_only_auto_checkbox: 勾选 only_auto 后运行请求含 only_auto=true", async () => {
-    const user = userEvent.setup();
+  // 4. WP0-5 C-03：成员范围由执行快照决定，旧 only_auto 控件和字段均移除
+  it("test_only_auto_contract_removed: 请求不再携带 only_auto/current_universe", async () => {
     render(<PortfolioBacktestPanel />);
 
     await waitFor(() => {
       expect(mockApi.getPortfolioBacktestSourceStatus).toHaveBeenCalledWith(1);
     });
 
-    // 勾选 only_auto 复选框：antd Checkbox 渲染为 <label class="ant-checkbox-wrapper">
-    // 点击 label wrapper 触发 onChange
-    const checkboxWrapper = screen.getByTestId("only-auto-checkbox");
-    await act(async () => {
-      await user.click(checkboxWrapper);
-    });
+    expect(screen.queryByTestId("only-auto-checkbox")).not.toBeInTheDocument();
 
     // 点击运行
+    const user = userEvent.setup();
     const runButton = screen.getByText("portBtRun").closest("button")!;
     await act(async () => {
       await user.click(runButton);
@@ -321,8 +316,13 @@ describe("PortfolioBacktestPanel WP7.4 组件测试", () => {
     await waitFor(() => {
       expect(mockApi.runPortfolioBacktest).toHaveBeenCalledWith(
         1,
-        expect.objectContaining({ only_auto: true }),
+        expect.not.objectContaining({ only_auto: expect.anything() }),
       );
+      const lastCall = mockApi.runPortfolioBacktest.mock.calls[
+        mockApi.runPortfolioBacktest.mock.calls.length - 1
+      ];
+      const payload = lastCall?.[1] as Record<string, unknown>;
+      expect(payload).not.toHaveProperty("current_universe");
     });
   });
 

@@ -45,6 +45,11 @@ class AsyncTaskRead(BaseModel):
     payload_json: str | None = None
     # WP5: 便捷顶层 fingerprint（可由前端直接展示或用于对比）
     fingerprint: str | None = None
+    # FR-P1-2 可靠性字段：cid/幂等/终态锁/取消超时
+    correlation_id: str | None = None
+    idempotency_key: str | None = None
+    is_terminal_locked: bool = False
+    cancelled_timeout_at: datetime | None = None
 
 
 class MarketDataSyncCreate(BaseModel):
@@ -71,7 +76,9 @@ class FactorPipelineCreate(BaseModel):
     materialize_scores: bool = True
     window_days: int = Field(default=250, ge=60, le=1000)
     validation_days: int = Field(default=50, ge=20, le=250)
-    # WP7-03: 指定 FactorSet 进行 Ridge 训练（不传则回退到静态 FEATURE_CODES）
+    # Public train_model requests require a readiness-qualified FactorSet at
+    # dispatch time. Optionality remains for train_model=False and legacy
+    # direct worker payloads during compatibility migration.
     factor_set_id: str | None = None
 
     @model_validator(mode='after')

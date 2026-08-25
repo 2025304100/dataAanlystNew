@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: backend_api/ai_services
+title: AI Profile、会话与降级缓存服务
+scope:
+    - app/services/ai_cache.py
+    - app/services/ai_failover.py
+    - app/services/ai_profile_service.py
+    - app/services/ai_session_service.py
+    - app/services/ai_profile_migration.py
+source_files: []
+depends_on: []
+related_to: []

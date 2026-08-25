@@ -1,7 +1,19 @@
+import json as _json
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+
+def _parse_json_text_field(v: Any) -> Any:
+    if isinstance(v, str):
+        if not v:
+            return None
+        try:
+            return _json.loads(v)
+        except Exception:
+            return v
+    return v
 
 
 class PortfolioCreate(BaseModel):
@@ -22,6 +34,8 @@ class PortfolioCreate(BaseModel):
     benchmark_code: str = "000300"
     # 默认单票仓位上限 ratio，例如 0.3 = 30%
     default_single_position_pct: float = 0.30
+    # Q5.3: 关键成员 symbol_id 列表；None/空=全组合默认关键
+    key_members_json: list[int] | None = None
 
 
 class PortfolioUpdate(BaseModel):
@@ -43,6 +57,8 @@ class PortfolioUpdate(BaseModel):
     sell_fee_pct: float | None = None
     benchmark_code: str | None = None
     default_single_position_pct: float | None = None
+    # Q5.3: 关键成员 symbol_id 列表；None/空=全组合默认关键
+    key_members_json: list[int] | None = None
 
 
 class PortfolioRead(BaseModel):
@@ -66,8 +82,15 @@ class PortfolioRead(BaseModel):
     default_single_position_pct: float = 0.30
     # P2-FIX: 隔离测试组合（0=生产，1=测试）
     is_test: int = 0
+    # Q5.3: 关键成员 symbol_id 列表；None/空=全组合默认关键
+    key_members_json: list[int] | None = None
     created_at: datetime
     updated_at: datetime | None = None
+
+    @field_validator("key_members_json", mode="before")
+    @classmethod
+    def _parse_key_members(cls, v):
+        return _parse_json_text_field(v)
 
 
 class AutoTradeExecuteRequest(BaseModel):
@@ -112,6 +135,7 @@ class AutoTradeResult(BaseModel):
     executed_source: str | None = None  # new / old
     member_source_enabled: bool | None = None
     source_mode: str | None = None  # portfolio / members_only / legacy_scan
+    strategy_snapshot_id: str | None = None
     readiness: dict[str, Any] | None = None
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
@@ -128,6 +152,9 @@ class PortfolioRuleUpsert(BaseModel):
     max_open_positions: int
     stage_limits_json: dict[str, Any]
     is_active: bool = True
+    # C-07 RED→GREEN：真实因子溯源字段。与 stage_limits_json 中的同名键保持一致（rule 写入时以双写保证）
+    factor_set_id: str | None = None
+    factor_model_run_id: str | None = None
 
 
 class AllocationSummary(BaseModel):

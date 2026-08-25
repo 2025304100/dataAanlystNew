@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session_local
@@ -506,7 +506,18 @@ def cancel_task_with_cleanup(task_id: str) -> AsyncTaskRead:
     db = SessionLocal()
     try:
         try:
-            async_tasks._set_task(db, task_id, cancel_requested=True)
+            # This wrapper has already stopped/released the registered local
+            # worker resources.  Leaving the record RUNNING would permit a
+            # restart/resume race against resources that no longer exist.
+            async_tasks._set_task(
+                db,
+                task_id,
+                cancel_requested=True,
+                status=TaskState.CANCELLED.value,
+                stage=TaskState.CANCELLED.value,
+                message="Task cancelled and local resources released",
+                finished_at=_now(),
+            )
         except Exception as exc:
             logger.warning(
                 "Failed to set cancel_requested for task %s: %s",
@@ -535,23 +546,41 @@ def resume_task(task_id: str, worker_func: Callable[..., Any]) -> AsyncTaskRead:
         task = db.get(AsyncTaskRecord, task_id)
         if task is None:
             raise ValueError(f"Async task not found: {task_id}")
-        if task.status not in (TaskState.INTERRUPTED.value, TaskState.STALLED.value):
-            raise ValueError(
-                f"Task {task_id} is not resumable (status={task.status})"
-            )
         batch_recovery = async_tasks._json_loads(task.batch_recovery_json, None)
-        # 状态转回 running，重置心跳/进度时间
+        # 条件更新是恢复的唯一领取点。不能使用“先读状态再 _set_task”模式，
+        # 否则两个 HTTP 请求可同时观察到 interrupted/stalled 并各自启动 worker。
         now = _now()
-        updates: dict[str, Any] = {
-            "status": TaskState.RUNNING.value,
-            "stage": task.stage or TaskState.RUNNING.value,
-            "heartbeat_at": now,
-            "last_progress_at": now,
-            "stage_started_at": now,
-            "suggested_action": None,
-            "cancel_requested": False,
-        }
-        async_tasks._set_task(db, task_id, **updates)
+        claimed = db.execute(
+            update(AsyncTaskRecord)
+            .where(
+                AsyncTaskRecord.id == task_id,
+                AsyncTaskRecord.status.in_(
+                    (TaskState.INTERRUPTED.value, TaskState.STALLED.value)
+                ),
+                or_(
+                    AsyncTaskRecord.is_terminal_locked == 0,
+                    AsyncTaskRecord.is_terminal_locked.is_(None),
+                ),
+            )
+            .values(
+                status=TaskState.RUNNING.value,
+                stage=task.stage or TaskState.RUNNING.value,
+                heartbeat_at=now,
+                last_progress_at=now,
+                stage_started_at=now,
+                suggested_action=None,
+                cancel_requested=False,
+                updated_at=now,
+            )
+        )
+        if claimed.rowcount != 1:
+            db.rollback()
+            current = db.get(AsyncTaskRecord, task_id)
+            status = current.status if current is not None else "missing"
+            raise ValueError(
+                f"Task {task_id} is not resumable (status={status}; already claimed or terminal)"
+            )
+        db.commit()
         db.refresh(task)
         read = async_tasks._task_to_read(task)
     finally:

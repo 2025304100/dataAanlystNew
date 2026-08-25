@@ -102,12 +102,18 @@ def _is_dev_hardware(config) -> bool:
 
 
 _SLOW_FUNCTION_NAMES = {
+    # T4 (FR-4.1) dashboard 15s 慢查询保护：概览/工作台双端点
+    "test_dashboard_overview",
     "test_dashboard_workbench",
     "test_list_observations_status_filter",
     "test_observation_endpoints_404",
     "test_probe_returns_within_30s",
     "test_probe_returns_within_30s_with_real_backend",
     "test_probe_all_17_apis_complete_within_180s",
+    # T4 (FR-4.5) 连续探测性能不退化：
+    # - stability_guard.py L299 内部 3 次同接口探测对比
+    # - api_mgmt.py L354 更完整的版本（含 _response_time 后缀）
+    "test_consecutive_probes_do_not_degrade",
     "test_consecutive_probes_do_not_degrade_response_time",
     "test_batch_probe_completes_within_180s",
 }

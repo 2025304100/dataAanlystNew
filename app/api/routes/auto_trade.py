@@ -21,6 +21,7 @@ import os
 from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, desc, select
 from sqlalchemy.orm import Session
 
@@ -31,6 +32,7 @@ from app.models.sim_account import SimOrder
 from app.models.symbol import Symbol
 from app.services.auto_trade_dual_run import (
     ENV_FLAG,
+    can_switch_to_member_source,
     capture_trade_set_from_new_logic,
     capture_trade_set_from_old_logic,
     diff_trade_sets,
@@ -48,6 +50,12 @@ from app.services.portfolio_members import has_position, list_members
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class G6RolloutRequest(BaseModel):
+    operator_id: str = Field(default="api:g6", min_length=1, max_length=128)
+    correlation_id: str | None = Field(default=None, max_length=128)
+    reason: str | None = Field(default=None, max_length=500)
 
 
 # ----------------------------------------------------------------------------
@@ -147,6 +155,137 @@ def get_dry_run_diff(
             for d in diffs
         ],
     }
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/auto-trade/switch-readiness",
+    tags=["auto-trade"],
+)
+def get_member_source_switch_readiness(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+):
+    """Return the fail-closed G5 gate for switching to the new source.
+
+    The application currently does not persist a dual-run summary, so this
+    endpoint intentionally reports ``can_switch=false`` until an auditable
+    G5 report is supplied to the deployment procedure. It prevents a UI or
+    operator from mistaking the legacy three-run placeholder for approval.
+    """
+    portfolio = _get_portfolio_or_404(db, portfolio_id)
+    _ensure_simulated(portfolio)
+    can_switch, reason = can_switch_to_member_source(
+        db, portfolio_id=portfolio_id,
+    )
+    return {
+        "portfolio_id": portfolio_id,
+        "can_switch": can_switch,
+        "reason": reason,
+        "required": {
+            "minimum_valid_trade_days": 10,
+            "skipped_days": 0,
+            "p0_unexplained": 0,
+            "p1_hold_noaction_flip": 0,
+            "auditable_g5_summary": True,
+        },
+    }
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/auto-trade/g6-readiness",
+    tags=["auto-trade"],
+)
+def get_g6_rollout_readiness(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+):
+    """Read-only admission result before starting a G6 portfolio rollout."""
+    from app.services.g6_graduated_rollout import evaluate_g6_readiness
+
+    portfolio = _get_portfolio_or_404(db, portfolio_id)
+    _ensure_simulated(portfolio)
+    return evaluate_g6_readiness(db, portfolio_id=portfolio_id).as_dict()
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/auto-trade/g6-start",
+    tags=["auto-trade"],
+)
+def start_g6_rollout_route(
+    portfolio_id: int,
+    payload: G6RolloutRequest,
+    db: Session = Depends(get_db),
+):
+    """启动单组合 G6 灰度；来源切换与审计事件同事务提交。"""
+    portfolio = _get_portfolio_or_404(db, portfolio_id)
+    _ensure_simulated(portfolio)
+    from app.services.g6_graduated_rollout import start_g6_rollout
+
+    try:
+        result = start_g6_rollout(
+            db,
+            portfolio_id=portfolio_id,
+            operator_id=payload.operator_id,
+            correlation_id=payload.correlation_id,
+        )
+        db.commit()
+        return result.as_dict()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        logger.exception("G6 灰度启动失败 portfolio_id=%s", portfolio_id)
+        raise HTTPException(status_code=500, detail="G6 灰度启动失败，请稍后重试") from exc
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/auto-trade/g6-rollback",
+    tags=["auto-trade"],
+)
+def rollback_g6_rollout_route(
+    portfolio_id: int,
+    payload: G6RolloutRequest,
+    db: Session = Depends(get_db),
+):
+    """回滚单组合 G6 灰度；持久化旧来源并写入回滚审计。"""
+    portfolio = _get_portfolio_or_404(db, portfolio_id)
+    _ensure_simulated(portfolio)
+    from app.services.g6_graduated_rollout import rollback_g6_rollout
+
+    try:
+        result = rollback_g6_rollout(
+            db,
+            portfolio_id=portfolio_id,
+            operator_id=payload.operator_id,
+            correlation_id=payload.correlation_id,
+            reason=payload.reason,
+        )
+        db.commit()
+        return result.as_dict()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        logger.exception("G6 灰度回滚失败 portfolio_id=%s", portfolio_id)
+        raise HTTPException(status_code=500, detail="G6 灰度回滚失败，请稍后重试") from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/auto-trade/g7-operational-status",
+    tags=["auto-trade"],
+)
+def get_g7_operational_status(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+):
+    """Return the read-only G7 control-room view for one simulated portfolio."""
+    from app.services.g7_operational_readiness import evaluate_g7_operational_status
+
+    portfolio = _get_portfolio_or_404(db, portfolio_id)
+    _ensure_simulated(portfolio)
+    return evaluate_g7_operational_status(db, portfolio_id=portfolio_id).as_dict()
 
 
 # ----------------------------------------------------------------------------
@@ -256,11 +395,19 @@ def rollback_to_old_source_route(
 
     返回 {ok, message}。
     """
-    _get_portfolio_or_404(db, portfolio_id)
+    portfolio = _get_portfolio_or_404(db, portfolio_id)
 
     try:
-        rollback_to_old_source(portfolio_id)
+        from app.services.g6_graduated_rollout import rollback_g6_rollout
+        result = rollback_g6_rollout(
+            db,
+            portfolio_id=portfolio_id,
+            operator_id="api:rollback-to-old-source",
+            reason="legacy_endpoint_requested",
+        )
+        db.commit()
     except Exception as exc:
+        db.rollback()
         logger.warning(
             "rollback 失败 portfolio_id=%s: %s", portfolio_id, exc, exc_info=True,
         )
@@ -269,11 +416,9 @@ def rollback_to_old_source_route(
             detail="回退旧来源失败，请稍后重试",
         ) from exc
 
-    return {
-        "ok": True,
-        "portfolio_id": portfolio_id,
-        "message": "已回退到旧来源（新来源开关已关闭）",
-    }
+    response = result.as_dict()
+    response.update({"ok": True, "message": "已回退到旧来源（新来源开关已关闭）"})
+    return response
 
 
 # ----------------------------------------------------------------------------

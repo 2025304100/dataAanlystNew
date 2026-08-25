@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Shield, ShieldCheck, Activity, LineChart, Settings2, type LucideIcon } from "lucide-react";
+import { Shield, ShieldCheck, Activity, LineChart, Settings2, AlertTriangle, ShieldAlert, type LucideIcon } from "lucide-react";
 import { message } from "antd";
 import { api } from "../../api/client";
 import { t } from "../../i18n";
 import { money, percent } from "../../utils/format";
-import type { Position, AllocationSnapshot, SignalRule } from "../../types";
+import type { AllocationSnapshot, PortfolioStatePermissions, PortfolioStatusResponse, Position, SignalRule } from "../../types";
 
 /**
  * PortfolioOverview — 账户总览子 Tab（Task 4）
@@ -25,6 +25,9 @@ import type { Position, AllocationSnapshot, SignalRule } from "../../types";
 interface PortfolioOverviewProps {
   portfolioId: number;
   onNavigate?: (tab: string) => void;
+  // FR-P1-8a HG1
+  portfolioStatus?: PortfolioStatusResponse | null;
+  perm?: PortfolioStatePermissions;
 }
 
 interface EquityPoint {
@@ -103,7 +106,26 @@ const pnlColor = (v: number | null | undefined): string => {
   return Number(v) > 0 ? "var(--pt-state-success)" : Number(v) < 0 ? "var(--pt-state-error)" : "var(--pt-muted-foreground)";
 };
 
-const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNavigate }) => {
+const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNavigate, portfolioStatus, perm }) => {
+  // FR-P1-8a HG1：禁止开启自动交易的状态（终态硬禁）；另外 requires_manual_ack 必须手动确认解除
+  const currentState = portfolioStatus?.current_state ?? "UNKNOWN";
+  const allowAutoRecovery = perm?.allow_auto_recovery ?? false;
+  const requiresManualAck = perm?.requires_manual_ack ?? false;
+  // 硬禁：ADMIN_PAUSED / RECONCILIATION_BLOCKED / PENDING_INITIAL_REVIEW / MODEL_INACTIVE + requires_manual_ack
+  const hardBlockAutoOn = currentState === "ADMIN_PAUSED" || currentState === "RECONCILIATION_BLOCKED" ||
+    currentState === "PENDING_INITIAL_REVIEW" || currentState === "MODEL_INACTIVE" || requiresManualAck;
+  const softWarningAutoOn = currentState !== "READY";
+  const hardBlockHint = (() => {
+    switch (currentState) {
+      case "ADMIN_PAUSED": return "管理员紧急刹车已触发（ADMIN_PAUSED）：需管理员在治理 Tab 解除后才可开启自动交易";
+      case "RECONCILIATION_BLOCKED": return "对账存在非零差异（RECONCILIATION_BLOCKED）：需在治理 Tab 单人确认差异后才可开启自动交易";
+      case "PENDING_INITIAL_REVIEW": return "新建组合尚未通过管理员合规审查（PENDING_INITIAL_REVIEW）：需管理员在治理 Tab 确认后才可开启自动交易";
+      case "MODEL_INACTIVE": return "绑定因子模型已退役/未激活（MODEL_INACTIVE）：请在策略设置中更换/激活模型，或在治理 Tab 修复";
+      default:
+        return requiresManualAck ? "当前组合状态需要人工确认/解除（requires_manual_ack=true），请在治理 Tab 处理后再开启自动交易" : "";
+    }
+  })();
+
   const [loading, setLoading] = useState(true);
   const [portfolio, setPortfolio] = useState<PortfolioMeta | null>(null);
   const [perf, setPerf] = useState<PerformanceResult | null>(null);
@@ -239,9 +261,28 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
   }, [onNavigate]);
 
   // 自动接管开关：调 api.updatePortfolio 持久化 auto_trade_enabled，失败回滚
+  // FR-P1-8a HG1：硬禁状态下禁止从 OFF → ON；其它非 READY 开启前二次确认
   const handleToggleAuto = useCallback(async () => {
     const prev = autoEnabled;
     const next = !prev;
+    // 从 OFF → ON 必须检查 HG1
+    if (!prev && next) {
+      if (hardBlockAutoOn) {
+        message.error("HG1 门禁：" + (hardBlockHint || "当前组合状态禁止开启自动交易"));
+        return;
+      }
+      if (softWarningAutoOn) {
+        const ok = window.confirm(
+          `⚠️ HG1 提示：当前组合状态为「${currentState}」，并非生产就绪态（READY）。\n\n` +
+          `在该状态下开启自动交易，将受到如下治理权限约束：\n` +
+          `  · 允许新买单(NEW_BUY)：${perm?.allow_new_buys ? "是" : "否"}\n` +
+          `  · 允许风险退出(RISK_EXIT)：${perm?.allow_risk_exits ? "是" : "否"}\n` +
+          `  · 允许自动恢复(AUTO_RECOVERY)：${allowAutoRecovery ? "是" : "否"}\n\n` +
+          `如果在开启后触发了 ADMIN_PAUSED / RECONCILIATION_BLOCKED，系统将自动强制关闭自动交易并发送告警。\n\n确认仍要开启？`,
+        );
+        if (!ok) return;
+      }
+    }
     setAutoEnabled(next);
     try {
       await api.updatePortfolio(portfolioId, { auto_trade_enabled: next ? 1 : 0 });
@@ -250,7 +291,7 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
       setAutoEnabled(prev);
       message.error(t("portfolioTrading.overview.autoTradeToggleFailed") + (err?.message ? ": " + err.message : ""));
     }
-  }, [autoEnabled, portfolioId]);
+  }, [autoEnabled, portfolioId, hardBlockAutoOn, hardBlockHint, softWarningAutoOn, currentState, perm, allowAutoRecovery]);
 
   const handleViewAllHoldings = useCallback(() => {
     onNavigate?.("members");
@@ -357,13 +398,26 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
             <div>
               <h3 style={sectionTitleStyle}>{t("portfolioTrading.overview.autoTradeTitle")}</h3>
               <p style={sectionSubStyle}>{t("portfolioTrading.overview.autoTradeSub")}</p>
+              {/* FR-P1-8a: HG1 状态小字提示 */}
+              {currentState !== "READY" && (
+                <div style={{ marginTop: 6, fontSize: 11, color: hardBlockAutoOn ? "var(--pt-state-error, #ef4444)" : "var(--pt-state-warning, #f59e0b)" }}>
+                  {hardBlockAutoOn ? <ShieldAlert size={11} style={{ display: "inline", verticalAlign: "-1px", marginRight: 4 }} /> : <AlertTriangle size={11} style={{ display: "inline", verticalAlign: "-1px", marginRight: 4 }} />}
+                  HG1 状态：「{currentState}」{hardBlockAutoOn ? "（禁止开启自动交易）" : "（开启前会二次确认）"}
+                </div>
+              )}
             </div>
             <button
               type="button"
               className={`pt-toggle${autoEnabled ? " active" : ""}`}
               aria-pressed={autoEnabled}
               onClick={handleToggleAuto}
-              title={t("portfolioTrading.overview.autoTradeToggle")}
+              disabled={hardBlockAutoOn && !autoEnabled}
+              title={hardBlockAutoOn && !autoEnabled ? ("HG1 门禁：" + hardBlockHint) : t("portfolioTrading.overview.autoTradeToggle")}
+              style={{
+                opacity: hardBlockAutoOn && !autoEnabled ? 0.45 : 1,
+                cursor: hardBlockAutoOn && !autoEnabled ? "not-allowed" : undefined,
+                boxShadow: (hardBlockAutoOn && !autoEnabled) ? "0 0 0 1px rgba(239,68,68,0.15)" : undefined,
+              }}
             />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

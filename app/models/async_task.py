@@ -51,3 +51,20 @@ class AsyncTaskRecord(Base):
     last_patrol_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     worker_thread_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cancel_requested: Mapped[bool | None] = mapped_column(Integer, nullable=True, default=0)
+    # FR-P1-2 可靠性扩展字段（与 alembic wps_0023_028 同步）
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True,
+        comment="同事务去重键：task_type+portfolio_id+date+payload_hash+c id 生成；可用于 AC-10 重复投递 3 次零重复订单/成交",
+    )
+    correlation_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True,
+        comment="跨 request/async_task/decision_run/outbox/audit 统一关联 ID；8 hex，同 main.py 异常处理器",
+    )
+    is_terminal_locked: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=0,
+        comment="终态锁定：status 进入 done/failed/cancelled 后置 1；之后任何 status/stage 改必须 WHERE !=1（project_memory #8 终态不得被 worker 线程覆盖）",
+    )
+    cancelled_timeout_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True,
+        comment="CANCEL 请求超时时间点；若之后仍无终态，巡检升级为 cancelled_timeout 审计记录（不打断 status=cancelled 的终态语义）",
+    )

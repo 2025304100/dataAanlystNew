@@ -18,6 +18,9 @@ const STATUS_COLORS: Record<string, string> = {
   available: "success", limited: "warning", event: "processing",
   snapshot: "purple", blocked: "error", unknown: "default",
 };
+const DATASET_LABELS: Record<string, string> = { fundamental: "股票估值", financial: "财报历史", lhb: "龙虎榜机构", hot_rank: "今日人气榜", tail_proxy: "候选尾盘代理", capital_flow: "资金流", etf: "ETF 指标" };
+const FIELD_LABELS: Record<string, string> = { pe_ttm: "市盈率（PE-TTM）", pb: "市净率（PB）", roe_ttm: "净资产收益率（ROE-TTM）", lhb_institution_net: "龙虎榜机构净买额", hot_rank_pct: "人气榜排名百分位", proxy_score: "尾盘代理分数", main_net_inflow: "主力净流入", etf_premium_discount: "ETF 溢折价率", etf_tracking_error: "ETF 跟踪误差", etf_fund_size: "ETF 基金规模" };
+const STATUS_LABELS: Record<string, string> = { available: "可用", limited: "范围有限", event: "事件数据", snapshot: "快照数据", blocked: "暂不可用于因子评价", unknown: "待确认" };
 
 function CoverageDiagnostics() {
   const [coverage, setCoverage] = useState<ExternalDataCoverage | null>(null);
@@ -70,9 +73,9 @@ function CoverageDiagnostics() {
     ), [coverage],
   );
   const columns: ColumnsType<CoverageRow> = [
-    { title: "数据集", dataIndex: "dataset", width: 130 },
-    { title: "字段", dataIndex: "field", width: 170 },
-    { title: "状态", dataIndex: "availability", width: 105, render: (value: string) => <Tag color={STATUS_COLORS[value] || "default"}>{value}</Tag> },
+    { title: "数据集", dataIndex: "dataset", width: 130, render: (value: string) => DATASET_LABELS[value] || value },
+    { title: "字段", dataIndex: "field", width: 190, render: (value: string) => FIELD_LABELS[value] || value },
+    { title: "状态", dataIndex: "availability", width: 145, render: (value: string) => <Tag color={STATUS_COLORS[value] || "default"}>{STATUS_LABELS[value] || value}</Tag> },
     { title: "真实日期范围", width: 210, render: (_, row) => `${row.first_date || "-"} ~ ${row.latest_date || "-"}` },
     {
       title: "覆盖", width: 205,
@@ -116,7 +119,7 @@ function CoverageDiagnostics() {
         dataSource={qualityHistory?.snapshots || []}
         columns={[
           { title: "采集时间", dataIndex: "captured_at", render: (value) => value ? new Date(value).toLocaleString() : "-" },
-          { title: "状态", dataIndex: "readiness" },
+          { title: "状态", dataIndex: "readiness", render: (value: string) => STATUS_LABELS[value] || value },
           { title: "非空率", render: (_, item) => item.row_count ? `${((item.nonnull_rows / item.row_count) * 100).toFixed(1)}%` : "-" },
           { title: "覆盖日期", render: (_, item) => `${item.first_date || "-"} ~ ${item.latest_date || "-"}` },
           { title: "最近失败", dataIndex: "failure_reason", ellipsis: true },
@@ -127,6 +130,16 @@ function CoverageDiagnostics() {
 }
 
 export default function DataCenter() {
+  const [activeTab, setActiveTab] = useState<"market" | "inputs" | "coverage" | "tasks">(() => {
+    if (typeof window === "undefined") return "market";
+    const stored = window.localStorage.getItem("settings_data_center_tab");
+    return stored === "inputs" || stored === "coverage" || stored === "tasks" ? stored : "market";
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem("settings_data_center_tab", activeTab);
+  }, [activeTab]);
+
   return <section data-testid="data-center" style={{ width: "100%" }}>
     <div style={{ marginBottom: 14 }}>
       <Typography.Title level={4} style={{ margin: 0, fontSize: 18 }}>
@@ -136,7 +149,7 @@ export default function DataCenter() {
         行情底座保持原有同步方式；外部输入、覆盖证据和任务批次在此统一查看。
       </Typography.Paragraph>
     </div>
-    <Tabs defaultActiveKey="market" items={[
+    <Tabs activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} items={[
       { key: "market", label: "行情底座", children: <UniverseDataPanel /> },
       { key: "inputs", label: "因子输入", children: <ExternalDataSync /> },
       { key: "coverage", label: "覆盖诊断", children: <CoverageDiagnostics /> },

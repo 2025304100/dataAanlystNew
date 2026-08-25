@@ -426,21 +426,30 @@ def list_index_prices_endpoint(
 # ──────────────── 状态查询 ────────────────
 
 @router.get("/index-prices/status", response_model=IndexPriceStatusResponse)
-def get_index_prices_status(
+async def get_index_prices_status(
     symbols: str | None = None,
-    db: Session = Depends(get_db),
 ):
     """查询 5 大基准指数（或指定）的健康度。
 
     Query 参数 `symbols`：可选，逗号分隔，如 "000300,399006"；空=默认5个
+
+    【性能关键点】使用「控制平面」NullPool SessionLocal：
+    不参与数据面 universe 重任务的 30 连接大池排队，哪怕 8 个 worker 同时在
+    扫全量 K 线（把主连接池占满数分钟），本接口也能新建独立连接返回。
     """
+    from app.db.session import get_control_session_local
+
     target_symbols: list[str]
     if symbols:
         target_symbols = [s.strip() for s in symbols.split(",") if s.strip()]
     else:
-        # 默认：默认 5 基准 + DB 中所有已存在的指数（保留之前用户/自定义同步过的）
         from sqlalchemy import distinct as sa_distinct
-        existing_syms = db.execute(select(sa_distinct(IndexPrice.symbol))).scalars().all()
+        SessionLocal_tmp = get_control_session_local()
+        db_tmp = SessionLocal_tmp()
+        try:
+            existing_syms = db_tmp.execute(select(sa_distinct(IndexPrice.symbol))).scalars().all()
+        finally:
+            db_tmp.close()
         existing_syms = [s for s in existing_syms if s]
         merged: list[str] = [b["symbol"] for b in _BENCHMARK_DEFAULTS]
         for s in existing_syms:
@@ -448,29 +457,33 @@ def get_index_prices_status(
                 merged.append(s)
         target_symbols = merged
 
-    today = date.today()
-    items: list[IndexPriceStatusItem] = []
-    for sym in target_symbols:
-        # count / min / max trade_date
-        stmt = select(
-            func.count(IndexPrice.id),
-            func.min(IndexPrice.trade_date),
-            func.max(IndexPrice.trade_date),
-        ).where(IndexPrice.symbol == sym)
-        count_, first_, last_ = db.execute(stmt).one()
-        count_ = int(count_ or 0)
-        freshness = (today - last_).days if last_ else None
-        dev = _linearity_dev(db, sym)
-        items.append(IndexPriceStatusItem(
-            symbol=sym,
-            name=_name_of(sym),
-            bar_count=count_,
-            first_date=first_,
-            last_date=last_,
-            freshness_days=freshness,
-            linearity_dev_pct=dev,
-        ))
-    return IndexPriceStatusResponse(items=items)
+    SessionLocal = get_control_session_local()
+    db = SessionLocal()
+    try:
+        today = date.today()
+        items: list[IndexPriceStatusItem] = []
+        for sym in target_symbols:
+            stmt = select(
+                func.count(IndexPrice.id),
+                func.min(IndexPrice.trade_date),
+                func.max(IndexPrice.trade_date),
+            ).where(IndexPrice.symbol == sym)
+            count_, first_, last_ = db.execute(stmt).one()
+            count_ = int(count_ or 0)
+            freshness = (today - last_).days if last_ else None
+            dev = _linearity_dev(db, sym)
+            items.append(IndexPriceStatusItem(
+                symbol=sym,
+                name=_name_of(sym),
+                bar_count=count_,
+                first_date=first_,
+                last_date=last_,
+                freshness_days=freshness,
+                linearity_dev_pct=dev,
+            ))
+        return IndexPriceStatusResponse(items=items)
+    finally:
+        db.close()
 
 
 # ──────────────── 异步提交（心跳轮询） ────────────────
@@ -481,20 +494,19 @@ async def sync_index_prices(
 ):
     """异步提交指数日线同步 → 返回 task_id，前端心跳轮询进度。
 
-    之前同步阻塞 HTTP，指数多时容易超时返回"同步失败"但后端还在跑；
-    现改为后台 daemon 线程执行（index_prices_sync_task），
-    通过 GET /index-prices/sync-tasks/{task_id} 2s 轮询 percent/status。
+    提交阶段本身只做两件事：
+      (a) async_tasks 表 INSERT 一条记录（主键生成）
+      (b) 把 _run_index_prices_sync 抛到 threading.Thread（daemon）
+    整体 < 30ms，直接内联执行，不经过 asyncio.to_thread()。
 
-    路由使用 async def：避免与 universe_sync / market_data_sync 等同步 def 路由
-    抢 anyio 线程池的槽位（默认 40 线程，被大量重任务占满时新请求排队会超 20s 前端 timeout）。
-    create_index_prices_sync_task 本身 DB 写入轻量 (<30ms)，用 to_thread 抛到
-    独立 worker 中，eventloop 不被阻塞。
-
-    - 默认同步 5 大基准；也可 symbols 指定（支持自定义指数）
-    - history_days: 回补范围，默认 1825（5 年）
+    为什么不经过 to_thread？
+    to_thread() 把任务抛到 anyio 默认线程池（大小 40），如果线程池刚好被
+    universe_init 的同步 def 重任务占满（8 线程 × 几次重试 / HTTP fallback
+    挂起），提交请求会排 100s+ 的队，前端 90s axios timeout 被触发，用户就
+    看到截图里的『提交同步任务失败: 请求超时』。
+    直接执行 ~30ms 对 event loop 无感知（单次点击，非流式/高频接口）。
     """
-    return await asyncio.to_thread(
-        index_prices_sync_task.create_index_prices_sync_task,
+    return index_prices_sync_task.create_index_prices_sync_task(
         symbols=payload.symbols,
         history_days=int(payload.history_days),
         end_date=payload.end_date,
@@ -503,15 +515,12 @@ async def sync_index_prices(
 
 @router.get("/index-prices/sync-tasks/{task_id}", response_model=AsyncTaskRead)
 async def get_index_prices_sync_task(task_id: str):
-    """指数同步任务进度查询（心跳轮询用）。
+    """指数同步任务进度查询（心跳轮询用，前端每 2s 一次）。
 
-    返回 AsyncTaskRead：status / percent / message / total / processed / ok_count / failed_count
-    终态 done 时 result={ total, success, failed, items:[{symbol,written,...error}] }
-    与原先同步接口 IndexPriceSyncResponse 结构一致，前端直接复用更新行状态。
-
-    async def + to_thread 使心跳不占用 anyio threadpool 槽，避免被其它重任务堵死。
+    每次只是 async_tasks 表 SELECT BY PK（< 2ms）。
+    同上：直接内联，避免 to_thread → anyio 线程池排队堵 100s+。
     """
-    task = await asyncio.to_thread(index_prices_sync_task.get_index_prices_sync_task, task_id)
+    task = index_prices_sync_task.get_index_prices_sync_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Index sync task not found")
     return task
@@ -523,13 +532,9 @@ async def get_index_prices_sync_task(task_id: str):
 async def sync_all_benchmarks():
     """一键异步提交 5 大基准指数同步（默认最近5年）。
 
-    专为"设置 - 基础数据"面板的"一键同步基准"按钮设计。
-    返回 AsyncTaskRead，前端心跳轮询 /index-prices/sync-tasks/{task_id}。
-
-    async def + to_thread：规避 anyio threadpool 饥饿导致前端 20s 超时。
+    提交本身和 sync_index_prices 一样轻量，直接内联不走 to_thread。
     """
-    return await asyncio.to_thread(
-        index_prices_sync_task.create_index_prices_sync_task,
+    return index_prices_sync_task.create_index_prices_sync_task(
         symbols=None,
         history_days=1825,
     )

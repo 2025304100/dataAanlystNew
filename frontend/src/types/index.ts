@@ -269,6 +269,17 @@ export interface UnifiedTask {
   started_at?: string;
   finished_at?: string;
   updated_at: string;
+  // FR-P1-2 可靠性扩展（async 来源填充；discovery 保持 undefined）
+  heartbeat_at?: string | null;
+  stage_budget_seconds?: number | null;
+  last_progress_at?: string | null;
+  last_progress_percent?: number | null;
+  suggested_action?: string | null;
+  cancel_requested?: boolean;
+  correlation_id?: string | null;
+  idempotency_key?: string | null;
+  is_terminal_locked?: boolean;
+  cancelled_timeout_at?: string | null;
 }
 
 export interface AlertRule {
@@ -481,6 +492,8 @@ export interface Portfolio {
   auto_trade_last_run_at: string | null;
   created_at: string;
   updated_at?: string;
+  // FR-P0-10：9 状态 PortfolioStatus（后端可选返回；null/undefined = 旧版本后端未提供，前端降级隐藏）
+  portfolio_status?: PortfolioStatus | string | null;
 }
 
 // P0-6：组合 CRUD 新增类型
@@ -596,6 +609,67 @@ export interface PortfolioBacktestResult {
   symbol_source?: string | null;
   source_type?: string | null;
   excluded_member_count?: number;
+  // Request parameters echoed from the persisted run.
+  benchmark?: string | null;
+  benchmark_code?: string | null;
+  commission_rate?: number | null;
+  stamp_tax_rate?: number | null;
+  slippage_bps?: number | null;
+  price_type?: "NEXT_OPEN" | "T_CLOSE" | string | null;
+  volume_limit_pct?: number | null;
+  rebalance_frequency?: "daily" | "weekly" | "monthly" | "on_signal" | string | null;
+  pit_mode?: "legacy_research" | "research_pit" | "production_pit" | string | null;
+  cost_config?: Record<string, unknown> | null;
+  // Immutable strategy/data snapshot references.
+  strategy_snapshot_id?: string | null;
+  snapshot_no?: number | null;
+  snapshot_hash?: string | null;
+  factor_model_run_id?: string | null;
+  factor_set_id?: string | null;
+  factor_data_cutoff_at?: string | null;
+  data_cutoff_at?: string | null;
+  data_snapshot?: Record<string, unknown> | null;
+  member_snapshot_json?: string | null;
+  excluded_members_json?: string | null;
+  // Benchmark health and gate state are persisted/returned, never inferred in UI.
+  benchmark_equity?: BacktestEquityPoint[];
+  benchmark_equity_json?: string | null;
+  benchmark_status?: "FULL" | "BENCHMARK_INCOMPLETE" | "SOURCE_MISSING" | string | null;
+  benchmark_gap_days?: number | null;
+  gate_policy_version?: string | null;
+  gate_result?: string | null;
+  gate_result_json?: Record<string, unknown> | null;
+  blocking_status?: string | null;
+  blocking_reasons?: unknown;
+  is_result_production_eligible?: boolean;
+  total_return?: number | null;
+  total_return_pct?: number | null;
+  max_drawdown?: number | null;
+  max_drawdown_pct?: number | null;
+  sharpe_ratio?: number | null;
+  win_rate?: number | null;
+  profit_factor?: number | null;
+  trade_count?: number | null;
+  avg_holding_days?: number | null;
+  equity_curve?: BacktestEquityPoint[];
+  metrics?: Record<string, unknown>;
+  diagnostics?: Record<string, unknown>;
+  warnings?: Array<string | Record<string, unknown>>;
+  errors?: string[];
+  decision_run_ids?: string[];
+  evidence_summary?: Record<string, unknown>;
+  rejected_count?: number;
+  decision_snapshot?: Record<string, unknown> | null;
+}
+
+/** Normalized equity point returned by a portfolio backtest response. */
+export interface BacktestEquityPoint {
+  date: string;
+  equity?: number | null;
+  cash?: number | null;
+  position_value?: number | null;
+  benchmark?: number | null;
+  [key: string]: unknown;
 }
 
 export interface SignalRulePreset {
@@ -969,6 +1043,26 @@ export interface BacktestTrade {
   hold_days?: number | null;
   entry_cost: number;
   exit_cost?: number | null;
+  decision_evidence_id?: string | null;
+  exit_evidence_id?: string | null;
+  /** Exact DecisionRun derived by the ledger API from the entry evidence. */
+  entry_decision_run_id?: string | null;
+  /** Exact DecisionRun derived by the ledger API from the exit evidence. */
+  exit_decision_run_id?: string | null;
+  intended_entry_price?: number | null;
+  intended_exit_price?: number | null;
+  slippage_bps?: number | null;
+  entry_rejection_reason?: string | null;
+  entry_requested_quantity?: number | null;
+  entry_filled_quantity?: number | null;
+  entry_remaining_quantity?: number | null;
+  entry_order_plan_status?: string | null;
+  entry_unfilled_reason?: string | null;
+  exit_requested_quantity?: number | null;
+  exit_filled_quantity?: number | null;
+  exit_remaining_quantity?: number | null;
+  exit_order_plan_status?: string | null;
+  exit_unfilled_reason?: string | null;
   entry_traces?: BacktestConditionTrace[];
   exit_traces?: BacktestConditionTrace[];
 }
@@ -980,6 +1074,12 @@ export interface BacktestRun {
   symbols_json: string;
   rule_config_json: string;
   cost_config_json?: string | null;
+  cost_config?: Record<string, unknown> | null;
+  score_weight_mode?: string | null;
+  factor_model_run_id?: string | null;
+  factor_set_id?: string | null;
+  strategy_snapshot_id?: string | null;
+  factor_data_cutoff_at?: string | null;
   start_date: string;
   end_date: string;
   initial_capital: number;
@@ -995,6 +1095,8 @@ export interface BacktestRun {
   equity_curve_json?: string | null;
   status: string;
   error_message?: string | null;
+  reproducibility_status?: "reproducible" | "legacy/non_reproducible" | string | null;
+  reproducibility_reason?: string | null;
   created_at: string;
   started_at?: string | null;
   finished_at?: string | null;
@@ -1012,6 +1114,57 @@ export interface BacktestRun {
   engine_name?: string | null;
   engine_version?: string | null;
   source_type?: string | null;
+  pit_mode?: string | null;
+  match_mode?: "NEXT_OPEN" | "T_CLOSE" | string | null;
+  benchmark?: string | null;
+  benchmark_code?: string | null;
+  commission_rate?: number | null;
+  stamp_tax_rate?: number | null;
+  slippage_bps?: number | null;
+  price_type?: "NEXT_OPEN" | "T_CLOSE" | string | null;
+  volume_limit_pct?: number | null;
+  rebalance_frequency?: string | null;
+  benchmark_equity_json?: string | null;
+  benchmark_status?: string | null;
+  benchmark_gap_days?: number | null;
+  snapshot_no?: number | null;
+  snapshot_hash?: string | null;
+  gate_policy_version?: string | null;
+  gate_result?: string | null;
+  gate_result_json?: Record<string, unknown> | null;
+  blocking_status?: string | null;
+  blocking_reasons?: unknown;
+  is_result_production_eligible?: boolean;
+  decision_run_ids?: string[];
+  evidence_summary?: Record<string, unknown>;
+  rejected_count?: number;
+  decision_snapshot?: Record<string, unknown> | null;
+  benchmark_equity?: BacktestEquityPoint[];
+  data_snapshot?: Record<string, unknown> | null;
+}
+
+/**
+ * Daily per-symbol position ledger returned by GET /backtest/runs/{run_id}/positions.
+ *
+ * Each row is the portfolio state transition for one symbol on one trade date,
+ * rather than a projection of an individual BacktestTrade.
+ */
+export interface BacktestPosition {
+  run_id: number;
+  symbol_id: number;
+  trade_date: string;
+  opening_quantity: number;
+  buy_quantity: number;
+  sell_quantity: number;
+  closing_quantity: number;
+  status: "OPEN" | "CLOSED";
+  as_of_date: string;
+  mark_price: number | null;
+  market_value: number | null;
+  portfolio_equity: number | null;
+  weight: number | null;
+  buy_evidence_ids: string[];
+  sell_evidence_ids: string[];
 }
 
 // Custom indicator definitions and preview payloads.
@@ -1649,20 +1802,144 @@ export interface CapabilitiesResponse {
 }
 
 // WP-P-FIX.1: 数据准备任务与快照状态类型
+// ⚠️ 契约对齐：app/schemas/async_task.py::AsyncTaskRead，字段一一对应
 export interface AsyncTaskRead {
   id: string;
   task_type: string;
   status: string;
-  payload: Record<string, unknown>;
-  created_at: string;
-  started_at: string | null;
-  finished_at: string | null;
-  progress: number | null;
-  message: string | null;
-  error: string | null;
-  result_json: Record<string, unknown> | null;
+  stage: string;
+  percent: number;
+  message: string;
+  total: number;
+  processed: number;
+  ok_count: number;
+  failed_count: number;
+  current_item?: string | null;
+  result?: Record<string, unknown> | null;
+  errors: Array<Record<string, unknown>>;
   // WPD-05: 顶层 error_code，从 errors_json[0].error_code 提取
   error_code?: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  updated_at?: string | null;
+  // WP-S.5 任务防卡死状态机扩展字段
+  heartbeat_at?: string | null;
+  stage_budget_seconds?: number | null;
+  stage_started_at?: string | null;
+  last_progress_at?: string | null;
+  last_progress_percent?: number | null;
+  current_step_description?: string | null;
+  suggested_action?: string | null;
+  batch_recovery?: Array<Record<string, unknown>> | Record<string, unknown> | null;
+  last_patrol_at?: string | null;
+  cancel_requested: boolean;
+  payload_json?: string | null;
+  fingerprint?: string | null;
+  // FR-P1-2 可靠性扩展字段
+  correlation_id?: string | null;
+  idempotency_key?: string | null;
+  is_terminal_locked: boolean;
+  cancelled_timeout_at?: string | null;
+}
+
+// FR-P1-2/AC-10: POST /system/tasks/{task_id}/cancel 契约
+export interface AsyncTaskCancelRequest {
+  timeout_seconds?: number;  // 1..3600，默认 60
+}
+export interface AsyncTaskCancelResponse {
+  task_id: string;
+  status: string;
+  stage: string;
+  cancel_requested: boolean;
+  cancelled_timeout_at?: string | null;
+  correlation_id?: string | null;
+  idempotency_key?: string | null;
+  is_terminal_locked: boolean;
+  error_code?: string | null;
+}
+
+// FR-P1-3: POST /portfolios/{pid}/auto-simulation/preflight 契约
+export type AutoSimulationSkipReason =
+  | "PORTFOLIO_NOT_READY"
+  | "SCHEDULE_TOO_EARLY"
+  | "DUAL_EXECUTION_RISK_PROHIBITED"
+  | "RECONCILIATION_GAP_WARNING"
+  | null;
+
+export interface AutoSimulationPreflightRequest {
+  trade_date: string;           // ISO date, 一般 today
+  decision_at?: string | null;  // ISO datetime, 不传=now()
+}
+export interface AutoSimulationPreflightResponse {
+  portfolio_id: number;
+  trade_date: string;  // ISO date
+  proceed: boolean;
+  skip_reason: AutoSimulationSkipReason;
+  skip_detail?: string | null;
+  from_state?: string | null;
+  to_state?: string | null;
+  transition_trace?: Record<string, unknown> | null;
+  warnings: string[];
+}
+
+// FR-P1-2: Portfolio Resume 契约（POST /portfolios/{pid}/resume/plan & /resume）
+export interface PortfolioResumePlanRequest {
+  stop_before_trade_date?: string | null;  // ISO date，若空则自动补到 today-1
+  max_trade_days?: number;                 // 单日批次，默认 5
+  include_held_liquidate?: boolean;        // 补当前持仓缺失交易日的撮合/清算
+}
+export interface PortfolioResumePlanResponse {
+  portfolio_id: number;
+  gaps: Array<{
+    kind: string;
+    from_trade_date: string;
+    to_trade_date: string;
+    days_count: number;
+  }>;
+  scope: {
+    decision_dates: string[];          // ISO date[]
+    total_decisions: number;
+    has_current_holdings: boolean;
+    held_liquidation_needed: boolean;
+  };
+  validation: {
+    ok: boolean;
+    blockers: string[];
+    warnings: string[];
+    last_decision_trade_date?: string | null;
+    last_reconciled_trade_date?: string | null;
+  };
+  tasks: Array<{
+    resume_id: string;
+    resume_kind: string;
+    trade_date: string;
+    idempotency_key: string;
+    estimated_seconds?: number | null;
+  }>;
+}
+export interface PortfolioResumeExecuteRequest {
+  resume_ids: string[];  // 为空=执行 plan 里所有任务
+  run_async?: boolean;   // 默认 true；false=同步等待（仅测试用）
+}
+export interface PortfolioResumeExecuteResponse {
+  created_tasks: Array<{
+    resume_id: string;
+    resume_kind: string;
+    trade_date: string;
+    async_task_id: string;
+    task_type: string;
+    idempotency_key: string;
+    correlation_id?: string | null;
+  }>;
+  skipped: Array<{
+    resume_id: string;
+    resume_kind: string;
+    trade_date: string;
+    reason_code: string;
+    reason_human?: string | null;
+  }>;
+  async_id?: string | null;  // 若 run_async=true，返回批量 async task_id（可选）
 }
 
 export interface SnapshotStatusRead {
@@ -1681,4 +1958,336 @@ export interface SnapshotStatusRead {
   recommended_action: string | null;
   last_fast_scan_timings: Record<string, unknown> | null;
   last_fast_scan_status: string | null;
+}
+
+// ============================================================================
+// FR-P0-10 / FR-P1-8a 组合治理契约（对齐 9 状态 PortfolioStatus 枚举 + 4 对账治理 API + 审计事件）
+// ============================================================================
+
+/**
+ * PortfolioStatus 9 状态枚举（与代码 PortfolioStatus 严格对齐）
+ * 值名必须与 spec.md FR-P0-10 / tasks.md WP1-12 / checklist.md G4-51 一致。
+ * grep 第 10 个值不在下列枚举内 → DB CHECK IntegrityError。
+ */
+export type PortfolioStatus =
+  | "PENDING_INITIAL_REVIEW"   // 新组合初始审查前态
+  | "READY"                    // 唯一可通过 HG1 的生产就绪态
+  | "RUNNING_AUTO_SIMULATION"  // 20:30 自动推演运行中（租约 auto_sim:{pid}）
+  | "RUNNING_BACKTEST"         // 后台回测运行中（租约 bt:{pid}:{btid}，与 AUTO 独立）
+  | "DATA_INCOMPLETE_PAUSED"   // 数据缺失/HEAVY，自动暂停新买单
+  | "RECONCILIATION_BLOCKED"   // 对账差异≠0，仅人工恢复
+  | "MODEL_INACTIVE"           // 绑定模型已退役/未激活
+  | "SCORE_STALE"              // Score 覆盖率/新鲜度未通过门禁
+  | "INTERRUPTED"              // 任务心跳超时/异常中断，等待恢复扫描器
+  | "ADMIN_PAUSED";            // 管理员一键刹车（唯一出边→显式转 READY，禁止自动恢复）
+
+/** 9 状态×4 允许矩阵当前态对应的四列（前端表格用 boolean 直接渲染 ✅❌） */
+export interface PortfolioStatePermissions {
+  allow_new_buys: boolean;                 // 新买单（手动 BUY / auto-simulation BUY）
+  allow_risk_exits: boolean;               // 风险退出（强制止损 / 清仓 SELL）
+  allow_auto_recovery: boolean;            // 是否允许恢复扫描器自动改回 READY
+  requires_manual_ack: boolean;            // 是否需要人工确认才能继续一切动作
+}
+
+/** GET /portfolios/{pid}/status → PortfolioStatusResponse 6 字段契约（FR-P1-8a） */
+export interface PortfolioStatusResponse {
+  portfolio_id: number;
+  current_state: PortfolioStatus | string;           // 字符串兜底（未来扩展值也能显示）
+  last_decision_trade_date?: string | null;          // ISO date，可 NULL 但 JSON 键必须存在
+  last_reconciled_trade_date?: string | null;        // ISO date，可 NULL 但 JSON 键必须存在
+  allowed_transitions: string[];                     // 直接来自 _allowed_transitions_from(current)；空数组=全部按钮 disabled
+  is_auto_simulation_eligible: boolean;              // HG1 综合结果；false=预检按钮灰
+  // FR-P1-8a 扩展：若后端未返回，前端按 ALLOWANCE_MATRIX 静态表 fail-closed 派生
+  permissions?: PortfolioStatePermissions;
+}
+
+/** 9×4 允许矩阵静态常量（FR-P0-10 / FR-P1-8a 契约）。
+ *  与后端 allowance 矩阵严格对齐，当 API 未返回 permissions 字段时作为 fallback。 */
+export const PORTFOLIO_STATE_ALLOWANCE_MATRIX: Record<PortfolioStatus, PortfolioStatePermissions> = {
+  PENDING_INITIAL_REVIEW: { allow_new_buys: false, allow_risk_exits: false, allow_auto_recovery: false, requires_manual_ack: true },
+  READY: { allow_new_buys: true, allow_risk_exits: true, allow_auto_recovery: false, requires_manual_ack: false },
+  RUNNING_AUTO_SIMULATION: { allow_new_buys: true, allow_risk_exits: true, allow_auto_recovery: false, requires_manual_ack: false },
+  RUNNING_BACKTEST: { allow_new_buys: true, allow_risk_exits: true, allow_auto_recovery: false, requires_manual_ack: false },
+  DATA_INCOMPLETE_PAUSED: { allow_new_buys: false, allow_risk_exits: true, allow_auto_recovery: true, requires_manual_ack: false },
+  RECONCILIATION_BLOCKED: { allow_new_buys: false, allow_risk_exits: true, allow_auto_recovery: false, requires_manual_ack: true },
+  MODEL_INACTIVE: { allow_new_buys: false, allow_risk_exits: true, allow_auto_recovery: false, requires_manual_ack: false },
+  SCORE_STALE: { allow_new_buys: false, allow_risk_exits: true, allow_auto_recovery: true, requires_manual_ack: false },
+  INTERRUPTED: { allow_new_buys: false, allow_risk_exits: true, allow_auto_recovery: true, requires_manual_ack: false },
+  ADMIN_PAUSED: { allow_new_buys: false, allow_risk_exits: false, allow_auto_recovery: false, requires_manual_ack: true },
+};
+
+/** POST /portfolios/{pid}/reconcile → 对账守恒 10 字段明细（FR-P1-8a） */
+export interface ReconciliationDiffItem {
+  dimension:
+    | "order_count" | "order_amount"
+    | "trade_count" | "trade_amount"
+    | "position_count" | "position_market_value"
+    | "cash_balance"
+    | "evidence_items" | "evidence_hash"
+    | string;            // 兼容后端新增维度（前端直接渲染字符串）
+  expected_value: number | string | null;
+  actual_value: number | string | null;
+  diff_value: number | string | null;               // ≠ 0 → 该行标红
+  explain_note?: string | null;
+}
+export interface ReconciliationResponse {
+  portfolio_id: number;
+  trade_date: string;                                      // ISO date
+  as_of_at: string;                                        // ISO datetime
+  differences_found: boolean;                              // true=至少有一项 diff 非零
+  zero_sum_check_passed: boolean;                          // 证据守恒总开关（true=10项加减和=0）
+  last_reconciled_trade_date?: string | null;
+  items: ReconciliationDiffItem[];                         // 至少 10 项
+  correlation_id?: string | null;
+}
+
+/** POST /portfolios/{pid}/confirm-reconciliation → 单人确认 3 字段（无 second_reviewer/dual_approval） */
+export interface ConfirmReconciliationRequest {
+  ack: boolean;                                   // 必须=true（否则 400）
+  force_skip?: boolean;                           // 高危：差异未清零就强行转 READY；true=二次确认红底
+  operator_id?: number | null;                    // 为空后端自动取当前登录用户；前端默认隐藏（单人确认）
+  review_note: string;                            // 非空，<10字时 422
+  force_rerun_before?: boolean;                   // 是否先重新跑一次 reconcile 再确认（默认 true）
+}
+export interface ConfirmReconciliationResponse {
+  portfolio_id: number;
+  trade_date: string;
+  operator_id: number;
+  from_state?: string | null;                             // 一般 RECONCILIATION_BLOCKED
+  to_state?: string | null;                               // READY=成功；未通过则不变
+  last_reconciled_trade_date?: string | null;
+  acknowledged_diffs_cleared: boolean;                    // true=差异 0
+  portfolio_now_ready: boolean;                           // 最终 portfolio_status ∈ {READY}
+  correlation_id: string;
+}
+
+/** POST /portfolios/{pid}/transition-state → ANY → ADMIN_PAUSED 刹车 / ADMIN → READY 解除 （FR-P0-10） */
+export interface StateTransitionRequest {
+  target_state: PortfolioStatus | string;           // 只允许 allowed_transitions 数组内的目标
+  trigger_reason: string;                               // 非空；如"管理员紧急刹车（线上问题处理）"
+  operated_by?: number | null;                          // 单人确认；为空后端自动取 current user
+  review_note?: string | null;                          // ADMIN_PAUSED→READY 或 RECON→READY 时非空
+  noop_if_already?: boolean;                            // 幂等；目标=当前 → 200 NOOP 不报错
+}
+export interface StateTransitionResponse {
+  portfolio_id: number;
+  from_state: string | null;
+  to_state: string | null;
+  transition_applied: boolean;                          // NOOP 时 false 不报错
+  noop_detected?: boolean;
+  operated_by?: number | null;
+  reviewed_at?: string | null;                          // ISO datetime
+  review_note?: string | null;
+  trigger_reason: string;
+  illegal_transition_rejected?: boolean;                // 非法跳转=STATE_TRANSITION_FORBIDDEN
+  audit_event_id?: number | null;
+  correlation_id: string;
+}
+
+/**
+ * FinalStatus 7 值撮合枚举（对齐 SimulationMatchStatus 7 值）
+ * grep 第 8 值不在下列 7 项内 → DB CHECK 报错。
+ */
+export type SimulationFinalStatus =
+  | "FILLED" | "PARTIAL_FILL"
+  | "REJECTED_TRADE_HALTED" | "REJECTED_BELOW_LOT" | "REJECTED_NO_QUANTITY"
+  | "SIGNAL_EXPIRED" | "PENDING_RETRY";
+
+/**
+ * DataSource 5 值基准数据源枚举（对齐 BenchmarkDataSource 5 值）
+ * BOTH_FAILED ⇄ overall_status=UNAVAILABLE 联动约束。
+ */
+export type BenchmarkDataSource =
+  | "INDEX_PRICE_TABLE"     // CS_INDEX_BENCHMARK：组合基准表内建基准
+  | "AKSHARE_PRIMARY"       // AKSHARE / WSD_PRIVATE_DB / RQDATA 主
+  | "BAOSTOCK_FALLBACK"     // 备
+  | "FALLBACK_MIXED"        // 主+备部分混用
+  | "BOTH_FAILED";          // 主备都失败；overall_status 必须=UNAVAILABLE
+
+/** ============= 审计事件（G4 治理事件分页过滤契约 FR-P1-8a #5） ============= */
+export type AuditEventType =
+  | "STATE_TRANSITION" | "ILLEGAL_TRANSITION_ATTEMPT"
+  | "RECONCILIATION_RUN" | "RECONCILIATION_RECONFIRMED_PASS" | "RECONCILIATION_BLOCK"
+  | "TERMINAL_LOCK_ENFORCED" | "TERMINAL_LOCK_INTERCEPTED"
+  | "HEARTBEAT_TIMEOUT" | "RECOVERY_SCAN_RUN"
+  | "STRICT_AUTH_HARD_DENIED" | "STRICT_AUTH_SOFT_WARNED"
+  | "SCORE_STALE_GATE" | "MODEL_INACTIVE"
+  | "ADMIN_PAUSED_APPLIED" | "ADMIN_PAUSED_RELEASED"
+  | "G5_DUAL_RUN_LAUNCHED" | "G5_DUAL_RUN_COMPLETED"
+  | "PREFLIGHT_BLOCKED" | "PREFLIGHT_PASSED" | string;
+
+export type AuditEventSeverity =
+  | "INFO" | "WARNING" | "L1" | "L2" | "L3" | string;
+
+export interface AuditEvent {
+  id: number;
+  portfolio_id?: number | null;
+  event_type: AuditEventType;
+  severity: AuditEventSeverity;
+  trigger_reason?: string | null;
+  operated_by?: number | null;                 // 单人确认；不设 second_reviewer
+  reviewed_at?: string | null;                 // ISO datetime
+  review_note?: string | null;
+  from_state?: string | null;
+  to_state?: string | null;
+  correlation_id?: string | null;
+  attributes_json?: string | null;             // JSON，额外上下文（可前端展开）
+  attributes?: Record<string, unknown> | null; // 反序列化后
+  created_at: string;                          // ISO datetime
+}
+
+export interface AuditEventPageResponse {
+  items: AuditEvent[];
+  total: number;
+  page: number;
+  page_size: number;
+  page_count: number;
+  has_more: boolean;
+  event_types_in_page?: string[] | null;
+}
+
+/** 审计事件查询过滤器（前端 filter 栏 4 项） */
+export interface AuditEventFilter {
+  event_type?: AuditEventType | null;
+  severity?: AuditEventSeverity | null;
+  start_date?: string | null;      // ISO date
+  end_date?: string | null;        // ISO date
+  query?: string | null;           // 模糊匹配 trigger_reason / review_note / correlation_id
+}
+
+// ============================================================================
+// G5 双跑对账框架契约（对齐 g5_dual_run_replay.G5ReplaySummary）
+// ============================================================================
+
+/** G5 业务口径 6 动作名（6×6 混淆矩阵行列用这些字符串，不输出代码值） */
+export type G5BusinessAction =
+  | "BUY" | "SELL_LIMITED_RISK" | "HOLDS"
+  | "REJECTED_OR_BLOCKED" | "RISK_CLOSED" | "NO_ACTION_OR_ARCHIVED";
+
+/** G5 业务口径 8 归因类目 + 3 类 P0 阻断不入 8 类统计（checklist G5-13~15） */
+export type G5AttributionCategory =
+  // 以下 8 类（业务口径可归因可解释，不触发 P0 阻断）：
+  | "PARAMETER_CONFIG_DIFF"
+  | "RISK_CONFIG_DIFF"
+  | "SCORING_VERSION_MISMATCH"
+  | "INPUT_DATA_ROUNDING"
+  | "TRADE_TIMING_MISMATCH"
+  | "ENGINE_FALLBACK_CODEPATH"
+  | "EXECUTION_SIM_MODEL_DIFF"
+  | "UNKNOWN_BUT_EXPLAINABLE"
+  // 以下 3 类 P0 阻断（不入 8 类统计；出现=日失败，必须有 change_note）：
+  | "UNKNOWN_ENGINE_DIFF"
+  | "DUPLICATE_REPLAY_SIDE_EFFECT"
+  | "CORRUPTED_SNAPSHOT_OR_EVIDENCE";
+
+/** G5 归因条目（单证券单天最多 1 条，禁止双重计数；优先级 P0 > P1 参数/配置 > P2 版本/数据 > P3 执行/模拟 ）*/
+export interface G5AttributionItem {
+  symbol_id?: number | null;
+  symbol?: string | null;
+  category: G5AttributionCategory;
+  severity: "P0" | "P1" | "P2" | "P3";
+  summary: string;
+  change_note?: string | null;          // UNKNOWN_ENGINE_DIFF 必须非空，否则判定为 P0 未通过
+  evidence_snippet?: Record<string, unknown> | null;
+}
+
+/** 单日双跑对账报告（DailyDualRunReport） */
+export interface DailyDualRunReport {
+  trade_date: string;                                        // ISO date
+  actions_match_rate?: number | null;                        // 0.0~1.0
+  universe_jaccard_index?: number | null;
+  p0_unexplained_count: number;                              // UNKNOWN_ENGINE_DIFF 且 change_note 空
+  p1_hold_noaction_flip: number;                             // HOLD/NO_ACTION 口径混淆导致的"差异"
+  attributions: G5AttributionItem[];                         // 单归因输出；不允许同证券同日归因双重计数
+  /** 6×6 混淆矩阵：matrix[old_business_action][new_business_action] = securities_count */
+  action_confusion_matrix?: Record<G5BusinessAction, Partial<Record<G5BusinessAction, number>>> | null;
+}
+
+/** G5 汇总（G5ReplaySummary dataclass 契约） */
+export interface G5DualRunSummaryResponse {
+  portfolio_id: number;
+  start_date: string;          // ISO date
+  end_date: string;            // ISO date
+  total_days: number;          // 预期交易日数量
+  days_replayed: number;       // 实际已重放（= total_days 时才可能 eligible）
+  skipped_days: string[];      // ISO date[]
+  daily_reports: DailyDualRunReport[];
+  avg_action_match_rate: number;          // 0.0~1.0；≥0.95 通过 P1 动作口径
+  avg_universe_jaccard: number;
+  total_p0_unexplained: number;            // 必须=0 才满足 eligible
+  total_p1_hold_noaction_flip: number;     // 可 >0（差异口径允许）
+  failing_days_p0: string[];               // ISO date[]
+  failing_days_p1: string[];
+  g5_eligible_for_g6: boolean;             // P0+P1 双通过 → true（G6 灰度入场券）
+  correlation_id?: string | null;
+  // ── 前端轮询优化：后端可选地回传内嵌异步任务元信息 ──
+  is_terminal_locked?: boolean;
+  terminal_lock_reason?: string | null;
+  status?: "SUBMITTED" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "TIMEOUT" | string;
+}
+
+export interface G5DualRunLaunchRequest {
+  start_date: string;                                      // ISO date
+  end_date: string;                                        // ISO date（与 start_date 连续 10 个真实交易日）
+  old_engine_version: string;
+  new_engine_version: string;
+  run_async?: boolean;                                     // 默认 true
+  strict_match_p0_threshold?: number | null;               // 默认 0.0（允许 0 条 P0 未解释）
+}
+export interface G5DualRunLaunchResponse {
+  replay_id: string;
+  portfolio_id: number;
+  start_date: string;
+  end_date: string;
+  expected_trade_days: number;
+  async_task_id?: string | null;
+  correlation_id: string;
+  // ── 前端轮询优化：后端可选地回传内嵌异步任务元信息，省去一次单独 getAsyncTask 往返 ──
+  is_terminal_locked?: boolean;
+  terminal_lock_reason?: string | null;
+  status?: "SUBMITTED" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "TIMEOUT" | string;
+}
+
+/** G7 只读运维状态（扩大范围、停新买、待处理订单和告警） */
+export interface G7OperationalStatus {
+  portfolio_id: number;
+  current_state: string;
+  g6_eligible: boolean;
+  g5_report_id?: number | null;
+  can_stop_new_buys: boolean;
+  new_buys_stopped: boolean;
+  pending_order_count: number;
+  pending_orders_by_status: Record<string, number>;
+  active_alert_count: number;
+  ready_for_expansion: boolean;
+  can_resume: boolean;
+  operational_blockers: string[];
+  resume_blockers: string[];
+}
+
+export interface G6RolloutResult {
+  portfolio_id: number;
+  status: "STARTED" | "ROLLED_BACK" | "NOOP" | string;
+  from_source_mode: string;
+  to_source_mode: string;
+  operator_id: string;
+  correlation_id?: string | null;
+  g5_report_id?: number | null;
+  audit_event_id?: number | null;
+  reason?: string | null;
+}
+
+export interface DecisionOrderPlanRead {
+  order_plan_id: string;
+  decision_run_id: string;
+  evidence_id: string;
+  symbol_id: number;
+  action: string;
+  signal_date: string;
+  execution_date: string;
+  target_quantity: number;
+  direction: "BUY" | "SELL" | null;
+  intended_price: number | null;
+  reason_code: string | null;
+  rejection_trace: Array<Record<string, unknown>>;
 }

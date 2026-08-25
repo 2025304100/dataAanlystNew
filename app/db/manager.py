@@ -95,6 +95,14 @@ class DatabaseManager:
                     cursor.execute("SET NAMES utf8mb4")
                     cursor.execute("SET default_storage_engine=InnoDB")
                     cursor.close()
+            elif db_type == "sqlite":
+                # SQLite: 显式在每个连接上启用外键约束，确保 ON DELETE RESTRICT / ForeignKey
+                # 关系在业务连接上生效（全局生效，不只是 Alembic 迁移）。
+                @event.listens_for(self._engine, "connect")
+                def _set_sqlite_pragmas(dbapi_conn, _connection_record):
+                    cursor = dbapi_conn.cursor()
+                    cursor.execute("PRAGMA foreign_keys=ON")
+                    cursor.close()
 
             self._session_factory = sessionmaker(
                 bind=self._engine,

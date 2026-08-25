@@ -1,0 +1,20 @@
+schema_version: 1
+module_path: backend_api/decision_engine
+title: decision_engine
+scope:
+    - app/services/decision_*.py
+    - app/services/task_heartbeat_service.py
+    - app/services/task_state_machine.py
+    - app/services/scheduled_tasks.py
+    - app/services/async_tasks.py
+    - app/services/governance_outbox.py
+    - app/services/idempotency.py
+    - app/services/local_persistence.py
+    - app/services/migration.py
+    - app/services/data_governance_audit.py
+    - app/services/reconciliation_conservation.py
+    - app/services/secret_store.py
+    - app/services/metrics.py
+source_files: []
+depends_on: []
+related_to: []

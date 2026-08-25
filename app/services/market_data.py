@@ -401,6 +401,25 @@ def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int,
     for row in rows:
         trade_date = row["trade_date"]
         existing = existing_map.get(trade_date)
+        open_price = float(row["open"])
+        high_price = float(row["high"])
+        low_price = float(row["low"])
+        close_price = float(row["close"])
+        volume = (
+            float(row["volume"])
+            if row.get("volume") is not None and not pd.isna(row.get("volume"))
+            else None
+        )
+        amount = (
+            float(row["amount"])
+            if row.get("amount") is not None and not pd.isna(row.get("amount"))
+            else None
+        )
+        turnover_rate = (
+            float(row["turnover_rate"])
+            if row.get("turnover_rate") is not None and not pd.isna(row.get("turnover_rate"))
+            else None
+        )
         if existing is None:
             existing = DailyBar(symbol_id=symbol.id, trade_date=trade_date)
             db.add(existing)
@@ -408,18 +427,34 @@ def _upsert_bars(db: Session, symbol: Symbol, frame: pd.DataFrame) -> tuple[int,
             inserted += 1
         else:
             updated += 1
+            # daily_bars is currently a single-version table.  When a source
+            # correction changes the payload, ``created_at`` becomes the
+            # availability time of that replacement value.  Strict PIT
+            # consumers will fail closed for decision dates before it instead
+            # of mistaking the correction for the original observation.
+            payload_changed = any(
+                getattr(existing, field) != value
+                for field, value in (
+                    ("open", open_price),
+                    ("high", high_price),
+                    ("low", low_price),
+                    ("close", close_price),
+                    ("volume", volume),
+                    ("amount", amount),
+                    ("turnover_rate", turnover_rate),
+                    ("source", "akshare"),
+                )
+            )
+            if payload_changed:
+                existing.created_at = datetime.now(timezone.utc)
 
-        existing.open = float(row["open"])
-        existing.high = float(row["high"])
-        existing.low = float(row["low"])
-        existing.close = float(row["close"])
-        existing.volume = float(row["volume"]) if row.get("volume") is not None and not pd.isna(row.get("volume")) else None
-        existing.amount = float(row["amount"]) if row.get("amount") is not None and not pd.isna(row.get("amount")) else None
-        existing.turnover_rate = (
-            float(row["turnover_rate"])
-            if row.get("turnover_rate") is not None and not pd.isna(row.get("turnover_rate"))
-            else None
-        )
+        existing.open = open_price
+        existing.high = high_price
+        existing.low = low_price
+        existing.close = close_price
+        existing.volume = volume
+        existing.amount = amount
+        existing.turnover_rate = turnover_rate
         existing.source = "akshare"
 
     return inserted, updated

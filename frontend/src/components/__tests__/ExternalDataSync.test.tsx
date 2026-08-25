@@ -115,6 +115,18 @@ const { mockApi, makeTask, mockOverview } = vi.hoisted(() => {
         plan: null,
         partitions: [],
       })),
+      createFactorPipelineTask: vi.fn(async () => ({
+        id: "factor-pipeline-1", status: "queued", stage: "mirror", percent: 0,
+        message: "queued", task_type: "factor_pipeline", total: 0, processed: 0,
+        ok_count: 0, failed_count: 0, current_item: null, result: null, errors: [],
+        created_at: null, started_at: null, finished_at: null, updated_at: null,
+      })),
+      getFactorPipelineTask: vi.fn(async () => ({
+        id: "factor-pipeline-1", status: "done", stage: "done", percent: 100,
+        message: "completed", task_type: "factor_pipeline", total: 0, processed: 0,
+        ok_count: 0, failed_count: 0, current_item: null, result: null, errors: [],
+        created_at: null, started_at: null, finished_at: null, updated_at: null,
+      })),
     },
   };
 });
@@ -145,12 +157,82 @@ import ExternalDataSync from "../ExternalDataSync";
 
 describe("ExternalDataSync dashboard", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockApi.getExternalDataOverview.mockReset();
     mockApi.getExternalDataOverview.mockResolvedValue(mockOverview);
-    mockApi.getExternalDataSyncCapabilities.mockClear();
-    mockApi.previewExternalDataSyncPlan.mockClear();
+    mockApi.getExternalDataSyncCapabilities.mockReset();
+    mockApi.getExternalDataSyncCapabilities.mockResolvedValue({
+      fundamental: { modes: ["incremental", "backfill"], history_limit_days: null, reason: "history" },
+      financial: { modes: ["incremental", "backfill"], history_limit_days: null, reason: "history" },
+      lhb: { modes: ["incremental", "backfill"], history_limit_days: 31, reason: "history" },
+      hot_rank: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
+      tail_proxy: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
+      capital_flow: { modes: ["incremental", "backfill"], history_limit_days: 100, reason: "history" },
+      etf: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
+    });
+    mockApi.getExternalDataCoverage.mockReset();
+    mockApi.getExternalDataCoverage.mockResolvedValue({
+      generated_at: "2026-08-02T08:00:00",
+      datasets: (["fundamental", "financial", "lhb", "hot_rank", "tail_proxy", "capital_flow", "etf"] as const).map((dataset) => ({
+        dataset,
+        readiness: dataset === "tail_proxy" ? "blocked" : "available",
+        reason: "test",
+        fields: dataset === "etf" ? [] : [{
+          field: `${dataset}_field`,
+          availability: "available",
+          evaluation_enabled: true,
+          first_date: "2026-07-01",
+          latest_date: "2026-08-02",
+          nonnull_rows: 8,
+          table_rows: 10,
+          distinct_symbols: 2,
+          distinct_dates: 5,
+          continuity_days: 5,
+          daily_coverage_p50: 0.8,
+          daily_coverage_p90: 0.9,
+          latest_daily_coverage: 0.8,
+          reason: "test",
+        }],
+      })),
+    });
+    mockApi.getExternalDataGaps.mockReset();
+    mockApi.getExternalDataGaps.mockImplementation(async (dataset: "fundamental" | "capital_flow") => ({
+      dataset,
+      start_date: "2026-06-04",
+      end_date: "2026-08-02",
+      total_missing: 0,
+      truncated: false,
+      gaps: [],
+    }));
+    mockApi.previewExternalDataSyncPlan.mockReset();
+    mockApi.previewExternalDataSyncPlan.mockImplementation(async (payload: any) => ({
+      dataset: payload.dataset,
+      mode: payload.mode,
+      requested_start_date: "2026-08-02",
+      requested_end_date: "2026-08-02",
+      requested_span_days: 1,
+      provider_history_limit_days: 0,
+      provider_reason: "snapshot",
+      partition_strategy: "symbol_batches",
+      symbol_batch_size: 20,
+    }));
+    mockApi.startExternalDataSync.mockReset();
     mockApi.startExternalDataSync.mockImplementation(async (payload: any) => makeTask(payload.dataset));
+    mockApi.getExternalDataSyncTask.mockReset();
     mockApi.getExternalDataSyncTask.mockResolvedValue(makeTask("fundamental", "running"));
+    mockApi.getExternalDataSyncTaskPartitions.mockReset();
+    mockApi.getExternalDataSyncTaskPartitions.mockResolvedValue({
+      task_id: "task-fundamental",
+      plan: null,
+      partitions: [],
+    });
+    mockApi.repairExternalDataGaps.mockReset();
+    mockApi.repairExternalDataGaps.mockResolvedValue(makeTask("fundamental", "running"));
+    mockApi.cancelExternalDataSyncTask.mockReset();
+    mockApi.cancelExternalDataSyncTask.mockResolvedValue(makeTask("fundamental"));
+    mockApi.retryExternalDataSyncTask.mockReset();
+    mockApi.retryExternalDataSyncTask.mockResolvedValue(makeTask("fundamental", "running"));
+    mockApi.createFactorPipelineTask.mockClear();
+    mockApi.getFactorPipelineTask.mockClear();
   });
 
   it("renders the real inventory dashboard for all seven datasets", async () => {
@@ -204,14 +286,14 @@ describe("ExternalDataSync dashboard", () => {
     render(<ExternalDataSync />);
     const button = await screen.findByRole("button", { name: /extSyncFundamental/ });
     fireEvent.click(button);
-    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith({
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
       dataset: "fundamental",
       source: "watchlist",
       include_northbound: true,
       mode: "incremental",
       lookback_days: 1,
       limit: 20,
-    }));
+    })));
   });
 
   it("passes the changed source to financial-report synchronization", async () => {
@@ -249,7 +331,10 @@ describe("ExternalDataSync dashboard", () => {
     render(<ExternalDataSync />);
     fireEvent.click(await screen.findByRole("button", { name: /extSyncFundamental/ }));
 
-    await waitFor(() => expect(screen.getByText("25%")).toBeInTheDocument());
+    await waitFor(() => {
+      const bars = screen.getAllByRole("progressbar");
+      expect(bars.some((bar) => bar.getAttribute("aria-valuenow") === "25")).toBe(true);
+    });
     expect(screen.getByText("2/8")).toBeInTheDocument();
     expect(screen.getByText(/600000/)).toBeInTheDocument();
   });
@@ -269,5 +354,17 @@ describe("ExternalDataSync dashboard", () => {
 
     await waitFor(() => expect(message.success).toHaveBeenCalledWith("extTaskCompleted"));
     expect(screen.getByText(/extSyncFundamental: extSyncResult/)).toBeInTheDocument();
+  });
+
+  it("submits a score-only factor pipeline after input synchronization", async () => {
+    const user = userEvent.setup();
+    render(<ExternalDataSync />);
+    await user.click(await screen.findByRole("button", { name: "更新因子评分" }));
+
+    await waitFor(() => expect(mockApi.createFactorPipelineTask).toHaveBeenCalledWith(expect.objectContaining({
+      train_model: false,
+      materialize_scores: true,
+      full_refresh: false,
+    })));
   });
 });

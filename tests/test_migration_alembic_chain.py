@@ -87,12 +87,12 @@ def _walk_chain(chain: dict, head: str) -> list:
 
 
 class TestRevisionChainStructure:
-    """验证 24 个 revision 文件的链式依赖结构。"""
+    """验证 revision 文件的链式依赖结构（含历史链 25 + P0+P1 新链 3 = 28 个文件）。"""
 
     def test_all_revisions_importable(self):
         """所有 revision 文件可正常导入。"""
         modules = _load_revision_modules()
-        assert len(modules) >= 20, f"Expected >=20 revisions, got {len(modules)}"
+        assert len(modules) >= 27, f"Expected >=27 revisions (24 historical + 0801 + P0/P1 3 new), got {len(modules)}"
 
     def test_each_revision_has_upgrade_and_downgrade(self):
         """每个 revision 必须有 upgrade() 和 downgrade() 函数。"""
@@ -125,26 +125,26 @@ class TestRevisionChainStructure:
         assert chain[ordered[-1]] is None, \
             f"Chain tail {ordered[-1]} should have down_revision=None"
 
-    def test_head_is_wps_0023_023(self):
-        """head revision 应为 wps_0023_023_score_traceability。"""
+    def test_head_is_current_execution_ledger_revision(self):
+        """head revision must include the current G5 dual-run audit ledger."""
         modules = _load_revision_modules()
         chain = _build_chain(modules)
         head = _find_head(chain)
-        assert head == "wps_0023_023_score_traceability", \
-            f"Head should be wps_0023_023_score_traceability, got {head}"
+        assert head == "wps_0023_042_decision_order_plans", \
+            f"Head should be wps_0023_042_decision_order_plans, got {head}"
 
-    def test_chain_has_exactly_24_revisions_after_base(self):
-        """链中 base 之外应有 24 个 revision（0001-0020 + 0801_001 + 0021 + 0022 + 0023）。"""
+    def test_chain_has_current_revision_count(self):
+        """当前迁移链包含 base 加 41 个连续 revision。"""
         modules = _load_revision_modules()
         chain = _build_chain(modules)
         head = _find_head(chain)
         ordered = _walk_chain(chain, head)
-        # ordered 包含 base + 24 个新 revision = 25
-        assert len(ordered) == 25, \
-            f"Expected 25 revisions in chain (1 base + 24 new), got {len(ordered)}"
+        # ordered = [head, ..., wps_001]，总数=1 base + 43 current revisions = 44
+        assert len(ordered) == 44, \
+            f"Expected 44 revisions in chain (1 base + 43 current revisions), got {len(ordered)}"
 
     def test_specific_revision_links(self):
-        """验证关键链式依赖关系。"""
+        """验证关键链式依赖关系（历史 expected_links + P0+P1 三段追加）。"""
         modules = _load_revision_modules()
         chain = _build_chain(modules)
 
@@ -162,6 +162,11 @@ class TestRevisionChainStructure:
             "wps_0023_021_factor_library_lifecycle": "wps_0801_001_universe_incremental_index",
             "wps_0023_022_shadow_observations": "wps_0023_021_factor_library_lifecycle",
             "wps_0023_023_score_traceability": "wps_0023_022_shadow_observations",
+            # P0+P1 冻结链新增：
+            "wps_0023_024_decision_engine_contract": "wps_0023_023_score_traceability",
+            "wps_0023_025_notifications_gap_fix": "wps_0023_024_decision_engine_contract",
+            "wps_0023_026_drop_legacy_last_successful_trade_date": "wps_0023_025_notifications_gap_fix",
+            "wps_0023_037_backtest_execution_fills": "wps_0023_036_data_quality_snapshot_contract",
         }
         for rev, expected_down in expected_links.items():
             assert rev in chain, f"Revision {rev} not found in modules"
@@ -188,7 +193,8 @@ def _make_alembic_config(db_url: str):
 def fresh_sqlite_url(tmp_path) -> str:
     """每个测试独立的 SQLite 文件 URL。"""
     db_path = tmp_path / "test_migration.db"
-    return f"sqlite:///{db_path}"
+    # 统一正斜杠，避免 Windows 反斜杠导致 Path.is_absolute() 判定或 SQLAlchemy URL 解析差异
+    return f"sqlite:///{db_path.resolve().as_posix()}"
 
 
 class TestMigrationExecution:
@@ -210,6 +216,10 @@ class TestMigrationExecution:
             "external_endpoint_runtime",
             "opportunity_transition_events",
             "portfolio_members",
+            "portfolios",
+            "portfolio_rules",
+            "positions",
+            "portfolio_candidates",
             "notification_channels",
             "notification_policies",
             "notification_policy_channels",
@@ -231,6 +241,20 @@ class TestMigrationExecution:
             "factor_set_members",
             # WP6-03: 0022 迁移新建表
             "factor_shadow_observations",
+            # P0+P1 024: 决策引擎契约新表（6张）
+            "portfolio_factor_usages",
+            "strategy_execution_snapshots",
+            "decision_runs",
+            "decision_evidence",
+            "idempotency_records",
+            "portfolio_cron_schedules",
+            # Score PIT/追溯 + 其他基础表
+            "scores",
+            "symbols",
+            "daily_bars",
+            "portfolio_equity_snapshots",
+            "data_quality_quarantines",
+            "backtest_execution_fills",
         ]
         for table_name in expected_new_tables:
             assert table_name in tables, \
@@ -298,6 +322,10 @@ class TestMigrationExecution:
             "notification_policies",
             "notification_channels",
             "portfolio_members",
+            "portfolio_candidates",
+            "positions",
+            "portfolio_rules",
+            "portfolios",
             "opportunity_transition_events",
             "external_endpoint_runtime",
             # WP1-06: 0021 迁移新建表（downgrade 后应被删除）
@@ -307,6 +335,20 @@ class TestMigrationExecution:
             "factor_evaluation_runs",
             # WP6-03: 0022 迁移新建表（downgrade 后应被删除）
             "factor_shadow_observations",
+            # P0+P1 024: 决策引擎契约整表（整表降级必须删除）
+            "portfolio_cron_schedules",
+            "idempotency_records",
+            "decision_evidence",
+            "decision_runs",
+            "strategy_execution_snapshots",
+            "portfolio_factor_usages",
+            # Score PIT/追溯 + 其他基础表（整表降级删除）
+            "portfolio_equity_snapshots",
+            "data_quality_quarantines",
+            "backtest_execution_fills",
+            "daily_bars",
+            "scores",
+            "symbols",
         ]
         for table_name in dropped_tables:
             assert table_name not in tables, \
@@ -464,6 +506,34 @@ class TestDriftFieldsExist:
         cols = self._get_columns(migrated_engine, "factor_versions")
         for field in ["execution_plan_hash", "validation_status"]:
             assert field in cols, f"factor_versions missing column {field}"
+
+    def test_backtest_execution_fills_table_complete(self, migrated_engine):
+        """The decision-driven fill ledger persists every execution attribute."""
+        cols = self._get_columns(migrated_engine, "backtest_execution_fills")
+        for field in [
+            "run_id",
+            "backtest_trade_id",
+            "symbol_id",
+            "execution_date",
+            "side",
+            "quantity",
+            "executed_price",
+            "cost",
+            "decision_evidence_id",
+            "order_plan_id",
+            "created_at",
+        ]:
+            assert field in cols, f"backtest_execution_fills missing column {field}"
+
+    def test_decision_order_plans_table_complete(self, migrated_engine):
+        cols = self._get_columns(migrated_engine, "decision_order_plans")
+        for field in [
+            "order_plan_id", "decision_run_id", "evidence_id", "portfolio_id",
+            "symbol_id", "action", "signal_date", "execution_date",
+            "target_quantity", "direction", "intended_price", "reason_code",
+            "rejection_trace_json", "created_at",
+        ]:
+            assert field in cols, f"decision_order_plans missing column {field}"
 
 
 # ============================================================================

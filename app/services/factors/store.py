@@ -8,6 +8,7 @@ readers but only one writer process at a time.
 from __future__ import annotations
 
 import threading
+import os
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
@@ -814,6 +815,83 @@ class FactorWarehouse:
                 conn.execute("ROLLBACK")
                 raise
         return len(selected)
+
+    def prune_calculation_batches(
+        self,
+        *,
+        keep_batches: int | None = None,
+        protected_batch_ids: Iterable[str] = (),
+    ) -> dict[str, Any]:
+        """Delete old analytical calculation rows without touching audit metadata.
+
+        ``factor_values`` and ``factor_targets`` deliberately include the
+        calculation batch in their primary keys, so repeated score refreshes
+        create traceable versions.  Retention is therefore applied by batch,
+        not by individual rows.  The newest ``keep_batches`` batches and any
+        explicitly protected IDs are retained.  ``ingestion_batches`` is left
+        intact so historical audit records remain queryable.
+        """
+        if keep_batches is None:
+            keep_batches = int(os.environ.get("FACTOR_BATCH_RETENTION_COUNT", "30"))
+        if keep_batches < 1:
+            raise ValueError("keep_batches must be at least 1")
+        protected = {str(item) for item in protected_batch_ids if item}
+        self.initialize()
+        with self._write_lock, self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT calc_batch_id, MAX(created_at) AS latest_at
+                FROM (
+                    SELECT calc_batch_id, created_at FROM factor_values
+                    UNION ALL
+                    SELECT calc_batch_id, created_at FROM factor_targets
+                ) batches
+                GROUP BY calc_batch_id
+                ORDER BY latest_at DESC, calc_batch_id DESC
+                """
+            ).fetchall()
+            retained = {str(row[0]) for row in rows[:keep_batches]} | protected
+            candidates = [str(row[0]) for row in rows if str(row[0]) not in retained]
+            if not candidates:
+                return {
+                    "keep_batches": keep_batches,
+                    "retained_batch_ids": sorted(retained),
+                    "deleted_batch_ids": [],
+                    "factor_value_rows_deleted": 0,
+                    "factor_target_rows_deleted": 0,
+                }
+            placeholders = ", ".join("?" for _ in candidates)
+            conn.execute("BEGIN TRANSACTION")
+            try:
+                factor_deleted = int(conn.execute(
+                    f"SELECT COUNT(*) FROM factor_values WHERE calc_batch_id IN ({placeholders})",
+                    candidates,
+                ).fetchone()[0] or 0)
+                target_deleted = int(conn.execute(
+                    f"SELECT COUNT(*) FROM factor_targets WHERE calc_batch_id IN ({placeholders})",
+                    candidates,
+                ).fetchone()[0] or 0)
+                conn.execute(
+                    f"DELETE FROM factor_values WHERE calc_batch_id IN ({placeholders})",
+                    candidates,
+                )
+                conn.execute(
+                    f"DELETE FROM factor_targets WHERE calc_batch_id IN ({placeholders})",
+                    candidates,
+                )
+                conn.execute("COMMIT")
+                # DELETE frees logical rows; CHECKPOINT compacts the local file.
+                conn.execute("CHECKPOINT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        return {
+            "keep_batches": keep_batches,
+            "retained_batch_ids": sorted(retained),
+            "deleted_batch_ids": candidates,
+            "factor_value_rows_deleted": factor_deleted,
+            "factor_target_rows_deleted": target_deleted,
+        }
 
     # ------------------------------------------------------------------
     # WPD-03: cross-process lock governance

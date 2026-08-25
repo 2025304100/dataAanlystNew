@@ -171,10 +171,70 @@ def fallback_factor_model(
     return _snapshot(state)
 
 
+def retire_factor_model(
+    db: Session,
+    model_run_id: str,
+    *,
+    actor: str = 'local_user',
+    reason: str,
+) -> FactorRuntimeSnapshot:
+    """Retire a released model and remove it from all new live selections.
+
+    Retiring the current global model is deliberately a fail-closed operation:
+    it clears the runtime pointer and switches the score mode to ``manual``.
+    Existing immutable snapshots remain historical evidence; they cannot be
+    selected again by the strategy-binding service after retirement.
+    """
+    if not reason or not reason.strip():
+        raise ValueError('retirement reason is required')
+    model = db.get(FactorModelRun, model_run_id)
+    if model is None:
+        raise ValueError(f'factor model does not exist: {model_run_id}')
+
+    state = db.execute(
+        select(FactorRuntimeState)
+        .where(FactorRuntimeState.id == 1)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if state is None:
+        state = ensure_factor_runtime_state(db)
+
+    if model.status == 'retired':
+        return _snapshot(state)
+
+    previous_mode = state.weight_mode
+    previous_model = state.active_model_run_id
+    model.status = 'retired'
+    model.rejection_reason = f'retired: {reason.strip()}'
+
+    if state.active_model_run_id == model_run_id:
+        state.weight_mode = 'manual'
+        state.active_model_run_id = None
+        state.fallback_reason = f'retired:{model_run_id}:{reason.strip()}'
+        state.version += 1
+        state.updated_at = _now()
+
+    db.add(
+        FactorModelAuditLog(
+            action='retire',
+            model_run_id=model_run_id,
+            previous_mode=previous_mode,
+            new_mode=state.weight_mode,
+            previous_model_run_id=previous_model,
+            new_model_run_id=state.active_model_run_id,
+            actor=actor,
+            note=reason.strip(),
+        )
+    )
+    db.flush()
+    return _snapshot(state)
+
+
 __all__ = [
     'FactorRuntimeSnapshot',
     'activate_factor_model',
     'ensure_factor_runtime_state',
     'fallback_factor_model',
     'get_factor_runtime_snapshot',
+    'retire_factor_model',
 ]

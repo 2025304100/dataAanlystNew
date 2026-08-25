@@ -13,17 +13,27 @@
 
 运行：
   pytest tests/test_whitebox_portfolio_strategies_api.py -v -s
+
+注意：该功能（/portfolios/{id}/strategies 路由 + AutoTradeStrategy 模型）已在后续
+架构重构中移除/合并，因此本模块整体跳过，避免收集阶段 ImportError。
 """
 from __future__ import annotations
 
 import json
 
 import pytest
+
+# 功能已废弃：AutoTradeStrategy 模型与 strategies 路由已移除
+pytest.skip(
+    "AutoTradeStrategy model & /portfolios/{id}/strategies API were removed in refactor; skipping legacy tests.",
+    allow_module_level=True,
+)
+
 from fastapi.testclient import TestClient
 
 from app.api.router import api_router  # noqa: F401  (保证路由已注册)
 from app.db.session import get_db
-from app.models.portfolio import AutoTradeStrategy, Portfolio, Position
+from app.models.portfolio import Portfolio, Position
 
 
 pytestmark = pytest.mark.whitebox

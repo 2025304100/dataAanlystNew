@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: migrations
+title: Alembic 数据库版本化迁移
+scope:
+    - alembic/
+source_files: []
+depends_on: []
+related_to: []

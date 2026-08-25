@@ -209,6 +209,10 @@ def test_universe_refresh_does_not_return_excel_error(client):
             "refresh_universe": True,
             "symbol_limit": 5,
             "batch_size": 5,
+            # T2 B1：注入 task_key_hint，避免共享默认 task key 触发全局 running 冲突；
+            # 每执行一次创建 UUID 后缀唯一 key，跨运行/跨用例永不重名，
+            # 极大降低 _is_running_conflict_response 触发的 skip 率（提升覆盖率）。
+            "task_key_hint": _task_key_hint,
         }
         r = client.post("/api/v1/discovery/tasks", json=payload)
         # 若仍为冲突，再做一次清理+重试（极端竞态保护）
@@ -414,6 +418,10 @@ def test_universe_seen_zero_aborts_task(client):
             "refresh_universe": True,
             "symbol_limit": 5,
             "batch_size": 5,
+            # T2 B2：注入 task_key_hint（UUID suffix），避免共享默认 task key 时
+            # 环境残留 running 记录触发 500 冲突被整测试 skip；
+            # 降低 seen=0 中止守护验证因串扰被跳过的概率。
+            "task_key_hint": _task_key_hint,
         }
         r = client.post("/api/v1/discovery/tasks", json=payload)
         # 若仍为冲突，再做一次清理+重试（极端竞态保护）
@@ -506,6 +514,10 @@ def test_terminal_status_not_overwritten(client):
             "use_cached_symbols_only": True,
             "symbol_limit": 1,
             "batch_size": 1,
+            # T2 B3：注入 task_key_hint（UUID suffix），避免全局 running 检查竞态；
+            # 虽然本测试会立即 cancel→retry 循环，但创建时用唯一 key 可减少
+            # "已有运行中的 discovery 任务导致被 500"的 skip 概率，提升覆盖率。
+            "task_key_hint": _task_key_hint,
         }
         r = client.post("/api/v1/discovery/tasks", json=payload)
         # 若仍为冲突，再做一次清理+重试（极端竞态保护）

@@ -54,6 +54,7 @@ from app.models.scan import ScanResult, ScanRun
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.services.allocation import get_active_rule
+from app.services import simulation_matching_engine as sme
 from app.services.backtest import build_backtest_detail_context, run_backtest
 from app.services.index_data import list_index_prices
 from app.services.signal_rules import get_active_signal_rule
@@ -142,7 +143,7 @@ def _derive_symbol_ids(db: Session, portfolio_id: int) -> list[int]:
     if not symbol_ids:
         raise ValueError(
             f"Portfolio {portfolio_id} has no positions, portfolio candidates, or scan candidates. "
-            "Cannot run whole-portfolio backtest."
+            "Cannot run whole-portfolio backtest (no positions and no scan candidates)."
         )
 
     return sorted(symbol_ids)
@@ -445,9 +446,9 @@ def _resolve_symbol_ids(
 
 
 def _build_rule_config(
-    db: Session,
-    portfolio_id: int,
-    rule: PortfolioRule | None,
+    db: Session | PortfolioRule | None = None,
+    portfolio_id: int | None = None,
+    rule: PortfolioRule | None = None,
 ) -> dict[str, Any]:
     """从 PortfolioRule + SignalRule 构造与 auto_trade 信号逻辑一致的 v1 rule_config。
 
@@ -466,6 +467,14 @@ def _build_rule_config(
 
     stage_limits_json 可选：若有 factors / stock_pool / weighting 则透传，供引擎与 UI 审计。
     """
+    # Compatibility for legacy white-box callers that passed only ``rule`` or
+    # ``None``. Production callers still pass (db, portfolio_id, rule).
+    if rule is None and (portfolio_id is None or not isinstance(portfolio_id, int)):
+        if db is not None and not isinstance(db, Session):
+            rule = db  # type: ignore[assignment]
+        db = None
+        portfolio_id = None
+
     stage_limits: dict[str, Any] | None = None
     if rule is None:
         max_single = 0.1
@@ -474,20 +483,21 @@ def _build_rule_config(
     else:
         max_single = float(rule.max_single_position_pct or 0.1)
         max_positions = int(rule.max_open_positions or 5)
-        stop_loss = float(rule.max_loss_per_trade_pct or 0.08) if rule.max_loss_per_trade_pct else 0.08
+        max_loss = getattr(rule, "max_loss_per_trade_pct", None)
+        stop_loss = float(max_loss or 0.08) if max_loss else 0.08
         try:
-            if rule.stage_limits_json:
+            if getattr(rule, "stage_limits_json", None):
                 stage_limits = (
-                    json.loads(rule.stage_limits_json)
-                    if isinstance(rule.stage_limits_json, str)
-                    else dict(rule.stage_limits_json)
+                    json.loads(getattr(rule, "stage_limits_json"))
+                    if isinstance(getattr(rule, "stage_limits_json"), str)
+                    else dict(getattr(rule, "stage_limits_json"))
                 )
         except (TypeError, json.JSONDecodeError):
             stage_limits = None
 
     # 映射 SignalRule：失败/缺失时不抛，兜底默认
     try:
-        sig = get_active_signal_rule(db, portfolio_id)
+        sig = get_active_signal_rule(db, portfolio_id) if db is not None and portfolio_id is not None else None
         q_min = int(getattr(sig, "quality_tolerance", 0) or 0)
         t_min = int(getattr(sig, "timing_tolerance", 0) or 0)
         # quality_tolerance 语义是"与最佳样本的评分容忍差值"，回测语义是"最低准入分"，
@@ -528,14 +538,18 @@ def _filter_symbol_ids_by_rule(
     portfolio_id: int,
     rule: PortfolioRule | None,
     symbol_ids: list[int],
+    *,
+    as_of_date: date | None = None,
 ) -> list[int]:
     """把 PortfolioRule.stage_limits_json (stock_pool / factors) 与
     SignalRule.quality_tolerance/timing_tolerance 应用到回测标的池，
     保持与 auto_trade_task 买入侧筛选语义一致。
 
     - stock_pool：启发式按 Symbol.market / Symbol.symbol 前缀过滤
-    - quality/timing 准入分：基于最新 Score 过滤（Score 缺失时不粗暴剔除，避免空池）
+    - quality/timing 准入分：基于 PIT 截止前最新 Score 过滤（缺失时不粗暴剔除，避免空池）
     - factors：基于因子加权重排序，避免"随机取 N"时因子完全不起作用
+    - as_of_date：C-08 PIT 截止，仅使用 trade_date <= as_of_date 的 Score。
+      None 表示不限（仅研究/空窗口兼容，生产链路强制传值）。
     """
     if not symbol_ids:
         return symbol_ids
@@ -648,41 +662,33 @@ def _filter_symbol_ids_by_rule(
             return acc / total_w
         return base
 
-    # 选股池过滤函数（与 auto_trade_task 保持一致）
-    def _pass_stock_pool(sym: Symbol) -> bool:
-        # ETF 标的已通过组合资产范围过滤；股票指数成分池不适用于 ETF。
+    # WP0-5 / C-08 合规：选股池不再使用"沪深300/中证500"指数代码前缀的近似伪池。
+    # 证券范围严格使用三段统一口径：
+    #   (1) 买入候选 = PortfolioCandidate(pid, as_of_date, auto_authorized=True, removed_manually=False)
+    #   (2) 卖出/风控 = 当前持仓 holdings.quantity>0
+    #   (3) 组合证券范围 = 候选 ∪ 持仓
+    # 股票指数成员筛选已在 PortfolioCandidate 入口层显式做过，回测链路不得重复做、
+    # 不得用 symbol.symbol 前缀做"属于某指数"的启发式判断。
+    def _pass_stock_pool(sym: Symbol) -> bool:  # pragma: no cover - 保持兼容，不会再被调用
         if sym.asset_type == "etf":
             return True
-        if stock_pool in {"全A", "自定义", ""}:
-            return True
-        # symbols.market 在现有数据中既有 cn_stock/csa，也广泛使用 SH/SZ。
-        # SH/SZ 仍然是 A 股市场，不能因为编码形式不同而被沪深300/中证500
-        # 选股池整批排除。
-        if sym.market and sym.market.lower() not in {
-            "cn_stock", "csa", "a", "ashare", "cn", "sh", "sz", "sse", "szse",
-        }:
-            return stock_pool == "全A"
-        if stock_pool == "沪深300":
-            code = (sym.symbol or "").strip()
-            if code.startswith(("688", "300", "301")):
-                return False
-            return True
-        if stock_pool == "中证500":
-            code = (sym.symbol or "").strip()
-            if code.startswith(("688",)):
-                return False
-            return True
+        # C-08a: 任何非 ETF 标的默认通过；真排除由 PortfolioCandidate 交集保证（外层）
         return True
 
     # 3. 逐条 symbol_id 拉取 Symbol + Score，执行过滤 + 加权排序
     ranked: list[tuple[int, float]] = []
-    # 取每个 symbol_id 最新 Score
+    # C-08 PIT 截止：仅取 trade_date <= as_of_date 的 Score；
+    # 若某个 symbol 无历史 Score，仍在 as_of_date 之后则视为缺 Score（fail-soft 进入保留逻辑）
+    score_base_where = [Score.symbol_id.in_(symbol_ids)]
+    if as_of_date is not None:
+        score_base_where.append(Score.trade_date <= as_of_date)
+    # 取每个 symbol_id 最新 Score（PIT 限制内）
     latest_date_subq = (
         select(
             Score.symbol_id.label("symbol_id"),
             func.max(Score.trade_date).label("max_date"),
         )
-        .where(Score.symbol_id.in_(symbol_ids))
+        .where(and_(*score_base_where))
         .group_by(Score.symbol_id)
         .subquery()
     )
@@ -780,11 +786,34 @@ def run_portfolio_backtest(
     start_date: date,
     end_date: date,
     run_name: str | None = None,
-    only_auto: bool = False,
-    current_universe: bool = False,
     benchmark: str | None = None,
+    # WP0-5a 新契约：任务启动时锁定 snapshot；缺省则自动创建任务级锁 + 回退绑定
+    strategy_snapshot_id: str | None = None,
+    score_weight_mode: str | None = None,
+    factor_model_run_id: str | None = None,
+    # WP0-5 TR-05.3 契约参数（8 字段，C-05 修复）
+    initial_capital: float | None = None,
+    commission_rate: float = 0.0003,
+    stamp_tax_rate: float = 0.001,
+    slippage_bps: int = 5,
+    price_type: str = "NEXT_OPEN",
+    volume_limit_pct: float = 0.10,
+    rebalance_frequency: str = "on_signal",
+    pit_mode: str = "legacy_research",
+    **_legacy_kwargs: Any,
 ) -> dict[str, Any]:
     """对组合执行整体回测。
+
+    WP0-5 契约收紧：
+      - 证券范围（统一三段口径）：
+        (1) 买入候选 = PortfolioCandidate(pid, as_of_date, auto_authorized=True, removed_manually=False)
+        (2) 卖出/风控范围 = 当前持仓 quantity>0
+        (3) 组合证券范围 = 两者 ∪
+        不再暴露 only_auto / current_universe 前端特殊分支（C-03 修复）。
+      - 请求体 8 参数全部落地：initial_capital 覆盖 total_capital；
+        commission_rate / stamp_tax_rate / slippage_bps 写入 CostModelConfig；
+        price_type 传 match_order_plan；volume_limit_pct 作为流动性阈值；
+        rebalance_frequency 写入 BacktestRun 快照；（C-05 修复）
 
     Args:
         db: 数据库会话
@@ -792,11 +821,7 @@ def run_portfolio_backtest(
         start_date: 回测起始日期
         end_date: 回测结束日期
         run_name: 回测名称，None 时自动生成
-        only_auto: WP7.3 仅回测 execution_mode='auto' 成员。
-            - source_label=="members" 且 only_auto=False 时，若存在 manual/confirm
-              成员则抛出 ValueError（默认禁止完整回测）
-            - only_auto=True 时跳过 manual/confirm 成员，并将其记入
-              ``excluded_members_json`` 快照
+        benchmark: 基准中文名（如 沪深300）
 
     Returns:
         BacktestRun 的字典形式（含 id, status, trade_count 等字段，以及
@@ -804,7 +829,7 @@ def run_portfolio_backtest(
 
     Raises:
         ValueError: 组合不存在/非模拟/未开启自动交易/无标的可回测/
-            total_capital<=0/存在 manual/confirm 成员且 only_auto=False
+            total_capital<=0 / 价格类型非法
     """
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
@@ -817,65 +842,225 @@ def run_portfolio_backtest(
             "Whole-portfolio backtest requires auto_trade_enabled=1 "
             "(signals are based on Score.action which mirrors auto-trade logic)."
         )
-    if not portfolio.total_capital or float(portfolio.total_capital) <= 0:
+    # WP0-5 / C-05：initial_capital 显式优先（覆盖 portfolio 默认 total_capital），
+    #   否则仍用组合默认，避免默认 0 阻断
+    effective_capital: float = (
+        float(initial_capital) if isinstance(initial_capital, (int, float)) and initial_capital > 0
+        else float(portfolio.total_capital or 0.0)
+    )
+    if effective_capital <= 0:
         raise ValueError(
-            f"Portfolio {portfolio_id} total_capital is {portfolio.total_capital}. "
-            "Configure total_capital before running backtest."
+            f"Portfolio {portfolio_id} initial_capital is {effective_capital}; total_capital/initial_capital must be positive. "
+            "Configure initial_capital before running backtest."
         )
 
-    # WP7.3 成员资格校验（仅 member 来源生效）
-    # - only_auto=False 且存在 manual/confirm 成员 → 阻止完整回测
-    # - only_auto=True → 跳过 manual/confirm 成员，记入 excluded_members
+    # WP0-5 / 价格类型：T_CLOSE 仅 research 允许（research_pit / legacy_research）；
+    # production_pit 强制 NEXT_OPEN
+    if price_type not in {"NEXT_OPEN", "T_CLOSE"}:
+        raise ValueError(f"price_type 仅允许 NEXT_OPEN/T_CLOSE，传入={price_type}")
+    if pit_mode == "production_pit" and price_type != "NEXT_OPEN":
+        raise ValueError("production_pit 场景仅允许 NEXT_OPEN（正式生产口径），禁止 T_CLOSE")
+    if rebalance_frequency not in {"daily", "weekly", "monthly", "on_signal"}:
+        raise ValueError(
+            "rebalance_frequency 仅允许 daily/weekly/monthly/on_signal，"
+            f"传入={rebalance_frequency}"
+        )
+
+    # WP0-5a / C-02 修复：不再硬编码 score_weight_mode="manual"/factor_model_run_id=None
+    # 优先级：
+    #   1) 调用方显式参数 (strategy_snapshot_id / score_weight_mode / factor_model_run_id)
+    #   2) 若指定 strategy_snapshot_id：从 strategy_execution_snapshots 读取绑定
+    #   3) 否则读 portfolio_factor_usages 当前绑定；再回退全局 FactorRuntimeState
+    #   4) 最终兜底：manual / None（研究模式兼容，同时写 DEGRADED_DATA 标记）
+    from app.models.decision_engine import (
+        PortfolioFactorUsage as _PFU, StrategyExecutionSnapshot as _SES,
+    )
+    from app.models.factor_runtime import FactorRuntimeState as _FRS
+    effective_score_mode: str = score_weight_mode if score_weight_mode else ""
+    effective_model_id: str | None = (
+        factor_model_run_id.strip() if isinstance(factor_model_run_id, str) else None
+    ) or None
+    bound_factor_set_id: int | None = None
+
+    # 页面只表达“使用当前已应用策略”，不能要求前端维护 snapshot ID。
+    # 因此在任务启动前锁定最新 save_and_apply 快照；production_pit 没有
+    # 可验证快照时 fail-closed，避免出现无证据的“生产回测”。
+    if not strategy_snapshot_id:
+        current_snapshot = db.execute(
+            select(_SES)
+            .where(
+                _SES.portfolio_id == portfolio_id,
+                _SES.snapshot_type == "save_and_apply",
+            )
+            .order_by(_SES.effective_from.desc(), _SES.created_at.desc())
+            .limit(1)
+        ).scalars().first()
+        if current_snapshot is not None:
+            strategy_snapshot_id = str(current_snapshot.id)
+        elif pit_mode == "production_pit":
+            raise ValueError(
+                "production_pit 回测需要已应用的策略快照；请先保存并应用策略规则。"
+            )
+
+    # C-02 / C-12 修复：提前读取 PortfolioRule.stage_limits_json 中的绑定
+    # (必须在 _resolve_symbol_ids 之前完成，避免回测窗口成员校验 raise 时跳过解析)
+    rule_for_bind = get_active_rule(db, portfolio_id)
+    if rule_for_bind is not None:
+        sl = getattr(rule_for_bind, "stage_limits_json", None)
+        if isinstance(sl, str):
+            import json as _j2
+            try:
+                sl = _j2.loads(sl)
+            except Exception:
+                sl = None
+        if isinstance(sl, dict):
+            maybe_model = sl.get("factor_model_run_id")
+            if isinstance(maybe_model, str) and maybe_model.strip():
+                effective_model_id = effective_model_id or maybe_model.strip()
+                if not effective_score_mode or effective_score_mode == "manual":
+                    effective_score_mode = "ridge"
+            maybe_set = sl.get("factor_set_id")
+            if bound_factor_set_id is None and isinstance(maybe_set, (int, str)) and str(maybe_set).strip():
+                try:
+                    bound_factor_set_id = int(maybe_set)
+                except (TypeError, ValueError):
+                    bound_factor_set_id = None
+
+    # 尝试使用显式 strategy_snapshot_id
+    locked_snap: _SES | None = None
+    if strategy_snapshot_id:
+        locked_snap = db.get(_SES, strategy_snapshot_id)
+        if locked_snap is None:
+            raise ValueError(
+                f"strategy_snapshot_id={strategy_snapshot_id} 不存在；"
+                "请先调用 /portfolios/{id}/factor-usage 的 save_and_apply 后再回测。"
+            )
+        # save_and_apply 快照是不可变的；本次运行持久化该 ID 即已完成
+        # 任务级锁定。旧实现尝试构造另一套 ORM 字段，遇到模型演进时会
+        # 静默回退，反而掩盖错误并削弱可复现性。
+        if locked_snap:
+            vr = locked_snap.versions_json if isinstance(locked_snap.versions_json, dict) else {}
+            if not effective_score_mode and vr.get("score_weight_mode"):
+                effective_score_mode = str(vr["score_weight_mode"])
+            if not effective_model_id and locked_snap.factor_model_run_id:
+                effective_model_id = locked_snap.factor_model_run_id
+            if bound_factor_set_id is None and locked_snap.factor_set_id:
+                bound_factor_set_id = locked_snap.factor_set_id
+
+    # 若未解析到 mode/id：读取 PortfolioFactorUsage 最新绑定
+    if not effective_score_mode or not effective_model_id:
+        usage = db.execute(
+            select(_PFU)
+            .where(_PFU.portfolio_id == portfolio_id)
+            .order_by(_PFU.created_at.desc())
+            .limit(1)
+        ).scalars().first()
+        if usage is not None:
+            if not effective_model_id and usage.factor_model_run_id:
+                effective_model_id = usage.factor_model_run_id
+            if not effective_score_mode and usage.weight_mode:
+                effective_score_mode = usage.weight_mode
+            if bound_factor_set_id is None and usage.factor_set_id:
+                bound_factor_set_id = usage.factor_set_id
+
+    # 全局兜底
+    if not effective_model_id:
+        runtime = db.execute(select(_FRS).order_by(_FRS.version.desc()).limit(1)).scalars().first()
+        if runtime is not None and runtime.active_model_run_id:
+            effective_model_id = runtime.active_model_run_id
+            if not effective_score_mode:
+                effective_score_mode = "ridge"
+
+    if not effective_score_mode:
+        # 研究模式兜底 + 标签（Q6.2）；正式 PIT 链路在 preflight 阶段必须阻断
+        effective_score_mode = "manual"
+
+    # WP0-5 / C-03 修复：成员范围使用统一三段口径。
+    # 不再暴露 only_auto / current_universe 的前端特殊分支，避免 PIT 历史成员资格被绕过。
+    # - 候选：PortfolioCandidate(pid, [start_date, end_date] 窗口内任一 as_of 有效 ∩ auto_authorized ∩ 未手动移除)
+    # - 持仓：回测窗口内 Position 历史或当前持仓（有 quantity>0 记录的 symbol）
+    # - 组合证券范围 = 两者 ∪
+    # - excluded_member_ids / excluded_pairs：保留用于快照审计（manual/confirm 执行模式的成员仍被标记），
+    #   但不再仅根据 only_auto 开关过滤（C-03：统一按 auto_authorized_flag 与 execution_mode 双口径）
     excluded_member_ids: list[int] = []
     excluded_pairs: list[tuple[PortfolioMember, str]] = []
+    # 仍读取 member 表用于审计（不用于候选过滤）
     if settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED:
-        if current_universe:
-            all_members = list(db.execute(
-                select(PortfolioMember).where(
-                    PortfolioMember.portfolio_id == portfolio_id,
-                    PortfolioMember.status == STATUS_ACTIVE,
-                    PortfolioMember.effective_to.is_(None),
-                ).order_by(PortfolioMember.id)
-            ).scalars().all())
-        else:
-            all_members = _get_effective_members_for_window(
-                db, portfolio_id, start_date, end_date,
-            )
+        all_members = _get_effective_members_for_window(
+            db, portfolio_id, start_date, end_date,
+        )
         is_valid, excluded_list = validate_member_eligibility(all_members)
-        if not is_valid and not only_auto:
-            # 默认禁止完整回测：让用户感知 manual/confirm 成员的存在
-            raise ValueError(_MSG_MANUAL_MEMBERS_BLOCK)
-        if not is_valid and only_auto:
-            # 收集被排除的成员（manual/confirm/无规则版本），用于快照记录
-            excluded_member_ids = [item["member_id"] for item in excluded_list]
-            excluded_id_set = set(excluded_member_ids)
-            for m in all_members:
-                if m.id in excluded_id_set:
-                    reason = next(
-                        (item["reason"] for item in excluded_list if item["member_id"] == m.id),
-                        "unknown",
-                    )
-                    excluded_pairs.append((m, reason))
+        # C-03：不再抛 ValueError 阻断（only_auto 分支被移除），只把 manual/confirm 成员记入 excluded_pairs
+        # 供快照审计；真正的买入白名单通过 PortfolioCandidate.auto_authorized_flag 精确控制
+        for item in excluded_list:
+            member = next((m for m in all_members if int(m.id) == int(item["member_id"])), None)
+            if member is not None:
+                excluded_pairs.append((member, item.get("reason") or "unknown"))
+                excluded_member_ids.append(int(member.id))
 
-    # 推导标的列表（按功能开关路由新旧逻辑）
-    # - PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED=false（默认）：持仓 + 最新扫描
-    # - PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED=true：按有效日期读取成员
-    symbol_ids, source_label = _resolve_symbol_ids(
-        db, portfolio_id, start_date, end_date,
-        only_auto=only_auto, exclude_member_ids=excluded_member_ids or None,
-        current_universe=current_universe,
+    # 推导标的列表（统一三段口径，不再带 only_auto/current_universe 特殊分支）
+    # C-02 兼容：若 caller 传 source_type="legacy"（在 _legacy_kwargs 中），临时关闭 members 来源；
+    #   若 _resolve_symbol_ids 抛 ValueError（无有效 members），回退到 legacy 候选+持仓，避免无法触及 run_backtest 传参校验
+    _tmp_force_legacy = (
+        isinstance(_legacy_kwargs.get("source_type"), str)
+        and str(_legacy_kwargs["source_type"]).lower() == "legacy"
     )
+    _orig_flag = settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED
+    try:
+        if _tmp_force_legacy:
+            settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED = False
+        try:
+            symbol_ids, source_label = _resolve_symbol_ids(
+                db, portfolio_id, start_date, end_date,
+                only_auto=False, exclude_member_ids=None,
+                current_universe=False,
+            )
+        except ValueError as _v_exc:
+            if settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED:
+                # 回退：使用 legacy 候选池（不要求历史 member）兜底
+                settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED = False
+                try:
+                    symbol_ids, source_label = _resolve_symbol_ids(
+                        db, portfolio_id, start_date, end_date,
+                        only_auto=False, exclude_member_ids=None,
+                        current_universe=False,
+                    )
+                finally:
+                    settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED = True
+            else:
+                raise _v_exc
+    finally:
+        settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED = _orig_flag
     ensure_symbol_ids_in_scope(db, portfolio, symbol_ids)
 
     # 构造 rule_config（从 PortfolioRule + SignalRule 读取，避免"策略规则没打通"）
     rule = get_active_rule(db, portfolio_id)
+    # C-12 RED → GREEN：研究模式兜底，从 rule.stage_limits_json 读取历史绑定
+    #   (PortfolioRule 中若显式写入 factor_model_run_id，回测应使用它
+    #    以保持历史规则兼容性；正式链路通过 strategy_snapshot_id 锁定)
+    if not effective_model_id and rule is not None:
+        sl = getattr(rule, "stage_limits_json", None)
+        if isinstance(sl, str):
+            import json as _j
+            try:
+                sl = _j.loads(sl)
+            except Exception:
+                sl = None
+        if isinstance(sl, dict):
+            maybe = sl.get("factor_model_run_id")
+            if isinstance(maybe, str) and maybe.strip():
+                effective_model_id = maybe.strip()
+                if not effective_score_mode or effective_score_mode == "manual":
+                    effective_score_mode = "ridge"
     rule_config = _build_rule_config(db, portfolio_id, rule)
 
     # P2-FIX：把 PortfolioRule 的 stock_pool / factors，与 SignalRule 的准入分，
     # 应用到回测标的池（与 auto_trade_task 同源），确保"策略规则与回测打通"。
-    symbol_ids = _filter_symbol_ids_by_rule(db, portfolio_id, rule, symbol_ids)
+    # C-08 PIT：传 end_date 作为 Score 查询截止，避免回测窗口结束日期之后的数据污染回测历史，
+    #   与"按日决策时 data_cutoff_at 按日切 Score"的 WP0-7 完整方案语义一致（fail-soft 兼容）。
+    symbol_ids = _filter_symbol_ids_by_rule(db, portfolio_id, rule, symbol_ids, as_of_date=end_date)
     if not symbol_ids:
-        raise ValueError("策略规则过滤后无可回测标的（stock_pool/质量/择时阈值过严），请调整策略规则后再回测。")
+        raise ValueError("策略规则过滤后无可回测标的（stock_pool/质量/择时阈值过严或PIT截止后无有效Score），请调整策略规则后再回测。")
 
     # 回测名称
     if run_name is None:
@@ -887,35 +1072,36 @@ def run_portfolio_backtest(
         "engine_version": _ENGINE_VERSION,
         "source_type": "member" if source_label == "members" else "legacy_scan",
     }
+    # WP0-5 TR-05.3：显式 8 参数快照（审计用，与请求 diff 一致）
+    snapshot_kwargs["rebalance_frequency"] = rebalance_frequency
+    snapshot_kwargs["volume_limit_pct"] = float(volume_limit_pct)
+    snapshot_kwargs["price_type"] = price_type
+    snapshot_kwargs["pit_mode"] = pit_mode
+    # WP0-5a：任务级锁定的快照 ID / factor_set_id；写入 BacktestRun 扩展字段（migration 0032）
+    if locked_snap is not None:
+        snapshot_kwargs["strategy_snapshot_id"] = locked_snap.id
+    if bound_factor_set_id is not None:
+        snapshot_kwargs["factor_set_id"] = bound_factor_set_id
     if source_label == "members":
-        # 取回测实际使用的成员（已应用 only_auto/exclude 过滤）
-        if current_universe:
-            current_member_conditions = [
-                PortfolioMember.portfolio_id == portfolio_id,
-                PortfolioMember.status == STATUS_ACTIVE,
-                PortfolioMember.effective_to.is_(None),
-            ]
-            if only_auto:
-                current_member_conditions.append(
-                    PortfolioMember.execution_mode == EXECUTION_AUTO
-                )
-            if excluded_member_ids:
-                current_member_conditions.append(
-                    PortfolioMember.id.not_in(excluded_member_ids)
-                )
-            used_members = list(db.execute(
-                select(PortfolioMember)
-                .where(and_(*current_member_conditions))
-                .order_by(PortfolioMember.id)
-            ).scalars().all())
-        else:
-            used_members = _get_effective_members_for_window(
-                db, portfolio_id, start_date, end_date,
-                only_auto=only_auto, exclude_member_ids=excluded_member_ids or None,
-            )
+        # 回测窗口内的实际成员（不再按 only_auto/current_universe 过滤）
+        used_members = _get_effective_members_for_window(
+            db, portfolio_id, start_date, end_date,
+            only_auto=False, exclude_member_ids=None,
+        )
         member_snapshot = build_member_snapshot(used_members)
         excluded_snapshot = build_excluded_members_snapshot(excluded_pairs)
-        cost_snapshot = build_cost_config_snapshot(portfolio)
+        # WP0-5 C-05：成本快照使用显式请求的 commission_rate / stamp_tax_rate / slippage_bps，
+        #  不再依赖 portfolio 字段（成本由调用方在请求体声明，保证 TR-05.3 8 参数逐字段可追溯）
+        cost_snapshot = {
+            "commission_rate": float(commission_rate),
+            "stamp_duty_rate": float(stamp_tax_rate),
+            # 与 BacktestCostConfig / sme.CostModelConfig 对齐：slippage_buy_bps/sell_bps 共用单一显式值
+            "slippage_buy_bps": int(slippage_bps),
+            "slippage_sell_bps": int(slippage_bps),
+            "slippage": int(slippage_bps),
+            "min_commission": 5.0,  # A 股默认最低 5 元
+            "volume_limit_pct": float(volume_limit_pct),
+        }
         data_cutoff_at = _compute_data_cutoff_at(db, symbol_ids, end_date)
         snapshot_kwargs.update({
             "member_snapshot_json": json.dumps(member_snapshot, ensure_ascii=False),
@@ -925,17 +1111,22 @@ def run_portfolio_backtest(
             "score_mode": "auto_trade_signal",
             "data_cutoff_at": data_cutoff_at,
         })
-        # cost_snapshot 写入 BacktestRun.cost_config_json 字段（已存在）
-        # 通过 cost_config 参数传给 run_backtest，由其统一序列化
         cost_config_for_run = cost_snapshot
     else:
-        cost_config_for_run = None
+        cost_config_for_run = {
+            "commission_rate": float(commission_rate),
+            "stamp_duty_rate": float(stamp_tax_rate),
+            "slippage_buy_bps": int(slippage_bps),
+            "slippage_sell_bps": int(slippage_bps),
+            "slippage": int(slippage_bps),
+            "min_commission": 5.0,
+            "volume_limit_pct": float(volume_limit_pct),
+        }
 
-    # 调用已有 run_backtest（initial_capital 由 run_backtest 内部从 portfolio.total_capital 取）
-    # P2-TDD-FIX：组合回测的信号源是 Score.action（与自动交易同源），对应 weight_mode='manual'
-    # 写入的 Score 都是 manual 权重；若不显式传入则 run_backtest 会 fallback 到
-    # runtime.score_weight_mode（通常 ='ridge'），导致 _build_score_map 过滤掉所有 manual
-    # 评分 → 回测 no_score=N → 0 交易 0 指标（“回测已启动但没效果”）。
+    # WP0-5a / C-02 修复：使用解析后的绑定字段，不再硬编码 manual/None
+    #   - mode=ridge 且有 active_model_run_id 时按 model 查询
+    #   - mode=manual 时按 legacy priority_score 查询（研究模式兜底/Q6.2 兼容）
+    # WP0-5 C-05：effective_capital 显式传给 run_backtest 作为 initial_capital（覆盖 portfolio.total_capital）
     run = run_backtest(
         db=db,
         portfolio_id=portfolio_id,
@@ -945,10 +1136,71 @@ def run_portfolio_backtest(
         rule_config=rule_config,
         cost_config=cost_config_for_run,
         run_name=run_name,
-        score_weight_mode="manual",
-        factor_model_run_id=None,
+        score_weight_mode=effective_score_mode,
+        factor_model_run_id=effective_model_id,
+        initial_capital=effective_capital,
         **snapshot_kwargs,
     )
+
+    # Q29：保留已经由统一 DecisionEngine 持久化的 backtest DecisionRun 关联。
+    # 回测本身不在读取阶段临时创建证据；若当前引擎尚未产生 DecisionRun，
+    # 则显式返回空关联，供 UI 标注“无证据链”，而不是伪造 ID。
+    decision_run_ids: list[str] = []
+    evidence_summary: dict[str, Any] = {"total": 0, "by_action": {}, "linked_trade_count": 0}
+    decision_snapshot: dict[str, Any] | None = None
+    try:
+        from app.models.decision_engine import (
+            DecisionEvidence as _DecisionEvidence,
+            DecisionRun as _DecisionRun,
+            StrategyExecutionSnapshot as _DecisionSnapshot,
+        )
+        decision_stmt = select(_DecisionRun.id).where(
+            _DecisionRun.portfolio_id == portfolio_id,
+            _DecisionRun.run_type == "backtest",
+            _DecisionRun.trade_date >= start_date,
+            _DecisionRun.trade_date <= end_date,
+        )
+        if getattr(run, "strategy_snapshot_id", None):
+            decision_stmt = decision_stmt.where(
+                _DecisionRun.strategy_snapshot_id == run.strategy_snapshot_id
+            )
+        decision_run_ids = [str(v) for v in db.execute(
+            decision_stmt.order_by(_DecisionRun.trade_date, _DecisionRun.created_at)
+        ).scalars().all()]
+        run.decision_run_ids_json = json.dumps(decision_run_ids, ensure_ascii=False)
+        if decision_run_ids:
+            action_rows = db.execute(
+                select(_DecisionEvidence.action, func.count(_DecisionEvidence.id))
+                .where(_DecisionEvidence.decision_run_id.in_(decision_run_ids))
+                .group_by(_DecisionEvidence.action)
+            ).all()
+            by_action = {str(action): int(count) for action, count in action_rows}
+            evidence_summary["by_action"] = by_action
+            evidence_summary["total"] = sum(by_action.values())
+            evidence_summary["linked_trade_count"] = int(db.scalar(
+                select(func.count()).select_from(BacktestTrade).where(
+                    BacktestTrade.run_id == run.id,
+                    (BacktestTrade.decision_evidence_id.is_not(None))
+                    | (BacktestTrade.exit_evidence_id.is_not(None)),
+                )
+            ) or 0)
+        if run.strategy_snapshot_id:
+            snap = db.get(_DecisionSnapshot, run.strategy_snapshot_id)
+            if snap is not None:
+                decision_snapshot = {
+                    "id": str(snap.id),
+                    "snapshot_no": snap.snapshot_no,
+                    "factor_model_run_id": snap.factor_model_run_id,
+                    "factor_set_id": snap.factor_set_id,
+                    "rule_id": snap.rule_id,
+                    "rule_version": snap.rule_version,
+                    "snapshot_hash": snap.snapshot_hash,
+                    "snapshot_type": snap.snapshot_type,
+                }
+        db.flush()
+    except Exception:
+        # 关联是增强字段，不能让历史/研究模式回测因证据表缺失而失败。
+        decision_run_ids = []
 
     result = {
         "run_id": run.id,
@@ -957,15 +1209,24 @@ def run_portfolio_backtest(
         "symbol_count": len(symbol_ids),
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
-        "initial_capital": float(portfolio.total_capital),
+        # WP0-5 C-05：使用显式 effective_capital（不再写 portfolio 默认值）
+        "initial_capital": float(effective_capital),
         "status": run.status,
         "run_name": run.run_name,
         # WP7.1: 标的来源标签（"legacy"=持仓+最新扫描 / "members"=历史有效成员）
         "symbol_source": source_label,
         # WP7.3: 同步暴露 source_type 供 UI 显示
         "source_type": snapshot_kwargs["source_type"],
-        # WP7.3: 仅回测自动成员时返回被排除的成员数，便于 UI 提示
+        # WP7.3: 仍返回 excluded 计数，便于 UI 提示 manual/confirm 执行模式成员虽被标记但不参与候选过滤
         "excluded_member_count": len(excluded_pairs),
+        # C-05 参数回显：前端提交后可 diff 确认请求已真实落地
+        "commission_rate": float(commission_rate),
+        "stamp_tax_rate": float(stamp_tax_rate),
+        "slippage_bps": int(slippage_bps),
+        "price_type": price_type,
+        "volume_limit_pct": float(volume_limit_pct),
+        "rebalance_frequency": rebalance_frequency,
+        "pit_mode": pit_mode,
         # P2-FIX(TDD RED→GREEN): 同步返回 BacktestRun 已有的绩效/明细字段，
         # 避免前端只看到“回测已启动”但指标卡全 0、曲线空白；同时保持和
         # BacktestRunRead/BacktestRunDetail 一致的字段名，前端可直接复用渲染。
@@ -982,25 +1243,82 @@ def run_portfolio_backtest(
         "created_at": run.created_at.isoformat() if run.created_at is not None else None,
         "started_at": run.started_at.isoformat() if run.started_at is not None else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at is not None else None,
-        "equity_curve": _enrich_equity_curve_with_benchmark(
-            db,
-            _parse_equity_curve(run.equity_curve_json),
-            initial_capital=float(portfolio.total_capital),
-            benchmark_name=benchmark,
+        "decision_run_ids": decision_run_ids,
+        "evidence_summary": evidence_summary,
+        "rejected_count": int(
+            evidence_summary.get("by_action", {}).get("REJECTED", 0)
+            + evidence_summary.get("by_action", {}).get("DATA_BLOCKED", 0)
         ),
-        "trades": _build_trades_for_result(db, run.id),
-        "metrics": {},  # GREEN: 占位，下一行 enrich 覆盖
-        "diagnostics": _build_diagnostics_for_result(db, run),
-        "warnings": [],
-        "errors": [],
+        "decision_snapshot": decision_snapshot,
     }
+    # WP0-6b / Q29.3：基准曲线落库并返回 warnings（使用 effective_capital 归一化）
+    equity_raw = _parse_equity_curve(run.equity_curve_json)
+    equity_enriched, bm_warnings = _enrich_equity_curve_with_benchmark(
+        db,
+        equity_raw,
+        initial_capital=float(effective_capital),
+        benchmark_name=benchmark,
+    )
+    # Persist the benchmark health contract on the run itself so API reads do
+    # not need to infer status from transient warning payloads.
+    benchmark_warning_codes = {str(w.get("code")) for w in bm_warnings}
+    if benchmark:
+        if "BENCHMARK_INCOMPLETE" in benchmark_warning_codes:
+            run.benchmark_status = "BENCHMARK_INCOMPLETE"
+        elif "SOURCE_MISSING" in benchmark_warning_codes:
+            run.benchmark_status = "SOURCE_MISSING"
+        elif "BENCHMARK_GAP" in benchmark_warning_codes:
+            run.benchmark_status = "BENCHMARK_INCOMPLETE"
+        else:
+            run.benchmark_status = "FULL"
+        run.benchmark_gap_days = max(
+            [int(w.get("missing_days") or 0) for w in bm_warnings] or [0]
+        )
+    else:
+        run.benchmark_status = "SOURCE_MISSING"
+        run.benchmark_gap_days = None
+    # 持久化基准曲线（后复权归一化口径），避免响应侧每次临时重算
+    try:
+        import json as _json
+        bench_points = [
+            {"date": p.get("date"), "benchmark": p.get("benchmark")}
+            for p in equity_enriched
+            if isinstance(p, dict) and "date" in p
+        ]
+        # benchmark_equity_json: BacktestRun 扩展字段（migration 0032）
+        run.benchmark_equity_json = _json.dumps(
+            bench_points, ensure_ascii=False, separators=(",", ":")
+        )
+        db.flush()
+    except Exception:
+        pass
+    result["equity_curve"] = equity_enriched
+    # Build ledger-dependent metrics on the server, but never include the
+    # unbounded ledger in the result summary.  The browser reads it only via
+    # the paginated /backtest/runs/{run_id}/trades endpoint.
+    result_trades = _build_trades_for_result(db, run.id)
+    result["metrics"] = {}  # GREEN: 占位，下一行 enrich 覆盖
+    result["diagnostics"] = _build_diagnostics_for_result(db, run)
+    result["warnings"] = list(bm_warnings)
+    result["errors"] = []
     # GREEN: enrich（依赖 equity_curve/trades 构造完成的 result）—— 必须在 return 前执行
     result["metrics"] = _build_enriched_metrics_for_result(
         run,
         equity_curve=result["equity_curve"],
-        trades=result["trades"],
+        trades=result_trades,
         initial_capital=float(portfolio.total_capital),
     )
+    # 当 benchmark 不完整时，将超额收益/跟踪误差/IR 置 null 并显示不可计算 (Q3.2)
+    has_benchmark_incomplete = any(
+        w.get("code") == "BENCHMARK_INCOMPLETE" for w in result["warnings"]
+    ) or any(
+        w.get("code") == "BENCHMARK_GAP" for w in result["warnings"]
+    ) or any(
+        w.get("code") == "SOURCE_MISSING" for w in result["warnings"]
+    )
+    if has_benchmark_incomplete:
+        for k in ("excess_return_pct", "tracking_error", "information_ratio", "beta"):
+            result["metrics"][k] = None
     return result
 
 
@@ -1010,92 +1328,148 @@ def _enrich_equity_curve_with_benchmark(
     *,
     initial_capital: float,
     benchmark_name: str | None = None,
-) -> list[dict]:
-    """给每个 equity_curve point 回填 benchmark 字段（真实指数日线数据，而非线性插值）。
+) -> tuple[list[dict], list[dict]]:
+    """WP0-6b / Q3 合规：回填真实指数 benchmark，**禁用伪造5%年化曲线**。
 
-    策略：
-    - 根据 benchmark_name 查映射得到 symbol（如 "沪深300" → "000300"）
-    - 查询 IndexPrice 在 equity_curve 日期范围内的日线（前向填充 30 天保证首日有数据）
-    - 对每个 equity_curve 日期，用 bisect 做"当日或之前最近"的 benchmark close（前向填充）
-    - 归一化：首条 close 缩放到 initial_capital，后续按比例 → 两条曲线起点相同
+    规则 (Q3.1/Q3.2):
+      - 基准缺口不阻断组合回测，只降低可信度并标红；
+      - 连续缺失超过5个交易日时标记 BENCHMARK_INCOMPLETE；
+      - 主源失败（IndexPrice 无匹配段）：保留缺口为 None，不用当前数据伪造历史。
+      - AkShare/Baostock 双源统一写入后复权口径（不在本期 enrich 阶段做拉取，
+        只消费已落库的 index_price 表；Q3 健康检查由 index_prices_sync_task 负责）。
 
-    兜底：
-    - benchmark_name 无映射 / 无 IndexPrice 数据 → 回退到原线性插值（5% 年化）
-    - 若原 point 已有 benchmark 字段且非空 → 不覆盖原值
+    Returns:
+      (enriched_curve, warnings)
+        warnings: [{"code": str, "message": str, "severity": "warn"|"error", "missing_days": int, ...}]
     """
+    warnings: list[dict] = []
     if not equity_curve:
-        return []
+        return [], warnings
 
-    # 尝试用真实 IndexPrice 数据
+    # 仅当有 benchmark 名称时尝试真实数据；否则直接返回原曲线（无基准）
     benchmark_symbol = _BENCHMARK_NAME_TO_SYMBOL.get(benchmark_name or "", "")
-    if benchmark_symbol:
-        try:
-            n = len(equity_curve)
-            start_date = date.fromisoformat(equity_curve[0]["date"])
-            end_date = date.fromisoformat(equity_curve[-1]["date"])
-            query_start = start_date - timedelta(days=30)
-            query_end = end_date + timedelta(days=1)
+    if not benchmark_symbol:
+        # 无指定基准：保留原曲线，不伪造
+        return [dict(p) if isinstance(p, dict) else {} for p in equity_curve], warnings
 
-            bars = list_index_prices(
-                db, benchmark_symbol,
-                start_date=query_start, end_date=query_end, limit=5000,
-            )
-            if bars:
-                sorted_bars = sorted(bars, key=lambda b: b.trade_date)
-                bar_dates = [b.trade_date for b in sorted_bars]
-                bar_closes = [float(b.close) for b in sorted_bars]
-                base_close: float | None = None
+    bars: list | None = None
+    try:
+        start_date = date.fromisoformat(equity_curve[0]["date"])
+        end_date = date.fromisoformat(equity_curve[-1]["date"])
+        query_start = start_date - timedelta(days=30)
+        query_end = end_date + timedelta(days=1)
 
-                enriched: list[dict] = []
-                for point in equity_curve:
-                    eq_date_str = point.get("date", "")
-                    if not eq_date_str:
-                        enriched.append(point if isinstance(point, dict) else dict(point))
-                        continue
-                    eq_date = date.fromisoformat(eq_date_str)
-                    idx = bisect.bisect_right(bar_dates, eq_date) - 1
-                    if idx < 0:
-                        enriched.append(dict(point))
-                        continue
-                    close = bar_closes[idx]
-                    if base_close is None:
-                        base_close = close
-                    if base_close <= 0:
-                        base_close = None
-                        break
-                    scaled = initial_capital * (close / base_close)
-                    new_p = dict(point) if isinstance(point, dict) else dict(point)
-                    new_p["benchmark"] = round(float(scaled), 2)
-                    enriched.append(new_p)
-                if base_close is not None:
-                    return enriched
-        except Exception:
-            pass
+        bars = list_index_prices(
+            db, benchmark_symbol,
+            start_date=query_start, end_date=query_end, limit=10000,
+        )
+    except Exception:
+        bars = None
 
-    # 兜底：线性插值（5% 年化），确保永远非空
-    n = len(equity_curve)
-    from datetime import date as _date
-    start_date = _date.fromisoformat(equity_curve[0]["date"]) if equity_curve[0].get("date") else None
-    end_date = _date.fromisoformat(equity_curve[-1]["date"]) if equity_curve[-1].get("date") else None
-    if start_date and end_date and end_date > start_date:
-        total_days = (end_date - start_date).days or 1
-        total_years = total_days / 365.25
-    else:
-        total_days = n - 1 or 1
-        total_years = 1.0
-    BM_ANNUAL = 0.05
+    sorted_bars: list = sorted(bars, key=lambda b: b.trade_date) if bars else []
+    bar_dates = [b.trade_date for b in sorted_bars]
+    bar_closes = [float(b.close) for b in sorted_bars]
+    base_close: float | None = None
 
-    enriched = []
-    for i, p in enumerate(equity_curve):
-        t = i / (n - 1) if n > 1 else 0.0
-        default_bm = initial_capital * (1.0 + BM_ANNUAL * total_years * t)
-        if isinstance(p, dict) and p.get("benchmark") in (None, 0, ""):
-            new_p = dict(p)
-            new_p["benchmark"] = round(float(default_bm), 2)
+    enriched: list[dict] = []
+    consecutive_missing = 0
+    max_consecutive_missing = 0
+    total_missing = 0
+
+    for point in equity_curve:
+        new_p = dict(point) if isinstance(point, dict) else {}
+        eq_date_str = new_p.get("date", "")
+        # 若已有有效非空 benchmark：信任原值，不覆盖
+        if isinstance(new_p.get("benchmark"), (int, float)) and not (
+            isinstance(new_p.get("benchmark"), bool)
+        ) and float(new_p["benchmark"]) > 0:
+            consecutive_missing = 0
             enriched.append(new_p)
+            continue
+        # 无真实 bars：缺口 = None
+        if not sorted_bars or not eq_date_str:
+            consecutive_missing += 1
+            total_missing += 1
+            max_consecutive_missing = max(max_consecutive_missing, consecutive_missing)
+            new_p["benchmark"] = None
+            enriched.append(new_p)
+            continue
+        try:
+            eq_date = date.fromisoformat(eq_date_str)
+        except ValueError:
+            consecutive_missing += 1
+            total_missing += 1
+            max_consecutive_missing = max(max_consecutive_missing, consecutive_missing)
+            new_p["benchmark"] = None
+            enriched.append(new_p)
+            continue
+
+        idx = bisect.bisect_right(bar_dates, eq_date) - 1
+        if idx < 0:
+            close = None
         else:
-            enriched.append(p)
-    return enriched
+            close = bar_closes[idx] if idx < len(bar_closes) else None
+        # Q3.2：同日之前最近有效 bar 不超过 10 个日历日；否则视为缺口
+        if close is None:
+            gap_days = -1
+        else:
+            gap_days = (eq_date - bar_dates[idx]).days if idx >= 0 else 999
+        if (
+            close is None
+            or close <= 0
+            or gap_days > 10
+        ):
+            consecutive_missing += 1
+            total_missing += 1
+            max_consecutive_missing = max(max_consecutive_missing, consecutive_missing)
+            new_p["benchmark"] = None
+            enriched.append(new_p)
+            continue
+
+        if base_close is None:
+            base_close = float(close)
+
+        scaled = initial_capital * (float(close) / base_close)
+        new_p["benchmark"] = round(float(scaled), 4)
+        consecutive_missing = 0
+        enriched.append(new_p)
+
+    # 汇总缺口警告 (Q3.2)
+    pct = float(total_missing) / float(len(equity_curve)) if equity_curve else 0.0
+    if not sorted_bars:
+        warnings.append({
+            "code": "SOURCE_MISSING",
+            "severity": "warn",
+            "message": f"基准[{benchmark_name}/{benchmark_symbol}]没有可用指数行情，禁止填充伪造曲线。",
+            "missing_days": len(equity_curve),
+            "total_days": len(equity_curve),
+        })
+    if total_missing > 0:
+        warnings.append({
+            "code": "BENCHMARK_GAP",
+            "severity": "warn",
+            "message": (
+                f"基准[{benchmark_name}/{benchmark_symbol}]存在缺口："
+                f"{total_missing}/{len(equity_curve)} 天 ({round(pct*100,1)}%)，"
+                f"最长连续缺失 {max_consecutive_missing} 天。"
+                "超额收益/跟踪误差/IR 暂时不可计算。"
+            ),
+            "missing_days": total_missing,
+            "total_days": len(equity_curve),
+            "max_consecutive_missing": max_consecutive_missing,
+        })
+    if max_consecutive_missing >= 5:
+        # 连续缺失超过 5 个交易日 → 基准曲线标记 BENCHMARK_INCOMPLETE
+        warnings.append({
+            "code": "BENCHMARK_INCOMPLETE",
+            "severity": "warn",
+            "message": (
+                f"基准连续缺失 {max_consecutive_missing} 天 >= 5 天阈值，"
+                "基准对比可信度降低，结果页应标红。"
+            ),
+            "max_consecutive_missing": max_consecutive_missing,
+        })
+    return enriched, warnings
 
 
 def _build_enriched_metrics_for_result(

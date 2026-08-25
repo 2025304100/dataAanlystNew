@@ -21,7 +21,7 @@ pytestmark = pytest.mark.whitebox
 
 from app.models.factor import Factor
 from app.models.factor_evaluation import FactorSet, FactorSetMember
-from app.models.factor_model import FactorVersion
+from app.models.factor_model import FactorModelRun, FactorVersion
 from app.models.factor_runtime import (
     FactorModelAuditLog,
     FactorRuntimeState,
@@ -66,6 +66,35 @@ def _ensure_runtime(db_session, *, weight_mode: str = "manual"):
         state.weight_mode = weight_mode
         state.active_model_run_id = None
         state.fallback_reason = None
+    db_session.flush()
+
+
+def _ensure_model_run(db_session, run_id: str, model_type: str = "ridge") -> None:
+    """为 wp8 active_model_run_id 外键插入占位 FactorModelRun 记录（不存在时）。"""
+    existing = db_session.get(FactorModelRun, run_id)
+    if existing is not None:
+        return
+    run = FactorModelRun(
+        id=run_id,
+        model_type=model_type,
+        asset_type="index",
+        target_code="000300",
+        train_start_date=date(2025, 1, 1),
+        train_end_date=date(2025, 12, 31),
+        validation_start_date=date(2026, 1, 1),
+        validation_end_date=date(2026, 6, 30),
+        data_cutoff_at=datetime(2026, 7, 1),
+        feature_versions_json="{}",
+        hyperparameters_json='{"factor_set_id": "legacy-system-v1"}',
+        metrics_json='{"validation_ic": 0.05}',
+        sample_count=1000,
+        symbol_count=300,
+        trade_date_count=250,
+        status="validated",
+        rejection_reason=None,
+        artifact_path=None,
+    )
+    db_session.add(run)
     db_session.flush()
 
 
@@ -313,6 +342,7 @@ class TestRollbackDrill:
 
         # 模拟有 active_model_run_id
         state = db_session.get(FactorRuntimeState, 1)
+        _ensure_model_run(db_session, "model-test-001")
         state.active_model_run_id = "model-test-001"
         db_session.flush()
 
@@ -352,7 +382,8 @@ class TestRollbackDrill:
         _ensure_runtime(db_session, weight_mode="ridge")
         _ensure_config(db_session, feature_enabled=True)
 
-        # 预先写入一条审计日志
+        # 预先写入一条审计日志（先补 model_run FK 种子）
+        _ensure_model_run(db_session, "model-pre-001")
         db_session.add(
             FactorModelAuditLog(
                 action="activate",
@@ -381,6 +412,7 @@ class TestRollbackDrill:
         _ensure_runtime(db_session, weight_mode="ridge")
         _ensure_config(db_session, feature_enabled=True)
         state = db_session.get(FactorRuntimeState, 1)
+        _ensure_model_run(db_session, "model-verify-001")
         state.active_model_run_id = "model-verify-001"
         db_session.flush()
 
@@ -400,6 +432,7 @@ class TestRollbackDrill:
         _ensure_runtime(db_session, weight_mode="ridge")
         _ensure_config(db_session, feature_enabled=True)
         state = db_session.get(FactorRuntimeState, 1)
+        _ensure_model_run(db_session, "model-active-001")
         state.active_model_run_id = "model-active-001"
         db_session.flush()
 
@@ -568,6 +601,7 @@ class TestRollbackCapability:
         _ensure_runtime(db_session, weight_mode="ridge")
         _ensure_config(db_session, feature_enabled=True)
         state = db_session.get(FactorRuntimeState, 1)
+        _ensure_model_run(db_session, "model-ridge-001")
         state.active_model_run_id = "model-ridge-001"
         db_session.flush()
 
@@ -612,6 +646,7 @@ class TestRollbackCapability:
         _ensure_runtime(db_session, weight_mode="ridge")
         _ensure_config(db_session, feature_enabled=True)
         state = db_session.get(FactorRuntimeState, 1)
+        _ensure_model_run(db_session, "model-cycle-001")
         state.active_model_run_id = "model-cycle-001"
         db_session.flush()
 
@@ -684,6 +719,7 @@ class TestFeatureEnabledGuard:
         _ensure_runtime(db_session, weight_mode="ridge")
         _ensure_config(db_session, feature_enabled=True)
         state = db_session.get(FactorRuntimeState, 1)
+        _ensure_model_run(db_session, "model-guard-001")
         state.active_model_run_id = "model-guard-001"
         db_session.flush()
 
