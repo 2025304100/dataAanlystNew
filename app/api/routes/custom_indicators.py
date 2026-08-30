@@ -12,7 +12,10 @@ from app.db.session import get_db
 from app.models.custom_indicator import CustomIndicator, CustomIndicatorVersion
 from app.models.daily_bar import DailyBar
 from app.models.score import Score
-from app.services.factors.score_scope import apply_active_score_scope
+from app.services.factors.__facade__ import (
+    apply_active_score_scope_to_scores_select as apply_active_score_scope,
+    submit_factor_draft_from_external,
+)
 from app.models.symbol import Symbol
 from app.schemas.custom_indicator import (
     CustomIndicatorCreate,
@@ -479,7 +482,6 @@ def promote_indicator_to_factor(
     - 创建的 Factor 默认 lifecycle_status='draft'，需后续走 transition 进入 candidate
     """
     from app.schemas.factor_library import CustomIndicatorPromoteRequest, CustomIndicatorPromoteResponse
-    from app.services.factors.factor_registry import promote_factor_from_indicator
 
     # 解析请求体（允许空 body 使用默认值）
     try:
@@ -503,26 +505,25 @@ def promote_indicator_to_factor(
             },
         )
 
-    # 获取当前指标版本号（用于溯源）
-    current_version = db.execute(
-        select(func.max(CustomIndicatorVersion.version))
-        .where(CustomIndicatorVersion.indicator_id == indicator_id)
-    ).scalar_one()
-
-    # 执行提升
-    try:
-        factor, version, source_mapping = promote_factor_from_indicator(
-            db,
-            indicator_id=indicator_id,
-            request=req,
-            indicator_row=indicator,
-            indicator_version=int(current_version) if current_version else None,
-        )
-    except ValueError as exc:
-        msg = str(exc)
-        if msg == "indicator_not_found":
-            raise HTTPException(status_code=404, detail="indicator_not_found")
-        if msg == "indicator_not_number":
+    # P0 ACL：外部模块只走因子域 Facade，不再直接 import promote_factor_from_indicator
+    submission = submit_factor_draft_from_external(
+        source_module="custom_indicators",
+        source_ref_id=indicator_id,
+        payload={
+            "code": req.code,
+            "name": req.name,
+            "category": req.category,
+            "display_name": getattr(req, "display_name", None),
+            "params": getattr(req, "params", None),
+            "formula_text": getattr(req, "formula_text", None) or getattr(indicator, "formula", None),
+            "indicator_key": getattr(indicator, "key", None),
+            "indicator_name": getattr(indicator, "name", None),
+        },
+        actor=getattr(req, "actor", "ui:custom_indicators:promote"),
+    )
+    if submission.review_status == "rejected_draft":
+        msg = submission.message or ""
+        if "indicator_not_number" in msg:
             raise HTTPException(
                 status_code=422,
                 detail={
@@ -531,7 +532,7 @@ def promote_indicator_to_factor(
                     "retryable": False,
                 },
             )
-        if msg == "invalid_factor_code":
+        if "invalid_factor_code" in msg:
             raise HTTPException(
                 status_code=422,
                 detail={
@@ -540,29 +541,45 @@ def promote_indicator_to_factor(
                     "retryable": True,
                 },
             )
-        if msg.startswith("factor_code_conflict"):
+        if "duplicate" in msg or "factor_code_conflict" in msg:
             raise HTTPException(
                 status_code=409,
                 detail={
                     "error_code": "factor_code_conflict",
-                    "user_message": f"因子代码已存在：{msg.split(':', 1)[-1]}",
+                    "user_message": f"因子代码已存在或重复提交：{submission.factor_code}",
                     "retryable": False,
                 },
             )
         raise HTTPException(status_code=500, detail=f"promote_failed:{msg}")
 
-    db.commit()
-    db.refresh(factor)
-    db.refresh(version)
+    # Facade commit 已完成（见 submit_factor_draft_from_external 内部实现），
+    # 这里保证 session 看到的是提交后的状态，不再二次 commit。
+    db.flush()
+
+    # P0 ACL：禁止从 custom_indicators（非因子域模块）直接 import 因子 ORM。
+    # 这里仅返回 Facade 已知的字段 + 幂等溯源键。
+    # P1 TODO：让 Facade 扩展返回结构化的 factor_id / factor_version_id / version。
+    factor_code = submission.factor_code or ""
+    source_mapping: dict = {
+        "indicator_id": indicator_id,
+        "indicator_key": getattr(indicator, "key", None),
+        "promoted_via": "factor_domain_facade",
+        "facade_draft_id": submission.draft_id,
+        "audit_url": submission.audit_url,
+        "facade_review_status": submission.review_status,
+    }
 
     return CustomIndicatorPromoteResponse(
         success=True,
-        factor_id=factor.id,
-        factor_code=factor.code,
-        factor_version_id=version.id,
-        factor_version=version.version,
-        lifecycle_status=factor.lifecycle_status or "draft",
-        origin=factor.origin or "user",
+        factor_id=0,
+        factor_code=factor_code,
+        factor_version_id=0,
+        factor_version=1,
+        lifecycle_status="draft",
+        origin="user",
         source_mapping=source_mapping,
-        message="指标已提升为因子草稿，可在因子中心查看",
+        message=(
+            submission.message
+            or "指标已提升为因子草稿，可在因子中心查看（走 Factor ACL Facade）"
+        ),
     ).model_dump(mode="json")

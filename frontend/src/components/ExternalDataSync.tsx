@@ -331,17 +331,22 @@ export default function ExternalDataSync() {
     setFinishedTask(null);
     handledTaskId.current = null;
     try {
+      const effectiveMode = overrides.mode ?? syncMode;
+      const effectiveStartDate = overrides.start_date
+        ?? (dateRange[0] ? dateRange[0].format("YYYY-MM-DD") : undefined);
+      const effectiveEndDate = overrides.end_date
+        ?? (dateRange[1] ? dateRange[1].format("YYYY-MM-DD") : undefined);
       const syncPayload = {
         dataset,
         source,
         watchlist_id: source === "watchlist" ? primaryWatchlistId : undefined,
         include_northbound: includeNorthbound,
-        mode: syncMode,
-        start_date: syncMode === "backfill" && dateRange[0] ? dateRange[0].format("YYYY-MM-DD") : undefined,
-        end_date: syncMode === "backfill" && dateRange[1] ? dateRange[1].format("YYYY-MM-DD") : undefined,
-      lookback_days: syncMode === "backfill" ? lookbackDays : 1,
-      limit: 20,
-        ...(syncMode === "backfill" && dataset === "fundamental" ? { max_workers: 4 } : {}),
+        mode: effectiveMode,
+        start_date: effectiveMode === "backfill" ? effectiveStartDate : undefined,
+        end_date: effectiveMode === "backfill" ? effectiveEndDate : undefined,
+        lookback_days: effectiveMode === "backfill" ? (overrides.lookback_days ?? lookbackDays) : 1,
+        limit: 20,
+        ...(effectiveMode === "backfill" && dataset === "fundamental" ? { max_workers: 4 } : {}),
       ...overrides,
       };
       const plan = await api.previewExternalDataSyncPlan(syncPayload);
@@ -396,7 +401,7 @@ export default function ExternalDataSync() {
     await resumeTaskFromCursor(activeTask);
   };
 
-  const refreshFactorScores = async () => {
+  const refreshFactorScores = async () => { /* P2-4: UX 语义别名 — 显示文案统一使用「评分特征/评分流水线」而不是「因子」 */
     if (pipelineStarting) return;
     setPipelineStarting(true);
     try {
@@ -406,7 +411,7 @@ export default function ExternalDataSync() {
       const end = syncMode === "backfill" && dateRange[1]
         ? dateRange[1].format("YYYY-MM-DD")
         : undefined;
-      const task = await api.createFactorPipelineTask({
+      const task = await api.scoringCreateTask({
         start_date: start,
         end_date: end,
         full_refresh: syncMode === "backfill",
@@ -414,9 +419,10 @@ export default function ExternalDataSync() {
         materialize_scores: true,
       });
       setPipelineTask(task);
-      message.success("因子输入已提交评分流水线");
+      const taskId = typeof task === "object" && task ? (task as any).id ?? "-" : "-";
+      message.success(`评分流水线任务已提交，任务号：${String(taskId)}`);
     } catch (error: any) {
-      message.error(error?.message || "因子评分流水线启动失败");
+      message.error(error?.message || "评分特征刷新启动失败，请稍后重试");
     } finally {
       setPipelineStarting(false);
     }
@@ -427,7 +433,7 @@ export default function ExternalDataSync() {
     let disposed = false;
     const poll = async () => {
       try {
-        const next = await api.getFactorPipelineTask(pipelineTask.id);
+        const next = await api.scoringGetTask(pipelineTask.id);
         if (!disposed) setPipelineTask(next);
       } catch {
         // The task remains visible; a later refresh can recover its state.
@@ -443,8 +449,19 @@ export default function ExternalDataSync() {
     setRepairingDataset(dataset);
     setFinishedTask(null);
     handledTaskId.current = null;
-    const end = dateRange[1] || dayjs();
-    const start = dateRange[0] || end.subtract(59, "day");
+    // 缺口修复不应受“最近快照”显示模式影响。未选择明确日期时，
+    // 使用该数据集当前已知的真实覆盖范围，避免默认退回最近 60 天。
+    const coverageFields = coverage?.datasets.find((item) => item.dataset === dataset)?.fields ?? [];
+    const knownStarts = coverageFields
+      .map((field) => field.first_date)
+      .filter((value): value is string => Boolean(value));
+    const knownEnds = coverageFields
+      .map((field) => field.latest_date)
+      .filter((value): value is string => Boolean(value));
+    const end = dateRange[1]
+      || (knownEnds.length ? dayjs(knownEnds.sort()[knownEnds.length - 1]) : dayjs());
+    const start = dateRange[0]
+      || (knownStarts.length ? dayjs(knownStarts.sort()[0]) : end.subtract(59, "day"));
     try {
       const report = await api.getExternalDataGaps(
         dataset,
@@ -781,7 +798,11 @@ export default function ExternalDataSync() {
               </Space>
               <Typography.Text type="secondary">{task.processed ?? 0}/{task.total ?? 0}</Typography.Text>
             </div>
-            <Progress percent={Math.round(task.percent)} status={task.status === "failed" ? "exception" : task.status === "done" ? "success" : "active"} />
+            <Progress
+              percent={task.stage === "mirror" && running ? undefined : Math.round(task.percent)}
+              status={task.status === "failed" ? "exception" : task.status === "done" ? "success" : "active"}
+              format={task.stage === "mirror" && running ? () => "镜像处理中" : undefined}
+            />
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap", color: "#475467", fontSize: 12, marginTop: 6 }}>
               <span>{stageLabel(task.stage)}</span><span>同步数量：{task.processed ?? 0}/{task.total ?? 0}</span>
               <span>{t("extDashboardSuccess")}：{task.ok_count ?? 0}</span><span>{t("extDashboardFailed")}：{task.failed_count ?? 0}</span>
@@ -843,9 +864,9 @@ export default function ExternalDataSync() {
             </>
           ) : null}
         </Space>
-        <Tooltip title="仅同步外部数据不会自动刷新因子评分；此操作会生成新的评分批次并保留历史追溯，默认只重算最近约 11 天">
+        <Tooltip title="仅同步外部数据不会自动刷新评分特征；此操作会生成新的评分批次并保留历史追溯，默认只重算最近约 11 天。评分输入仍在准备中，稍后刷新任务中心查看进度。">
           <Button
-            aria-label="更新因子评分"
+            aria-label="刷新评分特征"
             type="primary"
             ghost
             icon={<SyncOutlined />}
@@ -853,12 +874,12 @@ export default function ExternalDataSync() {
             disabled={controlsDisabled || taskRunning || Boolean(pipelineTask && ["queued", "running"].includes(pipelineTask.status))}
             onClick={() => void refreshFactorScores()}
           >
-            更新因子评分
+            刷新评分特征
           </Button>
         </Tooltip>
         {pipelineTask && (
           <Typography.Text type={pipelineTask.status === "failed" ? "danger" : "secondary"}>
-            因子评分：{pipelineTask.status === "done" || pipelineTask.status === "completed" ? "已完成" : pipelineTask.status === "failed" ? "失败" : "处理中"}
+            评分特征：{pipelineTask.status === "done" || pipelineTask.status === "completed" ? "已完成" : pipelineTask.status === "failed" ? "失败" : "处理中"}
             {pipelineTask.stage ? ` · ${pipelineTask.stage}` : ""}
             {typeof pipelineTask.percent === "number" ? ` · ${Math.round(pipelineTask.percent)}%` : ""}
           </Typography.Text>

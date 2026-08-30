@@ -132,6 +132,8 @@ type RequestJsonOptions = RequestInit & {
   timeoutMs?: number;
   /** Set to false when callers intentionally need parallel GET requests. */
   dedupe?: boolean;
+  /** Convenience: object to be JSON-stringified into body + Content-Type JSON header. */
+  jsonBody?: unknown;
 };
 
 export function onRequestChange(listener: (count: number) => void) {
@@ -231,13 +233,28 @@ async function executeRequestJson<T>(url: string, options: RequestJsonOptions): 
     rawHeaders.set("X-Strict-Auth-Source", String(headerSource));
   }
 
-  // 移除自定义字段，保留标准 RequestInit 字段
-  const { timeoutMs: _timeoutMs, dedupe: _dedupe, ...requestOptions } = options;
+  // 移除自定义字段，保留标准 RequestInit 字段；若传入 jsonBody 则转 body + Content-Type
+  const {
+    timeoutMs: _timeoutMs,
+    dedupe: _dedupe,
+    jsonBody,
+    ...requestOptions
+  } = options as any;
+  if (jsonBody != null && requestOptions.body == null) {
+    try {
+      requestOptions.body = JSON.stringify(jsonBody);
+    } catch (_err_json) {
+      requestOptions.body = "{}";
+    }
+    if (!rawHeaders.has("Content-Type") && !rawHeaders.has("content-type")) {
+      rawHeaders.set("Content-Type", "application/json");
+    }
+  }
   try {
     const mergedOptions: RequestInit = {
-      ...requestOptions,
+      ...(requestOptions as RequestInit),
       headers: rawHeaders,
-      signal: requestOptions.signal ?? controller.signal,
+      signal: (requestOptions as RequestInit).signal ?? controller.signal,
     };
     const response = await fetch(url, mergedOptions);
     const payload = await response.json().catch(() => ({}));
@@ -350,6 +367,7 @@ export interface AIStreamHandlers {
 }
 
 export interface AiChatStreamHandlers {
+  onSession?: (sessionId: number) => void;
   onDelta?: (content: string) => void;
   onDone?: (response: AiChatResult) => void;
 }
@@ -370,94 +388,77 @@ export async function streamAISession(
   handlers: AIStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(`${API}/ai/sessions/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify(payload),
-    signal,
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new ApiError(body.user_message || body.detail || defaultHttpErrorMessage(response.status), {
-      status_code: response.status, detail: body,
+  // 流式接口兜底超时：10 分钟，避免极端情况下永久挂起
+  const STREAM_TIMEOUT_MS = 10 * 60 * 1000;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, STREAM_TIMEOUT_MS);
+
+  const onExternalAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) {
+      window.clearTimeout(timeoutId);
+      throw signal.reason instanceof Error ? signal.reason : new DOMException("Aborted", "AbortError");
+    }
+    signal.addEventListener("abort", onExternalAbort);
+  }
+
+  try {
+    const response = await fetch(`${API}/ai/sessions/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
     });
-  }
-  if (!response.body) throw new ApiError("浏览器不支持流式响应");
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const dispatch = (block: string) => {
-    let event = "message";
-    const dataLines: string[] = [];
-    for (const line of block.split("\n")) {
-      if (line.startsWith("event:")) event = line.slice(6).trim();
-      if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new ApiError(body.user_message || body.detail || defaultHttpErrorMessage(response.status), {
+        status_code: response.status, detail: body,
+      });
     }
-    if (!dataLines.length) return;
-    const data = JSON.parse(dataLines.join("\n"));
-    if (event === "session") handlers.onSession?.(Number(data.session_id));
-    if (event === "delta") handlers.onDelta?.(String(data.content ?? ""));
-    if (event === "done") handlers.onDone?.(Number(data.session_id), data.response as AIResponse);
-    if (event === "error") throw new ApiError(String(data.message || "AI 流式响应失败"));
-  };
-  while (true) {
-    const { value, done } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      dispatch(buffer.slice(0, boundary));
-      buffer = buffer.slice(boundary + 2);
-      boundary = buffer.indexOf("\n\n");
+    if (!response.body) throw new ApiError("浏览器不支持流式响应");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const dispatch = (block: string) => {
+      let event = "message";
+      const dataLines: string[] = [];
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+      }
+      if (!dataLines.length) return;
+      const data = JSON.parse(dataLines.join("\n"));
+      if (event === "session") handlers.onSession?.(Number(data.session_id));
+      if (event === "delta") handlers.onDelta?.(String(data.content ?? ""));
+      if (event === "done") handlers.onDone?.(Number(data.session_id), data.response as AIResponse);
+      if (event === "error") throw new ApiError(String(data.message || "AI 流式响应失败"));
+    };
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
+      let boundary = buffer.indexOf("\n\n");;
     }
-    if (done) break;
-  }
-  if (buffer.trim()) dispatch(buffer);
-}
-
-export async function streamAIChat(
-  payload: AiChatPayload,
-  handlers: AiChatStreamHandlers,
-  signal?: AbortSignal,
-): Promise<void> {
-  const response = await fetch(`${API}/settings/ai-chat/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify(payload),
-    signal,
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new ApiError(body.user_message || body.detail || defaultHttpErrorMessage(response.status), {
-      status_code: response.status,
-      detail: body,
-    });
-  }
-  if (!response.body) throw new ApiError("Browser does not support streaming responses");
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const dispatch = (block: string) => {
-    const parsed = parseSseBlock(block);
-    if (!parsed) return;
-    const { event, data } = parsed;
-    if (event === "delta") handlers.onDelta?.(String(data.content ?? ""));
-    if (event === "done") handlers.onDone?.(data as unknown as AiChatResult);
-    if (event === "error") throw new ApiError(String(data.message || t("aiChatFailed")));
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      dispatch(buffer.slice(0, boundary));
-      buffer = buffer.slice(boundary + 2);
-      boundary = buffer.indexOf("\n\n");
+    if (buffer.trim()) dispatch(buffer);
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === "AbortError" && timedOut) {
+      throw new ApiError(t("requestTimeout"), {
+        status_code: 408,
+        error_code: "REQUEST_TIMEOUT",
+        user_message: t("requestTimeout"),
+        impact: t("unifiedErrorTimeoutImpact"),
+        retryable: true,
+        next_actions: [{ label: t("observationPoolRetry"), action_type: "retry" }],
+      });
     }
-    if (done) break;
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener("abort", onExternalAbort);
   }
-  if (buffer.trim()) dispatch(buffer);
 }
 
 export interface ExternalSyncResult {
@@ -668,38 +669,149 @@ export interface BacktestPositionListOptions {
   status?: "OPEN" | "CLOSED";
 }
 
+// P2-3 DTO schema-version drift detector: dev console.warn only.
+function _checkSchemaVersion(label: string, payload: any, expected: number = 3) {
+  if (typeof payload !== "object" || payload == null) return;
+  const actual = (payload as any).schema_version;
+  if (actual != null && actual !== expected) {
+    console.warn("[scoring] DTO version drift: " + label +
+                 " expected=" + expected + " actual=" + actual, payload);
+  }
+}
+function _checkSchemaVersionArray(label: string, payload: any, expected: number = 3) {
+  if (!Array.isArray(payload)) return;
+  if (payload.length === 0) return;
+  const first = payload[0];
+  const actual = (first as any)?.schema_version;
+  if (actual != null && actual !== expected) {
+    console.warn("[scoring] DTO array version drift: " + label +
+                 " expected=" + expected + " actual=" + actual, first);
+  }
+}
+
+
+
+export async function streamAIChat(
+  payload: AiChatPayload,
+  handlers: AiChatStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const STREAM_TIMEOUT_MS = 10 * 60 * 1000;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = window.setTimeout(() => { timedOut = true; controller.abort(); }, STREAM_TIMEOUT_MS);
+  const onExternalAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) {
+      window.clearTimeout(timeoutId);
+      throw signal.reason instanceof Error ? signal.reason : new DOMException("Aborted", "AbortError");
+    }
+    signal.addEventListener("abort", onExternalAbort);
+  }
+  try {
+    const response = await fetch(`${API}/settings/ai-chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new ApiError(body.user_message || body.detail || defaultHttpErrorMessage(response.status), {
+        status_code: response.status, detail: body,
+      });
+    }
+    if (!response.body) throw new ApiError("Browser does not support streaming responses");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const dispatch = (block: string) => {
+      const parsed = parseSseBlock(block);
+      if (!parsed) return;
+      const { event, data } = parsed;
+      if (event === "session") handlers.onSession?.(Number(data.session_id));
+      if (event === "delta") handlers.onDelta?.(String(data.content ?? ""));
+      if (event === "done") handlers.onDone?.(data as unknown as AiChatResult);
+      if (event === "error") throw new ApiError(String(data.message || t("aiChatFailed")));
+    };
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        dispatch(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf("\n\n");
+      }
+      if (done) break;
+    }
+    if (buffer.trim()) dispatch(buffer);
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === "AbortError" && timedOut) {
+      throw new ApiError(t("requestTimeout"), {
+        status_code: 408,
+        error_code: "REQUEST_TIMEOUT",
+        user_message: t("requestTimeout"),
+        impact: t("unifiedErrorTimeoutImpact"),
+        retryable: true,
+        next_actions: [{ label: t("observationPoolRetry"), action_type: "retry" }],
+      });
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener("abort", onExternalAbort);
+  }
+}
+
 export const api = {
   // System
   getDataHealth: () => requestJson<any>(SYSTEM_HEALTH_URL),
   getSymbolDataHealth: (symbolId: number) => requestJson<any>(`${API}/system/data-health/symbols/${symbolId}`),
   getCapabilities: () => requestJson<CapabilitiesResponse>(`${API}/system/capabilities`),
 
+  // ═══════════════════════════════════════════════════════════════════
+  // Factor-domain internal API —  DO NOT USE outside factor center
+  // Non-factor pages (strategy / backtest / dashboard / data sync /
+  // task center / today decision / discovery / candidate / alerts /
+  // custom indicators) MUST use the `scoring*` thin facade methods below.
+  // These native methods keep richer CRUD / lifecycle / audit payloads
+  // that are only safe inside the factor admin / scientist UIs.
+  // ═══════════════════════════════════════════════════════════════════
   // Dynamic factor engine
+  // Factor-domain internal — DO NOT USE outside factor center (overview/config)
   getFactorOverview: () =>
     requestJson<FactorOverview>(`${API}/factors/overview`),
+  // Factor-domain internal — DO NOT USE outside factor center (system config write)
   updateFactorSystemConfig: (featureEnabled: boolean) =>
     requestJson<FactorSystemConfig>(`${API}/factors/config`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feature_enabled: featureEnabled, actor: "local_user" }),
     }),
+  // Factor-domain internal — DO NOT USE outside factor center (warehouse init)
   initializeFactorWarehouse: () =>
     requestJson<FactorOverview>(`${API}/factors/warehouse/initialize`, { method: "POST" }),
+  // Factor-domain internal — DO NOT USE outside factor center (formula catalog)
   getFactorFormulaCatalog: () =>
     requestJson<FactorFormulaCatalog>(`${API}/factors/formula-catalog`),
+  // Factor-domain internal — DO NOT USE outside factor center (model list)
   getFactorModels: (status?: string, limit: number = 20) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (status) params.set("status", status);
     return requestJson<FactorModelList>(`${API}/factor-models?${params.toString()}`);
   },
+  // Factor-domain internal — DO NOT USE outside factor center (model detail)
   getFactorModel: (modelRunId: string) =>
     requestJson<FactorModelRun>(`${API}/factor-models/${encodeURIComponent(modelRunId)}`),
+  // Factor-domain internal — DO NOT USE outside factor center (model activate)
   activateFactorModel: (modelRunId: string, mode: "shadow" | "ridge", note?: string) =>
     requestJson<FactorRuntime>(`${API}/factor-models/${encodeURIComponent(modelRunId)}/activate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode, actor: "local_user", note }),
     }),
+  // Factor-domain internal — DO NOT USE outside factor center (train model)
   // WP0-8: 训练因子模型（真实路由入口。默认 mode=offline_minimal 不需要 FactorWarehouse 环境）
   trainFactorModel: (payload: {
     factor_set_id: string;
@@ -720,44 +832,131 @@ export const api = {
       body: JSON.stringify({ actor: "local_user", ...payload }),
       timeoutMs: 180000,
     }),
+  // Factor-domain internal — DO NOT USE outside factor center (model fallback)
   fallbackFactorModel: (reason: string) =>
     requestJson<FactorRuntime>(`${API}/factor-models/fallback`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ actor: "local_user", reason }),
     }),
+  // Factor-domain internal — DO NOT USE outside factor center (factorset list)
   // WP7-06: FactorSet API
   listFactorSets: (status?: string, limit: number = 50) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (status) params.set("status", status);
     return requestJson<FactorSet[]>(`${API}/factor-sets?${params.toString()}`);
   },
+  // Factor-domain internal — DO NOT USE outside factor center (factorset detail)
   getFactorSet: (factorSetId: string) =>
     requestJson<FactorSet>(`${API}/factor-sets/${encodeURIComponent(factorSetId)}`),
+  // Factor-domain internal — DO NOT USE outside factor center (factorset freeze)
   freezeFactorSet: (factorSetId: string, reason: string) =>
     requestJson<FactorSet>(`${API}/factor-sets/${encodeURIComponent(factorSetId)}/freeze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ actor: "local_user", reason }),
     }),
+  // Factor-domain internal — DO NOT USE outside factor center (factorset deprecate)
   deprecateFactorSet: (factorSetId: string, reason: string) =>
     requestJson<FactorSet>(`${API}/factor-sets/${encodeURIComponent(factorSetId)}/deprecate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ actor: "local_user", reason }),
     }),
+  // Factor-domain internal — DO NOT USE outside factor center (pipeline create)
   createFactorPipelineTask: (payload: FactorPipelineCreate) =>
     requestJson<FactorPipelineTask>(`${API}/factor-pipeline/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P1.1 / P1.2 Scoring 薄封镜像方法（factor settings + 因子中心训练/激活/冻结/降级）
+  // 路由全部在 /api/v1/scoring/*，B 类内部页仍保留 DO NOT USE 守卫注释在调用处
+  // ═══════════════════════════════════════════════════════════════════════
+// P1.1 Settings 镜像薄封：任务列表（替代 listFactorPipelineTasks）
+  scoringListTasks: (type: string = "factor_pipeline", limit: number = 20) =>
+    requestJson<FactorPipelineTask[]>(`${API}/scoring/tasks?type=${encodeURIComponent(type)}&limit=${limit}`),
+  // P1.1 Settings 镜像薄封：流水线 ETA
+  scoringGetPipelineEta: (train_model: boolean = true, full_refresh: boolean = false) =>
+    requestJson<ScoringPipelineEta>(`${API}/scoring/pipeline/eta?train_model=${train_model ? 1 : 0}&full_refresh=${full_refresh ? 1 : 0}`),
+  // P1.1 Settings 镜像薄封：更新系统配置（仅 feature_enabled 白名单）
+  scoringUpdateSystemConfig: (featureEnabled: boolean, actor: string = "local_user") =>
+    requestJson<any>(`${API}/scoring/system/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      jsonBody: { feature_enabled: Boolean(featureEnabled), actor },
+    }),
+  // P1.1 Settings 镜像薄封：初始化评分仓库
+  scoringInitializeWarehouse: (force: boolean = false, actor: string = "local_user") =>
+    requestJson<any>(`${API}/scoring/warehouse/initialize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      jsonBody: { force, actor },
+    }),
+  // P1.1 Settings 镜像薄封：激活评分模型（shadow/ridge）
+  scoringActivateModel: (modelId: string, mode: "shadow" | "ridge", note?: string, actor: string = "local_user") =>
+    requestJson<any>(`${API}/scoring/models/${encodeURIComponent(modelId)}/activate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      jsonBody: { mode, note: note ?? null, actor },
+    }),
+  // P1.1 Settings 镜像薄封：评分运行态降级到 manual（必填 reason）
+  scoringFallbackToManual: (reason: string, actor: string = "local_user") =>
+    requestJson<any>(`${API}/scoring/runtime/fallback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      jsonBody: { reason: String(reason || "").trim(), actor },
+    }),
+  // P1.2 训练/冻结：薄封冻结 FactorSet（Settings 内页内部使用）
+  scoringFreezeFactorSet: (factorSetId: string, reason: string = "UI 手动冻结", actor: string = "local_user") =>
+    requestJson<any>(`${API}/scoring/factorsets/${encodeURIComponent(factorSetId)}/freeze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      jsonBody: { reason, actor },
+    }),
+  // P1.2 训练：薄封启动评分模型训练（Facade 内强制先过 P2.3 覆盖率+IC 门禁）
+  scoringTrainModel: (factorSetId: string, mode: "offline_minimal" | "warehouse" = "offline_minimal", actor: string = "local_user") =>
+    requestJson<any>(`${API}/scoring/factorsets/${encodeURIComponent(factorSetId)}/train`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      jsonBody: { mode, actor },
+    }),
+  // P1.3 因子库：薄封 listFactorDefinitions → /scoring/factor-definitions
+  scoringListFactorDefinitions: (params: {
+    lifecycle_status?: string;
+    origin?: string;
+    factor_kind?: string;
+    category?: string;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  } = {}) =>
+    requestJson<any>(`${API}/scoring/factor-definitions?${new URLSearchParams(Object.fromEntries(
+      Object.entries(params).filter(([_, v]) => v != null && v !== "").map(([k, v]) => [k, String(v)])
+    ) as any).toString()}`),
+  // P1.3 因子详情：薄封 getFactorDefinition → /scoring/factor-definitions/{factor_code}
+  scoringGetFactorDefinition: (factorCode: string) =>
+    requestJson<any>(`${API}/scoring/factor-definitions/${encodeURIComponent(factorCode)}`),
+
+  // P1.1 Settings 镜像适配层（把 scoring DTO 塑形成原生 FactorOverview/FactorModelList/FactorSet 形状）
+  scoringGetOverviewAsFactor: () =>
+    requestJson<any>(`${API}/scoring/overview`).then(_scoringOverviewToFactorOverview),
+  scoringGetFactorModelListAsFactor: (limit: number = 20) =>
+    requestJson<any[]>(`${API}/scoring/models?scope=any&limit=${limit}`).then(_scoringModelsToFactorModelList),
+  scoringListFactorSetsAsFactor: (scope: "any" | "frozen" | "active" = "frozen", limit: number = 50) =>
+    requestJson<any[]>(`${API}/scoring/factorsets?scope=${scope}&limit=${limit}`).then(_scoringFactorSetsToFactorSets),
+  // Factor-domain internal — DO NOT USE outside factor center (pipeline list)
   listFactorPipelineTasks: (limit: number = 20) =>
     requestJson<FactorPipelineTask[]>(`${API}/factor-pipeline/tasks?limit=${limit}`),
+  // Factor-domain internal — DO NOT USE outside factor center (pipeline get)
   getFactorPipelineTask: (taskId: string) =>
     requestJson<FactorPipelineTask>(`${API}/factor-pipeline/tasks/${encodeURIComponent(taskId)}`),
+  // Factor-domain internal — DO NOT USE outside factor center (pipeline cancel)
   cancelFactorPipelineTask: (taskId: string) =>
     requestJson<FactorPipelineTask>(`${API}/factor-pipeline/tasks/${encodeURIComponent(taskId)}/cancel`, { method: "POST" }),
+  // Factor-domain internal — DO NOT USE outside factor center (pipeline eta)
   getFactorPipelineEta: (trainModel: boolean = true, fullRefresh: boolean = false) => {
     const params = new URLSearchParams({
       train_model: String(trainModel),
@@ -765,6 +964,179 @@ export const api = {
     });
     return requestJson<FactorPipelineEta>(`${API}/factor-pipeline/eta?${params.toString()}`);
   },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Factor-Domain Public Facade — use these from NON-FACTOR pages
+  // ═══════════════════════════════════════════════════════════════════════
+  scoringListModels: (scope: "any" | "validated" | "shadow" | "production" = "any", limit = 50) => {
+    const params = new URLSearchParams({ scope, limit: String(limit) });
+    const _res = requestJson<ScoringModelBrief[]>(`${API}/scoring/models?${params.toString()}`);
+    _checkSchemaVersionArray("scoringListModels", _res);
+    return _res;
+  },
+  scoringGetOverview: () =>
+    requestJson<ScoringOverview>(`${API}/scoring/overview`),
+  scoringGetActiveScope: () =>
+    requestJson<ScoringActiveScope>(`${API}/scoring/active-scope`),
+  scoringCancelTask: (taskId: string) =>
+    requestJson<any>(`${API}/scoring/tasks/${encodeURIComponent(taskId)}/cancel`, {
+      method: "POST",
+    }),
+  // P0.3 A1: 外部域（ExternalDataSync / TaskCenter）通过 scoring 薄封创建+读取评分任务，
+  //          不再直接调用 /factor-pipeline/tasks 内部路由。
+  scoringCreateTask: (
+    payload: Partial<{
+      start_date: string;
+      end_date: string;
+      data_cutoff_date: string | null;
+      full_refresh: boolean;
+      train_model: boolean;
+      materialize_scores: boolean;
+      scope: "recent" | "full" | "backfill";
+      actor: string;
+      source_hint: string;
+      factor_set_id: string | null;
+      window_days: number;
+      validation_days: number;
+      batch_size: number;
+      mirror_only: boolean | null;
+    }> = {}
+  ) =>
+    requestJson<FactorPipelineTask>(`${API}/scoring/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      jsonBody: payload,
+    }),
+  scoringGetTask: (taskId: string) =>
+    requestJson<FactorPipelineTask>(`${API}/scoring/tasks/${encodeURIComponent(taskId)}`),
+  scoringEnsureFeatureInputsReady: (
+    payload: Partial<{ source_hint: string; actor: string; mirror_only: boolean }> = {}
+  ) =>
+    requestJson<ScoringFeatureInputStatus>(`${API}/scoring/feature-inputs/ensure-ready`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  scoringSubmitExternalDraft: (
+    payload: { source_module: string; source_ref_id: string | number; actor?: string; payload?: Record<string, unknown> }
+  ) =>
+    requestJson<ScoringExternalDraftSubmission>(`${API}/scoring/external-draft/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  // ── P1 UI Stitching — FactorSets / Model detail / Factor usage ─────
+  scoringListFactorSets: (
+    scope: "any" | "frozen" | "active" = "any",
+    limit = 100
+  ) => {
+    const params = new URLSearchParams({ scope, limit: String(limit) });
+    const _res = requestJson<ScoringFactorSetBrief[]>(
+      `${API}/scoring/factorsets?${params.toString()}`
+    );
+    _checkSchemaVersionArray("scoringListFactorSets", _res);
+    return _res;
+  },
+  scoringGetModelDetail: (modelId: string) =>
+    {
+      const _res = requestJson<ScoringModelDetail>(
+      `${API}/scoring/models/${encodeURIComponent(modelId)}`
+    );
+      _checkSchemaVersion("scoringGetModelDetail", _res);
+      return _res;
+    },
+  scoringGetFactorUsage: (factorCode: string) =>
+    {
+      const _res = requestJson<ScoringFactorUsage>(
+      `${API}/scoring/factors/${encodeURIComponent(factorCode)}`
+    );
+      _checkSchemaVersion("scoringGetFactorUsage", _res);
+      return _res;
+    },
+
+  // ── P2-G Governance: Drafts + Approval + Training Gates ──────
+  scoringListFactorDrafts: (
+    params: {
+      status?: ScoringDraftStatus | "any";
+      sourceModule?: string;
+      limit?: number;
+    } = {}
+  ) => {
+    // P2-G FIX (Invalid URL): use string concat + URLSearchParams, same pattern as scoringListFactorDefinitions.
+    // `new URL("/api/v1/scoring/drafts")` in browser requires second `base` arg, otherwise TypeError Invalid URL.
+    const q = new URLSearchParams(Object.fromEntries(
+      Object.entries({
+        status: params.status && params.status !== "any" ? params.status : null,
+        source_module: params.sourceModule ?? null,
+        limit: String(params.limit ?? 100),
+      }).filter(([, v]: any) => v != null && v !== "") as any
+    )).toString();
+    const _res = requestJson<ScoringFactorDraft[]>(`${API}/scoring/drafts${q ? "?" + q : ""}`);
+    _checkSchemaVersionArray("scoringListFactorDrafts", _res);
+    return _res;
+  },
+  scoringGetFactorDraft: (draftNo: string) =>
+    {
+      const _res = requestJson<ScoringFactorDraft>(
+      `${API}/scoring/drafts/${encodeURIComponent(draftNo)}`
+    );
+      _checkSchemaVersion("scoringGetFactorDraft", _res);
+      return _res;
+    },
+  scoringApproveFactorDraft: (
+    draftNo: string,
+    payload: { reviewer: string; reviewMsg?: string }
+  ) =>
+    requestJson<ScoringFactorDraft>(
+      `${API}/scoring/drafts/${encodeURIComponent(draftNo)}/approve`,
+      {
+        method: "POST",
+        jsonBody: {
+          reviewer: payload.reviewer,
+          review_msg: payload.reviewMsg ?? null,
+        },
+      }
+    ),
+  scoringRejectFactorDraft: (
+    draftNo: string,
+    payload: { reviewer: string; reviewMsg: string }
+  ) =>
+    requestJson<ScoringFactorDraft>(
+      `${API}/scoring/drafts/${encodeURIComponent(draftNo)}/reject`,
+      {
+        method: "POST",
+        jsonBody: {
+          reviewer: payload.reviewer,
+          review_msg: payload.reviewMsg,
+        },
+      }
+    ),
+  scoringRunTrainingEligibilityGates: (payload: {
+    factorCodes?: string[];
+    factorsetId?: string;
+    modelRunId?: string;
+    coverageThreshold?: number;
+    icMin?: number;
+    icMax?: number;
+    lookbackDays?: number;
+  }) =>
+    requestJson<ScoringGovernanceGateResult[]>(
+      `${API}/scoring/gates/training-eligibility`,
+      {
+        method: "POST",
+        jsonBody: {
+          factor_codes: payload.factorCodes ?? null,
+          factorset_id: payload.factorsetId ?? null,
+          model_run_id: payload.modelRunId ?? null,
+          coverage_threshold: payload.coverageThreshold ?? 0.7,
+          ic_min: payload.icMin ?? 0.01,
+          ic_max: payload.icMax ?? 0.1,
+          lookback_days: payload.lookbackDays ?? 30,
+        },
+      }
+    ),
+  // ═══════════════════════════════════════════════════════════════════════
+
   getSymbolFactorExplanation: (symbolId: number, options: { tradeDate?: string; modelRunId?: string } = {}) => {
     const params = new URLSearchParams();
     if (options.tradeDate) params.set("trade_date", options.tradeDate);
@@ -773,6 +1145,7 @@ export const api = {
     return requestJson<SymbolFactorExplanation>(`${API}/factors/symbols/${symbolId}/explanation${suffix}`);
   },
 
+  // Factor-domain internal — DO NOT USE outside factor center (factor library list CRUD)
   // WP3: Factor library CRUD
   listFactorDefinitions: (params: {
     lifecycle_status?: string;
@@ -794,38 +1167,51 @@ export const api = {
     const suffix = sp.toString() ? `?${sp.toString()}` : "";
     return requestJson<FactorDefinitionListResponse>(`${API}/factors${suffix}`);
   },
+  // Factor-domain internal — DO NOT USE outside factor center (factor library detail)
   getFactorDefinition: (factorCode: string) =>
     requestJson<FactorDefinition>(`${API}/factors/${encodeURIComponent(factorCode)}`),
+  // Factor-domain internal — DO NOT USE outside factor center (factor library versions)
   listFactorVersions: (factorCode: string) =>
     requestJson<FactorVersionListItem[]>(`${API}/factors/${encodeURIComponent(factorCode)}/versions`),
+  // Factor-domain internal — DO NOT USE outside factor center (factor library draft)
   createFactorDraft: (payload: FactorDraftPayload) =>
     requestJson<FactorDefinition>(`${API}/factors`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }),
+    
+
+
+  
+}),
+  // Factor-domain internal — DO NOT USE outside factor center (factor library create version)
   createFactorVersion: (factorCode: string, payload: FactorVersionPayload) =>
     requestJson<FactorVersionDefinition>(`${API}/factors/${encodeURIComponent(factorCode)}/versions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
+  // Factor-domain internal — DO NOT USE outside factor center (factor library references)
   getFactorReferences: (factorCode: string, versionId: number) =>
     requestJson<FactorReferenceInfo>(`${API}/factors/${encodeURIComponent(factorCode)}/references?version_id=${versionId}`),
+  // Factor-domain internal — DO NOT USE outside factor center (factor library lifecycle)
   executeFactorTransition: (factorCode: string, payload: FactorTransitionPayload) =>
     requestJson<FactorTransitionResult>(`${API}/factors/${encodeURIComponent(factorCode)}/transitions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
+  // Factor-domain internal — DO NOT USE outside factor center (factor library audit)
   getFactorTransitionHistory: (factorCode: string) =>
     requestJson<FactorTransitionAudit[]>(`${API}/factors/${encodeURIComponent(factorCode)}/transitions`),
+  // Factor-domain internal — DO NOT USE outside factor center (factor library formula validate)
   validateFactorFormula: (payload: FactorValidatePayload) =>
     requestJson<FactorValidateResult>(`${API}/factors/validate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
+  // Factor-domain internal — DO NOT USE outside factor center (factor library formula preview)
   previewFactorFormula: (payload: FactorPreviewPayload) =>
     requestJson<FactorPreviewResult>(`${API}/factors/preview`, {
       method: "POST",
@@ -1879,6 +2265,8 @@ export const api = {
     limit: number = 200,
   ) => requestJson<ExternalDataGapReport>(
     `${API}/external-data/gaps?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}&limit=${limit}`,
+    // Full-history gap scans may inspect millions of local valuation rows.
+    { timeoutMs: 120000 },
   ),
   repairExternalDataGaps: (payload: {
     dataset: "fundamental" | "financial" | "capital_flow";
@@ -2006,18 +2394,23 @@ export const api = {
   testAiConnection: (params: AiConfigUpdate) =>
     requestJson<{ success: boolean; message: string }>(
       `${API}/settings/ai-config/test`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), timeoutMs: 20000 },
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), timeoutMs: 60000 },
     ),
   listAiModels: (params: AiConfigUpdate) =>
     requestJson<{ models: AiModelInfo[]; error?: string }>(
       `${API}/settings/ai-config/models`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), timeoutMs: 20000 },
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), timeoutMs: 60000 },
     ),
   aiChat: (payload: AiChatPayload) =>
     requestJson<AiChatResult>(
       `${API}/settings/ai-chat`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 35000 },
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 120000 },
     ),
+
+
+
+
+
 
   // WP-AI.7：AI 会话管理
   streamAIChat,
@@ -2033,7 +2426,7 @@ export const api = {
   createAISession: (payload: { title: string; source_page?: string; message?: string; references?: Record<string, unknown> }) =>
     requestJson<{ session_id: number; response: AIResponse }>(
       `${API}/ai/sessions`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 60000 },
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), timeoutMs: 120000 },
     ),
   getAIMessages: (sessionId: number, limit: number = 100) =>
     requestJson<{ items: AIMessage[]; session_id: number; limit: number; offset: number }>(
@@ -2088,7 +2481,7 @@ export const api = {
   deleteAIProfile: (id: number) =>
     requestJson<{ status: string; message: string }>(`${API}/ai/profiles/${id}`, { method: "DELETE" }),
   testAIProfile: (id: number) =>
-    requestJson<AIProfileTestResult>(`${API}/ai/profiles/${id}/test`, { method: "POST", timeoutMs: 30000 }),
+    requestJson<AIProfileTestResult>(`${API}/ai/profiles/${id}/test`, { method: "POST", timeoutMs: 60000 }),
   discoverAIModels: (id: number) =>
     requestJson<{ models: Array<{ id: string; owned_by?: string }> }>(`${API}/ai/profiles/${id}/models`),
   getAIProfileUsage: (id: number) =>
@@ -2599,6 +2992,13 @@ export interface FactorCoverage {
   coverage: number;
 }
 
+/**
+ * @deprecated Use ScoringOverview for TodayDecision/dashboard summary cards.
+ *   Non-factor pages MUST use the corresponding Scoring* thin-facade
+ *   type (ScoringModelBrief / ScoringFactorSetBrief / ScoringOverview).
+ *   Keeping raw references here is permitted only inside factor-center
+ *   internals (factors/*, FactorModelSettings).
+ */
 export interface FactorOverview {
   runtime: FactorRuntime;
   config: FactorSystemConfig;
@@ -2628,6 +3028,13 @@ export interface FactorModelWeight {
   validation_ic: number | null;
 }
 
+/**
+ * @deprecated Use ScoringModelBrief / ScoringModelDetail for non-factor pages.
+ *   Non-factor pages MUST use the corresponding Scoring* thin-facade
+ *   type (ScoringModelBrief / ScoringFactorSetBrief / ScoringOverview).
+ *   Keeping raw references here is permitted only inside factor-center
+ *   internals (factors/*, FactorModelSettings).
+ */
 export interface FactorModelRun {
   id: string;
   model_type: string;
@@ -2675,6 +3082,13 @@ export interface FactorSetMember {
 
 export type FactorSetStatus = "draft" | "frozen" | "deprecated";
 
+/**
+ * @deprecated Use ScoringFactorSetBrief for non-factor pages dropdown/mappings.
+ *   Non-factor pages MUST use the corresponding Scoring* thin-facade
+ *   type (ScoringModelBrief / ScoringFactorSetBrief / ScoringOverview).
+ *   Keeping raw references here is permitted only inside factor-center
+ *   internals (factors/*, FactorModelSettings).
+ */
 export interface FactorSet {
   id: string;
   name: string;
@@ -2735,6 +3149,306 @@ export interface FactorPipelineEta {
   full_refresh: boolean;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Factor-Domain Public Facade (P0 Anti-Corruption Layer)
+// ───────────────────────────────────────────────────────────────────────
+// Non-factor-domain frontends (TodayDecision / PortfolioStrategyRules /
+// TaskCenter / ExternalDataSync) MUST use these routes instead of the
+// native /factor-models, /factors/overview, /factor-pipeline/* ones.
+// The native routes keep serving the internal pages (FactorModelSettings,
+// factors/*) which need richer internals (weights, audit, factor codes).
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface ScoringModelBrief {
+  id: string;
+  name: string;
+  status: string;
+  validation_ic: number | null;
+  sample_count: number;
+  data_cutoff_at: string | null;
+  factorset_id: string | null;
+  factorset_label: string | null;
+  factorset_member_count: number | null;
+  created_at: string | null;
+  backtest_support?: boolean;  // P2-3-C: DTO bump schema_version=3. True when model run drives backtests.
+  schema_version?: number;     // P2-3 drift check: ScoreModelBriefDTO now ships schema_version=3
+}
+
+export interface ScoringOverview {
+  feature_enabled: boolean;
+  weight_mode: "manual" | "ridge" | "shadow";
+  active_model_id: string | null;
+  runtime_version: number;
+  updated_at: string | null;
+  warehouse_available: boolean;
+  warehouse_path: string;
+  latest_trade_date: string | null;
+  warehouse_error: string | null;
+  health_status: string;
+  active_factor_coverage_count: number;
+  active_factor_avg_coverage: number;
+}
+
+export interface ScoringActiveScope {
+  weight_mode: "manual" | "ridge" | "shadow";
+  model_ready: boolean;
+  active_model_id: string | null;
+  fallback_reason: string | null;
+}
+
+export interface ScoringFeatureInputStatus {
+  triggered: boolean;
+  task_id: string | null;
+  eta_seconds: number | null;
+  reason: string;
+}
+
+export interface ScoringExternalDraftSubmission {
+  draft_id: string;
+  factor_code: string;
+  review_status: "submitted" | "duplicate" | "rejected_draft";
+  audit_url: string | null;
+  message: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Scoring * 薄封镜像层（给 Settings / 因子中心内部页继续用老形状的字段） ─────
+// 目的：12 条原生方法改走 /scoring/* 时，调用方不必重写表格/卡片的字段路径。
+export interface ScoringPipelineEta {
+  avg_seconds: number;
+  median_seconds: number;
+  sample_count: number;
+  fallback_seconds: number;
+  recommended_seconds: number;
+  train_model: boolean;
+  full_refresh: boolean;
+}
+export interface ScoringRuntimeSnapshot {
+  weight_mode: "manual" | "ridge" | "shadow";
+  active_model_run_id: string | null;
+  fallback_reason: string | null;
+  runtime_version: number;
+  updated_at: string | null;
+}
+export interface ScoringSystemConfig {
+  feature_enabled: boolean;
+  warehouse_path: string;
+  runtime_version: number;
+  updated_by: string | null;
+}
+function _scoringOverviewToFactorOverview(raw: any): any {
+  if (!raw) return raw;
+  const $ = (k: string, fb: any = null) => (raw && Object.prototype.hasOwnProperty.call(raw, k) ? raw[k] : fb);
+  const runtime: ScoringRuntimeSnapshot = {
+    weight_mode: raw?.weight_mode ?? "manual",
+    active_model_run_id: raw?.active_model_id ?? null,
+    fallback_reason: raw?.fallback_reason ?? null,
+    runtime_version: Number(raw?.runtime_version ?? 0),
+    updated_at: raw?.updated_at ?? null,
+  };
+  const config: ScoringSystemConfig = {
+    feature_enabled: Boolean($("feature_enabled", false)),
+    warehouse_path: $("warehouse_path", "") ?? "",
+    runtime_version: Number($("runtime_version", 0) || 0),
+    updated_by: null,
+  };
+  const coverage: any[] = Array.isArray(raw?.factor_coverage) ? raw.factor_coverage : [];
+  return {
+    runtime, config,
+    feature_enabled: Boolean($("feature_enabled", false)),
+    warehouse_error: $("warehouse_error", null),
+    health: {
+      status: $("health_status", "unknown"),
+      warehouse_available: Boolean($("warehouse_available", false)),
+      warehouse_path: $("warehouse_path", ""),
+      schema_version: $("schema_version", null),
+      calc_batch_id: $("calc_batch_id", null),
+      latest_bar_date: $("latest_bar_date", null),
+      raw_tables: Array.isArray($("raw_tables", [])) ? $("raw_tables", []) : [],
+      factors: coverage,
+      reasons: Array.isArray($("health_reasons", [])) ? $("health_reasons", []) : [],
+    },
+    latest_trade_date: $("latest_trade_date", null),
+    factor_coverage: coverage,
+  };
+}
+function _scoringModelsToFactorModelList(briefs: any[]): any {
+  const items = Array.isArray(briefs) ? briefs.map((b: any) => {
+    const b2 = Object.assign({}, b || {});
+    const metrics: Record<string, any> = Object.assign({}, b2.metrics || {});
+    if (b2.validation_ic != null) metrics.validation_ic = Number(b2.validation_ic);
+    if (b2.sample_count != null) metrics.sample_count = Number(b2.sample_count);
+    if (b2.data_cutoff_at != null) metrics.data_cutoff_at = b2.data_cutoff_at;
+    b2.metrics = metrics;
+    if (!("rejection_reason" in b2)) b2.rejection_reason = null;
+    if (!("weights" in b2)) b2.weights = [];
+    if (!("audit" in b2)) b2.audit = [];
+    if (!("activated_at" in b2)) b2.activated_at = b2.activated_at ?? null;
+    return b2;
+  }) : [];
+  const runtime = {
+    weight_mode: "manual",
+    active_model_run_id: (briefs || []).find((b: any) => b && b.status === "production")?.id ?? null,
+    fallback_reason: null,
+    runtime_version: 0,
+    updated_at: null,
+  };
+  return { runtime, items };
+}
+function _scoringFactorSetsToFactorSets(briefs: any[]): any[] {
+  return Array.isArray(briefs)
+    ? briefs.map((fs: any) => {
+        const b = Object.assign({}, fs || {});
+        b.label = b.label ?? b.name ?? "";
+        b.name = b.name ?? b.label ?? "";
+        b.n_members = Number(b.n_members ?? b.member_count ?? 0);
+        b.member_count = Number(b.member_count ?? b.n_members ?? 0);
+        if (!("content_hash" in b)) b.content_hash = null;
+        if (!("created_by" in b)) b.created_by = "scoring";
+        return b;
+      })
+    : [];
+}
+
+
+// P1 UI Stitching — FactorSets / Model detail / Factor usage
+// (all served by /api/v1/scoring/* public facade)
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface ScoringFactorSetBrief {
+  id: string;
+  label: string;
+  status: "draft" | "frozen" | "deprecated" | string;
+  member_count: number;
+  created_at: string | null;
+  frozen_at: string | null;
+  is_active_for_model_run_ids: string[];
+  description: string | null;
+}
+
+export interface ScoringModelFactorMember {
+  factor_code: string;
+  factor_name: string | null;
+  factor_version: number;
+  coefficient: number;
+  normalized_weight: number;
+  train_ic: number | null;
+  validation_ic: number | null;
+  coverage: number | null;
+  side: "long" | "short" | "neutral";
+}
+
+export interface ScoringModelDetail {
+  id: string;
+  name: string;
+  status: string;
+  model_type: string;
+  weight_mode: "manual" | "ridge" | "shadow";
+  validation_ic: number | null;
+  validation_icir: number | null;
+  validation_r2: number | null;
+  train_ic: number | null;
+  sample_count: number;
+  symbol_count: number;
+  trade_date_count: number;
+  train_start_date: string | null;
+  train_end_date: string | null;
+  validation_start_date: string | null;
+  validation_end_date: string | null;
+  data_cutoff_at: string | null;
+  created_at: string | null;
+  activated_at: string | null;
+  rejection_reason: string | null;
+  factorset_id: string | null;
+  factorset_label: string | null;
+  factorset_member_count: number;
+  factors: ScoringModelFactorMember[];
+}
+
+export interface ScoringFactorUsageSet {
+  factor_set_id: string;
+  label: string;
+  status: string;
+  role: "feature" | "target" | "regime" | string;
+  version: number;
+}
+
+export interface ScoringFactorUsageModel {
+  model_id: string;
+  model_name: string;
+  status: string;
+  normalized_weight: number;
+  validation_ic: number | null;
+  model_validation_ic: number | null;
+  activated_at: string | null;
+}
+
+export interface ScoringFactorUsage {
+  code: string;
+  name: string;
+  status: string;
+  lifecycle_status: string | null;
+  origin: string | null;
+  category: string | null;
+  is_active: boolean;
+  description: string | null;
+  active_version: number | null;
+  coverage_30d: number | null;
+  ic_mean_30d: number | null;
+  days_in_production: number | null;
+  in_factor_sets: ScoringFactorUsageSet[];
+  in_models: ScoringFactorUsageModel[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// P2-G Governance: Factor Drafts + Approval Flow + Training Gates
+// ═══════════════════════════════════════════════════════════════════════
+
+export type ScoringDraftStatus =
+  | "submitted"
+  | "approved"
+  | "rejected"
+  | "applied"
+  | "deleted";
+
+export interface ScoringFactorDraft {
+  id: number;
+  draft_no: string;
+  source_module: string;
+  source_ref_id: string | null;
+  suggested_code: string;
+  suggested_name: string | null;
+  suggested_category: string | null;
+  payload: Record<string, unknown>;
+  review_status: ScoringDraftStatus;
+  submitted_by: string | null;
+  reviewer: string | null;
+  review_msg: string | null;
+  promoted_factor_id: number | null;
+  promoted_factor_code: string | null;  // P2.2c.1: 正式因子 code，UI 可跳转因子库
+  promoted_factor_version: number | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  applied_at: string | null;
+  audit_url: string | null;
+}
+
+export interface ScoringGovernanceGateResult {
+  gate_name:
+    | "factor_coverage"
+    | "factor_ic_range"
+    | "training_sample_size"
+    | "active_ic_delta"
+    | string;
+  passed: boolean;
+  score: number | null;
+  threshold_min: number | null;
+  threshold_max: number | null;
+  reasons: string[];
+  detail: Record<string, unknown>;
+}
+
 // ══════════════════════════════════════════════════════════
 // WP5-07: 评估实验室类型
 // ══════════════════════════════════════════════════════════
@@ -2751,6 +3465,7 @@ export interface EvaluationTaskCreatePayload {
   cost_rate?: number;
   direction?: "higher_better" | "lower_better" | "nonlinear" | string;
   created_by?: string;
+  force_new?: boolean;
 }
 
 export interface PreflightFixLink {
@@ -2774,6 +3489,7 @@ export interface PreflightOverall {
   passed: boolean;
   blocking_count: number;
   recommended_date_range?: [string, string] | null;
+  data_cutoff_date?: string | null;
 }
 
 export interface PreflightResponse {
@@ -2901,7 +3617,7 @@ export interface EvaluationRunRead {
   config: Record<string, unknown>;
   metrics: EvaluationMetrics;
   gate_result: "passed" | "rejected" | "warn" | null;
-  rejection_reasons: string[];
+  rejection_reasons: Array<string | Record<string, unknown>>;
   artifact_path: string | null;
   task_id: string | null;
   created_by: string;

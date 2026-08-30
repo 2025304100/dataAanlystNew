@@ -18,7 +18,7 @@ import {
   StopOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
-import { api, type FactorOverview } from "../api/client";
+import { api, type FactorOverview, type ScoringOverview } from "../api/client";
 import { actionLabel, enumLabel, stageLabel, t, template } from "../i18n";
 import { useApp } from "../context/AppContext";
 import { navigateToResearch } from "../utils/sourceContext";
@@ -219,6 +219,55 @@ function reasonText(item: WorkbenchCandidate) {
   return item.reason_tags?.length ? item.reason_tags.join(" / ") : t("tdEmpty");
 }
 
+/** Facade ScoringOverview → 旧 FactorOverview 适配（防腐层），避免改动大面积渲染代码。 */
+function adaptScoringToFactorOverview(s: ScoringOverview | null): FactorOverview | null {
+  if (!s) return null;
+  const coverage: FactorOverview["factor_coverage"] = [];
+  // 用平均覆盖率构造一个合成项，避免 TodayDecision 的覆盖率/低覆盖计数渲染出错
+  if (s.active_factor_avg_coverage != null) {
+    coverage.push({
+      factor_code: "__avg__",
+      latest_trade_date: s.latest_trade_date,
+      universe_symbols: s.active_factor_coverage_count,
+      eligible_symbols: Math.max(0, Math.round(s.active_factor_coverage_count * s.active_factor_avg_coverage)),
+      imputed_symbols: 0,
+      coverage: s.active_factor_avg_coverage,
+    });
+  }
+  return {
+    feature_enabled: s.feature_enabled,
+    warehouse_error: s.warehouse_error,
+    latest_trade_date: s.latest_trade_date,
+    factor_coverage: coverage,
+    runtime: {
+      weight_mode: s.weight_mode,
+      score_weight_mode: s.weight_mode === "manual" ? "manual" : "ridge",
+      active_model_run_id: s.active_model_id,
+      updated_by: "facade",
+      fallback_reason: null,
+      version: s.runtime_version,
+      updated_at: s.updated_at,
+    },
+    config: {
+      feature_enabled: s.feature_enabled,
+      warehouse_path: s.warehouse_path,
+      updated_by: "facade",
+      updated_at: s.updated_at,
+    },
+    health: {
+      status: s.health_status || "unknown",
+      warehouse_available: s.warehouse_available,
+      warehouse_path: s.warehouse_path,
+      schema_version: null,
+      calc_batch_id: null,
+      latest_bar_date: s.latest_trade_date,
+      raw_tables: [],
+      factors: coverage,
+      reasons: [],
+    },
+  };
+}
+
 export default function TodayDecision() {
   const ctx = useApp();
   const workbench = ctx.workbench;
@@ -251,14 +300,15 @@ export default function TodayDecision() {
         api.getMacroOverview("all"),
         api.getMarketEvents({ importance_level_min: 3, limit: 8, sort_by: "importance_level" }),
         api.getDataHealth(),
-        api.getFactorOverview().catch(() => null),
+        // Factor-domain overview: via Public Facade, not /factors/overview
+        api.scoringGetOverview().catch(() => null),
         // FR-P1-8a HG1：拉取组合状态（失败不阻塞今日决策其它面板）
         api.getPortfolioStatus(portfolioId).catch(() => null),
       ]);
       setMacro(macroData);
       setEvents(newsData.events ?? []);
       setHealth(healthData);
-      setFactorOverview(factorData);
+      setFactorOverview(adaptScoringToFactorOverview(factorData));
       setPortfolioStatus(statusData ?? null);
       await ctx.loadWorkbench();
     } catch (err: any) {

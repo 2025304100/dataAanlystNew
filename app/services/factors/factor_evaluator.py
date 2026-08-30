@@ -232,40 +232,71 @@ class TimeSplit:
 
 def build_time_split(
     *,
-    all_dates: list[date],
+    all_dates,
     target_horizon: int = 5,
     train_ratio: float = 0.6,
     validation_ratio: float = 0.2,
     purge_days: int = 5,
     embargo_days: int = 5,
+    min_validation_days: int = 50,
+    min_test_days: int = 3,
+    min_total_days: int = 20,
 ) -> TimeSplit:
-    """构建时间切分方案。
-
-    安全约束：
-    - 训练-验证之间有 purge 期（防止目标 horizon 泄漏）
-    - 验证-测试之间有 embargo 期
-    - 目标退出日不进入特征可见区（通过 purge + embargo 保证）
-    """
-    if len(all_dates) < 20:
-        raise ValueError("insufficient_dates:需要至少 20 个交易日")
+    """Build train / validation / test split with structured insufficient_dates diagnostics."""
+    import math as _math_local
 
     sorted_dates = sorted(all_dates)
     n = len(sorted_dates)
 
-    # 计算切分点
-    train_end_idx = int(n * train_ratio)
-    val_end_idx = int(n * (train_ratio + validation_ratio))
+    # After forward_returns.shift(-target_horizon), last `horizon` dates yield NaN targets.
+    tail_loss = int(target_horizon)
+    usable_n = max(0, n - tail_loss)
+
+    # Minimum sizes after applying ratios + purge + embargo.
+    min_via_val = int(min_validation_days) + int(purge_days) + int(embargo_days)
+    derived_min_by_ratio = float("inf")
+    if validation_ratio > 0:
+        derived_min_by_ratio = int(_math_local.ceil(min_via_val / float(validation_ratio)))
+    derived_min_total = max(int(min_total_days), int(derived_min_by_ratio))
+
+    # Compute raw splits (before tail-loss accounting) just for diagnostic + return.
+    train_end_idx = max(0, min(n - 1, int(n * train_ratio)))
+    val_end_idx = max(train_end_idx, min(n - 1, int(n * (train_ratio + validation_ratio))))
+    val_start_idx = min(n - 1, train_end_idx + int(purge_days))
+    test_start_idx = min(n - 1, val_end_idx + int(embargo_days))
+
+    train_n_raw = max(0, train_end_idx)
+    val_n_raw = max(0, val_end_idx - val_start_idx)
+    test_n_raw = max(0, (n - 1) - test_start_idx + 1) if test_start_idx < n else 0
+
+    effective_val = max(0, min(val_n_raw, usable_n - val_start_idx))
+    effective_test = (
+        max(0, min(test_n_raw, usable_n - test_start_idx))
+        if test_start_idx < n else 0
+    )
+
+    hard_fail = (
+        n < int(min_total_days)
+        or n < derived_min_total
+        or effective_val < int(min_validation_days)
+        or (test_n_raw > 0 and effective_test < int(min_test_days))
+    )
+
+    if hard_fail:
+        actual_s = "actual=" + repr(n) + " usable_after_tail_loss=" + repr(usable_n)
+        derived_s = "derived_min_total=" + repr(derived_min_total) + " (min_val_days="+repr(min_validation_days)+" purge="+repr(purge_days)+" embargo="+repr(embargo_days)+" val_ratio="+repr(validation_ratio)+")"
+        split_s = "splits[raw]: train="+repr(train_n_raw)+" val="+repr(val_n_raw)+" test="+repr(test_n_raw)
+        eff_s = "splits[effective post tail_loss]: val="+repr(effective_val)+"/min="+repr(min_validation_days)+" test="+repr(effective_test)+"/min="+repr(min_test_days)
+        tail_s = "tail_loss="+repr(tail_loss)+" (caused by forward target_horizon shift)"
+        gap = max(1, derived_min_total - n) if n < derived_min_total else max(1, (min_validation_days - effective_val) if effective_val < min_validation_days else (min_test_days - effective_test))
+        suggest = "Suggest: move start_date EARLIER by ~" + repr(gap) + " additional trading days, or reduce purge/embargo/target_horizon minimally if allowed."
+        msg = "insufficient_dates " + actual_s + " | " + derived_s + " | " + split_s + " | " + eff_s + " | " + tail_s + " | " + suggest
+        raise ValueError(msg)
 
     train_start = sorted_dates[0]
     train_end = sorted_dates[max(0, train_end_idx - 1)]
-
-    # purge：训练结束后跳过 purge_days 个交易日
-    val_start_idx = min(train_end_idx + purge_days, n - 1)
     validation_start = sorted_dates[val_start_idx]
     validation_end = sorted_dates[max(val_start_idx, val_end_idx - 1)]
-
-    # embargo + test
-    test_start_idx = min(val_end_idx + embargo_days, n - 1)
     test_start = sorted_dates[test_start_idx] if test_start_idx < n else None
     test_end = sorted_dates[-1] if test_start is not None else None
 
@@ -282,16 +313,16 @@ def build_time_split(
     )
 
 
-@dataclass
+@dataclass(frozen=True)
 class AlignedSample:
-    """特征-目标对齐后的样本。"""
+    """因子面板与目标收益对齐后的样本快照。"""
 
-    features: pd.DataFrame  # index=date, columns=symbol, values=factor_value
-    targets: pd.DataFrame  # index=date, columns=symbol, values=forward_return
+    features: pd.DataFrame
+    targets: pd.DataFrame
     trade_dates: list[date]
-    symbols: list[str]
-    coverage: float  # 有效样本占比
-    event_dates: list[date] | None = None  # 事件因子的有效日期
+    symbols: list[Any]
+    coverage: float
+    event_dates: list[date] | None = None
 
 
 def align_factor_with_target(

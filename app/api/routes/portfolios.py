@@ -897,9 +897,13 @@ def delete_position(portfolio_id: int, symbol_id: int, db: Session = Depends(get
 # ============================================================================
 
 
-def _member_to_dict(member) -> dict:
-    """将 PortfolioMember ORM 对象转为 dict（日期字段统一转 ISO 字符串）。"""
-    return {
+def _member_to_dict(member, symbol_obj: Symbol | None = None) -> dict:
+    """将 PortfolioMember ORM 对象转为 dict（日期字段统一转 ISO 字符串）。
+
+    FIX: 可传入 symbol_obj 附带标的代码和名称，避免前端只看到 #symbol_id。
+    也可以不传，之后由调用方在 dict 上手动 update({symbol, name})。
+    """
+    d = {
         "id": member.id,
         "portfolio_id": member.portfolio_id,
         "symbol_id": member.symbol_id,
@@ -917,6 +921,18 @@ def _member_to_dict(member) -> dict:
         "created_at": member.created_at.isoformat() if member.created_at else None,
         "updated_at": member.updated_at.isoformat() if member.updated_at else None,
     }
+    if symbol_obj is not None:
+        d["symbol"] = symbol_obj.symbol
+        d["name"] = symbol_obj.name
+    return d
+
+
+def _member_read(db: Session, member) -> PortfolioMemberRead:
+    """FIX: 统一构造 PortfolioMemberRead，自动附带 Symbol 的代码/名称。
+    用于 update/archive/pause/restore 这类单成员返回的端点。
+    """
+    symbol_obj = db.get(Symbol, member.symbol_id) if member.symbol_id else None
+    return PortfolioMemberRead(**_member_to_dict(member, symbol_obj=symbol_obj))
 
 
 def _fetch_latest_orders_by_member(
@@ -998,10 +1014,24 @@ def list_portfolio_members(
     if not members:
         return []
 
+    # FIX: 批量查询 Symbol，把 symbol/code/name 附带进成员响应
+    # 避免前端未建仓成员（positions表无行）只能显示 #symbol_id
+    symbol_ids = [m.symbol_id for m in members]
+    symbol_rows = db.execute(
+        select(Symbol.id, Symbol.symbol, Symbol.name).where(Symbol.id.in_(symbol_ids))
+    ).all()
+    symbol_by_id: dict[int, tuple[str | None, str | None]] = {}
+    for sid, sym, nm in symbol_rows:
+        symbol_by_id[sid] = (sym, nm)
+
     latest_orders = _fetch_latest_orders_by_member(db, [m.id for m in members])
     result: list[PortfolioMemberRead] = []
     for m in members:
         data = _member_to_dict(m)
+        sym_info = symbol_by_id.get(m.symbol_id)
+        if sym_info is not None:
+            data["symbol"] = sym_info[0]
+            data["name"] = sym_info[1]
         data.update(_build_latest_signal_fields(latest_orders.get(m.id)))
         result.append(PortfolioMemberRead(**data))
     return result
@@ -1045,7 +1075,7 @@ def create_portfolio_member(
             priority=payload.priority,
             note=payload.note,
         )
-        return PortfolioMemberRead(**_member_to_dict(member))
+        return PortfolioMemberRead(**_member_to_dict(member, symbol_obj=symbol))
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -1075,7 +1105,7 @@ def update_portfolio_member(
     )
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
-    return PortfolioMemberRead(**_member_to_dict(member))
+    return _member_read(db, member)
 
 
 @router.post(
@@ -1109,7 +1139,7 @@ def archive_portfolio_member(
         )
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
-    return PortfolioMemberRead(**_member_to_dict(member))
+    return _member_read(db, member)
 
 
 @router.post(
@@ -1126,7 +1156,7 @@ def pause_portfolio_member(
     member = pause_member(db, member_id=member_id)
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
-    return PortfolioMemberRead(**_member_to_dict(member))
+    return _member_read(db, member)
 
 
 @router.post(
@@ -1149,7 +1179,7 @@ def restore_portfolio_member(
         raise HTTPException(status_code=409, detail=str(e))
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
-    return PortfolioMemberRead(**_member_to_dict(member))
+    return _member_read(db, member)
 
 
 @router.post(

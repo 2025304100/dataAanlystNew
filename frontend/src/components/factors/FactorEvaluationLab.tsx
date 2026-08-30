@@ -53,6 +53,7 @@ import "./FactorEvaluationLab.css";
 import {
   api,
   type EvaluationRunRead,
+  type EvaluationMetrics,
   type EvaluationTaskCreatePayload,
   type EvaluationTaskRead,
   type ParameterPerturbationResult,
@@ -60,7 +61,10 @@ import {
   type StressTestSummary,
 } from "../../api/client";
 
-const TERMINAL_TASK_STATES = new Set(["done", "completed", "failed", "cancelled"]);
+// `warn` is a completed evaluation with a non-blocking gate result, not a
+// running task. Treating it as active makes the UI keep polling and counting
+// elapsed time indefinitely after the backend has reached 100%.
+const TERMINAL_TASK_STATES = new Set(["done", "completed", "warn", "failed", "cancelled"]);
 const POLL_INTERVAL_MS = 2000;
 const STALL_THRESHOLD_SECONDS = 30;
 
@@ -88,6 +92,7 @@ function taskStatusLabel(status: string): string {
     queued: "evalLabTaskQueued",
     done: "evalLabTaskDone",
     completed: "evalLabTaskDone",
+    warn: "evalLabTaskWarn",
     failed: "evalLabTaskFailed",
     cancelled: "evalLabTaskCancelled",
   };
@@ -102,6 +107,7 @@ function taskStatusColor(status: string): string {
     queued: "default",
     done: "success",
     completed: "success",
+    warn: "warning",
     failed: "error",
     cancelled: "default",
   };
@@ -256,7 +262,20 @@ function parseBlockers(errors: Array<Record<string, unknown>> | undefined | null
   });
 }
 
-function rejectionReasonLabel(reason: string): string {
+function rejectionReasonLabel(reason: unknown): string {
+  // 新版后端返回结构化 blocker，旧任务仍可能只返回 "code:detail" 字符串。
+  if (reason && typeof reason === "object" && !Array.isArray(reason)) {
+    const item = reason as Record<string, unknown>;
+    const code = typeof item.code === "string" ? item.code : "";
+    const detailValue = item.detail_zh ?? item.detail ?? item.message ?? item.title_zh ?? item.title;
+    const detail = typeof detailValue === "string" ? detailValue : "";
+    if (!code) return detail || JSON.stringify(reason);
+    const key = `evalLabReason_${code}`;
+    const translated = t(key);
+    const label = translated === key ? code : translated;
+    return detail ? `${label}：${detail}` : label;
+  }
+  if (typeof reason !== "string") return reason == null ? "-" : String(reason);
   const [code, ...detail] = reason.split(":");
   const key = `evalLabReason_${code}`;
   const translated = t(key);
@@ -316,7 +335,7 @@ function formatNumber(value: unknown, digits = 4): string {
   if (value == null || value === "") return "-";
   const num = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(num)) return "-";
-  if (Math.abs(num) >= 1000) return num.toFixed(2);
+  if (Math.abs(num) >= 1000) return num.toFixed(digits);
   return num.toFixed(digits);
 }
 
@@ -325,6 +344,70 @@ function formatPercent(value: unknown, digits = 2): string {
   const num = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(num)) return "-";
   return `${(num * 100).toFixed(digits)}%`;
+}
+
+function finiteNumberOrUndefined(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+/**
+ * 兼容评估 API 的嵌套指标和旧版扁平指标。
+ * 后端把指标按领域分组保存（ic/quantile/turnover 等），而报告组件
+ * 使用的是历史扁平字段；统一在边界归一化，避免报告与门禁证据不一致。
+ */
+function normalizeEvaluationMetrics(
+  raw: EvaluationRunRead["metrics"] | Record<string, unknown> | null | undefined,
+): EvaluationMetrics {
+  if (!raw || typeof raw !== "object") return {};
+  const source = raw as Record<string, unknown>;
+  if (Object.keys(source).length === 0) return {};
+  const ic = source.ic && typeof source.ic === "object" ? source.ic as Record<string, unknown> : {};
+  const quantile = source.quantile && typeof source.quantile === "object"
+    ? source.quantile as Record<string, unknown>
+    : {};
+  const turnover = source.turnover && typeof source.turnover === "object"
+    ? source.turnover as Record<string, unknown>
+    : {};
+  const costAdjusted = source.cost_adjusted && typeof source.cost_adjusted === "object"
+    ? source.cost_adjusted as Record<string, unknown>
+    : {};
+  const coverage = source.coverage && typeof source.coverage === "object"
+    ? source.coverage as Record<string, unknown>
+    : {};
+  const timeSplit = source.time_split && typeof source.time_split === "object"
+    ? source.time_split as Record<string, unknown>
+    : {};
+  const first = (...values: unknown[]) => values.find((value) => value != null && value !== "");
+  const groupReturns = first(quantile.group_returns, source.quantile_returns);
+
+  return {
+    ...source,
+    rank_ic_mean: finiteNumberOrUndefined(first(ic.rank_ic_mean, source.rank_ic_mean)),
+    rank_ic_median: finiteNumberOrUndefined(first(ic.rank_ic_median, source.rank_ic_median)),
+    rank_ic_std: finiteNumberOrUndefined(first(ic.rank_ic_std, source.rank_ic_std)),
+    icir: finiteNumberOrUndefined(first(ic.icir, source.icir)),
+    positive_ic_ratio: finiteNumberOrUndefined(first(ic.positive_ic_ratio, source.positive_ic_ratio)),
+    quantile_returns: Array.isArray(groupReturns)
+      ? groupReturns.filter((value): value is number => finiteNumberOrUndefined(value) != null)
+          .map((value) => finiteNumberOrUndefined(value) as number)
+      : [],
+    monotonicity_score: finiteNumberOrUndefined(first(quantile.monotonicity_score, source.monotonicity_score)),
+    long_short_return: finiteNumberOrUndefined(
+      first(quantile.top_bottom_return, source.long_short_return),
+    ),
+    turnover: finiteNumberOrUndefined(first(turnover.avg_turnover, source.turnover)),
+    cost_adjusted_return: finiteNumberOrUndefined(
+      first(costAdjusted.net_return, source.cost_adjusted_return),
+    ),
+    coverage: finiteNumberOrUndefined(first(coverage.coverage, source.coverage)),
+    n_samples: finiteNumberOrUndefined(first(source.effective_samples, source.n_samples)),
+    train_start: String(first(timeSplit.train_start, source.train_start) ?? ""),
+    train_end: String(first(timeSplit.train_end, source.train_end) ?? ""),
+    validation_start: String(first(timeSplit.validation_start, source.validation_start) ?? ""),
+    validation_end: String(first(timeSplit.validation_end, source.validation_end) ?? ""),
+  };
 }
 
 function verdictLabel(verdict: string | null | undefined): string {
@@ -391,11 +474,12 @@ export default function FactorEvaluationLab() {
     let cancelled = false;
     setFactorLoading(true);
     setFactorLoadError(null);
-    api.listFactorDefinitions({ page_size: 100 }).then((res) => {
+    // Factor-domain internal - DO NOT USE outside factor center
+    api.scoringListFactorDefinitions({ page_size: 100 }).then((res) => {
       if (cancelled) return;
-      const options = (res.items || []).map((f) => ({
+      const options = (res.items || []).map((f: { code: string; name?: string | null }) => ({
         value: f.code,
-        label: `${factorLabel(f.code, f.name)} (${f.code})`,
+        label: `${factorLabel(f.code, f.name ?? undefined)} (${f.code})`,
       }));
       setFactorOptions(options);
     }).catch((err) => {
@@ -418,6 +502,8 @@ export default function FactorEvaluationLab() {
   const [direction, setDirection] = useState<"higher_better" | "lower_better" | "nonlinear">("higher_better");
   const [preflightResult, setPreflightResult] = useState<PreflightResponse | null>(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
+  const [dataCutoffDate, setDataCutoffDate] = useState<string | null>(null);
+  const [executionHash, setExecutionHash] = useState<string | null>(null);
 
   // 新布局状态
   const [advancedDrawerOpen, setAdvancedDrawerOpen] = useState(false);
@@ -626,17 +712,60 @@ export default function FactorEvaluationLab() {
     });
   }, []);
 
+  /** 从任务上下文恢复因子代码，避免提交后清空表单导致修复链接打开“新增”。 */
+  const resolveRepairFactorCode = useCallback((): string | null => {
+    if (factorCode.trim()) return factorCode.trim();
+    const task = detailDrawer.task;
+    const resultCode = (task?.result as Record<string, unknown> | null)?.factor_code;
+    if (typeof resultCode === "string" && resultCode.trim()) return resultCode.trim();
+    const payloadRaw = (task as unknown as Record<string, unknown> | null)?.payload_json;
+    if (typeof payloadRaw === "string") {
+      try {
+        const payload = JSON.parse(payloadRaw) as Record<string, unknown>;
+        const payloadCode = payload.factor_code;
+        if (typeof payloadCode === "string" && payloadCode.trim()) return payloadCode.trim();
+      } catch {
+        // Keep the fallback path below when an old task has malformed payload JSON.
+      }
+    }
+    return null;
+  }, [detailDrawer.task, factorCode]);
+
   /** 点击 fix_link：根据类型跳转到对应位置或打开弹窗 */
   const handleFixLinkClick = useCallback((fixLink: { tab?: string; subtab?: string; label_zh?: string }) => {
     if (!fixLink) return;
     const tab = fixLink.tab;
     const subtab = fixLink.subtab;
 
+    const dispatchFactorCenterNavigation = (target: string, factor_code?: string | null) => {
+      const dispatch = () => window.dispatchEvent(new CustomEvent("factor-center:navigate", {
+        detail: { target, factor_code: factor_code || null },
+      }));
+      // FactorCenter 可能刚由顶层导航挂载，延迟一拍确保监听器已注册。
+      window.setTimeout(dispatch, 0);
+    };
+
     // 1. 跳转到因子编辑器弹窗（修复公式/版本）
     if (tab === "factors" && subtab === "editor") {
-      window.dispatchEvent(new CustomEvent("factor-center:navigate", {
-        detail: { target: "editor", factor_code: factorCode || null },
-      }));
+      ctx.setActiveTab("settings");
+      window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-center" }));
+      dispatchFactorCenterNavigation("editor", resolveRepairFactorCode());
+      return;
+    }
+
+    // 目标标签管理目前归属于设置中的因子中心；兼容旧的 factor-laboratory 链接。
+    if ((tab === "settings" && subtab === "factor-center") || tab === "factor-laboratory") {
+      ctx.setActiveTab("settings");
+      window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-center" }));
+      dispatchFactorCenterNavigation("evaluation");
+      return;
+    }
+
+    // 兼容旧的 factors/* 链接（例如 PIT Join），统一落到真实存在的因子中心。
+    if (tab === "factors") {
+      ctx.setActiveTab("settings");
+      window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-center" }));
+      dispatchFactorCenterNavigation("evaluation");
       return;
     }
 
@@ -663,9 +792,10 @@ export default function FactorEvaluationLab() {
 
     // 3. 其他情况：使用原逻辑切换顶层 tab
     if (tab) {
-      ctx.setActiveTab(tab);
+      // 历史 blocker 使用 factors 作为顶层 tab，但实际入口在设置页。
+      ctx.setActiveTab(tab === "factors" ? "settings" : tab);
     }
-  }, [ctx, factorCode]);
+  }, [ctx, resolveRepairFactorCode]);
 
   /** 错误详情抽屉中的修复路径：复用相同逻辑并关闭抽屉 */
   const applyFixLink = useCallback((fixLink: NonNullable<EvalErrorItem["fix_link"]>) => {
@@ -692,6 +822,15 @@ export default function FactorEvaluationLab() {
         targetHorizon,
       });
       setPreflightResult(response);
+      const marketItem = response.items.find((item) => item.code.startsWith("preflight.market_coverage."));
+      const marketLatest = marketItem?.evidence?.latest_trade_date;
+      setDataCutoffDate(
+        response.overall.data_cutoff_date
+        || (typeof marketLatest === "string" ? marketLatest : null),
+      );
+      const compileItem = response.items.find((item) => item.code === "preflight.formula_compile.ok");
+      const contentHash = compileItem?.evidence?.content_hash;
+      setExecutionHash(typeof contentHash === "string" ? contentHash : null);
       if (
         response.overall.recommended_date_range &&
         response.overall.recommended_date_range.length === 2 &&
@@ -759,21 +898,31 @@ export default function FactorEvaluationLab() {
     loadAll();
   }, [loadAll]);
 
-  // 运行中任务轮询
+  // 运行中任务轮询：拿到 task id 后立即拉一次，之后每 2 秒刷新，避免
+  // 提交成功到第一次进度反馈之间出现一个完整轮询周期的空窗。
   useEffect(() => {
-    if (!state.activeTask || TERMINAL_TASK_STATES.has(state.activeTask.status)) return;
-    const timer = window.setInterval(async () => {
+    const taskId = state.activeTask?.id;
+    if (!taskId || !state.activeTask || TERMINAL_TASK_STATES.has(state.activeTask.status)) return;
+    let cancelled = false;
+    const poll = async () => {
       try {
-        const task = await api.getEvaluationTask(state.activeTask!.id);
+        const task = await api.getEvaluationTask(taskId);
+        if (cancelled) return;
         update({ activeTask: task });
         if (TERMINAL_TASK_STATES.has(task.status)) {
           await loadAll(false);
         }
       } catch (err: any) {
+        if (cancelled) return;
         update({ error: err?.message || t("evalLabLoadFailed") });
       }
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    };
+    void poll();
+    const timer = window.setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [state.activeTask?.id, state.activeTask?.status, loadAll, update]);
 
   // 计算已运行时长与停滞检测
@@ -820,7 +969,7 @@ export default function FactorEvaluationLab() {
   // 当任务变为 done 时，从 result.run_id 自动选中对应运行
   useEffect(() => {
     const activeTask = state.activeTask;
-    if (!activeTask || activeTask.status !== "done") return;
+    if (!activeTask || !["done", "completed", "warn"].includes(activeTask.status)) return;
     const runId = (activeTask.result as Record<string, unknown> | null)?.run_id;
     if (typeof runId === "string" && runId && !state.selectedRun) {
       api.getEvaluationRun(runId)
@@ -849,12 +998,17 @@ export default function FactorEvaluationLab() {
         factor_kind: factorKind,
         direction,
         created_by: "local_user",
+        // 用户再次点击提交代表显式重跑；后端仍对 queued/running 做并发去重。
+        force_new: true,
       };
       const task = await api.createEvaluationTask(payload);
       message.success(t("evalLabCreateSuccess"));
-      setFactorCode("");
+      // 保留当前因子选择，用户可以在任务运行/完成后继续查看同一因子的结果。
       update({ activeTask: task, selectedRun: null });
       await loadAll(false);
+      // 列表刷新可能早于异步任务入库，不能用旧列表覆盖刚创建的任务，
+      // 否则顶部进度条会在“创建成功”后立即消失。后续由轮询更新状态。
+      update({ activeTask: task });
     } catch (err: any) {
       const msg = err?.user_message || err?.message || t("evalLabCreateFailed");
       message.error(msg);
@@ -1089,7 +1243,7 @@ export default function FactorEvaluationLab() {
 
   const activeTask = state.activeTask;
   const selectedRun = state.selectedRun;
-  const metrics = selectedRun?.metrics;
+  const metrics = normalizeEvaluationMetrics(selectedRun?.metrics);
   const stress = metrics?.stress_test;
   const heartbeatStr = activeTask?.heartbeat_at ? formatDateTime(activeTask.heartbeat_at) : "-";
 
@@ -1393,12 +1547,17 @@ export default function FactorEvaluationLab() {
                   !preflightResult.overall.passed ||
                   !factorCode
                 }
+                title={!factorCode ? "请先选择因子，系统会自动执行运行前检查" : undefined}
                 block
                 className="eval-run-btn"
               >
                 {t("evalLabSubmit")}
               </Button>
-              {preflightResult && !preflightResult.overall.passed ? (
+              {!factorCode ? (
+                <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: "block" }}>
+                  请先选择因子，系统会自动执行运行前检查。
+                </Typography.Text>
+              ) : preflightResult && !preflightResult.overall.passed ? (
                 <Typography.Text type="danger" style={{ fontSize: 12, marginTop: 4, display: "block" }}>
                   就绪检查未通过，请先解决阻断项。
                 </Typography.Text>
@@ -1421,11 +1580,11 @@ export default function FactorEvaluationLab() {
               </span>
               <span className="eval-meta-item">
                 <span className="eval-meta-label">{t("evalMetaCutoff")}：</span>
-                <span className="eval-meta-value">2026-08-10</span>
+                <span className="eval-meta-value">{dataCutoffDate || "-"}</span>
               </span>
               <span className="eval-meta-item">
                 <span className="eval-meta-label">{t("evalMetaExecHash")}：</span>
-                <span className="eval-meta-value mono">8d42c1f0</span>
+                <span className="eval-meta-value mono">{executionHash || "-"}</span>
               </span>
               <span className="eval-meta-item">
                 <span className="eval-meta-label">{t("evalMetaFrozen")}：</span>
@@ -1441,20 +1600,30 @@ export default function FactorEvaluationLab() {
         </Row>
 
         {/* 运行中任务轻量提示条 */}
-        {activeTask && taskRunning ? (
-          <div className="eval-running-banner">
+        {activeTask || state.submitting ? (
+          <div className="eval-running-banner" aria-busy={state.submitting || taskRunning}>
             <Space size="middle">
-              <Tag color="processing" icon={<ClockCircleOutlined />}>
-                {taskStatusLabel(activeTask.status)}
+              <Tag
+                color={state.submitting || taskRunning ? "processing" : taskStatusColor(activeTask!.status)}
+                icon={state.submitting || taskRunning ? <ClockCircleOutlined /> : undefined}
+              >
+                {state.submitting ? "提交中" : taskStatusLabel(activeTask!.status)}
               </Tag>
               <span className="eval-running-stage">
-                {stageLabel(activeTask.stage)}：{taskMessageLabel(activeTask.message)}
+                {state.submitting && !activeTask ? "创建任务：正在提交评估任务，请稍候…" : `${stageLabel(activeTask!.stage)}：${taskMessageLabel(activeTask!.message)}`}
               </span>
-              <Progress percent={Math.round(activeTask.percent || 0)} size="small" style={{ width: 200 }} />
+              <Progress
+                percent={Math.round(activeTask?.percent || 0)}
+                status={!activeTask || activeTask.status === "running" || activeTask.status === "queued" ? "active" : activeTask.status === "failed" ? "exception" : activeTask.status === "done" || activeTask.status === "completed" || activeTask.status === "warn" ? "success" : "active"}
+                size="small"
+                style={{ width: 200 }}
+              />
               <span className="eval-running-elapsed">{elapsed}s</span>
-              <Button size="small" danger icon={<StopOutlined />} onClick={handleCancel} loading={state.cancelling}>
-                {t("evalLabCancel")}
-              </Button>
+              {taskRunning && activeTask ? (
+                <Button size="small" danger icon={<StopOutlined />} onClick={handleCancel} loading={state.cancelling}>
+                  {t("evalLabCancel")}
+                </Button>
+              ) : null}
             </Space>
           </div>
         ) : null}
@@ -1718,10 +1887,9 @@ export default function FactorEvaluationLab() {
                     {detailDrawer.run ? (
                       <EvaluationRunReport
                         run={detailDrawer.run}
-                        metrics={detailDrawer.run.metrics as EvaluationRunRead["metrics"] | undefined}
+                        metrics={normalizeEvaluationMetrics(detailDrawer.run.metrics)}
                         stress={
-                          (detailDrawer.run.metrics as { stress_test?: StressTestSummary } | undefined)
-                            ?.stress_test
+                          normalizeEvaluationMetrics(detailDrawer.run.metrics).stress_test
                         }
                       />
                     ) : (
@@ -1738,7 +1906,7 @@ export default function FactorEvaluationLab() {
                 label: "稳定性",
                 children: (() => {
                   const run = detailDrawer.run;
-                  const stress = (run?.metrics as { stress_test?: StressTestSummary } | undefined)?.stress_test;
+                  const stress = run ? normalizeEvaluationMetrics(run.metrics).stress_test : undefined;
                   if (!run || !stress) {
                     return (
                       <Card size="small">
@@ -2042,8 +2210,8 @@ interface EvaluationRunReportProps {
 }
 
 function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps) {
-  const m = metrics || ({} as EvaluationRunRead["metrics"]);
-  const hasMetrics = !!metrics && Object.keys(metrics).length > 0;
+  const m = normalizeEvaluationMetrics(metrics);
+  const hasMetrics = Object.keys(m).length > 0;
   const quantileReturns = Array.isArray(m.quantile_returns) ? m.quantile_returns : [];
 
   return (

@@ -1680,6 +1680,7 @@ const zhCN: Record<string, string> = {
     evalLabTaskRunning: "运行中",
     evalLabTaskQueued: "排队中",
     evalLabTaskDone: "已完成",
+    evalLabTaskWarn: "已完成（有告警）",
     evalLabTaskFailed: "失败",
     evalLabTaskCancelled: "已取消",
     evalLabTaskUnknown: "未知",
@@ -4515,6 +4516,10 @@ const zhCN: Record<string, string> = {
     "portfolioTrading.strategy.modelLabel": "因子模型",
     "portfolioTrading.strategy.copyModel": "复制模型",
     "portfolioTrading.strategy.newModel": "新建模型",
+    // 已验证因子模型（训练产出的 FactorModelRun 绑定）
+    "portfolioTrading.strategy.validatedFactorModelLabel": "已验证因子模型（训练产出）",
+    "portfolioTrading.strategy.validatedFactorModelHint": "不选则默认只用 UI 因子权重；选中后会覆盖为该模型已训练出的真实权重",
+    "portfolioTrading.strategy.validatedFactorModelNone": "— 不绑定，使用 UI 因子权重 —",
     "portfolioTrading.strategy.stockPool": "选股池",
     "portfolioTrading.strategy.rebalancePeriod": "调仓周期",
     "portfolioTrading.strategy.weighting": "权重分配",
@@ -4820,7 +4825,7 @@ const zhCN: Record<string, string> = {
     "governance.transition.forbidden": "非法状态转移：不在允许矩阵内",
     "governance.transition.noteMin10": "审查备注至少 10 个字符",
     "governance.transition.applied": "状态已转移",
-    "governance.transition.applyBtn": "执行转移",
+    "governance.transition.applyBtn": "调整运行状态",
     "governance.transition.noTargets": "当前状态没有允许的目标（例如 RECONCILIATION_BLOCKED 必须先对账确认）",
 
     // 对账守恒明细

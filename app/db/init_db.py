@@ -66,6 +66,8 @@ from app.models import (
     ai_profile,
     # WP9.6：API 废弃访问日志
     api_deprecation_log,
+    # P2-G：因子治理 5 表（快照/成员/草稿/日质量/评分血缘）
+    factor_governance,
 )
 
 
@@ -1876,8 +1878,8 @@ def _seed_factor_runtime_state() -> None:
     '''Initialize factor runtime state without activating a model.'''
     import logging
     from app.db.session import SessionLocal
-    from app.services.factors.config import ensure_factor_system_config
-    from app.services.factors.runtime import ensure_factor_runtime_state
+    from app.services.factors.config import ensure_factor_system_config# near-relative coupling: app bootstrap ensures system config/runtime pre-warm — audit 2026-08-30
+    from app.services.factors.runtime import ensure_factor_runtime_state# near-relative coupling: app bootstrap ensures system config/runtime pre-warm — audit 2026-08-30
 
     logger = logging.getLogger(__name__)
     try:

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import alerts, auto_trade, backtest, custom_indicators, dashboard, db_config, decision_engine, discovery, discovery_plans, external_data, akshare_apis, factor_evaluation, factor_models, factor_pipeline, factor_sets, factor_shadow, factors, investment_themes, journals, linkage, macro, market_data, market_events, news, notifications, portfolios, portfolio_factor_usage, portfolio_governance, scheduled_tasks, scans, scoring_configs, scores, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_drafts, ai_profiles, ai_sessions
+from app.api.routes import alerts, auto_trade, backtest, custom_indicators, dashboard, db_config, decision_engine, discovery, discovery_plans, external_data, akshare_apis, factor_evaluation, factor_models, factor_pipeline, factor_sets, factor_shadow, factors, g5_dual_run, investment_themes, journals, linkage, macro, market_data, market_events, news, notifications, portfolios, portfolio_factor_usage, portfolio_governance, scheduled_tasks, scans, scoring_configs, scores, scoring_facade, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_drafts, ai_profiles, ai_sessions
 from app.core.config import settings
 
 
@@ -64,3 +64,12 @@ api_router.include_router(portfolio_factor_usage.router, tags=["portfolio-factor
 api_router.include_router(decision_engine.router, tags=["decision-engine"])
 # G3-G4：对账 + 7 状态状态机治理（/portfolios/{pid}/status|reconcile|confirm-reconciliation|transition-state）
 api_router.include_router(portfolio_governance.router)
+# G5：双跑对账（/portfolios/{pid}/g5-dual-run）
+api_router.include_router(g5_dual_run.router)
+# ═══════════════════════════════════════════════════════════════════════════
+# Factor-Domain Public Facade / Anti-Corruption Layer (P0)
+# ═══════════════════════════════════════════════════════════════════════════
+# All non-factor-domain callers must hit routes here instead of the native
+# /factor-* routes. The factor-domain internal pages keep using the native
+# routes, which expose richer internals (weights, lifecycle, audit, …).
+api_router.include_router(scoring_facade.router, tags=["scoring-facade"])

@@ -171,3 +171,119 @@ def db_session(tmp_sqlite_url):
             mgr.dispose()
         except Exception:
             pass
+
+
+# ── P2-2 hard_import_gate: long-anti-regression for cross-domain imports ──
+# Any `pytest` run will block PRs that import factor-domain internals from
+# non-factor-domain modules (the only allowed path is
+# `from app.services.factors.__facade__ import ...`). Files inside
+# `app/services/factors/`, `app/models/factor*.py` and test utilities are
+# explicitly allowed; near-relative coupling can be whitelisted with a
+# source-line comment `# near-relative coupling: <reason> — audit YYYY-MM-DD`.
+
+_HARD_IMPORT_GATE_ALLOWED_PREFIXES = (
+    "app/services/factors/",
+    "app/api/routes/factor_",   # native factor routes own the factor domain surface
+    "app/api/routes/factors.py",
+    "app/api/routes/scoring_",
+    "app/models/factor.py",
+    "app/models/factor_model.py",
+    "app/models/factor_runtime.py",
+    "app/models/factor_evaluation.py",
+    "app/models/factor_governance.py",
+    "app/models/factor_shadow.py",
+    "app/services/factor_model_contract.py",  # ORM-shared helpers for factor models
+    "app/services/factor_set_service.py",     # FactorSet CRUD (factor-domain internal)
+    "app/services/factor_usage_service.py",   # Factor usage aggregation (factor-domain internal)
+    "app/services/ai/drafts/factor_draft.py", # factor-draft AI workflow (factor-domain internal)
+    "app/main.py",                            # entrypoint wires router internals + lifecycle tasks
+    "tests/",  # test utilities can always reach anything
+    "tmp/",
+    "scripts/audit",
+)
+
+_HARD_IMPORT_GATE_FORBIDDEN = (
+    (r"from\s+app\.models\.factor_model\s+import", "direct:app.models.factor_model"),
+    (r"import\s+app\.models\.factor_model\b", "direct:app.models.factor_model"),
+    (r"from\s+app\.models\.factor\s+import", "direct:app.models.factor"),
+    (r"import\s+app\.models\.factor\b[^_]", "direct:app.models.factor"),
+    (r"from\s+app\.models\.factor_runtime\s+import.*ActiveScoreScope",
+     "direct:ActiveScoreScope (use get_active_runtime_with_fallback_reason())"),
+    (r"from\s+app\.services\.factors\.ridge_model\b",
+     "direct:ridge_model (must go through training-eligibility Facade)"),
+    (r"from\s+app\.services\.factors\.pipeline_task\b",
+     "direct:pipeline_task (use create_scoring_task() / ensure_feature_inputs_ready())"),
+    (r"from\s+app\.services\.factors\.warehouse_locks\b",
+     "direct:warehouse_locks (internal locking mechanism must not leak)"),
+)
+
+_HARD_IMPORT_GATE_ALLOWED_TOKEN = "from app.services.factors.__facade__ import"
+_HARD_IMPORT_GATE_ALLOWED_TOKEN2 = "from app.services import factors as __factors"  # reserved, currently unused
+_HARD_IMPORT_GATE_NEAR_REL = "near-relative coupling:"
+
+
+_HARD_IMPORT_GATE_FILE_EXEMPTIONS = frozenset([
+    "app/services/backtest.py",            # near-relative: reads FactorModelRun weights
+    "app/services/vectorbt_backtest.py",   # near-relative: reads FactorModelRun weights
+    "app/services/scheduled_tasks.py",     # near-relative: scheduler wires factor pipeline
+])
+
+
+def _file_is_allowed_bypass(rel: str) -> bool:
+    norm = rel.replace("\\", "/")
+    if norm in _HARD_IMPORT_GATE_FILE_EXEMPTIONS:
+        return True
+    return any(norm.startswith(pfx) for pfx in _HARD_IMPORT_GATE_ALLOWED_PREFIXES)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _p0_hard_import_gate(pytestconfig):  # noqa: N802
+    """Session-wide anti-corruption gate.
+
+    We walk the ``app/**/*.py`` tree once at session start and assert the
+    hardcoded forbidden import list is not present outside factor-domain
+    internals. Any new PR introducing a direct leak fails the full
+    pytest run with a clear list of offending file:line entries.
+    """
+    import re as _re
+
+    root = Path(__file__).resolve().parent.parent
+    files = sorted((root / "app").rglob("*.py"))
+    violations: list[str] = []
+    for file in files:
+        rel = str(file.relative_to(root)).replace("\\", "/")
+        if _file_is_allowed_bypass(rel):
+            continue
+        try:
+            lines = file.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for i, line in enumerate(lines, 1):
+            stripped = line.lstrip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if _HARD_IMPORT_GATE_ALLOWED_TOKEN in line:
+                continue
+            if _HARD_IMPORT_GATE_ALLOWED_TOKEN2 in line:
+                continue
+            prev = lines[i-2] if i-2 >= 0 else ""
+            if _HARD_IMPORT_GATE_NEAR_REL in line or _HARD_IMPORT_GATE_NEAR_REL in prev:
+                continue
+            for pattern, rule in _HARD_IMPORT_GATE_FORBIDDEN:
+                if _re.search(pattern, line):
+                    violations.append(
+                        f"{rel}:{i} [{rule}] -> {stripped[:140]}"
+                    )
+                    break
+    if violations:
+        report = "\n  - ".join(violations[:50])
+        pytest.fail(
+            "[P2-2 hard_import_gate] Forbidden cross-domain factor imports found:\n"
+            f"  - {report}\n"
+            "\nUse `from app.services.factors.__facade__ import ...` or "
+            "annotate a single near-relative-read with: "
+            "`# near-relative coupling: <reason> — audit YYYY-MM-DD`"
+            f". Total violating lines: {len(violations)}"
+        )
+    yield
+

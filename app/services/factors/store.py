@@ -30,6 +30,7 @@ SCHEMA_VERSION = "3"
 
 _PATH_LOCKS: dict[str, threading.RLock] = {}
 _PATH_LOCKS_GUARD = threading.Lock()
+_PATH_CLASS_INSTANCES: dict = {}
 
 
 class FactorWarehouseUnavailable(RuntimeError):
@@ -525,50 +526,114 @@ def _path_lock(path: Path) -> threading.RLock:
         return _PATH_LOCKS.setdefault(key, threading.RLock())
 
 
-class FactorWarehouse:
-    """Small, explicit access layer around the local DuckDB file."""
 
-    def __init__(self, path: str | Path | None = None) -> None:
+# Fix A1. Process-wide shared DuckDB connections + graceful shutdown hooks.
+import atexit as _wh_atexit
+
+_WH_POOLS = dict()
+_WH_POOLS_GUARD = _PATH_LOCKS_GUARD
+
+
+def _get_or_create_shared_connections(path):
+    key = str(path.resolve())
+    with _WH_POOLS_GUARD:
+        pool = _WH_POOLS.get(key)
+        if pool is None:
+            ddb = _load_duckdb()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            rw = ddb.connect(str(path), read_only=False)
+            ro = None
+            if path.exists():
+                try: ro = ddb.connect(str(path), read_only=True)
+                except Exception: ro = None
+            lock = threading.RLock()
+            pool = dict()
+            pool["rw"] = rw; pool["ro"] = ro; pool["lock"] = lock; pool["path"] = path;
+            _WH_POOLS[key] = pool
+            def _shut(pool_ref=pool):
+                with pool_ref["lock"]:
+                    for attr in ("ro", "rw"):
+                        c = pool_ref.get(attr)
+                        if c is None: continue
+                        try: c.close()
+                        except Exception: pass
+                        pool_ref[attr] = None
+            _wh_atexit.register(_shut)
+        return pool
+
+
+def shutdown_factor_warehouse_pools():
+    keys = list(_WH_POOLS.keys())
+    for k in keys:
+        pool = _WH_POOLS.pop(k, None)
+        if not pool: continue
+        with pool["lock"]:
+            for attr in ("ro", "rw"):
+                c = pool.get(attr)
+                if c is None: continue
+                try: c.close()
+                except Exception: pass
+                pool[attr] = None
+    with _WH_POOLS_GUARD: _WH_POOLS.clear()
+class FactorWarehouse:
+    """Small, explicit access layer around the local DuckDB file. Shared connections via get_for_path avoid DB_LOCK_TIMEOUT from concurrent threads."""
+
+    @classmethod
+    def get_for_path(cls, path=None):
+        configured = Path(path) if path is not None else settings.factor_warehouse_path
+        key = str(configured.expanduser().resolve())
+        with _PATH_LOCKS_GUARD:
+            inst = _PATH_CLASS_INSTANCES.get(key)
+            if inst is None:
+                inst = cls(path=path)
+                _PATH_CLASS_INSTANCES[key] = inst
+            return inst
+
+    def __init__(self, path=None):
         configured = Path(path) if path is not None else settings.factor_warehouse_path
         self.path = configured.expanduser()
         self._write_lock = _path_lock(self.path)
         self._initialized = False
+        self._pool_ref = _get_or_create_shared_connections(self.path)
 
+    def __enter__(self):
+        self._pool_ref["lock"].acquire()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            self._pool_ref["lock"].release()
+        except Exception:
+            pass
+
+    def close(self):
+        return None
+
+    # Fix A1: use shared process-wide DuckDB conns (no new duckdb.connect per call).
+    # Guard: serialize via per-path RLock so threads share conns safely.
     @contextmanager
-    def connection(self, *, read_only: bool = False) -> Iterator[Any]:
-        duckdb = _load_duckdb()
+    def connection(self, *, read_only: bool = False):
+        if not getattr(self, "_pool_ref", None):
+            self._pool_ref = _get_or_create_shared_connections(self.path)
         if not read_only:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         if read_only and not self.path.exists():
-            raise FactorWarehouseUnavailable(
-                f"Factor warehouse does not exist: {self.path}"
-            )
-        try:
-            conn = duckdb.connect(str(self.path), read_only=read_only)
-        except Exception as exc:
-            # DuckDB rejects a read-only connection when the same process
-            # already has a read-write connection for this file. Health and
-            # explanation endpoints are read-only by convention, so reuse the
-            # process-wide read-write configuration while a pipeline batch is
-            # active. Cross-process file-lock errors still fail normally.
-            configuration_conflict = (
-                read_only
-                and "different configuration" in str(exc).lower()
-            )
-            if not configuration_conflict:
-                raise FactorWarehouseUnavailable(
-                    f"Cannot open factor warehouse: {self.path}"
-                ) from exc
+            raise FactorWarehouseUnavailable("Factor warehouse does not exist: " + str(self.path))
+        pool = self._pool_ref
+        lock = pool["lock"]
+        shared_conn = pool["ro"] if (read_only and pool.get("ro") is not None) else pool["rw"]
+        if shared_conn is None:
+            raise FactorWarehouseUnavailable("Factor warehouse connections already shut down: " + str(self.path))
+        with lock:
             try:
-                conn = duckdb.connect(str(self.path))
-            except Exception as fallback_exc:
-                raise FactorWarehouseUnavailable(
-                    f"Cannot open factor warehouse: {self.path}"
-                ) from fallback_exc
-        try:
-            yield conn
-        finally:
-            conn.close()
+                yield shared_conn
+            finally:
+                try:
+                    if shared_conn is pool.get("rw"):
+                        shared_conn.execute("BEGIN TRANSACTION")
+                        shared_conn.execute("COMMIT")
+                except Exception:
+                    pass
 
     def initialize(self) -> None:
         if self._initialized and self.path.exists():

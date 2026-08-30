@@ -13,11 +13,13 @@ import {
   Table,
   Tag,
   Tooltip,
+  Typography,
 } from "antd";
 import {
   CheckCircleOutlined,
   EyeOutlined,
   PlayCircleOutlined,
+  QuestionCircleOutlined,
   ReloadOutlined,
   RollbackOutlined,
   StopOutlined,
@@ -32,6 +34,20 @@ import {
 } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { enumLabel, t, template } from "../i18n";
+import {
+  type RatedCell,
+  type RatingLevel,
+  LEVEL_COLOR,
+  LEVEL_TEXT,
+  formatDateTime,
+  rateCoverage,
+  rateDataCutoff,
+  rateLatestTradeDate,
+  rateModeConsistency,
+  rateSampleCount,
+  rateValidationIC,
+  ratedColorFg,
+} from "../utils/factorRating";
 
 const TERMINAL_TASK_STATES = new Set(["done", "completed", "failed", "cancelled"]);
 
@@ -47,22 +63,66 @@ function parseServerDateTime(value: string | null | undefined) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function formatDateTime(value: string | null | undefined) {
-  const parsed = parseServerDateTime(value);
-  if (!parsed) return "-";
-  const pad = (item: number) => String(item).padStart(2, "0");
-  return [
-    `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`,
-    `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}:${pad(parsed.getSeconds())}`,
-  ].join(" ");
-}
-
 function modeColor(mode: FactorWeightMode | string) {
   if (mode === "ridge") return "green";
   if (mode === "shadow") return "blue";
   return "default";
 }
 
+const { Text } = Typography;
+
+function ratedCell(node: React.ReactNode, rated: RatedCell, extra: { width?: number; align?: "right" | "left" } = {}) {
+  const { width, align = "right" } = extra;
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: align === "right" ? "flex-end" : "flex-start",
+        gap: 6,
+        width: width ?? "auto",
+      }}
+    >
+      <Tooltip
+        title={
+          <div style={{ lineHeight: 1.55, maxWidth: 280 }}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>
+              <Tag color={LEVEL_COLOR[rated.level]} style={{ marginRight: 6 }}>
+                {LEVEL_TEXT[rated.level]}
+              </Tag>
+              当前值：{rated.text}
+            </div>
+            <div style={{ color: "#f1f5f9" }}>{rated.hint}</div>
+          </div>
+        }
+      >
+        <QuestionCircleOutlined
+          style={{
+            color: "#94a3b8",
+            fontSize: 12,
+            cursor: "help",
+            opacity: 0.9,
+          }}
+        />
+      </Tooltip>
+      <Text strong style={{ color: ratedColorFg(rated.level) }}>
+        {node}
+      </Text>
+      <Tag
+        color={LEVEL_COLOR[rated.level]}
+        style={{
+          marginInlineStart: 0,
+          padding: "1px 6px",
+          fontSize: 11,
+          fontWeight: 700,
+          borderRadius: 999,
+        }}
+      >
+        {LEVEL_TEXT[rated.level]}
+      </Tag>
+    </span>
+  );
+}
 // 后端 stage 到 i18n key 的映射，避免直接显示英文原始值
 const STAGE_KEYS: Record<string, string> = {
   queued: "factorModelStageQueued",
@@ -125,13 +185,18 @@ export default function FactorModelSettings() {
     if (showLoading) setLoading(true);
     setError(null);
     try {
-      const factorSetLoader = typeof api.listFactorSets === "function"
-        ? api.listFactorSets("frozen", 50)
+      // Factor-domain internal - DO NOT USE outside factor center
+      const factorSetLoader = typeof api.scoringListFactorSetsAsFactor === "function"
+        // Factor-domain internal - DO NOT USE outside factor center
+        ? api.scoringListFactorSetsAsFactor("frozen", 50)
         : Promise.resolve([]);
       const [overviewData, modelData, tasks, frozenFactorSets] = await Promise.all([
-        api.getFactorOverview(),
-        api.getFactorModels(undefined, 20),
-        api.listFactorPipelineTasks(5),
+        // Factor-domain internal - DO NOT USE outside factor center
+        api.scoringGetOverviewAsFactor(),
+        // Factor-domain internal - DO NOT USE outside factor center
+        api.scoringGetFactorModelListAsFactor(20),
+        // Factor-domain internal - DO NOT USE outside factor center
+        api.scoringListTasks("factor_pipeline", 5),
         factorSetLoader,
       ]);
       setOverview(overviewData);
@@ -140,7 +205,8 @@ export default function FactorModelSettings() {
       // Older embedded test shells may not expose the FactorSet API yet; the
       // real client always does, while this fallback preserves their legacy
       // pipeline smoke test behavior.
-      setTrainingFactorSetId(usableFactorSet?.id ?? (typeof api.listFactorSets === "function" ? null : "legacy"));
+      // Factor-domain internal - DO NOT USE outside factor center
+        setTrainingFactorSetId(usableFactorSet?.id ?? (typeof api.scoringListFactorSetsAsFactor === "function" ? null : "legacy"));
       // 优先选择运行中的任务，避免被最新的终态任务（cancelled/failed）覆盖
       const activeFromList = tasks.find((t) => !TERMINAL_TASK_STATES.has(t.status)) ?? null;
       setActiveTask(activeFromList ?? tasks[0] ?? null);
@@ -159,7 +225,8 @@ export default function FactorModelSettings() {
     if (!activeTask || TERMINAL_TASK_STATES.has(activeTask.status)) return;
     const timer = window.setInterval(async () => {
       try {
-        const task = await api.getFactorPipelineTask(activeTask.id);
+        // Factor-domain internal - DO NOT USE outside factor center
+        const task = await api.scoringGetTask(activeTask.id);
         setActiveTask(task);
         if (TERMINAL_TASK_STATES.has(task.status)) {
           await loadAll(false);
@@ -210,7 +277,8 @@ export default function FactorModelSettings() {
       return;
     }
     const fetchEta = () => {
-      api.getFactorPipelineEta(trainModel, fullRefresh).then(setEta).catch(() => { /* 预估失败不影响主流程 */ });
+      // Factor-domain internal - DO NOT USE outside factor center
+      api.scoringGetPipelineEta(trainModel, fullRefresh).then(setEta).catch(() => { /* 预估失败不影响主流程 */ });
     };
     fetchEta();
     const etaTimer = window.setInterval(fetchEta, 30000);
@@ -233,13 +301,16 @@ export default function FactorModelSettings() {
     setActing("pipeline");
     setError(null);
     try {
-      const task = await api.createFactorPipelineTask({
+      // Factor-domain internal - DO NOT USE outside factor center
+      const task = await api.scoringCreateTask({
         full_refresh: fullRefresh,
         train_model: trainModel,
         materialize_scores: materializeScores,
         window_days: windowDays,
         validation_days: validationDays,
         factor_set_id: trainModel ? trainingFactorSetId : undefined,
+        actor: "settings:pipeline",
+        source_hint: "factor_model_settings",
       });
       setActiveTask(task);
       ctx.showToast("success", t("factorModelStarted"));
@@ -254,7 +325,8 @@ export default function FactorModelSettings() {
     setActing("feature");
     setError(null);
     try {
-      await api.updateFactorSystemConfig(enabled);
+      // Factor-domain internal - DO NOT USE outside factor center
+      await api.scoringUpdateSystemConfig(enabled, "settings:toggle");
       ctx.showToast("success", enabled ? t("factorModelEnableFeature") : t("factorModelDisableFeature"));
       await loadAll(false);
     } catch (err: any) {
@@ -268,7 +340,8 @@ export default function FactorModelSettings() {
     setActing("initialize");
     setError(null);
     try {
-      await api.initializeFactorWarehouse();
+      // Factor-domain internal - DO NOT USE outside factor center
+      await api.scoringInitializeWarehouse(false, "settings:init");
       ctx.showToast("success", t("factorModelInitializeWarehouse"));
       await loadAll(false);
     } catch (err: any) {
@@ -282,7 +355,8 @@ export default function FactorModelSettings() {
     if (!activeTask) return;
     setActing("cancel");
     try {
-      setActiveTask(await api.cancelFactorPipelineTask(activeTask.id));
+      // Factor-domain internal - DO NOT USE outside factor center
+      setActiveTask(await api.scoringCancelTask(activeTask.id));
     } catch (err: any) {
       setError(err.message || t("factorModelActionFailed"));
     } finally {
@@ -294,7 +368,8 @@ export default function FactorModelSettings() {
     setActing(`${mode}:${model.id}`);
     setError(null);
     try {
-      await api.activateFactorModel(model.id, mode, `settings:${mode}`);
+      // Factor-domain internal - DO NOT USE outside factor center
+      await api.scoringActivateModel(model.id, mode, `settings:${mode}`);
       ctx.showToast("success", t("factorModelActivated"));
       await loadAll(false);
     } catch (err: any) {
@@ -311,7 +386,8 @@ export default function FactorModelSettings() {
     }
     setActing("fallback");
     try {
-      await api.fallbackFactorModel(fallbackReason.trim());
+      // Factor-domain internal - DO NOT USE outside factor center
+      await api.scoringFallbackToManual(fallbackReason.trim());
       setFallbackOpen(false);
       setFallbackReason("");
       ctx.showToast("success", t("factorModelFallbackDone"));
@@ -359,20 +435,37 @@ export default function FactorModelSettings() {
       title: t("factorModelValidationIc"),
       key: "validation_ic",
       render: (_: unknown, record: FactorModelRun) => {
-        const value = Number(record.metrics.validation_ic);
-        return Number.isFinite(value) ? value.toFixed(4) : "-";
+        const raw = Number(record.metrics?.validation_ic);
+        const value = Number.isFinite(raw) ? raw : null;
+        const rated = rateValidationIC(value);
+        return ratedCell(
+          <span>{rated.text}</span>,
+          rated,
+          { align: "left" },
+        );
       },
     },
     {
       title: t("factorModelSamples"),
       dataIndex: "sample_count",
       key: "sample_count",
+      render: (_: unknown, record: FactorModelRun) => {
+        const ic = Number(record.metrics?.validation_ic);
+        const rated = rateSampleCount(
+          typeof record.sample_count === "number" ? record.sample_count : null,
+          Number.isFinite(ic) ? ic : null,
+        );
+        return ratedCell(<span>{rated.text}</span>, rated, { align: "left" });
+      },
     },
     {
       title: t("factorModelCutoff"),
       dataIndex: "data_cutoff_at",
       key: "data_cutoff_at",
-      render: (value: string | null) => formatDateTime(value),
+      render: (value: string | null) => {
+        const rated = rateDataCutoff(value, overview?.latest_trade_date ?? null);
+        return ratedCell(<span>{rated.text}</span>, rated, { align: "left" });
+      },
     },
     {
       title: t("factorModelActions"),
@@ -468,14 +561,94 @@ export default function FactorModelSettings() {
       {invalidWindows && <Alert type="error" showIcon message={t("factorModelInvalidWindows")} />}
 
       <div className="factor-runtime-grid">
-        <div><span>{t("factorModelFeatureStatus")}</span><strong><Tag color={featureEnabled ? "green" : "default"}>{featureEnabled ? t("factorModelFeatureEnabled") : t("factorModelFeatureDisabled")}</Tag></strong></div>
-        <div><span>{t("factorModelRuntime")}</span><strong><Tag color={modeColor(runtime?.weight_mode ?? "manual")}>{enumLabel("factorMode", runtime?.weight_mode ?? "manual")}</Tag></strong></div>
-        <div><span>{t("factorModelScoreMode")}</span><strong>{enumLabel("factorMode", runtime?.score_weight_mode ?? "manual")}</strong></div>
-        <div><span>{t("factorModelActiveModel")}</span><Tooltip title={runtime?.active_model_run_id || undefined}><strong>{runtime?.active_model_run_id ? shortId(runtime.active_model_run_id) : t("factorModelNoModel")}</strong></Tooltip></div>
-        <div><span>{t("factorModelWarehouse")}</span><strong>{overview?.health.warehouse_available ? t("factorModelHealthy") : t("factorModelUnavailable")}</strong></div>
-        <div><span>{t("factorModelLatestDate")}</span><strong>{overview?.latest_trade_date ?? "-"}</strong></div>
-        <div><span>{t("factorModelCoverage")}</span><strong>{averageCoverage == null ? "-" : `${(averageCoverage * 100).toFixed(1)}%`}</strong></div>
-        <div><span>{t("factorModelWarehousePath")}</span><Tooltip title={overview?.config.warehouse_path}><strong>{shortId(overview?.config.warehouse_path)}</strong></Tooltip></div>
+        <div>
+          <span>{t("factorModelFeatureStatus")}</span>
+          <Tooltip title={(featureEnabled ? "功能开启：可运行流水线、启用 Ridge 打分。" : "功能关闭：流水线/模型启用全部锁死，避免手动开关误触导致治理页出现异常 blocker。")}>
+            <QuestionCircleOutlined
+              style={{ color: "#94a3b8", fontSize: 12, marginLeft: 4, cursor: "help" }}
+            />
+          </Tooltip>
+          <strong>
+            <Tag color={featureEnabled ? "green" : "default"}>
+              {featureEnabled ? t("factorModelFeatureEnabled") : t("factorModelFeatureDisabled")}
+            </Tag>
+          </strong>
+        </div>
+        <div>
+          <span>{t("factorModelRuntime")}</span>
+          <Tooltip title={"决策模式 = 组合风控权重的取数模式。ridge=走评分权重；manual=走手工配置；切换时会写入审计记录 + 触发治理状态复核。"}>
+            <QuestionCircleOutlined style={{ color: "#94a3b8", fontSize: 12, marginLeft: 4, cursor: "help" }} />
+          </Tooltip>
+          <strong>
+            <Tag color={modeColor(runtime?.weight_mode ?? "manual")}>
+              {enumLabel("factorMode", runtime?.weight_mode ?? "manual")}
+            </Tag>
+          </strong>
+        </div>
+        <div>
+          <span>{t("factorModelScoreMode")}</span>
+          <strong>
+            {(() => {
+              const rated = rateModeConsistency(
+                runtime?.weight_mode,
+                runtime?.score_weight_mode,
+                (m) => enumLabel("factorMode", m),
+              );
+              return ratedCell(<>{rated.text}</>, rated, { align: "left" });
+            })()}
+          </strong>
+        </div>
+        <div>
+          <span>{t("factorModelActiveModel")}</span>
+          <Tooltip title={(runtime?.active_model_run_id ? "当前在“正式启用”状态下的模型版本。切换它需要：先影子运行 5-10 日 → G5 双跑通过 → 再点正式启用。" : "没有活动模型：所有组合会回退到手工打分权重。")}>
+            <QuestionCircleOutlined style={{ color: "#94a3b8", fontSize: 12, marginLeft: 4, cursor: "help" }} />
+          </Tooltip>
+          <Tooltip title={runtime?.active_model_run_id || undefined}>
+            <strong>
+              {runtime?.active_model_run_id
+                ? shortId(runtime.active_model_run_id)
+                : <Text type="secondary" style={{ color: "#b91c1c" }}>{t("factorModelNoModel")}</Text>}
+            </strong>
+          </Tooltip>
+        </div>
+        <div>
+          <span>{t("factorModelWarehouse")}</span>
+          <Tooltip title={(warehouseAvailable ? "因子仓库连接正常、最近一次 health check 通过，流水线可直接运行。" : "因子仓库不可用：通常是 duckdb 文件被锁、路径错误或初始化未完成。先在下方点“初始化仓库”再做后续评估。")}>
+            <QuestionCircleOutlined style={{ color: "#94a3b8", fontSize: 12, marginLeft: 4, cursor: "help" }} />
+          </Tooltip>
+          <strong>
+            <Tag color={warehouseAvailable ? "green" : "red"}>
+              {warehouseAvailable ? t("factorModelHealthy") : t("factorModelUnavailable")}
+            </Tag>
+          </strong>
+        </div>
+        <div>
+          <span>{t("factorModelLatestDate")}</span>
+          <strong>
+            {(() => {
+              const rated = rateLatestTradeDate(overview?.latest_trade_date ?? null);
+              return ratedCell(<>{rated.text}</>, rated, { align: "left" });
+            })()}
+          </strong>
+        </div>
+        <div>
+          <span>{t("factorModelCoverage")}</span>
+          <strong>
+            {(() => {
+              const rated = rateCoverage(averageCoverage);
+              return ratedCell(<>{rated.text}</>, rated, { align: "left" });
+            })()}
+          </strong>
+        </div>
+        <div>
+          <span>{t("factorModelWarehousePath")}</span>
+          <Tooltip title={"因子数据（bar / factor / score snapshot / 训练模型）持久化路径。这是本地文件，建议放到独立 SSD 盘符，避免和系统盘抢 IO。"}>
+            <QuestionCircleOutlined style={{ color: "#94a3b8", fontSize: 12, marginLeft: 4, cursor: "help" }} />
+          </Tooltip>
+          <Tooltip title={overview?.config.warehouse_path}>
+            <strong>{shortId(overview?.config.warehouse_path)}</strong>
+          </Tooltip>
+        </div>
       </div>
 
       <section className="factor-pipeline-section">

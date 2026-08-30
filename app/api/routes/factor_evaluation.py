@@ -138,6 +138,7 @@ class EvaluationTaskCreate(BaseModel):
     cost_rate: float = Field(0.001, ge=0.0, le=0.01, description="单边成本率")
     direction: str | None = Field(None, description="因子方向: higher_better/lower_better/nonlinear（可选，默认因子版本配置）")
     created_by: str = Field("local_user", description="创建者")
+    force_new: bool = Field(False, description="显式重新评估时跳过已完成任务的幂等复用")
 
 
 @router.post("/factor-evaluation/preflight", response_model=FactorEvaluationPreflightResponse)
@@ -178,6 +179,7 @@ def create_eval_task(payload: EvaluationTaskCreate):
             cost_rate=payload.cost_rate,
             direction=payload.direction,
             created_by=payload.created_by,
+            force_new=payload.force_new,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

@@ -1697,6 +1697,7 @@ const enUS: Record<string, string> = {
     evalLabTaskRunning: "Running",
     evalLabTaskQueued: "Queued",
     evalLabTaskDone: "Done",
+    evalLabTaskWarn: "Done with warnings",
     evalLabTaskFailed: "Failed",
     evalLabTaskCancelled: "Cancelled",
     evalLabTaskUnknown: "Unknown",

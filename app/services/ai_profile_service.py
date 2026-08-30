@@ -297,7 +297,9 @@ def test_connection(db: Session, profile_id: int) -> dict:
             "temperature": 0,
         }
         endpoint = _endpoint_url(profile, "/chat/completions")
-        with httpx.Client(timeout=profile.timeout_seconds) as client:
+        # Profile 测试：至少给 60s 兜底
+        base_timeout = max(float(profile.timeout_seconds), 60.0)
+        with httpx.Client(timeout=base_timeout) as client:
             resp = client.post(endpoint, json=payload, headers=headers)
         latency_ms = int((time.time() - started) * 1000)
         if resp.status_code >= 400:
@@ -352,7 +354,9 @@ def discover_models(db: Session, profile_id: int) -> list[dict]:
         return []
     try:
         endpoint = _endpoint_url(profile, "/models")
-        with httpx.Client(timeout=profile.timeout_seconds) as client:
+        # 发现模型：至少给 60s 兜底
+        base_timeout = max(float(profile.timeout_seconds), 60.0)
+        with httpx.Client(timeout=base_timeout) as client:
             resp = client.get(endpoint, headers=_auth_headers(profile))
         if resp.status_code >= 400:
             logger.warning(

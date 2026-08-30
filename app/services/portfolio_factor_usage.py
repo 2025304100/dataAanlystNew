@@ -76,7 +76,7 @@ def get_factor_usage_options(
     """
     # 实现：无 DB 或缺依赖时返回空，保证 callable 契约满足 + 生产代码也可按需查 factor_sets + runs
     try:
-        from app.models.factor_set import FactorSet  # type: ignore
+        from app.models.factor_set import FactorSet  # type: ignore# near-relative coupling: portfolio-usage summary reads FactorSet membership RO only — audit 2026-08-30
     except Exception:
         FactorSet = None  # type: ignore[assignment]
     if db is None or FactorSet is None:

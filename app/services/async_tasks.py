@@ -34,6 +34,35 @@ _CORR_ID_RE = re.compile(r"^[0-9a-fA-F]{8}$")
 # "先查询后插入"竞争；跨进程竞争仍由数据库唯一约束 + IntegrityError 回读兜底。
 _IDEMPOTENT_CREATE_LOCK = threading.RLock()
 
+# A3. Graceful worker shutdown signals.
+WORKER_STOP_EVENT = threading.Event()
+_WORKER_THREADS = dict()
+_WORKER_THREADS_GUARD = threading.Lock()
+
+
+def request_all_workers_stop():
+    WORKER_STOP_EVENT.set()
+
+
+def wait_workers_stopped(timeout_seconds):
+    deadline = _now() + timedelta(seconds=timeout_seconds)
+    remaining = float(timeout_seconds)
+    with _WORKER_THREADS_GUARD:
+        threads = list(_WORKER_THREADS.values())
+    for t in threads:
+        if remaining <= 0: break
+        t.join(timeout=remaining)
+        used = max(0.01, float(timeout_seconds) - max(0.0, (deadline - _now()).total_seconds()))
+        remaining = max(0.0, float(timeout_seconds) - used)
+    with _WORKER_THREADS_GUARD:
+        alive = any(t.is_alive() for t in _WORKER_THREADS.values())
+    return not alive
+
+
+def is_worker_stop_requested(task_id=None):
+    return bool(WORKER_STOP_EVENT.is_set())
+
+
 
 def _gen_correlation_id() -> str:
     return uuid4().hex[:8]
@@ -115,7 +144,17 @@ def normalize_error(err_in: dict | None | list | str, *, fallback_cid: str | Non
         except Exception:
             raw = {"detail_zh": str(err_in)}
     elif isinstance(err_in, str):
-        raw = {"detail_zh": err_in}
+        # 门禁历史原因常用 ``code:detail`` 字符串保存。保留 code，
+        # 否则所有原因都会被错误标成 eval.worker.unknown，前端无法定位。
+        code_match = re.match(r"^([A-Za-z][A-Za-z0-9_.-]*):(.*)$", err_in, re.DOTALL)
+        if code_match:
+            raw = {
+                "code": code_match.group(1),
+                "category": "gate",
+                "detail_zh": code_match.group(2) or code_match.group(1),
+            }
+        else:
+            raw = {"detail_zh": err_in}
     elif err_in is None:
         raw = {}
 
@@ -140,6 +179,8 @@ def normalize_error(err_in: dict | None | list | str, *, fallback_cid: str | Non
     code = code.strip()
 
     severity = raw.get("severity")
+    if severity == "warn":
+        severity = "warning"
     if severity not in ("error", "warning", "info", "pass"):
         severity = raw.get("level")  # 兼容一些历史写法
         if severity not in ("error", "warning", "info", "pass"):
@@ -312,6 +353,39 @@ def _run_patrol(db: Session) -> None:
         patrol_interrupted_and_stalled(db)
     except Exception:
         logger.exception("patrol_interrupted_and_stalled failed; continuing with _expire_stale_tasks")
+
+
+
+def mark_graceful_shutdown_tasks(db):
+    rows = (
+        db.execute(
+            select(AsyncTaskRecord).where(
+                AsyncTaskRecord.status.in_(("queued", "running")),
+                (AsyncTaskRecord.is_terminal_locked == 0) | (AsyncTaskRecord.is_terminal_locked.is_(None)),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    ts = _now()
+    for task in rows:
+        cid = task.correlation_id or _gen_correlation_id()
+        _append_error(task, {
+            "code": "BACKEND_GRACEFUL_SHUTDOWN_ACK",
+            "stage": task.stage or "running",
+            "error": "Backend graceful shutdown stopped this in-process worker before completion.",
+            "correlation_id": cid,
+        })
+        task.status = "failed"
+        task.stage = "graceful_interrupted"
+        task.message = "Backend graceful shutdown interrupted task before completion"
+        task.finished_at = ts
+        task.updated_at = ts
+        task.correlation_id = cid
+        task.is_terminal_locked = 1
+    if rows:
+        db.commit()
+    return [task.id for task in rows]
 
 
 def interrupt_orphaned_async_tasks(db: Session) -> list[str]:
@@ -491,7 +565,15 @@ def _start_worker(task_id: str, worker_func) -> None:
             except Exception:
                 logger.exception("Failed to mark task %s as failed after crash", task_id)
 
+    # A3. Register worker thread for graceful shutdown wait.
+    with _WORKER_THREADS_GUARD:
+        existing = _WORKER_THREADS.pop(task_id, None)
+        if existing is not None:
+            try: existing.join(timeout=0.1)
+            except Exception: pass
     thread = threading.Thread(target=_run, daemon=True)
+    with _WORKER_THREADS_GUARD:
+        _WORKER_THREADS[task_id] = thread
     thread.start()
 
 
@@ -543,6 +625,7 @@ def create_async_task(
     payload: dict,
     *,
     use_control_plane: bool = False,
+    force_new: bool = False,
 ) -> AsyncTaskRead:
     """创建异步任务并启动后台 worker（需调用方传入 worker_func 并自行调用 _start_worker）。
 
@@ -562,6 +645,10 @@ def create_async_task(
         _run_patrol(db)
         _expire_stale_tasks(db)
         idempotency_key = _compute_idempotency_key(task_type, payload)
+        # 显式重跑仍保留业务 payload，但使用一次性幂等键，避免底层
+        # AC-10 去重逻辑把请求回读成历史终态任务。
+        if force_new and idempotency_key:
+            idempotency_key = f"{idempotency_key}|rerun:{uuid4().hex}"
 
         # 幂等键为空的任务保持原有语义：每次调用都创建新任务。
         # 有幂等键时先回读，终态也必须复用，显式重跑应由调用方生成新业务键。
@@ -631,9 +718,14 @@ def get_async_task(
         db.close()
 
 
-def list_async_tasks(task_type: str | None = None, limit: int = 20) -> list[AsyncTaskRead]:
+def list_async_tasks(
+    task_type: str | None = None,
+    limit: int = 20,
+    *,
+    use_control_plane: bool = False,
+) -> list[AsyncTaskRead]:
     """列出最近的异步任务。"""
-    SessionLocal = get_session_local()
+    SessionLocal = _pick_session_factory(use_control_plane)
     db = SessionLocal()
     try:
         _run_patrol(db)

@@ -1181,6 +1181,57 @@ export default function UniverseDataPanel() {
           </div>
           <p style={{ color: "var(--text-muted, #888)", marginBottom: 16 }}>{t("universeDesc")}</p>
 
+          {/* ─── 复权口径说明 ─── */}
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={
+              <Space size={10} wrap style={{ fontSize: 13 }}>
+                <strong style={{ fontSize: 13 }}>复权口径说明：</strong>
+                <Tag color="cyan">
+                  <Space size={4}>
+                    <strong>前复权</strong>
+                    <Tooltip title="以最新收盘价为基准，把历史除权除息缺口（分红/送股/配股）向前逐步抹平，让历史 K 线整体向下平移。优点是最新价与真实盘面一致，看 K 线形态、计算日涨跌幅、做技术分析时一般都用前复权，也是绝大多数行情软件的默认模式。">
+                      <QuestionCircleOutlined style={{ color: "var(--text-muted, #8c8c8c)" }} />
+                    </Tooltip>
+                  </Space>
+                </Tag>
+                <Tag color="blue">
+                  <Space size={4}>
+                    <strong>后复权</strong>
+                    <Tooltip title="以上市首日的原始价格为基准，把后续历次分红派息全部向后累加到价格上（相当于假设分红立刻再买入该股）。优点是价格曲线真实反映长期总收益率走势，适合做 3 年以上的持有收益对比和回测验证。">
+                      <QuestionCircleOutlined style={{ color: "var(--text-muted, #8c8c8c)" }} />
+                    </Tooltip>
+                  </Space>
+                </Tag>
+                <Tag color="orange">
+                  <Space size={4}>
+                    <strong>不复权</strong>
+                    <Tooltip title="直接展示交易所每日原始行情，不做任何除权修正。遇到股票除权除息日，K 线图上会出现一道道明显的向下跳空缺口。适合需要精确核对当日真实成交价格、核对分红到账金额的场景，不适合直接做技术指标和涨跌幅分析。">
+                      <QuestionCircleOutlined style={{ color: "var(--text-muted, #8c8c8c)" }} />
+                    </Tooltip>
+                  </Space>
+                </Tag>
+                <Space size={4}>
+                  <Tag color="success" style={{ fontWeight: 600 }}>系统默认</Tag>
+                  <span style={{ color: "var(--text-secondary, #555)", fontSize: 12 }}>
+                    行情/因子底座统一存储为<strong>前复权</strong>口径，保证涨跌幅计算与 K 线形态一致；基准指数 <code>index_prices</code> 表默认写入<strong>后复权</strong>，用于长期收益率对比。
+                  </span>
+                </Space>
+              </Space>
+            }
+            description={
+              <Space direction="vertical" size={2} style={{ fontSize: 12, color: "var(--text-muted, #666)" }}>
+                <Space wrap size={16}>
+                  <span>• <strong>前复权</strong>：以现在股价为基准，往前把历史除权缺口抹平。看 K 线、看涨跌幅一般用前复权。</span>
+                  <span>• <strong>后复权</strong>：以最早历史价格为基准，把后面分红全部算回去，看真实长期总收益用。</span>
+                  <span>• <strong>不复权</strong>：原始行情，K 线会看到一道道向下跳空的除权缺口。</span>
+                </Space>
+              </Space>
+            }
+          />
+
           {/* 数据健康度 */}
           <Card title={t("universeStatsTitle")} size="small" style={{ marginBottom: 16 }} loading={loading && !stats}>
             {stats ? (
@@ -1324,6 +1375,9 @@ export default function UniverseDataPanel() {
                 <LineChartOutlined style={{ color: "#0f766e" }} />
                 <span>基准指数 / 板块同步</span>
                 <Tag color="blue">回测基准曲线数据源</Tag>
+                <Tooltip title="写入 index_prices 表时默认采用「后复权」口径：以上市首日价格为基准，把后续所有分红派息、拆股配股全部累加到价格上。这样画出来的基准曲线才能反映持有指数长期不动的真实总收益率，和前复权的个股 K 线同屏比较时要注意两者口径不同。">
+                  <QuestionCircleOutlined style={{ color: "var(--text-muted, #8c8c8c)", fontSize: 12 }} />
+                </Tooltip>
                 {customIndices.length > 0 ? (
                   <Tag color="purple">{`含 ${customIndices.length} 个自定义`}</Tag>
                 ) : null}
@@ -1375,8 +1429,8 @@ export default function UniverseDataPanel() {
               type="info"
               showIcon
               style={{ marginBottom: 12 }}
-              message={'板块/基准指数日线数据 (index_prices) 是回测中心基准曲线的数据源。若基准线呈直线，点击「一键同步」或先添加自定义指数再同步。'}
-              description={'支持 Akshare 能解析的全部指数：默认 5 大基准（沪深300、中证500、创业板指、上证50、科创50）+ 自定义（如上证指数 000001 / 上证180 000010 / 中小板指 399005 / 深证成指 399001 等）。数据源：东财 / 新浪 / 腾讯 三源容灾 fallback。'}
+              message={'板块/基准指数日线数据 (index_prices) 是回测中心基准曲线的数据源，默认按「后复权」写入。若基准线呈直线，点击「一键同步」或先添加自定义指数再同步。'}
+              description={'支持 Akshare 能解析的全部指数：默认 5 大基准（沪深300、中证500、创业板指、上证50、科创50）+ 自定义（如上证指数 000001 / 上证180 000010 / 中小板指 399005 / 深证成指 399001 等）。数据源：东财 / 新浪 / 腾讯 三源容灾 fallback。复权口径：以上市首日价格为基准向后累加分红，真实反映长期总收益率。'}
             />
 
             {indexSyncTask ? (
@@ -1588,7 +1642,27 @@ export default function UniverseDataPanel() {
                   ),
                 },
                 {
-                  title: "线性偏离度", key: "dev", width: 100, align: "right" as const,
+                  title: (
+                    <Space size={4}>
+                      <span>线性偏离度</span>
+                      <Tooltip
+                        title={
+                          <div style={{ maxWidth: 280, fontSize: 12, lineHeight: 1.7 }}>
+                            <div style={{ fontWeight: 600, marginBottom: 4 }}>用途：检测基准曲线是否为「假直线」</div>
+                            算法：取最近K线首尾两点画一条理想直线，求每天收盘价相对这条直线的最大偏离百分比。
+                            <div style={{ marginTop: 6, fontWeight: 600 }}>颜色阈值：</div>
+                            <div><span style={{ color: "var(--color-danger, #dc2626)" }}>● 红色 ＜ 0.1%</span>：疑似直线 → 数据源静默失败/全值填充，回测基准会失真，<strong>必须重新同步</strong></div>
+                            <div><span style={{ color: "var(--color-warning, #d97706)" }}>● 橙色 0.1%~1%</span>：波动偏弱 → 建议检查同步是否完整</div>
+                            <div><span style={{ color: "var(--color-success, #16a34a)" }}>● 绿色 ≥ 1%</span>：有真实波动，数据健康（宽基通常 20%~40%，高波动成长指数可达 50%+）</div>
+                            <div style={{ marginTop: 6, color: "var(--text-muted, #999)" }}>※ 首次进入本页时，＜ 0.1% 的指数会被自动勾选为待同步。</div>
+                          </div>
+                        }
+                      >
+                        <QuestionCircleOutlined style={{ color: "var(--text-muted, #8c8c8c)", fontSize: 12 }} />
+                      </Tooltip>
+                    </Space>
+                  ),
+                  key: "dev", width: 110, align: "right" as const,
                   render: (_, r) => {
                     const pct = r.linearity_dev_pct;
                     if (pct == null) return <span style={{ color: "var(--text-muted, #999)" }}>—</span>;

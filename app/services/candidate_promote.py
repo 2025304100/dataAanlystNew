@@ -29,7 +29,7 @@ from app.models.score import Score
 from app.models.symbol import Symbol
 from app.models.universe import UniverseSymbol
 from app.models.watchlist import Watchlist, WatchlistItem
-from app.services.factors.score_scope import get_active_score_scope
+from app.services.factors.__facade__ import get_active_score_scope  # Public ACL entrypoint
 from app.services.investment_themes import get_active_theme_opportunities
 from app.services.regions import region_from_market
 
@@ -44,7 +44,7 @@ def _batch_latest_scores(db: Session, symbol_ids: list[int]) -> dict[int, Score]
     if not symbol_ids:
         return {}
     from sqlalchemy import func
-    scope = get_active_score_scope(db)
+    scope = get_active_score_scope(db=db)
 
     latest_score_subq = (
         select(Score.symbol_id, func.max(Score.trade_date).label("max_date"))

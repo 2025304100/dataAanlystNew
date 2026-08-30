@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -293,6 +294,48 @@ class TestRealTargetPanelPivot:
         assert list(forward_returns.columns) == ["A"]
         assert forward_returns.loc[date(2026, 5, 1), "A"] == pytest.approx(0.01)
         assert forward_returns.loc[date(2026, 5, 2), "A"] == pytest.approx(0.02)
+
+    def test_partial_target_coverage_keeps_real_labels_without_factor_fallback(self):
+        """区间标签不完整时不得把因子自身变化冒充未来收益。"""
+        warehouse = MagicMock()
+        warehouse.get_latest_target_batch_id.return_value = "batch-partial"
+        target_panel = pd.DataFrame.from_records([
+            {"symbol": symbol, "signal_date": d, "target_value": value}
+            for d, value in zip(
+                ["2026-05-01", "2026-05-02", "2026-05-03"],
+                [0.01, 0.02, 0.03],
+            )
+            for symbol in ["A", "B"]
+        ])
+        warehouse.get_target_panel.side_effect = [
+            (target_panel, "batch-partial", "target_5d_return"),
+            (target_panel, "batch-regen", "target_5d_return"),
+        ]
+
+        class FakeEngine:
+            @staticmethod
+            def calculate_targets(**_kwargs):
+                return SimpleNamespace(calc_batch_id="batch-regen")
+
+        factor_values = pd.DataFrame(
+            np.arange(10, dtype=float).reshape(5, 2),
+            index=[date(2026, 5, day) for day in range(1, 6)],
+            columns=["A", "B"],
+        )
+        forward_returns, blockers, ctx = resolve_forward_returns(
+            warehouse,
+            factor_values,
+            target_horizon=5,
+            evaluation_start_date=date(2026, 5, 1),
+            evaluation_end_date=date(2026, 5, 5),
+            _target_engine_module=FakeEngine,
+        )
+
+        assert ctx["fallback_used"] is False
+        assert list(forward_returns.index) == [
+            date(2026, 5, 1), date(2026, 5, 2), date(2026, 5, 3),
+        ]
+        assert any(b["code"] == "eval.data.target_coverage_partial" for b in blockers)
 
 
 class TestStoreTargetMethods:

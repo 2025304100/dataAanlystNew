@@ -34,7 +34,7 @@ from app.schemas.dashboard import (
     WorkbenchWatchlist,
 )
 from app.services.allocation import compute_allocation, get_active_rule
-from app.services.factors.score_scope import apply_active_score_scope
+from app.services.factors.__facade__ import apply_active_score_scope_to_scores_select as apply_active_score_scope
 from app.services.regions import markets_for_region, region_from_market
 from app.services.signal_stats import build_similar_signal_stats
 from app.services.scoring_config_engine import calculate_universe_symbol_score

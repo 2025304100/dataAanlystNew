@@ -254,14 +254,26 @@ def reconcile_portfolio(
     # 先 commit 以刷新 last_reconciled_trade_date 列
     db.commit()
     db.refresh(p)
+    # —— Meta 种类列表：对账服务在这些分支里直接 short-circuit，
+    #    expected/actual 本身就不会被填数值（例如未执行当日 auto_simulation）。
+    #    这些种类的 diff_value 必须输出 null（而不是被 pydantic 转成 0.00），
+    #    否则前端会显示 "0.00" 造成"理论/实际—但差异=0"的反直觉误导。
+    META_DIFF_KINDS = frozenset({"DECISION_RUN_NOT_FOUND", "NOT_CHECKED", "NAV_BROKEN"})
+
+    def _diff_value_for(d: "Any") -> float | int | None:
+        if isinstance(d.kind, str) and d.kind in META_DIFF_KINDS:
+            return None
+        if isinstance(d.actual, (int, float)) and isinstance(d.expected, (int, float)):
+            return d.actual - d.expected
+        # 非数值可比对：相同视为 0，不同视为 ±1（保守标记为差异）
+        return None if d.expected == d.actual else 1
+
     items = [
         {
             "dimension": d.kind,
             "expected_value": d.expected,
             "actual_value": d.actual,
-            "diff_value": (d.actual - d.expected)
-            if isinstance(d.actual, (int, float)) and isinstance(d.expected, (int, float))
-            else (None if d.expected == d.actual else 1),
+            "diff_value": _diff_value_for(d),
             "explain_note": d.detail,
         }
         for d in report.differences
@@ -485,7 +497,42 @@ def _validate_range(occurred_from: datetime | None, occurred_to: datetime | None
         _raise_filter_error("occurred_from must be <= occurred_to")
 
 
+# —— 审计事件 action → 中文事件名 + 严重级别（对齐前端 EVENT_TYPE_CN + L1/L2/L3/INFO 语义）
+#    设计原则：凡是「用户操作 / 数据问题 / 阻断级」按严重度标级；纯系统结果默认 INFO，有差异或非法再升级。
+ACTION_EVENT_TYPE_CN: dict[str, str] = {
+    "PORTFOLIO_CANDIDATE_SCD2_CHANGE": "组合候选SCD2变更",
+    "BENCHMARK_SOURCE_FAILOVER": "基准源故障切换",
+    "AUTO_SIMULATION_RESULT": "自动推演结果",
+    "RECONCILIATION_RESULT": "对账结果",
+    "ILLEGAL_STATE_TRANSITION": "非法状态转移",
+    "FACTOR_USAGE_APPLIED": "因子使用变更",
+    "OUTBOX_EVENT_DISPATCHED": "外箱事件分发",
+    "DATA_BLOCK_RESOLUTION": "数据阻断解除",
+    "DATA_SOURCE_FAILOVER": "数据源故障切换",
+    "DATA_QUALITY_QUARANTINE": "数据质量隔离",
+    "G6_ROLLOUT_STARTED": "G6灰度启动",
+    "G6_ROLLOUT_ROLLED_BACK": "G6灰度回滚",
+    "UNKNOWN_AUDIT_ACTION": "未知审计动作",
+}
+ACTION_DEFAULT_SEVERITY: dict[str, str] = {
+    "ILLEGAL_STATE_TRANSITION": "L3",
+    "DATA_QUALITY_QUARANTINE": "L2",
+    "RECONCILIATION_RESULT": "INFO",  # 具体 diffs 非 0 时会在下面 override 成 L2
+    "G6_ROLLOUT_ROLLED_BACK": "L2",
+    "BENCHMARK_SOURCE_FAILOVER": "L2",
+    "DATA_SOURCE_FAILOVER": "L2",
+    "DATA_BLOCK_RESOLUTION": "WARNING",
+    "G6_ROLLOUT_STARTED": "L1",
+    "FACTOR_USAGE_APPLIED": "L1",
+    "PORTFOLIO_CANDIDATE_SCD2_CHANGE": "INFO",
+    "AUTO_SIMULATION_RESULT": "INFO",
+    "OUTBOX_EVENT_DISPATCHED": "INFO",
+    "UNKNOWN_AUDIT_ACTION": "WARNING",
+}
+
+
 class AuditEventRead(BaseModel):
+    # —— 后端 ORM 原字段（留给调试 / 业务追溯）
     id: int
     action: str
     portfolio_id: int | None = None
@@ -499,12 +546,28 @@ class AuditEventRead(BaseModel):
     attributes: Any = None
     note: str | None = None
 
+    # —— 前端 AuditPanel 期望字段（L2122-L2136 契约）：在此补齐，避免表格 6 列落到「—」
+    event_type: str
+    event_type_cn: str | None = None
+    severity: str = "INFO"
+    trigger_reason: str | None = None
+    operated_by: str | None = None
+    operated_by_name: str | None = None
+    reviewed_at: datetime | None = None
+    from_state: str | None = None
+    to_state: str | None = None
+    created_at: datetime | None = None
+    attributes_json: str | None = None
+
 
 class AuditEventPage(BaseModel):
     items: list[AuditEventRead]
     total: int
     page: int
     page_size: int
+    page_count: int = 0
+    has_more: bool = False
+    event_types_in_page: list[str] | None = None
     filter_action: str | None = None
     filter_operator_id: str | None = None
     filter_occurred_from: datetime | None = None
@@ -516,6 +579,7 @@ class AuditEventPage(BaseModel):
 
 def _ev_to_read(ev: DataGovernanceAuditEvent) -> AuditEventRead:
     import json
+
     def _loads(x: str | None) -> Any:
         if not x:
             return None
@@ -523,13 +587,125 @@ def _ev_to_read(ev: DataGovernanceAuditEvent) -> AuditEventRead:
             return json.loads(x)
         except Exception:
             return x
+
+    attrs_raw = ev.attributes_json or None
+    attrs = _loads(attrs_raw) if isinstance(attrs_raw, str) else attrs_raw
+    attrs_dict = attrs if isinstance(attrs, dict) else {}
+
+    # 1) event_type / event_type_cn
+    event_type = ev.action or "UNKNOWN_AUDIT_ACTION"
+    event_type_cn = ACTION_EVENT_TYPE_CN.get(event_type)
+
+    # 2) severity：先走默认表，再按具体事件内容做修正
+    severity = ACTION_DEFAULT_SEVERITY.get(event_type, "INFO")
+    if event_type == "RECONCILIATION_RESULT":
+        non_zero = 0
+        diffs = attrs_dict.get("diffs") if isinstance(attrs_dict, dict) else None
+        if isinstance(diffs, list):
+            for d in diffs:
+                if isinstance(d, dict):
+                    exp = d.get("expected"); act = d.get("actual")
+                    if isinstance(exp, (int, float)) and isinstance(act, (int, float)) and (act - exp) != 0:
+                        non_zero += 1
+        non_ack = attrs_dict.get("diffs_count_non_checked") if isinstance(attrs_dict, dict) else None
+        if (isinstance(non_ack, int) and non_ack > 0) or non_zero > 0:
+            severity = "L2"
+    elif event_type == "AUTO_SIMULATION_RESULT":
+        if isinstance(attrs_dict, dict) and (attrs_dict.get("status") in {"FAILED", "BLOCKED"}):
+            severity = "L2"
+
+    # 3) trigger_reason：优先使用 note；否则从 action + attributes 关键字段拼一句
+    if ev.note:
+        trigger_reason = ev.note
+    else:
+        parts = []
+        if isinstance(attrs_dict, dict):
+            for k in ("reason", "trigger_reason", "message", "status", "coverage", "source_switch", "trade_date"):
+                v = attrs_dict.get(k)
+                if v not in (None, "", []):
+                    parts.append(f"{k}={v}")
+        if parts:
+            trigger_reason = "; ".join(parts[:3])
+        else:
+            trigger_reason = f"系统动作：{event_type_cn or event_type}"
+
+    # 4) operated_by / operated_by_name：operator_id 是字符串（用户 header / system / cron_worker）
+    operated_by_raw = ev.operator_id or "system"
+    try:
+        operated_by_uid = str(int(operated_by_raw))  # 可能是纯数字 uid
+        operated_by: str | None = operated_by_uid
+    except (TypeError, ValueError):
+        operated_by = operated_by_raw
+    operated_by_name = (
+        "系统任务" if operated_by in {"system", "cron_worker", "heartbeat"}
+        else (f"本地用户" if operated_by and operated_by.startswith("local_") else None)
+    )
+
+    # 5) reviewed_at：对账/数据阻断类的 note 或 attributes 里若存在 reviewed_at/review_time 则直接用；
+    #    否则对 RECONCILIATION_RESULT / DATA_BLOCK_RESOLUTION 这类系统动作发生时间即"审查发生时刻"。
+    reviewed_at: datetime | None = None
+    if isinstance(attrs_dict, dict):
+        for k in ("reviewed_at", "review_time", "ack_time", "acknowledged_at"):
+            v = attrs_dict.get(k)
+            if isinstance(v, (str, datetime)):
+                try:
+                    reviewed_at = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+                    break
+                except Exception:
+                    continue
+    if reviewed_at is None and event_type in {
+        "RECONCILIATION_RESULT", "DATA_BLOCK_RESOLUTION", "ILLEGAL_STATE_TRANSITION",
+        "G6_ROLLOUT_STARTED", "G6_ROLLOUT_ROLLED_BACK",
+    }:
+        reviewed_at = ev.occurred_at
+
+    # 6) from_state / to_state：优先从 attributes 里取常见字段
+    from_state: str | None = None
+    to_state: str | None = None
+    if isinstance(attrs_dict, dict):
+        for fk, tk in (
+            ("portfolio_state_before", "portfolio_state_after"),
+            ("from_state", "to_state"),
+            ("prev_state", "new_state"),
+            ("before_state", "after_state"),
+            ("state_before", "state_after"),
+        ):
+            f = attrs_dict.get(fk); t = attrs_dict.get(tk)
+            if isinstance(f, str) and f:
+                from_state = f
+            if isinstance(t, str) and t:
+                to_state = t
+            if from_state and to_state:
+                break
+    if event_type == "ILLEGAL_STATE_TRANSITION":
+        # before/after 里可能塞了 {from_state, to_state}
+        before_obj = _loads(ev.before_json) if isinstance(ev.before_json, str) else ev.before_json
+        after_obj = _loads(ev.after_json) if isinstance(ev.after_json, str) else ev.after_json
+        if isinstance(before_obj, dict):
+            from_state = from_state or (before_obj.get("from_state") or before_obj.get("state"))  # type: ignore[assignment]
+        if isinstance(after_obj, dict):
+            to_state = to_state or (after_obj.get("to_state") or after_obj.get("state"))  # type: ignore[assignment]
+
     return AuditEventRead(
+        # ORM 字段
         id=ev.id, action=ev.action,
         portfolio_id=ev.portfolio_id, symbol_id=ev.symbol_id,
         business_key=ev.business_key, occurred_at=ev.occurred_at,
         operator_id=ev.operator_id, correlation_id=ev.correlation_id,
         before=_loads(ev.before_json), after=_loads(ev.after_json),
-        attributes=_loads(ev.attributes_json), note=ev.note,
+        attributes=attrs, note=ev.note,
+        # 前端 AuditPanel 契约字段
+        event_type=event_type,
+        event_type_cn=event_type_cn,
+        severity=severity,
+        trigger_reason=trigger_reason,
+        operated_by=operated_by,
+        operated_by_name=operated_by_name,
+        reviewed_at=reviewed_at,
+        from_state=from_state,
+        to_state=to_state,
+        created_at=ev.occurred_at,
+        attributes_json=attrs_raw,
     )
 
 
@@ -630,11 +806,18 @@ def get_portfolio_audit_events(
         .offset((page - 1) * page_size)
     )
     rows = db.execute(items_query).scalars().all()
+    items = [_ev_to_read(r) for r in rows]
+    total_int = int(total)
+    page_count = (total_int + int(page_size) - 1) // int(page_size) if int(page_size) > 0 else 0
+    unique_event_types = sorted({it.event_type for it in items if it.event_type}) or None
     return AuditEventPage(
-        items=[_ev_to_read(r) for r in rows],
-        total=int(total),
+        items=items,
+        total=total_int,
         page=page,
         page_size=page_size,
+        page_count=page_count,
+        has_more=(page * int(page_size)) < total_int,
+        event_types_in_page=unique_event_types,
         filter_action=action,
         filter_operator_id=operator_id,
         filter_occurred_from=occurred_from,
@@ -706,11 +889,18 @@ def get_global_audit_events(
         .offset((page - 1) * page_size)
     )
     rows = db.execute(items_query).scalars().all()
+    items = [_ev_to_read(r) for r in rows]
+    total_int = int(total)
+    page_count = (total_int + int(page_size) - 1) // int(page_size) if int(page_size) > 0 else 0
+    unique_event_types = sorted({it.event_type for it in items if it.event_type}) or None
     return AuditEventPage(
-        items=[_ev_to_read(r) for r in rows],
-        total=int(total),
+        items=items,
+        total=total_int,
         page=page,
         page_size=page_size,
+        page_count=page_count,
+        has_more=(page * int(page_size)) < total_int,
+        event_types_in_page=unique_event_types,
         filter_action=action,
         filter_operator_id=operator_id,
         filter_occurred_from=occurred_from,

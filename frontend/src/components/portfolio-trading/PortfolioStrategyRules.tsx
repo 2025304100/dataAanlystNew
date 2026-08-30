@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Bot, Plus, AlertTriangle, Save, RotateCcw, FileText, Info, ShieldAlert, Snowflake } from "lucide-react";
 import { api } from "../../api/client";
-import type { FactorModelRun, FactorSet } from "../../api/client";
+import type { ScoringModelBrief, ScoringFactorSetBrief } from "../../api/client";
 import { t } from "../../i18n";
 import { useApp } from "../../context/AppContext";
 import type { PortfolioStatePermissions, PortfolioStatusResponse, SignalRule } from "../../types";
@@ -129,7 +129,7 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
   // P1-FIX: autoEnabled 默认 null（加载中），useEffect 加载真实配置后回显
   const [autoEnabled, setAutoEnabled] = useState<boolean | null>(null);
   const [factorModel, setFactorModel] = useState(FACTOR_MODELS[0]);
-  const [factorModelRuns, setFactorModelRuns] = useState<FactorModelRun[]>([]);
+  const [factorModelRuns, setFactorModelRuns] = useState<ScoringModelBrief[]>([]);
   const [factorModelRunId, setFactorModelRunId] = useState<string>("");
   // WP0-8 C-05/C-07：绑定的 FactorSet 只读映射展示 + 用于保存时双写契约
   const [boundFactorSetId, setBoundFactorSetId] = useState<string>("");
@@ -273,13 +273,16 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portfolioId]);
 
-  // P2 因子模型打通：加载已验证（validated）的 FactorModelRun，供用户绑定策略规则
+  // P2 因子模型打通：通过「因子域公共 Facade」加载已验证模型，
+  // 策略域不再直接知道 /factor-models 的原生路由与内部结构。
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const list = await api.getFactorModels("validated", 50);
-        if (!cancelled) setFactorModelRuns(list?.items ?? []);
+        const list = await api.scoringListModels("validated", 50);
+        if (!cancelled) {
+          setFactorModelRuns(list ?? []);
+        }
       } catch (_e) {
         // best-effort，不阻塞策略规则页
       }
@@ -287,18 +290,183 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
     return () => { cancelled = true; };
   }, [portfolioId]);
 
-  // WP0-8 C-05：同步加载 FactorSet，在策略规则页做「FactorModelRun → FactorSet」只读映射展示
-  const [factorSets, setFactorSets] = useState<FactorSet[]>([]);
+  // WP0-8 C-05：同步加载 FactorSet，在策略规则页做「模型 → FactorSet」只读映射展示
+  const [factorSets, setFactorSets] = useState<ScoringFactorSetBrief[]>([]);
+
+  // —— 汉化字典（避免 UI 直接吐英文枚举值 / 原始字段名） ————————————————
+  // 因子模型训练产出的「验证集指标」字段 → 中文标签 + 数值友好格式化
+  type MetricMeta = {
+    label: string;
+    unit?: string;
+    percent?: boolean;
+    digits?: number;
+    integer?: boolean;
+    group?: boolean;
+  };
+  const METRIC_CN_LABEL: Record<string, MetricMeta> = {
+    turnover_z20: { label: "20日换手率暴露", unit: "%", percent: true, digits: 0 },
+    cluster_exposure: { label: "集中度控制（行业/风格）", unit: "", percent: false, digits: 4 },
+    sample_count: { label: "训练样本量", unit: "条", integer: true, group: true },
+    train_ic: { label: "训练集 IC", unit: "", digits: 4 },
+    validation_date_count: { label: "验证交易日数", unit: "天", integer: true },
+    validation_ic: { label: "验证集 IC", unit: "", digits: 4 },
+    ic: { label: "IC（信息系数）", unit: "", digits: 4 },
+    icir: { label: "ICIR（IC 稳定性）", unit: "", digits: 3 },
+    annual_return: { label: "年化收益率", unit: "%", percent: true, digits: 2 },
+    sharpe: { label: "夏普比率", unit: "", digits: 3 },
+    max_drawdown: { label: "最大回撤", unit: "%", percent: true, digits: 2 },
+    turnover: { label: "双边换手率", unit: "%", percent: true, digits: 1 },
+    rank_ic: { label: "排序 IC", unit: "", digits: 4 },
+    rank_icir: { label: "排序 ICIR", unit: "", digits: 3 },
+  };
+  const fmtMetric = (key: string, raw: number): { label: string; text: string } => {
+    const m = METRIC_CN_LABEL[key];
+    const fallbackLabel = key;
+    if (!m) {
+      // 未知字段：保留原名，整数千分位，小数保留4位
+      const isInt = Number.isInteger(raw) && Math.abs(raw) >= 1;
+      const text = isInt ? raw.toLocaleString("zh-CN") : Number(raw).toFixed(4);
+      return { label: fallbackLabel, text };
+    }
+    const label = m.label ?? fallbackLabel;
+    const v = Number(raw);
+    let text: string;
+    if (m.integer) {
+      const iv = Math.round(v);
+      text = m.group ? iv.toLocaleString("zh-CN") : String(iv);
+    } else if (m.percent) {
+      // percent=true 表示原值是 0~1 的小数，转成 0~100 的百分比显示
+      const digits = typeof m.digits === "number" ? m.digits : 2;
+      text = (v * 100).toFixed(digits);
+    } else {
+      const digits = typeof m.digits === "number" ? m.digits : 4;
+      text = v.toFixed(digits);
+    }
+    return { label, text: `${text}${m.unit ?? ""}` };
+  };
+  // FactorSet 状态枚举 → 中文展示
+  const FACTOR_SET_STATUS_CN: Record<string, string> = {
+    frozen: "已冻结",
+    draft: "草稿",
+    deprecated: "已废弃",
+    unknown: "未知",
+  };
+  // FactorSet.name 全问号 / 不可打印字符兜底：这种通常是数据库写入失败时的占位
+  const FALLBACK_FSNAME = "（未命名因子集）";
+  const safeFactorSetName = (name: string | null | undefined): string => {
+    if (!name) return "";
+    const s = String(name).trim();
+    if (!s) return "";
+    // 连续 3 个以上问号基本是编码/写入失败占位
+    if (/^\?{3,}$/.test(s)) return FALLBACK_FSNAME;
+    return s;
+  };
+  // 因子代码（factor_code）→ 中文因子名
+  // 未识别的代码原样保留（避免破坏未知因子可识别性）
+  const FACTOR_CODE_CN: Record<string, string> = {
+    turnover_z20: "20日换手率",
+    turnover_20: "20日换手率",
+    turnover: "换手率",
+    ret_20: "20日收益率",
+    mom_1m: "1个月动量",
+    momentum: "动量因子",
+    rev_20: "20日反转",
+    reversal: "反转因子",
+    volatility: "波动率",
+    vol_20: "20日波动率",
+    volatility_20: "20日波动率",
+    beta: "市场贝塔",
+    size: "市值因子",
+    log_mcap: "对数市值",
+    mcap: "总市值",
+    pb: "市净率(PB)",
+    pe_ttm: "市盈率PE(TTM)",
+    pe: "市盈率PE",
+    roe: "净资产收益率ROE",
+    roa: "资产回报率ROA",
+    gross_margin: "毛利率",
+    net_margin: "净利率",
+    revenue_growth: "营收增速",
+    profit_growth: "净利润增速",
+    cluster_exposure: "行业/风格暴露",
+    ic: "IC（信息系数）",
+    rank_ic: "排序IC",
+    icir: "ICIR",
+    rank_icir: "排序ICIR",
+    sharpe: "夏普",
+    max_drawdown: "最大回撤",
+    annual_return: "年化收益",
+  };
+  const cnFactorName = (code: string | null | undefined): string => {
+    if (!code) return "—";
+    const key = String(code).trim();
+    return FACTOR_CODE_CN[key] ?? key;
+  };
+  // 模型类型（model_type）→ 中文
+  const MODEL_TYPE_CN: Record<string, string> = {
+    ridge: "岭回归",
+    lasso: "Lasso",
+    elastic_net: "弹性网络",
+    linear: "线性回归",
+    xgb: "XGBoost",
+    xgboost: "XGBoost",
+    lgb: "LightGBM",
+    lightgbm: "LightGBM",
+    catboost: "CatBoost",
+    rf: "随机森林",
+    random_forest: "随机森林",
+    svr: "支持向量回归",
+    gbdt: "GBDT",
+    ensemble: "集成模型",
+    rule: "规则模型",
+  };
+  const cnModelType = (t: string | null | undefined): string =>
+    !t ? "—" : (MODEL_TYPE_CN[String(t).trim()] ?? String(t).trim());
+  // 资产类型（asset_type）→ 中文
+  const ASSET_TYPE_CN: Record<string, string> = {
+    stock: "A股股票",
+    cn_stock: "A股股票",
+    "cn-stock": "A股股票",
+    cn_stock_a: "A股股票",
+    etf: "A股ETF",
+    cn_etf: "A股ETF",
+    "cn-etf": "A股ETF",
+    us_stock: "美股股票",
+    "us-stock": "美股股票",
+    us_etf: "美股ETF",
+    "us-etf": "美股ETF",
+    index: "指数",
+    futures: "期货",
+    crypto: "数字币",
+    bond: "债券",
+    multi: "混合资产",
+  };
+  const cnAssetType = (t: string | null | undefined): string =>
+    !t ? "—" : (ASSET_TYPE_CN[String(t).trim()] ?? String(t).trim());
+  // 训练状态（FactorModelRun.status）→ 中文
+  const RUN_STATUS_CN: Record<string, string> = {
+    validated: "已验证",
+    validated_approved: "已验证(已锁定)",
+    training: "训练中",
+    pending: "排队中",
+    running: "运行中",
+    failed: "训练失败",
+    canceled: "已取消",
+    draft: "草稿",
+    deprecated: "已废弃",
+  };
+  const cnRunStatus = (s: string | null | undefined): string =>
+    !s ? "" : (RUN_STATUS_CN[String(s).trim()] ?? String(s).trim());
   useEffect(() => {
     let cancelled = false;
     api
-      .listFactorSets(undefined, 100)
+      .scoringListFactorSets("any", 100)
       .then((list) => { if (!cancelled) setFactorSets(Array.isArray(list) ? list : []); })
       .catch(() => { /* best-effort */ });
     return () => { cancelled = true; };
   }, [portfolioId]);
 
-  // WP0-8 C-05：切换已训练模型 → 自动只读绑定该模型对应的 FactorSet（hyperparameters.factor_set_id）
+  // WP0-8 C-05：切换已训练模型 → 自动只读绑定该模型对应的 FactorSet（facade 返回 factorset_id）
   //         用户无需再手动选择 FactorSet，保证溯源链闭环。
   useEffect(() => {
     if (!factorModelRunId) {
@@ -306,7 +474,7 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
       return;
     }
     const selected = factorModelRuns.find((r) => r.id === factorModelRunId);
-    const fs = (selected?.hyperparameters as { factor_set_id?: unknown } | undefined)?.factor_set_id;
+    const fs = selected?.factorset_id;
     if (typeof fs === "string" && fs) {
       setBoundFactorSetId(fs);
     }
@@ -371,11 +539,9 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
       })();
       // stage_limits_json: 显式写入 factor_model / timing_signal 等 UI 字段，避免只能从 rule_name 模糊推断
       const selectedRun = factorModelRuns.find((r) => r.id === factorModelRunId) ?? null;
-      // C-05 只读派生：优先用 UI state boundFactorSetId；若未显式回显则从 selectedRun.hyperparameters 推导
+      // C-05 只读派生：优先用 UI state boundFactorSetId；若未显式回显则从 selectedRun.factorset_id 推导
       const resolvedFactorSetId = boundFactorSetId
-        || (typeof (selectedRun?.hyperparameters as { factor_set_id?: unknown } | undefined)?.factor_set_id === "string"
-          ? String((selectedRun!.hyperparameters as { factor_set_id: string }).factor_set_id)
-          : "");
+        || (typeof selectedRun?.factorset_id === "string" ? selectedRun.factorset_id : "");
       const resolvedModelRunId = factorModelRunId || "";
       const stageLimits: Record<string, unknown> = {
         drawdown_circuit_pct: drawdownPct,
@@ -389,7 +555,7 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
         // 后端回测/自动交易会优先读取 Score 里由该模型算出的 model_alpha_score / factor_scores_json
         factor_model_run_id: resolvedModelRunId || null,
         factor_model_run_name: selectedRun
-          ? `${selectedRun.model_type}/${selectedRun.asset_type} (${selectedRun.id.slice(0, 8)})`
+          ? `${selectedRun.name || "model"} (${selectedRun.id.slice(0, 8)})`
           : null,
         // WP0-8 C-07 双写 stage_limits_json 内同步：factor_set_id（与 PortfolioRule.factor_set_id 字段一致）
         factor_set_id: resolvedFactorSetId || null,
@@ -634,39 +800,138 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
                 </span>
               </p>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {/* 预设模板 Tag：提醒这不是训练出的真实模型 */}
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "var(--pt-radius-full)",
+                  background: "rgba(14,165,233,0.12)",
+                  color: "var(--pt-state-info)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  border: "1px solid rgba(14,165,233,0.3)",
+                  whiteSpace: "nowrap",
+                }}
+                title="快捷预设：切换它会自动重置下面因子芯片的权重（规模/动量/价值等），属于「手动配权重」路径。"
+              >
+                快捷预设
+              </span>
               <select
                 className="pt-select"
                 style={{ width: 160 }}
                 value={factorModel}
                 onChange={(e) => setFactorModel(e.target.value)}
                 aria-label={t("portfolioTrading.strategy.modelLabel")}
-                title="预设名称：仅作为下方因子芯片权重的快捷模板，不作为真实模型溯源依据"
+                title="预设名称：切换后自动重置下方「激活因子」芯片为该预设的默认权重（纯UI快捷模板，不做训练溯源）。
+4 个内置模板：
+· 多因子增强模型（默认）— 动量30 + 价值25 + 低波20 + 质量15 + 成长10 + 规模10，均衡混合
+· 价值成长平衡 — 价值45 + 成长25，双主线稳健
+· 低波质量       — 质量40 + 低波35，防御低回撤
+· 动量轮动       — 动量50 + 规模20，进攻追涨弹性高"
               >
                 {FACTOR_MODELS.map((m) => (
                   <option key={m} value={m}>{m}（预设模板）</option>
                 ))}
               </select>
+              <span
+                title="【下拉 vs 下方「已验证因子模型」的区别】
+
+▸ 本下拉（快捷预设）= 手动配权重的草稿模板
+  切换它只会重置下方因子芯片的权重，属于「我自己拍脑袋配比」的 UI 路径；
+  回测/实盘时如果你在下方「已验证因子模型」里选了训练产出，会优先用训练出来的真实权重覆盖本预设。
+
+▸ 下方下拉（已验证因子模型）= 机器学习训练产出的快照
+  一次 FactorModelRun = 一组真实算出来的权重/超参 + 绑定的冻结因子集 + 验证集指标；
+  满足 C-05/C-06 溯源契约，回测/实盘直接复用它的 Score.model_alpha_score。
+
+▸ 两者关系：
+  不绑训练模型 → 用本快捷预设走 UI 因子权重路径；
+  绑定训练模型 → 训练权重覆盖本预设；本预设仅作为界面默认展示基准。"
+                style={{ cursor: "help", color: "var(--pt-muted-foreground)" }}
+              >
+                <Info size={14} />
+              </span>
               <button
                 type="button"
                 className="pt-btn pt-btn-outline pt-btn-sm"
                 onClick={() => {
-                  // C-08：规划中指引，而非可交互假控件
+                  // C-08：引导去真实的训练入口（设置 / 因子模型 Tab：冻结因子集 → 跑训练）
                   showToast(
                     "info",
-                    "请在「设置 / 因子模型」Tab 完成 FactorSet 冻结 → 训练模型（离线最小/仓库）后，在此处下拉选择已验证模型绑定。",
+                    "已引导：请到「设置」→ 左侧「因子模型」页面，先冻结因子集，再执行「训练模型」；训练完成（状态=已验证）后，回到本页在下方下拉选择该模型绑定即可。",
                   );
-                  // 指引：通知外层 shell 切换到 settings/factor-model（若 onNavigate 提供则跳转）
                   onNavigate?.("factor-model");
                 }}
-                title="去因子模型页创建并训练真实模型（规划中：onNavigate 打通后将自动跳转）"
+                title="去「设置 → 因子模型」训练真实的因子模型（冻结FactorSet → 训练FactorModelRun → 训练完成后回到本页在下方「已验证因子模型」下拉绑定）。
+如果外层 shell 未注册 onNavigate，会只弹出文字说明，不自动跳转。"
                 aria-label={t("portfolioTrading.strategy.newModel")}
+                style={{ whiteSpace: "nowrap" }}
               >
                 <Plus size={14} />
+                <span style={{ marginLeft: 4 }}>训练新模型</span>
               </button>
             </div>
           </div>
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* —— 两条使用路径说明：消除「快捷预设」vs「训练产出绑定」的混淆 —————————— */}
+            <div
+              style={{
+                fontSize: 12,
+                padding: "10px 12px",
+                borderRadius: 6,
+                background: "linear-gradient(90deg, rgba(16,185,129,0.08), rgba(59,130,246,0.08))",
+                border: "1px solid rgba(16,185,129,0.25)",
+                lineHeight: 1.85,
+                color: "var(--pt-foreground)",
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--pt-primary)" }}>
+                🧭 两条使用路径（二选一或组合）
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 6,
+                    background: "rgba(14,165,233,0.06)",
+                    border: "1px dashed rgba(14,165,233,0.35)",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: "var(--pt-state-info)", marginBottom: 2 }}>
+                    路径 A：手动配权重（默认 / 快速试）
+                  </div>
+                  <div style={{ color: "var(--pt-muted-foreground)", marginBottom: 4 }}>
+                    下方「已验证因子模型」选<strong>「不绑定」</strong>
+                  </div>
+                  <div style={{ color: "var(--pt-foreground)" }}>
+                    ① 顶部下拉切换<strong>快捷预设模板</strong> → 自动重置下方「激活因子」芯片权重<br/>
+                    ② 手动微调各因子的开关和权重 → 保存<br/>
+                    ③ 回测/实盘直接用这套 UI 权重打分
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 6,
+                    background: "rgba(16,185,129,0.06)",
+                    border: "1px dashed rgba(16,185,129,0.35)",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: "var(--pt-state-success)", marginBottom: 2 }}>
+                    路径 B：绑定训练产出（生产推荐/可溯源）
+                  </div>
+                  <div style={{ color: "var(--pt-muted-foreground)", marginBottom: 4 }}>
+                    在下方<strong>「已验证因子模型（训练产出）」</strong>下拉选择一次训练快照
+                  </div>
+                  <div style={{ color: "var(--pt-foreground)" }}>
+                    ① 点击右上角<strong>「训练新模型」</strong> → 去「设置/因子模型」冻结因子集+训练<br/>
+                    ② 训练完成（状态=已验证）后回到本页，下拉选中该模型<br/>
+                    ③ 回测/实盘直接用训练算出的<strong>真实权重 + 绑定因子集</strong>（满足溯源契约）
+                  </div>
+                </div>
+              </div>
+            </div>
             {/* 已验证因子模型（训练产出的实际权重）绑定 —— 选此模型后，回测/实盘会优先复用该模型算出来的 Score.model_alpha_score */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <label style={fieldLabelStyle}>
@@ -688,14 +953,14 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
                 </option>
                 {factorModelRuns.map((run) => {
                   const idTail = run.id.length > 10 ? `${run.id.slice(0, 8)}…${run.id.slice(-4)}` : run.id;
-                  const summary =
-                    (Array.isArray(run.weights) ? run.weights.length : 0) > 0
-                      ? `${(Array.isArray(run.weights) ? run.weights.length : 0)} 因子`
-                      : "";
-                  const statusBadge = run.status === "validated" ? "" : `[${run.status}]`;
+                  const memberCount = Number(run.factorset_member_count || 0);
+                  const summary = memberCount > 0 ? `${memberCount} 因子` : "";
+                  const statusCN = cnRunStatus(run.status);
+                  const statusBadge = run.status === "validated" || !statusCN ? "" : `[${statusCN}]`;
+                  const label = run.name?.trim() ? run.name : (run.factorset_label || "模型");
                   return (
                     <option key={run.id} value={run.id}>
-                      {`${run.model_type} / ${run.asset_type} — ${idTail} — ${summary} ${statusBadge}`.trim()}
+                      {`${label} — ${idTail} — ${summary} ${statusBadge}`.trim()}
                     </option>
                   );
                 })}
@@ -713,35 +978,29 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
                 >
                   {(() => {
                     const run = factorModelRuns.find((r) => r.id === factorModelRunId)!;
-                    const icList = (run.weights || [])
-                      .map((w) => ({
-                        code: w.factor_code,
-                        ic: w.validation_ic ?? w.train_ic ?? null,
-                        w: w.normalized_weight,
-                      }))
-                      .filter((x) => x.ic != null)
-                      .sort((a, b) => Math.abs(b.ic as number) - Math.abs(a.ic as number))
-                      .slice(0, 5);
+                    const icVal = run.validation_ic;
+                    const icText =
+                      typeof icVal === "number" && Number.isFinite(icVal)
+                        ? Number(icVal).toFixed(4)
+                        : "—";
+                    const sampleText = Number.isFinite(Number(run.sample_count))
+                      ? Number(run.sample_count).toLocaleString()
+                      : "—";
+                    const cutoffText = run.data_cutoff_at
+                      ? String(run.data_cutoff_at).replace("T", " ").slice(0, 16)
+                      : "—";
+                    const factorSetText = run.factorset_label || run.factorset_id || "—";
+                    const memberCount = Number(run.factorset_member_count || 0);
                     return (
                       <>
                         <div>
-                          <strong style={{ color: "var(--pt-foreground)" }}>权重构成（前 5）：</strong>
-                          {icList.length
-                            ? icList
-                                .map((x) => `${x.code} ${Math.round(Number(x.w) * 100)}% (IC${Number(x.ic).toFixed(3)})`)
-                                .join("，")
-                            : "（暂无因子权重数据）"}
+                          <strong style={{ color: "var(--pt-foreground)" }}>模型摘要：</strong>
+                          {`样本=${sampleText}，数据截止=${cutoffText}，验证IC=${icText}`}
                         </div>
-                        {run.metrics && typeof run.metrics === "object" ? (
-                          <div style={{ marginTop: 4 }}>
-                            <strong style={{ color: "var(--pt-foreground)" }}>验证集指标：</strong>
-                            {Object.entries(run.metrics as Record<string, unknown>)
-                              .filter(([, v]) => typeof v === "number" && Number.isFinite(v))
-                              .slice(0, 5)
-                              .map(([k, v]) => `${k}=${Number(v).toFixed(4)}`)
-                              .join("，") || "（无）"}
-                          </div>
-                        ) : null}
+                        <div style={{ marginTop: 4 }}>
+                          <strong style={{ color: "var(--pt-foreground)" }}>绑定因子集：</strong>
+                          {`${factorSetText}${memberCount > 0 ? `（${memberCount} 成员）` : ""}`}
+                        </div>
                       </>
                     );
                   })()}
@@ -763,43 +1022,60 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
                   {(() => {
                     const fs = factorSets.find((s) => s.id === boundFactorSetId);
                     const status = fs?.status ?? "unknown";
+                    const statusCN = FACTOR_SET_STATUS_CN[status] ?? status;
                     const statusColor =
                       status === "frozen" ? "var(--pt-state-info)" :
                       status === "deprecated" ? "var(--pt-state-error)" :
                       status === "draft" ? "var(--pt-state-warning)" :
                       "var(--pt-muted-foreground)";
+                    const safeName = safeFactorSetName(fs?.label);
+                    const frozenAt = fs?.frozen_at;
+                    const frozenAtText = frozenAt
+                      ? String(frozenAt).replace("T", " ").slice(0, 16)
+                      : "";
                     return (
                       <>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <Snowflake size={12} style={{ color: "var(--pt-state-info)" }} />
                           <strong style={{ color: "var(--pt-foreground)" }}>溯源链只读映射（C-05）：</strong>
-                          <span>FactorModelRun → FactorSet</span>
+                          <span
+                            title="为满足权重契约要求，每一次因子模型训练都会绑定到一个已冻结的因子集；此后若因子集变动或被解锁，训练结果将被视为不可复现"
+                            style={{ cursor: "help" }}
+                          >
+                            当前模型训练 → 已绑定因子集
+                          </span>
                         </div>
-                        <div style={{ marginTop: 4 }}>
-                          FactorSet ID：<code style={{ fontFamily: "var(--pt-font-mono)" }}>{boundFactorSetId}</code>
-                          {fs?.name ? ` · ${fs.name}` : ""}
+                        <div style={{ marginTop: 4, lineHeight: 2 }}>
+                          <span>因子集 ID：</span>
+                          <code style={{ fontFamily: "var(--pt-font-mono)", fontSize: 11 }}>{boundFactorSetId}</code>
+                          {safeName ? (
+                            <span style={{ marginLeft: 8, opacity: 0.95 }}>
+                              · {safeName}
+                            </span>
+                          ) : null}
                           <span
                             style={{
-                              marginLeft: 8,
-                              padding: "1px 7px",
+                              marginLeft: 10,
+                              padding: "2px 8px",
                               borderRadius: 999,
                               background: `${statusColor}1A`,
                               color: statusColor,
                               fontSize: 11,
+                              fontWeight: 600,
                             }}
                           >
-                            status={status}
+                            状态：{statusCN}
                           </span>
-                          {fs?.n_members != null ? (
-                            <span style={{ marginLeft: 8 }}>成员 {fs.n_members} 个</span>
+                          {fs?.member_count != null ? (
+                            <span style={{ marginLeft: 10 }}>含 {fs.member_count} 个因子</span>
                           ) : null}
-                          {fs?.frozen_at ? (
-                            <span style={{ marginLeft: 8 }}>frozen_at={String(fs.frozen_at).replace("T", " ").slice(0, 16)}</span>
+                          {frozenAtText ? (
+                            <span style={{ marginLeft: 10 }}>冻结时间：{frozenAtText}</span>
                           ) : null}
                         </div>
                         {status !== "frozen" ? (
                           <div style={{ marginTop: 4, color: "var(--pt-state-warning)" }}>
-                            ⚠️ 当前绑定的 FactorSet 不是 frozen 状态，无法保证 C-06 权重溯源契约；请在「因子模型页」先冻结 FactorSet 再训练模型。
+                            ⚠️ 当前绑定的因子集不是「已冻结」状态，无法保证训练权重可复现的 C-06 契约；请在「因子模型页」先冻结因子集再训练模型。
                           </div>
                         ) : null}
                       </>

@@ -20,6 +20,7 @@ import hashlib
 import json
 import logging
 import math
+import re
 import threading
 import uuid
 from dataclasses import asdict
@@ -252,6 +253,8 @@ def resolve_forward_returns(
     factor_values: pd.DataFrame,
     target_horizon: int,
     *,
+    evaluation_start_date: date | None = None,
+    evaluation_end_date: date | None = None,
     _target_engine_module=None,
 ) -> tuple[pd.DataFrame, list[dict], dict]:
     """解析目标收益（真实标签或 fallback）。
@@ -276,10 +279,50 @@ def resolve_forward_returns(
 
     forward_returns: pd.DataFrame | None = None
 
+    def _read_target_panel(batch_id: str) -> pd.DataFrame:
+        """读取并规范化一个目标批次，保证日期/面板类型稳定。"""
+        target_panel, _, _ = warehouse.get_target_panel(batch_id, target_code)
+        if target_panel is None or target_panel.empty:
+            raise ValueError("target_panel empty")
+        panel = target_panel.copy()
+        panel["signal_date"] = pd.to_datetime(
+            panel["signal_date"], errors="coerce"
+        ).dt.date
+        pivoted = panel.pivot_table(
+            index="signal_date",
+            columns="symbol",
+            values="target_value",
+            aggfunc="first",
+        )
+        pivoted = pivoted.loc[pd.notna(pivoted.index)]
+        if pivoted.empty:
+            raise ValueError("pivoted panel is empty after date coerce")
+        return pivoted
+
+    # Worker 传入用户选择的区间时，不能只相信“最新批次存在”。最新批次常常
+    # 只覆盖最近几天，此时按选定区间补算一批，避免长区间评测被截成 4 天。
+    requested_dates = []
+    for raw_date in factor_values.index:
+        try:
+            normalized_date = pd.Timestamp(raw_date).date()
+        except Exception:
+            continue
+        requested_dates.append(normalized_date)
+    if evaluation_start_date is not None:
+        requested_dates = [d for d in requested_dates if d >= evaluation_start_date]
+    if evaluation_end_date is not None:
+        requested_dates = [d for d in requested_dates if d <= evaluation_end_date]
+    requested_date_count = len(requested_dates)
+
     if latest_batch_id is None:
         if target_horizon == 5 and hasattr(te, "calculate_targets"):
             try:
-                batch_result = te.calculate_targets(warehouse=warehouse)
+                calc_kwargs: dict[str, Any] = {"warehouse": warehouse}
+                if evaluation_start_date is not None:
+                    calc_kwargs["start_date"] = evaluation_start_date
+                if evaluation_end_date is not None:
+                    calc_kwargs["end_date"] = evaluation_end_date
+                batch_result = te.calculate_targets(**calc_kwargs)
                 latest_batch_id = (
                     batch_result.calc_batch_id
                     if batch_result and getattr(batch_result, "tradable_rows", 0) > 0
@@ -295,8 +338,7 @@ def resolve_forward_returns(
                         f"尝试即时调用 target_engine 生成 {target_code} 失败："
                         f"{type(e).__name__}: {e}。将回退至占位同源收益率。"
                     ),
-                    fix_link={"tab": "factor-laboratory", "subtab": "targets",
-                              "label_zh": "目标标签管理"},
+                    fix_link=_PREFLIGHT_FIX_TARGETS,
                 ))
         if latest_batch_id is None:
             if target_horizon != 5:
@@ -312,8 +354,7 @@ def resolve_forward_returns(
                     ),
                     evidence={"target_code": target_code,
                               "target_horizon": target_horizon},
-                    fix_link={"tab": "factor-laboratory", "subtab": "targets",
-                              "label_zh": "目标标签管理"},
+                    fix_link=_PREFLIGHT_FIX_TARGETS,
                     retryable=True,
                 ))
                 return (
@@ -324,6 +365,7 @@ def resolve_forward_returns(
                         "target_horizon": target_horizon,
                         "latest_batch_id": None,
                         "fallback_used": False,
+                        "requested_date_count": requested_date_count,
                     },
                 )
             fallback_used = True
@@ -337,39 +379,83 @@ def resolve_forward_returns(
                     f"请先在标签中心生成并冻结 {target_code}。"
                 ),
                 evidence={"target_code": target_code},
-                fix_link={"tab": "factor-laboratory", "subtab": "targets",
-                          "label_zh": "目标标签管理"},
+                fix_link=_PREFLIGHT_FIX_TARGETS,
                 retryable=True,
             ))
             forward_returns = _fallback_shift_pct()
     else:
         try:
-            target_panel, _, _ = warehouse.get_target_panel(
-                latest_batch_id, target_code
-            )
-            if target_panel is not None and not target_panel.empty:
-                if target_panel["signal_date"].dtype != object:
-                    target_panel["signal_date"] = pd.to_datetime(
-                        target_panel["signal_date"],
-                        errors="coerce",
-                    ).dt.strftime("%Y-%m-%d")
-                pivoted = target_panel.pivot_table(
-                    index="signal_date",
-                    columns="symbol",
-                    values="target_value",
-                    aggfunc="first",
-                )
-                pivoted.index = pd.to_datetime(
-                    pivoted.index, errors="coerce"
-                ).date
-                pivoted = pivoted.loc[
-                    [pd.notna(x) for x in pivoted.index]
-                ]
-                if pivoted.empty:
-                    raise ValueError("pivoted panel is empty after date coerce")
-                forward_returns = pivoted
-            else:
-                raise ValueError("target_panel empty")
+            forward_returns = _read_target_panel(latest_batch_id)
+
+            # 仅在调用方明确提供评测区间时触发补算，保持旧的纯函数/测试行为。
+            covered_count = len(set(requested_dates).intersection(forward_returns.index))
+            if (
+                requested_date_count
+                and covered_count < requested_date_count
+                and target_horizon == 5
+                and hasattr(te, "calculate_targets")
+                and evaluation_start_date is not None
+                and evaluation_end_date is not None
+            ):
+                try:
+                    regenerated = te.calculate_targets(
+                        warehouse=warehouse,
+                        start_date=evaluation_start_date,
+                        end_date=evaluation_end_date,
+                    )
+                    regenerated_batch_id = getattr(regenerated, "calc_batch_id", None)
+                    if regenerated_batch_id:
+                        regenerated_panel = _read_target_panel(regenerated_batch_id)
+                        latest_batch_id = regenerated_batch_id
+                        forward_returns = regenerated_panel
+                except Exception as regen_exc:  # noqa: BLE001
+                    blockers.append(_blocker(
+                        "eval.data.target_coverage_incomplete",
+                        severity="warn",
+                        category="target",
+                        title_zh="目标标签未覆盖所选评测区间",
+                        detail_zh=(
+                            f"当前批次仅覆盖 {covered_count}/{requested_date_count} 个评测交易日，"
+                            f"按区间补算失败：{type(regen_exc).__name__}: {regen_exc}。"
+                            "请到目标标签管理生成覆盖所选区间并包含 horizon 未来交易日的批次。"
+                        ),
+                        evidence={
+                            "target_code": target_code,
+                            "target_horizon": target_horizon,
+                            "covered_dates": covered_count,
+                            "requested_dates": requested_date_count,
+                        },
+                        fix_link=_PREFLIGHT_FIX_TARGETS,
+                        retryable=True,
+                    ))
+
+                # 目标批次仍未覆盖完整区间时，保留已生成的真实标签。
+                # 不能把整个目标替换成 factor_values 自身的变化：对 close/open
+                # 等公式而言，那会把“因子变化”误当成“股票未来收益”，造成
+                # IC/分组收益严重失真。若真实标签不足以切分，后续会给出明确
+                # insufficient_dates，而不是静默计算一个无业务含义的结果。
+                covered_after_regen = len(set(requested_dates).intersection(forward_returns.index))
+                if covered_after_regen < requested_date_count:
+                    blockers.append(_blocker(
+                        "eval.data.target_coverage_partial",
+                        severity="warn",
+                        category="target",
+                        title_zh="目标标签未覆盖完整评测区间",
+                        detail_zh=(
+                            f"真实目标标签覆盖 {covered_after_regen}/{requested_date_count} 个评测交易日，"
+                            "本次仅使用已覆盖的真实标签，不再用因子自身变化替代未来收益。"
+                            "如需完整区间，请在目标标签管理生成包含目标 horizon 的标签批次。"
+                        ),
+                        evidence={
+                            "target_code": target_code,
+                            "target_horizon": target_horizon,
+                            "covered_dates": covered_after_regen,
+                            "requested_dates": requested_date_count,
+                            "fallback_used": False,
+                        },
+                        fix_link=_PREFLIGHT_FIX_TARGETS,
+                        retryable=True,
+                    ))
         except Exception as panel_exc:
             fallback_used = True
             blockers.append(_blocker(
@@ -384,8 +470,7 @@ def resolve_forward_returns(
                 ),
                 evidence={"target_code": target_code,
                           "calc_batch_id": latest_batch_id},
-                fix_link={"tab": "factor-laboratory", "subtab": "targets",
-                          "label_zh": "目标标签管理"},
+                fix_link=_PREFLIGHT_FIX_TARGETS,
                 retryable=True,
             ))
             forward_returns = _fallback_shift_pct()
@@ -405,6 +490,7 @@ def resolve_forward_returns(
             "target_horizon": target_horizon,
             "latest_batch_id": latest_batch_id,
             "fallback_used": fallback_used,
+            "requested_date_count": requested_date_count,
         },
     )
 
@@ -585,7 +671,7 @@ _PREFLIGHT_FIX_PIT = {
     "tab": "factors", "subtab": "pit-join", "label_zh": "去 PIT Join 设置页处理",
 }
 _PREFLIGHT_FIX_TARGETS = {
-    "tab": "factor-laboratory", "subtab": "targets", "label_zh": "去目标标签中心生成",
+    "tab": "settings", "subtab": "factor-center", "label_zh": "返回评估实验室调整区间",
 }
 _PREFLIGHT_FIX_BACKFILL = {
     "tab": "init-backfill", "label_zh": "去执行初始化补数",
@@ -991,16 +1077,30 @@ def preflight_factor_evaluation(
     median_stock_universe = 5550
     coverage_rate = 0.85
     expected_cells = int(n_days * median_stock_universe * coverage_rate)
+    minimum_trading_days = math.ceil((50 + 5 + 5) / 0.2)
     recommended_date_range: list[str] | None = None
     if sel_start and sel_end and n_days >= 2:
         recommended_date_range = [sel_start.isoformat(), sel_end.isoformat()]
 
-    if expected_cells >= 100_000:
+    # 评估器的时间切分门禁比“单元格数量”更严格：即使股票数很多，
+    # 交易日少于派生最低值也会在 worker 的 build_time_split 阶段失败。
+    if n_days < minimum_trading_days:
+        severity = "error"
+        missing_days = minimum_trading_days - n_days
+        title_zh = f"交易日不足：至少需要 {minimum_trading_days} 个，当前 {n_days} 个"
+        detail_zh = (
+            f"当前区间只有 {n_days} 个交易日，距评估切分最低要求还差 {missing_days} 个。"
+            f"最低值由验证集 50 天、purge 5 天、embargo 5 天和验证比例 20% 推导为 "
+            f"{minimum_trading_days} 天；请将起始日提前约 {missing_days} 个交易日，"
+            "或在确有依据时减少 purge/embargo/target horizon。"
+        )
+    elif expected_cells >= 100_000:
         severity = "pass"
         title_zh = f"样本规模充足：预计约 {expected_cells/10000:.1f} 万单元格"
         detail_zh = (
             f"{n_days} 交易日 × 约 {median_stock_universe} 中位数股票 × {coverage_rate:.0%} 覆盖率"
             f"= {expected_cells} 个预期单元格，≥10 万，样本量充足。"
+            f"评测切分最少需要 {minimum_trading_days} 个交易日。"
         )
     elif expected_cells >= 50_000:
         severity = "warn"
@@ -1008,7 +1108,7 @@ def preflight_factor_evaluation(
         detail_zh = (
             f"{n_days} 交易日 × 约 {median_stock_universe} 中位数股票 × {coverage_rate:.0%} 覆盖率"
             f"= {expected_cells} 个预期单元格，在 5~10 万之间。"
-            "建议补长历史窗口或放宽日期范围。"
+            f"评测切分最少需要 {minimum_trading_days} 个交易日；建议补长历史窗口或放宽日期范围。"
         )
     else:
         severity = "error"
@@ -1016,7 +1116,7 @@ def preflight_factor_evaluation(
         detail_zh = (
             f"{n_days} 交易日 × 约 {median_stock_universe} 中位数股票 × {coverage_rate:.0%} 覆盖率"
             f"= {expected_cells} 个预期单元格，<5 万。"
-            "IC/分组结果统计显著性不足，请先执行更长窗口的历史补数。"
+            f"评测切分最少需要 {minimum_trading_days} 个交易日；IC/分组结果统计显著性不足，请先执行更长窗口的历史补数。"
         )
 
     items.append({
@@ -1027,6 +1127,8 @@ def preflight_factor_evaluation(
         "detail_zh": detail_zh,
         "evidence": {
             "trade_days_in_range": n_days,
+            "minimum_trading_days": minimum_trading_days,
+            "missing_trading_days": max(0, minimum_trading_days - n_days),
             "median_stock_universe": median_stock_universe,
             "coverage_rate": coverage_rate,
             "expected_cells": expected_cells,
@@ -1155,6 +1257,8 @@ def preflight_factor_evaluation(
         "passed": overall_passed,
         "blocking_count": blocking_count,
         "recommended_date_range": recommended_date_range,
+        # 与 worker 实际冻结逻辑保持一致，供前端展示真实评估截止日。
+        "data_cutoff_date": ctd.isoformat() if ctd is not None else None,
     }
     return {"overall": overall, "items": items}
 
@@ -1193,6 +1297,7 @@ def create_evaluation_task(
     cost_rate: float = 0.001,
     direction: str | None = None,
     created_by: str = "local_user",
+    force_new: bool = False,
 ) -> dict:
     """创建评估异步任务（完整配置哈希幂等）。
 
@@ -1218,8 +1323,8 @@ def create_evaluation_task(
     fingerprint = compute_payload_fingerprint(payload)
 
     # 单飞检查：同 fingerprint 有 queued/running/done/warn 任务则复用
-    existing = list_async_tasks(task_type=TASK_TYPE, limit=50)
-    for t in existing:
+    existing = list_async_tasks(task_type=TASK_TYPE, limit=50, use_control_plane=True)
+    for t in ([] if force_new else existing):
         if t.status not in {"queued", "running", "pending", "processing", "done", "warn"}:
             continue
         try:
@@ -1234,7 +1339,8 @@ def create_evaluation_task(
                 d["task_id"] = d["id"]
             return d
 
-    task = create_async_task(TASK_TYPE, payload)
+    # 任务创建是控制面轻量写入，避免被评估/同步 worker 占满的数据连接池阻塞。
+    task = create_async_task(TASK_TYPE, payload, use_control_plane=True, force_new=force_new)
     _start_worker(task.id, _run_evaluation_worker)
     d = task.model_dump()
     d["fingerprint"] = fingerprint
@@ -1749,6 +1855,8 @@ def _run_evaluation_worker(task_id: str) -> None:
             warehouse,
             factor_values,
             target_horizon,
+            evaluation_start_date=start_date,
+            evaluation_end_date=end_date,
         )
         target_code = run_ctx["target_code"]
         latest_batch_id = run_ctx["latest_batch_id"]
@@ -2044,21 +2152,69 @@ def _run_evaluation_worker(task_id: str) -> None:
         cid = uuid.uuid4().hex[:8]
         blockers = []
         try:
-            blockers = [
-                _blocker("eval.unexpected_error", category="config",
-                         title_zh="评估执行出现未知异常",
-                         detail_zh=(
-                             f"[correlation_id={cid}] 异常类型：{type(exc).__name__}，信息：{exc}。"
-                             "常见原因：①评估配置（分组数/手续费/回看期）不合理；②目标收益或因子数据存在极端异常值。"
-                             "可先在因子编辑器 → 预览 检查公式能否正常出数，再回到本页调整参数重试。"
-                         ),
-                         evidence={
-                             "correlation_id": cid,
-                             "exception_type": type(exc).__name__,
-                             "exception_msg": str(exc),
-                         },
-                         fix_link=_BLOCKER_FIX_FACTOR_EDITOR),
-            ]
+            exception_text = str(exc)
+            if isinstance(exc, ValueError) and exception_text.startswith("insufficient_dates"):
+                actual_match = re.search(r"actual=(\d+)", exception_text)
+                minimum_match = re.search(r"derived_min_total=(\d+)", exception_text)
+                usable_match = re.search(r"usable_after_tail_loss=(\d+)", exception_text)
+                actual_days = int(actual_match.group(1)) if actual_match else None
+                minimum_days = int(minimum_match.group(1)) if minimum_match else None
+                usable_days = int(usable_match.group(1)) if usable_match else None
+                coverage_hint = (
+                    f"至少需要 {minimum_days} 个交易日，当前仅有 {actual_days} 个"
+                    if minimum_days is not None and actual_days is not None
+                    else "当前可用交易日不足以构造训练/验证/测试切分"
+                )
+                blockers = [_blocker(
+                    "eval.data.insufficient_dates",
+                    severity="error",
+                    category="sample",
+                    title_zh=(
+                        f"交易日不足：至少需要 {minimum_days} 个，当前 {actual_days} 个"
+                        if minimum_days is not None and actual_days is not None
+                        else "交易日不足，无法构造评估切分"
+                    ),
+                    detail_zh=(
+                        f"{coverage_hint}（目标 horizon 尾部损失后可用 {usable_days if usable_days is not None else '-'} 个）。"
+                        "当前评估区间与可交易目标标签的交集不足；"
+                        "请生成覆盖所选区间且额外包含目标 horizon 的目标标签后重试。"
+                    ),
+                    evidence={
+                        "correlation_id": cid,
+                        "exception_type": type(exc).__name__,
+                        "exception_msg": exception_text,
+                        "actual_trading_days": actual_days,
+                        "minimum_trading_days": minimum_days,
+                        "usable_trading_days_after_tail_loss": usable_days,
+                        "factor_code": locals().get("factor_code"),
+                        "factor_version_id": locals().get("version").id if locals().get("version") is not None else None,
+                        "target_horizon": locals().get("target_horizon"),
+                    },
+                    fix_link={
+                        "tab": "settings",
+                        "subtab": "factor-center",
+                        "label_zh": "返回评估实验室调整区间",
+                    },
+                    retryable=True,
+                    correlation_id=cid,
+                )]
+            else:
+                blockers = [_blocker(
+                    "eval.unexpected_error", category="config",
+                    title_zh="评估执行出现未知异常",
+                    detail_zh=(
+                        f"[correlation_id={cid}] 异常类型：{type(exc).__name__}，信息：{exc}。"
+                        "常见原因：①评估配置（分组数/手续费/回看期）不合理；②目标收益或因子数据存在极端异常值。"
+                        "可先在因子编辑器 → 预览 检查公式能否正常出数，再回到本页调整参数重试。"
+                    ),
+                    evidence={
+                        "correlation_id": cid,
+                        "exception_type": type(exc).__name__,
+                        "exception_msg": str(exc),
+                    },
+                    fix_link=_BLOCKER_FIX_FACTOR_EDITOR,
+                    correlation_id=cid,
+                )]
         except Exception as _nested:
             blockers = [{
                 "code": "eval.unexpected_error",
@@ -2070,15 +2226,23 @@ def _run_evaluation_worker(task_id: str) -> None:
                 "retryable": True,
             }]
         try:
+            failure_message = (
+                "目标收益覆盖不足：请补齐所选区间的目标标签后重试"
+                if isinstance(exc, ValueError) and str(exc).startswith("insufficient_dates")
+                else f"evaluation_failed:{exc}"
+            )
             _set_task(
                 db, task_id,
                 status="failed",
                 stage="failed",
-                message=f"evaluation_failed:{exc}",
+                message=failure_message,
                 errors_json=json.dumps(blockers, ensure_ascii=False),
                 result_json=json.dumps({"exception_type": type(exc).__name__,
                                         "exception": str(exc),
-                                        "correlation_id": cid}, ensure_ascii=False),
+                                        "correlation_id": cid,
+                                        "factor_code": locals().get("factor_code"),
+                                        "target_horizon": locals().get("target_horizon")},
+                                       ensure_ascii=False),
                 finished_at=_now(),
             )
         except Exception as _nested2:
@@ -2111,13 +2275,13 @@ def _run_evaluation_worker(task_id: str) -> None:
 def get_evaluation_task(task_id: str) -> dict | None:
     """获取评估任务状态。"""
     from app.services.async_tasks import get_async_task
-    task = get_async_task(task_id)
+    task = get_async_task(task_id, use_control_plane=True)
     return _inject_fingerprint(task.model_dump()) if task else None
 
 
 def list_evaluation_tasks(limit: int = 20) -> list[dict]:
     """列出评估任务。"""
-    tasks = list_async_tasks(task_type=TASK_TYPE, limit=limit)
+    tasks = list_async_tasks(task_type=TASK_TYPE, limit=limit, use_control_plane=True)
     return [_inject_fingerprint(t.model_dump()) for t in tasks]
 
 

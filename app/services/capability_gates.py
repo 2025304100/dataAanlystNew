@@ -30,7 +30,8 @@ from sqlalchemy.orm import Session
 
 from app.models.daily_bar import DailyBar
 from app.models.discovery import DiscoveryTaskRecord
-from app.models.factor_runtime import FactorRuntimeState
+# (P0 ACL) FactorRuntimeState access fully replaced by
+# services.factors.__facade__.check_ridge_runtime_readiness() below.
 from app.models.portfolio import Portfolio, PortfolioRule, Position
 from app.models.scan import ScanResult
 from app.models.score import Score
@@ -440,35 +441,25 @@ def check_factor_ridge_capability(db: Session) -> CapabilityStatus:
     """
     now = _utcnow_naive()
 
-    # 检查因子仓库健康状态
+    # 检查因子仓库健康状态 + 运行时状态（走因子域 ACL Facade，不再直接 import FactorWarehouse / FactorRuntimeState）
     warehouse_available = False
     warehouse_bars = 0
     warehouse_latest: str | None = None
     warehouse_error: str | None = None
-    try:
-        from app.services.factors.store import FactorWarehouse
-
-        warehouse = FactorWarehouse()
-        health = warehouse.health()
-        warehouse_available = bool(health.available)
-        warehouse_bars = int(health.raw_daily_bars or 0)
-        warehouse_latest = health.latest_trade_date
-        warehouse_error = health.error
-    except Exception as exc:
-        # DuckDB 未安装或仓库未初始化都视为仓库为空
-        warehouse_error = f"{type(exc).__name__}: {exc}"
-        logger.debug("Factor warehouse health check failed: %s", warehouse_error)
-
-    # 检查活动因子模型
     active_model_run_id: str | None = None
     try:
-        runtime_state = db.execute(
-            select(FactorRuntimeState).where(FactorRuntimeState.id == 1)
-        ).scalars().first()
-        if runtime_state is not None:
-            active_model_run_id = runtime_state.active_model_run_id
+        from app.services.factors.__facade__ import check_ridge_runtime_readiness
+
+        readiness = check_ridge_runtime_readiness(db=db)
+        warehouse_available = bool(readiness.warehouse_available)
+        warehouse_bars = int(readiness.warehouse_raw_daily_bars or 0)
+        warehouse_latest = readiness.warehouse_latest_trade_date
+        warehouse_error = readiness.warehouse_error
+        active_model_run_id = readiness.active_model_run_id
     except Exception as exc:
-        logger.debug("Factor runtime state query failed: %s", exc)
+        # DuckDB 未安装或仓库未初始化都视为仓库为空；Facade 异常同样 best-effort 降级
+        warehouse_error = f"{type(exc).__name__}: {exc}"
+        logger.debug("Factor warehouse/runtime readiness failed (ACL facade): %s", warehouse_error)
 
     factor_warehouse_initialized = warehouse_available and warehouse_bars > 0
     active_factor_model = active_model_run_id is not None

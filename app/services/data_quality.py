@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models.data_quality_snapshot import DataQualitySnapshot
 from app.models.data_sync_plan import DataSyncPartition, DataSyncPlan
-from app.services.factors.config import get_factor_system_config
+from app.services.factors.config import get_factor_system_config# near-relative coupling: data-quality check reads scoring-system flag — audit 2026-08-30
 from app.services.factors.formula_catalog import build_formula_catalog
 from app.services.factors.store import FactorWarehouse
 

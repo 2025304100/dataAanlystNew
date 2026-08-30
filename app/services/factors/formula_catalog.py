@@ -395,11 +395,21 @@ def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
                             "derived": False,
                         }
                     policy = _FIELD_DATA_POLICIES.get(field, {})
-                    if policy.get("minimum_continuity_days"):
+                    # 日覆盖是字段能力的基础证据，不应只在配置了连续性门槛
+                    # （例如资金流 60 日）时才计算。只要数据表具备标的、交易日
+                    # 和实际字段列，就按最近交易日的股票横截面统计覆盖率。
+                    # prev_close 没有物理列，沿用 close 的覆盖口径。
+                    coverage_field = "close" if field == "prev_close" else field
+                    can_measure_daily_coverage = (
+                        "symbol" in columns
+                        and date_col in columns
+                        and coverage_field in columns
+                    )
+                    if can_measure_daily_coverage:
                         coverage = _query_cross_section_coverage(
                             conn,
                             table=table,
-                            field=field,
+                            field=coverage_field,
                             minimum_coverage=float(
                                 policy.get("minimum_daily_coverage", 0.0)
                             ),

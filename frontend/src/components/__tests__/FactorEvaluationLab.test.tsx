@@ -26,6 +26,7 @@ const { mockContext, mockApi, mockMessage } = vi.hoisted(() => ({
   },
   mockApi: {
     listFactorDefinitions: vi.fn(),
+    scoringListFactorDefinitions: vi.fn(),
     preflightFactorEvaluation: vi.fn(),
     listEvaluationTasks: vi.fn(),
     getEvaluationTask: vi.fn(),
@@ -207,6 +208,9 @@ describe("FactorEvaluationLab", () => {
     mockApi.listFactorDefinitions.mockResolvedValue({
       items: [{ code: "turnover_z20", name: "换手率因子" }],
     });
+    mockApi.scoringListFactorDefinitions.mockResolvedValue({
+      items: [{ code: "turnover_z20", name: "换手率因子" }],
+    });
     mockApi.listEvaluationTasks.mockResolvedValue([]);
     mockApi.listEvaluationRuns.mockResolvedValue([]);
     mockApi.preflightFactorEvaluation.mockResolvedValue({
@@ -296,6 +300,38 @@ describe("FactorEvaluationLab", () => {
       }));
     });
     expect(mockMessage.success).toHaveBeenCalledWith("evalLabCreateSuccess");
+
+    // 创建成功后仍保留当前因子，并立即显示异步任务进度。
+    await waitFor(() => {
+      expect(mockApi.listEvaluationTasks).toHaveBeenCalledTimes(2);
+      expect(document.querySelector(".ant-select-selection-item")?.textContent).toContain("turnover_z20");
+      expect(document.querySelector(".eval-running-banner")).toBeInTheDocument();
+      expect(document.querySelector(".ant-progress")).toBeInTheDocument();
+    });
+  });
+
+  it("shows loading feedback while task creation request is still pending", async () => {
+    let resolveCreate: ((task: any) => void) | undefined;
+    mockApi.createEvaluationTask.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveCreate = resolve; }),
+    );
+    render(<FactorEvaluationLab />);
+
+    await waitFor(() => expect(mockApi.listEvaluationTasks).toHaveBeenCalled());
+    const codeInput = screen.getAllByRole("combobox")[0];
+    fireEvent.mouseDown(codeInput);
+    fireEvent.click(await screen.findByText("换手率因子 (turnover_z20)"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "evalLabSubmit" })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole("button", { name: "evalLabSubmit" }));
+    await waitFor(() => {
+      expect(screen.getByText("提交中")).toBeInTheDocument();
+      expect(document.querySelector(".eval-running-banner")).toBeInTheDocument();
+      expect(document.querySelector(".ant-progress-status-active")).toBeInTheDocument();
+    });
+
+    resolveCreate?.(makeTask({ status: "queued" }));
+    await waitFor(() => expect(mockMessage.success).toHaveBeenCalledWith("evalLabCreateSuccess"));
   });
 
   it("renders task list with status and stage", async () => {
@@ -382,6 +418,80 @@ describe("FactorEvaluationLab", () => {
     await waitFor(() => {
       expect(screen.getAllByText("low_icir").length).toBeGreaterThan(0);
       expect(screen.getAllByText("insufficient_coverage").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("renders structured rejection reasons without crashing", async () => {
+    const run = makeRun({
+      id: "eval-struct-20260801",
+      gate_result: "warn",
+      rejection_reasons: [
+        {
+          code: "rank_ic_non_positive",
+          severity: "error",
+          detail_zh: "Rank IC 均值 -0.6707 不大于 0",
+          evidence: { correlation_id: "corr-structured" },
+        },
+      ],
+    });
+    mockApi.listEvaluationRuns.mockResolvedValue([run]);
+    mockApi.getEvaluationRun.mockResolvedValue(run);
+
+    render(<FactorEvaluationLab />);
+    await openRunsTab();
+    await waitFor(() => expect(screen.getByText("eval-struct-20260801")).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: /solution/ })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/rank_ic_non_positive/)).toBeInTheDocument();
+      expect(screen.getByText(/Rank IC 均值 -0\.6707/)).toBeInTheDocument();
+    });
+  });
+
+  it("normalizes nested backend metrics in the run report", async () => {
+    const run = makeRun({
+      id: "eval-nested-20260801",
+      metrics: {
+        ic: {
+          rank_ic_mean: -0.6707,
+          rank_ic_median: -0.6769,
+          rank_ic_std: 0.0731,
+          icir: -9.1783,
+          positive_ic_ratio: 0,
+        },
+        quantile: {
+          group_returns: [-0.02, -0.03, -0.04, -0.05, -0.08555],
+          monotonicity_score: -0.9793,
+          top_bottom_return: -0.06555,
+        },
+        turnover: { avg_turnover: 0.1649 },
+        cost_adjusted: { net_return: -0.065884 },
+        coverage: { coverage: 0.9829, available_dates: 74, available_symbols: 5561 },
+        validation_days: 74,
+        effective_samples: 404479,
+        time_split: {
+          train_start: "2024-06-03",
+          train_end: "2025-12-31",
+          validation_start: "2026-01-02",
+          validation_end: "2026-08-27",
+        },
+      },
+    });
+    mockApi.listEvaluationRuns.mockResolvedValue([run]);
+    mockApi.getEvaluationRun.mockResolvedValue(run);
+
+    render(<FactorEvaluationLab />);
+    await openRunsTab();
+    await waitFor(() => expect(screen.getByText("eval-nested-20260801")).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: /solution/ })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("-0.6707")).toBeInTheDocument();
+      expect(screen.getByText("-9.1783")).toBeInTheDocument();
+      expect(screen.getByText("98.29%")).toBeInTheDocument();
+      expect(screen.getByText("404479")).toBeInTheDocument();
+      expect(screen.getByText("2024-06-03 ~ 2025-12-31")).toBeInTheDocument();
+      expect(screen.getByText("2026-01-02 ~ 2026-08-27")).toBeInTheDocument();
     });
   });
 

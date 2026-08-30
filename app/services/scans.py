@@ -12,7 +12,7 @@ from app.models.score import Score
 from app.models.symbol import Symbol
 from app.models.watchlist import WatchlistItem
 from app.services.allocation import compute_recommended_position_pct
-from app.services.factors.runtime import get_factor_runtime_snapshot
+from app.services.factors.runtime import get_factor_runtime_snapshot# near-relative coupling: periodic scans read runtime snapshot for dashboard provenance — audit 2026-08-30
 
 
 def _apply_filters_to_score(score: Score, filters_snapshot: dict) -> tuple[bool, list[str]]:

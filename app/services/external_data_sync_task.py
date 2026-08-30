@@ -589,7 +589,7 @@ _DATASET_FORMULA_FIELDS: dict[ExternalDataset, tuple[str, ...]] = {
 def get_external_data_coverage(db: Session) -> dict[str, Any]:
     """Expose cached warehouse-backed field coverage for the external-data UI."""
     try:
-        from app.services.factors.config import get_factor_system_config
+        from app.services.factors.config import get_factor_system_config# near-relative coupling: task scheduler reads scoring config to decide whether to enqueue — audit 2026-08-30
         from app.services.factors.formula_catalog import build_formula_catalog
         from app.services.factors.store import FactorWarehouse
 
@@ -1130,10 +1130,31 @@ def _mirror_external_factor_inputs(
         task_id,
         stage="mirror",
         percent=99,
-        message="Mirroring external data into factor warehouse",
+        message="本地镜像写入中（数据量较大，请等待心跳更新）",
     )
     try:
         from app.services.factors.data_sync import mirror_factor_inputs
+
+        # 镜像可能需要处理数十万条本地记录，批次之间没有网络请求可供
+        # 外层任务自然刷新心跳。通过取消回调复用批处理边界，并节流写回
+        # 任务时间戳，避免巡检误判为停滞。
+        last_heartbeat = time.monotonic()
+
+        def mirror_checkpoint() -> bool:
+            nonlocal last_heartbeat
+            if _is_cancelled(db, task_id):
+                return True
+            now = time.monotonic()
+            if now - last_heartbeat >= 5:
+                _update_task(
+                    db,
+                    task_id,
+                    stage="mirror",
+                    percent=99,
+                    message="本地镜像写入中（仍在处理，请勿重复启动）",
+                )
+                last_heartbeat = now
+            return False
 
         mirror_kwargs = {
             "include_valuations": False,
@@ -1149,6 +1170,7 @@ def _mirror_external_factor_inputs(
             db,
             start_date=start_date,
             end_date=end_date,
+            should_cancel=mirror_checkpoint,
             **mirror_kwargs,
         )
         return {
@@ -1291,13 +1313,85 @@ def start_external_data_sync(dataset: ExternalDataset, payload: dict[str, Any]) 
             .order_by(desc(AsyncTaskRecord.created_at))
         ).scalars().first()
         if existing is not None:
-            raise RuntimeError("Another external-data sync task is already running")
+            raise RuntimeError("已有同类型外部数据同步任务在运行，请稍后再试")
         market_task = _active_market_priority_task(db)
         if market_task is not None:
-            raise RuntimeError(
-                "Market-data synchronization has priority; wait for "
-                f"{market_task.task_type} to finish before starting external data"
-            )
+            # ===================================================================
+            # 原逻辑：一遇到 running/queued 的行情任务就立刻 RuntimeError 取消
+            # 新逻辑：先等待最多 120 秒（24 轮 × 5 秒），复用 _wait_for_market_priority
+            # 的轮询模式，让短暂正在跑的行情任务有机会收尾；只有超时仍在跑，才
+            # 抛出【中文友好提示】（包含进度/速度/剩余时间估算/怎么办3选）
+            # ===================================================================
+            _MARKET_TYPE_CN: dict[str, str] = {
+                "market_data_sync": "基础行情初始化同步",
+                "history_initialization": "历史数据初始化回灌",
+                "universe_sync": "全量股票池同步",
+                "universe_incremental_sync": "每日行情增量同步",
+                "universe_backfill": "股票池历史回填",
+                "universe_smart_sync": "智能增量同步",
+                "universe_range_repair": "区间缺口修复",
+            }
+            preflight_task_id = uuid4().hex
+            _update_task_preflight = False  # 还没真正创建任务，等待过程不写 DB
+            waited_rounds = 0
+            max_rounds = 24  # 24 × 5s = 120s
+            zombie_minutes = 10  # running 任务 updated_at 超过 10 分钟没动 → 视为僵尸，不等了
+            while waited_rounds < max_rounds:
+                if market_task is None:
+                    break  # 行情任务结束了，可以开跑了
+                # 僵尸检测：running 状态但 10 分钟没更新过 → 判定为后端崩溃残留，放行
+                if market_task.status == "running" and market_task.updated_at is not None:
+                    stall_seconds = (_now() - market_task.updated_at).total_seconds()
+                    if stall_seconds > zombie_minutes * 60:
+                        logger.warning(
+                            "Market-priority task %s looks zombie (stalled %.0fs). "
+                            "Allowing external sync %s to proceed.",
+                            market_task.id, stall_seconds, dataset,
+                        )
+                        break
+                time.sleep(_MARKET_PRIORITY_WAIT_SECONDS)
+                waited_rounds += 1
+                # 每轮重新读（市场任务可能正好刚结束了）
+                market_task = _active_market_priority_task(db)
+            if market_task is not None:
+                # 超时仍在跑 → 抛中文友好提示，包含进度、速度、用户该怎么办
+                mt_cn = _MARKET_TYPE_CN.get(market_task.task_type, market_task.task_type)
+                pct = f"{market_task.percent:.1f}%" if market_task.percent is not None else "未知"
+                total = getattr(market_task, "total", None)
+                processed = getattr(market_task, "processed", None)
+                remain_secs: str | None = None
+                try:
+                    if processed and total and market_task.updated_at and market_task.created_at:
+                        elapsed = max((market_task.updated_at - market_task.created_at).total_seconds(), 1.0)
+                        speed = processed / elapsed if elapsed > 0 else 0
+                        if speed > 0 and total > processed:
+                            remain_secs_val = (total - processed) / speed
+                            mm, ss = divmod(int(remain_secs_val), 60)
+                            hh, mm = divmod(mm, 60)
+                            if hh > 0:
+                                remain_secs = f"约 {hh}小时{mm}分"
+                            elif mm > 0:
+                                remain_secs = f"约 {mm}分{ss}秒"
+                            else:
+                                remain_secs = f"约 {ss}秒"
+                except Exception:
+                    remain_secs = None
+                progress_line = ""
+                if total and processed is not None:
+                    progress_line = f"，进度 {processed}/{total}（{pct}）"
+                speed_line = ""
+                if remain_secs:
+                    speed_line = f"，预计剩余 {remain_secs}"
+                raise RuntimeError(
+                    "【行情同步优先级】当前正在运行「" + mt_cn + "」任务"
+                    + progress_line + speed_line + "。\n"
+                    + "ETF 指标（尤其是溢价折价/规模/份额）必须依赖当天最新收盘价计算，"
+                    + "基础行情未同步完就跑 ETF 会写出过期脏数据，所以必须延后执行。\n"
+                    + "\n怎么办（3 选 1）：\n"
+                    + "① 等一会儿再点「同步 ETF 指标」，系统每次点都会自动再等 2 分钟\n"
+                    + "② 赶时间 → 去左侧「任务中心」→ 找到正在跑的「" + mt_cn + "」→ 点「取消」，再立刻跑 ETF（⚠️ 代价：今天行情只同步了 " + pct + "，算出的 ETF 指标可能是旧数据，会出现「etf_premium_discount 暂无有效记录」这类提示）\n"
+                    + "③ 不着急就放着不动，等行情任务跑完后随时可以启动 ETF 同步（无任何数据风险）"
+                )
 
         task_id = uuid4().hex
         task = AsyncTaskRecord(

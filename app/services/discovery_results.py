@@ -14,7 +14,7 @@ from app.schemas.discovery import DiscoveryIndicatorEvaluateRequest
 from app.services.backtest import _resolve_formula_expr
 from app.schemas.discovery import DiscoveryResultUpdate
 from app.services.analysis import calculate_symbol_score
-from app.services.factors.score_scope import get_active_score_scope
+from app.services.factors.__facade__ import get_active_score_scope  # Public ACL entrypoint
 from app.services.market_data import sync_symbol_daily_bars
 from app.services.symbol_names import refresh_symbol_name
 
@@ -276,7 +276,7 @@ def get_latest_discovery_candidates(
     score_map: dict[int, Score] = {}
     if symbol_ids:
         from sqlalchemy import func
-        scope = get_active_score_scope(db)
+        scope = get_active_score_scope(db=db)
         latest_score_subq = (
             select(Score.symbol_id, func.max(Score.trade_date).label("max_date"))
             .where(Score.symbol_id.in_(symbol_ids))

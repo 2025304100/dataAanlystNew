@@ -160,6 +160,12 @@ def write_audit_event(
         "OUTBOX_EVENT_DISPATCHED", "DATA_BLOCK_RESOLUTION",
         "DATA_SOURCE_FAILOVER", "DATA_QUALITY_QUARANTINE",
         "G6_ROLLOUT_STARTED", "G6_ROLLOUT_ROLLED_BACK",
+        # ── P2-G 因子治理审批闭环 ────────────────────────────
+        "FACTOR_DRAFT_SUBMITTED",        # 草稿提交（含外部模块 custom_indicators）
+        "FACTOR_DRAFT_APPROVED",         # 草稿审批通过（含 promote 成功→applied）
+        "FACTOR_DRAFT_REJECTED",         # 草稿驳回（必须附原因）
+        # ── P2-G 因子因子入库 ────────────────────────────────
+        "FACTOR_VERSION_PROMOTED",       # custom_indicator → FactorVersion 新入库
         "UNKNOWN_AUDIT_ACTION",
     }
     if action not in allowed:

@@ -587,7 +587,9 @@ def test_ai_connection(req: TestConnectionRequest):
             cfg, [{"role": "user", "content": "Reply with OK."}], test=True
         )
         endpoint = _endpoint_url(cfg, "chat_path")
-        with httpx.Client(timeout=cfg["timeout_seconds"]) as client:
+        # 连通性测试：至少给 60s 兜底，避免国外模型首次建连慢时误报
+        base_timeout = max(float(cfg["timeout_seconds"]), 60.0)
+        with httpx.Client(timeout=base_timeout) as client:
             resp = client.post(endpoint, json=payload, headers=headers)
         if resp.status_code >= 400:
             return {"success": False, "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}
@@ -613,7 +615,9 @@ def _fetch_ai_models(cfg: dict) -> dict:
         return {"models": [], "error": "当前提供商未配置模型列表路径"}
     try:
         endpoint = _endpoint_url(cfg, "models_path")
-        with httpx.Client(timeout=cfg["timeout_seconds"]) as client:
+        # 获取模型列表：至少给 60s 兜底
+        base_timeout = max(float(cfg["timeout_seconds"]), 60.0)
+        with httpx.Client(timeout=base_timeout) as client:
             response = client.get(endpoint, headers=_auth_headers(cfg))
         if response.status_code >= 400:
             return {
@@ -657,7 +661,8 @@ def list_ai_models(
         raise HTTPException(400, "请先配置 API Key")
     try:
         headers = {"Authorization": f"Bearer {api_key}"}
-        with httpx.Client(timeout=15) as client:
+        # 获取模型列表：统一给 60s 兜底，修复原来 15s 过短的问题
+        with httpx.Client(timeout=60.0) as client:
             resp = client.get(f"{service_url}/models", headers=headers)
         if resp.status_code >= 400:
             return {"models": [], "error": f"HTTP {resp.status_code}"}
@@ -697,7 +702,9 @@ def ai_chat(req: AiChatRequest):
         headers = _auth_headers(cfg, json_content=True)
         payload = _build_chat_payload(cfg, messages)
         endpoint = _endpoint_url(cfg, "chat_path")
-        with httpx.Client(timeout=cfg["timeout_seconds"]) as client:
+        # 非流式聊天：至少 120s 兜底，防止长公式/长回复被 30s 默认超时截断
+        base_timeout = max(float(cfg["timeout_seconds"]), 120.0)
+        with httpx.Client(timeout=base_timeout) as client:
             resp = client.post(endpoint, json=payload, headers=headers)
 
         if resp.status_code >= 400:
@@ -742,7 +749,14 @@ def ai_chat_stream(req: AiChatRequest):
             headers = _auth_headers(cfg, json_content=True)
             payload = _build_chat_payload(cfg, messages, stream=True)
             endpoint = _endpoint_url(cfg, "chat_path")
-            timeout = httpx.Timeout(float(cfg["timeout_seconds"]))
+            # 流式响应：connect/write 用配置超时，read 阶段不设上限以防止生成中途超时
+            base_timeout = float(cfg["timeout_seconds"])
+            timeout = httpx.Timeout(
+                connect=base_timeout,
+                write=base_timeout,
+                read=None,  # 流式生成阶段不设读超时，避免逐字输出时被截断
+                pool=base_timeout,
+            )
             with httpx.Client(timeout=timeout) as client:
                 with client.stream("POST", endpoint, json=payload, headers=headers) as resp:
                     if resp.status_code >= 400:

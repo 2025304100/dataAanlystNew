@@ -14,6 +14,11 @@ from sqlalchemy.orm import Session
 from app.models.factor_model import FactorModelRun
 from app.models.score import Score
 from app.models.symbol import Symbol
+# P2-G：每次批量打分后写入 scoring_lineage 血缘
+from app.models.factor_governance import (  # noqa: E402
+    FactorSetSnapshot,
+    ScoringLineage,
+)
 from app.services.factors.definitions import (
     FACTOR_BY_CODE,
     FACTOR_DEFINITIONS,
@@ -382,6 +387,10 @@ def materialize_factor_scores(
     pipeline_run_id: str | None = None,
     quality_factor_weight: float = 0.40,
     timing_factor_weight: float = 0.50,
+    # P2-G：血缘附加元数据（生产/灰度/双跑/影子）
+    run_mode: str = "production",
+    scoring_actor: str | None = None,
+    scoring_note: str | None = None,
 ) -> ScoringBridgeResult:
     '''Create shadow or Ridge Score rows from one validated model snapshot.
 
@@ -611,6 +620,170 @@ def materialize_factor_scores(
         materialized += 1
 
     db.flush()
+
+    # ════════════════════════════════════════════════════════════════
+    # P2-G：评分血缘（savepoint 隔离）
+    #   - 幂等：UniqueConstraint(score_batch_id, score_trade_date, weight_mode, model_run_id)
+    #   - 每次打分：写模型 + 因子版本 + 批次统计 + 运行模式（生产/灰度/双跑/影子）
+    # ════════════════════════════════════════════════════════════════
+    try:
+        with db.begin_nested():
+            # 1) 构造 factor_version_ids_json：因子代码 → {version, used=True, avg_missing}
+            total_symbols_factor_rows = len(factor_rows)
+            fv_payload: dict[str, dict] = {}
+            for _fc in feature_codes:
+                _ver = int(member_versions_snapshot.get(_fc, {}).get('version', 1) or 1)
+                _used = True  # 被模型使用
+                if total_symbols_factor_rows > 0:
+                    _present = sum(
+                        1 for _sym, _fv_map in factor_rows.items()
+                        if _fc in _fv_map
+                        and _fv_map[_fc].get('normalized_value') is not None
+                    )
+                    _avg_missing = 1.0 - (float(_present) / float(total_symbols_factor_rows))
+                    _avg_missing = max(0.0, min(1.0, _avg_missing))
+                else:
+                    _avg_missing = None
+                fv_payload[_fc] = {
+                    "version": _ver,
+                    "used": _used,
+                    "avg_missing": _avg_missing,
+                }
+            # 追加打分期间实际参与解释但非模型权重因子的 event 因子（只打 version，不统计 used/missing）
+            for _sym_vals in factor_rows.values():
+                for _fc in _sym_vals:
+                    if _fc in fv_payload:
+                        continue
+                    # 只写第一个找到的版本占位即可，无版本信息写 0
+                    fv_payload[_fc] = {
+                        "version": 0,
+                        "used": False,
+                        "avg_missing": None,
+                    }
+                break  # 只需要一次 factor_rows.keys 级别的补全
+
+            # 2) 构造 stats_json：批次元数据（对齐 ScoringBridgeResult）
+            _stats = {
+                "n_scores": int(materialized),
+                "manual_score_count": int(len(manual_scores)),
+                "skipped_symbol_count": int(max(0, len(manual_scores) - materialized)),
+                "factor_calc_batch_id": factor_calc_batch_id,
+                "pipeline_run_id": pipeline_run_id,
+                "factor_symbols_in_warehouse": int(total_symbols_factor_rows),
+                "quality_factor_weight": float(quality_factor_weight),
+                "timing_factor_weight": float(timing_factor_weight),
+            }
+
+            # 3) factor_set_snapshot：查找或新建（created_via="scoring"）
+            #    用 member_versions_snapshot 中的 factor_code:version 计算 hash
+            _snap_map_for_hash = {
+                _fc: {"version": int(member_versions_snapshot.get(_fc, {}).get('version', 1) or 1)}
+                for _fc in sorted(member_versions_snapshot.keys())
+            }
+            # 再合并 event 因子补全项 version（避免多次打分 hash 漂移）
+            for _fc in sorted(fv_payload.keys()):
+                if _fc not in _snap_map_for_hash:
+                    _snap_map_for_hash[_fc] = {"version": int(fv_payload[_fc].get("version", 0) or 0)}
+            _sorted_keys = sorted(_snap_map_for_hash.keys())
+            _raw_ident = ",".join(
+                f"{k}:{_snap_map_for_hash[k].get('version', 0)}" for k in _sorted_keys
+            )
+            _hash = hashlib.sha256(_raw_ident.encode("utf-8")).hexdigest()
+            _snapshot_id: int | None = None
+            try:
+                if factor_set_id is None:
+                    _q = db.query(FactorSetSnapshot).filter(
+                        FactorSetSnapshot.factor_set_id.is_(None),
+                        FactorSetSnapshot.hash == _hash,
+                    )
+                else:
+                    _q = db.query(FactorSetSnapshot).filter(
+                        FactorSetSnapshot.factor_set_id == factor_set_id,
+                        FactorSetSnapshot.hash == _hash,
+                    )
+                _fsnap = _q.first()
+                if _fsnap is None:
+                    # 不存在则创建 scoring 来源的快照
+                    _fsnap = FactorSetSnapshot(
+                        factor_set_id=factor_set_id,
+                        factor_set_version=0,  # 评分时无显式 factor_set version 语义
+                        member_snapshot_json=json.dumps(
+                            _snap_map_for_hash, sort_keys=True, default=str,
+                        ),
+                        hash=_hash,
+                        created_via="scoring",
+                        created_by=scoring_actor or "scoring_bridge",
+                        note=(
+                            f"scoring batch={calc_batch_id} "
+                            f"run_mode={run_mode} model={model.id}"
+                        ),
+                    )
+                    db.add(_fsnap)
+                    db.flush()
+                _snapshot_id = _fsnap.id
+            except Exception as _snap_err:
+                import logging as _log_snap
+                _log_snap.getLogger(__name__).debug(
+                    "[P2-G][scoring] 取 FactorSetSnapshot 失败（允许为 None）: %s",
+                    _snap_err,
+                )
+                _snapshot_id = None
+
+            # 4) 幂等 upsert：先查唯一约束，命中则只更新 stats（保证重放不冲突）
+            _exist_lin = db.query(ScoringLineage).filter(
+                ScoringLineage.score_batch_id == calc_batch_id,
+                ScoringLineage.score_trade_date == trade_date,
+                ScoringLineage.weight_mode == active_mode,
+                ScoringLineage.model_run_id == model.id,
+            ).first()
+            if _exist_lin is None:
+                db.add(ScoringLineage(
+                    score_batch_id=calc_batch_id,
+                    score_trade_date=trade_date,
+                    weight_mode=active_mode,
+                    model_run_id=model.id,
+                    factor_set_snapshot_id=_snapshot_id,
+                    factor_version_ids_json=json.dumps(
+                        fv_payload, sort_keys=True, default=str,
+                    ),
+                    stats_json=json.dumps(_stats, sort_keys=True, default=str),
+                    run_mode=run_mode,
+                    actor=scoring_actor,
+                    note=scoring_note,
+                ))
+            else:
+                # 已存在行：合并 stats，保留原字段（重放/补跑）
+                try:
+                    _prev = json.loads(_exist_lin.stats_json or "{}")
+                    if isinstance(_prev, dict):
+                        _prev.update(_stats)
+                    else:
+                        _prev = _stats
+                except Exception:
+                    _prev = _stats
+                _exist_lin.stats_json = json.dumps(_prev, sort_keys=True, default=str)
+                _exist_lin.factor_version_ids_json = json.dumps(
+                    fv_payload, sort_keys=True, default=str,
+                )
+                if _snapshot_id is not None and _exist_lin.factor_set_snapshot_id is None:
+                    _exist_lin.factor_set_snapshot_id = _snapshot_id
+                if scoring_actor and not _exist_lin.actor:
+                    _exist_lin.actor = scoring_actor
+                if scoring_note:
+                    # 追加 note，不覆盖已有
+                    _cur = _exist_lin.note or ""
+                    _exist_lin.note = (
+                        (_cur + "; " if _cur else "") + scoring_note
+                    )
+            # end savepoint
+    except Exception as _p2g_err:
+        import logging as _log_sl
+        _log_sl.getLogger(__name__).warning(
+            "[P2-G][scoring] 写入 scoring_lineage 血缘失败"
+            "（best-effort 跳过，不影响 Score 写入）: %s",
+            _p2g_err,
+        )
+
     return ScoringBridgeResult(
         mode=active_mode,
         trade_date=trade_date,

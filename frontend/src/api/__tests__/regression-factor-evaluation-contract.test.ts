@@ -54,6 +54,7 @@ const SERVER_EVAL_TASK_KEYS = new Set([
   "cost_rate",
   "direction",
   "created_by",
+  "force_new",
 ]);
 
 /** EvaluationTaskCreate —— required 字段（无默认值） */
@@ -111,9 +112,10 @@ const CLIENT_EVAL_TASK_PAYLOAD_KEYS = new Set([
   "cost_rate",
   "direction",
   "created_by",
+  "force_new",
 ]);
 
-/** FactorEvaluationLab.tsx handleSubmit 实际构造的 payload keys（T5-3 修复后：补全 created_by，与服务端 1:1） */
+/** FactorEvaluationLab.tsx handleSubmit 实际构造的 payload keys（含显式重跑 force_new） */
 const HANDLE_SUBMIT_ACTUAL_KEYS = new Set([
   "factor_code",
   "factor_version_id",
@@ -126,6 +128,7 @@ const HANDLE_SUBMIT_ACTUAL_KEYS = new Set([
   "factor_kind",
   "direction",
   "created_by",
+  "force_new",
 ]);
 
 // ══════════════════════════════════════════════════════════

@@ -3,7 +3,6 @@ import { useApp } from "../../context/AppContext";
 import { t, factorLabel, factorCategoryLabel, factorDirectionLabel } from "../../i18n";
 import {
   api,
-  requestJson,
   type FactorDefinition,
   type FactorReferenceInfo,
   type FactorTransitionAudit,
@@ -128,10 +127,9 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
     setLoading(true);
     try {
       const [f, v, tr] = await Promise.all([
-        api.getFactorDefinition(factorCode),
-        requestJson<FactorVersionListItem[]>(
-          `/api/v1/factors/${encodeURIComponent(factorCode)}/versions`
-        ),
+        // Factor-domain internal - DO NOT USE outside factor center
+        api.scoringGetFactorDefinition(factorCode),
+        api.listFactorVersions(factorCode),
         api.getFactorTransitionHistory(factorCode),
       ]);
       setFactor(f);

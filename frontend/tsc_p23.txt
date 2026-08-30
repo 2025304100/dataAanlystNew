@@ -1,0 +1,4 @@
+﻿src/components/factors/FactorLibrary.tsx(762,27): error TS2339: Property 'currentUser' does not exist on type 'AppContextValue'.
+src/components/factors/FactorLibrary.tsx(779,27): error TS2339: Property 'currentUser' does not exist on type 'AppContextValue'.
+src/components/factors/FactorLibrary.tsx(958,7): error TS2322: Type '{ children: Element; title: string; open: boolean; onCancel: () => void; onOk: () => Promise<void>; okText: string; cancelText: string; confirmLoading: boolean; disabled: boolean; }' is not assignable to type 'IntrinsicAttributes & ModalProps'.
+  Property 'disabled' does not exist on type 'IntrinsicAttributes & ModalProps'.

@@ -43,7 +43,13 @@ from app.schemas.external_data import (
     StaleDataError,
 )
 from app.services.discovery_cleanup import cleanup_expired_discovery_results
-from app.services.async_tasks import interrupt_orphaned_async_tasks
+from app.services.async_tasks import (
+    interrupt_orphaned_async_tasks,
+    mark_graceful_shutdown_tasks,
+    request_all_workers_stop,
+    wait_workers_stopped,
+)
+from app.services.factors.store import shutdown_factor_warehouse_pools
 from app.services.scheduled_tasks import scheduler_loop
 from app.services.symbol_cleanup import cleanup_stale_discovery_symbols
 
@@ -129,6 +135,33 @@ async def lifespan(_: FastAPI):
     _auto_start_universe_init()
 
     yield
+    # _graceful_already_done_A3
+    # A3. Before cancelling any asyncio tasks, ask sync worker threads
+    # to yield early; wait up to 30s; then mark survivors as graceful_
+    # interrupted terminals; finally close warehouse DuckDB pools.
+    try:
+        request_all_workers_stop()
+        workers_finished = wait_workers_stopped(30.0)
+        if not workers_finished:
+            logger.info("A3. wait_workers_stopped timed out after 30s; marking queued/running tasks graceful_interrupted")
+        try:
+            SessionLocal = _get_session_local()
+            db = SessionLocal()
+            try:
+                mark_graceful_shutdown_tasks(db)
+                db.commit()
+            finally:
+                try: db.close()
+                except Exception: pass
+        except Exception:
+            logger.exception("A3. mark_graceful_shutdown_tasks failed during lifespan shutdown")
+        try:
+            shutdown_factor_warehouse_pools()
+        except Exception:
+            logger.exception("A3. shutdown_factor_warehouse_pools failed during lifespan shutdown")
+    except Exception:
+        logger.exception("A3. graceful worker shutdown failed")
+
 
     cleanup_task.cancel()
     try:

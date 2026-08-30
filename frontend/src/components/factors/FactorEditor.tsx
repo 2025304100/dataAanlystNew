@@ -249,7 +249,8 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
     let cancelled = false;
     setLoadingFactor(true);
     Promise.all([
-      api.getFactorDefinition(factorCode),
+      // Factor-domain internal - DO NOT USE outside factor center
+      api.scoringGetFactorDefinition(factorCode),
       api.listFactorVersions(factorCode),
     ])
       .then(([def, versions]) => {
@@ -453,6 +454,7 @@ export default function FactorEditor({ factorCode, onSaved, onBack, initialPaylo
 
     const finish = (targetCode: string) =>
       api
+        // Factor-domain internal - DO NOT USE outside factor center
         .createFactorVersion(targetCode, versionPayload)
         .then(() => {
           message.success(isZh ? "保存成功" : "Saved successfully");

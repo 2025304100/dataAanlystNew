@@ -16,7 +16,7 @@ from app.models.daily_bar import DailyBar
 from app.models.discovery import DiscoveryTaskRecord
 from app.models.score import Score
 from app.models.symbol import Symbol
-from app.services.factors.score_scope import get_active_score_scope
+from app.services.factors.__facade__ import get_active_score_scope  # Public ACL entrypoint
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +249,7 @@ def _eval_score_drop(session: Session, rule: AlertRule) -> list[AlertEvent]:
     threshold = float(cfg.get("threshold", 40))
     symbol_ids = cfg.get("symbol_ids")  # None = 全部
     events = []
-    scope = get_active_score_scope(session)
+    scope = get_active_score_scope(db=session)
 
     # 找每个标的最新评分
     latest_score_subq = (

@@ -56,6 +56,167 @@ function accountTypeLabel(accountType: string | undefined): string {
 }
 
 /* ==========================================================================
+ * 就绪检查 code → 中文名 + 修复指引
+ *   · 用户看到的 tooltip 中方括号改为「中文（原英文code）」格式
+ *     → 用户先看中文，开发排错仍保留原枚举线索
+ *   · 每个 code 配一组 fix[]：直接告诉用户"现在我该点哪里"
+ * ======================================================================== */
+type ReadinessCodeMeta = { cn: string; category: "开关" | "账户" | "来源" | "规则" | "数据" | "范围" | "调度" | "其他"; fix: string[] };
+const READINESS_CODE_META: Record<string, ReadinessCodeMeta> = {
+  PORTFOLIO_DISABLED: {
+    cn: "自动交易开关未开", category: "开关",
+    fix: ["打开「自动接管」卡片右侧总开关；或前往治理 Tab 启用自动交易。"],
+  },
+  AUTO_TRADE_DISABLED: {
+    cn: "自动交易开关未开", category: "开关",
+    fix: ["打开「自动接管」卡片右侧总开关；或前往治理 Tab 启用自动交易。"],
+  },
+  ACCOUNT_NOT_SIMULATED: {
+    cn: "账户非模拟", category: "账户",
+    fix: [
+      "当前自动交易仅支持「模拟」账户类型。",
+      "操作：打开左上角「组合选择器→编辑组合」，把账户类型改为「模拟」；若需实盘自动，请先跑通模拟全流程后再升级。",
+    ],
+  },
+  SOURCE_MODE_INVALID: {
+    cn: "来源模式非法", category: "来源",
+    fix: [
+      "前往「组合→设置→自动交易来源」或「治理 Tab」：把 auto_trade_source_mode 选为合法值 portfolio / members_only / legacy_scan。",
+    ],
+  },
+  SOURCE_LEGACY_SCAN: {
+    cn: "使用旧全局扫描来源", category: "来源",
+    fix: [
+      "属于警告，不阻断执行，但建议迁移：在「治理 Tab→自动交易来源」切为 portfolio 或 members_only，可获得更稳定的新鲜度检查与范围。",
+    ],
+  },
+  WARNING_SOURCE_MODE_LEGACY_SCAN: {
+    cn: "使用旧全局扫描来源", category: "来源",
+    fix: [
+      "属于警告，不阻断执行，但建议迁移：在「治理 Tab→自动交易来源」切为 portfolio 或 members_only。",
+    ],
+  },
+  SOURCE_ENV_OVERRIDE: {
+    cn: "成员来源被环境变量熔断", category: "来源",
+    fix: [
+      "检查部署环境：是否设置了 `MEMBER_SOURCE_ENABLED=false`（紧急时期用于全局熔断成员来源）。",
+      "如非紧急情形，把开关改回 true；否则真实执行会回退到旧扫描逻辑。",
+    ],
+  },
+  WARNING_SOURCE_ENV_OVERRIDE: {
+    cn: "成员来源被环境变量熔断", category: "来源",
+    fix: [
+      "检查部署环境：是否设置了成员来源全局熔断开关；如非紧急，打开后可消除本警告。",
+    ],
+  },
+  RULE_NOT_CONFIGURED: {
+    cn: "未配置激活策略规则", category: "规则",
+    fix: [
+      "切换到「策略规则」Tab：选好选股池、风控阈值、调仓周期，然后**点击保存**，生成一条激活版本的规则快照。",
+      "如果用路径B绑定训练产出：请先在「因子模型训练页」训练一个「已验证」状态的模型，再回到本页下拉选中。",
+    ],
+  },
+  NO_RULE: {
+    cn: "缺少激活规则", category: "规则",
+    fix: ["切到「策略规则」Tab，保存一次激活版的规则。"],
+  },
+  RULE_INVALID_PARAMS: {
+    cn: "策略规则参数非法", category: "规则",
+    fix: [
+      "前往「策略规则」Tab 修复标红字段：通常是 max_single_position_pct / max_loss_per_trade_pct 等百分比超出 0~1 合法范围。",
+      "另一个常见原因：「阶段限制 stage_limits_json」为空——请在风控阶段限制模块里保存有效 JSON。",
+    ],
+  },
+  MARKET_DATA_STALE: {
+    cn: "行情或评分数据过期", category: "数据",
+    fix: [
+      "① 前往「设置 → 数据中心 → 行情底座」：点击「智能同步」或「每日同步」，把 A 股股票和指数行情拉到今天。",
+      "② 切换到「因子输入」Tab：点「同步/重算」候选的股票估值、财报历史、人气榜等因子依赖，直到候选新鲜度全部变为「今日」。",
+      "③ 同步完成后，点击页面中间「就绪检查」旁的「刷新状态」，readiness 会立即重算。",
+    ],
+  },
+  NO_FRESH_SCORES: {
+    cn: "最新评分缺失", category: "数据",
+    fix: [
+      "前往「因子输入 Tab」或「策略规则 Tab」：点「同步候选评分」，重新跑一轮候选打分，让评分更新时间刷新到今日。",
+    ],
+  },
+  NO_TRADEABLE_RANGE: {
+    cn: "无可交易范围", category: "范围",
+    fix: [
+      "当前既没持仓可卖，也没有任何可执行买入计划。",
+      "操作：① 先在「候选/持仓成员」Tab 手动添加几只股票；② 同步行情+评分（修复 MARKET_DATA_STALE）；③ 点「Dry Run 预演」让系统产生买入信号。",
+    ],
+  },
+  SCHEDULE_DISABLED: {
+    cn: "定时任务未创建或暂停", category: "调度",
+    fix: [
+      "前往「治理 → 调度任务」：创建或启用 `task_type=portfolio_auto_trade` 的定时任务，推荐每天 20:00 之后运行（对齐调度时间窗 HG2）。",
+      "注：手动 Dry Run / 真实执行不受调度影响，调度只负责「自动按天跑」。",
+    ],
+  },
+  NO_SCHEDULED_TASK: {
+    cn: "未创建自动交易定时任务", category: "调度",
+    fix: [
+      "前往「治理 → 调度任务」，新建一条 type=portfolio_auto_trade 的定时任务。",
+    ],
+  },
+  SCHEDULED_TASK_DISABLED: {
+    cn: "定时任务已暂停", category: "调度",
+    fix: ["前往「治理 → 调度任务」，把对应的定时任务切为「启用」。"],
+  },
+  SCHEDULE_WINDOW: {
+    cn: "不在调度时间窗", category: "调度",
+    fix: ["调度型就绪检查只会在每日允许时间段（默认 20:00 之后）判定为通过。手动执行 Dry Run / 真实下单不受此限。"],
+  },
+  NO_AUTO_MEMBERS: {
+    cn: "无自动模式成员", category: "范围",
+    fix: [
+      "前往「持仓成员」Tab：找到希望自动管理的成员行，把「执行模式」从「手动/确认」切为「自动」。",
+      "如果「自动交易来源 = portfolio」：即使没有自动成员，也可以直接靠候选池走自动买入（建仓时会自动创建成员）。",
+    ],
+  },
+  NO_CANDIDATES: {
+    cn: "无候选也无持仓", category: "范围",
+    fix: [
+      "点击页面右上角「+ 添加候选标的」，先加入若干只股票作为自动交易的选股范围。",
+      "没有候选也没有已有持仓的组合，自动交易没有工作对象，不会产生任何买卖动作。",
+    ],
+  },
+  NO_BUY_SIGNALS_TODAY: {
+    cn: "今日暂无买入信号", category: "范围",
+    fix: [
+      "属于「今日节奏」类警告（非阻塞）：说明当前候选打分没有产生买入 action，属于正常节奏。",
+      "如果希望主动产生信号：① 扩大选股池 / 加入更多候选；② 在「策略规则」调整因子权重或降低风控阈值；③ 先执行 Dry Run 查看真实打分明细。",
+    ],
+  },
+  DECISION_ENGINE_SOURCE_REQUIRED: {
+    cn: "决策引擎来源缺失", category: "来源",
+    fix: ["前往「设置 → 决策引擎」：打开成员来源订单计划的全局开关 members_source_enabled。"],
+  },
+  STRATEGY_SNAPSHOT_REQUIRED: {
+    cn: "缺少策略执行快照", category: "规则",
+    fix: [
+      "先在「策略规则 Tab」保存一次激活规则，然后跑一轮「Dry Run」或「回测」，系统会自动生成一份策略执行快照并应用。",
+    ],
+  },
+  NOT_READY: {
+    cn: "通用未就绪", category: "其他",
+    fix: ["查看 blockers 列表，按对应 code 逐项修复；或先执行一次 Dry Run 查看更详细的阻断明细。"],
+  },
+};
+
+function getReadinessCodeMeta(code: string): { cn: string; dev: string; fix: string[]; category: string } {
+  const m = READINESS_CODE_META[code];
+  if (m) return { cn: m.cn, dev: code, fix: m.fix, category: m.category };
+  const cn = code.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  return {
+    cn, dev: code, category: "其他",
+    fix: ["属于未知阻塞项，请把下方「message + code」一起截图发给技术支持定位。"],
+  };
+}
+
+/* ==========================================================================
  * FR-P0-10 / FR-P1-8a HG1：9 状态配色（与 PortfolioSelectorDropdown/GovernanceTab 严格对齐）
  * ======================================================================== */
 const PORTFOLIO_STATUS_STYLES: Partial<Record<PortfolioStatus | string, {
@@ -477,36 +638,150 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
       ? t("portfolioTrading.autotrade.enabledOnly")
       : t("portfolioTrading.autotrade.unknown");
 
-  const pillHint = useMemo(() => {
-    if (!autoTradeEnabled) return t("autoTradeDisabled");
-    const lines: string[] = [];
-    // FR-P1-8a: governance 阻塞优先放在第 1 行
-    if (governanceBlocked) {
-      const meta = portfolioStatusRaw
-        ? PORTFOLIO_STATUS_STYLES[portfolioStatusRaw] ?? PORTFOLIO_STATUS_FALLBACK
-        : PORTFOLIO_STATUS_FALLBACK;
-      lines.push(`🔒 HG1 门禁：${meta.title} — ${meta.hint}`);
-    }
-    lines.push(
+  // —— 顶栏「待就绪」徽章的 Tooltip：结构化（中文 code 名 + 原英文括号小字 + 每项修复指引）
+  const pillHint: React.ReactNode = useMemo(() => {
+    if (!autoTradeEnabled) return <span>{t("autoTradeDisabled")}</span>;
+    const subStatuses: Array<{ label: string; no: boolean }> = autoTradeReadiness
+      ? [
+          { label: t("autoTradeSubStatusEnabled"), no: !autoTradeReadiness.enabled },
+          { label: t("autoTradeSubStatusAccount"), no: !autoTradeReadiness.account_ready },
+          { label: t("autoTradeSubStatusData"), no: !autoTradeReadiness.data_ready },
+          { label: t("autoTradeSubStatusSource"), no: !autoTradeReadiness.source_ready },
+          { label: t("autoTradeSubStatusSchedule"), no: !autoTradeReadiness.schedule_ready },
+        ]
+      : [];
+    const subNoMap: Record<string, boolean> = {};
+    subStatuses.forEach((s) => (subNoMap[s.label] = s.no));
+
+    const headLine =
       statusColor === "ready"
         ? t("autoTradeStatusReady")
         : statusColor === "notReady"
         ? t("autoTradeStatusNotReady")
         : statusColor === "enabledOnly"
         ? t("autoTradeStatusEnabledOnly")
-        : t("autoTradeRunning"),
+        : t("autoTradeRunning");
+
+    const blockers = autoTradeReadiness?.blockers?.slice(0, 6) ?? [];
+    const warnings = autoTradeReadiness?.warnings?.slice(0, 4) ?? [];
+
+    return (
+      <div style={{ maxWidth: 460, fontSize: 12, lineHeight: 1.7, color: "#e5e7eb" }}>
+        {/* 1. HG1 门禁优先 */}
+        {governanceBlocked && (() => {
+          const meta = portfolioStatusRaw
+            ? PORTFOLIO_STATUS_STYLES[portfolioStatusRaw] ?? PORTFOLIO_STATUS_FALLBACK
+            : PORTFOLIO_STATUS_FALLBACK;
+          return (
+            <div
+              style={{
+                marginBottom: 8,
+                padding: "6px 8px",
+                borderRadius: 6,
+                background: "rgba(220,38,38,0.14)",
+                border: "1px solid rgba(220,38,38,0.4)",
+              }}
+            >
+              <span style={{ color: "#fca5a5", fontWeight: 600 }}>🔒 HG1 门禁：{meta.title}</span>
+              <div style={{ color: "#f3f4f6", marginTop: 2 }}>{meta.hint}</div>
+            </div>
+          );
+        })()}
+
+        {/* 2. 大状态行 + 5 个子状态（开关/账户/数据/来源/调度） */}
+        <div style={{ fontWeight: 600, marginBottom: 6, color: "#fecaca" }}>{headLine}</div>
+        {subStatuses.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginBottom: 8 }}>
+            {subStatuses.map((s) => (
+              <span key={s.label} style={{ color: s.no ? "#fca5a5" : "#86efac", whiteSpace: "nowrap" }}>
+                {s.label}: <strong style={{ fontWeight: 700 }}>{s.no ? "NO" : "OK"}</strong>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* 3. Blockers（阻塞项）：每项「中文名（原code）」+ 后端 message + 修复指引分步骤 */}
+        {blockers.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 600, color: "#fca5a5", marginBottom: 4 }}>
+              ❌ 阻塞项（{blockers.length}，真实下单会被拒绝）
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, listStyle: "disc" }}>
+              {blockers.map((b, i) => {
+                const meta = getReadinessCodeMeta(b.code);
+                // 把「数据: NO · [中文名（code）]」格式拼出来，和用户截图旧格式习惯对齐
+                const subForCode = subNoMap[meta.category]
+                  ? `${meta.category}: NO · `
+                  : "";
+                return (
+                  <li key={`blk-${i}`} style={{ marginBottom: 6 }}>
+                    <div>
+                      <span style={{ color: "#fca5a5" }}>{subForCode}[</span>
+                      <span style={{ color: "#fff", fontWeight: 600 }}>{meta.cn}</span>
+                      <span style={{ color: "#94a3b8", fontStyle: "italic" }}>（{meta.dev}）</span>
+                      <span style={{ color: "#fca5a5" }}>]</span>{" "}
+                      <span>{b.message}</span>
+                      {typeof (b as any).detail === "string" && (b as any).detail ? (
+                        <span style={{ color: "#94a3b8", marginLeft: 6 }}>（{(b as any).detail}）</span>
+                      ) : null}
+                    </div>
+                    {/* 修复指引 */}
+                    <ul style={{ margin: "4px 0 0 0", paddingLeft: 16, listStyle: "circle" }}>
+                      {meta.fix.map((f, fi) => (
+                        <li key={fi} style={{ color: "#a5f3fc" }}>
+                          <span style={{ color: "#22d3ee", fontWeight: 600 }}>修复指引：</span>
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* 4. Warnings（警告项，非阻塞） */}
+        {warnings.length > 0 && (
+          <div>
+            <div style={{ fontWeight: 600, color: "#fcd34d", marginBottom: 4 }}>
+              ⚠️ 注意事项（{warnings.length}，暂不阻断，但建议修复）
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, listStyle: "disc" }}>
+              {warnings.map((w, i) => {
+                const meta = getReadinessCodeMeta(w.code);
+                return (
+                  <li key={`warn-${i}`} style={{ marginBottom: 6 }}>
+                    <div>
+                      <span style={{ color: "#fcd34d" }}>[</span>
+                      <span style={{ color: "#fff", fontWeight: 600 }}>{meta.cn}</span>
+                      <span style={{ color: "#94a3b8", fontStyle: "italic" }}>（{meta.dev}）</span>
+                      <span style={{ color: "#fcd34d" }}>]</span>{" "}
+                      <span>{w.message}</span>
+                    </div>
+                    <ul style={{ margin: "4px 0 0 0", paddingLeft: 16, listStyle: "circle" }}>
+                      {meta.fix.map((f, fi) => (
+                        <li key={fi} style={{ color: "#fde68a" }}>
+                          <span style={{ color: "#f59e0b", fontWeight: 600 }}>建议：</span>
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {/* 5. 兜底：没有任何 blocker/warning 且未就绪，给下一步建议 */}
+        {statusColor !== "ready" && blockers.length === 0 && warnings.length === 0 && (
+          <div style={{ color: "#94a3b8", marginTop: 4 }}>
+            若状态异常：点「就绪检查」旁的「刷新状态」，或先跑一次 Dry Run 检查 readiness 接口明细。
+          </div>
+        )}
+      </div>
     );
-    if (autoTradeReadiness) {
-      if (!autoTradeReadiness.enabled) lines.push(`- ${t("autoTradeSubStatusEnabled")}: NO`);
-      if (!autoTradeReadiness.account_ready) lines.push(`- ${t("autoTradeSubStatusAccount")}: NO`);
-      if (!autoTradeReadiness.data_ready) lines.push(`- ${t("autoTradeSubStatusData")}: NO`);
-      if (!autoTradeReadiness.source_ready) lines.push(`- ${t("autoTradeSubStatusSource")}: NO`);
-      if (!autoTradeReadiness.schedule_ready) lines.push(`- ${t("autoTradeSubStatusSchedule")}: NO`);
-      for (const b of autoTradeReadiness.blockers.slice(0, 6)) {
-        lines.push(`• [${b.code}] ${b.message}`);
-      }
-    }
-    return lines.join("\n");
   }, [autoTradeEnabled, autoTradeReadiness, statusColor, governanceBlocked, portfolioStatusRaw]);
 
   return (

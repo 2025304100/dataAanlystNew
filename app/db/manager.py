@@ -13,6 +13,7 @@ from typing import ClassVar
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.exc import OperationalError
 
 
 class DatabaseManager:
@@ -141,6 +142,53 @@ class DatabaseManager:
         return self._db_type == "sqlite"
 
     # ── 会话工厂方法 ──────────────────────────────────────
+
+    def _is_transient_mysql_disconnect(self, exc) -> bool:
+        if not self.is_mysql or not isinstance(exc, OperationalError):
+            return False
+        msg = str(exc)
+        for token in ['10053', '10054', '2006', '2013', 'MySQL server has gone away', 'Lost connection']:
+            if token in msg: return True
+        return False
+
+    def run_in_retry_session(self, runner, *, max_retries: int = 2):
+        # Caller must be idempotent (worker step bodies are).
+        last_exc = None
+        for attempt in range(max_retries + 1):
+            session = self.get_session()
+            committed_box = [False]
+            def do_commit(orig_session=session):
+                orig_session.commit()
+                committed_box[0] = True
+            try:
+                result = runner(session, do_commit)
+                if not committed_box[0]:
+                    try: session.commit()
+                    except Exception: pass
+                return result
+            except Exception as exc:
+                last_exc = exc
+                try: session.rollback()
+                except Exception: pass
+                try: session.close()
+                except Exception: pass
+                if attempt < max_retries and self._is_transient_mysql_disconnect(exc):
+                    try:
+                        with self._lock:
+                            eng = self._engine
+                            t = self._db_type
+                            u = str(eng.url) if eng else None
+                        if eng is not None:
+                            try: eng.dispose()
+                            except Exception: pass
+                        if u is not None:
+                            self.initialize(u, db_type=t)
+                    except Exception as rebuild_exc:
+                        raise exc from rebuild_exc
+                    continue
+                raise
+        if last_exc is not None: raise last_exc
+        raise RuntimeError("run_in_retry_session: no attempt executed")
 
     def get_session(self) -> Session:
         """创建一个新的数据库会话。"""

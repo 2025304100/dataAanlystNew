@@ -150,30 +150,152 @@ function diffReasonColor(reason: string): string {
   }
 }
 
+/* ==========================================================================
+ * 就绪检查 code → 中文名 + 修复指引
+ *   · 页面显示统一为「中文名称（原英文枚举 ID）」
+ *     → 用户先看中文，开发排错仍能定位原 code
+ *   · 每个 code 配 fix[]：直接告诉用户"下一步该点哪里"
+ * ======================================================================== */
+type ReadinessCodeMetaLocal = { cn: string; category: "开关" | "账户" | "来源" | "规则" | "数据" | "范围" | "调度" | "其他"; fix: string[] };
+const READINESS_CODE_META: Record<string, ReadinessCodeMetaLocal> = {
+  PORTFOLIO_DISABLED: { cn: "自动交易开关未开", category: "开关", fix: ["打开「自动接管」右侧总开关；或前往治理 Tab 启用自动交易。"] },
+  AUTO_TRADE_DISABLED: { cn: "自动交易开关未开", category: "开关", fix: ["打开「自动接管」右侧总开关；或前往治理 Tab 启用自动交易。"] },
+  ACCOUNT_NOT_SIMULATED: {
+    cn: "账户非模拟", category: "账户",
+    fix: [
+      "自动交易目前仅支持「模拟」账户（AccountType=simulated）。",
+      "操作：打开左上角「组合选择器→编辑组合」，把账户类型切为模拟；若需实盘自动，请先完整跑通模拟流程后再升级。",
+    ],
+  },
+  SOURCE_MODE_INVALID: {
+    cn: "来源模式非法", category: "来源",
+    fix: ["前往「治理 Tab→自动交易来源」：把 auto_trade_source_mode 选为合法值 portfolio / members_only / legacy_scan。"],
+  },
+  SOURCE_LEGACY_SCAN: {
+    cn: "使用旧全局扫描来源", category: "来源",
+    fix: ["属于警告，不阻断执行，但建议迁移：在「治理 Tab→自动交易来源」切为 portfolio 或 members_only，可获得更稳定的新鲜度检查与范围。"],
+  },
+  WARNING_SOURCE_MODE_LEGACY_SCAN: {
+    cn: "使用旧全局扫描来源", category: "来源",
+    fix: ["属于警告，不阻断执行，但建议迁移：在「治理 Tab→自动交易来源」切为 portfolio 或 members_only。"],
+  },
+  SOURCE_ENV_OVERRIDE: {
+    cn: "成员来源被环境变量熔断", category: "来源",
+    fix: [
+      "检查部署环境：是否设置了 `MEMBER_SOURCE_ENABLED=false` 一类的全局熔断开关（紧急时期使用）。",
+      "如非紧急，把该开关改回 true；否则真实执行会回退到旧扫描逻辑。",
+    ],
+  },
+  WARNING_SOURCE_ENV_OVERRIDE: {
+    cn: "成员来源被环境变量熔断", category: "来源",
+    fix: ["检查部署环境：成员来源全局熔断是否被打开；如非紧急，关闭熔断以消除本警告。"],
+  },
+  RULE_NOT_CONFIGURED: {
+    cn: "未配置激活策略规则", category: "规则",
+    fix: [
+      "切换到「策略规则」Tab：选择选股池、风控阈值、调仓周期，然后**点击保存**生成激活版规则快照。",
+      "若走路径B绑定训练产出：先在「因子模型训练页」训练一个「已验证」模型，再回本页下拉选中。",
+    ],
+  },
+  NO_RULE: { cn: "缺少激活规则", category: "规则", fix: ["切到「策略规则」Tab，保存一次激活版的规则。"] },
+  RULE_INVALID_PARAMS: {
+    cn: "策略规则参数非法", category: "规则",
+    fix: [
+      "前往「策略规则」Tab 修复标红字段：通常是 max_single_position_pct / max_loss_per_trade_pct 等百分比超出 0~1。",
+      "另一个常见原因：「阶段限制 stage_limits_json」为空——请在风控阶段限制模块里保存有效 JSON。",
+    ],
+  },
+  MARKET_DATA_STALE: {
+    cn: "行情或评分数据过期", category: "数据",
+    fix: [
+      "① 前往「设置 → 数据中心 → 行情底座」：点击「智能同步」或「每日同步」，把 A 股股票和指数行情拉到今日。",
+      "② 切换到「因子输入」Tab：点「同步/重算」候选的估值、财报历史、人气榜等因子依赖，直到候选新鲜度全部变为「今日」。",
+      "③ 完成后点本页上方「刷新状态」按钮（readiness 会立即重算）。",
+    ],
+  },
+  NO_FRESH_SCORES: {
+    cn: "最新评分缺失", category: "数据",
+    fix: ["前往「因子输入 Tab」或「策略规则 Tab」：点「同步候选评分」，重跑一轮候选打分并刷新到今日。"],
+  },
+  NO_TRADEABLE_RANGE: {
+    cn: "无可交易范围", category: "范围",
+    fix: [
+      "当前既没持仓可卖，也没有任何可执行买入计划。",
+      "操作：① 先在「候选/持仓成员」Tab 手动添加几只股票；② 同步行情+评分（修复 MARKET_DATA_STALE）；③ 点下方「Dry Run 预演」让系统产生买入信号。",
+    ],
+  },
+  SCHEDULE_DISABLED: {
+    cn: "定时任务未创建或暂停", category: "调度",
+    fix: [
+      "前往「治理 → 调度任务」：创建或启用 `task_type=portfolio_auto_trade` 的定时任务，推荐每天 20:00 之后运行（对齐 HG2 调度时间窗）。",
+      "注：手动 Dry Run / 真实执行不受调度影响，调度仅负责「自动按天跑」。",
+    ],
+  },
+  NO_SCHEDULED_TASK: {
+    cn: "未创建自动交易定时任务", category: "调度",
+    fix: ["前往「治理 → 调度任务」，新建一条 type=portfolio_auto_trade 的定时任务。"],
+  },
+  SCHEDULED_TASK_DISABLED: {
+    cn: "定时任务已暂停", category: "调度",
+    fix: ["前往「治理 → 调度任务」，把对应的定时任务切为「启用」。"],
+  },
+  SCHEDULE_WINDOW: {
+    cn: "不在调度时间窗", category: "调度",
+    fix: ["调度型就绪检查仅在每日允许时间段（默认 20:00 之后）判定通过。手动执行 Dry Run / 真实下单不受此限。"],
+  },
+  NO_AUTO_MEMBERS: {
+    cn: "无自动模式成员", category: "范围",
+    fix: [
+      "前往「持仓成员」Tab：把希望自动管理成员的「执行模式」从「手动/确认」切为「自动」。",
+      "若「自动交易来源 = portfolio」：即使没有自动成员，也可以直接靠候选池走自动买入（会自动建成员）。",
+    ],
+  },
+  NO_CANDIDATES: {
+    cn: "无候选也无持仓", category: "范围",
+    fix: [
+      "点击页面右上角「+ 添加候选标的」，先加入若干只股票作为自动交易选股范围。",
+      "没有候选也没有持仓的组合，自动交易没有工作对象，不会产生动作。",
+    ],
+  },
+  NO_BUY_SIGNALS_TODAY: {
+    cn: "今日暂无买入信号", category: "范围",
+    fix: [
+      "属于「今日节奏」类警告（非阻塞）：说明当前候选打分没有产生买入 action，属于正常节奏。",
+      "如果希望主动产生信号：① 扩大选股池/加入更多候选；② 在「策略规则」调整因子权重或降低风控阈值；③ 先 Dry Run 查看打分明细。",
+    ],
+  },
+  DECISION_ENGINE_SOURCE_REQUIRED: {
+    cn: "决策引擎来源缺失", category: "来源",
+    fix: ["前往「设置 → 决策引擎」：打开成员来源订单计划的全局开关 members_source_enabled。"],
+  },
+  STRATEGY_SNAPSHOT_REQUIRED: {
+    cn: "缺少策略执行快照", category: "规则",
+    fix: ["先在「策略规则 Tab」保存一次激活规则，再跑一轮 Dry Run 或回测，系统会自动生成并应用快照。"],
+  },
+  NOT_READY: {
+    cn: "通用未就绪", category: "其他",
+    fix: ["查看下方 blockers 列表按 code 逐项修复；或先执行一次 Dry Run 看到更详细的阻断明细。"],
+  },
+};
+
+function getReadinessCodeMeta(code: string): { cn: string; dev: string; fix: string[]; category: string } {
+  const m = READINESS_CODE_META[code];
+  if (m) return { cn: m.cn, dev: code, fix: m.fix, category: m.category };
+  const cn = code.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  return {
+    cn, dev: code, category: "其他",
+    fix: ["属于未知阻塞项，请把下方「message + code」一起截图发给技术支持定位。"],
+  };
+}
+
+function issueCodeCN(code: string): string {
+  // 保持向后兼容：原来 issueCodeToText 是返回「数据/来源/调度」大类，现在改为返回 code 的中文名称
+  return getReadinessCodeMeta(code).cn;
+}
+
+/** @deprecated 请直接使用 getReadinessCodeMeta(code).cn；保留兼容用于 window.confirm 文案 */
 function issueCodeToText(code: string): string {
-  // 后端 blocker/warning code → 本地化的简短说明（缺省时直接用 message）
-  switch (code) {
-    case "AUTO_TRADE_DISABLED":
-      return t("autoTradeSubStatusEnabled");
-    case "ACCOUNT_NOT_SIMULATED":
-      return t("autoTradeSubStatusAccount");
-    case "MARKET_DATA_STALE":
-    case "NO_FRESH_SCORES":
-      return t("autoTradeSubStatusData");
-    case "NO_SOURCE_MODE":
-    case "SOURCE_ENV_OVERRIDE":
-    case "WARNING_SOURCE_ENV_OVERRIDE":
-      return t("autoTradeSubStatusSource");
-    case "NO_SCHEDULED_TASK":
-    case "SCHEDULED_TASK_DISABLED":
-    case "SCHEDULE_WINDOW":
-    case "WARNING_SOURCE_MODE_LEGACY_SCAN":
-      return t("autoTradeSubStatusSchedule");
-    case "NO_RULE":
-    case "NO_TRADEABLE_RANGE":
-    default:
-      return code;
-  }
+  return issueCodeCN(code);
 }
 
 type UnifiedErrorExtras = Record<string, unknown> & { blockers?: ReadinessIssue[]; warnings?: ReadinessIssue[] };
@@ -849,15 +971,34 @@ export default function AutoTradePanel() {
                 showIcon
                 message={t("autoTradeBlockers").replace("{count}", String(blockers.length))}
                 description={
-                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12 }}>
-                    {blockers.map((b, i) => (
-                      <li key={`b-${i}`}>
-                        <Tag color="red">{issueCodeToText(b.code)}</Tag> {b.message}
-                        {typeof b.detail === "string" && b.detail ? (
-                          <span style={{ color: "#94a3b8", marginLeft: 6 }}>（{b.detail}）</span>
-                        ) : null}
-                      </li>
-                    ))}
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.7 }}>
+                    {blockers.map((b, i) => {
+                      const meta = getReadinessCodeMeta(b.code);
+                      return (
+                        <li key={`b-${i}`} style={{ marginBottom: 10 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                            <Tag color="red" style={{ margin: 0 }}>
+                              <span style={{ fontWeight: 600 }}>{meta.cn}</span>
+                              <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4, fontStyle: "italic" }}>
+                                （{meta.dev}）
+                              </span>
+                            </Tag>
+                            <span>{b.message}</span>
+                            {typeof b.detail === "string" && b.detail ? (
+                              <span style={{ color: "#94a3b8" }}>（{b.detail}）</span>
+                            ) : null}
+                          </div>
+                          <ul style={{ margin: "4px 0 0 0", paddingLeft: 18, listStyle: "circle" }}>
+                            {meta.fix.map((f, fi) => (
+                              <li key={fi} style={{ color: "#0e7490" }}>
+                                <span style={{ color: "#0891b2", fontWeight: 600 }}>修复指引：</span>
+                                {f}
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      );
+                    })}
                   </ul>
                 }
                 style={{ marginBottom: 8 }}
@@ -869,12 +1010,31 @@ export default function AutoTradePanel() {
                 showIcon
                 message={t("autoTradeWarnings").replace("{count}", String(warnings.length))}
                 description={
-                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12 }}>
-                    {warnings.map((w, i) => (
-                      <li key={`w-${i}`}>
-                        <Tag color="orange">{issueCodeToText(w.code)}</Tag> {w.message}
-                      </li>
-                    ))}
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.7 }}>
+                    {warnings.map((w, i) => {
+                      const meta = getReadinessCodeMeta(w.code);
+                      return (
+                        <li key={`w-${i}`} style={{ marginBottom: 10 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                            <Tag color="orange" style={{ margin: 0 }}>
+                              <span style={{ fontWeight: 600 }}>{meta.cn}</span>
+                              <span style={{ fontSize: 10, color: "#78716c", marginLeft: 4, fontStyle: "italic" }}>
+                                （{meta.dev}）
+                              </span>
+                            </Tag>
+                            <span>{w.message}</span>
+                          </div>
+                          <ul style={{ margin: "4px 0 0 0", paddingLeft: 18, listStyle: "circle" }}>
+                            {meta.fix.map((f, fi) => (
+                              <li key={fi} style={{ color: "#92400e" }}>
+                                <span style={{ color: "#d97706", fontWeight: 600 }}>建议：</span>
+                                {f}
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      );
+                    })}
                   </ul>
                 }
                 style={{ marginBottom: 8 }}
@@ -896,12 +1056,31 @@ export default function AutoTradePanel() {
                   {errorBlockers?.length ? t("autoTradeExecBlockedDesc") + " " + t("autoTradeExecBlockedNextStep") : error}
                 </div>
                 {errorBlockers?.length ? (
-                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12 }}>
-                    {errorBlockers.map((b, i) => (
-                      <li key={`eb-${i}`}>
-                        <Tag color="red">{issueCodeToText(b.code)}</Tag> {b.message}
-                      </li>
-                    ))}
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12, lineHeight: 1.7 }}>
+                    {errorBlockers.map((b, i) => {
+                      const meta = getReadinessCodeMeta(b.code);
+                      return (
+                        <li key={`eb-${i}`} style={{ marginBottom: 10 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                            <Tag color="red" style={{ margin: 0 }}>
+                              <span style={{ fontWeight: 600 }}>{meta.cn}</span>
+                              <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4, fontStyle: "italic" }}>
+                                （{meta.dev}）
+                              </span>
+                            </Tag>
+                            <span>{b.message}</span>
+                          </div>
+                          <ul style={{ margin: "4px 0 0 0", paddingLeft: 18, listStyle: "circle" }}>
+                            {meta.fix.map((f, fi) => (
+                              <li key={fi} style={{ color: "#0e7490" }}>
+                                <span style={{ color: "#0891b2", fontWeight: 600 }}>修复指引：</span>
+                                {f}
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : null}
               </div>

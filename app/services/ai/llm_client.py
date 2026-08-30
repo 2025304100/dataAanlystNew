@@ -92,7 +92,15 @@ def _http_chat_completion(
     }
     started = time.time()
     try:
-        with httpx.Client(timeout=profile.timeout_seconds) as client:
+        # 非流式调用：统一给 120s 兜底，避免长回复时被默认 30s 截断
+        base_timeout = max(float(profile.timeout_seconds), 120.0)
+        timeout = httpx.Timeout(
+            connect=base_timeout,
+            write=base_timeout,
+            read=base_timeout,
+            pool=base_timeout,
+        )
+        with httpx.Client(timeout=timeout) as client:
             resp = client.post(endpoint, json=payload, headers=headers)
     except httpx.TimeoutException as exc:
         latency_ms = int((time.time() - started) * 1000)
@@ -154,7 +162,15 @@ def stream_llm_completion(
     chunks: list[str] = []
     usage: dict[str, Any] = {}
     try:
-        with httpx.Client(timeout=profile.timeout_seconds) as client:
+        # 流式响应：connect/write 用配置超时，read 阶段不设上限
+        base_timeout = float(profile.timeout_seconds)
+        timeout = httpx.Timeout(
+            connect=base_timeout,
+            write=base_timeout,
+            read=None,
+            pool=base_timeout,
+        )
+        with httpx.Client(timeout=timeout) as client:
             with client.stream("POST", endpoint, json=payload, headers=headers) as resp:
                 if resp.status_code >= 400:
                     result = LLMCallResult(success=False, error_type=_classify_error(resp.status_code), error_message=f"HTTP {resp.status_code}", profile_used=profile)

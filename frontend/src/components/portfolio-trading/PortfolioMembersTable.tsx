@@ -55,6 +55,9 @@ interface PortfolioMemberLite {
   priority?: number;
   created_at?: string | null;
   updated_at?: string | null;
+  // FIX: 后端新返回的标的代码/名称（避免未建仓成员只能显示 #symbol_id）
+  symbol?: string | null;
+  name?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -131,6 +134,8 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
   const [search, setSearch] = useState("");
   const [rebalancing, setRebalancing] = useState(false);
   const [rowActionSymbolId, setRowActionSymbolId] = useState<number | null>(null);
+  // FIX: 候选池不再移除已加入的标的，改为用这个集合判重并置灰按钮/整行
+  const [alreadyMemberSymIds, setAlreadyMemberSymIds] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     if (!portfolioId) {
@@ -152,6 +157,16 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
       ? (Array.isArray(memRes.value) ? memRes.value : []) as PortfolioMemberLite[]
       : [];
 
+    // FIX: 记录 active 成员的 symbol_id，用于：
+    //  1) 候选池过滤掉已经是成员的标的（避免"点击加入→后台报已存在"的矛盾）
+    //  2) 0 持仓行 fallback 取 symbol/name 时使用
+    const activeMemberSymIds = new Set<number>(
+      members.filter((m) => !m.status || m.status === "active").map((m) => m.symbol_id),
+    );
+    const membersBySymId = new Map<number, PortfolioMemberLite>(
+      members.map((m) => [m.symbol_id, m]),
+    );
+
     // 合并规则：以 positions 为基础，附加 member 信息；
     // 补充：members 中有但 positions 中无的（已加入成员但尚未建仓）也显示为 0 持仓行
     const posBySym = new Map<number, PositionRow>(rawPositions.map((p) => [p.symbol_id, p]));
@@ -160,25 +175,42 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
     // 1) 有持仓的行（来自 positions）优先，附加 member 字段
     for (const p of rawPositions) {
       seen.add(p.symbol_id);
-      const m = members.find((m) => m.symbol_id === p.symbol_id);
+      const m = membersBySymId.get(p.symbol_id);
       merged.push({
         ...p,
         member_id: m?.id ?? null,
         member_status: m?.status ?? null,
         execution_mode: m?.execution_mode ?? null,
         source_type: m?.source_type ?? null,
+        // FIX: member 返回提供 symbol/name，若 positions 中缺失则兜底填入（避免旧数据中 fields 不完整）
+        symbol: p.symbol ?? m?.symbol ?? null,
+        name: p.name ?? m?.name ?? null,
       });
     }
-    // 2) 有成员但无持仓：合成 0 持仓行（symbol/name 字段来自 positions 里同 symbol_id 的数据，否则留空待后端回填）
+    // FIX: 预建 candidates 映射，作为 0 持仓行的第二个 fallback 来源
+    const rawCandidates: WorkbenchCandidate[] = candidateRes.status === "fulfilled"
+      ? (Array.isArray(candidateRes.value) ? candidateRes.value : []) as WorkbenchCandidate[]
+      : [];
+    const candidateBySymId = new Map<number, WorkbenchCandidate>();
+    for (const candidate of rawCandidates) {
+      const symbolId = Number(candidate.symbol_id);
+      if (!Number.isInteger(symbolId) || symbolId <= 0) continue;
+      if (!candidateBySymId.has(symbolId)) candidateBySymId.set(symbolId, candidate);
+    }
+    // 2) 有成员但无持仓：合成 0 持仓行
+    //    symbol/name 查找优先级：positions → candidates 池同 symbol_id → member 自带 symbol/name → 最后 null（UI 上显示“未解析 #ID”）
     for (const m of members) {
       if (seen.has(m.symbol_id)) continue;
       const existing = posBySym.get(m.symbol_id);
+      const cand = candidateBySymId.get(m.symbol_id);
+      const fallbackSym = existing?.symbol ?? cand?.symbol ?? m?.symbol ?? null;
+      const fallbackName = existing?.name ?? cand?.name ?? m?.name ?? null;
       merged.push({
         id: -(m.id),
         portfolio_id: m.portfolio_id,
         symbol_id: m.symbol_id,
-        symbol: existing?.symbol ?? null,
-        name: existing?.name ?? null,
+        symbol: fallbackSym,
+        name: fallbackName,
         quantity: 0,
         avg_cost: 0,
         latest_price: existing?.latest_price ?? 0,
@@ -198,17 +230,17 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
     if (posRes.status !== "fulfilled" && memRes.status !== "fulfilled") {
       setError(t("portfolioTrading.members.loadFailed"));
     }
-    if (candidateRes.status === "fulfilled") {
-      const uniqueCandidates = new Map<number, WorkbenchCandidate>();
-      for (const candidate of candidateRes.value as WorkbenchCandidate[]) {
-        const symbolId = Number(candidate.symbol_id);
-        if (!Number.isInteger(symbolId) || symbolId <= 0) continue;
-        if (!uniqueCandidates.has(symbolId)) uniqueCandidates.set(symbolId, candidate);
-      }
-      setCandidates(Array.from(uniqueCandidates.values()));
-    } else {
-      setCandidates([]);
+    // FIX: 候选池去重，不再移除已是 active 成员的标的
+    // （改为在 UI 上整行置灰 + 按钮禁用 + "已加入持仓" Tag，保留用户看到"候选池完整列表"的直觉）
+    const uniqueCandidates = new Map<number, WorkbenchCandidate>();
+    for (const candidate of rawCandidates) {
+      const symbolId = Number(candidate.symbol_id);
+      if (!Number.isInteger(symbolId) || symbolId <= 0) continue;
+      if (!uniqueCandidates.has(symbolId)) uniqueCandidates.set(symbolId, candidate);
     }
+    setCandidates(Array.from(uniqueCandidates.values()));
+    // 更新已加入成员集合，用于候选池置灰判断
+    setAlreadyMemberSymIds(activeMemberSymIds);
     setLoading(false);
   }, [portfolioId]);
 
@@ -321,7 +353,9 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
         showToast("info", t("portfolioTrading.members.closeFailed"));
         return;
       }
-      const codeName = `${p.symbol ?? `#${p.symbol_id}`} ${p.name ?? ""}`.trim();
+      const codePart = p.symbol ? p.symbol : `未解析#${p.symbol_id}`;
+      const namePart = p.name ? p.name : "(名称待同步)";
+      const codeName = `${codePart} ${namePart}`.trim();
       const confirmed = window.confirm(
         `确认对【${codeName}】执行清仓？\n\n将以市价卖出全部 ${fmtNum(qty, 0)} 股，当前市值约 ${fmtNum(p.market_value)} 元。\n卖出后该标的将从持仓列表移除，但仍保留为组合成员（可在成员页查看）。\n\n请再次确认此操作，成交后不可撤销。`,
       );
@@ -411,12 +445,18 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
         showToast("error", "HG1 门禁：当前组合禁止新增候选/建仓（需 NEW_BUY 权限）");
         return;
       }
+      const symId = Number(candidate.symbol_id);
+      // FIX: 候选池按钮置灰虽然阻止了点击，但必须再校验一次防止并发/右键脚本调用
+      if (alreadyMemberSymIds.has(symId)) {
+        showToast("info", "该标的已在当前组合持仓中，无需重复添加");
+        return;
+      }
       try {
         await requestJson(`/api/v1/portfolios/${portfolioId}/members`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            symbol_id: Number(candidate.symbol_id),
+            symbol_id: symId,
             status: "active",
             execution_mode: "manual",
             source_type: "candidate",
@@ -425,13 +465,19 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
           }),
         });
         showToast("success", t("portfolioTrading.members.addMemberSuccess"));
+        // FIX: 不等 load() 异步完成，立刻把 symbolId 追加进 alreadyMemberSymIds
+        // 这样 UI 上按钮立即置灰为「已加入持仓」，避免在  load() 期间再次点击
+        setAlreadyMemberSymIds((prev) => {
+          if (prev.has(symId)) return prev;
+          return new Set([...prev, symId]);
+        });
         await load();
       } catch (err) {
         const msg = err instanceof Error ? err.message : "";
         showToast("error", msg || t("portfolioTrading.members.addMemberFailed"));
       }
     },
-    [portfolioId, showToast, load, allowNewBuys],
+    [portfolioId, showToast, load, allowNewBuys, alreadyMemberSymIds],
   );
 
   if (loading) {
@@ -595,11 +641,44 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
                   return (
                     <tr key={p.symbol_id} className={isPendingExit ? "pt-row-warn" : ""}>
                       {/* 1. 标的代码 */}
-                      <td className="pt-mono" style={{ fontWeight: 500, color: "var(--pt-primary)" }}>
-                        {p.symbol ?? `#${p.symbol_id}`}
+                      <td className="pt-mono" style={{ fontWeight: 500 }}>
+                        {p.symbol ? (
+                          <span style={{ color: "var(--pt-primary)" }}>{p.symbol}</span>
+                        ) : (
+                          <span
+                            title={`标的代码未解析（symbol_id=${p.symbol_id}）。若点击“加入持仓”后出现此提示，请等待成员信息刷新，或前往“数据中心”同步行情底座。`}
+                            style={{
+                              color: "var(--pt-state-error)",
+                              background: "rgba(239,68,68,0.08)",
+                              padding: "1px 6px",
+                              borderRadius: 4,
+                              fontWeight: 600,
+                              fontSize: 12,
+                            }}
+                          >
+                            未解析（#{p.symbol_id}）
+                          </span>
+                        )}
                       </td>
                       {/* 2. 标的名称 */}
-                      <td>{p.name ?? "—"}</td>
+                      <td>
+                        {p.name ? (
+                          <span>{p.name}</span>
+                        ) : p.symbol ? (
+                          <span style={{ color: "var(--pt-muted-foreground)" }}>—</span>
+                        ) : (
+                          <span
+                            style={{
+                              color: "var(--pt-state-error)",
+                              fontSize: 12,
+                              fontWeight: 500,
+                            }}
+                            title={`标的名称未同步（symbol_id=${p.symbol_id}），请前往“数据中心”同步行情底座。`}
+                          >
+                            ⚠️ 名称待同步
+                          </span>
+                        )}
+                      </td>
                       {/* 3. 现价 */}
                       <td className="pt-mono" style={{ textAlign: "right" }}>{fmtNum(p.latest_price)}</td>
                       {/* 4. 成本价 */}
@@ -719,9 +798,25 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
           <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--pt-foreground)", margin: 0 }}>
             {t("portfolioTrading.members.candidatePoolTitle")}
           </h3>
-          <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>
-            {candidates.length} {t("portfolioTrading.members.candidatePoolCount")}
-          </span>
+          {(() => {
+            const joined = candidates.reduce((acc, c) => acc + (alreadyMemberSymIds.has(Number(c.symbol_id)) ? 1 : 0), 0);
+            const pending = candidates.length - joined;
+            return (
+              <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>
+                {candidates.length > 0 && joined > 0 ? (
+                  <>
+                    <span style={{ color: "var(--pt-primary)", fontWeight: 500 }}>{pending}</span>
+                    {t("portfolioTrading.members.candidatePoolCount")}
+                    <span style={{ margin: "0 4px", opacity: 0.6 }}>·</span>
+                    <span style={{ color: "var(--pt-state-success)", fontWeight: 500 }}>{joined}</span>
+                    <span>只已加入持仓</span>
+                  </>
+                ) : (
+                  <>{candidates.length} {t("portfolioTrading.members.candidatePoolCount")}</>
+                )}
+              </span>
+            );
+          })()}
         </div>
         <div className="thin-scrollbar" style={{ overflowX: "auto" }}>
           <table className="pt-table">
@@ -749,12 +844,52 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
                     ? c.reason_tags[0]
                     : (c as WorkbenchCandidate & { factor_tag?: string }).factor_tag ?? c.stage ?? "";
                   const tone = factorTone(factorTag);
+                  // FIX: 判重 — 已加入组合持仓的标的 → 整行置灰 + 按钮禁用 + 名称Tag
+                  const symId = Number(c.symbol_id);
+                  const alreadyInPortfolio = alreadyMemberSymIds.has(symId);
+                  const addBtnDisabled = alreadyInPortfolio || !allowNewBuys;
+                  const addBtnTitle = alreadyInPortfolio
+                    ? "该标的已在当前组合持仓中，无需重复添加"
+                    : !allowNewBuys
+                      ? "HG1 门禁：当前组合禁止新增候选/建仓（需 NEW_BUY 权限）"
+                      : undefined;
                   return (
-                    <tr key={c.symbol_id}>
+                    <tr
+                      key={c.symbol_id}
+                      style={
+                        alreadyInPortfolio
+                          ? {
+                              opacity: 0.52,
+                              filter: "saturate(0.35)",
+                              background: "rgba(107,114,128,0.04)",
+                            }
+                          : undefined
+                      }
+                    >
                       <td className="pt-mono" style={{ fontWeight: 500 }}>
                         {c.symbol ?? `#${c.symbol_id}`}
                       </td>
-                      <td>{c.name ?? "—"}</td>
+                      <td style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span>{c.name ?? "—"}</span>
+                        {alreadyInPortfolio ? (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "1px 8px",
+                              borderRadius: "var(--pt-radius-full)",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              background: "var(--pt-state-success-dim, rgba(22,163,74,0.12))",
+                              color: "var(--pt-state-success)",
+                              border: "1px solid rgba(22,163,74,0.25)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            ✓ 已加入持仓
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="pt-mono" style={{ textAlign: "right", fontWeight: 500, color: "var(--pt-primary)" }}>
                         {c.priority_score != null ? Number(c.priority_score).toFixed(1) : "—"}
                       </td>
@@ -785,13 +920,30 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
                       <td style={{ textAlign: "center" }}>
                         <button
                           type="button"
-                          className="pt-btn pt-btn-primary pt-btn-sm"
+                          className={
+                            alreadyInPortfolio
+                              ? "pt-btn pt-btn-sm"
+                              : "pt-btn pt-btn-primary pt-btn-sm"
+                          }
                           onClick={() => handleAddMember(c)}
-                          disabled={!allowNewBuys}
-                          title={!allowNewBuys ? "HG1 门禁：当前组合禁止新增候选/建仓（需 NEW_BUY 权限）" : undefined}
-                          style={{ opacity: !allowNewBuys ? 0.55 : 1, cursor: !allowNewBuys ? "not-allowed" : undefined }}
+                          disabled={addBtnDisabled}
+                          title={addBtnTitle}
+                          style={{
+                            opacity: addBtnDisabled ? 0.55 : 1,
+                            cursor: addBtnDisabled ? "not-allowed" : undefined,
+                            // 已加入的按钮：切为灰色普通按钮样式，不再是蓝色 primary
+                            ...(alreadyInPortfolio
+                              ? {
+                                  background: "rgba(107,114,128,0.15)",
+                                  color: "var(--pt-muted-foreground)",
+                                  fontWeight: 500,
+                                }
+                              : undefined),
+                          }}
                         >
-                          {!allowNewBuys ? "🔒 " : ""}{t("portfolioTrading.members.candidateActionAdd")}
+                          {alreadyInPortfolio
+                            ? "✓ 已加入持仓"
+                            : `${!allowNewBuys ? "🔒 " : ""}${t("portfolioTrading.members.candidateActionAdd")}`}
                         </button>
                       </td>
                     </tr>

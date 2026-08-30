@@ -139,7 +139,8 @@ export default function TaskCenter() {
               } else if (task.task_type === "macro_update") {
                 await api.cancelMacroUpdateTask(task.id);
               } else if (task.task_type === "factor_pipeline") {
-                await api.cancelFactorPipelineTask(task.id);
+                // 走因子域公共 Facade，任务中心不再知道 /factor-pipeline 内部路由
+                await api.scoringCancelTask(task.id);
               } else if (isExternalSyncTask(task.task_type)) {
                 await api.cancelExternalDataSyncTask(task.id);
               } else {

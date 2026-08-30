@@ -57,6 +57,16 @@ def test_duplicate_delivery_reuses_a_terminal_task(db_session):
     assert db_session.query(AsyncTaskRecord).filter_by(task_type="market_data_sync").count() == 1
 
 
+def test_force_new_delivery_creates_a_distinct_task(db_session):
+    payload = {"portfolio_id": 42, "trade_date": "2026-08-22", "symbols": [1, 2]}
+    first = async_tasks.create_async_task("market_data_sync", payload)
+    replay = async_tasks.create_async_task("market_data_sync", payload, force_new=True)
+
+    assert replay.id != first.id
+    assert replay.idempotency_key != first.idempotency_key
+    assert db_session.query(AsyncTaskRecord).filter_by(task_type="market_data_sync").count() == 2
+
+
 def test_resume_task_starts_only_one_worker_for_duplicate_resume_delivery(db_session):
     task = _task(db_session)
     started: list[str] = []

@@ -43,6 +43,17 @@ class FactorSystemConfig(Base):
     feature_enabled: Mapped[int] = mapped_column(Integer, default=0)
     warehouse_path: Mapped[str] = mapped_column(String(1024))
     updated_by: Mapped[str] = mapped_column(String(128), default='environment')
+    # P2-G：训练准入门槛等扩展配置（JSON），auto-align 自动补齐
+    # {
+    #   "gates": {
+    #       "coverage_threshold": 0.70,
+    #       "ic_min": 0.01,
+    #       "ic_max": 0.10,
+    #       "min_sample_count": 10000,
+    #       "max_active_ic_delta_pct": 0.50
+    #   }
+    # }
+    extra_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow_naive, onupdate=_utcnow_naive
     )

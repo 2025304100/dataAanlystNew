@@ -744,19 +744,21 @@ def _invoke_external_data_sync() -> list[dict]:
 
 
 def _invoke_factor_pipeline() -> None:
-    """调用现有 factors/pipeline_task 的增量计算。
+    """调用因子域 Facade 的增量评分流水线（防腐层：外部域禁止直接 import pipeline_task）。
 
     复用现有稳定逻辑，不重写。失败仅记录日志。
     """
-    from app.services.factors.pipeline_task import create_factor_pipeline_task
-    from app.schemas.async_task import FactorPipelineCreate
+    # near-relative coupling: discovery 域只能走 scoring Facade；audit 2026-08-30
+    from app.services.factors.__facade__ import create_scoring_task
 
-    payload = FactorPipelineCreate(
+    create_scoring_task(
+        scope="recent",
         full_refresh=False,
         train_model=False,
         materialize_scores=True,
+        actor="internal:discovery_data_prep",
+        source_hint="discovery_data_prep",
     )
-    create_factor_pipeline_task(payload)
 
 
 def _trigger_fast_scan_after_ready(scope: str, fast_scan_params: dict) -> None:

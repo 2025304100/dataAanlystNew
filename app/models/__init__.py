@@ -69,6 +69,15 @@ from app.models.decision_engine import (  # noqa: F401
 )
 # G0-WP0-2d：幂等记录 + 组合调度时间表（防重 + 默认20:30调度）
 from app.models import idempotency_record, portfolio_cron_schedule  # noqa: F401
+# P2-G：因子治理（5 张表：快照/成员/草稿/日质量/评分血缘）
+from app.models import factor_governance  # noqa: F401
+from app.models.factor_governance import (  # noqa: F401
+    FactorDraft,
+    FactorModelMember,
+    FactorQualityDaily,
+    FactorSetSnapshot,
+    ScoringLineage,
+)
 
 
 # ── 兜底：自动扫描本目录所有 .py 模块并 import（新模块无需手动加） ──────

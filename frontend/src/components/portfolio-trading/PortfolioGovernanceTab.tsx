@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, History, Lock, PlayCircle, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle2, Compass, HelpCircle, History, Lock, PlayCircle, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { Tooltip } from "antd";
 import dayjs from "dayjs";
 import { useApp } from "../../context/AppContext";
@@ -178,26 +178,95 @@ const StatusBadge: React.FC<{ status: PortfolioStatus; showDesc?: boolean; size?
 /* -------------------------------------------------------------------------- */
 
 const SubTabNav: React.FC<{ active: GovSubTabKey; onChange: (k: GovSubTabKey) => void }> = ({ active, onChange }) => {
-  const tabs: { key: GovSubTabKey; label: string; icon: React.ReactNode }[] = [
-    { key: "state", label: t("portfolioTrading.governance.subtab.state"), icon: <ShieldCheck size={14} /> },
-    { key: "operations", label: t("portfolioTrading.governance.subtab.operations"), icon: <AlertTriangle size={14} /> },
-    { key: "reconciliation", label: t("portfolioTrading.governance.subtab.reconciliation"), icon: <CheckCircle2 size={14} /> },
-    { key: "audit", label: t("portfolioTrading.governance.subtab.audit"), icon: <History size={14} /> },
-    { key: "g5", label: t("portfolioTrading.governance.subtab.g5DualRun"), icon: <PlayCircle size={14} /> },
+  // —— 5 个子 Tab 排序：按「日常巡检 → 问题处置 → 前置验收 → 决策执行 → 审计追溯」的执行顺序排列
+  //   ① 对账守恒：每天先做的事，zero-sum 不通过，状态机直接打到阻断（最前置）
+  //   ② 运行保障：G7 readiness 检查，阻断解除后/准备 G6 前必须先看 blocker 清单
+  //   ③ G5 双跑对账：G6 灰度准入的前置验收（双跑不通过，ready_for_expansion 直接为 false）
+  //   ④ 系统状态：看完上面 3 个之后，看状态、做转移、执行最终决策（最核心动作放在靠后，和"先检查再决策"的顺序一致）
+  //   ⑤ 审计事件：发生过什么、谁动了什么，事后/追溯用（最末尾）
+  const tabs: { key: GovSubTabKey; label: string; icon: React.ReactNode; hint?: string }[] = [
+    { key: "reconciliation", label: t("portfolioTrading.governance.subtab.reconciliation"), icon: <CheckCircle2 size={14} />, hint: "① 对账守恒（先清账，再谈其它）" },
+    { key: "operations", label: t("portfolioTrading.governance.subtab.operations"), icon: <AlertTriangle size={14} />, hint: "② 运行保障（看 blocker）" },
+    { key: "g5", label: t("portfolioTrading.governance.subtab.g5DualRun"), icon: <PlayCircle size={14} />, hint: "③ G5 双跑对账（G6 前置验收）" },
+    { key: "state", label: t("portfolioTrading.governance.subtab.state"), icon: <ShieldCheck size={14} />, hint: "④ 系统状态（最终决策 / 调整运行状态）" },
+    { key: "audit", label: t("portfolioTrading.governance.subtab.audit"), icon: <History size={14} />, hint: "⑤ 审计事件（追溯）" },
   ];
   return (
-    <div className="sub-tabs" style={{ padding: "8px 0 0 0", marginBottom: 16 }}>
-      {tabs.map((tab) => (
-        <button
+    <div
+      className="sub-tabs gov-sub-tabs"
+      style={{
+        padding: 0,
+        marginBottom: 16,
+        background: "transparent",
+        border: "none",
+        gap: 4,
+        borderRadius: 10,
+      }}
+    >
+      {tabs.map((tab, idx) => (
+        <Tooltip
           key={tab.key}
-          type="button"
-          className={`sub-tab ${active === tab.key ? "active" : ""}`}
-          onClick={() => onChange(tab.key)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+          title={tab.hint}
+          placement="bottom"
         >
-          {tab.icon}
-          {tab.label}
-        </button>
+          <button
+            type="button"
+            className={`sub-tab ${active === tab.key ? "active" : ""}`}
+            onClick={() => onChange(tab.key)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 14px",
+              minHeight: 36,
+              borderRadius: active === tab.key ? 8 : 8,
+              border: "1px solid transparent",
+              background:
+                active === tab.key
+                  ? "linear-gradient(180deg, rgba(6,182,212,0.18), rgba(6,182,212,0.08))"
+                  : "rgba(31,41,55,0.55)",
+              borderColor:
+                active === tab.key
+                  ? "rgba(6,182,212,0.55)"
+                  : "rgba(71,85,105,0.55)",
+              color:
+                active === tab.key
+                  ? "var(--pt-primary)"
+                  : "var(--pt-muted-foreground)",
+              fontWeight: active === tab.key ? 600 : 500,
+              fontSize: 13,
+              boxShadow:
+                active === tab.key
+                  ? "0 0 0 1px rgba(6,182,212,0.25) inset, 0 2px 8px rgba(6,182,212,0.12)"
+                  : "none",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 18,
+                height: 18,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 999,
+                fontSize: 10,
+                fontWeight: 700,
+                lineHeight: 1,
+                color: active === tab.key ? "var(--pt-primary-foreground)" : "#cbd5e1",
+                background:
+                  active === tab.key
+                    ? "var(--pt-primary)"
+                    : "rgba(71,85,105,0.75)",
+                marginRight: 2,
+              }}
+            >
+              {idx + 1}
+            </span>
+            {tab.icon}
+            {tab.label}
+          </button>
+        </Tooltip>
       ))}
     </div>
   );
@@ -295,6 +364,54 @@ const StatePanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* —— 🪜 系统状态 Tab 使用说明（放在最上面，先告诉用户"这一页两步就能用起来"）—— */}
+      <div
+        style={{
+          padding: "10px 12px",
+          borderRadius: 8,
+          background:
+            "linear-gradient(90deg, rgba(59,130,246,0.07), rgba(139,92,246,0.07))",
+          border: "1px solid rgba(59,130,246,0.22)",
+          fontSize: 12,
+          lineHeight: 1.8,
+          color: "var(--pt-foreground)",
+        }}
+      >
+        <div style={{ fontWeight: 600, marginBottom: 2, color: "#3b82f6" }}>
+          🪜 系统状态 Tab：两步就能上手（你现在 90% 懵逼的点下面都解释了）
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 600, color: "var(--pt-state-info)", marginBottom: 2 }}>
+              Step 1 · 看权限（只读）
+            </div>
+            <div style={{ color: "var(--pt-foreground)" }}>
+              绿色高亮出的那一行就是<b>「当前状态」</b>。向右看 4 列：<br />
+              「✓允许/✗禁止」就是：<b>能不能买/能不能卖/能否自动恢复/是否需要你写审批备注</b>。
+            </div>
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, color: "var(--pt-state-success)", marginBottom: 2 }}>
+              Step 2 · 想切状态？点「调整运行状态」
+            </div>
+            <div style={{ color: "var(--pt-foreground)" }}>
+              下面「允许目标状态」那几个<b>彩色胶囊是展示用的，不是按钮！</b>要切状态：<br />
+              点右上角「<b>调整运行状态</b>」→ 弹窗里选目标 → 填触发原因 + （需要时写≥10字审批备注）→ 确认。
+            </div>
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, color: "#d97706", marginBottom: 2 }}>
+              💡 小技巧：hover 就能看解释
+            </div>
+            <div style={{ color: "var(--pt-foreground)" }}>
+              ① <b>状态徽章</b> hover → 这状态是怎么触发的、怎么恢复<br />
+              ② <b>4 列表头</b> hover → 这一列到底啥意思<br />
+              ③ <b>裸字段（日期/资格那几行）</b>hover → 字段是用来干嘛的
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* ADMIN_PAUSED 红色刹车条 */}
       {current === "ADMIN_PAUSED" && (
         <div
@@ -326,31 +443,99 @@ const StatePanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
             <span style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>{t("governance.transition.current")}:</span>
             {loading && !current ? <span style={{ opacity: 0.7 }}>…</span> : current && <StatusBadge status={current} />}
             {statusResp?.last_decision_trade_date && (
-              <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>
-                last_decision_trade_date: <b>{statusResp.last_decision_trade_date}</b>
-              </span>
+              <Tooltip
+                title={
+                  <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 300 }}>
+                    <b>最近决策交易日</b>：自动接管今天（或最近一次 Dry Run / 真实执行）生成下单决策所基于的交易日。<br />
+                    <span style={{ color: "#94a3b8" }}>对应英文裸字段：last_decision_trade_date</span>
+                  </div>
+                }
+              >
+                <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)", display: "inline-flex", alignItems: "center", gap: 4, cursor: "help" }}>
+                  <span>📅 最近决策交易日</span>
+                  <HelpCircle size={11} style={{ opacity: 0.7 }} />
+                  <b>:</b> <b style={{ color: "var(--pt-foreground)" }}>{statusResp.last_decision_trade_date}</b>
+                </span>
+              </Tooltip>
             )}
             {statusResp?.last_reconciled_trade_date && (
-              <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>
-                last_reconciled_trade_date: <b>{statusResp.last_reconciled_trade_date}</b>
-              </span>
+              <Tooltip
+                title={
+                  <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 320 }}>
+                    <b>最近对账交易日</b>：G5/G6 对账最后一次零和检查通过的交易日。<br />
+                    如果这个日期比今天早 2 个交易日以上，可能会被自动打到「对账差异阻断」状态。<br />
+                    👉 对账明细去「对账守恒」子 Tab 查。<br />
+                    <span style={{ color: "#94a3b8" }}>对应英文裸字段：last_reconciled_trade_date</span>
+                  </div>
+                }
+              >
+                <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)", display: "inline-flex", alignItems: "center", gap: 4, cursor: "help" }}>
+                  <span>🧾 最近对账交易日</span>
+                  <HelpCircle size={11} style={{ opacity: 0.7 }} />
+                  <b>:</b> <b style={{ color: "var(--pt-foreground)" }}>{statusResp.last_reconciled_trade_date}</b>
+                </span>
+              </Tooltip>
             )}
             {typeof statusResp?.is_auto_simulation_eligible === "boolean" && (
-              <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>
-                is_auto_simulation_eligible:{" "}
-                <b style={{ color: statusResp.is_auto_simulation_eligible ? "#10b981" : "#ef4444" }}>
-                  {String(statusResp.is_auto_simulation_eligible)}
-                </b>
-              </span>
+              <Tooltip
+                title={
+                  <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 330 }}>
+                    <b>模拟自动接管资格</b>：true = 你可以放心打开「自动接管」右侧开关了（readiness 门禁基本过了）；<br />
+                    false = 还差几项前置条件（比如评分还没同步、对账有差异等）。<br />
+                    👉 缺啥去「运行保障」子 Tab 看 operational_blockers 清单。<br />
+                    <span style={{ color: "#94a3b8" }}>对应英文裸字段：is_auto_simulation_eligible</span>
+                  </div>
+                }
+              >
+                <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)", display: "inline-flex", alignItems: "center", gap: 4, cursor: "help" }}>
+                  <span>🤖 模拟自动接管资格</span>
+                  <HelpCircle size={11} style={{ opacity: 0.7 }} />
+                  <b>:</b>{" "}
+                  <b style={{ color: statusResp.is_auto_simulation_eligible ? "#10b981" : "#ef4444" }}>
+                    {statusResp.is_auto_simulation_eligible ? "✅ 已具备" : "❌ 不具备"}
+                  </b>
+                </span>
+              </Tooltip>
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button type="button" className="pt-btn-ghost" onClick={fetchStatus} disabled={loading}>
-              <RefreshCw size={14} /> {loading ? "…" : t("common.refresh")}
-            </button>
             <Tooltip
               title={
-                allowedTargets.length === 0 ? t("governance.transition.noTargets") : ""
+                <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 260 }}>
+                  <b>刷新状态</b>：重新拉一次治理/状态机接口，<b style={{ color: "#dc2626" }}>不会触发任何转移/对账/审计</b>。<br />
+                  建议在以下情况点一下：<br />
+                  ① 数据同步完成（MARKET_DATA_STALE 已解决）<br />
+                  ② 对账差异刚刚确认完<br />
+                  ③ 模型激活/绑定刚刚改完
+                </div>
+              }
+              placement="top"
+            >
+              <button type="button" className="pt-btn-ghost" onClick={fetchStatus} disabled={loading} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <RefreshCw size={14} /> {loading ? "…" : t("common.refresh")}
+              </button>
+            </Tooltip>
+            <Tooltip
+              title={
+                allowedTargets.length === 0 ? (
+                  t("governance.transition.noTargets")
+                ) : (
+                  <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 360 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                      🚦 调整运行状态（把组合从当前状态转到「允许目标状态」里的某一个）
+                    </div>
+                    <div>① 点开会弹对话框：先选「目标状态」（只会列出允许转移的）</div>
+                    <div>② 填「触发原因」（例：一键刹车 / 解除对账阻断 / 心跳恢复）</div>
+                    <div style={{ color: "#d97706" }}>
+                      ③ 下列 3 种情况「审查备注」必填 ≥10 字：<br />
+                      · 从 ADMIN_PAUSED / RECONCILIATION_BLOCKED 转出<br />· 转入 READY
+                    </div>
+                    <div>④ 点确认后写入<b>审计事件</b>（可在「审计事件」Tab 用 audit_event_id 溯源）</div>
+                    <div style={{ color: "#94a3b8", marginTop: 4 }}>
+                      注：转移必须严格按允许矩阵/状态机规则，被拒绝 = 不合法，不扣状态。
+                    </div>
+                  </div>
+                )
               }
               placement="top"
             >
@@ -359,9 +544,22 @@ const StatePanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
                 className="pt-btn-primary"
                 onClick={handleOpenTransition}
                 disabled={allowedTargets.length === 0 || !current}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  // ↓↓↓ 内联硬 override：就算 pt-btn-primary 被暗色主题覆盖，也强制显示主按钮层级（蓝底白字+阴影）
+                  background: allowedTargets.length === 0 || !current ? undefined : "linear-gradient(180deg,#3b82f6,#2563eb)",
+                  color: "#fff",
+                  border: "1px solid #1d4ed8",
+                  padding: "7px 14px",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  borderRadius: 8,
+                  boxShadow: allowedTargets.length === 0 || !current ? undefined : "0 2px 6px rgba(37,99,235,0.35)",
+                }}
               >
-                <Lock size={14} /> {t("governance.transition.applyBtn")}
+                <ArrowRightLeft size={15} /> {t("governance.transition.applyBtn")}
               </button>
             </Tooltip>
           </div>
@@ -369,28 +567,161 @@ const StatePanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
 
         {/* allowed_transitions 清单 */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>{t("governance.transition.allowedTargets")}:</span>
-          {allowedTargets.length === 0 && <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>∅</span>}
+          <span style={{ fontSize: 13, color: "var(--pt-muted-foreground)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {t("governance.transition.allowedTargets")}:
+            <Tooltip
+              title={
+                <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 360 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    ⚠️ 这几个彩色胶囊 <b style={{ color: "#dc2626" }}>只是展示，不是按钮</b>，点了没用！
+                  </div>
+                  <div>这是后端状态机根据「当前状态」算出来的：<b>允许你转到哪些状态</b>（白名单）。</div>
+                  <div style={{ marginTop: 4 }}>
+                    👉 真要切状态：<b>去右上角点「🚦 调整运行状态」</b> → 弹窗里就能在这几个白名单里选目标。
+                  </div>
+                  <div style={{ color: "#94a3b8", marginTop: 6 }}>
+                    （如果这里显示 ∅ = 当前状态没有任何允许目标，通常是「对账差异阻断」必须先去对账守恒Tab点「差异确认」，或者「初始审查中」需要先配策略并保存。）
+                  </div>
+                </div>
+              }
+            >
+              <HelpCircle size={12} style={{ color: "var(--pt-state-warning)", cursor: "help" }} />
+            </Tooltip>
+          </span>
+          {allowedTargets.length === 0 && (
+            <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>
+              ∅ <span style={{ color: "#94a3b8", marginLeft: 4 }}>（没有允许转移的目标，hover ⚠️ 问号看原因）</span>
+            </span>
+          )}
           {allowedTargets.map((ts) => (
-            <StatusBadge key={ts} status={ts} size="sm" showDesc={false} />
+            <Tooltip
+              key={ts}
+              title={
+                <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 320 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 2 }}>{t(`portfolioStatus.${ts}` as const)}</div>
+                  <div>{t(`portfolioStatus.${ts}.desc` as const)}</div>
+                  <div style={{ color: "#3b82f6", marginTop: 4 }}>👉 想去这个状态 → 点右上角「🚦 调整运行状态」</div>
+                </div>
+              }
+            >
+              <StatusBadge status={ts} size="sm" showDesc={false} />
+            </Tooltip>
           ))}
         </div>
       </div>
 
       {/* 9×4 允许矩阵表 */}
       <div className="pt-panel" style={{ padding: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <h4 style={{ margin: 0, fontSize: 14 }}>{t("governance.matrix.title")}</h4>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+          <h4 style={{ margin: 0, fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {t("governance.matrix.title")}
+            <Tooltip
+              title={
+                <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 420 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>📖 怎么读这张表？</div>
+                  <div>• <b>一行 = 一种状态</b>：<span style={{ background: "rgba(16,185,129,0.12)" }}>绿色高亮</span>的那一行就是「当前状态」。</div>
+                  <div>• <b>向右看 4 列</b>：=「当前状态下，这 4 种业务动作是否允许」</div>
+                  <div style={{ marginTop: 4, paddingTop: 4, borderTop: "1px dashed #334155" }}>
+                    <b>图例：</b><br />
+                    <span style={{ color: "#059669", fontWeight: 600 }}>✓ 允许</span> —— 该列业务动作正常放行<br />
+                    <span style={{ color: "#b91c1c" }}>✗ 禁止</span> —— HG1 门禁直接阻断（自动接管 / 手动下单都会被拒）<br />
+                    <span style={{ padding: "1px 6px", borderRadius: 999, border: "1px solid #f59e0b", background: "#fffbeb", color: "#78350f", fontSize: 11 }}>REQUIRED</span> —— 状态进入/离开时必须人工写审批备注（≥10字），留审计
+                  </div>
+                </div>
+              }
+            >
+              <HelpCircle size={13} style={{ cursor: "help", color: "var(--pt-muted-foreground)" }} />
+            </Tooltip>
+          </h4>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "var(--pt-muted-foreground)" }}>
+            <span style={{ color: "#059669" }}>✓ 允许</span>
+            <span style={{ color: "#b91c1c" }}>✗ 禁止</span>
+            <span style={{ padding: "1px 6px", borderRadius: 999, border: "1px solid #f59e0b", background: "#fffbeb", color: "#78350f" }}>REQUIRED 需审批</span>
+          </div>
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 720 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 780 }}>
             <thead>
               <tr style={{ background: "var(--pt-surface-1)" }}>
-                <th style={thStyle("left")}>PortfolioStatus</th>
-                <th style={thStyle()}>{t("governance.matrix.colNewBuys")}</th>
-                <th style={thStyle()}>{t("governance.matrix.colRiskExits")}</th>
-                <th style={thStyle()}>{t("governance.matrix.colAutoRecovery")}</th>
-                <th style={thStyle()}>{t("governance.matrix.colManualAck")}</th>
+                <th style={thStyle("left")}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    状态名
+                    <Tooltip
+                      title={
+                        <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 260 }}>
+                          <b>PortfolioStatus（状态机枚举）</b>：9 种治理状态之一。<br />
+                          hover 每一行的<b>彩色徽章</b>可看"这状态触发条件 + 如何恢复"。<br />
+                          <span style={{ color: "#94a3b8" }}>原英文列名：PortfolioStatus</span>
+                        </div>
+                      }
+                    >
+                      <HelpCircle size={11} style={{ opacity: 0.7 }} />
+                    </Tooltip>
+                  </span>
+                </th>
+                <th style={thStyle()}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {t("governance.matrix.colNewBuys")}
+                    <Tooltip
+                      title={
+                        <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 260 }}>
+                          是否允许发起<b>新的买入</b>（自动接管 Dry Run / 真实执行 / 手动下单都会走这个门禁）。<br />
+                          <span style={{ color: "#b91c1c" }}>✗ 禁止时：任何买入会被 HG1 直接拒绝</span>，即使你点了也不会下到模拟账户里。
+                        </div>
+                      }
+                    >
+                      <HelpCircle size={11} style={{ opacity: 0.7 }} />
+                    </Tooltip>
+                  </span>
+                </th>
+                <th style={thStyle()}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {t("governance.matrix.colRiskExits")}
+                    <Tooltip
+                      title={
+                        <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 280 }}>
+                          是否允许<b>风险退出类动作</b>（止损、止盈、强制减仓、已持有的仓位卖出）。<br />
+                          <span style={{ color: "#059669" }}>即使「新买单」被禁止，大部分暂停状态仍允许风险退出</span>——防止暂停后持仓无法止损。
+                        </div>
+                      }
+                    >
+                      <HelpCircle size={11} style={{ opacity: 0.7 }} />
+                    </Tooltip>
+                  </span>
+                </th>
+                <th style={thStyle()}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {t("governance.matrix.colAutoRecovery")}
+                    <Tooltip
+                      title={
+                        <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 320 }}>
+                          如果问题<b>自动解除</b>了，系统是否允许<b>从暂停态自己跳回 READY / 推演中</b>？<br />
+                          <span style={{ color: "#059669" }}>✓ 允许自动恢复 = 不用你管</span>（例：数据缺失→同步成功后自动恢复）<br />
+                          <span style={{ color: "#b91c1c" }}>✗ 禁止 = 必须人工介入</span>（例：对账阻断 / 管理员暂停 → 必须点「调整运行状态」写审批备注转回）
+                        </div>
+                      }
+                    >
+                      <HelpCircle size={11} style={{ opacity: 0.7 }} />
+                    </Tooltip>
+                  </span>
+                </th>
+                <th style={thStyle()}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {t("governance.matrix.colManualAck")}
+                    <Tooltip
+                      title={
+                        <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 320 }}>
+                          进入 / 离开 这一行状态时，<b>是否需要人写审批备注</b>（并留审计事件）。<br />
+                          <span style={{ padding: "1px 6px", borderRadius: 999, border: "1px solid #f59e0b", background: "#fffbeb", color: "#78350f", fontSize: 11 }}>REQUIRED</span>
+                          ：<b>必须填 ≥10 个字符的「审查备注」</b>，否则「调整运行状态」弹窗会拒绝你提交。<br />
+                          <span style={{ color: "#94a3b8" }}>（设计初衷：对「对账阻断解除 / 管理员刹车解除 / 第一次进入生产就绪」等高敏感动作留痕）</span>
+                        </div>
+                      }
+                    >
+                      <HelpCircle size={11} style={{ opacity: 0.7 }} />
+                    </Tooltip>
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -406,12 +737,45 @@ const StatePanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
                     }}
                   >
                     <td style={tdStyle("left")}>
-                      <StatusBadge status={k} size="sm" showDesc={false} />
+                      <Tooltip title={t(`portfolioStatus.${k}.desc` as const)} placement="right">
+                        <span>
+                          <StatusBadge status={k} size="sm" showDesc={false} />
+                          <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: 6, fontStyle: "italic" }}>
+                            {k}
+                          </span>
+                        </span>
+                      </Tooltip>
                     </td>
                     <td style={tdStyle()}>{allowBadge(row.allow_new_buys)}</td>
                     <td style={tdStyle()}>{allowBadge(row.allow_risk_exits)}</td>
                     <td style={tdStyle()}>{allowBadge(row.allow_auto_recovery)}</td>
-                    <td style={tdStyle()}>{row.requires_manual_ack ? allowBadge(true, "ack") : allowBadge(false)}</td>
+                    <td style={tdStyle()}>
+                      {row.requires_manual_ack ? (
+                        <Tooltip
+                          title={
+                            <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 340 }}>
+                              <div style={{ fontWeight: 600, marginBottom: 4 }}>🔒 进出此状态必须人工审批（≥10 字审查备注）</div>
+                              <div>
+                                当状态转移命中以下 <b>3 种高敏感场景</b> 时，「调整运行状态」弹窗会强制你填审查备注，
+                                并写入<b>审计事件</b>（见「审计事件」子Tab）：
+                              </div>
+                              <div style={{ marginTop: 6 }}>
+                                ① 从 <b>管理员强制暂停 (ADMIN_PAUSED)</b> 转出（解除刹车）<br />
+                                ② 从 <b>对账差异阻断 (RECONCILIATION_BLOCKED)</b> 转出（解除阻断）<br />
+                                ③ 转入 <b>生产就绪 (READY)</b>（任何路径恢复到可交易态）
+                              </div>
+                              <div style={{ color: "#94a3b8", marginTop: 6 }}>
+                                备注少于 10 字 → 弹窗的「确认」按钮会被禁用，不允许你提交。
+                              </div>
+                            </div>
+                          }
+                        >
+                          <span>{allowBadge(true, "ack")}</span>
+                        </Tooltip>
+                      ) : (
+                        allowBadge(false)
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -466,16 +830,19 @@ const allowBadge = (allow: boolean | null, flavor: "allow" | "ack" = "allow") =>
     return (
       <span
         style={{
-          padding: "2px 10px",
+          padding: "3px 10px",
           borderRadius: 999,
           border: "1px solid #f59e0b",
-          background: "#fffbeb",
+          background: "linear-gradient(180deg,#fffbeb,#fef3c7)",
           color: "#78350f",
-          fontSize: 12,
-          fontWeight: 600,
+          fontSize: 11.5,
+          fontWeight: 700,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
         }}
       >
-        {allow ? "REQUIRED" : "—"}
+        🔒 REQUIRED · 需审批
       </span>
     );
   }
@@ -799,17 +1166,118 @@ const ReconciliationPanel: React.FC<{
                 const expected = toNumber(d.expected_value);
                 const actual = toNumber(d.actual_value);
                 const diff = toNumber(d.diff_value);
-                const rowBg = diff !== 0 ? "rgba(254,226,226,0.45)" : undefined;
+
+                // —— 对「元维度」行做特殊视觉：对账服务在这些分支里直接 short-circuit，
+                //    expected/actual 本来就不会有数值（例如未执行当日决策），
+                //    继续显示「—」会让人误会为"前端 bug/后端没传数"，
+                //    改为 info 色底 + N/A + 小字说明，整行视觉上和「数值差异红底」区分开。
+                const metaKinds: Array<string> = ["DECISION_RUN_NOT_FOUND", "NOT_CHECKED", "NAV_BROKEN"];
+                const isMetaRow =
+                  typeof dim === "string" && metaKinds.some((k) => dim.indexOf(k) >= 0);
+
+                const qtyApplicable =
+                  Number.isFinite(expected) && Number.isFinite(actual) &&
+                  (dim === "position_count" || dim === "POSITION_MISMATCH" ||
+                    String(dim).indexOf("position") >= 0 ||
+                    String(dim).indexOf("POSITION") >= 0);
+                const deltaQty = qtyApplicable ? actual - expected : NaN;
+
+                let rowBg: string | undefined;
+                let rowBadge: React.ReactNode = null;
+                if (isMetaRow) {
+                  rowBg = "linear-gradient(90deg, rgba(59,130,246,0.10), rgba(59,130,246,0.04))";
+                  rowBadge = (
+                    <span
+                      aria-label="metadata-row"
+                      style={{
+                        display: "inline-block",
+                        marginRight: 6,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: "#1e3a8a",
+                        background: "rgba(59,130,246,0.18)",
+                        border: "1px solid rgba(59,130,246,0.45)",
+                      }}
+                    >
+                      元检查
+                    </span>
+                  );
+                } else if (Number.isFinite(diff) && diff !== 0) {
+                  rowBg = "rgba(239,68,68,0.10)";
+                }
+
+                const metaNA = (hint: string) => (
+                  <span
+                    title={hint}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "1px 8px",
+                      borderRadius: 999,
+                      background: "rgba(148,163,184,0.14)",
+                      border: "1px dashed rgba(148,163,184,0.65)",
+                      color: "var(--pt-muted-foreground)",
+                      fontSize: 11,
+                    }}
+                  >
+                    N/A
+                    <span style={{ opacity: 0.75 }}>· 无可比对数据</span>
+                  </span>
+                );
+
                 return (
                   <tr key={`${String(dim)}-${i}`} style={{ background: rowBg }}>
-                    <td style={tdStyle("left")}>{dimLabel}</td>
-                    <td style={tdStyle()}>{fmtNum(d.expected_value)}</td>
-                    <td style={tdStyle()}>{fmtNum(d.actual_value)}</td>
-                    <td style={tdStyle()}>—</td>
+                    <td style={tdStyle("left")}>
+                      {rowBadge}
+                      {dimLabel}
+                    </td>
                     <td style={tdStyle()}>
-                      <span style={{ color: diff > 0 ? "#15803d" : diff < 0 ? "#b91c1c" : undefined, fontWeight: 600 }}>
-                        {diff > 0 ? "+" : ""}{fmtNum(diff)}
-                      </span>
+                      {isMetaRow
+                        ? metaNA("本维度为短路元检查：不产生理论值（账本）")
+                        : fmtNum(d.expected_value)}
+                    </td>
+                    <td style={tdStyle()}>
+                      {isMetaRow
+                        ? metaNA("本维度为短路元检查：不产生实际值（执行侧）")
+                        : fmtNum(d.actual_value)}
+                    </td>
+                    <td style={tdStyle()}>
+                      {isMetaRow ? (
+                        metaNA("元检查维度不涉及数量变化")
+                      ) : qtyApplicable ? (
+                        <span style={{ fontWeight: 600, color: deltaQty > 0 ? "#15803d" : deltaQty < 0 ? "#b91c1c" : "inherit" }}>
+                          {deltaQty > 0 ? "+" : ""}
+                          {fmtNum(deltaQty, 0)}
+                        </span>
+                      ) : (
+                        <span
+                          title="该维度是金额/计数/证据哈希维度，不涉及 Δ qty 数量差"
+                          style={{
+                            color: "var(--pt-muted-foreground)",
+                            fontSize: 11,
+                            padding: "1px 6px",
+                            borderRadius: 4,
+                            background: "rgba(148,163,184,0.10)",
+                            border: "1px dashed rgba(148,163,184,0.35)",
+                          }}
+                        >
+                          不适用
+                        </span>
+                      )}
+                    </td>
+                    <td style={tdStyle()}>
+                      {isMetaRow ? (
+                        metaNA("元检查维度不做数值比较（见右侧说明列判断严重程度）")
+                      ) : Number.isFinite(diff) ? (
+                        <span style={{ color: diff > 0 ? "#15803d" : diff < 0 ? "#b91c1c" : undefined, fontWeight: 600 }}>
+                          {diff > 0 ? "+" : ""}{fmtNum(diff)}
+                        </span>
+                      ) : (
+                        fmtNum(diff)
+                      )}
                     </td>
                     <td style={tdStyle("left")}>{(d.explain_note ?? (`${expected - actual === diff ? "" : ""}`.trim())) || "—"}</td>
                   </tr>
@@ -897,6 +1365,78 @@ const ReconciliationPanel: React.FC<{
 /* Sub Tab 3：审计事件分页过滤                                                 */
 /* -------------------------------------------------------------------------- */
 
+/* 审计事件类型：英文枚举 → 中文（兜底：unknown 就原样显示英文，但灰化）     */
+const EVENT_TYPE_CN: Record<string, string> = {
+  STATE_TRANSITION: "状态转移",
+  PORTFOLIO_REBALANCE: "组合调仓",
+  CONFIG_CHANGE: "配置变更",
+  TERMINAL_LOCK: "终端锁状态变化",
+  G5_DUALRUN_START: "G5双跑启动",
+  G5_DUALRUN_RESULT: "G5双跑结果确认",
+  RECONCILIATION_DIFF: "对账差异检出",
+  RECONCILIATION_ACK: "对账差异确认",
+  MODEL_BINDING: "模型绑定变更",
+  AUTO_PROTECT_PAUSE: "自动保护（心跳/数据/Score）",
+  AUTO_PROTECT_RESUME: "自动保护恢复",
+  PORTFOLIO_CREATED: "组合创建",
+  PORTFOLIO_ARCHIVED: "组合归档",
+  // —— 对齐后端 ORM 允许的 action 集合（DataGovernanceAuditEvent ck 约束里的 12 种）
+  PORTFOLIO_CANDIDATE_SCD2_CHANGE: "组合候选SCD2变更",
+  BENCHMARK_SOURCE_FAILOVER: "基准源故障切换",
+  AUTO_SIMULATION_RESULT: "自动推演结果",
+  RECONCILIATION_RESULT: "对账结果",
+  ILLEGAL_STATE_TRANSITION: "非法状态转移",
+  FACTOR_USAGE_APPLIED: "因子使用变更",
+  OUTBOX_EVENT_DISPATCHED: "外箱事件分发",
+  DATA_BLOCK_RESOLUTION: "数据阻断解除",
+  DATA_SOURCE_FAILOVER: "数据源故障切换",
+  DATA_QUALITY_QUARANTINE: "数据质量隔离",
+  G6_ROLLOUT_STARTED: "G6灰度启动",
+  G6_ROLLOUT_ROLLED_BACK: "G6灰度回滚",
+  UNKNOWN_AUDIT_ACTION: "未知审计动作",
+};
+
+/* 严重级别：英文枚举 → 中文                                            */
+const SEVERITY_CN: Record<string, string> = {
+  INFO: "信息",
+  WARNING: "警告",
+  L1: "L1 提醒",
+  L2: "L2 警告",
+  L3: "L3 严重",
+};
+
+/* 审计事件类型下拉（过滤框用，用户不用手敲英文）                           */
+const AUDIT_EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "— 全部 —" },
+  // —— 前端旧状态/组合相关枚举（预留，后续后端补写相应 action 后生效）
+  { value: "STATE_TRANSITION", label: "状态转移（STATE_TRANSITION）" },
+  { value: "PORTFOLIO_REBALANCE", label: "组合调仓（PORTFOLIO_REBALANCE）" },
+  { value: "CONFIG_CHANGE", label: "配置变更（CONFIG_CHANGE）" },
+  { value: "TERMINAL_LOCK", label: "终端锁（TERMINAL_LOCK）" },
+  { value: "G5_DUALRUN_START", label: "G5双跑启动（G5_DUALRUN_START）" },
+  { value: "G5_DUALRUN_RESULT", label: "G5双跑结果（G5_DUALRUN_RESULT）" },
+  { value: "RECONCILIATION_DIFF", label: "对账差异检出（RECONCILIATION_DIFF）" },
+  { value: "RECONCILIATION_ACK", label: "对账差异确认（RECONCILIATION_ACK）" },
+  { value: "MODEL_BINDING", label: "模型绑定变更（MODEL_BINDING）" },
+  { value: "AUTO_PROTECT_PAUSE", label: "自动保护暂停（AUTO_PROTECT_PAUSE）" },
+  { value: "AUTO_PROTECT_RESUME", label: "自动保护恢复（AUTO_PROTECT_RESUME）" },
+  { value: "PORTFOLIO_CREATED", label: "组合创建（PORTFOLIO_CREATED）" },
+  { value: "PORTFOLIO_ARCHIVED", label: "组合归档（PORTFOLIO_ARCHIVED）" },
+  // —— 对齐后端 ORM ck 约束内真实存在的 12 种 action
+  { value: "PORTFOLIO_CANDIDATE_SCD2_CHANGE", label: "组合候选SCD2变更（PORTFOLIO_CANDIDATE_SCD2_CHANGE）" },
+  { value: "BENCHMARK_SOURCE_FAILOVER", label: "基准源故障切换（BENCHMARK_SOURCE_FAILOVER）" },
+  { value: "AUTO_SIMULATION_RESULT", label: "自动推演结果（AUTO_SIMULATION_RESULT）" },
+  { value: "RECONCILIATION_RESULT", label: "对账结果（RECONCILIATION_RESULT）" },
+  { value: "ILLEGAL_STATE_TRANSITION", label: "非法状态转移（ILLEGAL_STATE_TRANSITION）" },
+  { value: "FACTOR_USAGE_APPLIED", label: "因子使用变更（FACTOR_USAGE_APPLIED）" },
+  { value: "OUTBOX_EVENT_DISPATCHED", label: "外箱事件分发（OUTBOX_EVENT_DISPATCHED）" },
+  { value: "DATA_BLOCK_RESOLUTION", label: "数据阻断解除（DATA_BLOCK_RESOLUTION）" },
+  { value: "DATA_SOURCE_FAILOVER", label: "数据源故障切换（DATA_SOURCE_FAILOVER）" },
+  { value: "DATA_QUALITY_QUARANTINE", label: "数据质量隔离（DATA_QUALITY_QUARANTINE）" },
+  { value: "G6_ROLLOUT_STARTED", label: "G6灰度启动（G6_ROLLOUT_STARTED）" },
+  { value: "G6_ROLLOUT_ROLLED_BACK", label: "G6灰度回滚（G6_ROLLOUT_ROLLED_BACK）" },
+];
+
 const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error" | "info", msg: React.ReactNode) => void }> = ({
   portfolioId,
   showToast,
@@ -956,17 +1496,26 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))", gap: 10, alignItems: "flex-end" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("governance.audit.filter.eventType")}</label>
-            <input className="pt-input" value={eventType} onChange={(e) => setEventType(e.target.value)} placeholder="e.g. STATE_TRANSITION" style={{ padding: "6px 10px" }} />
+            <select
+              className="pt-select"
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value)}
+              style={{ padding: "6px 10px" }}
+            >
+              {AUDIT_EVENT_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("governance.audit.filter.severity")}</label>
             <select className="pt-select" value={severity} onChange={(e) => setSeverity((e.target.value || "") as any)} style={{ padding: "6px 10px" }}>
-              <option value="">—</option>
-              <option value="INFO">INFO</option>
-              <option value="WARNING">WARNING</option>
-              <option value="L1">L1</option>
-              <option value="L2">L2</option>
-              <option value="L3">L3</option>
+              <option value="">— 全部 —</option>
+              <option value="INFO">INFO（信息）</option>
+              <option value="WARNING">WARNING（警告）</option>
+              <option value="L1">L1（提醒）</option>
+              <option value="L2">L2（警告）</option>
+              <option value="L3">L3（严重）</option>
             </select>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1025,8 +1574,70 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
                 <tr><td colSpan={10} style={{ padding: 16, textAlign: "center", color: "var(--pt-muted-foreground)" }}>{t("governance.audit.empty")}</td></tr>
               )}
               {rows.map((ev) => {
-                const rowKey = ev.id ?? `${String(ev.event_type)}-${ev.created_at}-${String(Math.random())}`;
+                const rowKey = ev.id ?? `${String(ev.event_type)}-${String((ev as any).created_at || (ev as any).occurred_at)}-${String(Math.random())}`;
                 const isOpen = expandedId === rowKey;
+                const evAny = ev as any;
+                // created_at 兜底后端 ORM 的 occurred_at（旧接口只发 occurred_at）
+                const createdAt: string | null | undefined =
+                  (ev as any).created_at ?? (ev as any).occurred_at ?? null;
+                // 空值行判定：created_at/trigger_reason/operated_by 都没值 = 假数据/未回填行，整体颜色变淡
+                const isSkeletonRow =
+                  !createdAt && !ev.trigger_reason && !ev.operated_by && !ev.from_state && !ev.to_state;
+                const rowOpacity: React.CSSProperties | undefined = isSkeletonRow
+                  ? { opacity: 0.7 }
+                  : undefined;
+                // 事件类型渲染：后端可能带 event_type_cn；没有就走前端 EVENT_TYPE_CN；都不命中 → 英文斜体兜底
+                let eventTypeNode: React.ReactNode = <span style={{ color: "var(--pt-muted-foreground)" }}>—</span>;
+                if (ev.event_type) {
+                  const et = String(ev.event_type);
+                  const cn = String(evAny.event_type_cn || "").trim() || EVENT_TYPE_CN[et];
+                  eventTypeNode = cn ? (
+                    <span>
+                      <b style={{ color: "var(--pt-foreground)" }}>{cn}</b>
+                      <span style={{ color: "var(--pt-muted-foreground)", fontSize: 10.5, marginLeft: 4 }}>（{et}）</span>
+                    </span>
+                  ) : (
+                    <span style={{ color: "#64748b", fontSize: 11.5, fontStyle: "italic" }}>{et}</span>
+                  );
+                }
+                // 严重级别文字（中文优先）
+                const sevRaw = ev.severity || (evAny.severity);
+                const severiTyLabel = sevRaw
+                  ? SEVERITY_CN[String(sevRaw)] ?? String(sevRaw)
+                  : "—";
+                // 操作人：后端 _ev_to_read 会把 operator_id 填入 operated_by（字符串兼容，不必强制是数字 uid）
+                const opName = evAny?.operated_by_name || evAny?.display_name;
+                const opRaw = (ev.operated_by ?? evAny.operator_id) as unknown;
+                const opStr = opRaw == null ? "" : String(opRaw);
+                const opNode = opStr ? (
+                  <span title={`operator_id=${opStr}`}>
+                    {opName ? (
+                      <>
+                        <b>{String(opName)}</b>
+                        <span style={{ color: "var(--pt-muted-foreground)", fontSize: 10.5, marginLeft: 4 }}>
+                          id={opStr}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        id=<b>{opStr}</b>
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--pt-muted-foreground)" }}>—</span>
+                );
+                // 产生时间格式化成 YYYY-MM-DD HH:mm（created_at / occurred_at 任一都可）
+                let timeNode: React.ReactNode = <span style={{ color: "var(--pt-muted-foreground)" }}>—</span>;
+                if (createdAt) {
+                  try {
+                    const d = dayjs(createdAt);
+                    if (d.isValid()) timeNode = <span>{d.format("YYYY-MM-DD HH:mm")}</span>;
+                    else timeNode = <span>{String(ev.created_at)}</span>;
+                  } catch {
+                    timeNode = <span>{String(ev.created_at)}</span>;
+                  }
+                }
                 // types: attributes_json?: string | null; attributes?: Record<string, unknown> | null
                 let attrsObj: Record<string, unknown> | null = null;
                 try {
@@ -1043,10 +1654,10 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
                 }
                 return (
                   <React.Fragment key={String(rowKey)}>
-                    <tr>
+                    <tr style={rowOpacity}>
                       <td style={tdStyle("left")}>{String(ev.id ?? "—")}</td>
-                      <td style={tdStyle("left")}>{ev.created_at ?? "—"}</td>
-                      <td style={tdStyle("left")}>{String(ev.event_type)}</td>
+                      <td style={tdStyle("left")}>{timeNode}</td>
+                      <td style={tdStyle("left")}>{eventTypeNode}</td>
                       <td style={tdStyle()}>
                         <span
                           style={{
@@ -1056,21 +1667,27 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
                             border: "1px solid",
                             fontSize: 11,
                             fontWeight: 600,
-                            ...sevStyle(ev.severity),
+                            ...sevStyle(sevRaw as any),
                           }}
                         >
-                          {ev.severity ?? "—"}
+                          {severiTyLabel}
                         </span>
                       </td>
-                      <td style={tdStyle("left")}>{ev.trigger_reason ?? "—"}</td>
                       <td style={tdStyle("left")}>
-                        {ev.operated_by ? (
-                          <span title={`operated_by_uid=${String(ev.operated_by)}`}>
-                            uid=<b>{String(ev.operated_by)}</b>
-                          </span>
-                        ) : "—"}
+                        {ev.trigger_reason ? (
+                          <span>{ev.trigger_reason}</span>
+                        ) : (
+                          <span style={{ color: "var(--pt-muted-foreground)" }}>—</span>
+                        )}
                       </td>
-                      <td style={tdStyle("left")}>{ev.reviewed_at ?? "—"}</td>
+                      <td style={tdStyle("left")}>{opNode}</td>
+                      <td style={tdStyle("left")}>
+                        {ev.reviewed_at ? (
+                          <span>{dayjs(ev.reviewed_at).isValid() ? dayjs(ev.reviewed_at).format("YYYY-MM-DD HH:mm") : String(ev.reviewed_at)}</span>
+                        ) : (
+                          <span style={{ color: "var(--pt-muted-foreground)" }}>—</span>
+                        )}
+                      </td>
                       <td style={tdStyle("left")}>
                         {ev.from_state || ev.to_state ? (
                           <span>
@@ -1078,10 +1695,12 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
                             {" → "}
                             {ev.to_state ? <StatusBadge status={ev.to_state as PortfolioStatus} size="sm" showDesc={false} /> : "∅"}
                           </span>
-                        ) : "—"}
+                        ) : (
+                          <span style={{ color: "var(--pt-muted-foreground)" }}>—</span>
+                        )}
                       </td>
                       <td style={tdStyle("left")}>
-                        {ev.correlation_id ? <code style={{ fontSize: 11 }}>{ev.correlation_id}</code> : "—"}
+                        {ev.correlation_id ? <code style={{ fontSize: 11 }}>{ev.correlation_id}</code> : <span style={{ color: "var(--pt-muted-foreground)" }}>—</span>}
                       </td>
                       <td style={tdStyle()}>
                         <button
@@ -1688,10 +2307,42 @@ const G7OperationsPanel: React.FC<{
             <RefreshCw size={14} /> {loading ? t("loading") : t("common.refresh")}
           </button>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="pt-btn-primary" onClick={() => void runG6Action("start")} disabled={Boolean(actionLoading) || status?.ready_for_expansion !== true}>
-              <PlayCircle size={14} /> {actionLoading === "start" ? t("loading") : t("governance.g7.startG6")}
-            </button>
-            <button type="button" className="pt-btn-ghost" onClick={() => void runG6Action("rollback")} disabled={Boolean(actionLoading)}>
+            {(() => {
+              const g6Ready = Boolean(status?.ready_for_expansion);
+              const isDisabled = Boolean(actionLoading) || !g6Ready;
+              const blockerReasons = !g6Ready ? (status?.operational_blockers ?? []).slice(0, 3) : [];
+              const tooltip = !g6Ready
+                ? `无法启动 G6 灰度，需先解决以下问题：${blockerReasons.join("；") || "条件未满足"}`
+                : "";
+              return (
+                <Tooltip title={isDisabled ? tooltip : undefined} placement="bottom">
+                  <button
+                    type="button"
+                    className="pt-btn-primary"
+                    onClick={() => {
+                      if (isDisabled && !actionLoading) {
+                        showToast(
+                          "error",
+                          !g6Ready
+                            ? `G6 灰度启动条件未满足：${blockerReasons.join("；") || "组合尚未就绪"}`
+                            : t("loading"),
+                        );
+                        return;
+                      }
+                      void runG6Action("start");
+                    }}
+                    style={
+                      isDisabled
+                        ? { opacity: 0.5, cursor: "not-allowed", filter: "grayscale(0.3)" }
+                        : undefined
+                    }
+                  >
+                    <PlayCircle size={14} /> {actionLoading === "start" ? t("loading") : t("governance.g7.startG6")}
+                  </button>
+                </Tooltip>
+              );
+            })()}
+            <button type="button" className="pt-btn-ghost" onClick={() => void runG6Action("rollback")} disabled={Boolean(actionLoading)} style={Boolean(actionLoading) ? { opacity: 0.5, cursor: "not-allowed" } : undefined}>
               <ShieldCheck size={14} /> {actionLoading === "rollback" ? t("loading") : t("governance.g7.rollbackG6")}
             </button>
           </div>
@@ -1765,14 +2416,107 @@ const PortfolioGovernanceTab: React.FC<PortfolioGovernanceTabProps> = ({ portfol
     <div style={{ padding: "16px 24px 32px 24px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 18 }}>{t("portfolioTrading.subtab.governance")}</h2>
-          <div style={{ fontSize: 12, color: "var(--pt-muted-foreground)", marginTop: 4 }}>
-            FR-P0-10 9-state machine · FR-P1-8a 4 governance endpoints · FR-P1-2 terminal locks · G5 dual-run (10 trading days)
+          <h2 style={{ margin: 0, fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
+            <Compass size={18} color="var(--pt-primary)" />
+            {t("portfolioTrading.subtab.governance")}
+          </h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--pt-muted-foreground)", marginTop: 4 }}>
+            <span>组合风控状态机总控 · 5 个子 Tab · 审计 & 对账 & 双跑中枢</span>
+            <Tooltip
+              title={
+                <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 360 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>原英文需求编号说明（给开发/审计看的契约）：</div>
+                  <div>• FR-P0-10：9 状态状态机（HG1 门禁的权限矩阵）</div>
+                  <div>• FR-P1-8a：治理端 4 个 API（查状态/状态转移/对账差异确认/审计列表）</div>
+                  <div>• FR-P1-2：终端锁（避免多终端重复触发自动交易）</div>
+                  <div>• G5 dual-run (10 trading days)：模拟 vs 生产双跑 10 个交易日一致，通过后才可接入 G6</div>
+                </div>
+              }
+            >
+              <HelpCircle size={13} style={{ cursor: "help", color: "var(--pt-muted-foreground)" }} />
+            </Tooltip>
           </div>
         </div>
       </div>
 
       <SubTabNav active={sub} onChange={setSub} />
+
+      {/* —— 🧭 整页级：治理 Tab 是干嘛的 / 5 个子 Tab 各管什么 / 典型 3 种使用场景 —— */}
+      <div
+        style={{
+          padding: "12px 14px",
+          borderRadius: 10,
+          background:
+            "linear-gradient(90deg, rgba(99,102,241,0.08), rgba(16,185,129,0.08))",
+          border: "1px solid rgba(99,102,241,0.25)",
+          lineHeight: 1.8,
+          fontSize: 12,
+          color: "var(--pt-foreground)",
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ fontWeight: 600, marginBottom: 6, color: "var(--pt-primary)", fontSize: 13 }}>
+          🧭 「治理」是干嘛的？一句话：<b style={{ color: "#6366f1" }}>组合风控状态机的总控面板</b>（决定"现在能买吗/能卖吗/能自动恢复吗"）
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr 1fr", gap: 12, marginTop: 8 }}>
+          {/* 5 个子 Tab 各管什么 */}
+          <div
+            style={{
+              padding: "8px 10px",
+              borderRadius: 6,
+              background: "rgba(99,102,241,0.06)",
+              border: "1px dashed rgba(99,102,241,0.35)",
+            }}
+          >
+            <div style={{ fontWeight: 600, color: "var(--pt-state-info)", marginBottom: 4 }}>
+              🗂️ 5 个子 Tab 分工
+            </div>
+            <div style={{ color: "var(--pt-foreground)" }}>
+              ① <b>对账守恒</b>：持仓/现金/订单/成交 10 列明细，zero-sum 零和检查 + 差异确认（每天先看这里）<br />
+              ② <b>运行保障</b>：G7 运行态（可扩张？已停止新单？可恢复？+ blocker 清单）<br />
+              ③ <b>G5 双跑对账</b>：模拟 vs 生产 10 交易日双跑启动 + 6×6 混淆矩阵 + 通过/失败结果（G6 前置）<br />
+              ④ <b>系统状态</b>：当前状态徽章 + 允许转移目标 + 9×4 允许矩阵 + 调整运行状态（最终决策入口）<br />
+              ⑤ <b>审计事件</b>：谁什么时候改了什么（转移/调仓/配置）按严重度过滤 + correlation_id 溯源
+            </div>
+          </div>
+          {/* 3 种典型使用场景 */}
+          <div
+            style={{
+              padding: "8px 10px",
+              borderRadius: 6,
+              background: "rgba(16,185,129,0.06)",
+              border: "1px dashed rgba(16,185,129,0.35)",
+            }}
+          >
+            <div style={{ fontWeight: 600, color: "var(--pt-state-success)", marginBottom: 4 }}>
+              🧪 3 种典型使用场景
+            </div>
+            <div style={{ color: "var(--pt-foreground)" }}>
+              ① <b>先对账（日常）</b>：<b>对账守恒 Tab</b> → zero-sum 清零 → 点「差异确认」把 RECONCILIATION_BLOCKED 解锁<br />
+              ② <b>再验收（G6 前置）</b>：<b>G5 双跑对账 Tab</b> → 连续 10 日 P0/P1 全通过 + <b>运行保障 Tab</b> blocker 清零 → 才具备 G6 准入<br />
+              ③ <b>后决策（转移状态）</b>：以上都过 → <b>系统状态 Tab</b> → 看「允许目标状态」里 READY 是否出现 → 点「调整运行状态」→ 填 ≥10 字审查备注 → 恢复/刹车
+            </div>
+          </div>
+          {/* 状态流转心智模型 */}
+          <div
+            style={{
+              padding: "8px 10px",
+              borderRadius: 6,
+              background: "rgba(245,158,11,0.06)",
+              border: "1px dashed rgba(245,158,11,0.35)",
+            }}
+          >
+            <div style={{ fontWeight: 600, color: "#d97706", marginBottom: 4 }}>
+              ♻️ 状态流转心智模型
+            </div>
+            <div style={{ color: "var(--pt-foreground)" }}>
+              <b>正常路径</b>：初始审查中 → <b>生产就绪 (READY)</b> → 20:30自动推演/回测 → 回到 READY<br />
+              <b>自动保护（可自动恢复）</b>：READY → 数据缺失 / Score过期 / 心跳中断 → <b>下一次同步成功/心跳恢复 → 自动跳回 READY</b><br />
+              <b>人工干预（必须调整运行状态）</b>：对账差异阻断 / 管理员强制暂停 → <b>不允许自动恢复</b>，必须走「调整运行状态」弹窗填 ≥10 字审查备注，经审计记录后才能转回 READY
+            </div>
+          </div>
+        </div>
+      </div>
 
       {sub === "state" && <StatePanel portfolioId={portfolioId} showToast={showToast} />}
       {sub === "operations" && <G7OperationsPanel portfolioId={portfolioId} showToast={showToast} />}

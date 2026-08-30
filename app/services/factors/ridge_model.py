@@ -34,9 +34,22 @@ from app.models.factor_model import (
     FactorModelRun,
     FactorWeightSnapshot,
 )
+# P2-G：训练后物化治理快照 & 模型成员表
+from app.models.factor_governance import (  # noqa: E402  (keep after app.db.base)
+    FactorModelMember,
+    FactorSetSnapshot,
+)
+from app.models.factor_runtime import FactorRuntimeState  # P2.3b active model IC 对比
 from app.services.factors.definitions import FACTOR_BY_CODE, FACTOR_DEFINITIONS
 from app.services.factors.store import FactorWarehouse
 from app.services.factors.target_engine import TARGET_CODE
+# P2.3a/b：门禁（facade 函数 + 阈值从 FactorSystemConfig 读取）
+from app.services.factors.__facade__ import (  # noqa: E402
+    run_training_eligibility_gates,
+    _load_gate_config_from_db,
+    _as_float,
+    _json_object,
+)
 
 
 # Legacy 静态特征列表（向后兼容回退路径，不传 factor_set_id 时使用）
@@ -564,10 +577,18 @@ def train_rolling_ridge(
     cutoff = data_cutoff_date or date.today()
 
     # WP7-03: 动态加载特征列表
+    # P2-G：同时捕获 factor_set_version + 完整成员详情（用于快照）
+    factor_set_version: int = 0
+    _fs_member_rows: list = []
     if factor_set_id is not None:
+        from app.models.factor_evaluation import FactorSet as _FactorSet
         feature_codes, feature_versions, _missing_policies = (
             _load_features_from_factor_set(db, factor_set_id)
         )
+        _fs = db.get(_FactorSet, factor_set_id)
+        if _fs is not None:
+            factor_set_version = int(getattr(_fs, "version", 0) or 0)
+            _fs_member_rows = list(getattr(_fs, "members", []) or [])
     else:
         # Legacy 回退路径：使用静态 FEATURE_CODES
         feature_codes = FEATURE_CODES
@@ -592,111 +613,172 @@ def train_rolling_ridge(
     if existing is not None:
         return _result_from_model(existing)
 
-    samples = _load_samples(
-        warehouse,
-        factor_calc_batch_id=factor_calc_batch_id,
-        target_calc_batch_id=target_calc_batch_id,
-        data_cutoff_date=cutoff,
-        feature_codes=feature_codes,
-    )
-    all_dates = sorted(samples["trade_date"].unique()) if not samples.empty else []
-    window_dates = all_dates[-window_days:]
-    samples = samples[samples["trade_date"].isin(window_dates)].copy()
-    validation_dates = window_dates[-validation_days:]
-    training_dates = window_dates[:-validation_days]
-    train = samples[samples["trade_date"].isin(training_dates)]
-    validation = samples[samples["trade_date"].isin(validation_dates)]
-    sample_count = len(samples)
-    symbol_count = int(samples["symbol"].nunique()) if not samples.empty else 0
-    trade_date_count = len(window_dates)
+    # ── P2.3a 训练前置 2 道准入：覆盖率 + IC 区间 ────────────────────────────
+    #   失败仍然**创建** FactorModelRun（前端列表可见），但 status=rejected
+    #   这样既保证门禁有效，又不会让"点击训练"的结果看不到。
+    gate_cfg = _load_gate_config_from_db(db_supplied=db)
+    pre_gate_reasons: list[str] = []
+    try:
+        pre_gate_results = run_training_eligibility_gates(
+            factor_codes=list(feature_codes),
+            coverage_threshold=float(gate_cfg.get("coverage_threshold", 0.70)),
+            ic_min=float(gate_cfg.get("ic_min", 0.01)),
+            ic_max=float(gate_cfg.get("ic_max", 0.10)),
+            lookback_days=int(gate_cfg.get("lookback_days", 30)),
+        )
+    except Exception as _pge:
+        # 门禁执行出错：降级为 warning reason（不直接 fail，仍继续训练）
+        # 避免 gate 升级/异常导致完全无法训练（fail-open 更安全）
+        pre_gate_reasons.append(f"[P2-G Pre] gate_exec_warn: {type(_pge).__name__}:{_pge}")
+        pre_gate_results = []
+    for g in pre_gate_results:
+        if not getattr(g, "passed", False):
+            name = getattr(g, "gate_name", "unknown_gate")
+            rs = getattr(g, "reasons", None) or []
+            pre_gate_reasons.append(f"[P2-G Pre] {name}: {'; '.join(rs) if rs else 'not_passed'}")
 
-    coefficients: dict[str, float] = {}
-    normalized_weights: dict[str, float] = {}
-    selected_alpha = None
-    validation_ic = None
-    # WP7-04 增强门禁指标（默认 None，训练成功后计算）
-    validation_icir: float | None = None
-    weight_drift: float | None = None
-    cluster_exposure: float | None = None
-    factor_set_healthy: bool | None = None
-    metrics: dict[str, float | int | None] = {
-        "validation_ic": None,
-        "validation_mse": None,
-        "validation_r2": None,
-        "train_ic": None,
-        "sample_count": sample_count,
-        "validation_sample_count": len(validation),
-        "validation_date_count": len(validation_dates),
-        # WP7-04 增强门禁指标
-        "validation_icir": None,
-        "weight_drift": None,
-        "cluster_exposure": None,
-        "factor_set_healthy": None,
-    }
-    final_intercept = None
-    if training_dates and validation_dates and not train.empty and not validation.empty:
-        feature_list = list(feature_codes)
-        x_train = train[feature_list].to_numpy(dtype=float)
-        y_train = train["target"].to_numpy(dtype=float)
-        x_validation = validation[feature_list].to_numpy(dtype=float)
-        y_validation = validation["target"].to_numpy(dtype=float)
-        candidates = []
-        for alpha in alphas:
-            candidate = Ridge(alpha=float(alpha), fit_intercept=True)
-            candidate.fit(x_train, y_train)
-            prediction = candidate.predict(x_validation)
-            candidates.append(
-                (
-                    float(mean_squared_error(y_validation, prediction)),
-                    float(alpha),
-                    candidate,
-                    prediction,
-                )
-            )
-        validation_mse, selected_alpha, selected, validation_prediction = min(
-            candidates, key=lambda item: (item[0], item[1])
-        )
-        validation_ic = _safe_correlation(
-            pd.Series(validation_prediction), validation["target"].reset_index(drop=True)
-        )
-        train_prediction = selected.predict(x_train)
-        train_ic = _safe_correlation(
-            pd.Series(train_prediction), train["target"].reset_index(drop=True)
-        )
-        validation_r2 = (
-            float(r2_score(y_validation, validation_prediction))
-            if len(validation) >= 2
-            else None
-        )
-        final_model = Ridge(alpha=selected_alpha, fit_intercept=True)
-        final_model.fit(
-            samples[feature_list].to_numpy(dtype=float),
-            samples["target"].to_numpy(dtype=float),
-        )
-        final_intercept = float(final_model.intercept_)
-        coefficients = {
-            code: float(value)
-            for code, value in zip(feature_codes, final_model.coef_)
+    # 如果前置门禁有硬性失败（pre_gate_reasons 非空且不是单独的 warning），跳过训练直接写 rejected
+    # 判定逻辑：只要有任一 passed=False 的 gate（即 pre_gate_results 中存在失败），就跳过拟合
+    has_hard_pre_fail = any(
+        not getattr(g, "passed", False) for g in pre_gate_results
+    )
+    if has_hard_pre_fail:
+        # 初始化后续变量：保证构造 FactorModelRun 时字段齐全
+        all_dates: list = []
+        window_dates: list = []
+        validation_dates: list = []
+        training_dates: list = []
+        sample_count = 0
+        symbol_count = 0
+        trade_date_count = 0
+        coefficients: dict[str, float] = {}
+        normalized_weights: dict[str, float] = {}
+        selected_alpha = None
+        validation_ic = None
+        validation_icir: float | None = None
+        weight_drift: float | None = None
+        cluster_exposure: float | None = None
+        factor_set_healthy: bool | None = None
+        metrics: dict[str, float | int | None] = {
+            "validation_ic": None,
+            "validation_mse": None,
+            "validation_r2": None,
+            "train_ic": None,
+            "sample_count": 0,
+            "validation_sample_count": 0,
+            "validation_date_count": 0,
+            "validation_icir": None,
+            "weight_drift": None,
+            "cluster_exposure": None,
+            "factor_set_healthy": None,
         }
-        absolute_sum = sum(abs(value) for value in coefficients.values())
-        if absolute_sum > 1e-12:
-            normalized_weights = {
-                code: value / absolute_sum
-                for code, value in coefficients.items()
-            }
-        metrics.update(
-            {
-                "validation_ic": validation_ic,
-                "validation_mse": validation_mse,
-                "validation_r2": validation_r2,
-                "train_ic": train_ic,
-            }
+        final_intercept: float | None = None
+    else:
+        samples = _load_samples(
+            warehouse,
+            factor_calc_batch_id=factor_calc_batch_id,
+            target_calc_batch_id=target_calc_batch_id,
+            data_cutoff_date=cutoff,
+            feature_codes=feature_codes,
         )
-        # WP7-04: 验证期 ICIR（基于每日 IC 序列）
-        validation_icir = _compute_validation_icir(
-            validation, feature_list, selected
-        )
-        metrics["validation_icir"] = validation_icir
+        all_dates = sorted(samples["trade_date"].unique()) if not samples.empty else []
+        window_dates = all_dates[-window_days:]
+        samples = samples[samples["trade_date"].isin(window_dates)].copy()
+        validation_dates = window_dates[-validation_days:]
+        training_dates = window_dates[:-validation_days]
+        train = samples[samples["trade_date"].isin(training_dates)]
+        validation = samples[samples["trade_date"].isin(validation_dates)]
+        sample_count = len(samples)
+        symbol_count = int(samples["symbol"].nunique()) if not samples.empty else 0
+        trade_date_count = len(window_dates)
+
+        coefficients: dict[str, float] = {}
+        normalized_weights: dict[str, float] = {}
+        selected_alpha = None
+        validation_ic = None
+        # WP7-04 增强门禁指标（默认 None，训练成功后计算）
+        validation_icir: float | None = None
+        weight_drift: float | None = None
+        cluster_exposure: float | None = None
+        factor_set_healthy: bool | None = None
+        metrics: dict[str, float | int | None] = {
+            "validation_ic": None,
+            "validation_mse": None,
+            "validation_r2": None,
+            "train_ic": None,
+            "sample_count": sample_count,
+            "validation_sample_count": len(validation),
+            "validation_date_count": len(validation_dates),
+            # WP7-04 增强门禁指标
+            "validation_icir": None,
+            "weight_drift": None,
+            "cluster_exposure": None,
+            "factor_set_healthy": None,
+        }
+        final_intercept: float | None = None
+        if training_dates and validation_dates and not train.empty and not validation.empty:
+            feature_list = list(feature_codes)
+            x_train = train[feature_list].to_numpy(dtype=float)
+            y_train = train["target"].to_numpy(dtype=float)
+            x_validation = validation[feature_list].to_numpy(dtype=float)
+            y_validation = validation["target"].to_numpy(dtype=float)
+            candidates = []
+            for alpha in alphas:
+                candidate = Ridge(alpha=float(alpha), fit_intercept=True)
+                candidate.fit(x_train, y_train)
+                prediction = candidate.predict(x_validation)
+                candidates.append(
+                    (
+                        float(mean_squared_error(y_validation, prediction)),
+                        float(alpha),
+                        candidate,
+                        prediction,
+                    )
+                )
+            validation_mse, selected_alpha, selected, validation_prediction = min(
+                candidates, key=lambda item: (item[0], item[1])
+            )
+            validation_ic = _safe_correlation(
+                pd.Series(validation_prediction), validation["target"].reset_index(drop=True)
+            )
+            train_prediction = selected.predict(x_train)
+            train_ic = _safe_correlation(
+                pd.Series(train_prediction), train["target"].reset_index(drop=True)
+            )
+            validation_r2 = (
+                float(r2_score(y_validation, validation_prediction))
+                if len(validation) >= 2
+                else None
+            )
+            final_model = Ridge(alpha=selected_alpha, fit_intercept=True)
+            final_model.fit(
+                samples[feature_list].to_numpy(dtype=float),
+                samples["target"].to_numpy(dtype=float),
+            )
+            final_intercept = float(final_model.intercept_)
+            coefficients = {
+                code: float(value)
+                for code, value in zip(feature_codes, final_model.coef_)
+            }
+            absolute_sum = sum(abs(value) for value in coefficients.values())
+            if absolute_sum > 1e-12:
+                normalized_weights = {
+                    code: value / absolute_sum
+                    for code, value in coefficients.items()
+                }
+            metrics.update(
+                {
+                    "validation_ic": validation_ic,
+                    "validation_mse": validation_mse,
+                    "validation_r2": validation_r2,
+                    "train_ic": train_ic,
+                }
+            )
+            # WP7-04: 验证期 ICIR（基于每日 IC 序列）
+            validation_icir = _compute_validation_icir(
+                validation, feature_list, selected
+            )
+            metrics["validation_icir"] = validation_icir
 
     # WP7-04: 权重漂移、簇暴露、FactorSet 健康状态（仅在有权重时计算）
     if normalized_weights:
@@ -723,6 +805,109 @@ def train_rolling_ridge(
         factor_set_healthy=factor_set_healthy,
         normalized_weights=normalized_weights,
     )
+
+    # ════════════════════════════════════════════════════════════════
+    # P2-G：门禁收尾（pre 合并 + post 两道 + 审计）
+    # ════════════════════════════════════════════════════════════════
+
+    # ── 修复 P2.3a 遗留：pre_gate_reasons 未落到最终 rejection_reasons ──
+    rejection_reasons = list(pre_gate_reasons) + list(rejection_reasons)
+
+    # ── P2.3b 训练后置 2 道门禁（默认配置：sample≥1w / IC差≤±50%） ─────
+    post_gate_reasons: list[str] = []
+    # 门禁 1：样本量 ≥ min_sample_count（治理硬门槛，叠加 legacy 的 minimum_samples）
+    _min_samples_p2 = int(gate_cfg.get("min_sample_count", 10000))
+    if sample_count < _min_samples_p2:
+        post_gate_reasons.append(
+            f"[P2-G Post] sample_count:{sample_count}<{_min_samples_p2}(治理硬门槛)"
+        )
+    # 门禁 2：与当前 active 模型 IC 差 ≤ ±max_active_ic_delta_pct（默认 50%）
+    _max_ic_delta = float(gate_cfg.get("max_active_ic_delta_pct", 0.50))
+    _active_ic: float | None = None
+    _new_ic: float | None = _as_float(validation_ic)
+    try:
+        state = db.get(FactorRuntimeState, 1)
+        if state is not None and state.active_model_run_id:
+            active_run = db.get(FactorModelRun, state.active_model_run_id)
+            if active_run is not None:
+                try:
+                    m = _json_object(getattr(active_run, "metrics_json", None) or "{}")
+                except Exception:
+                    m = {}
+                _active_ic = _as_float(m.get("validation_ic"))
+    except Exception as _ic_err:
+        post_gate_reasons.append(
+            f"[P2-G Post] active_ic_compare_warn: "
+            f"{type(_ic_err).__name__}:{_ic_err}"
+        )
+        _active_ic = None
+    if (
+        _active_ic is not None
+        and _new_ic is not None
+        and abs(_active_ic) > 1e-15
+    ):
+        rel_delta = abs(_new_ic - _active_ic) / abs(_active_ic)
+        if rel_delta > _max_ic_delta:
+            post_gate_reasons.append(
+                f"[P2-G Post] ic_delta:{rel_delta:.4%}>{_max_ic_delta:.0%}"
+                f"(new_ic={_new_ic:.6f}, active_ic={_active_ic:.6f})"
+            )
+    # 合并后置门禁原因
+    rejection_reasons = list(rejection_reasons) + list(post_gate_reasons)
+
+    # ── P2-G 门禁失败审计：任一 pre/post 门禁触发即记录（best-effort） ─
+    if pre_gate_reasons or post_gate_reasons:
+        try:
+            from app.services.data_governance_audit import write_audit_event
+            _final_status_hint = "rejected" if rejection_reasons else "validated"
+            write_audit_event(
+                db,
+                "DATA_QUALITY_QUARANTINE",
+                business_key=run_id,
+                operator_id="ridge_train",
+                correlation_id=None,
+                before={
+                    "pre_gate_reasons": list(pre_gate_reasons),
+                    "legacy_gate": {
+                        "minimum_samples": getattr(
+                            active_gate, "minimum_samples", None
+                        ),
+                        "minimum_validation_ic": getattr(
+                            active_gate, "minimum_validation_ic", None
+                        ),
+                    },
+                },
+                after={
+                    "post_gate_reasons": list(post_gate_reasons),
+                    "final_status": _final_status_hint,
+                    "sample_count": sample_count,
+                    "new_validation_ic": _new_ic,
+                    "active_validation_ic": _active_ic,
+                    "p2_gate_cfg": {
+                        "min_sample_count": _min_samples_p2,
+                        "max_active_ic_delta_pct": _max_ic_delta,
+                    },
+                },
+                attributes={
+                    "gate_stage": "pre+post",
+                    "model_run_id": run_id,
+                    "factor_set_id": factor_set_id,
+                    "target_code": TARGET_CODE,
+                },
+                note=(
+                    "P2-G 训练门禁失败，模型标记为 rejected"
+                    if rejection_reasons
+                    else "P2-G 训练门禁存在告警（legacy 通过但治理触发）"
+                ),
+            )
+        except Exception as _audit_err:
+            # best-effort：审计写入失败不影响门禁判定
+            import logging as _log_audit
+            _log_audit.getLogger(__name__).warning(
+                "[P2-G][train] 写入门禁审计事件失败（best-effort 跳过）: %s",
+                _audit_err,
+            )
+
     status = "rejected" if rejection_reasons else "validated"
     model = FactorModelRun(
         id=run_id,
@@ -776,6 +961,118 @@ def train_rolling_ridge(
                     else None,
                 )
             )
+    # ════════════════════════════════════════════════════════════════
+    # P2-G：训练治理物化（savepoint 隔离：失败不影响模型训练主链路）
+    #   - factor_set_snapshots: 捕获当时 FactorSet 成员配置
+    #   - factor_model_members: 模型→因子 关联物化（UI/回测直连）
+    # ════════════════════════════════════════════════════════════════
+    try:
+        with db.begin_nested():  # SAVEPOINT：失败只回滚治理写入
+            # 1. 构造 member_snapshot_json：factor_code → {version, role, weight_in_set, missing_policy, direction}
+            snap_map: dict[str, dict] = {}
+            for _m in _fs_member_rows:
+                _code = getattr(_m, "factor_code", "") or ""
+                if not _code:
+                    continue
+                snap_map[_code] = {
+                    "version": int(getattr(_m, "factor_version", 1) or 1),
+                    "role": str(getattr(_m, "role", "feature") or "feature"),
+                    "weight_in_set": None,
+                    "missing_policy": (
+                        getattr(_m, "missing_policy", None) or None
+                    ),
+                    "direction": getattr(_m, "direction", None) or None,
+                }
+            # 静态/legacy 路径 + 只在 model.weights 出现的特征（防御性）
+            for fc in feature_codes:
+                if fc not in snap_map:
+                    snap_map[fc] = {
+                        "version": int(feature_versions.get(fc, 1) or 1),
+                        "role": "feature",
+                        "weight_in_set": None,
+                    }
+
+            # 2. 计算 sha256 hash（唯一约束去重）
+            sorted_keys = sorted(snap_map.keys())
+            raw_ident = ",".join(
+                f"{k}:{snap_map[k].get('version', 1)}" for k in sorted_keys
+            )
+            _hash = hashlib.sha256(raw_ident.encode("utf-8")).hexdigest()
+
+            # 3. 唯一约束 (factor_set_id, hash)：先查后写（避免 FK 唯一冲突）
+            if factor_set_id is None:
+                _existing_snap_q = db.query(FactorSetSnapshot).filter(
+                    FactorSetSnapshot.factor_set_id.is_(None),
+                    FactorSetSnapshot.hash == _hash,
+                )
+            else:
+                _existing_snap_q = db.query(FactorSetSnapshot).filter(
+                    FactorSetSnapshot.factor_set_id == factor_set_id,
+                    FactorSetSnapshot.hash == _hash,
+                )
+            _existing_snap = _existing_snap_q.first()
+            if _existing_snap is None:
+                _snap = FactorSetSnapshot(
+                    factor_set_id=factor_set_id,
+                    factor_set_version=int(factor_set_version or 0),
+                    member_snapshot_json=json.dumps(
+                        snap_map, sort_keys=True, default=str,
+                    ),
+                    hash=_hash,
+                    created_via="training",
+                    created_by="ridge_train",
+                    note=f"ridge run_id={run_id}",
+                )
+                db.add(_snap)
+                db.flush()  # 取快照 id（仅用于日志，成员表不依赖快照）
+                _snap_id: int | None = _snap.id
+            else:
+                _snap_id = _existing_snap.id
+
+            # 4. 逐因子写入 FactorModelMember（带 coverage/side/IC）
+            _total_rows = len(samples)
+            for _ws in model.weights:
+                _code = str(_ws.factor_code)
+                _coef = float(_ws.coefficient)
+                # coverage：训练样本窗口内该因子有效占比
+                _cov: float | None = None
+                if _total_rows > 0 and not samples.empty and _code in samples.columns:
+                    try:
+                        _col = samples[_code]
+                        _notna = int(_col.notna().sum())
+                        _cov = float(_notna) / float(_total_rows)
+                        if not (0.0 <= _cov <= 1.0):
+                            _cov = None
+                    except Exception:
+                        _cov = None
+                # side：按 coefficient 符号判定
+                if _coef > 0:
+                    _side = "long"
+                elif _coef < 0:
+                    _side = "short"
+                else:
+                    _side = "neutral"
+                db.add(FactorModelMember(
+                    model_run_id=run_id,
+                    factor_code=_code,
+                    factor_version=int(_ws.factor_version or 1),
+                    coefficient=_coef,
+                    normalized_weight=float(_ws.normalized_weight),
+                    train_ic=_ws.train_ic,
+                    validation_ic=_ws.validation_ic,
+                    coverage=_cov,
+                    side=_side,
+                ))
+            # end savepoint：nested txn 自动提交到外层 session
+    except Exception as _p2g_err:
+        # best-effort：治理写入失败不影响模型训练成功（主记录会提交）
+        import logging as _log2
+        _log2.getLogger(__name__).warning(
+            "[P2-G][train] 写入治理快照(FactorSetSnapshot+FactorModelMember)失败"
+            "（best-effort 跳过，不回滚训练结果）: %s",
+            _p2g_err,
+        )
+
     db.flush()
     result = RidgeTrainingResult(
         model_run_id=run_id,

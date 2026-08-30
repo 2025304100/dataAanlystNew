@@ -21,6 +21,15 @@ class CustomIndicator(Base):
     params_json: Mapped[str] = mapped_column(Text, default="[]")
     scope_json: Mapped[str] = mapped_column(Text, default="[\"backtest\", \"discovery\"]")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    # P2-G：因子草稿审批流回写字段（auto-align 自动补齐）
+    # pending / submitted / approved / rejected / promoted
+    approval_status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False, index=True)
+    # 审批驳回原因或审批说明
+    approval_review_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 审批通过 promote 成功后，因子代码回写
+    promoted_factor_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # 关联的 factor_drafts.draft_no（方便 UI 跳转）
+    factor_draft_no: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)

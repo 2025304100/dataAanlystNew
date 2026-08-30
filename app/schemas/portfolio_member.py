@@ -10,6 +10,9 @@ class PortfolioMemberRead(BaseModel):
     id: int
     portfolio_id: int
     symbol_id: int
+    # FIX: 附带标的代码/名称，避免前端只看到 #symbol_id（例如未建仓成员在持仓表中没有对应行）
+    symbol: str | None = None
+    name: str | None = None
     status: str = "active"
     execution_mode: str = "manual"
     source_type: str = "manual"
