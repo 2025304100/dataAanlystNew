@@ -10224,3 +10224,8 @@ backups/
 *.sqlite3
 *.sqlite
 .codex_tmp_patch_history.js
+
+# 目录级忽略（覆盖逐文件清单的遗漏）
+.venv/
+node_modules/
+.workbuddy/
