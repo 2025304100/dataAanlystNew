@@ -10229,3 +10229,15 @@ backups/
 .venv/
 node_modules/
 .workbuddy/
+
+# 调试/临时脚本与 IDE 工具产物（不入库，磁盘保留）
+_dbg_*.py
+_patch_*.py
+_http_verify_*.py
+.vite/
+1.2
+.qoder/
+.trae/
+.trae-html-share-packages/
+screenshots/
+原型图/
