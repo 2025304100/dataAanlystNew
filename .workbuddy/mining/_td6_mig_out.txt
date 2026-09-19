@@ -1,9 +1,0 @@
-UPGRADE head OK
-head=wps_0023_056_td6_snapshot_binding_columns
-ncols=30 missing_cols=[]
-missing_idx=[]
-COLS=['id', 'snapshot_no', 'portfolio_id', 'portfolio_factor_usage_id', 'factor_model_run_id', 'factor_set_id', 'rule_id', 'rule_version', 'decision_clock_json', 'cost_config_json', 'member_snapshot_json', 'candidate_pool_json', 'universe_type', 'benchmark_code', 'snapshot_type', 'snapshot_hash', 'idempotency_key', 'key_members_json', 'gate_policy_version', 'gate_result_json', 'versions_json', 'effective_from', 'task_locked_at', 'task_id', 'locked_by_run_type', 'created_by', 'created_at', 'usage_binding_id', 'snapshot_json', 'content_hash']
-IDX=['ix_strategy_execution_snapshots_content_hash', 'ix_strategy_execution_snapshots_effective_from', 'ix_strategy_execution_snapshots_factor_model_run_id', 'ix_strategy_execution_snapshots_factor_set_id', 'ix_strategy_execution_snapshots_idempotency_key', 'ix_strategy_execution_snapshots_portfolio_factor_usage_id', 'ix_strategy_execution_snapshots_portfolio_id', 'ix_strategy_execution_snapshots_snapshot_hash', 'ix_strategy_execution_snapshots_snapshot_no', 'ix_strategy_execution_snapshots_task_id', 'ix_strategy_execution_snapshots_usage_binding_id']
-DOWNGRADE -1 OK
-after -1: ncols=27 reverted_cols_ok=True
-after -1: missing_want_idx_ok=True

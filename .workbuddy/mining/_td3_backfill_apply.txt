@@ -1,6 +1,0 @@
-[factor_evaluation_runs] nan_literal_rows=0 invalid_json=0 sample_ids=[]
-[factor_shadow_observations] nan_literal_rows=0 invalid_json=0 sample_ids=[]
-[factor_model_runs] nan_literal_rows=0 invalid_json=0 sample_ids=[]
-------------------------------------------------------------
-mode=APPLY total_nan_literal_rows=0 total_invalid_json=0 cleaned=0
-DoD③ 达标：--apply 完成，复扫为 0 行（幂等，可重跑）

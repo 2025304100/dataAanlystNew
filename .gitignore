@@ -10212,3 +10212,9 @@ alembic/versions/2026_09_02_0049_wps_0023_047_bfg_run_stage_and_progress.py
 .venv/Lib/site-packages/pyee-13.0.1.dist-info/WHEEL
 .venv/Lib/site-packages/pyee-13.0.1.dist-info/licenses/LICENSE
 .venv/Scripts/playwright.exe
+
+# 损坏的旧 git 对象库备份（不入库）
+.git.broken/
+
+# WorkBuddy 会话数据（不入库）
+.workbuddy/

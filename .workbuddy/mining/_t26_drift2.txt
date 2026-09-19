@@ -1,8 +1,0 @@
-DB  : mysql+pymysql://***@127.0.0.1:3306/gpfx?charset=utf8mb4
-范围: 4 张表
-  [OK]    factor_experience  索引 3 列19 外键 0 引擎INNODB
-  [OK]    factor_experience_tags  索引 2 列 5 外键 0 引擎INNODB
-  [OK]    factor_experience_metrics  索引 1 列 7 外键 0 引擎INNODB
-  [OK]    factor_experience_field_deps  索引 1 列 5 外键 0 引擎INNODB
-
-✅ 无漂移：4 张表与 ORM 完全一致

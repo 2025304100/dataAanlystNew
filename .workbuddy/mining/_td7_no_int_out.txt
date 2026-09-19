@@ -1,1 +1,0 @@
-clean: no int(snap.id)/int(data['snapshot_id']) casts

@@ -1,7 +1,0 @@
-EXIT = 0
-bytes: 49543
-db: mysql+pymysql://***@127.0.0.1:3306/gpfx?charset=utf8mb4
-dialect: mysql | default_charset: utf8
-checks_covered: ['column', 'index', 'unique_constraint', 'foreign_key', 'engine', 'charset', 'check_constraint']
-summary: {"total": 127, "drift": 49, "ok": 78, "warn": 0, "by_class": {"missing_orm": 0, "missing_db": 0, "col_db_only": 10, "col_orm_only": 1, "missing_idx": 0, "extra_idx": 26, "missing_uq": 1, "missing_fk": 18, "extra_fk": 0, "fk_mismatch": 12, "engine": 0, "charset": 0, "missing_check": 11}}
-notes: ['字符集全量明细见 drift_tables/warn_rows 的 options.collation 字段']

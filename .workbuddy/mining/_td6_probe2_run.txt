@@ -1,5 +1,0 @@
-== after mgr.initialize ==
-== after _auto_align_all_schema ==
-== after _auto_repair_basic_data_integrity ==
-== after old-style INSERT probe ==
-WROTE D:\ai_project\dataAanlystNew\.workbuddy\mining\_td6_probe2_out.txt

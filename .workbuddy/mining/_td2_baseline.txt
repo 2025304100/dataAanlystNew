@@ -1,737 +1,0 @@
-============================= test session starts =============================
-platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
-rootdir: d:\ai_project\dataAanlystNew
-configfile: pytest.ini
-plugins: anyio-4.14.2
-collected 27 items
-
-tests\integration\test_factor_evaluation_blockers.py ......FFFFFFF...FF  [ 66%]
-tests\integration\test_factor_evaluation_e2e.py F                        [ 70%]
-tests\integration\test_factor_no_cross_regression.py .....               [ 88%]
-tests\integration\test_factor_regression_infra.py ...                    [100%]
-
-================================== FAILURES ===================================
-_________________________ test_blocker_stress_failure _________________________
-tests\integration\test_factor_evaluation_blockers.py:770: in test_blocker_stress_failure
-    final_task = _wait_fn(task_id, {"warn", "done", "failed", "cancelled"}, timeout=60)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests\integration\conftest.py:368: in wait_for_task_status
-    task = get_evaluation_task(task_id)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app\services\factors\wp5_eval_task.py:2369: in get_evaluation_task
-    task = get_async_task(task_id, use_control_plane=True)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app\services\async_tasks.py:716: in get_async_task
-    _expire_stale_tasks(db)
-app\services\async_tasks.py:324: in _expire_stale_tasks
-    db.execute(
-.venv\Lib\site-packages\sqlalchemy\orm\session.py:2351: in execute
-    return self._execute_internal(
-.venv\Lib\site-packages\sqlalchemy\orm\session.py:2239: in _execute_internal
-    conn = self._connection_for_bind(bind)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.venv\Lib\site-packages\sqlalchemy\orm\session.py:2108: in _connection_for_bind
-    return trans._connection_for_bind(engine, execution_options)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-<string>:2: in _connection_for_bind
-    ???
-.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py:101: in _go
-    self._raise_for_prerequisite_state(fn.__name__, current_state)
-.venv\Lib\site-packages\sqlalchemy\orm\session.py:971: in _raise_for_prerequisite_state
-    raise sa_exc.PendingRollbackError(
-E   sqlalchemy.exc.PendingRollbackError: This Session's transaction has been rolled back due to a previous exception during flush. To begin a new transaction with this Session, first issue Session.rollback(). Original exception was: (sqlite3.OperationalError) database is locked
-E   [SQL: UPDATE async_tasks SET updated_at=?, last_patrol_at=? WHERE async_tasks.id = ?]
-E   [parameters: ('2026-09-18 04:08:56.981630', '2026-09-18 04:08:56.981630', '545afcac98024ed08ad116f9d649a981')]
-E   (Background on this error at: https://sqlalche.me/e/20/e3q8) (Background on this error at: https://sqlalche.me/e/20/7s2a)
----------------------------- Captured stderr setup ----------------------------
-
-  6%|▌         | 1/18 [00:02<00:34,  2.02s/it][A
----------------------------- Captured stderr call -----------------------------
-
-
-  6%|▌         | 1/18 [00:02<00:35,  2.10s/it][A[A
-
-
-
-
-  0%|          | 0/18 [00:00<?, ?it/s][A[A[A[A[A
-
-
-  6%|▌         | 1/18 [00:01<00:33,  1.95s/it][A[A[A 11%|█         | 2/18 [00:04<00:34,  2.18s/it]
-
-
-
-  6%|▌         | 1/18 [00:02<00:38,  2.26s/it][A[A[A[A
- 11%|█         | 2/18 [00:04<00:35,  2.21s/it][A
-
-
-
-
-
-  0%|          | 0/18 [00:00<?, ?it/s][A[A[A[A[A[A
-
- 11%|█         | 2/18 [00:04<00:40,  2.52s/it][A[A
-
-
-
-
-  6%|▌         | 1/18 [00:02<00:41,  2.44s/it][A[A[A[A[A
-
-
- 11%|█         | 2/18 [00:04<00:34,  2.18s/it][A[A[A
-
-
-
- 11%|█         | 2/18 [00:04<00:36,  2.27s/it][A[A[A[A 17%|█▋        | 3/18 [00:06<00:34,  2.29s/it]
- 17%|█▋        | 3/18 [00:06<00:34,  2.30s/it][A
-
-
-
-
-
-  6%|▌         | 1/18 [00:02<00:43,  2.57s/it][A[A[A[A[A[A
-
-
-
-
- 11%|█         | 2/18 [00:05<00:40,  2.54s/it][A[A[A[A[A
-
-
- 17%|█▋        | 3/18 [00:06<00:35,  2.37s/it][A[A[A
-
- 17%|█▋        | 3/18 [00:07<00:38,  2.57s/it][A[A
-
-
-
- 17%|█▋        | 3/18 [00:06<00:33,  2.25s/it][A[A[A[A 22%|██▏       | 4/18 [00:08<00:31,  2.26s/it]
- 22%|██▏       | 4/18 [00:09<00:32,  2.31s/it][A
-
-
-
-
-
- 11%|█         | 2/18 [00:04<00:39,  2.48s/it][A[A[A[A[A[A
-
-
-
-
- 17%|█▋        | 3/18 [00:07<00:37,  2.50s/it][A[A[A[A[A
-
-
- 22%|██▏       | 4/18 [00:09<00:33,  2.41s/it][A[A[A
-
- 22%|██▏       | 4/18 [00:10<00:35,  2.53s/it][A[A
-
-
-
- 22%|██▏       | 4/18 [00:09<00:32,  2.29s/it][A[A[A[A 28%|██▊       | 5/18 [00:11<00:29,  2.28s/it]
- 28%|██▊       | 5/18 [00:11<00:29,  2.26s/it][A
-
-
-
-
-
- 17%|█▋        | 3/18 [00:07<00:36,  2.47s/it][A[A[A[A[A[A
-
-
-
-
- 22%|██▏       | 4/18 [00:09<00:34,  2.47s/it][A[A[A[A[A
-
-
- 28%|██▊       | 5/18 [00:11<00:31,  2.43s/it][A[A[A
-
- 28%|██▊       | 5/18 [00:12<00:32,  2.51s/it][A[A
-
-
-
- 28%|██▊       | 5/18 [00:11<00:30,  2.38s/it][A[A[A[A 33%|███▎      | 6/18 [00:13<00:28,  2.36s/it]
- 33%|███▎      | 6/18 [00:13<00:27,  2.30s/it][A
-
-
-
-
-
- 22%|██▏       | 4/18 [00:09<00:33,  2.40s/it][A[A[A[A[A[A
-
-
-
-
- 28%|██▊       | 5/18 [00:12<00:31,  2.45s/it][A[A[A[A[A
-
- 33%|███▎      | 6/18 [00:14<00:29,  2.48s/it][A[A 39%|███▉      | 7/18 [00:16<00:26,  2.39s/it]
-
-
-
- 33%|███▎      | 6/18 [00:14<00:29,  2.43s/it][A[A[A[A
- 39%|███▉      | 7/18 [00:16<00:25,  2.34s/it][A
-
-
-
-
-
- 28%|██▊       | 5/18 [00:11<00:30,  2.33s/it][A[A[A[A[A[A
-
-
-
-
- 33%|███▎      | 6/18 [00:14<00:28,  2.38s/it][A[A[A[A[A
-
- 39%|███▉      | 7/18 [00:17<00:26,  2.40s/it][A[A
-
-
-
- 39%|███▉      | 7/18 [00:16<00:26,  2.38s/it][A[A[A[A
- 44%|████▍     | 8/18 [00:18<00:23,  2.32s/it][A 44%|████▍     | 8/18 [00:18<00:23,  2.37s/it]
-
-
- 33%|███▎      | 6/18 [00:17<00:41,  3.49s/it][A[A[A
-
-
-
-
-
- 33%|███▎      | 6/18 [00:14<00:27,  2.31s/it][A[A[A[A[A[A
-
-
-
-
- 39%|███▉      | 7/18 [00:16<00:25,  2.34s/it][A[A[A[A[A
-
- 44%|████▍     | 8/18 [00:19<00:23,  2.36s/it][A[A
-
-
-
- 44%|████▍     | 8/18 [00:18<00:23,  2.37s/it][A[A[A[A
- 50%|█████     | 9/18 [00:20<00:20,  2.32s/it][A 50%|█████     | 9/18 [00:20<00:21,  2.36s/it]
-
-
- 39%|███▉      | 7/18 [00:19<00:33,  3.09s/it][A[A[A
-
-
-
-
-
- 39%|███▉      | 7/18 [00:16<00:25,  2.31s/it][A[A[A[A[A[A
-
-
-
-
- 44%|████▍     | 8/18 [00:19<00:23,  2.34s/it][A[A[A[A[A
-
- 50%|█████     | 9/18 [00:21<00:21,  2.35s/it][A[A 56%|█████▌    | 10/18 [00:23<00:19,  2.42s/it]
-
-
-
- 50%|█████     | 9/18 [00:21<00:21,  2.43s/it][A[A[A[A
- 56%|█████▌    | 10/18 [00:23<00:19,  2.40s/it][A
-
-
- 44%|████▍     | 8/18 [00:22<00:28,  2.87s/it][A[A[A
-
-
-
-
-
- 44%|████▍     | 8/18 [00:19<00:23,  2.39s/it][A[A[A[A[A[A
-
-
-
-
- 50%|█████     | 9/18 [00:21<00:21,  2.38s/it][A[A[A[A[A
-
- 56%|█████▌    | 10/18 [00:24<00:18,  2.37s/it][A[A 61%|██████    | 11/18 [00:25<00:17,  2.45s/it]
-
-
-
- 56%|█████▌    | 10/18 [00:23<00:19,  2.46s/it][A[A[A[A
- 61%|██████    | 11/18 [00:25<00:17,  2.45s/it][A
-
-
- 50%|█████     | 9/18 [00:24<00:24,  2.75s/it][A[A[A
-
-
-
-
-
- 50%|█████     | 9/18 [00:21<00:21,  2.41s/it][A[A[A[A[A[A
-
- 61%|██████    | 11/18 [00:26<00:16,  2.37s/it][A[A
-
-
-
-
- 56%|█████▌    | 10/18 [00:24<00:19,  2.39s/it][A[A[A[A[A 67%|██████▋   | 12/18 [00:28<00:14,  2.42s/it]
-
-
-
- 61%|██████    | 11/18 [00:26<00:17,  2.44s/it][A[A[A[A
- 67%|██████▋   | 12/18 [00:28<00:14,  2.46s/it][A
-
-
- 56%|█████▌    | 10/18 [00:27<00:21,  2.68s/it][A[A[A
-
-
-
-
-
- 56%|█████▌    | 10/18 [00:24<00:19,  2.44s/it][A[A[A[A[A[A
-
- 67%|██████▋   | 12/18 [00:29<00:14,  2.40s/it][A[A
-
-
-
-
- 61%|██████    | 11/18 [00:26<00:16,  2.42s/it][A[A[A[A[A 72%|███████▏  | 13/18 [00:30<00:11,  2.36s/it]
-
-
-
- 67%|██████▋   | 12/18 [00:28<00:14,  2.37s/it][A[A[A[A
- 72%|███████▏  | 13/18 [00:30<00:12,  2.43s/it][A
-
-
- 61%|██████    | 11/18 [00:29<00:18,  2.61s/it][A[A[A
-
-
-
-
-
- 61%|██████    | 11/18 [00:26<00:16,  2.43s/it][A[A[A[A[A[A
-
- 72%|███████▏  | 13/18 [00:31<00:12,  2.43s/it][A[A
-
-
-
-
- 67%|██████▋   | 12/18 [00:29<00:14,  2.43s/it][A[A[A[A[A 78%|███████▊  | 14/18 [00:32<00:09,  2.34s/it]
-
-
-
- 72%|███████▏  | 13/18 [00:30<00:11,  2.34s/it][A[A[A[A
- 78%|███████▊  | 14/18 [00:32<00:09,  2.36s/it][A
-
-
- 67%|██████▋   | 12/18 [00:31<00:15,  2.54s/it][A[A[A
-
-
-
-
-
- 67%|██████▋   | 12/18 [00:28<00:14,  2.42s/it][A[A[A[A[A[A
-
-
-
-
- 72%|███████▏  | 13/18 [00:31<00:12,  2.46s/it][A[A[A[A[A
-
- 78%|███████▊  | 14/18 [00:34<00:09,  2.47s/it][A[A 83%|████████▎ | 15/18 [00:35<00:07,  2.36s/it]
-
-
-
- 78%|███████▊  | 14/18 [00:33<00:09,  2.37s/it][A[A[A[A
- 83%|████████▎ | 15/18 [00:35<00:07,  2.35s/it][A
-
-
- 72%|███████▏  | 13/18 [00:34<00:12,  2.48s/it][A[A[A
-
-
-
-
-
- 72%|███████▏  | 13/18 [00:31<00:11,  2.35s/it][A[A[A[A[A[A
-
-
-
-
- 78%|███████▊  | 14/18 [00:33<00:09,  2.40s/it][A[A[A[A[A
-
- 83%|████████▎ | 15/18 [00:36<00:07,  2.44s/it][A[A 89%|████████▉ | 16/18 [00:37<00:04,  2.39s/it]
- 89%|████████▉ | 16/18 [00:37<00:04,  2.36s/it][A
-
-
- 78%|███████▊  | 14/18 [00:36<00:09,  2.41s/it][A[A[A
-
-
-
-
-
- 78%|███████▊  | 14/18 [00:33<00:09,  2.36s/it][A[A[A[A[A[A
-
-
-
-
- 83%|████████▎ | 15/18 [00:36<00:07,  2.38s/it][A[A[A[A[A
-
- 89%|████████▉ | 16/18 [00:38<00:04,  2.41s/it][A[A
-
-
-
- 83%|████████▎ | 15/18 [00:37<00:09,  3.08s/it][A[A[A[A 94%|█████████▍| 17/18 [00:40<00:02,  2.41s/it]
- 94%|█████████▍| 17/18 [00:40<00:02,  2.40s/it][A
-
-
- 83%|████████▎ | 15/18 [00:38<00:07,  2.40s/it][A[A[A
-
-
-
-
-
- 83%|████████▎ | 15/18 [00:35<00:07,  2.35s/it][A[A[A[A[A[A
-
-
-
-
- 89%|████████▉ | 16/18 [00:38<00:04,  2.37s/it][A[A[A[A[A
-
- 94%|█████████▍| 17/18 [00:41<00:02,  2.40s/it][A[A
-
-
-
- 89%|████████▉ | 16/18 [00:40<00:05,  2.87s/it][A[A[A[A100%|██████████| 18/18 [00:42<00:00,  2.40s/it]                                               
-100%|██████████| 18/18 [00:42<00:00,  2.39s/it][A
-                                               [A
-
-
- 89%|████████▉ | 16/18 [00:41<00:04,  2.39s/it][A[A[A
-
-
-
-
-
- 89%|████████▉ | 16/18 [00:37<00:04,  2.27s/it][A[A[A[A[A[A
-
-
-
-
- 94%|█████████▍| 17/18 [00:40<00:02,  2.26s/it][A[A[A[A[A
-
-100%|██████████| 18/18 [00:43<00:00,  2.26s/it][A[A
-
-                                               [A[A
-
-
-
- 94%|█████████▍| 17/18 [00:42<00:02,  2.56s/it][A[A[A[A
-
-
- 94%|█████████▍| 17/18 [00:43<00:02,  2.24s/it][A[A[A
-
-
-
-
-
- 94%|█████████▍| 17/18 [00:39<00:02,  2.20s/it][A[A[A[A[A[A
-
-
-
-
-100%|██████████| 18/18 [00:42<00:00,  2.18s/it][A[A[A[A[A
-
-
-
-
-                                               [A[A[A[A[A
-
-
-
-100%|██████████| 18/18 [00:44<00:00,  2.36s/it][A[A[A[A
-
-
-
-                                               [A[A[A[A
-
-
-100%|██████████| 18/18 [00:45<00:00,  2.18s/it][A[A[A
-
-
-                                               [A[A[A
-
-
-
-
-
-100%|██████████| 18/18 [00:41<00:00,  2.00s/it][A[A[A[A[A[A
-
-
-
-
-
-                                               [A[A[A[A[A[A
------------------------------- Captured log call ------------------------------
-WARNING  app.services.task_state_machine:task_state_machine.py:339 Patrol interrupted_and_stalled failed: (sqlite3.OperationalError) database is locked
-[SQL: UPDATE async_tasks SET updated_at=?, last_patrol_at=? WHERE async_tasks.id = ?]
-[parameters: ('2026-09-18 04:08:56.981630', '2026-09-18 04:08:56.981630', '545afcac98024ed08ad116f9d649a981')]
-(Background on this error at: https://sqlalche.me/e/20/e3q8)
----------------------------- Captured log teardown ----------------------------
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-__________________ test_blocker_idempotent_no_duplicate_task __________________
-tests\integration\test_factor_evaluation_blockers.py:884: in test_blocker_idempotent_no_duplicate_task
-    assert matched == 1, (
-E   AssertionError: DB 中相同 fingerprint 任务数量应为 1，实际 matched=0, rows=1
-E   assert 0 == 1
-__________________________ test_blocker_cancel_task ___________________________
-tests\integration\test_factor_evaluation_blockers.py:917: in test_blocker_cancel_task
-    assert cancel_resp.status_code == 200, (
-E   AssertionError: cancel 应 200，实际 404: {"error_code":"NOT_FOUND","user_message":"Async task not found","impact":"请检查输入或返回列表查看","retryable":false,"completed":0.0,"next_actions":[{"label":"返回观察池","action_type":"dismiss","target":null,"reason":"关闭错误提示，返回观察池列表"}],"technical_details":{"exception_type":"HTTPException","status_code":404,"error_
-E   assert 404 == 200
-E    +  where 404 = <Response [404 Not Found]>.status_code
-__________________ test_TR3_2_gate_result_not_passed[case0] ___________________
-tests\integration\test_factor_evaluation_blockers.py:1104: in test_TR3_2_gate_result_not_passed
-    final_task = _wait_fn(task_id, {"failed", "done", "warn", "cancelled"}, timeout=60)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests\integration\conftest.py:384: in wait_for_task_status
-    raise TimeoutError(
-E   TimeoutError: Task b4da8a64bd6345aba49d646bb1b7f02b did not reach {'cancelled', 'done', 'warn', 'failed'} in 60s, last status=queued
------------------------------- Captured log call ------------------------------
-WARNING  app.services.universe_sync:universe_sync.py:174 universe cn-etf primary source failed, trying sina: HTTPSConnectionPool(host='88.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=%7C0%7C0%7C0%7Cweb&fid=f12&fs=b%3AMK0021%2Cb%3AMK0022%2Cb%3AMK0023%2Cb%3AMK0024%2Cb%3AMK0827&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf30%2Cf31%2Cf32%2Cf33%2Cf34%2Cf35%2Cf38%2Cf62%2Cf63%2Cf64%2Cf65%2Cf66%2Cf69%2Cf72%2Cf75%2Cf78%2Cf81%2Cf84%2Cf87%2Cf115%2Cf124%2Cf128%2Cf136%2Cf152%2Cf184%2Cf297%2Cf402%2Cf441 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:174 universe cn-etf primary source failed, trying sina: HTTPSConnectionPool(host='88.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=%7C0%7C0%7C0%7Cweb&fid=f12&fs=b%3AMK0021%2Cb%3AMK0022%2Cb%3AMK0023%2Cb%3AMK0024%2Cb%3AMK0827&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf30%2Cf31%2Cf32%2Cf33%2Cf34%2Cf35%2Cf38%2Cf62%2Cf63%2Cf64%2Cf65%2Cf66%2Cf69%2Cf72%2Cf75%2Cf78%2Cf81%2Cf84%2Cf87%2Cf115%2Cf124%2Cf128%2Cf136%2Cf152%2Cf184%2Cf297%2Cf402%2Cf441 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
--------------------------- Captured stderr teardown ---------------------------
-[safe-delete][SAFE_DELETE_FAIL_CLOSED] {"target": "D:\\ai_project\\dataAanlystNew\\integration_k1_fvjl_.sqlite3", "reason": "trash-failed", "detail": "[safe-delete] 操作失败: ERROR D:\\ai_project\\dataAanlystNew\\integration_k1_fvjl_.sqlite3: Error during a `trash` operation: Unknown { description: \"Some operations were aborted\" }"}
-__________________ test_TR3_2_gate_result_not_passed[case1] ___________________
-tests\integration\test_factor_evaluation_blockers.py:1138: in test_TR3_2_gate_result_not_passed
-    final_task = _wait_fn(task_id, {"warn", "done", "failed", "cancelled"}, timeout=60)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests\integration\conftest.py:384: in wait_for_task_status
-    raise TimeoutError(
-E   TimeoutError: Task 2ba8e8a9b86e4a43a47162d46586a393 did not reach {'cancelled', 'done', 'warn', 'failed'} in 60s, last status=queued
------------------------------- Captured log call ------------------------------
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:203 universe us-stock list source stock_us_spot_em failed: HTTPSConnectionPool(host='72.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A105%2Cm%3A106%2Cm%3A107&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf26%2Cf22%2Cf33%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:174 universe cn-etf primary source failed, trying sina: HTTPSConnectionPool(host='88.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=%7C0%7C0%7C0%7Cweb&fid=f12&fs=b%3AMK0021%2Cb%3AMK0022%2Cb%3AMK0023%2Cb%3AMK0024%2Cb%3AMK0827&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf30%2Cf31%2Cf32%2Cf33%2Cf34%2Cf35%2Cf38%2Cf62%2Cf63%2Cf64%2Cf65%2Cf66%2Cf69%2Cf72%2Cf75%2Cf78%2Cf81%2Cf84%2Cf87%2Cf115%2Cf124%2Cf128%2Cf136%2Cf152%2Cf184%2Cf297%2Cf402%2Cf441 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:203 universe us-stock list source stock_us_spot_em failed: HTTPSConnectionPool(host='72.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A105%2Cm%3A106%2Cm%3A107&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf26%2Cf22%2Cf33%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
--------------------------- Captured stderr teardown ---------------------------
-[safe-delete][SAFE_DELETE_FAIL_CLOSED] {"target": "D:\\ai_project\\dataAanlystNew\\integration_d53y36g0.sqlite3", "reason": "trash-failed", "detail": "[safe-delete] 操作失败: ERROR D:\\ai_project\\dataAanlystNew\\integration_d53y36g0.sqlite3: Error during a `trash` operation: Unknown { description: \"Some operations were aborted\" }"}
-__________________ test_TR3_2_gate_result_not_passed[case2] ___________________
-tests\integration\test_factor_evaluation_blockers.py:1160: in test_TR3_2_gate_result_not_passed
-    _wait_fn(task_id, {"cancelled", "done", "warn", "failed"}, timeout=15)
-tests\integration\conftest.py:384: in wait_for_task_status
-    raise TimeoutError(
-E   TimeoutError: Task a6e8d51cb71d496fae4a66cfcedcb6fd did not reach {'cancelled', 'done', 'warn', 'failed'} in 15s, last status=queued
------------------------------- Captured log call ------------------------------
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-_______________________ test_TR3_3_correlation_id_regex _______________________
-tests\integration\test_factor_evaluation_blockers.py:1231: in test_TR3_3_correlation_id_regex
-    final_task = _wait_fn(task_id, {"failed", "done", "warn", "cancelled"}, timeout=60)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests\integration\conftest.py:384: in wait_for_task_status
-    raise TimeoutError(
-E   TimeoutError: Task 4b46fa8bad46414198f3810f89f03f9d did not reach {'cancelled', 'done', 'warn', 'failed'} in 60s, last status=queued
------------------------------- Captured log call ------------------------------
-ERROR    app.api.routes.factor_evaluation:factor_evaluation.py:189 [43db82ad] create_eval_task unexpected error
-Traceback (most recent call last):
-  File "D:\ai_project\dataAanlystNew\app\api\routes\factor_evaluation.py", line 171, in create_eval_task
-    return create_evaluation_task(
-           ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Python312\Lib\unittest\mock.py", line 1134, in __call__
-    return self._mock_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Python312\Lib\unittest\mock.py", line 1138, in _mock_call
-    return self._execute_mock_call(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Python312\Lib\unittest\mock.py", line 1199, in _execute_mock_call
-    result = effect(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\tests\integration\test_factor_evaluation_blockers.py", line 1186, in _fake_create_eval_task_tr33
-    raise SAOpErr(
-sqlalchemy.exc.OperationalError: (builtins.Exception) db connection down tr33
-(Background on this error at: https://sqlalche.me/e/20/e3q8)
-WARNING  app.services.universe_sync:universe_sync.py:174 universe cn-etf primary source failed, trying sina: HTTPSConnectionPool(host='88.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=%7C0%7C0%7C0%7Cweb&fid=f12&fs=b%3AMK0021%2Cb%3AMK0022%2Cb%3AMK0023%2Cb%3AMK0024%2Cb%3AMK0827&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf30%2Cf31%2Cf32%2Cf33%2Cf34%2Cf35%2Cf38%2Cf62%2Cf63%2Cf64%2Cf65%2Cf66%2Cf69%2Cf72%2Cf75%2Cf78%2Cf81%2Cf84%2Cf87%2Cf115%2Cf124%2Cf128%2Cf136%2Cf152%2Cf184%2Cf297%2Cf402%2Cf441 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:174 universe cn-etf primary source failed, trying sina: HTTPSConnectionPool(host='88.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=%7C0%7C0%7C0%7Cweb&fid=f12&fs=b%3AMK0021%2Cb%3AMK0022%2Cb%3AMK0023%2Cb%3AMK0024%2Cb%3AMK0827&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf30%2Cf31%2Cf32%2Cf33%2Cf34%2Cf35%2Cf38%2Cf62%2Cf63%2Cf64%2Cf65%2Cf66%2Cf69%2Cf72%2Cf75%2Cf78%2Cf81%2Cf84%2Cf87%2Cf115%2Cf124%2Cf128%2Cf136%2Cf152%2Cf184%2Cf297%2Cf402%2Cf441 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:203 universe us-stock list source stock_us_spot_em failed: HTTPSConnectionPool(host='72.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A105%2Cm%3A106%2Cm%3A107&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf26%2Cf22%2Cf33%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
--------------------------- Captured stderr teardown ---------------------------
-[safe-delete][SAFE_DELETE_FAIL_CLOSED] {"target": "D:\\ai_project\\dataAanlystNew\\integration_jqiabkjh.sqlite3", "reason": "trash-failed", "detail": "[safe-delete] 操作失败: ERROR D:\\ai_project\\dataAanlystNew\\integration_jqiabkjh.sqlite3: Error during a `trash` operation: Unknown { description: \"Some operations were aborted\" }"}
-______________________ test_regression_T3_9_cancel_code _______________________
-tests\integration\test_factor_evaluation_blockers.py:1406: in test_regression_T3_9_cancel_code
-    assert cancel_resp.status_code == 200
-E   assert 404 == 200
-E    +  where 404 = <Response [404 Not Found]>.status_code
----------------------------- Captured log teardown ----------------------------
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-___________ test_regression_T3_W2_historical_blocker_affects_status ___________
-tests\integration\test_factor_evaluation_blockers.py:1440: in test_regression_T3_W2_historical_blocker_affects_status
-    final = _wait_fn(task_id, {"warn", "done", "failed", "cancelled"}, timeout=60)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests\integration\conftest.py:384: in wait_for_task_status
-    raise TimeoutError(
-E   TimeoutError: Task 2b2c3859aee545a0949e401db568d7b2 did not reach {'cancelled', 'done', 'warn', 'failed'} in 60s, last status=queued
------------------------------- Captured log call ------------------------------
-WARNING  app.services.universe_sync:universe_sync.py:174 universe cn-etf primary source failed, trying sina: HTTPSConnectionPool(host='88.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=%7C0%7C0%7C0%7Cweb&fid=f12&fs=b%3AMK0021%2Cb%3AMK0022%2Cb%3AMK0023%2Cb%3AMK0024%2Cb%3AMK0827&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf30%2Cf31%2Cf32%2Cf33%2Cf34%2Cf35%2Cf38%2Cf62%2Cf63%2Cf64%2Cf65%2Cf66%2Cf69%2Cf72%2Cf75%2Cf78%2Cf81%2Cf84%2Cf87%2Cf115%2Cf124%2Cf128%2Cf136%2Cf152%2Cf184%2Cf297%2Cf402%2Cf441 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:174 universe cn-etf primary source failed, trying sina: HTTPSConnectionPool(host='88.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=%7C0%7C0%7C0%7Cweb&fid=f12&fs=b%3AMK0021%2Cb%3AMK0022%2Cb%3AMK0023%2Cb%3AMK0024%2Cb%3AMK0827&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf30%2Cf31%2Cf32%2Cf33%2Cf34%2Cf35%2Cf38%2Cf62%2Cf63%2Cf64%2Cf65%2Cf66%2Cf69%2Cf72%2Cf75%2Cf78%2Cf81%2Cf84%2Cf87%2Cf115%2Cf124%2Cf128%2Cf136%2Cf152%2Cf184%2Cf297%2Cf402%2Cf441 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:203 universe us-stock list source stock_us_spot_em failed: HTTPSConnectionPool(host='72.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A105%2Cm%3A106%2Cm%3A107&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf26%2Cf22%2Cf33%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
--------------------------- Captured stderr teardown ---------------------------
-[safe-delete][SAFE_DELETE_FAIL_CLOSED] {"target": "D:\\ai_project\\dataAanlystNew\\integration_j8pwmew9.sqlite3", "reason": "trash-failed", "detail": "[safe-delete] 操作失败: ERROR D:\\ai_project\\dataAanlystNew\\integration_j8pwmew9.sqlite3: Error during a `trash` operation: Unknown { description: \"Some operations were aborted\" }"}
-____________________________ test_A_full_pipeline _____________________________
-tests\integration\test_factor_evaluation_e2e.py:293: in test_A_full_pipeline
-    final_task_1 = wait_for_task_status(
-tests\integration\conftest.py:384: in wait_for_task_status
-    raise TimeoutError(
-E   TimeoutError: Task 15cefbdc5fa0470f8e849e80a088359a did not reach {'done', 'warn', 'failed'} in 120s, last status=queued
----------------------------- Captured stderr call -----------------------------
-  0%|          | 0/2 [00:00<?, ?it/s]
-  0%|          | 0/2 [00:00<?, ?it/s][A
-
-  0%|          | 0/2 [00:00<?, ?it/s][A[A
-
-
-  0%|          | 0/2 [00:00<?, ?it/s][A[A[A
-
-
-
-  0%|          | 0/2 [00:00<?, ?it/s][A[A[A[A 50%|█████     | 1/2 [00:01<00:01,  1.20s/it]
- 50%|█████     | 1/2 [00:01<00:01,  1.02s/it][A
-
- 50%|█████     | 1/2 [00:00<00:00,  1.04it/s][A[A
-
-
- 50%|█████     | 1/2 [00:00<00:00,  1.08it/s][A[A[A
-
-
-
- 50%|█████     | 1/2 [00:00<00:00,  1.04it/s][A[A[A[A100%|██████████| 2/2 [00:02<00:00,  1.05s/it]                                             
-
-100%|██████████| 2/2 [00:01<00:00,  1.04it/s][A[A
-
-                                             [A[A
-100%|██████████| 2/2 [00:02<00:00,  1.11s/it][A
-                                             [A
-
-
-100%|██████████| 2/2 [00:02<00:00,  1.02s/it][A[A[A
-
-
-                                             [A[A[A
-
-
-
-100%|██████████| 2/2 [00:01<00:00,  1.05it/s][A[A[A[A
-
-
-
-                                             [A[A[A[A
------------------------------- Captured log call ------------------------------
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:174 universe cn-etf primary source failed, trying sina: HTTPSConnectionPool(host='88.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&wbp2u=%7C0%7C0%7C0%7Cweb&fid=f12&fs=b%3AMK0021%2Cb%3AMK0022%2Cb%3AMK0023%2Cb%3AMK0024%2Cb%3AMK0827&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf30%2Cf31%2Cf32%2Cf33%2Cf34%2Cf35%2Cf38%2Cf62%2Cf63%2Cf64%2Cf65%2Cf66%2Cf69%2Cf72%2Cf75%2Cf78%2Cf81%2Cf84%2Cf87%2Cf115%2Cf124%2Cf128%2Cf136%2Cf152%2Cf184%2Cf297%2Cf402%2Cf441 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:203 universe us-stock list source stock_us_spot_em failed: HTTPSConnectionPool(host='72.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A105%2Cm%3A106%2Cm%3A107&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf26%2Cf22%2Cf33%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-WARNING  app.services.universe_sync:universe_sync.py:203 universe us-stock list source stock_us_spot failed: Expecting value: line 1 column 1 (char 0)
-ERROR    app.services.universe_sync_task:universe_sync_task.py:428 refresh us-stock universe failed
-Traceback (most recent call last):
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync_task.py", line 425, in _run_universe_sync_init
-    us_stock_result = universe_sync.refresh_universe_symbols("us-stock", db)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync.py", line 364, in refresh_universe_symbols
-    frame = _fetch_us_stock_list(db)
-            ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync.py", line 204, in _fetch_us_stock_list
-    raise RuntimeError("美股股票列表拉取失败；" + " | ".join(errors))
-RuntimeError: 美股股票列表拉取失败；stock_us_spot_em: ProxyError: HTTPSConnectionPool(host='72.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A105%2Cm%3A106%2Cm%3A107&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf26%2Cf22%2Cf33%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response'))) | stock_us_spot: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
-WARNING  app.services.universe_sync:universe_sync.py:203 universe us-stock list source stock_us_spot failed: Expecting value: line 1 column 1 (char 0)
-ERROR    app.services.universe_sync_task:universe_sync_task.py:428 refresh us-stock universe failed
-Traceback (most recent call last):
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync_task.py", line 425, in _run_universe_sync_init
-    us_stock_result = universe_sync.refresh_universe_symbols("us-stock", db)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync.py", line 364, in refresh_universe_symbols
-    frame = _fetch_us_stock_list(db)
-            ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync.py", line 204, in _fetch_us_stock_list
-    raise RuntimeError("美股股票列表拉取失败；" + " | ".join(errors))
-RuntimeError: 美股股票列表拉取失败；stock_us_spot_em: ProxyError: HTTPSConnectionPool(host='72.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A105%2Cm%3A106%2Cm%3A107&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf26%2Cf22%2Cf33%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response'))) | stock_us_spot: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
-WARNING  app.services.universe_sync:universe_sync.py:203 universe us-stock list source stock_us_spot failed: Expecting value: line 1 column 1 (char 0)
-ERROR    app.services.universe_sync_task:universe_sync_task.py:428 refresh us-stock universe failed
-Traceback (most recent call last):
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync_task.py", line 425, in _run_universe_sync_init
-    us_stock_result = universe_sync.refresh_universe_symbols("us-stock", db)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync.py", line 364, in refresh_universe_symbols
-    frame = _fetch_us_stock_list(db)
-            ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync.py", line 204, in _fetch_us_stock_list
-    raise RuntimeError("美股股票列表拉取失败；" + " | ".join(errors))
-RuntimeError: 美股股票列表拉取失败；stock_us_spot_em: ProxyError: HTTPSConnectionPool(host='72.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A105%2Cm%3A106%2Cm%3A107&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf26%2Cf22%2Cf33%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response'))) | stock_us_spot: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
-WARNING  app.services.universe_sync:universe_sync.py:203 universe us-stock list source stock_us_spot failed: Expecting value: line 1 column 1 (char 0)
-ERROR    app.services.universe_sync_task:universe_sync_task.py:428 refresh us-stock universe failed
-Traceback (most recent call last):
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync_task.py", line 425, in _run_universe_sync_init
-    us_stock_result = universe_sync.refresh_universe_symbols("us-stock", db)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync.py", line 364, in refresh_universe_symbols
-    frame = _fetch_us_stock_list(db)
-            ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync.py", line 204, in _fetch_us_stock_list
-    raise RuntimeError("美股股票列表拉取失败；" + " | ".join(errors))
-RuntimeError: 美股股票列表拉取失败；stock_us_spot_em: ProxyError: HTTPSConnectionPool(host='72.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A105%2Cm%3A106%2Cm%3A107&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf26%2Cf22%2Cf33%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response'))) | stock_us_spot: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
-WARNING  app.services.universe_sync:universe_sync.py:203 universe us-stock list source stock_us_spot failed: Expecting value: line 1 column 1 (char 0)
-ERROR    app.services.universe_sync_task:universe_sync_task.py:428 refresh us-stock universe failed
-Traceback (most recent call last):
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync_task.py", line 425, in _run_universe_sync_init
-    us_stock_result = universe_sync.refresh_universe_symbols("us-stock", db)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync.py", line 364, in refresh_universe_symbols
-    frame = _fetch_us_stock_list(db)
-            ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\ai_project\dataAanlystNew\app\services\universe_sync.py", line 204, in _fetch_us_stock_list
-    raise RuntimeError("美股股票列表拉取失败；" + " | ".join(errors))
-RuntimeError: 美股股票列表拉取失败；stock_us_spot_em: ProxyError: HTTPSConnectionPool(host='72.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A105%2Cm%3A106%2Cm%3A107&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf26%2Cf22%2Cf33%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response'))) | stock_us_spot: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
--------------------------- Captured stderr teardown ---------------------------
-[safe-delete][SAFE_DELETE_FAIL_CLOSED] {"target": "D:\\ai_project\\dataAanlystNew\\integration_18pqbe7e.sqlite3", "reason": "trash-failed", "detail": "[safe-delete] 操作失败: ERROR D:\\ai_project\\dataAanlystNew\\integration_18pqbe7e.sqlite3: Error during a `trash` operation: Unknown { description: \"Some operations were aborted\" }"}
-============================== warnings summary ===============================
-tests/integration/test_factor_evaluation_blockers.py::test_blocker_missing_field
-  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
-    from starlette.testclient import TestClient as TestClient  # noqa
-
-tests/integration/test_factor_evaluation_blockers.py: 32 warnings
-tests/integration/test_factor_evaluation_e2e.py: 2 warnings
-tests/integration/test_factor_regression_infra.py: 2 warnings
-  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
-    cursor.execute(statement, parameters)
-
-tests/integration/test_factor_evaluation_blockers.py::test_blocker_invalid_formula_syntax
-  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\openpyxl\styles\stylesheet.py:237: UserWarning: Workbook contains no default style, apply openpyxl's default
-    warn("Workbook contains no default style, apply openpyxl's default")
-
-tests/integration/test_factor_no_cross_regression.py::test_preview_factor_formula_ok
-  D:\ai_project\dataAanlystNew\app\services\factors\factor_executor.py:846: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`).Please use a specific unit instead.
-    range_start = trade_date - pd.Timedelta(days=history_days)
-
-tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
-  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:75: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
-    created_at=datetime.utcnow(),
-
-tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
-  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:76: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
-    updated_at=datetime.utcnow(),
-
-tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
-  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:89: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
-    created_at=datetime.utcnow(),
-
-tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
-  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:90: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
-    updated_at=datetime.utcnow(),
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-=========================== short test summary info ===========================
-FAILED tests/integration/test_factor_evaluation_blockers.py::test_blocker_stress_failure
-FAILED tests/integration/test_factor_evaluation_blockers.py::test_blocker_idempotent_no_duplicate_task
-FAILED tests/integration/test_factor_evaluation_blockers.py::test_blocker_cancel_task
-FAILED tests/integration/test_factor_evaluation_blockers.py::test_TR3_2_gate_result_not_passed[case0]
-FAILED tests/integration/test_factor_evaluation_blockers.py::test_TR3_2_gate_result_not_passed[case1]
-FAILED tests/integration/test_factor_evaluation_blockers.py::test_TR3_2_gate_result_not_passed[case2]
-FAILED tests/integration/test_factor_evaluation_blockers.py::test_TR3_3_correlation_id_regex
-FAILED tests/integration/test_factor_evaluation_blockers.py::test_regression_T3_9_cancel_code
-FAILED tests/integration/test_factor_evaluation_blockers.py::test_regression_T3_W2_historical_blocker_affects_status
-FAILED tests/integration/test_factor_evaluation_e2e.py::test_A_full_pipeline
-=========== 10 failed, 17 passed, 43 warnings in 508.78s (0:08:28) ============

@@ -1,87 +1,0 @@
-============================= test session starts =============================
-platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
-rootdir: d:\ai_project\dataAanlystNew
-configfile: pytest.ini
-plugins: anyio-4.14.2
-collected 2 items
-
-tests\integration\test_factor_evaluation_blockers.py .F                  [100%]
-
-================================== FAILURES ===================================
-_________________________ test_blocker_stress_failure _________________________
-tests\integration\test_factor_evaluation_blockers.py:770: in test_blocker_stress_failure
-    final_task = _wait_fn(task_id, {"warn", "done", "failed", "cancelled"}, timeout=60)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-tests\integration\conftest.py:368: in wait_for_task_status
-    task = get_evaluation_task(task_id)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app\services\factors\wp5_eval_task.py:2369: in get_evaluation_task
-    task = get_async_task(task_id, use_control_plane=True)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app\services\async_tasks.py:716: in get_async_task
-    _expire_stale_tasks(db)
-app\services\async_tasks.py:324: in _expire_stale_tasks
-    db.execute(
-.venv\Lib\site-packages\sqlalchemy\orm\session.py:2351: in execute
-    return self._execute_internal(
-.venv\Lib\site-packages\sqlalchemy\orm\session.py:2239: in _execute_internal
-    conn = self._connection_for_bind(bind)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-.venv\Lib\site-packages\sqlalchemy\orm\session.py:2108: in _connection_for_bind
-    return trans._connection_for_bind(engine, execution_options)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-<string>:2: in _connection_for_bind
-    ???
-.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py:101: in _go
-    self._raise_for_prerequisite_state(fn.__name__, current_state)
-.venv\Lib\site-packages\sqlalchemy\orm\session.py:971: in _raise_for_prerequisite_state
-    raise sa_exc.PendingRollbackError(
-E   sqlalchemy.exc.PendingRollbackError: This Session's transaction has been rolled back due to a previous exception during flush. To begin a new transaction with this Session, first issue Session.rollback(). Original exception was: (sqlite3.OperationalError) database is locked
-E   [SQL: UPDATE async_tasks SET updated_at=?, last_patrol_at=? WHERE async_tasks.id = ?]
-E   [parameters: ('2026-09-18 04:22:40.344394', '2026-09-18 04:22:40.344394', '57cbbb72434346b7bd07a81e2d960719')]
-E   (Background on this error at: https://sqlalche.me/e/20/e3q8) (Background on this error at: https://sqlalche.me/e/20/7s2a)
----------------------------- Captured stderr call -----------------------------
-  0%|          | 0/18 [00:00<?, ?it/s]
-  0%|          | 0/18 [00:00<?, ?it/s][A  6%|▌         | 1/18 [00:01<00:26,  1.58s/it]
-  6%|▌         | 1/18 [00:01<00:24,  1.47s/it][A 11%|█         | 2/18 [00:03<00:24,  1.53s/it]
- 11%|█         | 2/18 [00:02<00:23,  1.47s/it][A 17%|█▋        | 3/18 [00:04<00:22,  1.48s/it]
- 17%|█▋        | 3/18 [00:04<00:22,  1.51s/it][A 22%|██▏       | 4/18 [00:06<00:21,  1.51s/it]
- 22%|██▏       | 4/18 [00:06<00:22,  1.59s/it][A 28%|██▊       | 5/18 [00:07<00:20,  1.57s/it]
- 28%|██▊       | 5/18 [00:07<00:20,  1.61s/it][A 33%|███▎      | 6/18 [00:09<00:19,  1.60s/it]
- 33%|███▎      | 6/18 [00:09<00:18,  1.58s/it][A 39%|███▉      | 7/18 [00:10<00:17,  1.59s/it]
- 39%|███▉      | 7/18 [00:11<00:17,  1.60s/it][A 44%|████▍     | 8/18 [00:14<00:20,  2.08s/it]
- 44%|████▍     | 8/18 [00:12<00:15,  1.59s/it][A
- 50%|█████     | 9/18 [00:14<00:14,  1.62s/it][A 50%|█████     | 9/18 [00:15<00:17,  1.97s/it]
- 56%|█████▌    | 10/18 [00:15<00:12,  1.61s/it][A 56%|█████▌    | 10/18 [00:17<00:14,  1.86s/it] 61%|██████    | 11/18 [00:19<00:12,  1.78s/it]
- 61%|██████    | 11/18 [00:17<00:11,  1.63s/it][A 67%|██████▋   | 12/18 [00:20<00:10,  1.73s/it]
- 67%|██████▋   | 12/18 [00:19<00:09,  1.62s/it][A
- 72%|███████▏  | 13/18 [00:20<00:07,  1.60s/it][A 72%|███████▏  | 13/18 [00:22<00:08,  1.68s/it]
- 78%|███████▊  | 14/18 [00:22<00:06,  1.59s/it][A 78%|███████▊  | 14/18 [00:23<00:06,  1.65s/it]
- 83%|████████▎ | 15/18 [00:23<00:04,  1.63s/it][A 83%|████████▎ | 15/18 [00:25<00:04,  1.66s/it]
- 89%|████████▉ | 16/18 [00:25<00:03,  1.64s/it][A 89%|████████▉ | 16/18 [00:27<00:03,  1.67s/it]
- 94%|█████████▍| 17/18 [00:27<00:01,  1.62s/it][A 94%|█████████▍| 17/18 [00:30<00:02,  2.10s/it]
-100%|██████████| 18/18 [00:28<00:00,  1.61s/it][A
-                                               [A100%|██████████| 18/18 [00:31<00:00,  1.88s/it]                                               
------------------------------- Captured log call ------------------------------
-WARNING  app.services.task_state_machine:task_state_machine.py:339 Patrol interrupted_and_stalled failed: (sqlite3.OperationalError) database is locked
-[SQL: UPDATE async_tasks SET updated_at=?, last_patrol_at=? WHERE async_tasks.id = ?]
-[parameters: ('2026-09-18 04:22:40.344394', '2026-09-18 04:22:40.344394', '57cbbb72434346b7bd07a81e2d960719')]
-(Background on this error at: https://sqlalche.me/e/20/e3q8)
----------------------------- Captured log teardown ----------------------------
-WARNING  app.services.universe_sync:universe_sync.py:156 universe cn-stock industry source failed: HTTPSConnectionPool(host='82.push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=100&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=m%3A0+t%3A6%2Cm%3A0+t%3A80%2Cm%3A1+t%3A2%2Cm%3A1+t%3A23%2Cm%3A0+t%3A81+s%3A2048&fields=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf12%2Cf13%2Cf14%2Cf15%2Cf16%2Cf17%2Cf18%2Cf20%2Cf21%2Cf23%2Cf24%2Cf25%2Cf22%2Cf11%2Cf62%2Cf128%2Cf136%2Cf115%2Cf152 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-============================== warnings summary ===============================
-tests/integration/test_factor_evaluation_blockers.py::test_blocker_worker_exception
-  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
-    from starlette.testclient import TestClient as TestClient  # noqa
-
-tests/integration/test_factor_evaluation_blockers.py::test_blocker_worker_exception
-tests/integration/test_factor_evaluation_blockers.py::test_blocker_worker_exception
-tests/integration/test_factor_evaluation_blockers.py::test_blocker_stress_failure
-tests/integration/test_factor_evaluation_blockers.py::test_blocker_stress_failure
-  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
-    cursor.execute(statement, parameters)
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-=========================== short test summary info ===========================
-FAILED tests/integration/test_factor_evaluation_blockers.py::test_blocker_stress_failure
-================== 1 failed, 1 passed, 5 warnings in 58.70s ===================

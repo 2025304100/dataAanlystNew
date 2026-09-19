@@ -1,9 +1,0 @@
-DB  : mysql+pymysql://***@127.0.0.1:3306/gpfx?charset=utf8mb4
-范围: 1 张表
-  [DRIFT] strategy_execution_snapshots
-          外键不符 : ('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)
-
-❌ 存在漂移：1/1 张表不一致
-   注意：应用启动时 _auto_align_all_schema 会自动补齐这些差异，
-         所以『应用能跑』并不代表迁移是对的。请修**迁移文件**，
-         而不是依赖 auto-align 兜底。
