@@ -10218,3 +10218,9 @@ alembic/versions/2026_09_02_0049_wps_0023_047_bfg_run_stage_and_progress.py
 
 # WorkBuddy 会话数据（不入库）
 .workbuddy/
+
+# 依赖/数据库/临时文件（不入库）
+backups/
+*.sqlite3
+*.sqlite
+.codex_tmp_patch_history.js
