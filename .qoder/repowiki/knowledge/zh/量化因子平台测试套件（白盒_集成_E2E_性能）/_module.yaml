@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: tests
+title: 量化因子平台测试套件（白盒/集成/E2E/性能）
+scope:
+    - tests/
+source_files: []
+depends_on: []
+related_to: []

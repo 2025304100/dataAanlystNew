@@ -1,0 +1,1763 @@
+﻿node.exe : [33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you
+ rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consi
+der using "deps.optimizer.web.include"[39m
+所在位置 行:1 字符: 1
++ & "C:\Users\demo\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[7m[33m ...b.include"[39m 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mrenders task list with status and st
+age
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to MeasureRow inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at MeasureRow (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\
+lib\Body\MeasureRow.js:18:24)
+    at tbody
+    at Body (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\Bo
+dy\index.js:23:33)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:76:7)
+    at table
+    at div
+    at div
+    at div
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-resize
+-observer\lib\SingleObserver\DomWrapper.js:21:34)
+    at SingleObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\SingleObserver\index.js:18:24)
+    at ResizeObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\index.js:24:24)
+    at Provider (D:\ai_project\dataAanlystNew\frontend\node_modules\@rc-compone
+nt\context\lib\context.js:21:22)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to BodyRow inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at BodyRow (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib
+\Body\BodyRow.js:95:33)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:76:7)
+    at tbody
+    at Body (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\Bo
+dy\index.js:23:33)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:76:7)
+    at table
+    at div
+    at div
+    at div
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-resize
+-observer\lib\SingleObserver\DomWrapper.js:21:34)
+    at SingleObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\SingleObserver\index.js:18:24)
+    at ResizeObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\index.js:24:24)
+    at Provider (D:\ai_project\dataAanlystNew\frontend\node_modules\@rc-compone
+nt\context\lib\context.js:21:22)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Body inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Body (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\Bo
+dy\index.js:23:33)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:76:7)
+    at table
+    at div
+    at div
+    at div
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-resize
+-observer\lib\SingleObserver\DomWrapper.js:21:34)
+    at SingleObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\SingleObserver\index.js:18:24)
+    at ResizeObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\index.js:24:24)
+    at Provider (D:\ai_project\dataAanlystNew\frontend\node_modules\@rc-compone
+nt\context\lib\context.js:21:22)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mshows rejection reasons for rejected
+ run
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mrenders structured rejection reasons
+ without crashing
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mnormalizes nested backend metrics in
+ the run report
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mdisplays complete trade day evidence
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mrenders stress test parameter pertur
+bation table
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mshows immutability warning on run re
+port
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+
+ [31m鉂?[39m src/components/__tests__/FactorEvaluationLab.test.tsx [2m([22m[2m16 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[33m 14232[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22mrenders empty state for tasks and runs when API returns empty [33m720[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22msubmits evaluation task with form values [33m1336[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22mshows loading feedback while task creation request is still pending [33m1273[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22mrenders task list with status and stage [33m734[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22mlocalizes legacy backend exception messages without exposing Python details [33m417[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22mrenders run history with gate tag and supports filter [33m437[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22mshows rejection reasons for rejected run [33m1327[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22mrenders structured rejection reasons without crashing [33m1236[2mms[22m[39m
+[31m   [31m脳[31m FactorEvaluationLab[2m > [22mnormalizes nested backend metrics in the run report[33m 2533[2mms[22m[31m[39m
+[31m     鈫?Unable to find an element with the text: 98.29%. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[31m
+  [36m<div>[31m
+    [36m<div[31m
+      [33mclass[31m=[32m"factor-eval-lab factor-eval-lab-redesign"[31m
+    [36m>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"eval-header"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"eval-header-left"[31m
+        [36m>[31m
+          [36m<h2[31m
+            [33mclass[31m=[32m"eval-title"[31m
+          [36m>[31m
+            [0mevalLabTitle[0m
+          [36m</h2>[31m
+          [36m<p[31m
+            [33mclass[31m=[32m"eval-subtitle"[31m
+          [36m>[31m
+            [0mevalLabSubtitleNew[0m
+          [36m</p>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"ant-space css-dev-only-do-not-override-mncuj7 ant-space-horizontal ant-space-align-center ant-space-gap-row-small ant-space-gap-col-small"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"ant-space-item"[31m
+          [36m>[31m
+            [36m<button[31m
+              [33mclass[31m=[32m"ant-btn css-dev-only-do-not-override-mncuj7 ant-btn-default ant-btn-color-default ant-btn-variant-outlined"[31m
+              [33mtype[31m=[32m"button"[31m
+            [36m>[31m
+              [36m<span[31m
+                [33mclass[31m=[32m"ant-btn-icon"[31m
+              [36m>[31m
+                [36m<span[31m
+                  [33maria-label[31m=[32m"reload"[31m
+                  [33mclass[31m=[32m"anticon anticon-reload"[31m
+                  [33mrole[31m=[32m"img"[31m
+                [36m>[31m
+                  [36m<svg[31m
+                    [33maria-hidden[31m=[32m"true"[31m
+                    [33mdata-icon[31m=[32m"reload"[31m
+                    [33mfill[31m=[32m"currentColor"[31m
+                    [33mfocusable[31m=[32m"false"[31m
+                    [33mheight[31m=[32m"1em"[31m
+                    [33mviewBox[31m=[32m"64 64 896 896"[31m
+                    [33mwidth[31m=[32m"1em"[31m
+                  [36m>[31m
+                    [36m<path[31m
+                      [33md[31m=[32m"M909.1 209.3l-56.4 44.1C775.8 155.1 656.2 92 521.9 92 290 92 102.3 279.5 102 511.5 101.7 743.7 289.8 932 521.9 932c181.3 0 335.8-115 394.6-276.1 1.5-4.2-.7-8.9-4.9-10.3l-56.7-19.5a8 8 0 00-10.1 4.8c-1.8 5-3.8 10-5.9 14.9-17.3 41-42.1 77.8-73.7 109.4A344.77 344.77 0 01655.9 829c-42.3 17.9-87.4 27-133.8 27-46.5 0-91.5-9.1-133.8-27A341.5 341.5 0 01279 755.2a342.16 342.16 0 01-73.7-109.4c-17.9-42.4-27-87.4-27-133.9s9.1-91.5 27-133.9c17.3-41 42.1-77.8 73.7-109.4 31.6-31.6 68.4-56.4 109.3-73.8 42.3-17.9 87.4-27 133.8-27 46.5 0 91.5 9.1 133.8 27a341.5 341.5 0 01109.3 73.8c9.9 9.9 19.2 20.4 27.8 31.4l-60.2 47a8 8 0 003 14.1l175.6 43c5 1.2 9.9-2.6 9.9-7.7l.8-180.9c-.1-6.6-7.8-10.3-13-6.2z"[31m
+                    [36m/>[31m
+                  [36m</svg>[31m
+                [36m</span>[31m
+              [36m</span>[31m
+              [36m<span>[31m
+                [0mevalLabRefresh[0m
+              [36m</span>[31m
+            [36m</button>[31m
+          [36m</div>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"ant-space-item"[31m
+          [36m>[31m
+            [36m<button[31m
+              [33mclass[31m=[32m"ant-btn css-dev-only-do-not-override-mncuj7 ant-btn-default ant-btn-color-default ant-btn-variant-outlined"[31m
+              [33mtype[31m=[32m"button"[31m
+            [36m>[31m
+              [36m<span[31m
+                [33mclass[31m=[32m"ant-btn-icon"[31m
+              [36m>[31m
+                [36m<span[31m
+                  [33maria-label[31m=[32m"info-circle"[31m
+                  [33mclass[31m=[32m"anticon anticon-info-circle"[31m
+                  [33mrole[31m=[32m"img"[31m
+                [36m>[31m
+                  [36m<svg[31m
+                    [33maria-hidden[31m=[32m"true"[31m
+                    [33mdata-icon[31m=[32m"info-circle"[31m
+                    [33mfill[31m=[32m"currentColor"[31m
+                    [33mfocusable[31m=[32m"false"[31m
+                    [33mheight[31m=[32m"1em"[31m
+                    [33mviewBox[31m=[32m"64 64 896 896"[31m
+                    [33mwidth[31m=[32m"1em"[31m
+                  [36m>[31m
+                    [36m<path[31m
+                      [33md[31m=[32m"M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z"[31m
+                    [36m/>[31m
+                    [36m<path[31m
+                      [33md[31m=[32m"M464 336a48 48 0 1096 0 48 48 0 10-96 0zm72 112h-48c-4.4 0-8 3.6-8 8v272c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V456c0-4.4-3.6-8-8-8z"[31m
+                    [36m/>[31m
+                  [36m</svg>[31m
+                [36m</span>[31m
+              [36m</span>[31m
+              [36m<span>[31m
+                [0mevalLabMethodology[0m
+              [36m</span>[31m
+            [36m</button>[31m
+          [36m</div>[31m
+        [36m</div>[31m
+      [36m</div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"eval-workbench"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"ant-row ant-row-bottom css-dev-only-do-not-override-mncuj7"[31m
+          [33mstyle[31m=[32m"margin-left: -6px; margin-right: -6px; row-gap: 12px;"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"ant-col ant-col-xs-24 ant-col-sm-12 ant-col-md-8 ant-col-lg-6 css-dev-only-do-not-override-mncuj7"[31m
+            [33mstyle[31m=[32m"padding-left: 6px; padding-right: 6px;"[31m
+          [36m>[31m
+            [36m<div[31m
+              [33mclass[31m=[32m"eval-field"[31m
+            [36m>[31m
+              [36m<label[31m
+                [33mclass[31m=[32m"eval-field-label"[31m
+              [36m>[31m
+                [0mevalWorkbenchFactor[0m
+              [36m</label>[31m
+              [36m<div[31m
+                [33mclass[31m=[32m"ant-select ant-select-lg ant-select-outlined css-dev-only-do-not-override-mncuj7 ant-select-single ant-select-allow-clear ant-select-show-arrow ant-select-show-search"[31m
+                [33mstyle[31m=[32m"width: 100%;"[31m
+              [36m>[31m
+                [36m<div[31m
+                  [33mclass[31m=[32m"ant-select-selector"[31m
+                [36m>[31m
+                  [36m<span[31m
+                    [33mclass[31m=[32m"ant-select-selection-wrap"[31m
+                  [36m>[31m
+                    [36m<span[31m
+                      [33mclass[31m=[32m"ant-select-selection-search"[31m
+                    [36m>[31m
+                      [36m<input[31m
+                        [33maria-autocomplete[31m=[32m"list"[31m
+                        [33maria-controls[31m=[32m"rc_select_TEST_OR_SSR_list"[31m
+                        [3...
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body>[31m
+    [36m<div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"factor-eval-lab factor-eval-lab-redesign"[31m
+      [36m>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"eval-header"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"eval-header-left"[31m
+          [36m>[31m
+            [36m<h2[31m
+              [33mclass[31m=[32m"eval-title"[31m
+            [36m>[31m
+              [0mevalLabTitle[0m
+            [36m</h2>[31m
+            [36m<p[31m
+              [33mclass[31m=[32m"eval-subtitle"[31m
+            [36m>[31m
+              [0mevalLabSubtitleNew[0m
+            [36m</p>[31m
+          [36m</div>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"ant-space css-dev-only-do-not-override-mncuj7 ant-space-horizontal ant-space-align-center ant-space-gap-row-small ant-space-gap-col-small"[31m
+          [36m>[31m
+            [36m<div[31m
+              [33mclass[31m=[32m"ant-space-item"[31m
+            [36m>[31m
+              [36m<button[31m
+                [33mclass[31m=[32m"ant-btn css-dev-only-do-not-override-mncuj7 ant-btn-default ant-btn-color-default ant-btn-variant-outlined"[31m
+                [33mtype[31m=[32m"button"[31m
+              [36m>[31m
+                [36m<span[31m
+                  [33mclass[31m=[32m"ant-btn-icon"[31m
+                [36m>[31m
+                  [36m<span[31m
+                    [33maria-label[31m=[32m"reload"[31m
+                    [33mclass[31m=[32m"anticon anticon-reload"[31m
+                    [33mrole[31m=[32m"img"[31m
+                  [36m>[31m
+                    [36m<svg[31m
+                      [33maria-hidden[31m=[32m"true"[31m
+                      [33mdata-icon[31m=[32m"reload"[31m
+                      [33mfill[31m=[32m"currentColor"[31m
+                      [33mfocusable[31m=[32m"false"[31m
+                      [33mheight[31m=[32m"1em"[31m
+                      [33mviewBox[31m=[32m"64 64 896 896"[31m
+                      [33mwidth[31m=[32m"1em"[31m
+                    [36m>[31m
+                      [36m<path[31m
+                        [33md[31m=[32m"M909.1 209.3l-56.4 44.1C775.8 155.1 656.2 92 521.9 92 290 92 102.3 279.5 102 511.5 101.7 743.7 289.8 932 521.9 932c181.3 0 335.8-115 394.6-276.1 1.5-4.2-.7-8.9-4.9-10.3l-56.7-19.5a8 8 0 00-10.1 4.8c-1.8 5-3.8 10-5.9 14.9-17.3 41-42.1 77.8-73.7 109.4A344.77 344.77 0 01655.9 829c-42.3 17.9-87.4 27-133.8 27-46.5 0-91.5-9.1-133.8-27A341.5 341.5 0 01279 755.2a342.16 342.16 0 01-73.7-109.4c-17.9-42.4-27-87.4-27-133.9s9.1-91.5 27-133.9c17.3-41 42.1-77.8 73.7-109.4 31.6-31.6 68.4-56.4 109.3-73.8 42.3-17.9 87.4-27 133.8-27 46.5 0 91.5 9.1 133.8 27a341.5 341.5 0 01109.3 73.8c9.9 9.9 19.2 20.4 27.8 31.4l-60.2 47a8 8 0 003 14.1l175.6 43c5 1.2 9.9-2.6 9.9-7.7l.8-180.9c-.1-6.6-7.8-10.3-13-6.2z"[31m
+                      [36m/>[31m
+                    [36m</svg>[31m
+                  [36m</span>[31m
+                [36m</span>[31m
+                [36m<span>[31m
+                  [0mevalLabRefresh[0m
+                [36m</span>[31m
+              [36m</button>[31m
+            [36m</div>[31m
+            [36m<div[31m
+              [33mclass[31m=[32m"ant-space-item"[31m
+            [36m>[31m
+              [36m<button[31m
+                [33mclass[31m=[32m"ant-btn css-dev-only-do-not-override-mncuj7 ant-btn-default ant-btn-color-default ant-btn-variant-outlined"[31m
+                [33mtype[31m=[32m"button"[31m
+              [36m>[31m
+                [36m<span[31m
+                  [33mclass[31m=[32m"ant-btn-icon"[31m
+                [36m>[31m
+                  [36m<span[31m
+                    [33maria-label[31m=[32m"info-circle"[31m
+                    [33mclass[31m=[32m"anticon anticon-info-circle"[31m
+                    [33mrole[31m=[32m"img"[31m
+                  [36m>[31m
+                    [36m<svg[31m
+                      [33maria-hidden[31m=[32m"true"[31m
+                      [33mdata-icon[31m=[32m"info-circle"[31m
+                      [33mfill[31m=[32m"currentColor"[31m
+                      [33mfocusable[31m=[32m"false"[31m
+                      [33mheight[31m=[32m"1em"[31m
+                      [33mviewBox[31m=[32m"64 64 896 896"[31m
+                      [33mwidth[31m=[32m"1em"[31m
+                    [36m>[31m
+                      [36m<path[31m
+                        [33md[31m=[32m"M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z"[31m
+                      [36m/>[31m
+                      [36m<path[31m
+                        [33md[31m=[32m"M464 336a48 48 0 1096 0 48 48 0 10-96 0zm72 112h-48c-4.4 0-8 3.6-8 8v272c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V456c0-4.4-3.6-8-8-8z"[31m
+                      [36m/>[31m
+                    [36m</svg>[31m
+                  [36m</span>[31m
+                [36m</span>[31m
+                [36m<span>[31m
+                  [0mevalLabMethodology[0m
+                [36m</span>[31m
+              [36m</button>[31m
+            [36m</div>[31m
+          [36m</div>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"eval-workbench"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33mclass[31m=[32m"ant-row ant-row-bottom css-dev-only-do-not-override-mncuj7"[31m
+            [33mstyle[31m=[32m"margin-left: -6px; margin-right: -6px; row-gap: 12px;"[31m
+          [36m>[31m
+            [36m<div[31m
+              [33mclass[31m=[32m"ant-col ant-col-xs-24 ant-col-sm-12 ant-col-md-8 ant-col-lg-6 css-dev-only-do-not-override-mncuj7"[31m
+              [33mstyle[31m=[32m"padding-left: 6px; padding-right: 6px;"[31m
+            [36m>[31m
+              [36m<div[31m
+                [33mclass[31m=[32m"eval-field"[31m
+              [36m>[31m
+                [36m<label[31m
+                  [33mclass[31m=[32m"eval-field-label"[31m
+                [36m>[31m
+                  [0mevalWorkbenchFactor[0m
+                [36m</label>[31m
+                [36m<div[31m
+                  [33mclass[31m=[32m"ant-select ant-select-lg ant-select-outlined css-dev-only-do-not-override-mncuj7 ant-select-single ant-select-allow-clear ant-select-show-arrow ant-select-show-search"[31m
+                  [33mstyle[31m=[32m"width: 100%;"[31m
+                [36m>[31m
+                  [36m<div[31m
+                    [33mclass[31m=[32m"ant-select-selector"[31m
+                  [36m>[31m
+                    [36m<span[31m
+                      [33mclass[31m=[32m"ant-select-selection-wrap"[31m
+                    [36m>[31m
+                      [36m<span[31m
+                        [33mclass...[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22mdisplays complete trade day evidence [33m1200[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22mrenders stress test parameter perturbation table [33m1151[2mms[22m[39m
+[31m   [31m脳[31m FactorEvaluationLab[2m > [22mauto-selects run when active task transitions to done[90m 1[2mms[22m[31m[39m
+[31m     鈫?Cannot read properties of undefined (reading 'mockResolvedValue')[39m
+   [33m[2m鉁?[22m[39m FactorEvaluationLab[2m > [22mshows immutability warning on run report [33m1211[2mms[22m[39m
+
+[31m鈳幆鈳幆鈳幆鈳?[1m[7m Failed Tests 2 [27m[22m鈳幆鈳幆鈳幆鈳?[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/__tests__/FactorEvaluationLab
+.test.tsx[2m > [22mFactorEvaluationLab[2m > [22mnormalizes nested backend m
+etrics in the run report
+[31m[1mTestingLibraryElementError[22m[39m: Unable to find an element with t
+he text: 98.29%. This could be because the text is broken up by multiple elemen
+ts. In this case, you can provide a function for your text matcher to make your
+ matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"factor-eval-lab factor-eval-lab-redesign"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"eval-header"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"eval-header-left"[39m
+        [36m>[39m
+          [36m<h2[39m
+            [33mclass[39m=[32m"eval-title"[39m
+          [36m>[39m
+            [0mevalLabTitle[0m
+          [36m</h2>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"eval-subtitle"[39m
+          [36m>[39m
+            [0mevalLabSubtitleNew[0m
+          [36m</p>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"ant-space css-dev-only-do-not-override-mncuj7 a
+nt-space-horizontal ant-space-align-center ant-space-gap-row-small ant-space-ga
+p-col-small"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"ant-space-item"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"ant-btn css-dev-only-do-not-override-mncuj7
+ ant-btn-default ant-btn-color-default ant-btn-variant-outlined"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"ant-btn-icon"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33maria-label[39m=[32m"reload"[39m
+                  [33mclass[39m=[32m"anticon anticon-reload"[39m
+                  [33mrole[39m=[32m"img"[39m
+                [36m>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mdata-icon[39m=[32m"reload"[39m
+                    [33mfill[39m=[32m"currentColor"[39m
+                    [33mfocusable[39m=[32m"false"[39m
+                    [33mheight[39m=[32m"1em"[39m
+                    [33mviewBox[39m=[32m"64 64 896 896"[39m
+                    [33mwidth[39m=[32m"1em"[39m
+                  [36m>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M909.1 209.3l-56.4 44.1C775.8 155.1 656
+.2 92 521.9 92 290 92 102.3 279.5 102 511.5 101.7 743.7 289.8 932 521.9 932c181
+.3 0 335.8-115 394.6-276.1 1.5-4.2-.7-8.9-4.9-10.3l-56.7-19.5a8 8 0 00-10.1 4.8
+c-1.8 5-3.8 10-5.9 14.9-17.3 41-42.1 77.8-73.7 109.4A344.77 344.77 0 01655.9 82
+9c-42.3 17.9-87.4 27-133.8 27-46.5 0-91.5-9.1-133.8-27A341.5 341.5 0 01279 755.
+2a342.16 342.16 0 01-73.7-109.4c-17.9-42.4-27-87.4-27-133.9s9.1-91.5 27-133.9c1
+7.3-41 42.1-77.8 73.7-109.4 31.6-31.6 68.4-56.4 109.3-73.8 42.3-17.9 87.4-27 13
+3.8-27 46.5 0 91.5 9.1 133.8 27a341.5 341.5 0 01109.3 73.8c9.9 9.9 19.2 20.4 27
+.8 31.4l-60.2 47a8 8 0 003 14.1l175.6 43c5 1.2 9.9-2.6 9.9-7.7l.8-180.9c-.1-6.6
+-7.8-10.3-13-6.2z"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                [36m</span>[39m
+              [36m</span>[39m
+              [36m<span>[39m
+                [0mevalLabRefresh[0m
+              [36m</span>[39m
+            [36m</button>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"ant-space-item"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"ant-btn css-dev-only-do-not-override-mncuj7
+ ant-btn-default ant-btn-color-default ant-btn-variant-outlined"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"ant-btn-icon"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33maria-label[39m=[32m"info-circle"[39m
+                  [33mclass[39m=[32m"anticon anticon-info-circle"[39m
+                  [33mrole[39m=[32m"img"[39m
+                [36m>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mdata-icon[39m=[32m"info-circle"[39m
+                    [33mfill[39m=[32m"currentColor"[39m
+                    [33mfocusable[39m=[32m"false"[39m
+                    [33mheight[39m=[32m"1em"[39m
+                    [33mviewBox[39m=[32m"64 64 896 896"[39m
+                    [33mwidth[39m=[32m"1em"[39m
+                  [36m>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M512 64C264.6 64 64 264.6 64 512s200.6 
+448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372
+s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z"[39m
+                    [36m/>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M464 336a48 48 0 1096 0 48 48 0 10-96 0
+zm72 112h-48c-4.4 0-8 3.6-8 8v272c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V456c0-4.4-
+3.6-8-8-8z"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                [36m</span>[39m
+              [36m</span>[39m
+              [36m<span>[39m
+                [0mevalLabMethodology[0m
+              [36m</span>[39m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"eval-workbench"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"ant-row ant-row-bottom css-dev-only-do-not-over
+ride-mncuj7"[39m
+          [33mstyle[39m=[32m"margin-left: -6px; margin-right: -6px; row-gap:
+ 12px;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"ant-col ant-col-xs-24 ant-col-sm-12 ant-col-m
+d-8 ant-col-lg-6 css-dev-only-do-not-override-mncuj7"[39m
+            [33mstyle[39m=[32m"padding-left: 6px; padding-right: 6px;"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"eval-field"[39m
+            [36m>[39m
+              [36m<label[39m
+                [33mclass[39m=[32m"eval-field-label"[39m
+              [36m>[39m
+                [0mevalWorkbenchFactor[0m
+              [36m</label>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"ant-select ant-select-lg ant-select-outli
+ned css-dev-only-do-not-override-mncuj7 ant-select-single ant-select-allow-clea
+r ant-select-show-arrow ant-select-show-search"[39m
+                [33mstyle[39m=[32m"width: 100%;"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"ant-select-selector"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"ant-select-selection-wrap"[39m
+                  [36m>[39m
+                    [36m<span[39m
+                      [33mclass[39m=[32m"ant-select-selection-search"[39m
+                    [36m>[39m
+                      [36m<input[39m
+                        [33maria-autocomplete[39m=[32m"list"[39m
+                        [33maria-controls[39m=[32m"rc_select_TEST_OR_SSR_lis
+t"[39m
+                        [3...
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"factor-eval-lab factor-eval-lab-redesign"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"eval-header"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"eval-header-left"[39m
+          [36m>[39m
+            [36m<h2[39m
+              [33mclass[39m=[32m"eval-title"[39m
+            [36m>[39m
+              [0mevalLabTitle[0m
+            [36m</h2>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"eval-subtitle"[39m
+            [36m>[39m
+              [0mevalLabSubtitleNew[0m
+            [36m</p>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"ant-space css-dev-only-do-not-override-mncuj7
+ ant-space-horizontal ant-space-align-center ant-space-gap-row-small ant-space-
+gap-col-small"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"ant-space-item"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"ant-btn css-dev-only-do-not-override-mncu
+j7 ant-btn-default ant-btn-color-default ant-btn-variant-outlined"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"ant-btn-icon"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33maria-label[39m=[32m"reload"[39m
+                    [33mclass[39m=[32m"anticon anticon-reload"[39m
+                    [33mrole[39m=[32m"img"[39m
+                  [36m>[39m
+                    [36m<svg[39m
+                      [33maria-hidden[39m=[32m"true"[39m
+                      [33mdata-icon[39m=[32m"reload"[39m
+                      [33mfill[39m=[32m"currentColor"[39m
+                      [33mfocusable[39m=[32m"false"[39m
+                      [33mheight[39m=[32m"1em"[39m
+                      [33mviewBox[39m=[32m"64 64 896 896"[39m
+                      [33mwidth[39m=[32m"1em"[39m
+                    [36m>[39m
+                      [36m<path[39m
+                        [33md[39m=[32m"M909.1 209.3l-56.4 44.1C775.8 155.1 6
+56.2 92 521.9 92 290 92 102.3 279.5 102 511.5 101.7 743.7 289.8 932 521.9 932c1
+81.3 0 335.8-115 394.6-276.1 1.5-4.2-.7-8.9-4.9-10.3l-56.7-19.5a8 8 0 00-10.1 4
+.8c-1.8 5-3.8 10-5.9 14.9-17.3 41-42.1 77.8-73.7 109.4A344.77 344.77 0 01655.9 
+829c-42.3 17.9-87.4 27-133.8 27-46.5 0-91.5-9.1-133.8-27A341.5 341.5 0 01279 75
+5.2a342.16 342.16 0 01-73.7-109.4c-17.9-42.4-27-87.4-27-133.9s9.1-91.5 27-133.9
+c17.3-41 42.1-77.8 73.7-109.4 31.6-31.6 68.4-56.4 109.3-73.8 42.3-17.9 87.4-27 
+133.8-27 46.5 0 91.5 9.1 133.8 27a341.5 341.5 0 01109.3 73.8c9.9 9.9 19.2 20.4 
+27.8 31.4l-60.2 47a8 8 0 003 14.1l175.6 43c5 1.2 9.9-2.6 9.9-7.7l.8-180.9c-.1-6
+.6-7.8-10.3-13-6.2z"[39m
+                      [36m/>[39m
+                    [36m</svg>[39m
+                  [36m</span>[39m
+                [36m</span>[39m
+                [36m<span>[39m
+                  [0mevalLabRefresh[0m
+                [36m</span>[39m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"ant-space-item"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"ant-btn css-dev-only-do-not-override-mncu
+j7 ant-btn-default ant-btn-color-default ant-btn-variant-outlined"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"ant-btn-icon"[39m
+                [36m>[39m
+                  [36m<span[39m
+                    [33maria-label[39m=[32m"info-circle"[39m
+                    [33mclass[39m=[32m"anticon anticon-info-circle"[39m
+                    [33mrole[39m=[32m"img"[39m
+                  [36m>[39m
+                    [36m<svg[39m
+                      [33maria-hidden[39m=[32m"true"[39m
+                      [33mdata-icon[39m=[32m"info-circle"[39m
+                      [33mfill[39m=[32m"currentColor"[39m
+                      [33mfocusable[39m=[32m"false"[39m
+                      [33mheight[39m=[32m"1em"[39m
+                      [33mviewBox[39m=[32m"64 64 896 896"[39m
+                      [33mwidth[39m=[32m"1em"[39m
+                    [36m>[39m
+                      [36m<path[39m
+                        [33md[39m=[32m"M512 64C264.6 64 64 264.6 64 512s200.
+6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-3
+72s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372z"[39m
+                      [36m/>[39m
+                      [36m<path[39m
+                        [33md[39m=[32m"M464 336a48 48 0 1096 0 48 48 0 10-96
+ 0zm72 112h-48c-4.4 0-8 3.6-8 8v272c0 4.4 3.6 8 8 8h48c4.4 0 8-3.6 8-8V456c0-4.
+4-3.6-8-8-8z"[39m
+                      [36m/>[39m
+                    [36m</svg>[39m
+                  [36m</span>[39m
+                [36m</span>[39m
+                [36m<span>[39m
+                  [0mevalLabMethodology[0m
+                [36m</span>[39m
+              [36m</button>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"eval-workbench"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"ant-row ant-row-bottom css-dev-only-do-not-ov
+erride-mncuj7"[39m
+            [33mstyle[39m=[32m"margin-left: -6px; margin-right: -6px; row-ga
+p: 12px;"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"ant-col ant-col-xs-24 ant-col-sm-12 ant-col
+-md-8 ant-col-lg-6 css-dev-only-do-not-override-mncuj7"[39m
+              [33mstyle[39m=[32m"padding-left: 6px; padding-right: 6px;"[39
+m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"eval-field"[39m
+              [36m>[39m
+                [36m<label[39m
+                  [33mclass[39m=[32m"eval-field-label"[39m
+                [36m>[39m
+                  [0mevalWorkbenchFactor[0m
+                [36m</label>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"ant-select ant-select-lg ant-select-out
+lined css-dev-only-do-not-override-mncuj7 ant-select-single ant-select-allow-cl
+ear ant-select-show-arrow ant-select-show-search"[39m
+                  [33mstyle[39m=[32m"width: 100%;"[39m
+                [36m>[39m
+                  [36m<div[39m
+                    [33mclass[39m=[32m"ant-select-selector"[39m
+                  [36m>[39m
+                    [36m<span[39m
+                      [33mclass[39m=[32m"ant-select-selection-wrap"[39m
+                    [36m>[39m
+                      [36m<span[39m
+                        [33mclass...
+[90m [2m鉂?[22m Proxy.waitForWrapper node_modules/@testing-library/dom/dist/wa
+it-for.js:[2m163:27[22m[39m
+[36m [2m鉂?[22m src/components/__tests__/FactorEvaluationLab.test.tsx:[2m494:
+11[22m[39m
+    [90m492| [39m    fireEvent[33m.[39m[34mclick[39m(screen[33m.[39m[3
+4mgetAllByRole[39m([32m"button"[39m[33m,[39m { name[33m:[39m [36m/solut
+ion/[39m }鈥?    [90m493| [39m
+    [90m494| [39m    [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m   | [39m          [31m^[39m
+    [90m495| [39m      [34mexpect[39m(screen[33m.[39m[34mgetAllByText[3
+9m([32m"-0.6707"[39m)[33m.[39mlength)[33m.[39m[34mtoBeGreaterThan[39m(
+[34m0[39m)鈥?    [90m496| [39m      [34mexpect[39m(screen[33m.[39m[34mge
+tAllByText[39m([32m"-9.1783"[39m)[33m.[39mlength)[33m.[39m[34mtoBeGreat
+erThan[39m([34m0[39m)[33m;[39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[1/2]鈳?[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/__tests__/FactorEvaluationLab
+.test.tsx[2m > [22mFactorEvaluationLab[2m > [22mauto-selects run when activ
+e task transitions to done
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'mockReso
+lvedValue')[39m
+[36m [2m鉂?[22m src/components/__tests__/FactorEvaluationLab.test.tsx:[2m582:
+40[22m[39m
+    [90m580| [39m    })[33m;[39m
+    [90m581| [39m    [90m// 缁勪欢杞璧?heartbeat锛堣繑鍥炵粓鎬佸悗鎵嶈皟 getEvaluationTask锛
+夛紝鏁呬袱[39m鈥?    [90m582| [39m    mockApi[33m.[39mgetEvaluationTaskHeartbeat
+[33m.[39m[34mmockResolvedValue[39m(doneTask)[33m;[39m
+    [90m   | [39m                                       [31m^[39m
+    [90m583| [39m    mockApi[33m.[39mgetEvaluationTask[33m.[39m[34mmockR
+esolvedValue[39m(doneTask)[33m;[39m
+    [90m584| [39m    mockApi[33m.[39mlistEvaluationRuns[33m.[39m[34mmock
+ResolvedValue[39m([])[33m;[39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[2/2]鈳?[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m14 passed[39m[22m[90m (16)[39m
+[2m   Start at [22m 14:57:45
+[2m   Duration [22m 37.25s[2m (transform 231ms, setup 370ms, collect 16.76s, tests 14.23s, environment 2.97s, prepare 362ms)[22m
+
+EXIT=1

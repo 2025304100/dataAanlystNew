@@ -1,0 +1,90 @@
+[
+ {
+  "head": "FAIL  src/components/__tests__/ExternalDataSync.test.tsx > ExternalDataSync dashboard > submits a score-only factor pipeline after input synchronization",
+  "err": "TestingLibraryElementError: Unable to find role=\"button\" and name \"鏇存柊鍥犲瓙璇勫垎\""
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorEvaluationLab.test.tsx > FactorEvaluationLab > normalizes nested backend metrics in the run report",
+  "err": "TestingLibraryElementError: Found multiple elements with the text: -0.6707"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorEvaluationLab.test.tsx > FactorEvaluationLab > auto-selects run when active task transitions to done",
+  "err": "AssertionError: expected \"spy\" to be called with arguments: [ 'task-running' ]"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorLibrary.test.tsx > FactorLibrary > loads factor statistics within the APIpage-size contract",
+  "err": "AssertionError: expected \"spy\" to be called with arguments: [ ObjectContaining {\"page_size\": 100} ]"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > renders runtime / models / factorSets after load",
+  "err": "AssertionError: expected \"spy\" to be called with arguments: [ undefined, 20 ]"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > shows empty placeholders when no models and no factor sets",
+  "err": "TestingLibraryElementError: Unable to find an element with t he text: factorModelNoFactorSets. This could be because the text is broken up b"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > falls back to FactorSet id when a historical name is irreversibly garbled",
+  "err": "TestingLibraryElementError: Unable to find an element with t he text: fs-set-3126b70f. This could be because the text is broken up by multip"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > shows fallback button disabled whenweight_mode is manual",
+  "err": "Error: expect(element).toBeDisabled()"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > renders rejected model with rejected tag instead of activate buttons",
+  "err": "TestingLibraryElementError: Unable to find an element with t he text: factorModelRejected. This could be because the text is broken up by mu"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > shows shadow and ridge activate buttons for validated model",
+  "err": "TestingLibraryElementError: Unable to find an element with t he text: factorModelShadow. This could be because the text is broken up by mult"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > loads model detail with weights andaudit logs on click",
+  "err": "TestingLibraryElementError: Unable to find an element with t he text: model-001-abc. This could be because the text is broken up by multiple"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > opens activate modal and submits successfully",
+  "err": "TestingLibraryElementError: Unable to find an element with t he text: factorModelRidge. This could be because the text is broken up by multi"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > shows error when activate fails",
+  "err": "TestingLibraryElementError: Unable to find an element with t he text: factorModelRidge. This could be because the text is broken up by multi"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > submits fallback successfully whenreason is provided",
+  "err": "AssertionError: expected \"spy\" to be called with arguments: [ 'IC 琛板噺瑙﹀彂鍥為€€' ]"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > shows rejection reason alert in model detail when rejected",
+  "err": "TestingLibraryElementError: Unable to find an element with t he text: factorModelRejected. This could be because the text is broken up by mu"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelPage.test.tsx > FactorModelPage > shows score weight mode tag when score_weight_mode is ridge",
+  "err": "TestingLibraryElementError: Unable to find an element with t he text: factorModelScoreWeightMode. This could be because the text is broken u"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelSettings.test.tsx > FactorModelSettings > loads runtime and supportsshadow activation and pipeline start",
+  "err": "TestingLibraryElementError: Unable to find an element with t he text: ridge-20260714. This could be because the text is broken up by multipl"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelSettings.test.tsx > FactorModelSettings > blocks pipeline while disabled and can enable the feature",
+  "err": "TestingLibraryElementError: Unable to find role=\"button\" and name `/杩愯娴佹按绾?`"
+ },
+ {
+  "head": "FAIL  src/components/__tests__/FactorModelSettings.test.tsx > FactorModelSettings > offers warehouse initialization when enabled but unavailable",
+  "err": "TestingLibraryElementError: Unable to find role=\"button\" and name \"鍒濆鍖栦粨搴?"
+ },
+ {
+  "head": "FAIL  src/components/factors/__tests__/FactorModelPage.collections.test.tsx > TR-2.1 9 鍏冪礌瀛樺湪鎬э紙Task 2 鈶犫憽鈶⑩懀鈶も懃鈶︹懅鈶級\u001b[2m > 鍚屾椂娓叉煋 鑽夌/鍐荤粨/搴熷純 涓夌闆嗗悎鍗＄墖 + 椤堕儴鎸夐挳 + 绌哄崰浣?+ Drawer鏍囬 + 鍐荤粨鎽樿 + 璁粌瀵硅瘽妗唖ubmit + 鐘舵€佸窘绔?TestingLibraryElementError: Unable tofind an element with the text: factor_code. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.",
+  "err": ""
+ },
+ {
+  "head": "FAIL  src/components/factors/__tests__/FactorModelPage.collections.test.tsx > TR-2.3 鎴愬憳鏄庣粏琛ㄦ牸 6 鍒?脳 3 琛?脳 feature=3> 1 frozen + 3 feature 鎴愬憳 鈫?鎴愬憳琛?6 鍒楁覆鏌撳嚭 3 琛岋紝feature 鏁?3",
+  "err": "AssertionError: expected [ '鍥犲瓙浠ｇ爜', '鍥犲瓙鍚嶇О', '鐗堟湰', '瑙掕壊', 鈥?2) ] to deeply equal ArrayContaining{鈥"
+ },
+ {
+  "head": "FAIL  src/components/factors/__tests__/FactorModelPage.t13-supplement.test.tsx > T13鈶ワ細搴熷純闂ㄧ 鈥?琚娇鐢ㄧ殑闆嗗悎 disabled + 鏂囨鍚€庢鍦ㄤ娇鐢ㄧ殑妯″瀷銆?[2m > active_factor_set_id 鎸囧悜璇ラ泦鍚?鈫?btn-deprecate disabled锛沝ata-gate-tooltip 鍚€庢鍦ㄤ娇鐢ㄧ殑妯″瀷銆?Error: expect(element).toBeDisabled()",
+  "err": ""
+ }
+]

@@ -1,0 +1,921 @@
+============================= test session starts =============================
+collected 31 items
+
+tests\test_g1_factor_usage.py .F..FFFFF.                                 [ 32%]
+tests\test_backtest_detail_snapshot_contract.py F                        [ 35%]
+tests\test_wp02_g0_contracts_schemas_tdd.py ..................           [ 93%]
+tests\test_whitebox_db_session.py ..                                     [100%]
+
+================================== FAILURES ===================================
+_________ TestFactorUsageService.test_02_empty_current_usage_is_none __________
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.OperationalError: no such column: strategy_execution_snapshots.usage_binding_id
+
+The above exception was the direct cause of the following exception:
+tests\test_g1_factor_usage.py:152: in test_02_empty_current_usage_is_none
+    resp = get_current_usage(db, p.id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\factor_usage_service.py:431: in get_current_usage
+    latest_snap = db.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2351: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2249: in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+.venv\Lib\site-packages\sqlalchemy\orm\context.py:306: in orm_execute_statement
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such column: strategy_execution_snapshots.usage_binding_id
+E   [SQL: SELECT strategy_execution_snapshots.id, strategy_execution_snapshots.snapshot_no, strategy_execution_snapshots.portfolio_id, strategy_execution_snapshots.portfolio_factor_usage_id, strategy_execution_snapshots.factor_model_run_id, strategy_execution_snapshots.factor_set_id, strategy_execution_snapshots.rule_id, strategy_execution_snapshots.rule_version, strategy_execution_snapshots.decision_clock_json, strategy_execution_snapshots.cost_config_json, strategy_execution_snapshots.member_snapshot_json, strategy_execution_snapshots.candidate_pool_json, strategy_execution_snapshots.universe_type, strategy_execution_snapshots.benchmark_code, strategy_execution_snapshots.snapshot_type, strategy_execution_snapshots.snapshot_hash, strategy_execution_snapshots.idempotency_key, strategy_execution_snapshots.usage_binding_id, strategy_execution_snapshots.snapshot_json, strategy_execution_snapshots.content_hash, strategy_execution_snapshots.key_members_json, strategy_execution_snapshots.gate_policy_version, strategy_execution_snapshots.gate_result_json, strategy_execution_snapshots.versions_json, strategy_execution_snapshots.effective_from, strategy_execution_snapshots.task_locked_at, strategy_execution_snapshots.task_id, strategy_execution_snapshots.locked_by_run_type, strategy_execution_snapshots.created_by, strategy_execution_snapshots.created_at 
+E   FROM strategy_execution_snapshots 
+E   WHERE strategy_execution_snapshots.portfolio_id = ? AND strategy_execution_snapshots.snapshot_type = ? ORDER BY strategy_execution_snapshots.effective_from DESC
+E    LIMIT ? OFFSET ?]
+E   [parameters: (1, 'save_and_apply', 1, 0)]
+E   (Background on this error at: https://sqlalche.me/e/20/e3q8)
+---------------------------- Captured stdout setup ----------------------------
+[0054] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0053 建好外键 → 本修订跳过（预期行为）。
+[0056] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0050 建好外键 → 跳过（预期行为）。
+[0057] dialect=sqlite：REAL 已是 DOUBLE 精度 → 跳过（预期行为）。
+---------------------------- Captured stderr setup ----------------------------
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> wps_001_external_endpoint, wps_001_external_endpoint.
+INFO  [alembic.runtime.migration] Running upgrade wps_001_external_endpoint -> wps_0023_001_scan_runs_cache, wps_0023_001_scan_runs_cache.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_001_scan_runs_cache -> wps_0023_002_symbols, wps_0023_002_symbols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_002_symbols -> wps_0023_003_daily_bar, wps_0023_003_daily_bar.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_003_daily_bar -> wps_0023_004_watchlists, wps_0023_004_watchlists.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_004_watchlists -> wps_0023_005_trade_setups, wps_0023_005_trade_setups.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_005_trade_setups -> wps_0023_006_scoring_configs, wps_0023_006_scoring_configs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_006_scoring_configs -> wps_0023_007_scans, wps_0023_007_scans.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_007_scans -> wps_0023_008_factors, wps_0023_008_factors.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_008_factors -> wps_0023_009_factor_models, wps_0023_009_factor_models.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_009_factor_models -> wps_0023_010_factor_runtimes, wps_0023_010_factor_runtimes.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_010_factor_runtimes -> wps_0023_011_factor_evaluations, wps_0023_011_factor_evaluations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_011_factor_evaluations -> wps_0023_012_portfolio_members, wps_0023_012_portfolio_members.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_012_portfolio_members -> wps_0023_013_notification_tables, wps_0023_013_notification_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_013_notification_tables -> wps_0023_014_sim_orders_attribution, wps_0023_014_sim_orders_attribution.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_014_sim_orders_attribution -> wps_0023_015_ai_session_tables, wps_0023_015_ai_session_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_015_ai_session_tables -> wps_0023_016_portfolio_reviews, wps_0023_016_portfolio_reviews.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_016_portfolio_reviews -> wps_0023_017_ai_profiles, wps_0023_017_ai_profiles.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_017_ai_profiles -> wps_0023_018_discovery_score_snapshots, wps_0023_018_discovery_score_snapshots.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_018_discovery_score_snapshots -> wps_0023_019_async_tasks_state_machine, wps_0023_019_async_tasks_state_machine.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_019_async_tasks_state_machine -> wps_0023_020_api_deprecation_logs, wps_0023_020_api_deprecation_logs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_020_api_deprecation_logs -> wps_0801_001_universe_incremental_index, wps_0801_001_universe_incremental_index.
+INFO  [alembic.runtime.migration] Running upgrade wps_0801_001_universe_incremental_index -> wps_0023_021_factor_library_lifecycle, wps_0023_021_factor_library_lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_021_factor_library_lifecycle -> wps_0023_022_shadow_observations, wps_0023_022_shadow_observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_022_shadow_observations -> wps_0023_023_score_traceability, wps_0023_023_score_traceability.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_023_score_traceability -> wps_0023_024_decision_engine_contract, wps_0023_024_decision_engine_contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_024_decision_engine_contract -> wps_0023_025_notifications_gap_fix, wps_0023_025_notifications_gap_fix.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_025_notifications_gap_fix -> wps_0023_026_drop_legacy_last_successful_trade_date, wps_0023_026_drop_legacy_last_successful_trade_date.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_026_drop_legacy_last_successful_trade_date -> wps_0023_027_g3_data_governance_and_portfolio_status, wps_0023_027_g3_data_governance_and_portfolio_status.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_027_g3_data_governance_and_portfolio_status -> wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox, wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox -> wps_0023_029_wp03_portfolios_status_dim_columns, wps_0023_029_wp03_portfolios_status_dim_columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_029_wp03_portfolios_status_dim_columns -> wps_0023_030_wp03_manual_price_overrides, wps_0023_030_wp03_manual_price_overrides.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_030_wp03_manual_price_overrides -> wps_0023_031_wp03_decision_runs_evidence_full_cols, wps_0023_031_wp03_decision_runs_evidence_full_cols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_031_wp03_decision_runs_evidence_full_cols -> wps_0023_032_g0_wp02ab_leftovers, wps_0023_032_g0_wp02ab_leftovers.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_032_g0_wp02ab_leftovers -> wps_0023_033_wp06_score_pit_safety, wps_0023_033_wp06_score_pit_safety_and_published_notnull.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_033_wp06_score_pit_safety -> wps_0023_034_portfolio_rule_exit_config, Add the PortfolioRule exit configuration required by the runtime ORM.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_034_portfolio_rule_exit_config -> wps_0023_035_data_quality_quarantines, Persist immutable data-quality quarantine observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_035_data_quality_quarantines -> wps_0023_036_data_quality_snapshot_contract, Align the durable data-quality schema with the runtime governance contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_036_data_quality_snapshot_contract -> wps_0023_037_backtest_execution_fills, Persist immutable execution events for decision-driven backtests.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_037_backtest_execution_fills -> wps_0023_038_backtest_valuation_snapshots, Persist immutable completed-run valuation marks.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_038_backtest_valuation_snapshots -> wps_0023_039_backtest_reproducibility_marker, Mark historical backtests that cannot be replayed from immutable inputs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_039_backtest_reproducibility_marker -> wps_0023_040_g5_dual_run_reports, Persist auditable G5 new/old dual-run summaries.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_040_g5_dual_run_reports -> wps_0023_041_g6_rollout_audit_actions, Add explicit audit actions for G6 rollout lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_041_g6_rollout_audit_actions -> wps_0023_042_decision_order_plans, Persist immutable DecisionOrderPlan intents independently of evidence JSON.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_042_decision_order_plans -> wps_0023_043_security_status_daily, SecurityStatusDaily ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_043_security_status_daily -> wps_0023_044_backtest_filter_events, BacktestFilterEvent ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_044_backtest_filter_events -> wps_0023_045_bfg_extend_run_fields, BFG: extend backtest_runs / factor_evaluation_runs / backtest_trades / backtest_execution_fills with filter governance fields.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_045_bfg_extend_run_fields -> wps_0023_046_fix_idempotency_status_index_rollback, 修正迁移：补齐 idempotency_records / decision_evidence 在
+Base.metadata.create_all (ORM WP0-2 schema) 先跑后缺失、或命名不一致的列与命名索引，
+避免旧 wps_0023_024 迁移 downgrade 抛出 no such index / no such column。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_046_fix_idempotency_status_index_rollback -> wps_0023_047_bfg_run_stage_and_progress, T11: 提交去重 + 状态机 API 扩展。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_047_bfg_run_stage_and_progress -> wps_0023_048_factor_audit_logs, wps_0023_048_factor_audit_logs (Task 4 / FR-13 / AC-18).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_048_factor_audit_logs -> wps_0023_049_factor_weight_snapshots, wps_0023_049_factor_weight_snapshots (Task 11 / FR-12 / AC-11).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_049_factor_weight_snapshots -> wps_0023_050_factor_model_members, Create the materialized factor-model member table.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_050_factor_model_members -> wps_0023_051_factor_mining_core, Factor mining core schema (M1a): candidate pools, mining runs/candidates/
+generations, locks, formula templates, and the missing test-window columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_051_factor_mining_core -> wps_0023_052_mining_fk_constraints, Backfill the 6 missing foreign keys on the mining-domain tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_052_mining_fk_constraints -> wps_0023_053_factor_audit_pool_id, 给 `factor_audit_logs` 加 `pool_id` 独立列（挖掘域审计）。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_053_factor_audit_pool_id -> wps_0023_054_factor_audit_model_run_fk, Backfill the missing foreign key on `factor_audit_logs.model_run_id`.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_054_factor_audit_model_run_fk -> wps_0023_055_accounting_float_to_double, Widen 8 accounting columns from FLOAT to DOUBLE (TD4).
+______ TestFactorUsageService.test_05_save_and_apply_writes_both_tables _______
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.OperationalError: table strategy_execution_snapshots has no column named usage_binding_id
+
+The above exception was the direct cause of the following exception:
+app\services\factor_usage_service.py:747: in save_and_apply_usage
+    db.commit()
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2030: in commit
+    trans.commit(_to_root=True)
+.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:1311: in commit
+    self._prepare_impl()
+.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:1286: in _prepare_impl
+    self.session.flush()
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:1048: in _emit_insert_statements
+    result = connection.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) table strategy_execution_snapshots has no column named usage_binding_id
+E   [SQL: INSERT INTO strategy_execution_snapshots (id, snapshot_no, portfolio_id, portfolio_factor_usage_id, factor_model_run_id, factor_set_id, rule_id, rule_version, decision_clock_json, cost_config_json, member_snapshot_json, candidate_pool_json, universe_type, benchmark_code, snapshot_type, snapshot_hash, idempotency_key, usage_binding_id, snapshot_json, content_hash, key_members_json, gate_policy_version, gate_result_json, versions_json, effective_from, task_locked_at, task_id, locked_by_run_type, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+E   [parameters: ('a7f1ff994e45ff3141010d75caf60eda398d0233d75dbe232583b5efdc5f62d3', 1, 1, 'a6e2d8ecc36ffe01492adc8d43e182b25003e500cef379ff6f97dbe927fe71ec', 'fmr_ACTIVE_SAVE', None, None, None, '{"data_cutoff_at_cst":"2026-09-18T15:00:00+08:00","data_cutoff_at_utc":"2026-09-18T07:00:00","decision_at_cst":"2026-09-18T15:05:00+08:00","decision_at_utc":"2026-09-18T07:05:00","execution_at_cst":"2026-09-19T09:30:00+08:00","execution_at_utc":"2026-09-19T01:30:00"}', '{"buy_commission_pct":0.00025,"buy_slippage_bps":5,"sell_commission_pct":0.00025,"sell_slippage_bps":5,"stamp_duty_pct":0.001}', '[]', None, 'portfolio_members', '000300', 'save_and_apply', '75974d9901a8fd63fd4e50152385bf7fc0006901e982feb4b53687950df12518', 'b67fca5bf3caf1e50b50eadcfc08bdcbb79ba429f70f437e29b90b62fdd7209c', None, None, None, None, 'production-v1.0.0', '{"gate_policy_version":"production-v1.0.0","pass":true,"runtime_version":1,"warnings":[{"code":"MODEL_NOT_FOUND","detail":{"model_run_id":"fmr_ACTIVE ... (3 characters truncated) ... VE"},"message":"FactorModelRun fmr_ACTIVE_SAVE does not exist; legacy research cannot create a production-eligible snapshot.","severity":"warning"}]}', '{"factor_model_run_id":"fmr_ACTIVE_SAVE","gate_policy_version":"production-v1.0.0","pit_mode":"best_effort","run_mode":"research","runtime_version":1}', '2026-09-18 07:42:39.429298', None, None, None, 'qa_user', '2026-09-18 07:42:39.429298')]
+E   (Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+During handling of the above exception, another exception occurred:
+tests\test_g1_factor_usage.py:204: in test_05_save_and_apply_writes_both_tables
+    resp = save_and_apply_usage(db, p.id, req, "qa_user")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\factor_usage_service.py:783: in save_and_apply_usage
+    raise HTTPException(status_code=500, detail={
+E   fastapi.exceptions.HTTPException: 500: {'error': 'SAVE_APPLY_FAILED', 'detail': 'OperationalError: (sqlite3.OperationalError) table strategy_execution_snapshots has no column named usage_binding_id\n[SQL: INSERT INTO strategy_execution_snapshots (id, snapshot_no, portfolio_id, portfolio_factor_usage_id, factor_model_run_id, factor_set_id, rule_id, rule_version, decision_clock_json, cost_config_json, member_snapshot_json, candidate_pool_json, universe_type, benchmark_code, snapshot_type, snapshot_hash, idempotency_key, usage_binding_id, snapshot_json, content_hash, key_members_json, gate_policy_version, gate_result_json, versions_json, effective_from, task_locked_at, task_id, locked_by_run_type, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: (\'a7f1ff994e45ff3141010d75caf60eda398d0233d75dbe232583b5efdc5f62d3\', 1, 1, \'a6e2d8ecc36ffe01492adc8d43e182b25003e500cef379ff6f97dbe927fe71ec\', \'fmr_ACTIVE_SAVE\', None, None, None, \'{"data_cutoff_at_cst":"2026-09-18T15:00:00+08:00","data_cutoff_at_utc":"2026-09-18T07:00:00","decision_at_cst":"2026-09-18T15:05:00+08:00","decision_at_utc":"2026-09-18T07:05:00","execution_at_cst":"2026-09-19T09:30:00+08:00","execution_at_utc":"2026-09-19T01:30:00"}\', \'{"buy_commission_pct":0.00025,"buy_slippage_bps":5,"sell_commission_pct":0.00025,"sell_slippage_bps":5,"stamp_duty_pct":0.001}\', \'[]\', None, \'portfolio_members\', \'000300\', \'save_and_apply\', \'75974d9901a8fd63fd4e50152385bf7fc0006901e982feb4b53687950df12518\', \'b67fca5bf3caf1e50b50eadcfc08bdcbb79ba429f70f437e29b90b62fdd7209c\', None, None, None, None, \'production-v1.0.0\', \'{"gate_policy_version":"production-v1.0.0","pass":true,"runtime_version":1,"warnings":[{"code":"MODEL_NOT_FOUND","detail":{"model_run_id":"fmr_ACTIVE ... (3 characters truncated) ... VE"},"message":"FactorModelRun fmr_ACTIVE_SAVE does not exist; legacy research cannot create a production-eligible snapshot.","severity":"warning"}]}\', \'{"factor_model_run_id":"fmr_ACTIVE_SAVE","gate_policy_version":"production-v1.0.0","pit_mode":"best_effort","run_mode":"research","runtime_version":1}\', \'2026-09-18 07:42:39.429298\', None, None, None, \'qa_user\', \'2026-09-18 07:42:39.429298\')]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)'}
+---------------------------- Captured stdout setup ----------------------------
+[0054] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0053 建好外键 → 本修订跳过（预期行为）。
+[0056] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0050 建好外键 → 跳过（预期行为）。
+[0057] dialect=sqlite：REAL 已是 DOUBLE 精度 → 跳过（预期行为）。
+---------------------------- Captured stderr setup ----------------------------
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> wps_001_external_endpoint, wps_001_external_endpoint.
+INFO  [alembic.runtime.migration] Running upgrade wps_001_external_endpoint -> wps_0023_001_scan_runs_cache, wps_0023_001_scan_runs_cache.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_001_scan_runs_cache -> wps_0023_002_symbols, wps_0023_002_symbols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_002_symbols -> wps_0023_003_daily_bar, wps_0023_003_daily_bar.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_003_daily_bar -> wps_0023_004_watchlists, wps_0023_004_watchlists.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_004_watchlists -> wps_0023_005_trade_setups, wps_0023_005_trade_setups.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_005_trade_setups -> wps_0023_006_scoring_configs, wps_0023_006_scoring_configs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_006_scoring_configs -> wps_0023_007_scans, wps_0023_007_scans.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_007_scans -> wps_0023_008_factors, wps_0023_008_factors.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_008_factors -> wps_0023_009_factor_models, wps_0023_009_factor_models.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_009_factor_models -> wps_0023_010_factor_runtimes, wps_0023_010_factor_runtimes.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_010_factor_runtimes -> wps_0023_011_factor_evaluations, wps_0023_011_factor_evaluations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_011_factor_evaluations -> wps_0023_012_portfolio_members, wps_0023_012_portfolio_members.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_012_portfolio_members -> wps_0023_013_notification_tables, wps_0023_013_notification_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_013_notification_tables -> wps_0023_014_sim_orders_attribution, wps_0023_014_sim_orders_attribution.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_014_sim_orders_attribution -> wps_0023_015_ai_session_tables, wps_0023_015_ai_session_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_015_ai_session_tables -> wps_0023_016_portfolio_reviews, wps_0023_016_portfolio_reviews.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_016_portfolio_reviews -> wps_0023_017_ai_profiles, wps_0023_017_ai_profiles.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_017_ai_profiles -> wps_0023_018_discovery_score_snapshots, wps_0023_018_discovery_score_snapshots.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_018_discovery_score_snapshots -> wps_0023_019_async_tasks_state_machine, wps_0023_019_async_tasks_state_machine.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_019_async_tasks_state_machine -> wps_0023_020_api_deprecation_logs, wps_0023_020_api_deprecation_logs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_020_api_deprecation_logs -> wps_0801_001_universe_incremental_index, wps_0801_001_universe_incremental_index.
+INFO  [alembic.runtime.migration] Running upgrade wps_0801_001_universe_incremental_index -> wps_0023_021_factor_library_lifecycle, wps_0023_021_factor_library_lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_021_factor_library_lifecycle -> wps_0023_022_shadow_observations, wps_0023_022_shadow_observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_022_shadow_observations -> wps_0023_023_score_traceability, wps_0023_023_score_traceability.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_023_score_traceability -> wps_0023_024_decision_engine_contract, wps_0023_024_decision_engine_contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_024_decision_engine_contract -> wps_0023_025_notifications_gap_fix, wps_0023_025_notifications_gap_fix.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_025_notifications_gap_fix -> wps_0023_026_drop_legacy_last_successful_trade_date, wps_0023_026_drop_legacy_last_successful_trade_date.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_026_drop_legacy_last_successful_trade_date -> wps_0023_027_g3_data_governance_and_portfolio_status, wps_0023_027_g3_data_governance_and_portfolio_status.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_027_g3_data_governance_and_portfolio_status -> wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox, wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox -> wps_0023_029_wp03_portfolios_status_dim_columns, wps_0023_029_wp03_portfolios_status_dim_columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_029_wp03_portfolios_status_dim_columns -> wps_0023_030_wp03_manual_price_overrides, wps_0023_030_wp03_manual_price_overrides.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_030_wp03_manual_price_overrides -> wps_0023_031_wp03_decision_runs_evidence_full_cols, wps_0023_031_wp03_decision_runs_evidence_full_cols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_031_wp03_decision_runs_evidence_full_cols -> wps_0023_032_g0_wp02ab_leftovers, wps_0023_032_g0_wp02ab_leftovers.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_032_g0_wp02ab_leftovers -> wps_0023_033_wp06_score_pit_safety, wps_0023_033_wp06_score_pit_safety_and_published_notnull.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_033_wp06_score_pit_safety -> wps_0023_034_portfolio_rule_exit_config, Add the PortfolioRule exit configuration required by the runtime ORM.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_034_portfolio_rule_exit_config -> wps_0023_035_data_quality_quarantines, Persist immutable data-quality quarantine observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_035_data_quality_quarantines -> wps_0023_036_data_quality_snapshot_contract, Align the durable data-quality schema with the runtime governance contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_036_data_quality_snapshot_contract -> wps_0023_037_backtest_execution_fills, Persist immutable execution events for decision-driven backtests.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_037_backtest_execution_fills -> wps_0023_038_backtest_valuation_snapshots, Persist immutable completed-run valuation marks.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_038_backtest_valuation_snapshots -> wps_0023_039_backtest_reproducibility_marker, Mark historical backtests that cannot be replayed from immutable inputs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_039_backtest_reproducibility_marker -> wps_0023_040_g5_dual_run_reports, Persist auditable G5 new/old dual-run summaries.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_040_g5_dual_run_reports -> wps_0023_041_g6_rollout_audit_actions, Add explicit audit actions for G6 rollout lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_041_g6_rollout_audit_actions -> wps_0023_042_decision_order_plans, Persist immutable DecisionOrderPlan intents independently of evidence JSON.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_042_decision_order_plans -> wps_0023_043_security_status_daily, SecurityStatusDaily ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_043_security_status_daily -> wps_0023_044_backtest_filter_events, BacktestFilterEvent ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_044_backtest_filter_events -> wps_0023_045_bfg_extend_run_fields, BFG: extend backtest_runs / factor_evaluation_runs / backtest_trades / backtest_execution_fills with filter governance fields.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_045_bfg_extend_run_fields -> wps_0023_046_fix_idempotency_status_index_rollback, 修正迁移：补齐 idempotency_records / decision_evidence 在
+Base.metadata.create_all (ORM WP0-2 schema) 先跑后缺失、或命名不一致的列与命名索引，
+避免旧 wps_0023_024 迁移 downgrade 抛出 no such index / no such column。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_046_fix_idempotency_status_index_rollback -> wps_0023_047_bfg_run_stage_and_progress, T11: 提交去重 + 状态机 API 扩展。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_047_bfg_run_stage_and_progress -> wps_0023_048_factor_audit_logs, wps_0023_048_factor_audit_logs (Task 4 / FR-13 / AC-18).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_048_factor_audit_logs -> wps_0023_049_factor_weight_snapshots, wps_0023_049_factor_weight_snapshots (Task 11 / FR-12 / AC-11).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_049_factor_weight_snapshots -> wps_0023_050_factor_model_members, Create the materialized factor-model member table.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_050_factor_model_members -> wps_0023_051_factor_mining_core, Factor mining core schema (M1a): candidate pools, mining runs/candidates/
+generations, locks, formula templates, and the missing test-window columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_051_factor_mining_core -> wps_0023_052_mining_fk_constraints, Backfill the 6 missing foreign keys on the mining-domain tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_052_mining_fk_constraints -> wps_0023_053_factor_audit_pool_id, 给 `factor_audit_logs` 加 `pool_id` 独立列（挖掘域审计）。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_053_factor_audit_pool_id -> wps_0023_054_factor_audit_model_run_fk, Backfill the missing foreign key on `factor_audit_logs.model_run_id`.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_054_factor_audit_model_run_fk -> wps_0023_055_accounting_float_to_double, Widen 8 accounting columns from FLOAT to DOUBLE (TD4).
+_____ TestFactorUsageService.test_06_repeated_save_deprecates_older_usage _____
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.OperationalError: table strategy_execution_snapshots has no column named usage_binding_id
+
+The above exception was the direct cause of the following exception:
+app\services\factor_usage_service.py:747: in save_and_apply_usage
+    db.commit()
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2030: in commit
+    trans.commit(_to_root=True)
+.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:1311: in commit
+    self._prepare_impl()
+.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:1286: in _prepare_impl
+    self.session.flush()
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:1048: in _emit_insert_statements
+    result = connection.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) table strategy_execution_snapshots has no column named usage_binding_id
+E   [SQL: INSERT INTO strategy_execution_snapshots (id, snapshot_no, portfolio_id, portfolio_factor_usage_id, factor_model_run_id, factor_set_id, rule_id, rule_version, decision_clock_json, cost_config_json, member_snapshot_json, candidate_pool_json, universe_type, benchmark_code, snapshot_type, snapshot_hash, idempotency_key, usage_binding_id, snapshot_json, content_hash, key_members_json, gate_policy_version, gate_result_json, versions_json, effective_from, task_locked_at, task_id, locked_by_run_type, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+E   [parameters: ('60c569a17b036e8d37d3a42b132be3d99f45df453d9a3d845e5f0728806fc0c5', 1, 1, '7c199456f6f1649bec37efd0bb4cd42c49fd7d817529868f91a772d5bb86a6b4', 'fmr_ACTIVE', None, None, None, '{"data_cutoff_at_cst":"2026-09-18T15:00:00+08:00","data_cutoff_at_utc":"2026-09-18T07:00:00","decision_at_cst":"2026-09-18T15:05:00+08:00","decision_at_utc":"2026-09-18T07:05:00","execution_at_cst":"2026-09-19T09:30:00+08:00","execution_at_utc":"2026-09-19T01:30:00"}', '{"buy_commission_pct":0.00025,"buy_slippage_bps":5,"sell_commission_pct":0.00025,"sell_slippage_bps":5,"stamp_duty_pct":0.001}', '[]', None, 'portfolio_members', '000300', 'save_and_apply', '8db3773eb35c328f08fc54751c3d90509e30346b2ddd644de2fd633a4936cde6', '5174833024dae272f553d055e94e8b7ef701a0dd79ab5c00837c638371d290bf', None, None, None, None, 'production-v1.0.0', '{"gate_policy_version":"production-v1.0.0","pass":true,"runtime_version":1,"warnings":[{"code":"MODEL_NOT_FOUND","detail":{"model_run_id":"fmr_ACTIVE"},"message":"FactorModelRun fmr_ACTIVE does not exist; legacy research cannot create a production-eligible snapshot.","severity":"warning"}]}', '{"factor_model_run_id":"fmr_ACTIVE","gate_policy_version":"production-v1.0.0","pit_mode":"best_effort","run_mode":"research","runtime_version":1}', '2026-09-18 07:42:40.939101', None, None, None, 'qa_user', '2026-09-18 07:42:40.939101')]
+E   (Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+During handling of the above exception, another exception occurred:
+tests\test_g1_factor_usage.py:241: in test_06_repeated_save_deprecates_older_usage
+    r1 = save_and_apply_usage(db, p.id, req1, "qa_user")
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\factor_usage_service.py:783: in save_and_apply_usage
+    raise HTTPException(status_code=500, detail={
+E   fastapi.exceptions.HTTPException: 500: {'error': 'SAVE_APPLY_FAILED', 'detail': 'OperationalError: (sqlite3.OperationalError) table strategy_execution_snapshots has no column named usage_binding_id\n[SQL: INSERT INTO strategy_execution_snapshots (id, snapshot_no, portfolio_id, portfolio_factor_usage_id, factor_model_run_id, factor_set_id, rule_id, rule_version, decision_clock_json, cost_config_json, member_snapshot_json, candidate_pool_json, universe_type, benchmark_code, snapshot_type, snapshot_hash, idempotency_key, usage_binding_id, snapshot_json, content_hash, key_members_json, gate_policy_version, gate_result_json, versions_json, effective_from, task_locked_at, task_id, locked_by_run_type, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: (\'60c569a17b036e8d37d3a42b132be3d99f45df453d9a3d845e5f0728806fc0c5\', 1, 1, \'7c199456f6f1649bec37efd0bb4cd42c49fd7d817529868f91a772d5bb86a6b4\', \'fmr_ACTIVE\', None, None, None, \'{"data_cutoff_at_cst":"2026-09-18T15:00:00+08:00","data_cutoff_at_utc":"2026-09-18T07:00:00","decision_at_cst":"2026-09-18T15:05:00+08:00","decision_at_utc":"2026-09-18T07:05:00","execution_at_cst":"2026-09-19T09:30:00+08:00","execution_at_utc":"2026-09-19T01:30:00"}\', \'{"buy_commission_pct":0.00025,"buy_slippage_bps":5,"sell_commission_pct":0.00025,"sell_slippage_bps":5,"stamp_duty_pct":0.001}\', \'[]\', None, \'portfolio_members\', \'000300\', \'save_and_apply\', \'8db3773eb35c328f08fc54751c3d90509e30346b2ddd644de2fd633a4936cde6\', \'5174833024dae272f553d055e94e8b7ef701a0dd79ab5c00837c638371d290bf\', None, None, None, None, \'production-v1.0.0\', \'{"gate_policy_version":"production-v1.0.0","pass":true,"runtime_version":1,"warnings":[{"code":"MODEL_NOT_FOUND","detail":{"model_run_id":"fmr_ACTIVE"},"message":"FactorModelRun fmr_ACTIVE does not exist; legacy research cannot create a production-eligible snapshot.","severity":"warning"}]}\', \'{"factor_model_run_id":"fmr_ACTIVE","gate_policy_version":"production-v1.0.0","pit_mode":"best_effort","run_mode":"research","runtime_version":1}\', \'2026-09-18 07:42:40.939101\', None, None, None, \'qa_user\', \'2026-09-18 07:42:40.939101\')]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)'}
+---------------------------- Captured stdout setup ----------------------------
+[0054] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0053 建好外键 → 本修订跳过（预期行为）。
+[0056] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0050 建好外键 → 跳过（预期行为）。
+[0057] dialect=sqlite：REAL 已是 DOUBLE 精度 → 跳过（预期行为）。
+---------------------------- Captured stderr setup ----------------------------
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> wps_001_external_endpoint, wps_001_external_endpoint.
+INFO  [alembic.runtime.migration] Running upgrade wps_001_external_endpoint -> wps_0023_001_scan_runs_cache, wps_0023_001_scan_runs_cache.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_001_scan_runs_cache -> wps_0023_002_symbols, wps_0023_002_symbols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_002_symbols -> wps_0023_003_daily_bar, wps_0023_003_daily_bar.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_003_daily_bar -> wps_0023_004_watchlists, wps_0023_004_watchlists.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_004_watchlists -> wps_0023_005_trade_setups, wps_0023_005_trade_setups.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_005_trade_setups -> wps_0023_006_scoring_configs, wps_0023_006_scoring_configs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_006_scoring_configs -> wps_0023_007_scans, wps_0023_007_scans.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_007_scans -> wps_0023_008_factors, wps_0023_008_factors.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_008_factors -> wps_0023_009_factor_models, wps_0023_009_factor_models.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_009_factor_models -> wps_0023_010_factor_runtimes, wps_0023_010_factor_runtimes.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_010_factor_runtimes -> wps_0023_011_factor_evaluations, wps_0023_011_factor_evaluations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_011_factor_evaluations -> wps_0023_012_portfolio_members, wps_0023_012_portfolio_members.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_012_portfolio_members -> wps_0023_013_notification_tables, wps_0023_013_notification_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_013_notification_tables -> wps_0023_014_sim_orders_attribution, wps_0023_014_sim_orders_attribution.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_014_sim_orders_attribution -> wps_0023_015_ai_session_tables, wps_0023_015_ai_session_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_015_ai_session_tables -> wps_0023_016_portfolio_reviews, wps_0023_016_portfolio_reviews.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_016_portfolio_reviews -> wps_0023_017_ai_profiles, wps_0023_017_ai_profiles.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_017_ai_profiles -> wps_0023_018_discovery_score_snapshots, wps_0023_018_discovery_score_snapshots.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_018_discovery_score_snapshots -> wps_0023_019_async_tasks_state_machine, wps_0023_019_async_tasks_state_machine.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_019_async_tasks_state_machine -> wps_0023_020_api_deprecation_logs, wps_0023_020_api_deprecation_logs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_020_api_deprecation_logs -> wps_0801_001_universe_incremental_index, wps_0801_001_universe_incremental_index.
+INFO  [alembic.runtime.migration] Running upgrade wps_0801_001_universe_incremental_index -> wps_0023_021_factor_library_lifecycle, wps_0023_021_factor_library_lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_021_factor_library_lifecycle -> wps_0023_022_shadow_observations, wps_0023_022_shadow_observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_022_shadow_observations -> wps_0023_023_score_traceability, wps_0023_023_score_traceability.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_023_score_traceability -> wps_0023_024_decision_engine_contract, wps_0023_024_decision_engine_contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_024_decision_engine_contract -> wps_0023_025_notifications_gap_fix, wps_0023_025_notifications_gap_fix.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_025_notifications_gap_fix -> wps_0023_026_drop_legacy_last_successful_trade_date, wps_0023_026_drop_legacy_last_successful_trade_date.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_026_drop_legacy_last_successful_trade_date -> wps_0023_027_g3_data_governance_and_portfolio_status, wps_0023_027_g3_data_governance_and_portfolio_status.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_027_g3_data_governance_and_portfolio_status -> wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox, wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox -> wps_0023_029_wp03_portfolios_status_dim_columns, wps_0023_029_wp03_portfolios_status_dim_columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_029_wp03_portfolios_status_dim_columns -> wps_0023_030_wp03_manual_price_overrides, wps_0023_030_wp03_manual_price_overrides.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_030_wp03_manual_price_overrides -> wps_0023_031_wp03_decision_runs_evidence_full_cols, wps_0023_031_wp03_decision_runs_evidence_full_cols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_031_wp03_decision_runs_evidence_full_cols -> wps_0023_032_g0_wp02ab_leftovers, wps_0023_032_g0_wp02ab_leftovers.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_032_g0_wp02ab_leftovers -> wps_0023_033_wp06_score_pit_safety, wps_0023_033_wp06_score_pit_safety_and_published_notnull.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_033_wp06_score_pit_safety -> wps_0023_034_portfolio_rule_exit_config, Add the PortfolioRule exit configuration required by the runtime ORM.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_034_portfolio_rule_exit_config -> wps_0023_035_data_quality_quarantines, Persist immutable data-quality quarantine observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_035_data_quality_quarantines -> wps_0023_036_data_quality_snapshot_contract, Align the durable data-quality schema with the runtime governance contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_036_data_quality_snapshot_contract -> wps_0023_037_backtest_execution_fills, Persist immutable execution events for decision-driven backtests.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_037_backtest_execution_fills -> wps_0023_038_backtest_valuation_snapshots, Persist immutable completed-run valuation marks.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_038_backtest_valuation_snapshots -> wps_0023_039_backtest_reproducibility_marker, Mark historical backtests that cannot be replayed from immutable inputs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_039_backtest_reproducibility_marker -> wps_0023_040_g5_dual_run_reports, Persist auditable G5 new/old dual-run summaries.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_040_g5_dual_run_reports -> wps_0023_041_g6_rollout_audit_actions, Add explicit audit actions for G6 rollout lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_041_g6_rollout_audit_actions -> wps_0023_042_decision_order_plans, Persist immutable DecisionOrderPlan intents independently of evidence JSON.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_042_decision_order_plans -> wps_0023_043_security_status_daily, SecurityStatusDaily ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_043_security_status_daily -> wps_0023_044_backtest_filter_events, BacktestFilterEvent ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_044_backtest_filter_events -> wps_0023_045_bfg_extend_run_fields, BFG: extend backtest_runs / factor_evaluation_runs / backtest_trades / backtest_execution_fills with filter governance fields.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_045_bfg_extend_run_fields -> wps_0023_046_fix_idempotency_status_index_rollback, 修正迁移：补齐 idempotency_records / decision_evidence 在
+Base.metadata.create_all (ORM WP0-2 schema) 先跑后缺失、或命名不一致的列与命名索引，
+避免旧 wps_0023_024 迁移 downgrade 抛出 no such index / no such column。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_046_fix_idempotency_status_index_rollback -> wps_0023_047_bfg_run_stage_and_progress, T11: 提交去重 + 状态机 API 扩展。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_047_bfg_run_stage_and_progress -> wps_0023_048_factor_audit_logs, wps_0023_048_factor_audit_logs (Task 4 / FR-13 / AC-18).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_048_factor_audit_logs -> wps_0023_049_factor_weight_snapshots, wps_0023_049_factor_weight_snapshots (Task 11 / FR-12 / AC-11).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_049_factor_weight_snapshots -> wps_0023_050_factor_model_members, Create the materialized factor-model member table.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_050_factor_model_members -> wps_0023_051_factor_mining_core, Factor mining core schema (M1a): candidate pools, mining runs/candidates/
+generations, locks, formula templates, and the missing test-window columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_051_factor_mining_core -> wps_0023_052_mining_fk_constraints, Backfill the 6 missing foreign keys on the mining-domain tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_052_mining_fk_constraints -> wps_0023_053_factor_audit_pool_id, 给 `factor_audit_logs` 加 `pool_id` 独立列（挖掘域审计）。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_053_factor_audit_pool_id -> wps_0023_054_factor_audit_model_run_fk, Backfill the missing foreign key on `factor_audit_logs.model_run_id`.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_054_factor_audit_model_run_fk -> wps_0023_055_accounting_float_to_double, Widen 8 accounting columns from FLOAT to DOUBLE (TD4).
+_ TestFactorUsageService.test_07_idempotency_unique_index_rejects_duplicate_key _
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.OperationalError: table strategy_execution_snapshots has no column named usage_binding_id
+
+The above exception was the direct cause of the following exception:
+tests\test_g1_factor_usage.py:283: in test_07_idempotency_unique_index_rejects_duplicate_key
+    db.flush()
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:1233: in _emit_insert_statements
+    result = connection.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) table strategy_execution_snapshots has no column named usage_binding_id
+E   [SQL: INSERT INTO strategy_execution_snapshots (id, snapshot_no, portfolio_id, portfolio_factor_usage_id, factor_model_run_id, factor_set_id, rule_id, rule_version, decision_clock_json, cost_config_json, member_snapshot_json, candidate_pool_json, universe_type, benchmark_code, snapshot_type, snapshot_hash, idempotency_key, usage_binding_id, snapshot_json, content_hash, key_members_json, gate_policy_version, gate_result_json, versions_json, effective_from, task_locked_at, task_id, locked_by_run_type, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+E   [parameters: ('ses_T_G1_07_A', 1, 1, None, None, None, None, None, '{}', None, '[]', None, 'portfolio_members', None, 'task_locked', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'SAME_IDEMPOTENCY_KEY_G1_07', None, None, None, None, None, None, None, '2025-01-01 00:00:00.000000', None, None, None, 'local_user', '2025-01-01 00:00:00.000000')]
+E   (Background on this error at: https://sqlalche.me/e/20/e3q8)
+---------------------------- Captured stdout setup ----------------------------
+[0054] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0053 建好外键 → 本修订跳过（预期行为）。
+[0056] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0050 建好外键 → 跳过（预期行为）。
+[0057] dialect=sqlite：REAL 已是 DOUBLE 精度 → 跳过（预期行为）。
+---------------------------- Captured stderr setup ----------------------------
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> wps_001_external_endpoint, wps_001_external_endpoint.
+INFO  [alembic.runtime.migration] Running upgrade wps_001_external_endpoint -> wps_0023_001_scan_runs_cache, wps_0023_001_scan_runs_cache.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_001_scan_runs_cache -> wps_0023_002_symbols, wps_0023_002_symbols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_002_symbols -> wps_0023_003_daily_bar, wps_0023_003_daily_bar.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_003_daily_bar -> wps_0023_004_watchlists, wps_0023_004_watchlists.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_004_watchlists -> wps_0023_005_trade_setups, wps_0023_005_trade_setups.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_005_trade_setups -> wps_0023_006_scoring_configs, wps_0023_006_scoring_configs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_006_scoring_configs -> wps_0023_007_scans, wps_0023_007_scans.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_007_scans -> wps_0023_008_factors, wps_0023_008_factors.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_008_factors -> wps_0023_009_factor_models, wps_0023_009_factor_models.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_009_factor_models -> wps_0023_010_factor_runtimes, wps_0023_010_factor_runtimes.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_010_factor_runtimes -> wps_0023_011_factor_evaluations, wps_0023_011_factor_evaluations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_011_factor_evaluations -> wps_0023_012_portfolio_members, wps_0023_012_portfolio_members.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_012_portfolio_members -> wps_0023_013_notification_tables, wps_0023_013_notification_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_013_notification_tables -> wps_0023_014_sim_orders_attribution, wps_0023_014_sim_orders_attribution.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_014_sim_orders_attribution -> wps_0023_015_ai_session_tables, wps_0023_015_ai_session_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_015_ai_session_tables -> wps_0023_016_portfolio_reviews, wps_0023_016_portfolio_reviews.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_016_portfolio_reviews -> wps_0023_017_ai_profiles, wps_0023_017_ai_profiles.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_017_ai_profiles -> wps_0023_018_discovery_score_snapshots, wps_0023_018_discovery_score_snapshots.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_018_discovery_score_snapshots -> wps_0023_019_async_tasks_state_machine, wps_0023_019_async_tasks_state_machine.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_019_async_tasks_state_machine -> wps_0023_020_api_deprecation_logs, wps_0023_020_api_deprecation_logs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_020_api_deprecation_logs -> wps_0801_001_universe_incremental_index, wps_0801_001_universe_incremental_index.
+INFO  [alembic.runtime.migration] Running upgrade wps_0801_001_universe_incremental_index -> wps_0023_021_factor_library_lifecycle, wps_0023_021_factor_library_lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_021_factor_library_lifecycle -> wps_0023_022_shadow_observations, wps_0023_022_shadow_observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_022_shadow_observations -> wps_0023_023_score_traceability, wps_0023_023_score_traceability.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_023_score_traceability -> wps_0023_024_decision_engine_contract, wps_0023_024_decision_engine_contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_024_decision_engine_contract -> wps_0023_025_notifications_gap_fix, wps_0023_025_notifications_gap_fix.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_025_notifications_gap_fix -> wps_0023_026_drop_legacy_last_successful_trade_date, wps_0023_026_drop_legacy_last_successful_trade_date.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_026_drop_legacy_last_successful_trade_date -> wps_0023_027_g3_data_governance_and_portfolio_status, wps_0023_027_g3_data_governance_and_portfolio_status.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_027_g3_data_governance_and_portfolio_status -> wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox, wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox -> wps_0023_029_wp03_portfolios_status_dim_columns, wps_0023_029_wp03_portfolios_status_dim_columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_029_wp03_portfolios_status_dim_columns -> wps_0023_030_wp03_manual_price_overrides, wps_0023_030_wp03_manual_price_overrides.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_030_wp03_manual_price_overrides -> wps_0023_031_wp03_decision_runs_evidence_full_cols, wps_0023_031_wp03_decision_runs_evidence_full_cols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_031_wp03_decision_runs_evidence_full_cols -> wps_0023_032_g0_wp02ab_leftovers, wps_0023_032_g0_wp02ab_leftovers.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_032_g0_wp02ab_leftovers -> wps_0023_033_wp06_score_pit_safety, wps_0023_033_wp06_score_pit_safety_and_published_notnull.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_033_wp06_score_pit_safety -> wps_0023_034_portfolio_rule_exit_config, Add the PortfolioRule exit configuration required by the runtime ORM.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_034_portfolio_rule_exit_config -> wps_0023_035_data_quality_quarantines, Persist immutable data-quality quarantine observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_035_data_quality_quarantines -> wps_0023_036_data_quality_snapshot_contract, Align the durable data-quality schema with the runtime governance contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_036_data_quality_snapshot_contract -> wps_0023_037_backtest_execution_fills, Persist immutable execution events for decision-driven backtests.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_037_backtest_execution_fills -> wps_0023_038_backtest_valuation_snapshots, Persist immutable completed-run valuation marks.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_038_backtest_valuation_snapshots -> wps_0023_039_backtest_reproducibility_marker, Mark historical backtests that cannot be replayed from immutable inputs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_039_backtest_reproducibility_marker -> wps_0023_040_g5_dual_run_reports, Persist auditable G5 new/old dual-run summaries.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_040_g5_dual_run_reports -> wps_0023_041_g6_rollout_audit_actions, Add explicit audit actions for G6 rollout lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_041_g6_rollout_audit_actions -> wps_0023_042_decision_order_plans, Persist immutable DecisionOrderPlan intents independently of evidence JSON.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_042_decision_order_plans -> wps_0023_043_security_status_daily, SecurityStatusDaily ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_043_security_status_daily -> wps_0023_044_backtest_filter_events, BacktestFilterEvent ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_044_backtest_filter_events -> wps_0023_045_bfg_extend_run_fields, BFG: extend backtest_runs / factor_evaluation_runs / backtest_trades / backtest_execution_fills with filter governance fields.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_045_bfg_extend_run_fields -> wps_0023_046_fix_idempotency_status_index_rollback, 修正迁移：补齐 idempotency_records / decision_evidence 在
+Base.metadata.create_all (ORM WP0-2 schema) 先跑后缺失、或命名不一致的列与命名索引，
+避免旧 wps_0023_024 迁移 downgrade 抛出 no such index / no such column。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_046_fix_idempotency_status_index_rollback -> wps_0023_047_bfg_run_stage_and_progress, T11: 提交去重 + 状态机 API 扩展。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_047_bfg_run_stage_and_progress -> wps_0023_048_factor_audit_logs, wps_0023_048_factor_audit_logs (Task 4 / FR-13 / AC-18).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_048_factor_audit_logs -> wps_0023_049_factor_weight_snapshots, wps_0023_049_factor_weight_snapshots (Task 11 / FR-12 / AC-11).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_049_factor_weight_snapshots -> wps_0023_050_factor_model_members, Create the materialized factor-model member table.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_050_factor_model_members -> wps_0023_051_factor_mining_core, Factor mining core schema (M1a): candidate pools, mining runs/candidates/
+generations, locks, formula templates, and the missing test-window columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_051_factor_mining_core -> wps_0023_052_mining_fk_constraints, Backfill the 6 missing foreign keys on the mining-domain tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_052_mining_fk_constraints -> wps_0023_053_factor_audit_pool_id, 给 `factor_audit_logs` 加 `pool_id` 独立列（挖掘域审计）。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_053_factor_audit_pool_id -> wps_0023_054_factor_audit_model_run_fk, Backfill the missing foreign key on `factor_audit_logs.model_run_id`.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_054_factor_audit_model_run_fk -> wps_0023_055_accounting_float_to_double, Widen 8 accounting columns from FLOAT to DOUBLE (TD4).
+___ TestFactorUsageService.test_08_snapshot_member_count_and_universe_type ____
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.OperationalError: table strategy_execution_snapshots has no column named usage_binding_id
+
+The above exception was the direct cause of the following exception:
+app\services\factor_usage_service.py:747: in save_and_apply_usage
+    db.commit()
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2030: in commit
+    trans.commit(_to_root=True)
+.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:1311: in commit
+    self._prepare_impl()
+.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:1286: in _prepare_impl
+    self.session.flush()
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:1048: in _emit_insert_statements
+    result = connection.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) table strategy_execution_snapshots has no column named usage_binding_id
+E   [SQL: INSERT INTO strategy_execution_snapshots (id, snapshot_no, portfolio_id, portfolio_factor_usage_id, factor_model_run_id, factor_set_id, rule_id, rule_version, decision_clock_json, cost_config_json, member_snapshot_json, candidate_pool_json, universe_type, benchmark_code, snapshot_type, snapshot_hash, idempotency_key, usage_binding_id, snapshot_json, content_hash, key_members_json, gate_policy_version, gate_result_json, versions_json, effective_from, task_locked_at, task_id, locked_by_run_type, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+E   [parameters: ('afcca82160f3828a236ab787a3097b8efa098de15437bb158cf1ec7fd2918286', 1, 1, 'b7f9b1277f13e59e490d84d8b5ead5ad702a7ac9a1c63938b1248fa973e6cf15', 'fmr_ACTIVE', None, None, None, '{"data_cutoff_at_cst":"2026-09-18T15:00:00+08:00","data_cutoff_at_utc":"2026-09-18T07:00:00","decision_at_cst":"2026-09-18T15:05:00+08:00","decision_at_utc":"2026-09-18T07:05:00","execution_at_cst":"2026-09-19T09:30:00+08:00","execution_at_utc":"2026-09-19T01:30:00"}', '{"buy_commission_pct":0.00025,"buy_slippage_bps":5,"sell_commission_pct":0.00025,"sell_slippage_bps":5,"stamp_duty_pct":0.001}', '[]', None, 'portfolio_members', '000300', 'save_and_apply', '72951c00a49cb44a4ff790a7badfaf04d4b4f643b5c266ddd792bcc26a59e672', '68b1db9bc42ca152ba4edffc8703a79d14b7c7bf9140d1b77123d4118730eede', None, None, None, None, 'production-v1.0.0', '{"gate_policy_version":"production-v1.0.0","pass":true,"runtime_version":1,"warnings":[{"code":"MODEL_NOT_FOUND","detail":{"model_run_id":"fmr_ACTIVE"},"message":"FactorModelRun fmr_ACTIVE does not exist; legacy research cannot create a production-eligible snapshot.","severity":"warning"}]}', '{"factor_model_run_id":"fmr_ACTIVE","gate_policy_version":"production-v1.0.0","pit_mode":"best_effort","run_mode":"research","runtime_version":1}', '2026-09-18 07:42:44.100379', None, None, None, 'qa_user', '2026-09-18 07:42:44.100379')]
+E   (Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+During handling of the above exception, another exception occurred:
+tests\test_g1_factor_usage.py:312: in test_08_snapshot_member_count_and_universe_type
+    resp = save_and_apply_usage(
+app\services\factor_usage_service.py:783: in save_and_apply_usage
+    raise HTTPException(status_code=500, detail={
+E   fastapi.exceptions.HTTPException: 500: {'error': 'SAVE_APPLY_FAILED', 'detail': 'OperationalError: (sqlite3.OperationalError) table strategy_execution_snapshots has no column named usage_binding_id\n[SQL: INSERT INTO strategy_execution_snapshots (id, snapshot_no, portfolio_id, portfolio_factor_usage_id, factor_model_run_id, factor_set_id, rule_id, rule_version, decision_clock_json, cost_config_json, member_snapshot_json, candidate_pool_json, universe_type, benchmark_code, snapshot_type, snapshot_hash, idempotency_key, usage_binding_id, snapshot_json, content_hash, key_members_json, gate_policy_version, gate_result_json, versions_json, effective_from, task_locked_at, task_id, locked_by_run_type, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: (\'afcca82160f3828a236ab787a3097b8efa098de15437bb158cf1ec7fd2918286\', 1, 1, \'b7f9b1277f13e59e490d84d8b5ead5ad702a7ac9a1c63938b1248fa973e6cf15\', \'fmr_ACTIVE\', None, None, None, \'{"data_cutoff_at_cst":"2026-09-18T15:00:00+08:00","data_cutoff_at_utc":"2026-09-18T07:00:00","decision_at_cst":"2026-09-18T15:05:00+08:00","decision_at_utc":"2026-09-18T07:05:00","execution_at_cst":"2026-09-19T09:30:00+08:00","execution_at_utc":"2026-09-19T01:30:00"}\', \'{"buy_commission_pct":0.00025,"buy_slippage_bps":5,"sell_commission_pct":0.00025,"sell_slippage_bps":5,"stamp_duty_pct":0.001}\', \'[]\', None, \'portfolio_members\', \'000300\', \'save_and_apply\', \'72951c00a49cb44a4ff790a7badfaf04d4b4f643b5c266ddd792bcc26a59e672\', \'68b1db9bc42ca152ba4edffc8703a79d14b7c7bf9140d1b77123d4118730eede\', None, None, None, None, \'production-v1.0.0\', \'{"gate_policy_version":"production-v1.0.0","pass":true,"runtime_version":1,"warnings":[{"code":"MODEL_NOT_FOUND","detail":{"model_run_id":"fmr_ACTIVE"},"message":"FactorModelRun fmr_ACTIVE does not exist; legacy research cannot create a production-eligible snapshot.","severity":"warning"}]}\', \'{"factor_model_run_id":"fmr_ACTIVE","gate_policy_version":"production-v1.0.0","pit_mode":"best_effort","run_mode":"research","runtime_version":1}\', \'2026-09-18 07:42:44.100379\', None, None, None, \'qa_user\', \'2026-09-18 07:42:44.100379\')]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)'}
+---------------------------- Captured stdout setup ----------------------------
+[0054] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0053 建好外键 → 本修订跳过（预期行为）。
+[0056] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0050 建好外键 → 跳过（预期行为）。
+[0057] dialect=sqlite：REAL 已是 DOUBLE 精度 → 跳过（预期行为）。
+---------------------------- Captured stderr setup ----------------------------
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> wps_001_external_endpoint, wps_001_external_endpoint.
+INFO  [alembic.runtime.migration] Running upgrade wps_001_external_endpoint -> wps_0023_001_scan_runs_cache, wps_0023_001_scan_runs_cache.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_001_scan_runs_cache -> wps_0023_002_symbols, wps_0023_002_symbols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_002_symbols -> wps_0023_003_daily_bar, wps_0023_003_daily_bar.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_003_daily_bar -> wps_0023_004_watchlists, wps_0023_004_watchlists.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_004_watchlists -> wps_0023_005_trade_setups, wps_0023_005_trade_setups.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_005_trade_setups -> wps_0023_006_scoring_configs, wps_0023_006_scoring_configs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_006_scoring_configs -> wps_0023_007_scans, wps_0023_007_scans.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_007_scans -> wps_0023_008_factors, wps_0023_008_factors.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_008_factors -> wps_0023_009_factor_models, wps_0023_009_factor_models.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_009_factor_models -> wps_0023_010_factor_runtimes, wps_0023_010_factor_runtimes.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_010_factor_runtimes -> wps_0023_011_factor_evaluations, wps_0023_011_factor_evaluations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_011_factor_evaluations -> wps_0023_012_portfolio_members, wps_0023_012_portfolio_members.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_012_portfolio_members -> wps_0023_013_notification_tables, wps_0023_013_notification_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_013_notification_tables -> wps_0023_014_sim_orders_attribution, wps_0023_014_sim_orders_attribution.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_014_sim_orders_attribution -> wps_0023_015_ai_session_tables, wps_0023_015_ai_session_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_015_ai_session_tables -> wps_0023_016_portfolio_reviews, wps_0023_016_portfolio_reviews.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_016_portfolio_reviews -> wps_0023_017_ai_profiles, wps_0023_017_ai_profiles.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_017_ai_profiles -> wps_0023_018_discovery_score_snapshots, wps_0023_018_discovery_score_snapshots.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_018_discovery_score_snapshots -> wps_0023_019_async_tasks_state_machine, wps_0023_019_async_tasks_state_machine.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_019_async_tasks_state_machine -> wps_0023_020_api_deprecation_logs, wps_0023_020_api_deprecation_logs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_020_api_deprecation_logs -> wps_0801_001_universe_incremental_index, wps_0801_001_universe_incremental_index.
+INFO  [alembic.runtime.migration] Running upgrade wps_0801_001_universe_incremental_index -> wps_0023_021_factor_library_lifecycle, wps_0023_021_factor_library_lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_021_factor_library_lifecycle -> wps_0023_022_shadow_observations, wps_0023_022_shadow_observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_022_shadow_observations -> wps_0023_023_score_traceability, wps_0023_023_score_traceability.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_023_score_traceability -> wps_0023_024_decision_engine_contract, wps_0023_024_decision_engine_contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_024_decision_engine_contract -> wps_0023_025_notifications_gap_fix, wps_0023_025_notifications_gap_fix.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_025_notifications_gap_fix -> wps_0023_026_drop_legacy_last_successful_trade_date, wps_0023_026_drop_legacy_last_successful_trade_date.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_026_drop_legacy_last_successful_trade_date -> wps_0023_027_g3_data_governance_and_portfolio_status, wps_0023_027_g3_data_governance_and_portfolio_status.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_027_g3_data_governance_and_portfolio_status -> wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox, wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox -> wps_0023_029_wp03_portfolios_status_dim_columns, wps_0023_029_wp03_portfolios_status_dim_columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_029_wp03_portfolios_status_dim_columns -> wps_0023_030_wp03_manual_price_overrides, wps_0023_030_wp03_manual_price_overrides.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_030_wp03_manual_price_overrides -> wps_0023_031_wp03_decision_runs_evidence_full_cols, wps_0023_031_wp03_decision_runs_evidence_full_cols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_031_wp03_decision_runs_evidence_full_cols -> wps_0023_032_g0_wp02ab_leftovers, wps_0023_032_g0_wp02ab_leftovers.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_032_g0_wp02ab_leftovers -> wps_0023_033_wp06_score_pit_safety, wps_0023_033_wp06_score_pit_safety_and_published_notnull.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_033_wp06_score_pit_safety -> wps_0023_034_portfolio_rule_exit_config, Add the PortfolioRule exit configuration required by the runtime ORM.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_034_portfolio_rule_exit_config -> wps_0023_035_data_quality_quarantines, Persist immutable data-quality quarantine observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_035_data_quality_quarantines -> wps_0023_036_data_quality_snapshot_contract, Align the durable data-quality schema with the runtime governance contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_036_data_quality_snapshot_contract -> wps_0023_037_backtest_execution_fills, Persist immutable execution events for decision-driven backtests.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_037_backtest_execution_fills -> wps_0023_038_backtest_valuation_snapshots, Persist immutable completed-run valuation marks.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_038_backtest_valuation_snapshots -> wps_0023_039_backtest_reproducibility_marker, Mark historical backtests that cannot be replayed from immutable inputs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_039_backtest_reproducibility_marker -> wps_0023_040_g5_dual_run_reports, Persist auditable G5 new/old dual-run summaries.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_040_g5_dual_run_reports -> wps_0023_041_g6_rollout_audit_actions, Add explicit audit actions for G6 rollout lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_041_g6_rollout_audit_actions -> wps_0023_042_decision_order_plans, Persist immutable DecisionOrderPlan intents independently of evidence JSON.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_042_decision_order_plans -> wps_0023_043_security_status_daily, SecurityStatusDaily ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_043_security_status_daily -> wps_0023_044_backtest_filter_events, BacktestFilterEvent ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_044_backtest_filter_events -> wps_0023_045_bfg_extend_run_fields, BFG: extend backtest_runs / factor_evaluation_runs / backtest_trades / backtest_execution_fills with filter governance fields.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_045_bfg_extend_run_fields -> wps_0023_046_fix_idempotency_status_index_rollback, 修正迁移：补齐 idempotency_records / decision_evidence 在
+Base.metadata.create_all (ORM WP0-2 schema) 先跑后缺失、或命名不一致的列与命名索引，
+避免旧 wps_0023_024 迁移 downgrade 抛出 no such index / no such column。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_046_fix_idempotency_status_index_rollback -> wps_0023_047_bfg_run_stage_and_progress, T11: 提交去重 + 状态机 API 扩展。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_047_bfg_run_stage_and_progress -> wps_0023_048_factor_audit_logs, wps_0023_048_factor_audit_logs (Task 4 / FR-13 / AC-18).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_048_factor_audit_logs -> wps_0023_049_factor_weight_snapshots, wps_0023_049_factor_weight_snapshots (Task 11 / FR-12 / AC-11).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_049_factor_weight_snapshots -> wps_0023_050_factor_model_members, Create the materialized factor-model member table.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_050_factor_model_members -> wps_0023_051_factor_mining_core, Factor mining core schema (M1a): candidate pools, mining runs/candidates/
+generations, locks, formula templates, and the missing test-window columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_051_factor_mining_core -> wps_0023_052_mining_fk_constraints, Backfill the 6 missing foreign keys on the mining-domain tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_052_mining_fk_constraints -> wps_0023_053_factor_audit_pool_id, 给 `factor_audit_logs` 加 `pool_id` 独立列（挖掘域审计）。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_053_factor_audit_pool_id -> wps_0023_054_factor_audit_model_run_fk, Backfill the missing foreign key on `factor_audit_logs.model_run_id`.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_054_factor_audit_model_run_fk -> wps_0023_055_accounting_float_to_double, Widen 8 accounting columns from FLOAT to DOUBLE (TD4).
+_______________ TestFactorUsageRoutes.test_09_routes_return_200 _______________
+tests\test_g1_factor_usage.py:350: in test_09_routes_return_200
+    assert resp.status_code == 200, resp.text
+E   AssertionError: {"error_code":"DB_LOCK_TIMEOUT","user_message":"数据库繁忙，请稍后再试","impact":"本次操作未完成","retryable":true,"completed":0.0,"next_actions":[],"technical_details":{"exception_type":"OperationalError","status_code":503,"error_message":"(sqlite3.OperationalError) no such column: strategy_execution_snapshots.usage_binding_id\n[SQL: SELECT strategy_execution_snapshots.id, strategy_execution_snapshots.snapshot_no, strategy_execution_snapshots.portfolio_id, strategy_execution_snapshots.portfolio_factor_usage_id, strategy_execution_snapshots.factor_model_run_id, strategy_execution_snapshots.factor_set_id, strategy_execution_snapshots.rule_id, strategy_execution_snapshots.rule_version, strategy_execution_snapshots.decision_clock_json,","stack_summary":null,"db_error_code":"no such column: strategy_execution_snapshots.usage_binding_id","upstream_response":null,"request_id":null},"correlation_id":"e58f6d88168d429b8deed20413b743cc","extras":null}
+E   assert 503 == 200
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+---------------------------- Captured stdout setup ----------------------------
+[0054] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0053 建好外键 → 本修订跳过（预期行为）。
+[0056] dialect=sqlite：不支持 ALTER ADD CONSTRAINT，且全新安装已由 0050 建好外键 → 跳过（预期行为）。
+[0057] dialect=sqlite：REAL 已是 DOUBLE 精度 → 跳过（预期行为）。
+---------------------------- Captured stderr setup ----------------------------
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> wps_001_external_endpoint, wps_001_external_endpoint.
+INFO  [alembic.runtime.migration] Running upgrade wps_001_external_endpoint -> wps_0023_001_scan_runs_cache, wps_0023_001_scan_runs_cache.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_001_scan_runs_cache -> wps_0023_002_symbols, wps_0023_002_symbols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_002_symbols -> wps_0023_003_daily_bar, wps_0023_003_daily_bar.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_003_daily_bar -> wps_0023_004_watchlists, wps_0023_004_watchlists.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_004_watchlists -> wps_0023_005_trade_setups, wps_0023_005_trade_setups.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_005_trade_setups -> wps_0023_006_scoring_configs, wps_0023_006_scoring_configs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_006_scoring_configs -> wps_0023_007_scans, wps_0023_007_scans.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_007_scans -> wps_0023_008_factors, wps_0023_008_factors.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_008_factors -> wps_0023_009_factor_models, wps_0023_009_factor_models.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_009_factor_models -> wps_0023_010_factor_runtimes, wps_0023_010_factor_runtimes.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_010_factor_runtimes -> wps_0023_011_factor_evaluations, wps_0023_011_factor_evaluations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_011_factor_evaluations -> wps_0023_012_portfolio_members, wps_0023_012_portfolio_members.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_012_portfolio_members -> wps_0023_013_notification_tables, wps_0023_013_notification_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_013_notification_tables -> wps_0023_014_sim_orders_attribution, wps_0023_014_sim_orders_attribution.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_014_sim_orders_attribution -> wps_0023_015_ai_session_tables, wps_0023_015_ai_session_tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_015_ai_session_tables -> wps_0023_016_portfolio_reviews, wps_0023_016_portfolio_reviews.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_016_portfolio_reviews -> wps_0023_017_ai_profiles, wps_0023_017_ai_profiles.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_017_ai_profiles -> wps_0023_018_discovery_score_snapshots, wps_0023_018_discovery_score_snapshots.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_018_discovery_score_snapshots -> wps_0023_019_async_tasks_state_machine, wps_0023_019_async_tasks_state_machine.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_019_async_tasks_state_machine -> wps_0023_020_api_deprecation_logs, wps_0023_020_api_deprecation_logs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_020_api_deprecation_logs -> wps_0801_001_universe_incremental_index, wps_0801_001_universe_incremental_index.
+INFO  [alembic.runtime.migration] Running upgrade wps_0801_001_universe_incremental_index -> wps_0023_021_factor_library_lifecycle, wps_0023_021_factor_library_lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_021_factor_library_lifecycle -> wps_0023_022_shadow_observations, wps_0023_022_shadow_observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_022_shadow_observations -> wps_0023_023_score_traceability, wps_0023_023_score_traceability.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_023_score_traceability -> wps_0023_024_decision_engine_contract, wps_0023_024_decision_engine_contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_024_decision_engine_contract -> wps_0023_025_notifications_gap_fix, wps_0023_025_notifications_gap_fix.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_025_notifications_gap_fix -> wps_0023_026_drop_legacy_last_successful_trade_date, wps_0023_026_drop_legacy_last_successful_trade_date.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_026_drop_legacy_last_successful_trade_date -> wps_0023_027_g3_data_governance_and_portfolio_status, wps_0023_027_g3_data_governance_and_portfolio_status.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_027_g3_data_governance_and_portfolio_status -> wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox, wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_028_g4_fr_p1_2_task_reliability_and_outbox -> wps_0023_029_wp03_portfolios_status_dim_columns, wps_0023_029_wp03_portfolios_status_dim_columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_029_wp03_portfolios_status_dim_columns -> wps_0023_030_wp03_manual_price_overrides, wps_0023_030_wp03_manual_price_overrides.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_030_wp03_manual_price_overrides -> wps_0023_031_wp03_decision_runs_evidence_full_cols, wps_0023_031_wp03_decision_runs_evidence_full_cols.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_031_wp03_decision_runs_evidence_full_cols -> wps_0023_032_g0_wp02ab_leftovers, wps_0023_032_g0_wp02ab_leftovers.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_032_g0_wp02ab_leftovers -> wps_0023_033_wp06_score_pit_safety, wps_0023_033_wp06_score_pit_safety_and_published_notnull.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_033_wp06_score_pit_safety -> wps_0023_034_portfolio_rule_exit_config, Add the PortfolioRule exit configuration required by the runtime ORM.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_034_portfolio_rule_exit_config -> wps_0023_035_data_quality_quarantines, Persist immutable data-quality quarantine observations.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_035_data_quality_quarantines -> wps_0023_036_data_quality_snapshot_contract, Align the durable data-quality schema with the runtime governance contract.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_036_data_quality_snapshot_contract -> wps_0023_037_backtest_execution_fills, Persist immutable execution events for decision-driven backtests.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_037_backtest_execution_fills -> wps_0023_038_backtest_valuation_snapshots, Persist immutable completed-run valuation marks.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_038_backtest_valuation_snapshots -> wps_0023_039_backtest_reproducibility_marker, Mark historical backtests that cannot be replayed from immutable inputs.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_039_backtest_reproducibility_marker -> wps_0023_040_g5_dual_run_reports, Persist auditable G5 new/old dual-run summaries.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_040_g5_dual_run_reports -> wps_0023_041_g6_rollout_audit_actions, Add explicit audit actions for G6 rollout lifecycle.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_041_g6_rollout_audit_actions -> wps_0023_042_decision_order_plans, Persist immutable DecisionOrderPlan intents independently of evidence JSON.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_042_decision_order_plans -> wps_0023_043_security_status_daily, SecurityStatusDaily ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_043_security_status_daily -> wps_0023_044_backtest_filter_events, BacktestFilterEvent ORM + Alembic 迁移。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_044_backtest_filter_events -> wps_0023_045_bfg_extend_run_fields, BFG: extend backtest_runs / factor_evaluation_runs / backtest_trades / backtest_execution_fills with filter governance fields.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_045_bfg_extend_run_fields -> wps_0023_046_fix_idempotency_status_index_rollback, 修正迁移：补齐 idempotency_records / decision_evidence 在
+Base.metadata.create_all (ORM WP0-2 schema) 先跑后缺失、或命名不一致的列与命名索引，
+避免旧 wps_0023_024 迁移 downgrade 抛出 no such index / no such column。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_046_fix_idempotency_status_index_rollback -> wps_0023_047_bfg_run_stage_and_progress, T11: 提交去重 + 状态机 API 扩展。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_047_bfg_run_stage_and_progress -> wps_0023_048_factor_audit_logs, wps_0023_048_factor_audit_logs (Task 4 / FR-13 / AC-18).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_048_factor_audit_logs -> wps_0023_049_factor_weight_snapshots, wps_0023_049_factor_weight_snapshots (Task 11 / FR-12 / AC-11).
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_049_factor_weight_snapshots -> wps_0023_050_factor_model_members, Create the materialized factor-model member table.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_050_factor_model_members -> wps_0023_051_factor_mining_core, Factor mining core schema (M1a): candidate pools, mining runs/candidates/
+generations, locks, formula templates, and the missing test-window columns.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_051_factor_mining_core -> wps_0023_052_mining_fk_constraints, Backfill the 6 missing foreign keys on the mining-domain tables.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_052_mining_fk_constraints -> wps_0023_053_factor_audit_pool_id, 给 `factor_audit_logs` 加 `pool_id` 独立列（挖掘域审计）。
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_053_factor_audit_pool_id -> wps_0023_054_factor_audit_model_run_fk, Backfill the missing foreign key on `factor_audit_logs.model_run_id`.
+INFO  [alembic.runtime.migration] Running upgrade wps_0023_054_factor_audit_model_run_fk -> wps_0023_055_accounting_float_to_double, Widen 8 accounting columns from FLOAT to DOUBLE (TD4).
+---------------------------- Captured stderr call -----------------------------
+ERROR [app.main] DB error correlation_id=e58f6d88168d429b8deed20413b743cc path=/api/v1/portfolios/1/factor-usage type=OperationalError
+Traceback (most recent call last):
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such column: strategy_execution_snapshots.usage_binding_id
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\routing.py", line 116, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\routing.py", line 670, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\routing.py", line 326, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2641, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1033, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\api\routes\portfolio_factor_usage.py", line 56, in current_factor_usage
+    return svc.get_current_usage(db, portfolio_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\factor_usage_service.py", line 431, in get_current_usage
+    latest_snap = db.execute(
+                  ^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such column: strategy_execution_snapshots.usage_binding_id
+[SQL: SELECT strategy_execution_snapshots.id, strategy_execution_snapshots.snapshot_no, strategy_execution_snapshots.portfolio_id, strategy_execution_snapshots.portfolio_factor_usage_id, strategy_execution_snapshots.factor_model_run_id, strategy_execution_snapshots.factor_set_id, strategy_execution_snapshots.rule_id, strategy_execution_snapshots.rule_version, strategy_execution_snapshots.decision_clock_json, strategy_execution_snapshots.cost_config_json, strategy_execution_snapshots.member_snapshot_json, strategy_execution_snapshots.candidate_pool_json, strategy_execution_snapshots.universe_type, strategy_execution_snapshots.benchmark_code, strategy_execution_snapshots.snapshot_type, strategy_execution_snapshots.snapshot_hash, strategy_execution_snapshots.idempotency_key, strategy_execution_snapshots.usage_binding_id, strategy_execution_snapshots.snapshot_json, strategy_execution_snapshots.content_hash, strategy_execution_snapshots.key_members_json, strategy_execution_snapshots.gate_policy_version, strategy_execution_snapshots.gate_result_json, strategy_execution_snapshots.versions_json, strategy_execution_snapshots.effective_from, strategy_execution_snapshots.task_locked_at, strategy_execution_snapshots.task_id, strategy_execution_snapshots.locked_by_run_type, strategy_execution_snapshots.created_by, strategy_execution_snapshots.created_at 
+FROM strategy_execution_snapshots 
+WHERE strategy_execution_snapshots.portfolio_id = ? AND strategy_execution_snapshots.snapshot_type = ? ORDER BY strategy_execution_snapshots.effective_from DESC
+ LIMIT ? OFFSET ?]
+[parameters: (1, 'save_and_apply', 1, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+------------------------------ Captured log call ------------------------------
+ERROR    app.main:main.py:530 DB error correlation_id=e58f6d88168d429b8deed20413b743cc path=/api/v1/portfolios/1/factor-usage type=OperationalError
+Traceback (most recent call last):
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such column: strategy_execution_snapshots.usage_binding_id
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\routing.py", line 116, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\routing.py", line 670, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\routing.py", line 326, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2641, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1033, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\api\routes\portfolio_factor_usage.py", line 56, in current_factor_usage
+    return svc.get_current_usage(db, portfolio_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\factor_usage_service.py", line 431, in get_current_usage
+    latest_snap = db.execute(
+                  ^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such column: strategy_execution_snapshots.usage_binding_id
+[SQL: SELECT strategy_execution_snapshots.id, strategy_execution_snapshots.snapshot_no, strategy_execution_snapshots.portfolio_id, strategy_execution_snapshots.portfolio_factor_usage_id, strategy_execution_snapshots.factor_model_run_id, strategy_execution_snapshots.factor_set_id, strategy_execution_snapshots.rule_id, strategy_execution_snapshots.rule_version, strategy_execution_snapshots.decision_clock_json, strategy_execution_snapshots.cost_config_json, strategy_execution_snapshots.member_snapshot_json, strategy_execution_snapshots.candidate_pool_json, strategy_execution_snapshots.universe_type, strategy_execution_snapshots.benchmark_code, strategy_execution_snapshots.snapshot_type, strategy_execution_snapshots.snapshot_hash, strategy_execution_snapshots.idempotency_key, strategy_execution_snapshots.usage_binding_id, strategy_execution_snapshots.snapshot_json, strategy_execution_snapshots.content_hash, strategy_execution_snapshots.key_members_json, strategy_execution_snapshots.gate_policy_version, strategy_execution_snapshots.gate_result_json, strategy_execution_snapshots.versions_json, strategy_execution_snapshots.effective_from, strategy_execution_snapshots.task_locked_at, strategy_execution_snapshots.task_id, strategy_execution_snapshots.locked_by_run_type, strategy_execution_snapshots.created_by, strategy_execution_snapshots.created_at 
+FROM strategy_execution_snapshots 
+WHERE strategy_execution_snapshots.portfolio_id = ? AND strategy_execution_snapshots.snapshot_type = ? ORDER BY strategy_execution_snapshots.effective_from DESC
+ LIMIT ? OFFSET ?]
+[parameters: (1, 'save_and_apply', 1, 0)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+___ test_backtest_detail_uses_run_pit_mode_when_snapshot_has_no_pit_column ____
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.IntegrityError: NOT NULL constraint failed: strategy_execution_snapshots.snapshot_json
+
+The above exception was the direct cause of the following exception:
+tests\test_backtest_detail_snapshot_contract.py:50: in test_backtest_detail_uses_run_pit_mode_when_snapshot_has_no_pit_column
+    db_session.flush()
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:1233: in _emit_insert_statements
+    result = connection.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: strategy_execution_snapshots.snapshot_json
+E   [SQL: INSERT INTO strategy_execution_snapshots (id, snapshot_no, portfolio_id, portfolio_factor_usage_id, factor_model_run_id, factor_set_id, rule_id, rule_version, decision_clock_json, cost_config_json, member_snapshot_json, candidate_pool_json, universe_type, benchmark_code, snapshot_type, snapshot_hash, idempotency_key, usage_binding_id, snapshot_json, content_hash, key_members_json, gate_policy_version, gate_result_json, versions_json, effective_from, task_locked_at, task_id, locked_by_run_type, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+E   [parameters: ('snapshot-detail-contract', 1, 1, None, None, None, None, None, '{}', None, '[]', None, 'portfolio_members', None, 'save_and_apply', 'snapshot-detail-hash', None, None, None, None, None, None, None, '{}', '2026-08-20 15:05:00.000000', None, None, None, 'local_user', '2026-09-18 07:42:51.599095')]
+E   (Background on this error at: https://sqlalche.me/e/20/gkpj)
+============================== warnings summary ===============================
+tests/test_g1_factor_usage.py: 40 warnings
+  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    cursor.execute(statement, parameters)
+
+tests/test_g1_factor_usage.py::TestFactorUsageRoutes::test_09_routes_return_200
+  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_g1_factor_usage.py::TestFactorUsageService::test_02_empty_current_usage_is_none
+FAILED tests/test_g1_factor_usage.py::TestFactorUsageService::test_05_save_and_apply_writes_both_tables
+FAILED tests/test_g1_factor_usage.py::TestFactorUsageService::test_06_repeated_save_deprecates_older_usage
+FAILED tests/test_g1_factor_usage.py::TestFactorUsageService::test_07_idempotency_unique_index_rejects_duplicate_key
+FAILED tests/test_g1_factor_usage.py::TestFactorUsageService::test_08_snapshot_member_count_and_universe_type
+FAILED tests/test_g1_factor_usage.py::TestFactorUsageRoutes::test_09_routes_return_200
+FAILED tests/test_backtest_detail_snapshot_contract.py::test_backtest_detail_uses_run_pit_mode_when_snapshot_has_no_pit_column
+================= 7 failed, 24 passed, 41 warnings in 21.21s ==================

@@ -1,0 +1,51 @@
+"""T-B1 Q2.1: DecisionEvidence.match_mode + BacktestRun.match_mode 撮合模式列
+
+Revision ID: wps_0037_037_match_mode_column
+Revises: wps_0036_036_decision_evidence_stop_loss_cols
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+revision = "wps_0037_037_match_mode_column"
+down_revision = "wps_0036_036_decision_evidence_stop_loss_cols"
+branch_labels = None
+depends_on = None
+
+
+def _has_col(table: str, column: str) -> bool:
+    insp = sa.inspect(op.get_bind())
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
+def _add(table: str, *col_defs):
+    for col in col_defs:
+        if not _has_col(table, col.name):
+            op.add_column(table, col)
+
+
+def upgrade():
+    _add(
+        "decision_evidence",
+        sa.Column(
+            "match_mode",
+            sa.String(length=16),
+            nullable=False,
+            server_default=sa.text("'NEXT_OPEN'"),
+            default="NEXT_OPEN",
+            comment="Q2.1: 撮合模式 NEXT_OPEN/T_CLOSE；正式链路禁止 T_CLOSE",
+        ),
+    )
+    _add(
+        "backtest_runs",
+        sa.Column(
+            "match_mode",
+            sa.String(length=16),
+            nullable=True,
+            comment="Q2.1: 撮合模式 NEXT_OPEN/T_CLOSE；正式链路禁止 T_CLOSE",
+        ),
+    )
+
+
+def downgrade():
+    pass

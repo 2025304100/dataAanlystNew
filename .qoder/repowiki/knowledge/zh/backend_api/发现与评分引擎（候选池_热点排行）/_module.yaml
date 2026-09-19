@@ -1,0 +1,14 @@
+schema_version: 1
+module_path: backend_api/discovery_scoring
+title: 发现与评分引擎（候选池/热点排行）
+scope:
+    - app/services/discovery_*.py
+    - app/services/scoring_config_engine.py
+    - app/services/score_query_service.py
+    - app/services/candidate_pool_rules.py
+    - app/services/candidate_promote.py
+    - app/services/hot_rank_*.py
+    - app/services/tri_entry_candidate_snapshot.py
+source_files: []
+depends_on: []
+related_to: []

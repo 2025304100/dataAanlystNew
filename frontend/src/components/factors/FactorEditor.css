@@ -1,0 +1,590 @@
+/* ============================================================
+   Factor Editor Redesign — 因子编辑页面美化
+   风格：紫靛色系 · 卡片化 · 现代简洁
+   ============================================================ */
+
+.factor-editor-redesign {
+  padding: 20px 24px;
+  background: linear-gradient(180deg, #f5f6ff 0%, #f8f9fc 120px, #f0f2f8 100%);
+  min-height: 100%;
+}
+
+/* ========== 顶部 Header ========== */
+.factor-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 4px 20px;
+  gap: 16px;
+}
+
+.factor-editor-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.factor-editor-back-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0 !important;
+  border-radius: 8px !important;
+  color: #6366f1 !important;
+  background: rgba(99, 102, 241, 0.08) !important;
+  border: none !important;
+  transition: all 0.2s ease !important;
+  flex-shrink: 0;
+}
+
+.factor-editor-back-btn:hover {
+  background: rgba(99, 102, 241, 0.15) !important;
+  transform: translateX(-2px);
+}
+
+.factor-editor-back-btn span {
+  display: none;
+}
+
+.factor-editor-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.factor-editor-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e1b4b;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.factor-editor-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.factor-editor-save-btn {
+  height: 40px !important;
+  padding: 0 24px !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3) !important;
+  transition: all 0.2s ease !important;
+}
+
+.factor-editor-save-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4) !important;
+}
+
+/* ========== 因子信息卡片 ========== */
+.factor-editor-info-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(99, 102, 241, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.factor-editor-info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.factor-editor-info-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e1b4b;
+}
+
+.factor-editor-info-desc .ant-descriptions-item-label {
+  font-weight: 500;
+  color: #6b7280;
+  background: #f9fafb !important;
+}
+
+.factor-editor-info-desc .ant-descriptions-item-content {
+  color: #1f2937;
+}
+
+/* ========== 双栏布局 ========== */
+.factor-editor-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.factor-editor-main {
+  flex: 1 1 58%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.factor-editor-side {
+  flex: 1 1 42%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ========== 通用卡片样式 ========== */
+.factor-editor-card {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.factor-editor-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  border-color: #d1d5db;
+}
+
+.factor-editor-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f3f4f6;
+  background: linear-gradient(180deg, #fafbff 0%, #ffffff 100%);
+}
+
+.factor-editor-card-header--compact {
+  padding: 12px 16px;
+}
+
+.factor-editor-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.factor-editor-card-icon--purple {
+  background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+  color: #7c3aed;
+}
+
+.factor-editor-card-icon--indigo {
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  color: #4f46e5;
+}
+
+.factor-editor-card-icon--green {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #059669;
+}
+
+.factor-editor-card-icon--blue {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #2563eb;
+}
+
+.factor-editor-card-icon--orange {
+  background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);
+  color: #ea580c;
+}
+
+.factor-editor-card-title-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.factor-editor-card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e1b4b;
+  line-height: 1.4;
+}
+
+.factor-editor-card-desc {
+  font-size: 12px;
+  color: #9ca3af;
+  display: block;
+  margin-top: 1px;
+}
+
+.factor-editor-card-body {
+  padding: 16px 20px;
+}
+
+.factor-editor-card-header--compact + .factor-editor-card-body {
+  padding: 14px 16px;
+}
+
+/* ========== 基本信息卡片 ========== */
+.factor-editor-basic-card .factor-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+
+.factor-editor-basic-card .ant-form-item-label > label {
+  font-weight: 500;
+  color: #374151;
+  font-size: 13px;
+}
+
+.factor-editor-basic-card .ant-input,
+.factor-editor-basic-card .ant-select-selector {
+  border-radius: 6px !important;
+  border-color: #d1d5db !important;
+  transition: all 0.2s ease !important;
+}
+
+.factor-editor-basic-card .ant-input:hover,
+.factor-editor-basic-card .ant-select-selector:hover {
+  border-color: #a5b4fc !important;
+}
+
+.factor-editor-basic-card .ant-input:focus,
+.factor-editor-basic-card .ant-select-focused .ant-select-selector {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+}
+
+/* ========== 公式卡片 ========== */
+.factor-editor-formula-card .factor-editor-edit-formula-btn {
+  height: 36px !important;
+  padding: 0 16px !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+  border: none !important;
+  flex-shrink: 0;
+}
+
+.factor-editor-formula-card .factor-editor-edit-formula-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(99, 102, 241, 0.35);
+}
+
+.factor-formula-summary__code {
+  margin-bottom: 12px;
+}
+
+.factor-formula-summary__code .metric-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.factor-formula-summary__code code {
+  display: block;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+  font-size: 13px;
+  color: #1e293b;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-left: 3px solid #6366f1;
+}
+
+.factor-formula-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.factor-formula-tag,
+.factor-formula-tag--direction {
+  margin: 0 !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  padding: 2px 10px !important;
+  border: none !important;
+}
+
+.factor-formula-tag--direction {
+  background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%) !important;
+  color: #7c3aed !important;
+}
+
+.factor-formula-compat-alert {
+  margin-bottom: 14px !important;
+  border-radius: 8px !important;
+  border: 1px solid #bfdbfe !important;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%) !important;
+}
+
+.factor-formula-compat-alert .ant-alert-message {
+  color: #1e40af !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
+.factor-formula-compat-alert .ant-alert-description {
+  color: #3b82f6 !important;
+  font-size: 12px !important;
+}
+
+.factor-formula-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.factor-formula-action-btn {
+  border-radius: 6px !important;
+  height: 34px !important;
+  padding: 0 14px !important;
+  font-size: 13px !important;
+  transition: all 0.2s ease !important;
+}
+
+.factor-formula-action-btn:hover {
+  transform: translateY(-1px);
+}
+
+/* ========== 校验结果卡片 ========== */
+.factor-editor-errors {
+  margin-bottom: 12px;
+}
+
+.factor-editor-error-alert {
+  margin-bottom: 6px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+}
+
+.factor-editor-error-alert .ant-alert-message {
+  font-weight: 600 !important;
+  font-size: 13px !important;
+}
+
+.factor-editor-error-alert .ant-alert-description {
+  font-size: 12px !important;
+}
+
+.factor-editor-collapse {
+  background: transparent !important;
+  border: none !important;
+}
+
+.factor-editor-collapse .ant-collapse-item {
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  margin-bottom: 8px;
+  background: #f9fafb !important;
+  transition: all 0.2s ease;
+}
+
+.factor-editor-collapse .ant-collapse-item:hover {
+  border-color: #c7d2fe;
+  background: #f5f3ff !important;
+}
+
+.factor-editor-collapse .ant-collapse-item:last-child {
+  margin-bottom: 0;
+}
+
+.factor-editor-collapse .ant-collapse-header {
+  font-weight: 500 !important;
+  color: #374151 !important;
+  padding: 10px 14px !important;
+}
+
+.factor-editor-collapse .ant-collapse-content {
+  border-top: 1px solid #e5e7eb !important;
+  background: #ffffff !important;
+  border-radius: 0 0 8px 8px !important;
+}
+
+.factor-editor-collapse .ant-collapse-content-box {
+  padding: 12px 14px !important;
+}
+
+.factor-editor-empty {
+  padding: 24px 0 !important;
+}
+
+/* ========== 预览结果卡片 ========== */
+.factor-editor-preview-meta {
+  margin-bottom: 12px !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+.factor-editor-preview-meta .ant-descriptions-item-label {
+  background: #f9fafb !important;
+  font-weight: 500;
+  color: #6b7280;
+  font-size: 12px;
+  width: 45%;
+}
+
+.factor-editor-preview-meta .ant-descriptions-item-content {
+  font-size: 12px;
+  color: #1f2937;
+  font-family: "JetBrains Mono", Consolas, monospace;
+}
+
+.factor-editor-preview-values-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e1b4b;
+}
+
+.factor-editor-preview-values-header .ant-tag {
+  margin: 0;
+  font-weight: 500;
+}
+
+.factor-editor-preview-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.factor-editor-preview-table .ant-table-thead > tr > th {
+  background: #f8fafc !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  font-size: 12px !important;
+}
+
+.factor-editor-preview-table .ant-table-tbody > tr:hover > td {
+  background: #f5f3ff !important;
+}
+
+/* ========== 后处理配置卡片 ========== */
+.factor-editor-postprocess-collapse {
+  background: transparent !important;
+  border: none !important;
+}
+
+.factor-editor-postprocess-collapse .ant-collapse-item {
+  border: none !important;
+  border-bottom: 1px solid #f3f4f6 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  margin-bottom: 0;
+}
+
+.factor-editor-postprocess-collapse .ant-collapse-item:last-child {
+  border-bottom: none !important;
+}
+
+.factor-editor-postprocess-collapse .ant-collapse-header {
+  padding: 8px 0 !important;
+  font-weight: 600 !important;
+  color: #1e1b4b !important;
+  font-size: 13px !important;
+}
+
+.factor-editor-postprocess-collapse .ant-collapse-content {
+  border: none !important;
+  background: transparent !important;
+}
+
+.factor-editor-postprocess-collapse .ant-collapse-content-box {
+  padding: 8px 0 12px !important;
+}
+
+.factor-editor-postprocess-card .ant-form-item-label > label {
+  font-weight: 500 !important;
+  color: #374151 !important;
+  font-size: 12px !important;
+}
+
+.factor-editor-postprocess-card .ant-select-selector,
+.factor-editor-postprocess-card .ant-input-number {
+  border-radius: 6px !important;
+  border-color: #d1d5db !important;
+}
+
+.factor-editor-postprocess-card .ant-select-selector:hover,
+.factor-editor-postprocess-card .ant-input-number:hover {
+  border-color: #a5b4fc !important;
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 1024px) {
+  .factor-editor-layout {
+    flex-direction: column;
+  }
+
+  .factor-editor-main,
+  .factor-editor-side {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .factor-editor-redesign {
+    padding: 12px;
+  }
+
+  .factor-editor-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .factor-editor-save-btn {
+    width: 100%;
+  }
+
+  .factor-editor-basic-card .factor-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .factor-editor-card-header {
+    padding: 12px 16px;
+  }
+
+  .factor-editor-card-body {
+    padding: 12px 16px;
+  }
+
+  .factor-editor-title {
+    font-size: 17px;
+  }
+}
+
+/* ========== Modal 内的因子编辑器适配 ========== */
+.factor-editor-modal .factor-editor-redesign {
+  padding: 16px 20px;
+}
+
+.factor-editor-modal .factor-editor-header {
+  padding: 0 0 16px;
+}

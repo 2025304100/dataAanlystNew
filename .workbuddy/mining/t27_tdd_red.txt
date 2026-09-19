@@ -1,0 +1,130 @@
+﻿node.exe : [33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you
+ rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consi
+der using "deps.optimizer.web.include"[39m
+所在位置 行:1 字符: 1
++ & "C:\Users\demo\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[7m[33m ...b.include"[39m 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+ [31m鉂?[39m src/components/__tests__/Settings.test.tsx [2m([22m[2m6 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[90m 269[2mms[22m[39m
+[31m   [31m脳[31m Settings 鍥犲瓙鎸栨帢鍏ュ彛[2m > [22m宸︿晶瀵艰埅鍑虹幇銆屽洜瀛愭寲鎺樸€嶄竴鏍忥紙鑿滃崟鍙锛?[90m 132[2mms[22m[31m[39m
+[31m     鈫?expected false to be true // Object.is equality[39m
+[31m   [31m脳[31m Settings 鍥犲瓙鎸栨帢鍏ュ彛[2m > [22m鐐瑰嚮銆屽洜瀛愭寲鎺樸€嶅鑸?鈫?鎸傝浇 MiningShell 鍐呭鍧?[90m 32[2mms[22m[31m[39m
+[31m     鈫?expected undefined to be truthy[39m
+[31m   [31m脳[31m Settings 鍥犲瓙鎸栨帢鍏ュ彛[2m > [22msettings:navigate 娲惧彂 factor-mining 鈫?璺宠浆鐢熸晥锛圠76 鐧藉悕鍗曞畧鍗級[90m 30[2mms[22m[31m[39m
+[31m     鈫?expected null to be truthy[39m
+[31m   [31m脳[31m Settings 鍥犲瓙鎸栨帢鍏ュ彛[2m > [22m鍒囨崲鍚?localStorage 鎸佷箙鍖?settings_active_section[90m 25[2mms[22m[31m[39m
+[31m     鈫?expected 'rules' to be 'factor-mining' // Object.is equality[39m
+
+[31m鈳幆鈳幆鈳幆鈳?[1m[7m Failed Tests 4 [27m[22m鈳幆鈳幆鈳幆鈳?[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/__tests__/Settings.test.tsx[
+2m > [22mSettings 鍥犲瓙鎸栨帢鍏ュ彛[2m > [22m宸︿晶瀵艰埅鍑虹幇銆屽洜瀛愭寲鎺樸€嶄竴鏍忥紙鑿滃崟鍙锛?[31m[1
+mAssertionError[22m: expected false to be true // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+[36m [2m鉂?[22m src/components/__tests__/Settings.test.tsx:[2m81:52[22m[39m
+    [90m 79| [39m    [35mconst[39m buttons [33m=[39m [33mArray[39m[33m
+.[39m[35mfrom[39m(document[33m.[39m[34mquerySelectorAll[39m([32m"button
+.setti[39m鈥?    [90m 80| [39m    [35mconst[39m labels [33m=[39m buttons
+[33m.[39m[34mmap[39m((b) [33m=>[39m b[33m.[39mtextContent [33m??[39m 
+[32m""[39m)[33m;[39m
+    [90m 81| [39m    [34mexpect[39m(labels[33m.[39m[34msome[39m((x) [3
+3m=>[39m x[33m.[39m[34mincludes[39m([32m"鍥犲瓙鎸栨帢"[39m)))[33m.[39m[34mt
+oBe[39m([35mtrue[39m)[33m;[39m
+    [90m   | [39m                                                   [31m^[3
+9m
+    [90m 82| [39m  })[33m;[39m
+    [90m 83| [39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[1/4]鈳?[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/__tests__/Settings.test.tsx[
+2m > [22mSettings 鍥犲瓙鎸栨帢鍏ュ彛[2m > [22m鐐瑰嚮銆屽洜瀛愭寲鎺樸€嶅鑸?鈫?鎸傝浇 MiningShell 鍐呭鍧?
+[31m[1mAssertionError[22m: expected undefined to be truthy[39m
+
+[32m- Expected:[39m 
+true
+
+[31m+ Received:[39m 
+undefined
+
+[36m [2m鉂?[22m src/components/__tests__/Settings.test.tsx:[2m89:20[22m[39m
+    [90m 87| [39m      (b) [33m=>[39m (b[33m.[39mtextContent [33m??[39m
+ [32m""[39m)[33m.[39m[34mincludes[39m([32m"鍥犲瓙鎸栨帢"[39m)[33m,[39m
+    [90m 88| [39m    )[33m;[39m
+    [90m 89| [39m    [34mexpect[39m(target)[33m.[39m[34mtoBeTruthy[39m(
+)[33m;[39m
+    [90m   | [39m                   [31m^[39m
+    [90m 90| [39m    fireEvent[33m.[39m[34mclick[39m(target [35mas[39m 
+[33mHTMLElement[39m)[33m;[39m
+    [90m 91| [39m    [34mexpect[39m(document[33m.[39m[34mquerySelector[
+39m([33mMINING_CONTENT[39m))[33m.[39m[34mtoBeTruthy[39m()[33m;[39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[2/4]鈳?[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/__tests__/Settings.test.tsx[
+2m > [22mSettings 鍥犲瓙鎸栨帢鍏ュ彛[2m > [22msettings:navigate 娲惧彂 factor-mining 鈫?璺
+宠浆鐢熸晥锛圠76 鐧藉悕鍗曞畧鍗級
+[31m[1mAssertionError[22m: expected null to be truthy[39m
+
+[32m- Expected:[39m 
+true
+
+[31m+ Received:[39m 
+null
+
+[36m [2m鉂?[22m src/components/__tests__/Settings.test.tsx:[2m99:52[22m[39m
+    [90m 97| [39m    [34mexpect[39m(document[33m.[39m[34mquerySelector[
+39m([33mMINING_CONTENT[39m))[33m.[39m[34mtoBeNull[39m()[33m;[39m
+    [90m 98| [39m    [34mnavigateTo[39m([32m"factor-mining"[39m)[33m;[3
+9m
+    [90m 99| [39m    [34mexpect[39m(document[33m.[39m[34mquerySelector[
+39m([33mMINING_CONTENT[39m))[33m.[39m[34mtoBeTruthy[39m()[33m;[39m
+    [90m   | [39m                                                   [31m^[3
+9m
+    [90m100| [39m  })[33m;[39m
+    [90m101| [39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[3/4]鈳?[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/__tests__/Settings.test.tsx[
+2m > [22mSettings 鍥犲瓙鎸栨帢鍏ュ彛[2m > [22m鍒囨崲鍚?localStorage 鎸佷箙鍖?settings_active_
+section
+[31m[1mAssertionError[22m: expected 'rules' to be 'factor-mining' // Object.
+is equality[39m
+
+Expected: [32m"factor-mining"[39m
+Received: [31m"rules"[39m
+
+[36m [2m鉂?[22m src/components/__tests__/Settings.test.tsx:[2m113:68[22m[39
+m
+    [90m111| [39m    [34mrender[39m([33m<[39m[33mSettings[39m [33m/[3
+9m[33m>[39m)[33m;[39m
+    [90m112| [39m    [34mnavigateTo[39m([32m"factor-mining"[39m)[33m;[3
+9m
+    [90m113| [39m    [34mexpect[39m(window[33m.[39mlocalStorage[33m.[39
+m[34mgetItem[39m([32m"settings_active_section"[39m))[33m.[39m[34mtoB[39
+m鈥?    [90m   | [39m                                                         
+          [31m^[39m
+    [90m114| [39m  })[33m;[39m
+    [90m115| [39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[4/4]鈳?[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (6)[39m
+[2m   Start at [22m 20:37:27
+[2m   Duration [22m 19.12s[2m (transform 262ms, setup 297ms, collect 14.76s, tests 269ms, environment 2.08s, prepare 482ms)[22m
+
+EXIT=1

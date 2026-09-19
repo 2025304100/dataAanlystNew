@@ -1,0 +1,57 @@
+==========================================================================
+1. canonical_json 的行为定界（哈希语义 vs 存储语义）
+==========================================================================
+  输入: {'a': None, 'b': 0, 'c': '', 'd': False, 'e': None, 'f': {'g': None, 'h': 1}}
+  canonical_json 输出: {"b":0,"c":"","d":false,"f":{"h":1}}
+  → 丢掉的是 None；0/False/空串保留 ✅
+  → 对**哈希**：None 与缺失等价是合理设计
+  → 对**存储**：会把「字段存在但无值」的信号抹掉 = 数据丢失
+
+==========================================================================
+2. 真实库中哪些 JSON 列受影响（按表清点）
+==========================================================================
+  training_candidate_pools（0 行）:
+    filter_config_json     抽样 0 行（NULL 0）
+  training_candidate_pool_snapshots（0 行）:
+    members_json           抽样 0 行（NULL 0）
+    stats_json             抽样 0 行（NULL 0）
+    analysis_json          抽样 0 行（NULL 0）
+  factor_audit_logs（7 行）:
+    before_json            抽样 5 行（NULL 0）
+        {"model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e", "mode_requested": "ridge", "actor": "factor_center:activate"}
+        {"model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e", "mode_requested": "ridge", "actor": "factor_center:activate"}
+    after_json             抽样 5 行（NULL 0）
+        {"weight_mode": "ridge", "active_model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e", "activated_at": null, "fallback_reason": null}
+        {"weight_mode": "ridge", "active_model_run_id": "rid-fs-set-3126b70f-2026-08-14-13a60cd83e0e", "activated_at": null, "fallback_reason": null}
+    attributes_json        抽样 5 行（NULL 0）
+        {"note": "12", "mode": "ridge"}
+        {"note": null, "mode": "ridge"}
+
+==========================================================================
+3. 逐项影响评估
+==========================================================================
+  ✅ training_candidate_pools.filter_config_json
+     CompiledRules.to_dict() 的 None 全是「区间端点未填/无阻断原因」，
+     前端读取用 row.get('min') 默认 None → 行为等价。**无功能影响**，
+     但「key 存在与否」的语义已不可靠 —— 读取方不得依赖 key 存在性。
+
+  ✅ training_candidate_pool_snapshots.members_json —— **T11 已修**
+     改用 _freeze_json（保留 None）。行业列全 None，
+     旧写法会把 industry key 整个吃掉。
+
+  ✅ training_candidate_pool_snapshots.stats_json / analysis_json —— **T11 已修**
+     分析结果含大量 None（不可用维度的 score 等），必须保真。
+
+  ⚠️ factor_audit_logs.before_json/after_json/attributes_json
+     T08 用 canonical_json 写审计。丢 None 会让审计记录里
+     「该字段当时是 None」与「该字段未记录」不可区分。
+     审计是历史事实，历史行**不改**；新写入保持现状（与既有行为一致），
+     把这条写进 observations 供后续裁决（改的话要连 T08 语义一起定）。
+
+==========================================================================
+4. 结论
+==========================================================================
+  - 哈希场景（execution_plan_hash / rule_hash）继续用 canonical_json ✅
+  - **冻结/快照落库**改用 `_freeze_json`（T11 已修，带专项断言）
+  - **审计落库**保持现状（历史一致性），已记 observations 待裁决
+  - `canonical_json` 的「丢 None」行为已写进 MEMORY + 手册跑偏表

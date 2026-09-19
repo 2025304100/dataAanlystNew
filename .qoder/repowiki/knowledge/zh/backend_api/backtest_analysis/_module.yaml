@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: backend_api/backtest_analysis
+title: backtest_analysis
+scope:
+    - app/services/backtest*.py
+    - app/services/vectorbt_backtest.py
+    - app/services/analysis.py
+    - app/services/portfolio_backtest*.py
+    - app/services/portfolio_performance.py
+    - app/services/portfolio_reconciliation.py
+source_files: []
+depends_on: []
+related_to: []

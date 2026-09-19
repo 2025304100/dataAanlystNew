@@ -1,0 +1,121 @@
+"""G0-WP0-2b: Extend existing tables — backtest_runs, scores, sim_orders, backtest_trades
+
+Revision ID: wps_0032_032_extend_existing_tables
+Revises: wps_0031_031_decision_engine_core_tables
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+revision = "wps_0032_032_extend_existing_tables"
+down_revision = "wps_0031_031_decision_engine_core_tables"
+branch_labels = None
+depends_on = None
+
+
+def _has_col(table: str, column: str) -> bool:
+    insp = sa.inspect(op.get_bind())
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
+def _add(table: str, *col_defs):
+    for col in col_defs:
+        if not _has_col(table, col.name):
+            op.add_column(table, col)
+
+
+def upgrade():
+    # ---------------- backtest_runs: linkage + pit + benchmark curve ----------------
+    _add(
+        "backtest_runs",
+        sa.Column("factor_set_id", sa.String(length=64), nullable=True, index=True,
+                  comment="FactorSet bound via snapshot at task launch"),
+        sa.Column("strategy_snapshot_id", sa.String(length=64), sa.ForeignKey(
+            "strategy_execution_snapshots.id", ondelete="SET NULL"),
+                  nullable=True, index=True,
+                  comment="Snapshot locked at task start; subsequent saves do not affect run"),
+        sa.Column("pit_mode", sa.String(length=16), nullable=False,
+                  server_default="best_effort",
+                  comment="best_effort | strict_pit_safe"),
+        sa.Column("decision_run_ids_json", sa.Text(), nullable=True,
+                  comment="JSON list of decision_runs.id created by this backtest"),
+        sa.Column("benchmark_equity_json", sa.Text(), nullable=True,
+                  comment="Persisted benchmark equity curve; do NOT recompute ad-hoc with linear 5% fallback"),
+        sa.Column("benchmark_status", sa.String(length=24), nullable=False,
+                  server_default="FULL",
+                  comment="FULL|BENCHMARK_INCOMPLETE|SOURCE_MISSING. Gaps>5d => INCOMPLETE."),
+        sa.Column("benchmark_gap_days", sa.Integer(), nullable=True,
+                  comment="Number of consecutive benchmark gap days observed"),
+    )
+
+    # ---------------- scores: published_at for PIT + composite index ----------------
+    _add(
+        "scores",
+        sa.Column("published_at", sa.DateTime(), nullable=True, index=True,
+                  comment="First publication datetime (UTC naive DB). NULL => NOT_PIT_SAFE."),
+        sa.Column("first_published_at", sa.DateTime(), nullable=True,
+                  comment="First-ever publish of this fact (audit)"),
+        sa.Column("revision_at", sa.DateTime(), nullable=True,
+                  comment="Latest revision time of this fact; published_at may be backdated"),
+        sa.Column("pit_flag", sa.String(length=16), nullable=False,
+                  server_default="NOT_CHECKED",
+                  comment="PIT_SAFE|NOT_PIT_SAFE|NOT_CHECKED. Set at Score write time."),
+    )
+    insp = sa.inspect(op.get_bind())
+    existing_idx = {i["name"] for i in insp.get_indexes("scores")}
+    # Q22.2: Composite (factor_model_run_id, symbol_id, trade_date) + cutoff
+    for idx_name, cols in [
+        ("ix_scores_fmr_symbol_trade_date",
+         ["factor_model_run_id", "symbol_id", "trade_date"]),
+        ("ix_scores_fmr_symbol_cutoff",
+         ["factor_model_run_id", "symbol_id", "factor_data_cutoff_at"]),
+    ]:
+        if idx_name not in existing_idx:
+            op.create_index(idx_name, "scores", cols)
+
+    # ---------------- sim_orders: Q12 manual review contract ----------------
+    _add(
+        "sim_orders",
+        sa.Column("review_status", sa.String(length=24), nullable=True, index=True,
+                  comment="None | PENDING_REVIEW | APPROVED | REJECTED | TIMED_OUT_CANCELLED"),
+        sa.Column("review_by", sa.String(length=128), nullable=True,
+                  comment="User who performed approve/reject"),
+        sa.Column("reviewed_at", sa.DateTime(), nullable=True),
+        sa.Column("review_deadline_at", sa.DateTime(), nullable=True,
+                  comment="Default: created_at + 24h. After => TIMED_OUT_CANCELLED"),
+        sa.Column("review_reason", sa.String(length=255), nullable=True,
+                  comment="Why triggered: LARGE_SINGLE_POS_CHANGE|HIGH_DAILY_TURNOVER|LARGE_AMOUNT"),
+        sa.Column("review_note", sa.Text(), nullable=True),
+        sa.Column("decision_evidence_id", sa.String(length=64), sa.ForeignKey(
+            "decision_evidence.id", ondelete="SET NULL"), nullable=True, index=True),
+    )
+
+    # ---------------- backtest_trades: Q14 evidence linkage ----------------
+    _add(
+        "backtest_trades",
+        sa.Column("decision_evidence_id", sa.String(length=64), sa.ForeignKey(
+            "decision_evidence.id", ondelete="SET NULL"), nullable=True, index=True,
+                  comment="Primary entry-side evidence. Exit evidence referenced via exit_evidence_id"),
+        sa.Column("exit_evidence_id", sa.String(length=64), sa.ForeignKey(
+            "decision_evidence.id", ondelete="SET NULL"), nullable=True, index=True),
+        sa.Column("intended_entry_price", sa.Float(), nullable=True,
+                  comment="Q2.3: Price with 5bp slippage applied (open×direction)"),
+        sa.Column("slippage_bps", sa.Float(), nullable=True,
+                  comment="Actual slippage applied to this trade"),
+        sa.Column("entry_rejection_reason", sa.String(length=64), nullable=True,
+                  comment="Q2.2: Each limit-up/down rejection logged per trade-day"),
+    )
+
+
+def downgrade():
+    # SQLite drops whole table; safest is to leave columns in place.
+    # We still try to drop indexes on scores since those are non-destructive.
+    try:
+        insp = sa.inspect(op.get_bind())
+        existing_idx = {i["name"] for i in insp.get_indexes("scores")}
+        for idx_name in ("ix_scores_fmr_symbol_trade_date",
+                         "ix_scores_fmr_symbol_cutoff"):
+            if idx_name in existing_idx:
+                op.drop_index(idx_name, table_name="scores")
+    except Exception:
+        pass

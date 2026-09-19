@@ -1,0 +1,688 @@
+================================================================================
+  COMPREHENSIVE API BLACK-BOX TEST REPORT
+  Target: http://127.0.0.1:8000
+  Time: 2026-07-24 21:58:29
+================================================================================
+
+================================================================================
+  MODULE 1: SYSTEM & HEALTH
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  [1-Health] GET /health - basic health check
+  GET /health
+  Status: 200
+  Response: status: ok
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [1-System] GET /api/v1/system/capabilities
+  GET /api/v1/system/capabilities
+  Status: 200
+  Response: overall_status: blocked, capabilities: list[8], checked_at: 2026-07-24T13:58:30.019821
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [1-System] GET /api/v1/system/data-health
+  GET /api/v1/system/data-health
+  Status: 200
+  Response: status: warn, score: 72, updated_at: 2026-07-24T13:58:31.247682, issues: list[2], symbols: dict(3 keys), bars: dict(13 keys), scores: dict(3 keys), macro: dict(5 keys)
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [1-System] GET /api/v1/system/tasks
+  GET /api/v1/system/tasks
+  Status: 200
+  Response: tasks: list[30]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [1-System] GET /api/v1/system/backups
+  GET /api/v1/system/backups
+  Status: 200
+  Response: backups: list[0]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [1-System] GET /api/v1/dashboard/overview - requires portfolio_id
+  GET /api/v1/dashboard/overview
+  Params: {'portfolio_id': '2'}
+  Status: 200
+  Response: symbols_count: 7499, watchlists_count: 4, total_position_pct: 0.0, cash_pct: 1.0, top_candidates: list[0], risk_flags: list[0]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [1-System] GET /api/v1/dashboard/today-decision - requires portfolio_id
+  GET /api/v1/dashboard/today-decision
+  Params: {'portfolio_id': '2'}
+  Status: 200
+  Response: portfolio_id: 2, pending_orders: list[0], data_gate_blocks: list[5], member_issues: list[0], alert_summary: dict(2 keys), summary: dict(3 keys)
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [1-System] GET /api/v1/dashboard/workbench - requires portfolio_id
+  GET /api/v1/dashboard/workbench
+  Params: {'portfolio_id': '2'}
+  Status: 200
+  Response: portfolio: dict(7 keys), active_rule: None, market_scope: dict(5 keys), overview: dict(6 keys), account_summary: dict(11 keys), latest_scan: dict(6 keys), candidates: list[0], latest_scores: list[10]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [1-System] GET /api/v1/dashboard/overview - MISSING required portfolio_id
+  GET /api/v1/dashboard/overview
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: f782fa64cc4a461eb736eb394f353a71
+  RESULT: PASS
+
+================================================================================
+  MODULE 2: SYMBOLS & UNIVERSE
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  [2-Symbols] GET /api/v1/symbols - list all
+  GET /api/v1/symbols
+  Status: 200
+  Response: list[20 items], first keys: ['id', 'symbol', 'name', 'asset_type', 'market', 'region']
+  RESULT: PASS
+
+  >> Extracted symbol_id for further tests: 7499
+
+────────────────────────────────────────────────────────────────────────────────
+  [2-Symbols] GET /api/v1/symbols/7499 - get specific
+  GET /api/v1/symbols/7499
+  Status: 200
+  Response: symbol: dict(11 keys), latest_score: None
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [2-Symbols] GET /api/v1/symbols/INVALID_SYMBOL - invalid ID
+  GET /api/v1/symbols/INVALID_SYMBOL_XXX
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 22f02ee5458841058ee9551cbab84055
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [2-Symbols] GET /api/v1/symbols/7499/relationships
+  GET /api/v1/symbols/7499/relationships
+  Status: 200
+  Response: symbol_id: 7499, symbol: 920117, candidate: dict(13 keys), observation: dict(10 keys), portfolio_member: dict(9 keys), position: dict(9 keys), alert: dict(5 keys), fetched_at: 2026-07-24T13:58:51.501164
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [2-Universe] GET /api/v1/universe/stats
+  GET /api/v1/universe/stats
+  Status: 200
+  Response: total_symbols: 7207, synced_symbols: 7206, failed_symbols: 1, circuit_broken_symbols: 1, total_bars: 7313253, by_type: dict(2 keys), by_scope: dict(3 keys), by_board: dict(4 keys)
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [2-Universe] GET /api/v1/universe/initialize/status
+  GET /api/v1/universe/initialize/status
+  Status: 200
+  Response: id: 4e4f148c2cce406ca42568247d12aa5a, task_type: universe_sync, status: done, stage: done, percent: 100.0, message: 初始化同步完成, total: 0, processed: 0
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [2-Universe] GET /api/v1/universe/incremental-sync/status
+  GET /api/v1/universe/incremental-sync/status
+  Status: 200
+  Response: id: 7f8e818bc4984781bd122c1815072a1e, task_type: universe_incremental_sync, status: failed, stage: interrupted, percent: 4.9, message: Backend restarted before task completed, total: 7206, processed: 350
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [2-Universe] GET /api/v1/universe/smart-sync/status
+  GET /api/v1/universe/smart-sync/status
+  Status: 200
+  Response: id: 7f1683e31bf046f5b1aa7f9b092a77de, task_type: universe_smart_sync, status: done, stage: done, percent: 100.0, message: 智能同步完成：增量更新 0 个，已最新 0 个，失败 50 个, total: 5531, processed: 50
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [2-Universe] GET /api/v1/universe/backfill/status
+  GET /api/v1/universe/backfill/status
+  Status: 200
+  Response: id: 09e71e82914847bca46994f86aef3eaf, task_type: universe_backfill, status: done, stage: done, percent: 100.0, message: 历史回补完成, total: 1596, processed: 1596
+  RESULT: PASS
+
+================================================================================
+  MODULE 3: PORTFOLIOS
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios - list all
+  GET /api/v1/portfolios
+  Status: 200
+  Response: list[2 items], first keys: ['id', 'name', 'account_type', 'total_capital', 'investable_ratio', 'cash_reserve_ratio']
+  RESULT: PASS
+
+  >> Extracted portfolio_id: 2
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] POST /api/v1/portfolios - create valid
+  POST /api/v1/portfolios
+  Body: {"name": "API_TEST_PORTFOLIO", "total_capital": 1000000, "account_type": "simulated", "investable_ratio": 1.0, "cash_reserve_ratio": 0.0, "currency": "CNY"}
+  Status: 200
+  Response: id: 3, name: API_TEST_PORTFOLIO, account_type: simulated, total_capital: 1000000.0, investable_ratio: 1.0, cash_reserve_ratio: 0.0, currency: CNY, is_default: 0
+  RESULT: PASS
+
+  >> Created portfolio_id: 3
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] POST /api/v1/portfolios - create with invalid data (negative capital, empty name)
+  POST /api/v1/portfolios
+  Body: {"name": "", "total_capital": -100, "currency": "INVALID"}
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 754002bd19714d92a258164b66cc7ce4
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] POST /api/v1/portfolios - create with empty body
+  POST /api/v1/portfolios
+  Body: {}
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 69a74425adbc44d8a265b324542a4c1d
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] POST /api/v1/portfolios - boundary: zero capital
+  POST /api/v1/portfolios
+  Body: {"name": "ZERO_CAPITAL_TEST", "total_capital": 0, "account_type": "simulated", "investable_ratio": 1.0, "cash_reserve_ratio": 0.0}
+  Status: 200
+  Response: id: 4, name: ZERO_CAPITAL_TEST, account_type: simulated, total_capital: 0.0, investable_ratio: 1.0, cash_reserve_ratio: 0.0, currency: CNY, is_default: 0
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios/2 - get specific
+  GET /api/v1/portfolios/2
+  Status: 200
+  Response: portfolio: dict(12 keys), active_rule: None, allocation: dict(15 keys)
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] PUT /api/v1/portfolios/2 - update
+  PUT /api/v1/portfolios/2
+  Body: {"name": "API_TEST_UPDATED", "initial_capital": 2000000}
+  Status: 200
+  Response: id: 2, name: API_TEST_UPDATED, account_type: simulated, total_capital: 1000000.0, investable_ratio: 1.0, cash_reserve_ratio: 0.0, currency: CNY, is_default: 1
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios/2/members
+  GET /api/v1/portfolios/2/members
+  Status: 200
+  Response: list[0 items]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios/2/positions
+  GET /api/v1/portfolios/2/positions
+  Status: 200
+  Response: list[0 items]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios/2/performance
+  GET /api/v1/portfolios/2/performance
+  Status: 200
+  Response: portfolio_id: 2, initial_capital: 1000000.0, snapshot_count: 5, date_range: dict(2 keys), equity_curve: list[5], benchmark_curve: list[5], benchmark_name: 沪深300, stats: dict(9 keys)
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios/2/allocation
+  GET /api/v1/portfolios/2/allocation
+  Status: 200
+  Response: total_position_pct: 0.0, stock_position_pct: 0.0, etf_position_pct: 0.0, cash_pct: 1.0, position_count: 0, sector_exposure: dict(0 keys), remaining_stock_pct: 0.0, remaining_etf_pct: 0.0
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios/2/equity-snapshots
+  GET /api/v1/portfolios/2/equity-snapshots
+  Status: 200
+  Response: list[5 items], first keys: ['id', 'portfolio_id', 'snapshot_date', 'cash_balance', 'market_value', 'total_equity']
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios/2/reviews
+  GET /api/v1/portfolios/2/reviews
+  Status: 200
+  Response: list[0 items]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios/2/signal-rule
+  GET /api/v1/portfolios/2/signal-rule
+  Status: 200
+  Response: rule_name: 均衡模式, mode: balanced, quality_tolerance: 12.0, timing_tolerance: 12.0, min_sample_count: 3, max_samples: 60, same_region: True, same_asset_type: True
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios/2/sim-account
+  GET /api/v1/portfolios/2/sim-account
+  Status: 200
+  Response: summary: dict(11 keys), recent_trades: list[3], recent_ledger: list[4]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [3-Portfolios] GET /api/v1/portfolios/nonexistent-id - invalid ID
+  GET /api/v1/portfolios/nonexistent-id-99999
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 68952cb2ddb94a939128831fc6e6c095
+  RESULT: PASS
+
+================================================================================
+  MODULE 4: MARKET DATA
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  [4-MarketData] GET /api/v1/market-data/bars/7499 - daily bars
+  GET /api/v1/market-data/bars/7499
+  Status: 200
+  Response: list[0 items]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [4-MarketData] GET /api/v1/market-data/bars/7499 with limit
+  GET /api/v1/market-data/bars/7499
+  Params: {'limit': '5'}
+  Status: 200
+  Response: list[0 items]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [4-MarketData] GET /api/v1/market-data/bars/INVALID - invalid symbol
+  GET /api/v1/market-data/bars/INVALID_SYMBOL_XXX
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: d6d51f893b28412d90d19443b9a06723
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [4-MarketData] GET /api/v1/market-data/sync-tasks - list sync tasks
+  GET /api/v1/market-data/sync-tasks
+  Status: 200
+  Response: list[3 items], first keys: ['id', 'task_type', 'status', 'stage', 'percent', 'message']
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [4-MarketData] GET /api/v1/market-data/initialize-history/status
+  GET /api/v1/market-data/initialize-history/status
+  Status: 200
+  Response: task_id: None, status: idle, preset: 1y, adjust: qfq, repair_mode: both, asset_types: None, symbol_ids: list[0], start_date: None
+  RESULT: PASS
+
+================================================================================
+  MODULE 5: WATCHLISTS
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  [5-Watchlists] GET /api/v1/watchlists - list all
+  GET /api/v1/watchlists
+  Status: 200
+  Response: list[4 items], first keys: ['id', 'name', 'list_type', 'description', 'created_at']
+  RESULT: PASS
+
+  >> Extracted watchlist_id: 4
+
+────────────────────────────────────────────────────────────────────────────────
+  [5-Watchlists] POST /api/v1/watchlists - create valid (name+list_type)
+  POST /api/v1/watchlists
+  Body: {"name": "API_TEST_WATCHLIST", "list_type": "watchlist"}
+  Status: 409
+  Response: error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: da17b6aa31bb42a48e0b522d5e4acfab
+  RESULT: FAIL (expected 2xx)
+
+  >> Created watchlist_id: None
+
+────────────────────────────────────────────────────────────────────────────────
+  [5-Watchlists] POST /api/v1/watchlists - create with empty body
+  POST /api/v1/watchlists
+  Body: {}
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 40172593a0a34d3cbe13f35e62d7f791
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [5-Watchlists] POST /api/v1/watchlists - create with empty name
+  POST /api/v1/watchlists
+  Body: {"name": "", "list_type": "watchlist"}
+  Status: 409
+  Response: error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 9f97bf94d46c4b8fa008c6146bb7b9a3
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [5-Watchlists] GET /api/v1/watchlists/4/items - list items
+  GET /api/v1/watchlists/4/items
+  Status: 503
+  Response: error_code: DB_CONNECTION_FAILED, user_message: 数据库暂时不可用, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: ee896d9d2b644b54b3971f8aca89a437
+  RESULT: FAIL (expected 2xx)
+
+────────────────────────────────────────────────────────────────────────────────
+  [5-Watchlists] GET /api/v1/watchlists/4/observations - list observations
+  GET /api/v1/watchlists/4/observations
+  Status: 503
+  Response: error_code: DB_CONNECTION_FAILED, user_message: 数据库暂时不可用, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: c34595589c9540868922d49e78a5c80d
+  RESULT: FAIL (expected 2xx)
+
+================================================================================
+  MODULE 6: SCORES & SCORING CONFIGS
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  [6-Scoring] GET /api/v1/settings/scoring-configs?asset_type=stock - list configs
+  GET /api/v1/settings/scoring-configs
+  Params: {'asset_type': 'stock'}
+  Status: 200
+  Response: list[5 items], first keys: ['id', 'asset_type', 'preset_key', 'name', 'description', 'version']
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [6-Scoring] GET /api/v1/settings/scoring-configs/active?asset_type=stock - get active config
+  GET /api/v1/settings/scoring-configs/active
+  Params: {'asset_type': 'stock'}
+  Status: 200
+  Response: id: 1, asset_type: stock, preset_key: balanced_opportunity, name: 均衡机会, description: 默认股票机会挖掘；趋势、时点、流动性较均衡，适合作为初始激活预设。, version: 1, config_json: '{"preset_key": "balanced_opportunity", "name": "均衡机会", "description": "默认股票机会挖掘；...', preset_source: system
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [6-Scoring] GET /api/v1/settings/scoring-configs - MISSING required asset_type
+  GET /api/v1/settings/scoring-configs
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 7c249c551ef04b45aa7da22bc6b751b2
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [6-Scores] GET /api/v1/scores/latest/7499 - latest score
+  GET /api/v1/scores/latest/7499
+  Status: 404
+  Response: error_code: NOT_FOUND, user_message: 请求的资源不存在, impact: 请检查输入或返回列表查看, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: bcc388c4eaf5463a987087828879c856
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [6-Scores] GET /api/v1/scores/history/7499 - score history
+  GET /api/v1/scores/history/7499
+  Status: 200
+  Response: list[0 items]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [6-Scores] GET /api/v1/scores/latest/INVALID - invalid symbol
+  GET /api/v1/scores/latest/INVALID_SYMBOL_XXX
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: e4083bb113ac4f06b69c26036159b3af
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [6-Scores] POST /api/v1/scores/calculate - with empty body
+  POST /api/v1/scores/calculate
+  Body: {}
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 0accd7bad0e04df0a9e31a03112ee429
+  RESULT: PASS
+
+================================================================================
+  MODULE 7: JOURNALS
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  [7-Journals] GET /api/v1/journals - list all
+  GET /api/v1/journals
+  Status: 200
+  Response: list[3 items], first keys: ['id', 'portfolio_id', 'symbol_id', 'trade_setup_id', 'entry_type', 'title']
+  RESULT: PASS
+
+  >> Extracted journal_id: 3
+
+────────────────────────────────────────────────────────────────────────────────
+  [7-Journals] POST /api/v1/journals - create valid
+  POST /api/v1/journals
+  Body: {"portfolio_id": 2, "symbol_id": 3276, "entry_type": "test", "title": "API Test Journal Entry", "content": "This is a test entry created during API testing."}
+  Status: 200
+  Response: id: 4, portfolio_id: 2, symbol_id: 3276, trade_setup_id: None, entry_type: test, title: API Test Journal Entry, content: This is a test entry created during API testing., subjective_view: None
+  RESULT: PASS
+
+  >> Created journal_id: 4
+
+────────────────────────────────────────────────────────────────────────────────
+  [7-Journals] POST /api/v1/journals - create with empty body
+  POST /api/v1/journals
+  Body: {}
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 89a5822fd3024037829995a853cab5be
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [7-Journals] POST /api/v1/journals - create minimal entry
+  POST /api/v1/journals
+  Body: {"portfolio_id": 2, "symbol_id": 3276, "entry_type": "test", "title": "Minimal"}
+  Status: 200
+  Response: id: 5, portfolio_id: 2, symbol_id: 3276, trade_setup_id: None, entry_type: test, title: Minimal, content: None, subjective_view: None
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [7-Journals] PATCH /api/v1/journals/3 - update (no-op test)
+  PATCH /api/v1/journals/3
+  Body: {"title": "Updated by test"}
+  Status: 200
+  Response: id: 3, portfolio_id: 2, symbol_id: 3276, trade_setup_id: None, entry_type: test, title: Updated by test, content: None, subjective_view: None
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [7-Journals] PATCH /api/v1/journals/nonexistent - invalid ID
+  PATCH /api/v1/journals/nonexistent-id-99999
+  Body: {"title": "test"}
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 2dbf410916bc4df4a556b1567195b59d
+  RESULT: PASS
+
+================================================================================
+  MODULE 8: DASHBOARD
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  [8-Dashboard] GET /api/v1/dashboard/overview?portfolio_id=2
+  GET /api/v1/dashboard/overview
+  Params: {'portfolio_id': '2'}
+  Status: 200
+  Response: symbols_count: 7499, watchlists_count: 4, total_position_pct: 0.0, cash_pct: 1.0, top_candidates: list[0], risk_flags: list[0]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [8-Dashboard] GET /api/v1/dashboard/today-decision?portfolio_id=2
+  GET /api/v1/dashboard/today-decision
+  Params: {'portfolio_id': '2'}
+  Status: 200
+  Response: portfolio_id: 2, pending_orders: list[0], data_gate_blocks: list[5], member_issues: list[0], alert_summary: dict(2 keys), summary: dict(3 keys)
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [8-Dashboard] GET /api/v1/dashboard/workbench?portfolio_id=2
+  GET /api/v1/dashboard/workbench
+  Params: {'portfolio_id': '2'}
+  Status: 200
+  Response: portfolio: dict(7 keys), active_rule: None, market_scope: dict(5 keys), overview: dict(6 keys), account_summary: dict(11 keys), latest_scan: dict(6 keys), candidates: list[0], latest_scores: list[10]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [8-Dashboard] GET /api/v1/dashboard/symbol-detail - without required params
+  GET /api/v1/dashboard/symbol-detail
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: a44803286711462b869f66a668a18f41
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [8-Dashboard] GET /api/v1/dashboard/symbol-detail?symbol_id=7499&portfolio_id=2
+  GET /api/v1/dashboard/symbol-detail
+  Params: {'symbol_id': 7499, 'portfolio_id': '2'}
+  Status: 200
+  Response: symbol: dict(8 keys), latest_score: None, latest_trade_setup: None, signal_stats: None, position: None, score_history: list[0], bars: list[1], journals: list[0]
+  RESULT: PASS
+
+================================================================================
+  MODULE 9: ADDITIONAL CORE ENDPOINTS
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Factors] GET /api/v1/factors - list factors
+  GET /api/v1/factors
+  Status: 200
+  Response: list[8 items], first keys: ['code', 'name', 'category', 'direction', 'status', 'source_type']
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Factors] GET /api/v1/factors/overview
+  GET /api/v1/factors/overview
+  Status: 200
+  Response: runtime: dict(7 keys), config: dict(4 keys), feature_enabled: True, warehouse_error: ep_ttm:coverage=0.000, health: dict(9 keys), latest_trade_date: 2026-07-24, factor_coverage: list[8]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Factors] GET /api/v1/factors/config
+  GET /api/v1/factors/config
+  Status: 200
+  Response: feature_enabled: True, warehouse_path: D:\ai_project\dataAanlystNew\tmp\factor_warehouse.duckdb, updated_by: factor_initialization_script, updated_at: 2026-07-15T09:31:32
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-FactorModels] GET /api/v1/factor-models - list models
+  GET /api/v1/factor-models
+  Status: 200
+  Response: runtime: dict(7 keys), items: list[1]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-FactorModels] GET /api/v1/factor-models/latest
+  GET /api/v1/factor-models/latest
+  Status: 200
+  Response: id: ridge-869cb6f010be83261bdfe9d5, model_type: ridge, asset_type: stock, target_code: target_5d_return, train_start_date: None, train_end_date: None, validation_start_date: None, validation_end_date: None
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-FactorModels] GET /api/v1/factor-models/runtime
+  GET /api/v1/factor-models/runtime
+  Status: 200
+  Response: weight_mode: manual, active_model_run_id: None, updated_by: environment, fallback_reason: None, version: 1, updated_at: 2026-07-14T13:26:24, score_weight_mode: manual
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-News] GET /api/v1/news/latest - latest news
+  GET /api/v1/news/latest
+  Status: 200
+  Response: scope: latest, days: 7, symbols_total: 0, macro: None, symbols: list[0], failed: list[0]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Macro] GET /api/v1/macro/overview - macro overview
+  GET /api/v1/macro/overview
+  Status: 200
+  Response: region: all, snapshot: dict(13 keys), indicators: list[18], brief: list[2], failed: list[0]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Events] GET /api/v1/market-events - list events
+  GET /api/v1/market-events
+  Status: 200
+  Response: events: list[50], total: 1272, by_scope: dict(8 keys), by_level: dict(5 keys)
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Events] GET /api/v1/market-events/scopes - event scopes
+  GET /api/v1/market-events/scopes
+  Status: 200
+  Response: list[8 items]
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Alerts] GET /api/v1/alerts/rules - list alert rules
+  GET /api/v1/alerts/rules
+  Status: 200
+  Response: list[3 items], first keys: ['id', 'name', 'alert_type', 'enabled', 'severity', 'config_json']
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Alerts] GET /api/v1/alerts/active - active alerts
+  GET /api/v1/alerts/active
+  Status: 200
+  Response: events: list[0], count: 0
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Alerts] GET /api/v1/alerts/events - alert events
+  GET /api/v1/alerts/events
+  Status: 200
+  Response: events: list[0], unacknowledged_count: 0
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Tasks] GET /api/v1/scheduled-tasks - list tasks
+  GET /api/v1/scheduled-tasks
+  Status: 200
+  Response: list[11 items], first keys: ['id', 'name', 'task_type', 'frequency', 'time_of_day', 'weekdays']
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-Tasks] GET /api/v1/scheduled-tasks/definitions - definitions
+  GET /api/v1/scheduled-tasks/definitions
+  Status: 200
+  Response: list[11 items], first keys: ['task_type', 'name', 'description', 'default_payload']
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [9-SignalRules] GET /api/v1/signal-rules/presets - presets
+  GET /api/v1/signal-rules/presets
+  Status: 200
+  Response: list[4 items], first keys: ['mode', 'rule_name', 'description', 'quality_tolerance', 'timing_tolerance', 'min_sample_count']
+  RESULT: PASS
+
+================================================================================
+  MODULE 10: EDGE CASES & ERROR HANDLING
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+  [10-Edge] GET /api/v1/nonexistent - 404 test
+  GET /api/v1/nonexistent
+  Status: 404
+  Response: error_code: NOT_FOUND, user_message: 请求的资源不存在, impact: 请检查输入或返回列表查看, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: cd4926557a5543a5af3537921163abdc
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [10-Edge] DELETE /api/v1/health - method not allowed
+  DELETE /health
+  Status: 405
+  Response: detail: Method Not Allowed
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [10-Edge] POST /api/v1/portfolios - invalid JSON body
+  Status: 422
+  Response: {"error_code":"VALIDATION_ERROR","user_message":"输入参数有误","impact":"请修改后重试","retryable":false,"completed":0.0,"next_actions":[{"label":"修改后重试","action_type":"retry","target":null,"reason":"请按提示修正输入参数"}
+  RESULT: PASS (properly rejected)
+
+────────────────────────────────────────────────────────────────────────────────
+  [10-Edge] POST /api/v1/portfolios - very large payload (100KB name)
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: cd1bc4aa4d2e42789a8db7b73fffa0f5
+  RESULT: PASS (handled gracefully)
+
+────────────────────────────────────────────────────────────────────────────────
+  [10-Edge] GET /api/v1/symbols with SQL injection attempt (URL-encoded)
+  GET /api/v1/symbols/%27%20OR%201%3D1%20--
+  Status: 422
+  Response: error_code: VALIDATION_ERROR, user_message: 输入参数有误, impact: 请修改后重试, retryable: False, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: b1d6499deb18422ba83c607a85b7fd6b
+  RESULT: PASS
+
+────────────────────────────────────────────────────────────────────────────────
+  [10-Edge] POST /api/v1/watchlists - unicode name
+  POST /api/v1/watchlists
+  Body: {"name": "测试观察列表_テスト", "list_type": "watchlist"}
+  Status: 409
+  Response: error_code: UNKNOWN_ERROR, user_message: 服务暂时不可用，请稍后重试, impact: 本次操作未完成, retryable: True, completed: 0.0, next_actions: list[1], technical_details: dict(7 keys), correlation_id: 235c9107899d47debdbff96c2fed5047
+  RESULT: PASS
+
+================================================================================
+  TEST SUMMARY
+================================================================================
+  Total tests:  86
+  Passed:       82
+  Failed:       3
+  Errors:       0
+  Pass rate:    95.3%
+  Completed at: 2026-07-24 21:59:23
+================================================================================

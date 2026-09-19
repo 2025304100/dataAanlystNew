@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>行情消息 - MarketNews</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #f5f1e8;
+            --bg-panel: #fffaf0;
+            --color-primary: #0f766e;
+            --color-primary-light: #14b8a6;
+            --color-primary-dark: #0d5c56;
+            --color-danger: #dc2626;
+            --color-warning: #ea580c;
+            --color-info: #2563eb;
+            --color-secondary: #6b7280;
+            --color-text: #1f2937;
+            --color-text-light: #6b7280;
+            --border-color: #e5e7eb;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--color-text);
+            line-height: 1.6;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .header-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--color-primary-dark);
+            letter-spacing: -0.5px;
+            position: relative;
+            padding-left: 20px;
+        }
+
+        .header-title::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 32px;
+            background: linear-gradient(180deg, var(--color-primary), var(--color-primary-light));
+            border-radius: 2px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light));
+            color: white;
+            box-shadow: 0 2px 8px rgba(15, 118, 110, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(15, 118, 110, 0.4);
+        }
+
+        .btn-secondary {
+            background: var(--bg-panel);
+            color: var(--color-primary);
+            border: 1px solid var(--color-primary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .select-wrapper {
+            position: relative;
+        }
+
+        .select-wrapper select {
+            padding: 10px 36px 10px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            background: white;
+            font-size: 14px;
+            cursor: pointer;
+            appearance: none;
+            transition: all 0.3s ease;
+        }
+
+        .select-wrapper select:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.1);
+        }
+
+        .select-wrapper::after {
+            content: '▼';
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 10px;
+            color: var(--color-text-light);
+            pointer-events: none;
+        }
+
+        /* Dimension Cards */
+        .dimensions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .dimension-card {
+            background: var(--bg-panel);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+            border-left: 4px solid;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .dimension-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 80px;
+            height: 80px;
+            background: radial-gradient(circle at top right, currentColor, transparent 70%);
+            opacity: 0.08;
+            transition: opacity 0.3s ease;
+        }
+
+        .dimension-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .dimension-card:hover::before {
+            opacity: 0.15;
+        }
+
+        .dimension-card.macro { border-left-color: #dc2626; color: #dc2626; }
+        .dimension-card.industry { border-left-color: #ea580c; color: #ea580c; }
+        .dimension-card.international { border-left-color: #2563eb; color: #2563eb; }
+        .dimension-card.capital { border-left-color: #0f766e; color: #0f766e; }
+        .dimension-card.emergency { border-left-color: #9333ea; color: #9333ea; }
+
+        .dimension-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .dimension-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--color-text);
+        }
+
+        .dimension-count {
+            font-size: 24px;
+            font-weight: 700;
+            color: inherit;
+        }
+
+        .dimension-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            margin-bottom: 12px;
+        }
+
+        /* Filter Panel */
+        .filter-panel {
+            background: var(--bg-panel);
+            border-radius: var(--radius-md);
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .filter-header {
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.3s ease;
+        }
+
+        .filter-panel.collapsed .filter-header {
+            border-bottom-color: var(--border-color);
+        }
+
+        .filter-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--color-text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-toggle {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s ease;
+        }
+
+        .filter-panel.collapsed .filter-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .filter-content {
+            max-height: 500px;
+            overflow: hidden;
+            transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s ease;
+            padding: 0 20px 20px;
+        }
+
+        .filter-panel.collapsed .filter-content {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .filter-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .filter-chip {
+            padding: 6px 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: white;
+            color: var(--color-text-light);
+        }
+
+        .filter-chip:hover {
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+        }
+
+        .filter-chip.active {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+            color: white;
+        }
+
+        /* News List */
+        .news-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .news-card {
+            background: var(--bg-panel);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            border-left: 4px solid;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+            animation: slideIn 0.4s ease-out backwards;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .news-card:nth-child(1) { animation-delay: 0.05s; }
+        .news-card:nth-child(2) { animation-delay: 0.1s; }
+        .news-card:nth-child(3) { animation-delay: 0.15s; }
+        .news-card:nth-child(4) { animation-delay: 0.2s; }
+        .news-card:nth-child(5) { animation-delay: 0.25s; }
+        .news-card:nth-child(6) { animation-delay: 0.3s; }
+
+        .news-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateX(4px);
+        }
+
+        .news-card.level-5 { border-left-color: #dc2626; }
+        .news-card.level-4 { border-left-color: #ea580c; }
+        .news-card.level-3 { border-left-color: #2563eb; }
+        .news-card.level-2 { border-left-color: #9ca3af; }
+
+        .news-header {
+            padding: 20px 24px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .news-main {
+            flex: 1;
+        }
+
+        .news-title-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .level-badge {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .level-badge.level-5 {
+            background: linear-gradient(135deg, #dc2626, #ef4444);
+            color: white;
+        }
+
+        .level-badge.level-4 {
+            background: linear-gradient(135deg, #ea580c, #f97316);
+            color: white;
+        }
+
+        .level-badge.level-3 {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: white;
+        }
+
+        .level-badge.level-2 {
+            background: linear-gradient(135deg, #9ca3af, #d1d5db);
+            color: white;
+        }
+
+        .news-title {
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--color-text);
+            line-height: 1.4;
+            transition: color 0.2s ease;
+        }
+
+        .news-card.level-5 .news-title {
+            font-weight: 700;
+            color: #dc2626;
+        }
+
+        .news-title:hover {
+            color: var(--color-primary);
+        }
+
+        .news-meta {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            font-size: 13px;
+            color: var(--color-text-light);
+            margin-top: 8px;
+        }
+
+        .news-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .expand-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--color-text-light);
+            transition: transform 0.3s ease;
+            flex-shrink: 0;
+            margin-top: 4px;
+        }
+
+        .news-card.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+
+        .news-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .news-card.expanded .news-details {
+            max-height: 800px;
+        }
+
+        .news-details-inner {
+            padding: 0 24px 24px;
+        }
+
+        .impact-section {
+            background: white;
+            border-radius: var(--radius-sm);
+            padding: 20px;
+            margin-top: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .impact-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-primary);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .impact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+
+        .impact-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .impact-label {
+            font-size: 12px;
+            color: var(--color-text-light);
+            font-weight: 500;
+        }
+
+        .impact-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--color-text);
+            padding: 8px 12px;
+            background: var(--bg-primary);
+            border-radius: var(--radius-sm);
+        }
+
+        .impact-value.positive {
+            color: #059669;
+            background: #ecfdf5;
+        }
+
+        .impact-value.negative {
+            color: #dc2626;
+            background: #fef2f2;
+        }
+
+        .impact-value.neutral {
+            color: #0f766e;
+            background: #f0fdfa;
+        }
+
+        .tags-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        .tag {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            background: var(--bg-primary);
+            color: var(--color-text-light);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 12px;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .header-title {
+                font-size: 24px;
+            }
+
+            .header-actions {
+                justify-content: stretch;
+            }
+
+            .btn {
+                flex: 1;
+                justify-content: center;
+            }
+
+            .dimensions-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .news-header {
+                padding: 16px;
+            }
+
+            .news-meta {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .filter-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Loading Animation */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .loading {
+            animation: pulse 2s infinite;
+        }
+
+        /* Tooltip */
+        [data-tooltip] {
+            position: relative;
+        }
+
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 6px 12px;
+            background: var(--color-text);
+            color: white;
+            font-size: 12px;
+            border-radius: 4px;
+            white-space: nowrap;
+            z-index: 100;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="header-title">行情消息</h1>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="refreshData()" data-tooltip="刷新数据">
+                    <span>🔄</span> 刷新
+                </button>
+                <button class="btn btn-primary" onclick="collectData()" data-tooltip="采集最新数据">
+                    <span>⬇️</span> 采集
+                </button>
+                <div class="select-wrapper">
+                    <select id="sortSelect">
+                        <option value="time-desc">时间倒序</option>
+                        <option value="time-asc">时间正序</option>
+                        <option value="level-desc">级别从高到低</option>
+                        <option value="level-asc">级别从低到高</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dimension Statistics -->
+        <section class="dimensions-grid">
+            <div class="dimension-card macro" onclick="filterByDimension('macro')">
+                <div class="dimension-icon">📊</div>
+                <div class="dimension-header">
+                    <span class="dimension-name">宏观政策</span>
+                    <span class="dimension-count">12</span>
+                </div>
+            </div>
+            <div class="dimension-card industry" onclick="filterByDimension('industry')">
+                <div class="dimension-icon">🏭</div>
+                <div class="dimension-header">
+                    <span class="dimension-name">行业动态</span>
+                    <span class="dimension-count">28</span>
+                </div>
+            </div>
+            <div class="dimension-card international" onclick="filterByDimension('international')">
+                <div class="dimension-icon">🌍</div>
+                <div class="dimension-header">
+                    <span class="dimension-name">国际形势</span>
+                    <span class="dimension-count">15</span>
+                </div>
+            </div>
+            <div class="dimension-card capital" onclick="filterByDimension('capital')">
+                <div class="dimension-icon">💰</div>
+                <div class="dimension-header">
+                    <span class="dimension-name">资金流向</span>
+                    <span class="dimension-count">19</span>
+                </div>
+            </div>
+            <div class="dimension-card emergency" onclick="filterByDimension('emergency')">
+                <div class="dimension-icon">⚡</div>
+                <div class="dimension-header">
+                    <span class="dimension-name">突发事件</span>
+                    <span class="dimension-count">6</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Filter Panel -->
+        <aside class="filter-panel collapsed" id="filterPanel">
+            <div class="filter-header" onclick="toggleFilter()">
+                <span class="filter-title">
+                    <span>🔍</span> 高级筛选
+                </span>
+                <span class="filter-toggle">▼</span>
+            </div>
+            <div class="filter-content">
+                <div class="filter-grid">
+                    <div class="filter-group">
+                        <label class="filter-label">消息级别</label>
+                        <div class="filter-options">
+                            <span class="filter-chip active" data-filter="level" data-value="all">全部</span>
+                            <span class="filter-chip" data-filter="level" data-value="5">紧急</span>
+                            <span class="filter-chip" data-filter="level" data-value="4">重要</span>
+                            <span class="filter-chip" data-filter="level" data-value="3">关注</span>
+                            <span class="filter-chip" data-filter="level" data-value="2">一般</span>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">影响范围</label>
+                        <div class="filter-options">
+                            <span class="filter-chip active" data-filter="scope" data-value="all">全部</span>
+                            <span class="filter-chip" data-filter="scope" data-value="global">全球</span>
+                            <span class="filter-chip" data-filter="scope" data-value="domestic">国内</span>
+                            <span class="filter-chip" data-filter="scope" data-value="regional">区域</span>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">市场情绪</label>
+                        <div class="filter-options">
+                            <span class="filter-chip active" data-filter="sentiment" data-value="all">全部</span>
+                            <span class="filter-chip" data-filter="sentiment" data-value="positive">利好</span>
+                            <span class="filter-chip" data-filter="sentiment" data-value="negative">利空</span>
+                            <span class="filter-chip" data-filter="sentiment" data-value="neutral">中性</span>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">时间范围</label>
+                        <div class="filter-options">
+                            <span class="filter-chip active" data-filter="time" data-value="today">今日</span>
+                            <span class="filter-chip" data-filter="time" data-value="week">本周</span>
+                            <span class="filter-chip" data-filter="time" data-value="month">本月</span>
+                            <span class="filter-chip" data-filter="time" data-value="quarter">本季度</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- News List -->
+        <main class="news-list" id="newsList">
+            <!-- News Item 1 - Level 5 (Emergency) -->
+            <article class="news-card level-5" data-level="5" data-scope="global" data-sentiment="negative">
+                <div class="news-header" onclick="toggleNews(this)">
+                    <div class="news-main">
+                        <div class="news-title-row">
+                            <span class="level-badge level-5">紧急</span>
+                            <h3 class="news-title">美联储突然宣布加息75个基点，全球金融市场剧烈震荡</h3>
+                        </div>
+                        <div class="news-meta">
+                            <span class="news-meta-item">📰 路透社</span>
+                            <span class="news-meta-item">🕐 2024-01-15 14:30</span>
+                            <span class="news-meta-item">🌍 全球影响</span>
+                            <span class="news-meta-item">💹 宏观政策</span>
+                        </div>
+                    </div>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="news-details">
+                    <div class="news-details-inner">
+                        <div class="impact-section">
+                            <h4 class="impact-title">📈 影响评价</h4>
+                            <div class="impact-grid">
+                                <div class="impact-item">
+                                    <span class="impact-label">影响方向</span>
+                                    <span class="impact-value negative">利空</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">影响程度</span>
+                                    <span class="impact-value negative">高度影响</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">持续时间</span>
+                                    <span class="impact-value neutral">中期（1-3个月）</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">操作建议</span>
+                                    <span class="impact-value neutral">降低仓位，增加现金配置</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tags-row">
+                            <span class="tag">#货币政策</span>
+                            <span class="tag">#美元指数</span>
+                            <span class="tag">#新兴市场</span>
+                            <span class="tag">#避险情绪</span>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <!-- News Item 2 - Level 4 (Important) -->
+            <article class="news-card level-4" data-level="4" data-scope="domestic" data-sentiment="positive">
+                <div class="news-header" onclick="toggleNews(this)">
+                    <div class="news-main">
+                        <div class="news-title-row">
+                            <span class="level-badge level-4">重要</span>
+                            <h3 class="news-title">国务院发布新一轮稳增长政策措施，重点支持科技创新和绿色转型</h3>
+                        </div>
+                        <div class="news-meta">
+                            <span class="news-meta-item">📰 新华社</span>
+                            <span class="news-meta-item">🕐 2024-01-15 11:20</span>
+                            <span class="news-meta-item">🇨🇳 国内影响</span>
+                            <span class="news-meta-item">💹 宏观政策</span>
+                        </div>
+                    </div>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="news-details">
+                    <div class="news-details-inner">
+                        <div class="impact-section">
+                            <h4 class="impact-title">📈 影响评价</h4>
+                            <div class="impact-grid">
+                                <div class="impact-item">
+                                    <span class="impact-label">影响方向</span>
+                                    <span class="impact-value positive">利好</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">影响程度</span>
+                                    <span class="impact-value positive">中度影响</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">持续时间</span>
+                                    <span class="impact-value neutral">长期（6-12个月）</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">操作建议</span>
+                                    <span class="impact-value positive">关注科技、新能源板块机会</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tags-row">
+                            <span class="tag">#稳增长</span>
+                            <span class="tag">#科技创新</span>
+                            <span class="tag">#绿色经济</span>
+                            <span class="tag">#产业升级</span>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <!-- News Item 3 - Level 3 (Attention) -->
+            <article class="news-card level-3" data-level="3" data-scope="regional" data-sentiment="neutral">
+                <div class="news-header" onclick="toggleNews(this)">
+                    <div class="news-main">
+                        <div class="news-title-row">
+                            <span class="level-badge level-3">关注</span>
+                            <h3 class="news-title">新能源汽车行业Q4销量超预期，头部企业市场份额持续提升</h3>
+                        </div>
+                        <div class="news-meta">
+                            <span class="news-meta-item">📰 中国证券报</span>
+                            <span class="news-meta-item">🕐 2024-01-15 09:45</span>
+                            <span class="news-meta-item">📍 行业影响</span>
+                            <span class="news-meta-item">🏭 行业动态</span>
+                        </div>
+                    </div>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="news-details">
+                    <div class="news-details-inner">
+                        <div class="impact-section">
+                            <h4 class="impact-title">📈 影响评价</h4>
+                            <div class="impact-grid">
+                                <div class="impact-item">
+                                    <span class="impact-label">影响方向</span>
+                                    <span class="impact-value positive">偏利好</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">影响程度</span>
+                                    <span class="impact-value neutral">中度影响</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">持续时间</span>
+                                    <span class="impact-value neutral">短期至中期（1-3个月）</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">操作建议</span>
+                                    <span class="impact-value positive">关注产业链龙头标的</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tags-row">
+                            <span class="tag">#新能源车</span>
+                            <span class="tag">#销量数据</span>
+                            <span class="tag">#行业集中度</span>
+                            <span class="tag">#消费复苏</span>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <!-- News Item 4 - Level 5 (Emergency) -->
+            <article class="news-card level-5" data-level="5" data-scope="global" data-sentiment="negative">
+                <div class="news-header" onclick="toggleNews(this)">
+                    <div class="news-main">
+                        <div class="news-title-row">
+                            <span class="level-badge level-5">紧急</span>
+                            <h3 class="news-title">中东地缘政治局势骤然紧张，原油价格单日暴涨8%</h3>
+                        </div>
+                        <div class="news-meta">
+                            <span class="news-meta-item">📰 彭博社</span>
+                            <span class="news-meta-item">🕐 2024-01-14 22:15</span>
+                            <span class="news-meta-item">🌍 全球影响</span>
+                            <span class="news-meta-item">⚡ 突发事件</span>
+                        </div>
+                    </div>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="news-details">
+                    <div class="news-details-inner">
+                        <div class="impact-section">
+                            <h4 class="impact-title">📈 影响评价</h4>
+                            <div class="impact-grid">
+                                <div class="impact-item">
+                                    <span class="impact-label">影响方向</span>
+                                    <span class="impact-value negative">显著利空</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">影响程度</span>
+                                    <span class="impact-value negative">高度影响</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">持续时间</span>
+                                    <span class="impact-value neutral">不确定（视局势发展）</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">操作建议</span>
+                                    <span class="impact-value negative">控制风险敞口，关注能源板块对冲</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tags-row">
+                            <span class="tag">#地缘政治</span>
+                            <span class="tag">#原油价格</span>
+                            <span class="tag">#通胀压力</span>
+                            <span class="tag">#供应链风险</span>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <!-- News Item 5 - Level 4 (Important) -->
+            <article class="news-card level-4" data-level="4" data-scope="domestic" data-sentiment="positive">
+                <div class="news-header" onclick="toggleNews(this)">
+                    <div class="news-main">
+                        <div class="news-title-row">
+                            <span class="level-badge level-4">重要</span>
+                            <h3 class="news-title">北向资金连续5日净流入，累计净买入超200亿元</h3>
+                        </div>
+                        <div class="news-meta">
+                            <span class="news-meta-item">📰 上海证券报</span>
+                            <span class="news-meta-item">🕐 2024-01-14 15:30</span>
+                            <span class="news-meta-item">🇨🇳 国内影响</span>
+                            <span class="news-meta-item">💰 资金流向</span>
+                        </div>
+                    </div>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="news-details">
+                    <div class="news-details-inner">
+                        <div class="impact-section">
+                            <h4 class="impact-title">📈 影响评价</h4>
+                            <div class="impact-grid">
+                                <div class="impact-item">
+                                    <span class="impact-label">影响方向</span>
+                                    <span class="impact-value positive">利好</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">影响程度</span>
+                                    <span class="impact-value positive">中度影响</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">持续时间</span>
+                                    <span class="impact-value neutral">短期（1-2周）</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">操作建议</span>
+                                    <span class="impact-value positive">跟随外资配置方向，关注蓝筹股</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tags-row">
+                            <span class="tag">#北向资金</span>
+                            <span class="tag">#外资流入</span>
+                            <span class="tag">#A股市场</span>
+                            <span class="tag">#流动性</span>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <!-- News Item 6 - Level 2 (Normal) -->
+            <article class="news-card level-2" data-level="2" data-scope="regional" data-sentiment="neutral">
+                <div class="news-header" onclick="toggleNews(this)">
+                    <div class="news-main">
+                        <div class="news-title-row">
+                            <span class="level-badge level-2">一般</span>
+                            <h3 class="news-title">多家上市公司发布业绩预告，整体盈利情况符合预期</h3>
+                        </div>
+                        <div class="news-meta">
+                            <span class="news-meta-item">📰 证券时报</span>
+                            <span class="news-meta-item">🕐 2024-01-14 10:00</span>
+                            <span class="news-meta-item">📍 行业影响</span>
+                            <span class="news-meta-item">🏭 行业动态</span>
+                        </div>
+                    </div>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="news-details">
+                    <div class="news-details-inner">
+                        <div class="impact-section">
+                            <h4 class="impact-title">📈 影响评价</h4>
+                            <div class="impact-grid">
+                                <div class="impact-item">
+                                    <span class="impact-label">影响方向</span>
+                                    <span class="impact-value neutral">中性</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">影响程度</span>
+                                    <span class="impact-value neutral">轻度影响</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">持续时间</span>
+                                    <span class="impact-value neutral">短期（数日）</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">操作建议</span>
+                                    <span class="impact-value neutral">维持现有策略，关注个股分化</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tags-row">
+                            <span class="tag">#业绩预告</span>
+                            <span class="tag>#财报季</span>
+                            <span class="tag">#盈利预期</span>
+                            <span class="tag">#基本面分析</span>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <!-- News Item 7 - Level 3 (Attention) -->
+            <article class="news-card level-3" data-level="3" data-scope="international" data-sentiment="negative">
+                <div class="news-header" onclick="toggleNews(this)">
+                    <div class="news-main">
+                        <div class="news-title-row">
+                            <span class="level-badge level-3">关注</span>
+                            <h3 class="news-title">欧洲央行释放鹰派信号，暗示可能提前结束负利率政策</h3>
+                        </div>
+                        <div class="news-meta">
+                            <span class="news-meta-item">📰 金融时报</span>
+                            <span class="news-meta-item">🕐 2024-01-13 18:45</span>
+                            <span class="news-meta-item">🌍 国际影响</span>
+                            <span class="news-meta-item">🌍 国际形势</span>
+                        </div>
+                    </div>
+                    <span class="expand-icon">▼</span>
+                </div>
+                <div class="news-details">
+                    <div class="news-details-inner">
+                        <div class="impact-section">
+                            <h4 class="impact-title">📈 影响评价</h4>
+                            <div class="impact-grid">
+                                <div class="impact-item">
+                                    <span class="impact-label">影响方向</span>
+                                    <span class="impact-value negative">偏利空</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">影响程度</span>
+                                    <span class="impact-value neutral">中度影响</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">持续时间</span>
+                                    <span class="impact-value neutral">中期（3-6个月）</span>
+                                </div>
+                                <div class="impact-item">
+                                    <span class="impact-label">操作建议</span>
+                                    <span class="impact-value neutral">关注汇率波动及出口型企业影响</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tags-row">
+                            <span class="tag">#欧洲央行</span>
+                            <span class="tag">#货币政策</span>
+                            <span class="tag">#欧元汇率</span>
+                            <span class="tag">#全球流动性</span>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </main>
+    </div>
+
+    <script>
+        // Toggle news card expansion
+        function toggleNews(header) {
+            const card = header.closest('.news-card');
+            card.classList.toggle('expanded');
+        }
+
+        // Toggle filter panel
+        function toggleFilter() {
+            const panel = document.getElementById('filterPanel');
+            panel.classList.toggle('collapsed');
+        }
+
+        // Filter chip selection
+        document.querySelectorAll('.filter-chip').forEach(chip => {
+            chip.addEventListener('click', function() {
+                const filterType = this.dataset.filter;
+                const siblings = document.querySelectorAll(`.filter-chip[data-filter="${filterType}"]`);
+                
+                if (this.dataset.value === 'all') {
+                    siblings.forEach(s => s.classList.remove('active'));
+                    this.classList.add('active');
+                } else {
+                    // Remove 'all' selection when selecting specific option
+                    const allChip = document.querySelector(`.filter-chip[data-filter="${filterType}"][data-value="all"]`);
+                    if (allChip) allChip.classList.remove('active');
+                    
+                    // Toggle current chip (allow multi-select for some filters)
+                    this.classList.toggle('active');
+                    
+                    // If no chips selected, re-select 'all'
+                    const activeChips = document.querySelectorAll(`.filter-chip[data-filter="${filterType}"].active`);
+                    if (activeChips.length === 0 && allChip) {
+                        allChip.classList.add('active');
+                    }
+                }
+            });
+        });
+
+        // Refresh data simulation
+        function refreshData() {
+            const cards = document.querySelectorAll('.news-card');
+            cards.forEach(card => {
+                card.style.opacity = '0.5';
+                setTimeout(() => {
+                    card.style.opacity = '1';
+                }, 300);
+            });
+            
+            // Show feedback
+            showToast('数据已刷新');
+        }
+
+        // Collect data simulation
+        function collectData() {
+            showToast('正在采集最新数据...');
+            
+            setTimeout(() => {
+                showToast('数据采集完成，新增 3 条消息');
+            }, 1500);
+        }
+
+        // Filter by dimension
+        function filterByDimension(dimension) {
+            const dimensionNames = {
+                macro: '宏观政策',
+                industry: '行业动态',
+                international: '国际形势',
+                capital: '资金流向',
+                emergency: '突发事件'
+            };
+            showToast(`筛选：${dimensionNames[dimension]}`);
+        }
+
+        // Simple toast notification
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.textContent = message;
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: var(--color-primary);
+                color: white;
+                padding: 12px 24px;
+                border-radius: var(--radius-sm);
+                font-size: 14px;
+                font-weight: 500;
+                box-shadow: var(--shadow-lg);
+                z-index: 1000;
+                animation: slideUp 0.3s ease-out;
+            `;
+            
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'slideDown 0.3s ease-in forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 2500);
+        }
+
+        // Add toast animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideUp {
+                from {
+                    opacity: 0;
+                    transform: translateX(-50%) translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(-50%) translateY(0);
+                }
+            }
+            @keyframes slideDown {
+                from {
+                    opacity: 1;
+                    transform: translateX(-50%) translateY(0);
+                }
+                to {
+                    opacity: 0;
+                    transform: translateX(-50%) translateY(20px);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Sort functionality
+        document.getElementById('sortSelect').addEventListener('change', function() {
+            const sortValue = this.value;
+            const newsList = document.getElementById('newsList');
+            const cards = Array.from(newsList.children);
+            
+            cards.sort((a, b) => {
+                switch(sortValue) {
+                    case 'time-desc':
+                        return 0; // Keep original order (already time-desc)
+                    case 'time-asc':
+                        return 1; // Reverse order
+                    case 'level-desc':
+                        return b.dataset.level - a.dataset.level;
+                    case 'level-asc':
+                        return a.dataset.level - b.dataset.level;
+                    default:
+                        return 0;
+                }
+            });
+            
+            // Re-append in new order with animation
+            cards.forEach((card, index) => {
+                card.style.animationDelay = `${index * 0.05}s`;
+                newsList.appendChild(card);
+            });
+            
+            showToast(`排序方式已更新：${this.options[this.selectedIndex].text}`);
+        });
+
+        // Initialize first card as expanded for demo
+        document.querySelector('.news-card').classList.add('expanded');
+    </script>
+</body>
+</html>

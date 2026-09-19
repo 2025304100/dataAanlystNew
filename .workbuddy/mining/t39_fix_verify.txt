@@ -1,0 +1,188 @@
+﻿node.exe : [33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you
+ rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consi
+der using "deps.optimizer.web.include"[39m
+所在位置 行:1 字符: 1
++ & "C:\Users\demo\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[7m[33m ...b.include"[39m 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+ [31m鉂?[39m src/components/factors/__tests__/FactorBidirectionalLinks.test.tsx [2m([22m[2m0 test[22m[2m)[22m
+ [31m鉂?[39m src/components/factors/__tests__/FactorModelPage.collections.test.tsx [2m([22m[2m0 test[22m[2m)[22m
+ [31m鉂?[39m src/components/factors/__tests__/FactorModelPage.t13-supplement.test.tsx [2m([22m[2m0 test[22m[2m)[22m
+ [31m鉂?[39m src/components/__tests__/FactorModelPage.test.tsx [2m([22m[2m0 test[22m[2m)[22m
+ [31m鉂?[39m src/components/__tests__/FactorModelSettings.test.tsx [2m([22m[2m0 test[22m[2m)[22m
+
+[31m鈳幆鈳幆鈳幆[1m[7m Failed Suites 5 [27m[22m鈳幆鈳幆鈳幆鈳?[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/__tests__/FactorModelPage.tes
+t.tsx[2m [ src/components/__tests__/FactorModelPage.test.tsx ][22m
+[31m[1mError[22m: Transform failed with 1 error:
+D:/ai_project/dataAanlystNew/frontend/src/components/__tests__/FactorModelPage.
+test.tsx:25:4: ERROR: Expected "}" but found "activateFactorModel"[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/ai_project/dataAanlystNew/frontend/src/components/__tests__/Fac
+torModelPage.test.tsx[39m:25:4
+[33m  
+  [33mExpected "}" but found "activateFactorModel"[33m
+  23 |      getFactorModel: vi.fn(),
+  24 |      scoringGetOverviewAsFactor: vi.fn(async () => ({ feature_enabled: t
+rue, config: {}, runtime: {}, health: {}, latest_trade_date: null, factor_cover
+age: [] }))
+  25 |      activateFactorModel: vi.fn(),
+     |      ^
+  26 |      fallbackFactorModel: vi.fn(),
+  27 |      listFactorSets: vi.fn(),
+  [39m
+[90m [2m鉂?[22m failureErrorWithLog node_modules/esbuild/lib/main.js:[2m1472:
+15[22m[39m
+[90m [2m鉂?[22m node_modules/esbuild/lib/main.js:[2m755:50[22m[39m
+[90m [2m鉂?[22m responseCallbacks.<computed> node_modules/esbuild/lib/main.js:
+[2m622:9[22m[39m
+[90m [2m鉂?[22m handleIncomingPacket node_modules/esbuild/lib/main.js:[2m677:
+12[22m[39m
+[90m [2m鉂?[22m Socket.readFromStdout node_modules/esbuild/lib/main.js:[2m600
+:7[22m[39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[1/5]鈳?[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/__tests__/FactorModelSettings
+.test.tsx[2m [ src/components/__tests__/FactorModelSettings.test.tsx ][22m
+[31m[1mError[22m: Transform failed with 1 error:
+D:/ai_project/dataAanlystNew/frontend/src/components/__tests__/FactorModelSetti
+ngs.test.tsx:118:4: ERROR: Expected "}" but found "activateFactorModel"[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/ai_project/dataAanlystNew/frontend/src/components/__tests__/Fac
+torModelSettings.test.tsx[39m:118:4
+[33m  
+  [33mExpected "}" but found "activateFactorModel"[33m
+  116|      initializeFactorWarehouse: vi.fn(async () => ({})),
+  117|      scoringGetOverviewAsFactor: vi.fn(async () => ({ feature_enabled: t
+rue, config: {}, runtime: {}, health: {}, latest_trade_date: null, factor_cover
+age: [] }))
+  118|      activateFactorModel: vi.fn(async () => ({})),
+     |      ^
+  119|      fallbackFactorModel: vi.fn(async () => ({})),
+  120|    },
+  [39m
+[90m [2m鉂?[22m failureErrorWithLog node_modules/esbuild/lib/main.js:[2m1472:
+15[22m[39m
+[90m [2m鉂?[22m node_modules/esbuild/lib/main.js:[2m755:50[22m[39m
+[90m [2m鉂?[22m responseCallbacks.<computed> node_modules/esbuild/lib/main.js:
+[2m622:9[22m[39m
+[90m [2m鉂?[22m handleIncomingPacket node_modules/esbuild/lib/main.js:[2m677:
+12[22m[39m
+[90m [2m鉂?[22m Socket.readFromStdout node_modules/esbuild/lib/main.js:[2m600
+:7[22m[39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[2/5]鈳?[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/factors/__tests__/FactorBidir
+ectionalLinks.test.tsx[2m [ src/components/factors/__tests__/FactorBidirection
+alLinks.test.tsx ][22m
+[31m[1mError[22m: Transform failed with 1 error:
+D:/ai_project/dataAanlystNew/frontend/src/components/factors/__tests__/FactorBi
+directionalLinks.test.tsx:47:4: ERROR: Expected "}" but found "activateFactorMo
+del"[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/ai_project/dataAanlystNew/frontend/src/components/factors/__tes
+ts__/FactorBidirectionalLinks.test.tsx[39m:47:4
+[33m  
+  [33mExpected "}" but found "activateFactorModel"[33m
+  45 |      getFactorModel: vi.fn(),
+  46 |      scoringGetOverviewAsFactor: vi.fn(async () => ({ feature_enabled: t
+rue, config: {}, runtime: {}, health: {}, latest_trade_date: null, factor_cover
+age: [] }))
+  47 |      activateFactorModel: vi.fn(),
+     |      ^
+  48 |      fallbackFactorModel: vi.fn(),
+  49 |      listFactorSets: vi.fn(),
+  [39m
+[90m [2m鉂?[22m failureErrorWithLog node_modules/esbuild/lib/main.js:[2m1472:
+15[22m[39m
+[90m [2m鉂?[22m node_modules/esbuild/lib/main.js:[2m755:50[22m[39m
+[90m [2m鉂?[22m responseCallbacks.<computed> node_modules/esbuild/lib/main.js:
+[2m622:9[22m[39m
+[90m [2m鉂?[22m handleIncomingPacket node_modules/esbuild/lib/main.js:[2m677:
+12[22m[39m
+[90m [2m鉂?[22m Socket.readFromStdout node_modules/esbuild/lib/main.js:[2m600
+:7[22m[39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[3/5]鈳?[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/factors/__tests__/FactorModel
+Page.collections.test.tsx[2m [ src/components/factors/__tests__/FactorModelPag
+e.collections.test.tsx ][22m
+[31m[1mError[22m: Transform failed with 1 error:
+D:/ai_project/dataAanlystNew/frontend/src/components/factors/__tests__/FactorMo
+delPage.collections.test.tsx:41:4: ERROR: Expected "}" but found "activateFacto
+rModel"[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/ai_project/dataAanlystNew/frontend/src/components/factors/__tes
+ts__/FactorModelPage.collections.test.tsx[39m:41:4
+[33m  
+  [33mExpected "}" but found "activateFactorModel"[33m
+  39 |      getFactorModel: vi.fn(),
+  40 |      scoringGetOverviewAsFactor: vi.fn(async () => ({ feature_enabled: t
+rue, config: {}, runtime: {}, health: {}, latest_trade_date: null, factor_cover
+age: [] }))
+  41 |      activateFactorModel: vi.fn(),
+     |      ^
+  42 |      fallbackFactorModel: vi.fn(),
+  43 |      listFactorSets: vi.fn(),
+  [39m
+[90m [2m鉂?[22m failureErrorWithLog node_modules/esbuild/lib/main.js:[2m1472:
+15[22m[39m
+[90m [2m鉂?[22m node_modules/esbuild/lib/main.js:[2m755:50[22m[39m
+[90m [2m鉂?[22m responseCallbacks.<computed> node_modules/esbuild/lib/main.js:
+[2m622:9[22m[39m
+[90m [2m鉂?[22m handleIncomingPacket node_modules/esbuild/lib/main.js:[2m677:
+12[22m[39m
+[90m [2m鉂?[22m Socket.readFromStdout node_modules/esbuild/lib/main.js:[2m600
+:7[22m[39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[4/5]鈳?[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/factors/__tests__/FactorModel
+Page.t13-supplement.test.tsx[2m [ src/components/factors/__tests__/FactorModel
+Page.t13-supplement.test.tsx ][22m
+[31m[1mError[22m: Transform failed with 1 error:
+D:/ai_project/dataAanlystNew/frontend/src/components/factors/__tests__/FactorMo
+delPage.t13-supplement.test.tsx:34:4: ERROR: Expected "}" but found "activateFa
+ctorModel"[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/ai_project/dataAanlystNew/frontend/src/components/factors/__tes
+ts__/FactorModelPage.t13-supplement.test.tsx[39m:34:4
+[33m  
+  [33mExpected "}" but found "activateFactorModel"[33m
+  32 |      getFactorModel: vi.fn(),
+  33 |      scoringGetOverviewAsFactor: vi.fn(async () => ({ feature_enabled: t
+rue, config: {}, runtime: {}, health: {}, latest_trade_date: null, factor_cover
+age: [] }))
+  34 |      activateFactorModel: vi.fn(),
+     |      ^
+  35 |      fallbackFactorModel: vi.fn(),
+  36 |      listFactorSets: vi.fn(),
+  [39m
+[90m [2m鉂?[22m failureErrorWithLog node_modules/esbuild/lib/main.js:[2m1472:
+15[22m[39m
+[90m [2m鉂?[22m node_modules/esbuild/lib/main.js:[2m755:50[22m[39m
+[90m [2m鉂?[22m responseCallbacks.<computed> node_modules/esbuild/lib/main.js:
+[2m622:9[22m[39m
+[90m [2m鉂?[22m handleIncomingPacket node_modules/esbuild/lib/main.js:[2m677:
+12[22m[39m
+[90m [2m鉂?[22m Socket.readFromStdout node_modules/esbuild/lib/main.js:[2m600
+:7[22m[39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[5/5]鈳?[22m[39m
+
+[2m Test Files [22m [1m[31m5 failed[39m[22m[90m (5)[39m
+[2m      Tests [22m [2mno tests[22m
+[2m   Start at [22m 00:23:51
+[2m   Duration [22m 7.23s[2m (transform 37ms, setup 2.13s, collect 0ms, tests 0ms, environment 17.66s, prepare 2.69s)[22m
+
+EXIT=1

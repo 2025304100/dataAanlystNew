@@ -1,0 +1,38 @@
+========================================================================
+1. symbols.symbol 是否唯一（映射可行性前提）
+========================================================================
+  symbols:
+    index ix_symbols_symbol cols=['symbol'] unique=True
+    unique ix_symbols_symbol cols=['symbol']
+  universe_symbols:
+    index ix_universe_symbols_symbol cols=['symbol'] unique=True
+    unique ix_universe_symbols_symbol cols=['symbol']
+  symbols: rows=7639 distinct_symbol=7639 唯一=True
+  universe_symbols: rows=7272 distinct_symbol=7272 唯一=True
+
+========================================================================
+2. ID 映射覆盖率（universe A股 stock → symbols.id）
+========================================================================
+  universe A股 = 5554 | 能映到 symbols = 5554 (100.00%) | 未映射 = 0
+  symbols 中 asset_type=stock 但不在 universe_symbols = 8
+
+========================================================================
+3. 两边 asset_type / market 是否一致（同一 code 语义是否相同）
+========================================================================
+  asset_type/market/board 不一致的映射行数（前 15）: 15
+    ('300029', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('920305', 'stock', 'stock', 'bj', 'sh', 'bj', 'main')
+    ('301139', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('688432', 'stock', 'stock', 'sh', 'sh', 'star', 'main')
+    ('301266', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('300001', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('300002', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('300004', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('300003', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('300005', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('300007', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('300006', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('300008', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('300009', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+    ('300010', 'stock', 'stock', 'sz', 'sz', 'gem', 'main')
+  合计不一致 = 2333

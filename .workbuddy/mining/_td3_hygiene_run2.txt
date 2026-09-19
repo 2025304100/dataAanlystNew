@@ -1,0 +1,122 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: d:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 12 items
+
+tests\services\factors\mining\test_metrics_json_hygiene.py ...F.FF..F..  [100%]
+
+================================== FAILURES ===================================
+_______________ TestCleanJsonTree.test_numpy_scalars_normalized _______________
+tests\services\factors\mining\test_metrics_json_hygiene.py:106: in test_numpy_scalars_normalized
+    assert isinstance(out["b"], float) and isinstance(out["c"], int)
+E   assert (True and False)
+E    +  where True = isinstance(1.5, float)
+E    +  and   False = isinstance(7.0, int)
+______ TestWriterEndpoints.test_finalize_evaluation_run_no_nan_literals _______
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+The above exception was the direct cause of the following exception:
+tests\services\factors\mining\test_metrics_json_hygiene.py:134: in test_finalize_evaluation_run_no_nan_literals
+    db_session.flush()
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:1233: in _emit_insert_statements
+    result = connection.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+E   [SQL: INSERT INTO factor_evaluation_runs (id, factor_version_id, universe_snapshot_id, data_cutoff_at, target_code, train_start_date, train_end_date, validation_start_date, validation_end_date, config_json, metrics_json, gate_result, rejection_reasons_json, artifact_path, task_id, created_by, selected_trade_date, observed_symbols, expected_symbols, completeness_ratio, fallback_reason, filter_config_json, config_hash, production_fidelity, non_fidelity_reason, raw_count, filtered_count, effective_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+E   [parameters: ('eval_td3_nan_1', 'fv_td3', 'usnap_td3', None, 'close_5d_ret', None, None, None, None, '{}', '{}', None, None, None, None, 'local_user', None, None, None, None, None, None, None, 1, None, None, None, None, '2026-09-18 06:08:50.940942')]
+E   (Background on this error at: https://sqlalche.me/e/20/gkpj)
+_____ TestWriterEndpoints.test_record_shadow_observation_no_nan_literals ______
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+The above exception was the direct cause of the following exception:
+tests\services\factors\mining\test_metrics_json_hygiene.py:170: in test_record_shadow_observation_no_nan_literals
+    result = record_shadow_observation(db_session, inp=inp)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\factors\factor_shadow.py:157: in record_shadow_observation
+    db.flush()
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4331: in flush
+    self._flush(objects)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4466: in _flush
+    with util.safe_reraise():
+.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:4427: in _flush
+    flush_context.execute()
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:466: in execute
+    rec.execute(self)
+.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:642: in execute
+    util.preloaded.orm_persistence.save_obj(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:93: in save_obj
+    _emit_insert_statements(
+.venv\Lib\site-packages\sqlalchemy\orm\persistence.py:1233: in _emit_insert_statements
+    result = connection.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed
+E   [SQL: INSERT INTO factor_shadow_observations (factor_id, factor_version_id, trade_date, observed_symbols, expected_symbols, completeness_ratio, is_valid_day, invalid_reason, ic_value, coverage, turnover, metrics_json, health_status, health_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+E   [parameters: (1, 1, '2026-09-10', 10, 10, 1.0, 1, None, nan, 1.0, 0.3, '{"ic": null, "by_horizon": {"h5": null}}', 'healthy', None, '2026-09-18 06:08:54.258553')]
+E   (Background on this error at: https://sqlalche.me/e/20/gkpj)
+_ TestWriterSourceGuard.test_writer_uses_clean_json_tree_and_allow_nan_false[app/services/factors/factor_shadow.py] _
+tests\services\factors\mining\test_metrics_json_hygiene.py:199: in test_writer_uses_clean_json_tree_and_allow_nan_false
+    assert "metrics_json=json.dumps(clean_json_tree(" in src or (
+E   AssertionError: app/services/factors/factor_shadow.py 的 metrics_json 序列化形态与 TD3 统一模式不一致，请人工核对（新增写入点请照抄既有模式）
+E   assert ('metrics_json=json.dumps(clean_json_tree(' in '"""WP6-03/04/05: Shadow 观测、健康告警与人工审批。\n\n对齐 docs/专业因子库开发计划.md §WP6-03/04/05 和 docs/因子设置与专业因子库改造方案.md §9。\n\n核心能力：\n- ...nResult",\n    "request_activation",\n    "approve_activation",\n    "reject_activation",\n    "auto_quarantine",\n]\n' or 'metrics_json = json.dumps(\n        clean_json_tree(' in '"""WP6-03/04/05: Shadow 观测、健康告警与人工审批。\n\n对齐 docs/专业因子库开发计划.md §WP6-03/04/05 和 docs/因子设置与专业因子库改造方案.md §9。\n\n核心能力：\n- ...nResult",\n    "request_activation",\n    "approve_activation",\n    "reject_activation",\n    "auto_quarantine",\n]\n' or 'json.dumps(\n                clean_json_tree(' in '"""WP6-03/04/05: Shadow 观测、健康告警与人工审批。\n\n对齐 docs/专业因子库开发计划.md §WP6-03/04/05 和 docs/因子设置与专业因子库改造方案.md §9。\n\n核心能力：\n- ...nResult",\n    "request_activation",\n    "approve_activation",\n    "reject_activation",\n    "auto_quarantine",\n]\n')
+=========================== short test summary info ===========================
+FAILED tests/services/factors/mining/test_metrics_json_hygiene.py::TestCleanJsonTree::test_numpy_scalars_normalized
+FAILED tests/services/factors/mining/test_metrics_json_hygiene.py::TestWriterEndpoints::test_finalize_evaluation_run_no_nan_literals
+FAILED tests/services/factors/mining/test_metrics_json_hygiene.py::TestWriterEndpoints::test_record_shadow_observation_no_nan_literals
+FAILED tests/services/factors/mining/test_metrics_json_hygiene.py::TestWriterSourceGuard::test_writer_uses_clean_json_tree_and_allow_nan_false[app/services/factors/factor_shadow.py]
+========================= 4 failed, 8 passed in 8.75s =========================

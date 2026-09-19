@@ -1,0 +1,934 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: d:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 99 items
+
+tests\integration\test_factor_evaluation_blockers.py ..................  [ 18%]
+tests\integration\test_factor_evaluation_e2e.py 
+
+
+
+
+
+
+
+
+
+
+
+
+
+  0%|          | 0/18 [00:00<?, ?it/s][A[A[A[A[A[A[A[A[A[A[A[A[A[AF                        [ 19%]
+tests\integration\test_factor_no_cross_regression.py .....               [ 24%]
+tests\integration\test_factor_regression_infra.py ...                    [ 27%]
+tests\test_factor_center_missing_cases_t13.py ...............            [ 42%]
+tests\test_factor_migration_task10.py ..                                 [ 44%]
+tests\test_stage3_factor_binding_contract.py ...........FFFFFF..         [ 63%]
+tests\factors\test_preflight_api.py ....                                 [ 67%]
+tests\factors\test_idempotency_and_column.py .........                   [ 76%]
+tests\factors\test_executor_panel.py ..........                          [ 86%]
+tests\factors\test_wp5_execution_plan_diagnosis.py ...                   [ 89%]
+tests\factors\test_eval_real_targets.py ..........                       [100%]
+
+================================== FAILURES ===================================
+____________________________ test_A_full_pipeline _____________________________
+tests\integration\test_factor_evaluation_e2e.py:193: in test_A_full_pipeline
+    assert resp1.status_code in {200, 201}, f"preflight status={resp1.status_code}, body={resp1.text}"
+E   AssertionError: preflight status=500, body={"detail":"Internal server error","error":"服务端未知异常（请联系管理员）","correlation_id":"6f424c19","errors_json":[{"code":"eval.server.internal_error","severity":"error","category":"config","title_zh":"服务端未知异常（请联系管理员）","detail_zh":"IOException：服务端执行评估请求时出现非预期错误，请提供 correlation_id=6f424c19 给管理员定位问题。","correlation_id":"6f424c19","endpoint":"preflight","exception_type":"IOException","evidence":{"correlation_id":"6f424c19"},"retryable":true}]}
+E   assert 500 in {200, 201}
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+------------------------------ Captured log call ------------------------------
+ERROR    app.api.routes.factor_evaluation:factor_evaluation.py:162 [6f424c19] preflight_eval unexpected error
+Traceback (most recent call last):
+  File "D:\ai_project\dataAanlystNew\app\api\routes\factor_evaluation.py", line 149, in preflight_eval
+    result = preflight_factor_evaluation(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\factors\wp5_eval_task.py", line 744, in preflight_factor_evaluation
+    warehouse = FactorWarehouse()
+                ^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\factors\store.py", line 597, in __init__
+    self._pool_ref = _get_or_create_shared_connections(self.path)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ai_project\dataAanlystNew\app\services\factors\store.py", line 544, in _get_or_create_shared_connections
+    rw = ddb.connect(str(path), read_only=False)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_duckdb.IOException: IO Error: Cannot open file "D:\ai_project\dataAanlystNew\tmp\factor_warehouse.duckdb": 另一个程序正在使用此文件，进程无法访问。
+
+File is already open in 
+C:\Python312\python.exe (PID 45692)
+-------------------------- Captured stderr teardown ---------------------------
+
+
+
+
+
+ 22%|██▏       | 4/18 [00:18<01:11,  5.12s/it][A[A[A[A[A
+
+ 28%|██▊       | 5/18 [00:20<00:58,  4.47s/it][A[A
+
+
+
+
+
+
+
+
+
+
+  6%|▌         | 1/18 [00:06<01:44,  6.14s/it][A[A[A[A[A[A[A[A[A[A[A
+
+
+
+ 22%|██▏       | 4/18 [00:18<01:12,  5.16s/it][A[A[A[A
+
+
+
+
+
+
+
+
+ 11%|█         | 2/18 [00:11<01:32,  5.79s/it][A[A[A[A[A[A[A[A[A
+ 28%|██▊       | 5/18 [00:23<01:07,  5.22s/it][A
+
+
+
+
+
+ 22%|██▏       | 4/18 [00:20<01:17,  5.54s/it][A[A[A[A[A[A
+
+
+
+
+
+
+
+ 17%|█▋        | 3/18 [00:16<01:27,  5.83s/it][A[A[A[A[A[A[A[A 28%|██▊       | 5/18 [00:23<01:09,  5.38s/it]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  0%|          | 0/18 [00:00<?, ?it/s][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+______ test_model_train_api_rejects_non_frozen_factor_set_in_every_mode _______
+tests\test_stage3_factor_binding_contract.py:572: in test_model_train_api_rejects_non_frozen_factor_set_in_every_mode
+    train_factor_model(
+app\api\routes\factor_models.py:241: in train_factor_model
+    actor = _actor_from_context(request, payload.actor)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\api\routes\factor_models.py:48: in _actor_from_context
+    hdr = request.headers.get("X-Actor")
+          ^^^^^^^^^^^^^^^
+E   AttributeError: 'Session' object has no attribute 'headers'
+---------------------------- Captured stderr setup ----------------------------
+  0%|          | 0/59 [00:00<?, ?it/s]
+
+
+
+
+
+
+
+100%|██████████| 18/18 [02:01<00:00,  6.79s/it][A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+                                               [A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+ 83%|████████▎ | 15/18 [01:51<00:20,  6.99s/it][A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+ 94%|█████████▍| 17/18 [01:59<00:06,  6.80s/it][A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+ 83%|████████▎ | 15/18 [01:55<00:20,  6.83s/it][A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 83%|████████▎ | 15/18 [01:46<00:19,  6.57s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+_ test_async_training_task_rejects_unready_factor_set_before_queueing[None-None-FACTOR_SET_REQUIRED] _
+tests\test_stage3_factor_binding_contract.py:626: in test_async_training_task_rejects_unready_factor_set_before_queueing
+    assert error.value.status_code == 422
+E   AssertionError: assert 409 == 422
+E    +  where 409 = HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。').status_code
+E    +    where HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。') = <ExceptionInfo HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。') tblen=2>.value
+---------------------------- Captured stderr setup ----------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 83%|████████▎ | 15/18 [01:48<00:20,  6.85s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+ 94%|█████████▍| 17/18 [01:59<00:06,  6.77s/it][A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+ 89%|████████▉ | 16/18 [01:54<00:13,  6.68s/it][A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 72%|███████▏  | 13/18 [01:36<00:34,  6.89s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+  0%|          | 0/59 [00:00<?, ?it/s][A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 78%|███████▊  | 14/18 [01:44<00:27,  6.91s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+  0%|          | 0/59 [00:00<?, ?it/s][A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 89%|████████▉ | 16/18 [01:52<00:12,  6.43s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+  0%|          | 0/59 [00:00<?, ?it/s][A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+ 89%|████████▉ | 16/18 [01:57<00:13,  6.69s/it][A[A[A[A[A[A[A[A[A[A[A[A[A
+_ test_async_training_task_rejects_unready_factor_set_before_queueing[-None-FACTOR_SET_REQUIRED] _
+tests\test_stage3_factor_binding_contract.py:626: in test_async_training_task_rejects_unready_factor_set_before_queueing
+    assert error.value.status_code == 422
+E   AssertionError: assert 409 == 422
+E    +  where 409 = HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。').status_code
+E    +    where HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。') = <ExceptionInfo HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。') tblen=2>.value
+---------------------------- Captured stderr setup ----------------------------
+
+
+
+
+
+  0%|          | 0/59 [00:00<?, ?it/s][A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+ 89%|████████▉ | 16/18 [02:01<00:13,  6.63s/it][A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+100%|██████████| 18/18 [02:06<00:00,  6.72s/it][A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+                                               [A[A[A[A[A[A[A[A[A  2%|▏         | 1/59 [00:07<07:40,  7.94s/it]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 89%|████████▉ | 16/18 [01:52<00:12,  6.19s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+  2%|▏         | 1/59 [00:03<03:14,  3.35s/it][A[A[A
+
+  2%|▏         | 1/59 [00:03<03:51,  3.99s/it][A[A
+
+
+
+  2%|▏         | 1/59 [00:03<03:07,  3.24s/it][A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 89%|████████▉ | 16/18 [01:54<00:13,  6.57s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+100%|██████████| 18/18 [02:05<00:00,  6.49s/it][A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+                                               [A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 78%|███████▊  | 14/18 [01:42<00:26,  6.59s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+ 94%|█████████▍| 17/18 [02:00<00:06,  6.46s/it][A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 83%|████████▎ | 15/18 [01:50<00:19,  6.60s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 94%|█████████▍| 17/18 [01:57<00:06,  6.08s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A
+_ test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-missing-None-FACTOR_SET_NOT_FOUND] _
+tests\test_stage3_factor_binding_contract.py:626: in test_async_training_task_rejects_unready_factor_set_before_queueing
+    assert error.value.status_code == 422
+E   assert 409 == 422
+E    +  where 409 = HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FOUND] 流水线请求的 factor_set_id='fs-stage3-pipeline-missing' 在数据库中不存在。请前往因子中心查看可用的已冻结集合。").status_code
+E    +    where HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FOUND] 流水线请求的 factor_set_id='fs-stage3-pipeline-missing' 在数据库中不存在。请前往因子中心查看可用的已冻结集合。") = <ExceptionInfo HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FOUND] 流水线请求的 factor_set_id='fs-stage3-pipeline-missing' 在数据库中不存在。请前往因子中心查看可用的已冻结集合。") tblen=2>.value
+---------------------------- Captured stderr setup ----------------------------
+
+
+
+
+
+  2%|▏         | 1/59 [00:04<04:01,  4.17s/it][A[A[A[A[A  3%|▎         | 2/59 [00:11<05:20,  5.62s/it]
+
+  3%|▎         | 2/59 [00:07<03:45,  3.95s/it][A[A
+
+
+  3%|▎         | 2/59 [00:07<03:42,  3.91s/it][A[A[A
+
+
+
+
+
+
+
+  0%|          | 0/59 [00:00<?, ?it/s][A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+ 94%|█████████▍| 17/18 [02:03<00:06,  6.45s/it][A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+  0%|          | 0/59 [00:00<?, ?it/s][A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+ 94%|█████████▍| 17/18 [02:07<00:06,  6.34s/it][A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 94%|█████████▍| 17/18 [01:57<00:05,  5.96s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+  0%|          | 0/59 [00:00<?, ?it/s][A[A[A[A[A[A[A[A[A[A
+
+
+
+  3%|▎         | 2/59 [00:09<04:41,  4.94s/it][A[A[A[A
+_ test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-draft-draft-FACTOR_SET_NOT_FROZEN] _
+tests\test_stage3_factor_binding_contract.py:626: in test_async_training_task_rejects_unready_factor_set_before_queueing
+    assert error.value.status_code == 422
+E   assert 409 == 422
+E    +  where 409 = HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FROZEN] FactorSet(id=fs-stage3-pipeline-draft) status='draft'，frozen_at 为空。训练模式必须使用已冻结集合。").status_code
+E    +    where HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FROZEN] FactorSet(id=fs-stage3-pipeline-draft) status='draft'，frozen_at 为空。训练模式必须使用已冻结集合。") = <ExceptionInfo HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FROZEN] FactorSet(id=fs-stage3-pipeline-draft) status='draft'，frozen_at 为空。训练模式必须使用已冻结集合。") tblen=2>.value
+---------------------------- Captured stderr setup ----------------------------
+
+
+
+
+
+  3%|▎         | 2/59 [00:07<03:38,  3.83s/it][A[A[A[A[A  5%|▌         | 3/59 [00:15<04:28,  4.80s/it]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 94%|█████████▍| 17/18 [02:00<00:06,  6.45s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+  5%|▌         | 3/59 [00:12<03:45,  4.02s/it][A[A
+
+
+
+
+
+
+
+
+
+
+
+100%|██████████| 18/18 [02:06<00:00,  6.40s/it][A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+                                               [A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+100%|██████████| 18/18 [02:03<00:00,  6.15s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                               [A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 89%|████████▉ | 16/18 [01:56<00:13,  6.51s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 83%|████████▎ | 15/18 [01:48<00:19,  6.53s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+  2%|▏         | 1/59 [00:03<03:48,  3.94s/it][A[A[A[A[A[A[A[A
+
+
+  5%|▌         | 3/59 [00:11<03:47,  4.07s/it][A[A[A
+
+
+
+
+
+
+
+
+  2%|▏         | 1/59 [00:04<03:58,  4.11s/it][A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+  2%|▏         | 1/59 [00:03<03:19,  3.43s/it][A[A[A[A[A[A[A[A[A[A
+
+
+
+  5%|▌         | 3/59 [00:12<03:53,  4.16s/it][A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+100%|██████████| 18/18 [02:08<00:00,  6.19s/it][A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+                                               [A[A[A[A[A[A[A[A[A[A[A[A[A
+_ test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-no-hash-no_hash-FACTOR_SET_NO_CONTENT_HASH] _
+tests\test_stage3_factor_binding_contract.py:626: in test_async_training_task_rejects_unready_factor_set_before_queueing
+    assert error.value.status_code == 422
+E   AssertionError: assert 409 == 422
+E    +  where 409 = HTTPException(status_code=409, detail='[PIPELINE_FACTOR_SET_NOT_READY] FactorSet(id=fs-stage3-pipeline-no-hash) 未通过 readiness 综合门禁（code=NO_CONTENT_HASH）：冻结 FactorSet 缺少 content_hash 签名，非法；请重新 freeze。请按提示修复后重试。').status_code
+E    +    where HTTPException(status_code=409, detail='[PIPELINE_FACTOR_SET_NOT_READY] FactorSet(id=fs-stage3-pipeline-no-hash) 未通过 readiness 综合门禁（code=NO_CONTENT_HASH）：冻结 FactorSet 缺少 content_hash 签名，非法；请重新 freeze。请按提示修复后重试。') = <ExceptionInfo HTTPException(status_code=409, detail='[PIPELINE_FACTOR_SET_NOT_READY] FactorSet(id=fs-stage3-pipeline-no-hash) 未通过 readiness 综合门禁（code=NO_CONTENT_HASH）：冻结 FactorSet 缺少 content_hash 签名，非法；请重新 freeze。请按提示修复后重试。') tblen=2>.value
+---------------------------- Captured stderr setup ----------------------------
+
+
+
+
+
+  5%|▌         | 3/59 [00:11<03:21,  3.60s/it][A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+100%|██████████| 18/18 [02:03<00:00,  5.91s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                               [A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+100%|██████████| 18/18 [02:13<00:00,  6.23s/it][A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+                                               [A[A[A[A[A[A[A[A[A[A[A  7%|▋         | 4/59 [00:19<03:59,  4.35s/it]
+
+
+
+
+
+
+
+  3%|▎         | 2/59 [00:07<03:29,  3.68s/it][A[A[A[A[A[A[A[A
+
+
+  7%|▋         | 4/59 [00:15<03:32,  3.86s/it][A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+100%|██████████| 18/18 [02:05<00:00,  6.00s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                               [A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 94%|█████████▍| 17/18 [02:01<00:06,  6.02s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 89%|████████▉ | 16/18 [01:53<00:12,  6.05s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A[A
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/integration/test_factor_evaluation_blockers.py: 30 warnings
+tests/integration/test_factor_evaluation_e2e.py: 2 warnings
+tests/integration/test_factor_regression_infra.py: 2 warnings
+  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    cursor.execute(statement, parameters)
+
+tests/integration/test_factor_evaluation_blockers.py::test_blocker_db_session_exception
+  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\openpyxl\styles\stylesheet.py:237: UserWarning: Workbook contains no default style, apply openpyxl's default
+    warn("Workbook contains no default style, apply openpyxl's default")
+
+tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
+  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:75: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
+  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:76: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow(),
+
+tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
+  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:89: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
+  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:90: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow(),
+
+tests/factors/test_wp5_execution_plan_diagnosis.py::TestFactorExecutorReadErrors::test_read_source_data_returns_structured_sql_errors
+  D:\ai_project\dataAanlystNew\app\services\factors\factor_executor.py:846: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`).Please use a specific unit instead.
+    range_start = trade_date - pd.Timedelta(days=history_days)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/integration/test_factor_evaluation_e2e.py::test_A_full_pipeline
+FAILED tests/test_stage3_factor_binding_contract.py::test_model_train_api_rejects_non_frozen_factor_set_in_every_mode
+FAILED tests/test_stage3_factor_binding_contract.py::test_async_training_task_rejects_unready_factor_set_before_queueing[None-None-FACTOR_SET_REQUIRED]
+FAILED tests/test_stage3_factor_binding_contract.py::test_async_training_task_rejects_unready_factor_set_before_queueing[-None-FACTOR_SET_REQUIRED]
+FAILED tests/test_stage3_factor_binding_contract.py::test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-missing-None-FACTOR_SET_NOT_FOUND]
+FAILED tests/test_stage3_factor_binding_contract.py::test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-draft-draft-FACTOR_SET_NOT_FROZEN]
+FAILED tests/test_stage3_factor_binding_contract.py::test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-no-hash-no_hash-FACTOR_SET_NO_CONTENT_HASH]
+============ 7 failed, 92 passed, 41 warnings in 185.37s (0:03:05) ============
+B2_EXIT=1

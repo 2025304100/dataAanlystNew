@@ -1,0 +1,58 @@
+==========================================================================
+1. build_analysis（纯引擎）
+==========================================================================
+  顶层 keys: ['as_of_date', 'avg_daily_symbols', 'data_quality', 'generated_at', 'industry_concentration', 'industry_distribution', 'lookback_days', 'market_cap_distribution', 'market_environment', 'overview', 'style_exposure', 'trade_days_actual', 'warnings']
+
+  --- overview ---
+    stock_count                60
+    below_min_pool_size        False
+    avg_market_cap             42853513498.98
+    avg_market_cap_yi          428.54
+    market_cap_band_zh         中盘
+    time_range                 待配置
+    data_completeness          1.0
+
+  --- 市值分布（固定金额档）---
+    大盘       count=  22 ratio=36.7%
+    中盘       count=  38 ratio=63.3%
+    小盘       count=   0 ratio=0.0%
+
+  --- 行业分布 ---
+    未知 / 未披露       60 (100%)  实测 `symbols.industry` 0 行非空，行业维度当前不可用。
+
+  --- 风格暴露（5 维，成长应 unavailable）---
+    成长   unavailable: 实测 `raw_financial_reports.net_profit_yoy` **0 行非空**（全 NULL），成长维度无数据。不填
+    价值   score=0.5393 coverage=1.0
+    质量   score=0.5083 coverage=1.0
+    动量   score=0.7457 coverage=1.0
+    波动   score=0.4942 coverage=1.0
+    dominant = momentum (0.7457)
+
+  --- 市场环境 ---
+    regime   = 震荡市 (cum=4.32%, maxDD=-0.30%)
+    volatility = 低 (annualized=0.013633)
+    trend    = 中 (cum=4.32%, up_ratio=1.0)
+    因子类型建议:
+      reversal         ★★★
+      volatility       ★★☆
+
+  --- 数据质量 ---
+    overall_coverage = 100.0%
+    close                     100.0%
+    volume                    100.0%
+    amount                    100.0%
+    turnover_rate             100.0%
+    pe_ttm                    100.0%
+    pb                        100.0%
+    total_market_cap          100.0%
+    circulating_market_cap    100.0%
+    dividend_yield              0.0% ← 标红
+    roe_ttm                   100.0%
+
+  warnings (2):
+    - 行业分布不可用：`symbols.industry` 实测 0 行非空（全 NULL）。看板按「未知 / 未披露」展示，**不造数**；行业中性化类建议暂缺。
+    - 风格暴露的「成长」维度不可用（net_profit_yoy 全 NULL），已如实标注。
+
+==========================================================================
+2. 全流程：建池 → 加成员 → freeze → analyze → 锁定 → reset
+==========================================================================

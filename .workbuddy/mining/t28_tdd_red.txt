@@ -1,0 +1,56 @@
+﻿node.exe : [33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you
+ rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consi
+der using "deps.optimizer.web.include"[39m
+所在位置 行:1 字符: 1
++ & "C:\Users\demo\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[7m[33m ...b.include"[39m 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+ [31m鉂?[39m src/components/factors/mining/wizard/step1/MiningPoolStep.test.tsx [2m([22m[2m0 test[22m[2m)[22m
+
+[31m鈳幆鈳幆鈳幆[1m[7m Failed Suites 1 [27m[22m鈳幆鈳幆鈳幆鈳?[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/factors/mining/wizard/step1/M
+iningPoolStep.test.tsx[2m [ src/components/factors/mining/wizard/step1/MiningP
+oolStep.test.tsx ][22m
+[31m[1mError[22m: Failed to resolve import "./MiningPoolStep" from "src/comp
+onents/factors/mining/wizard/step1/MiningPoolStep.test.tsx". Does the file exis
+t?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/ai_project/dataAanlystNew/frontend/src/components/factors/minin
+g/wizard/step1/MiningPoolStep.test.tsx[39m:31:38
+[33m  29 |  const __vi_import_0__ = await import('react/jsx-dev-runtime')
+  30 |  const __vi_import_1__ = await import('@testing-library/react')
+  31 |  const __vi_import_2__ = await import('./MiningPoolStep')
+     |                                       ^
+  32 |  
+  33 |  import { afterEach, beforeEach, describe, expect, it, vi } from "vitest
+";[39m
+[90m [2m鉂?[22m TransformPluginContext._formatError node_modules/vite/dist/nod
+e/chunks/dep-BK3b2jBa.js:[2m49258:41[22m[39m
+[90m [2m鉂?[22m TransformPluginContext.error node_modules/vite/dist/node/chunk
+s/dep-BK3b2jBa.js:[2m49253:16[22m[39m
+[90m [2m鉂?[22m normalizeUrl node_modules/vite/dist/node/chunks/dep-BK3b2jBa.j
+s:[2m64307:23[22m[39m
+[90m [2m鉂?[22m node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:[2m64439:3
+9[22m[39m
+[90m [2m鉂?[22m TransformPluginContext.transform node_modules/vite/dist/node/c
+hunks/dep-BK3b2jBa.js:[2m64366:7[22m[39m
+[90m [2m鉂?[22m PluginContainer.transform node_modules/vite/dist/node/chunks/d
+ep-BK3b2jBa.js:[2m49099:18[22m[39m
+[90m [2m鉂?[22m loadAndTransform node_modules/vite/dist/node/chunks/dep-BK3b2j
+Ba.js:[2m51978:27[22m[39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[1/1]鈳?[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [2mno tests[22m
+[2m   Start at [22m 21:48:55
+[2m   Duration [22m 6.42s[2m (transform 54ms, setup 473ms, collect 0ms, tests 0ms, environment 3.05s, prepare 804ms)[22m
+
+EXIT=1

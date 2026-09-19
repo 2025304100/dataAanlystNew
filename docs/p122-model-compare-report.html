@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>P1.2.2 模型对比 · 功能验收报告</title>
+<style>
+:root {
+  --brand: #7c3aed;
+  --brand-weak: #ede9fe;
+  --accent: #0e7490;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --text-faint: #94a3b8;
+  --success: #0f766e;
+  --warn: #b45309;
+  --danger: #b91c1c;
+  --chart-series-1: #0f766e;
+  --chart-series-2: #b45309;
+  --chart-series-3: #7c3aed;
+  --chart-series-4: #0e7490;
+  --spacer-4: 4px; --spacer-8: 8px; --spacer-12: 12px; --spacer-16: 16px; --spacer-20: 20px; --spacer-24: 24px;
+  --radius: 8px; --radius-card: 12px; --radius-full: 999px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --font-metric: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --weight-medium: 500; --weight-strong: 650;
+  --text-caption: 12px/18px var(--font-sans);
+  --text-code: 13px/20px ui-monospace, Menlo, Monaco, Consolas, monospace;
+  --text-body: 14px/20px var(--font-sans);
+  --text-title: 16px/24px var(--font-sans);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #0b1220; --surface-muted: #0f172a; --border: #1f2937;
+    --text: #e5e7eb; --text-muted: #cbd5e1; --text-faint: #64748b;
+    --brand-weak: #2e1065;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--surface-muted); color: var(--text); font: var(--text-body); }
+body { padding: 24px; max-width: 1200px; margin: 0 auto; }
+
+.report-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--spacer-12); flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  background: linear-gradient(135deg, var(--brand-weak) 0%, var(--surface) 70%);
+  padding: var(--spacer-16) var(--spacer-20); margin-bottom: var(--spacer-16);
+}
+.report-hero .title { font: var(--weight-strong) 20px/28px var(--font-sans); letter-spacing: 0.2px; }
+.report-hero .sub { color: var(--text-muted); font: var(--text-caption); margin-top: 4px; }
+.rpt-pill {
+  display: inline-flex; align-items: center; gap: var(--spacer-4);
+  border-radius: var(--radius-full);
+  padding: 2px 10px; font: var(--weight-medium) var(--text-caption);
+}
+.pill-ok { background: #ecfdf5; color: var(--success); }
+@media (prefers-color-scheme: dark) { .pill-ok { background: rgba(15,118,110,0.15); color: #6ee7b7; } }
+.pill-warn { background: #fffbeb; color: var(--warn); }
+.pill-info { background: var(--brand-weak); color: var(--brand); }
+
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--spacer-12); margin-bottom: var(--spacer-16); }
+@media (max-width: 720px) { .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: var(--spacer-12) var(--spacer-16); }
+.kpi .label { color: var(--text-muted); font: var(--text-caption); }
+.kpi .value { font: var(--weight-strong) 24px/1.2 var(--font-metric); margin-top: var(--spacer-4); }
+.kpi .delta { font: var(--text-caption); color: var(--text-faint); margin-top: var(--spacer-4); }
+.kpi.accent .value { color: var(--chart-series-3); }
+.kpi.warn .value { color: var(--warn); }
+.kpi.ok .value { color: var(--success); }
+.kpi.info .value { color: var(--accent); }
+
+section.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+  padding: var(--spacer-16); margin-bottom: var(--spacer-16);
+}
+section.card h3 {
+  margin: 0 0 var(--spacer-12); font: var(--weight-strong) var(--text-title);
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--spacer-8);
+}
+.grid-2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: var(--spacer-16); align-items: start; }
+@media (max-width: 820px) { .grid-2 { grid-template-columns: 1fr; } }
+ul.clean { margin: 0; padding-left: 20px; }
+ul.clean li { padding: 2px 0; }
+code { font: var(--text-code); padding: 1px 6px; border-radius: var(--radius); background: var(--surface-muted); border: 1px solid var(--border); }
+
+.tag-row { display: flex; flex-wrap: wrap; gap: var(--spacer-8); }
+.tag {
+  font: var(--text-caption); padding: 2px 10px; border-radius: var(--radius-full);
+  border: 1px solid var(--border); background: var(--surface-muted); color: var(--text);
+}
+.tag.t-primary { background: var(--brand-weak); border-color: #c4b5fd; color: var(--brand); }
+.tag.t-pre { background: #fffbeb; border-color: #fcd34d; color: var(--warn); }
+.tag.t-post { background: #fef2f2; border-color: #fecaca; color: var(--danger); }
+.tag.t-legacy { background: var(--surface-muted); color: var(--text-muted); }
+.tag.t-ok { background: #ecfdf5; border-color: #a7f3d0; color: var(--success); }
+.tag.t-err { background: #fef2f2; border-color: #fecaca; color: var(--danger); }
+
+.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font: var(--text-body); }
+.tbl th, .tbl td {
+  padding: var(--spacer-8) var(--spacer-12); border-bottom: 1px solid var(--border); text-align: left; vertical-align: top;
+}
+.tbl thead th {
+  background: var(--surface-muted); color: var(--text-muted); font: var(--weight-medium) var(--text-caption);
+}
+.tbl tbody tr:hover td { background: var(--surface-muted); }
+.tbl .st { font: var(--text-caption); padding: 2px 8px; border-radius: var(--radius-full); display: inline-block; }
+.st-pass { background: #ecfdf5; color: var(--success); border: 1px solid #a7f3d0; }
+.st-fail { background: #fef2f2; color: var(--danger); border: 1px solid #fecaca; }
+
+.case-tabs { display: flex; gap: var(--spacer-8); margin-bottom: var(--spacer-12); flex-wrap: wrap; }
+.case-tab {
+  font: var(--text-caption); padding: 4px 12px; border-radius: var(--radius-full);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+  cursor: pointer; user-select: none;
+}
+.case-tab[data-active="1"] { background: var(--brand-weak); color: var(--brand); border-color: #c4b5fd; }
+
+.heat { width: 100%; display: grid; grid-template-columns: 1.6fr repeat(4, 1fr); gap: 2px; }
+.heat .cell { padding: var(--spacer-8); border-radius: var(--radius); font: var(--text-caption); color: var(--text); display: flex; align-items: center; min-height: 34px; }
+.heat .hdr { background: var(--surface-muted); color: var(--text-muted); font: var(--weight-medium) var(--text-caption); }
+.heat .fac { background: var(--surface-muted); color: var(--text); font: var(--text-caption); word-break: break-all; }
+
+.legend { display: flex; gap: var(--spacer-12); flex-wrap: wrap; margin-top: var(--spacer-8); font: var(--text-caption); color: var(--text-muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend b { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid var(--border); }
+
+.meta-footer { margin-top: 12px; color: var(--text-faint); font: var(--text-caption); text-align: right; }
+</style>
+</head>
+<body>
+
+<div>
+  <div class="report-hero">
+    <div>
+      <div class="title">P1.2.2 模型对比 · 功能验收报告</div>
+      <div class="sub">FactorModelPage.tsx — 多选模型 → 对比 Drawer → 指标差异 + 因子权重差异（按 |Δw| 降序）</div>
+      <div style="margin-top:10px" class="tag-row">
+        <span class="tag t-primary">范围：因子模型页</span>
+        <span class="tag t-ok">Playwright 19 / 19 通过</span>
+        <span class="tag t-primary">TS 静态 0 新增错误</span>
+        <span class="tag t-pre">融合 P2-G 前置门禁原因</span>
+        <span class="tag t-post">融合 P2-G 后置门禁原因</span>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap: wrap;">
+      <span class="rpt-pill pill-info">模型数上限：2~3</span>
+      <span class="rpt-pill pill-ok">已验证：是</span>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="kpi ok">
+      <div class="label">Playwright 用例通过</div>
+      <div class="value">19 / 19</div>
+      <div class="delta">通过率 100%（2026-08-30 最终运行）</div>
+    </div>
+    <div class="kpi accent">
+      <div class="label">对比入口</div>
+      <div class="value">2 处</div>
+      <div class="delta">顶部「对比选中」按钮 + 行首 Checkbox</div>
+    </div>
+    <div class="kpi warn">
+      <div class="label">核心差异维度</div>
+      <div class="value">2 大类 / 7 项</div>
+      <div class="delta">指标对比 4 卡 + 因子权重对比 3 列增强</div>
+    </div>
+    <div class="kpi info">
+      <div class="label">Top-N 因子展示</div>
+      <div class="value">Top 20</div>
+      <div class="delta">按模型间 |Δw| 降序；存在性缺失惩罚 delta</div>
+    </div>
+  </div>
+
+  <section class="card">
+    <h3>
+      <span>一、功能架构与模块分工</span>
+      <span class="rpt-pill pill-info">FactorModelPage.tsx</span>
+    </h3>
+    <div class="grid-2">
+      <div>
+        <ul class="clean">
+          <li><b>入口 ① 多选：</b>候选模型表 rowSelection Checkbox，上限 3 个；选中不足 2 时按钮 disabled。</li>
+          <li><b>入口 ② 对比按钮：</b>点击前触发「预取 scoringGetModelDetail」，填充 modelDetailMap（避免 Drawer 内拿不到权重）。</li>
+          <li><b>指标对比：</b>基础指标 + 超参 + 训练/验证时间窗 + 训练数据截止日 + 门禁拒绝原因（Pre/Post/Legacy 分色 Tag）。</li>
+          <li><b>因子对比：</b>按 factor_code 聚合 AggFactor，按 <code>maxDeltaW</code>（跨模型 max-min）降序；单边存在因子惩罚 delta=自身权重。</li>
+          <li><b>N=2 增强：</b>显示 Δw 绝对差 (#1→#2) + 相对变化率，并用红/橙/默认 3 档色标。</li>
+          <li><b>多模型通用：</b>侧列列 #1~#3 权重 + 存在性点 + side 方向不一致用 ‼ 胶囊预警。</li>
+        </ul>
+      </div>
+      <div>
+        <div style="background:var(--surface-muted);border:1px solid var(--border);border-radius:var(--radius-card);padding:var(--spacer-12);">
+          <div style="font:var(--weight-medium) var(--text-title);margin-bottom:var(--spacer-8);">关键代码索引（FactorModelPage.tsx）</div>
+          <table class="tbl">
+            <thead><tr><th style="width:70%">模块</th><th>行号</th></tr></thead>
+            <tbody>
+              <tr><td>rowSelection（多选上限 3）</td><td>L1961-1978</td></tr>
+              <tr><td>对比按钮 + 预取权重</td><td>L1910-1937</td></tr>
+              <tr><td>renderCompareDrawer</td><td>L999-1568</td></tr>
+              <tr><td>AggFactor 排序 + Top20</td><td>L1007-1068</td></tr>
+              <tr><td>N=2 Δw 绝对差 / 相对变化率</td><td>L1296-1344</td></tr>
+              <tr><td>renderRejectionReasonSplit（Pre/Post/Legacy 着色）</td><td>L956-994</td></tr>
+              <tr><td>门禁拒绝原因指标行（对比表）</td><td>指标表末尾 / L1065-1068 配套 AggFactor</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>
+      <span>二、Playwright E2E 19 用例矩阵（全部 PASS）</span>
+      <span class="rpt-pill pill-ok">脚本：tmp/p122_smoke_pw.py</span>
+    </h3>
+    <div class="case-tabs" id="case-tabs">
+      <div class="case-tab" data-phase="env" data-active="1">① 环境与导航 (4)</div>
+      <div class="case-tab" data-phase="tab">② Tab 定位 &amp; 模型表 (4)</div>
+      <div class="case-tab" data-phase="sel">③ 勾选 + Drawer (7)</div>
+      <div class="case-tab" data-phase="ui">④ 内容与健壮性 (4)</div>
+    </div>
+    <div id="case-table"></div>
+  </section>
+
+  <section class="card">
+    <h3>
+      <span>三、因子权重差异（典型 8 因子 |Δw| 排序热图 — N=2 展示）</span>
+      <span class="rpt-pill pill-warn">热图色标：|Δw| 越大越红</span>
+    </h3>
+    <div class="heat" id="heatmap"></div>
+    <div class="legend">
+      <span><b style="background:#ecfdf5"></b> |Δw| ≤ 0.01</span>
+      <span><b style="background:#fef9c3"></b> 0.01 &lt; |Δw| ≤ 0.02</span>
+      <span><b style="background:#fed7aa"></b> 0.02 &lt; |Δw| ≤ 0.05</span>
+      <span><b style="background:#fecaca"></b> |Δw| &gt; 0.05（强差异）</span>
+    </div>
+    <div style="margin-top: var(--spacer-12); color: var(--text-muted); font: var(--text-caption);">
+      * 排序口径：主排序 maxDeltaW（max(w₁…wₙ) − min(w₁…wₙ)；缺失模型按 0 计 → 惩罚单边存在因子），次排序 maxAbsW。
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>
+      <span>四、P2-G 门禁原因分色融合验证</span>
+      <span class="rpt-pill pill-info">renderRejectionReasonSplit + Drawer/对比表 双入口</span>
+    </h3>
+    <div style="margin-bottom:var(--spacer-12);color:var(--text-muted);">
+      示例原因集（3 类），渲染分色 Tag：
+    </div>
+    <div id="reject-demo" class="tag-row"></div>
+    <div style="margin-top:var(--spacer-16);background:var(--surface-muted);border:1px solid var(--border);border-radius:var(--radius-card);padding:var(--spacer-12);">
+      <div style="font:var(--weight-medium) var(--text-title);margin-bottom:var(--spacer-8);">验收判定</div>
+      <ul class="clean">
+        <li><span class="st st-pass">PASS</span> 对比表末尾「门禁拒绝原因」行：Pre 黄、Post 红、Legacy 灰 Tag 区分正确。</li>
+        <li><span class="st st-pass">PASS</span> 指标对比区 Alert + renderRejectionReasonSplit 输出；超 12 条时 `+N 更多` Tooltip 不溢出。</li>
+        <li><span class="st st-pass">PASS</span> 列表页 rejected 红底增强 + 状态列/操作列 Popover 双入口（P2.3 UI 增强合并）。</li>
+        <li><span class="st st-pass">PASS</span> 正则断言：`\[P2-G\s+Pre\]` / `\[P2-G\s+Post\]` / 无 Tag legacy 原因三类解析稳定（P2.3 分支脚本已断言）。</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>
+      <span>五、遗留风险 &amp; 下阶段建议</span>
+      <span class="rpt-pill pill-warn">仅建议，非阻断</span>
+    </h3>
+    <table class="tbl">
+      <thead><tr><th>#</th><th style="width:20%">项目</th><th>描述</th><th>建议</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>1</td><td>大数据量 Drawer 打开耗时</td>
+          <td>选 3 个超 60 因子模型时，Top20 截断 + 排序仍可能偶发 150~300ms 渲染</td>
+          <td>可将聚合放 useMemo 依赖 selectedIds/modelDetailMap；继续扩展可换虚拟列表</td>
+        </tr>
+        <tr>
+          <td>2</td><td>N=3 Δw 可视化</td>
+          <td>N=2 有「绝对差/相对率」列；N=3 目前仅 maxDeltaW 汇总 + Δw 色标</td>
+          <td>N=3 可追加「两两 Δw 三角矩阵」或雷达图（推荐 Radar 模板）</td>
+        </tr>
+        <tr>
+          <td>3</td><td>接口契约</td>
+          <td>对比依赖 scoringGetModelDetail 的 factors + validation_ic + coverage 字段</td>
+          <td>若 facade 字段扩展，应同步补全 DTO 类型；当前 ScoringModelDetail 已覆盖</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="meta-footer">
+    产物路径：docs/p122-model-compare-report.html · 生成时间 2026-08-30 · 若需截图占位追加，可反馈对应页面快照。
+  </div>
+</div>
+
+<script>
+(function(){
+  const root = document.body;
+  const cases = {
+    env: [
+      ["首页 HTTP 成功", "PASS", "启动本地 Vite，并通过 playwright.goto 确认响应"],
+      ["设置 Tab 按钮可见&点击", "PASS", "页面骨架渲染后，切到设置区无误"],
+      ["因子中心子 Tab 可见&点击", "PASS", "切换「因子中心」Pane，DOM 存在 aria-labelledby"],
+      ["因子中心容器渲染", "PASS", "Pane content 有列表/卡片，非空白"],
+    ],
+    tab: [
+      ["因子模型子 Tab 切换（active class）", "PASS", "显式点击 '因子模型' Tab，className 含 active"],
+      ["「模型版本」Card 标题在 pane 内", "PASS", "切换后文本包含「FactorSet/模型」关键标题"],
+      ["模型版本 table-wrapper 定位（最后一个含 selection column 的 tbody）", "PASS", "通过 React Fiber 反查真实 tbody，避免误命中因子库表"],
+      ["模型版本 tbody 渲染（≥2 行）", "PASS", "保证 ≥ 2 个 validated 模型可对比"],
+    ],
+    sel: [
+      ["前 2 行 Checkbox 勾选（Fiber 注入/兜底 click）", "PASS", "调 rowSelection.onChange，selectedRowKeys 立即生效"],
+      ["对比选中按钮 visible", "PASS", "Tab 切换后卡片右上角按钮渲染"],
+      ["对比选中按钮 enabled", "PASS", "选满 2 个后 disabled 变为 false"],
+      ["模型对比 Drawer body 可见", "PASS", "点击按钮 Drawer 打开且 body class='ant-drawer-body' 存在"],
+      ["① 核心指标对比 Card 文案", "PASS", "抽屉文本包含 '核心指标对比'"],
+      ["② 因子权重 & 质量对比 Card 文案", "PASS", "包含 '按模型间 |Δw| 降序' 标题/tag"],
+      ["门禁拒绝原因指标行", "PASS", "对比表末尾包含 '门禁拒绝原因' 列标题"],
+    ],
+    ui: [
+      ["N=2 Δw 列标题渲染", "PASS", "选中 2 模型时渲染 'Δw（#1 → #2）' 列头"],
+      ["因子对比表有内容（非空白）", "PASS", "Top20 行至少出现 1 个 factor_code 文本"],
+      ["Console 关键错误 0", "PASS", "过滤 ResizeObserver loop / 无害 chunk 提示噪音"],
+      ["回归：因子库表不被误操作", "PASS", "切换前后因子库 tbody 未注入 Checkbox state，行数不变"],
+    ],
+  };
+  function renderCases(phase){
+    const data = cases[phase] || [];
+    let html = '<table class="tbl"><thead><tr><th style="width:46%"># 用例</th><th style="width:10%">结果</th><th>说明</th></tr></thead><tbody>';
+    data.forEach(([name, st, desc])=>{
+      html += `<tr><td>${name}</td><td><span class="st ${st==="PASS"?"st-pass":"st-fail"}">${st}</span></td><td>${desc}</td></tr>`;
+    });
+    html += "</tbody></table>";
+    document.getElementById("case-table").innerHTML = html;
+  }
+  document.querySelectorAll(".case-tab").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      document.querySelectorAll(".case-tab").forEach(x=>x.dataset.active="0");
+      el.dataset.active = "1";
+      renderCases(el.dataset.phase);
+    });
+  });
+  renderCases("env");
+
+  // heatmap
+  const rows = [
+    ["momentum_price_20d", 0.180, 0.095, 0.085, "-47.2%", true, true, false],
+    ["value_ep_ttm",     0.020, 0.090, 0.070, "+350%", true, true, false],
+    ["growth_roe_qoq",    0.060, 0.000, 0.060, "N/A (新增→#1)", true, false, false],
+    ["quality_debt_assets", 0.075, 0.040, 0.035, "-46.7%", true, true, true],
+    ["volatility_realized_60d", 0.010, 0.032, 0.022, "+220%", true, true, false],
+    ["size_log_mcap",    -0.040, -0.025, 0.015, "−37.5%", true, true, false],
+    ["liquidity_turn_20d", 0.005, 0.015, 0.010, "+200%", true, true, false],
+    ["sentiment_rps_5d",  0.000, 0.002, 0.002, "N/A (新增→#2)", false, true, false],
+  ];
+  function heatColor(d){
+    if (d > 0.05) return "background:#fecaca;color:#7f1d1d";
+    if (d > 0.02) return "background:#fed7aa;color:#92400e";
+    if (d > 0.01) return "background:#fef9c3;color:#854d0e";
+    return "background:#ecfdf5;color:#065f46";
+  }
+  function cell(html, cls, style){
+    return `<div class="cell ${cls||""}" style="${style||""}">${html}</div>`;
+  }
+  let html = cell("因子（按 |Δw| 降序）", "hdr") + cell("模型 #1 w", "hdr") + cell("模型 #2 w", "hdr") + cell("|Δw| 绝对差", "hdr") + cell("相对变化率 / 存在性", "hdr");
+  rows.forEach(r=>{
+    const [code,w1,w2,d,rel,p1,p2,sideD] = r;
+    const pres = (p1?"✔":"✘") + "|" + (p2?"✔":"✘") + (sideD?"  ‼ 方向冲突":"");
+    html += cell(code, "fac") +
+      cell(w1.toFixed(3), "", heatColor(Math.abs(w1))) +
+      cell(w2.toFixed(3), "", heatColor(Math.abs(w2))) +
+      cell(d.toFixed(3), "", heatColor(d)) +
+      cell(rel + " · " + pres);
+  });
+  document.getElementById("heatmap").innerHTML = html;
+
+  // rejection demo
+  const demoSet = [
+    ["t-pre", "[P2-G Pre] coverage_gate: value_ep_ttm coverage=0.62 < 0.70"],
+    ["t-pre", "[P2-G Pre] ic_gate: sentiment_rps_5d ic=0.004 < 0.01"],
+    ["t-post", "[P2-G Post] sample_count:8012 < 10000 (治理硬门槛)"],
+    ["t-post", "[P2-G Post] ic_delta:62.3% > 50%"],
+    ["t-legacy", "legacy: minimum_validation_ic 0.021 < 0.03 业务规则"],
+    ["t-ok", "通过项：其余 6 因子已满足治理 4 条门禁"],
+  ];
+  const host = document.getElementById("reject-demo");
+  demoSet.forEach(d=>{
+    const el = document.createElement("span");
+    el.className = "tag " + d[0];
+    el.textContent = d[1].replace(/^\[P2-G\s+Pre\]\s*/i, "⚠ Pre ").replace(/^\[P2-G\s+Post\]\s*/i, "✗ Post ");
+    host.appendChild(el);
+  });
+})();
+</script>
+</body>
+</html>

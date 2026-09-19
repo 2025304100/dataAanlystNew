@@ -1,0 +1,24 @@
+﻿node.exe : [33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you
+ rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consi
+der using "deps.optimizer.web.include"[39m
+所在位置 行:1 字符: 1
++ & "C:\Users\demo\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[7m[33m ...b.include"[39m 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+[90mstdout[2m | src/i18n/__tests__/__probe_t40.test.ts[2m > [22m[2mT40 probe[2m > [22m[2mreport key diff and untranslated (CJK) values
+[22m[39mPROBE_RESULT {"zhCount":5060,"enCount":5060,"onlyZh":[],"onlyEn":[],"untranslatedCount":1,"untranslated":[["langZhCN","绠€浣撲腑鏂?]],"emptyZh":[]}
+
+ [32m鉁?[39m src/i18n/__tests__/__probe_t40.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 28[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 00:53:23
+[2m   Duration [22m 6.11s[2m (transform 229ms, setup 327ms, collect 253ms, tests 28ms, environment 2.76s, prepare 419ms)[22m
+
+EXIT=0

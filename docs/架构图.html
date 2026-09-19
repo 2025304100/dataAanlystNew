@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-page-node-id="EhKHQUFt6ln8QiGrD88isL">
+<head data-page-node-id="E552KTxe7I69HokpQ0vGvu">
+<meta charset="UTF-8" data-page-node-id="HPlEdIN6ahf1FD9eDJGDKm">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="3O1Fyfw9pF2slZ5UCuE1wp">
+<title>Personal Quant Workbench · 系统架构图</title>
+<style>
+:root{
+  --bg:#0f1115; --panel:#161a21; --panel2:#1c212a; --line:#2a313d;
+  --fg:#e6e9ef; --fg2:#a8b0bd; --fg3:#7a8494;
+  --blue:#3b82f6; --blue-bg:#132a4d;
+  --teal:#14b8a6; --teal-bg:#0d3b36;
+  --purple:#8b5cf6; --purple-bg:#2a1f4d;
+  --amber:#f59e0b; --amber-bg:#3d2a08;
+  --gray:#64748b; --gray-bg:#232a35;
+  --red:#ef4444;
+}
+[data-theme="light"]{
+  --bg:#f6f7f9; --panel:#ffffff; --panel2:#f1f3f7; --line:#dfe3ea;
+  --fg:#1a1f29; --fg2:#4d5766; --fg3:#78828f;
+  --blue-bg:#e6f1fb; --teal-bg:#e1f5ee; --purple-bg:#eeedfe;
+  --amber-bg:#faeeda; --gray-bg:#f1efe8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.65;}
+.wrap{max-width:1180px;margin:0 auto;padding:32px 24px 80px;}
+header.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;
+  padding-bottom:20px;border-bottom:1px solid var(--line);margin-bottom:28px;flex-wrap:wrap;}
+h1{font-size:24px;font-weight:600;margin:0 0 6px;}
+.sub{color:var(--fg2);font-size:13px;margin:0;}
+.metachips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+.chip{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;
+  background:var(--panel2);border:1px solid var(--line);color:var(--fg2);}
+button.theme{background:var(--panel2);color:var(--fg2);border:1px solid var(--line);
+  border-radius:8px;padding:7px 14px;cursor:pointer;font-size:12px;}
+button.theme:hover{color:var(--fg);border-color:var(--fg3);}
+
+h2.sec{font-size:17px;font-weight:600;margin:44px 0 6px;display:flex;align-items:center;gap:10px;}
+h2.sec .num{display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border-radius:6px;background:var(--blue-bg);color:var(--blue);
+  font-size:12px;font-weight:600;}
+.sechint{color:var(--fg3);font-size:12.5px;margin:0 0 18px 34px;}
+
+/* ── 分层图 ── */
+.layer{border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  padding:14px 16px;margin-bottom:0;}
+.layer + .arrow{height:26px;display:flex;align-items:center;justify-content:center;
+  color:var(--fg3);font-size:11px;gap:8px;}
+.layer + .arrow::before{content:"";width:1px;height:100%;background:var(--line);}
+.lhead{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+  margin-bottom:12px;flex-wrap:wrap;}
+.ltitle{font-size:14.5px;font-weight:600;}
+.ltitle .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;}
+.ldesc{color:var(--fg3);font-size:12px;}
+.chips{display:grid;gap:10px;}
+.c4{grid-template-columns:repeat(4,1fr);}
+.c3{grid-template-columns:repeat(3,1fr);}
+.c2{grid-template-columns:repeat(2,1fr);}
+.box{border-radius:9px;padding:10px 12px;border:1px solid var(--line);background:var(--panel2);}
+.box .bt{font-size:13px;font-weight:600;margin-bottom:2px;}
+.box .bs{font-size:11.5px;color:var(--fg3);line-height:1.5;}
+.b-blue{border-color:#2f5c9e;background:var(--blue-bg);} .b-blue .bt{color:var(--blue);}
+.b-teal{border-color:#1c7d6f;background:var(--teal-bg);} .b-teal .bt{color:var(--teal);}
+.b-purple{border-color:#6d4bb8;background:var(--purple-bg);} .b-purple .bt{color:var(--purple);}
+.b-amber{border-color:#a9701a;background:var(--amber-bg);} .b-amber .bt{color:var(--amber);}
+.b-gray{border-color:#3a4453;background:var(--gray-bg);} .b-gray .bt{color:var(--fg);}
+
+/* ── 链路图 ── */
+.flow{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:4px 0 10px;}
+.step{flex:1 1 0;min-width:150px;border:1px solid var(--line);border-radius:10px;
+  background:var(--panel);padding:12px;}
+.step .sn{font-size:11px;color:var(--fg3);letter-spacing:.5px;}
+.step .st{font-size:13.5px;font-weight:600;margin:4px 0 4px;}
+.step .sd{font-size:11.5px;color:var(--fg3);line-height:1.55;}
+.farr{flex:0 0 34px;display:flex;align-items:center;justify-content:center;color:var(--fg3);font-size:16px;}
+
+/* ── 双栏 ── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media(max-width:860px){.grid2{grid-template-columns:1fr}.c4{grid-template-columns:repeat(2,1fr)}}
+.card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:16px 18px;}
+.card h3{font-size:14px;font-weight:600;margin:0 0 10px;}
+.card ul{margin:0;padding-left:18px;color:var(--fg2);font-size:12.8px;}
+.card li{margin-bottom:5px;}
+code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;
+  padding:1px 5px;font-size:12px;font-family:ui-monospace,Consolas,monospace;color:var(--fg);}
+
+table{width:100%;border-collapse:collapse;font-size:12.8px;margin-top:6px;}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;}
+th{background:var(--panel2);color:var(--fg2);font-weight:600;}
+td{color:var(--fg2);}
+tr:hover td{background:var(--panel2);}
+
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:var(--fg3);}
+.legend span{display:inline-flex;align-items:center;gap:6px;}
+.legend i{width:11px;height:11px;border-radius:3px;display:inline-block;}
+footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);
+  color:var(--fg3);font-size:12px;}
+</style>
+</head>
+<body data-page-node-id="zlgZvdXnfxtvIuXimQouud">
+<div class="wrap" data-page-node-id="Ax7DhL6Nwgv9Vqpk5w1kuG">
+
+<header class="top" data-page-node-id="4P8P9syyYRftAQRPW8rZIt">
+  <div data-page-node-id="ArcUGgPA5NCrh4WEUEbXEq">
+    <h1 data-page-node-id="fWVDiO6cRQe3aUYuSGc1oC">Personal Quant Workbench · 系统架构图</h1>
+    <p class="sub" data-page-node-id="ZGLRoX8Q9kNITKWYZ6kwGT">个人量化工作台 —— 从数据采集、因子计算、标的评分、机会发现到组合交易与回测的全链路架构</p>
+    <div class="metachips" data-page-node-id="PKJaepS8qvDHuOn58Cqzfl">
+      <span class="chip" data-page-node-id="IlVmA5FHfXaxnckBvmxK2Y">FastAPI 0.135</span>
+      <span class="chip" data-page-node-id="V3DZy0ti2gYcSC3cEqTfPt">React 18 + Vite 5</span>
+      <span class="chip" data-page-node-id="buM1Ze0pe2EnvICTDBKdzx">SQLAlchemy 2.0</span>
+      <span class="chip" data-page-node-id="rR1DyMNQnR1RnQhdRuAVFU">SQLite / MySQL</span>
+      <span class="chip" data-page-node-id="71GBzIjQmhcFlrkOFNFVSD">DuckDB 因子仓库</span>
+      <span class="chip" data-page-node-id="fvIEer16iVoBu4qxi50Alf">后端 ~140k 行 / 前端 ~108k 行</span>
+    </div>
+  </div>
+  <button class="theme" onclick="toggleTheme()" data-page-node-id="CzFGzHVIsNTK8unmCIbQBa">切换亮/暗主题</button>
+</header>
+
+<!-- 1 -->
+<h2 class="sec" data-page-node-id="AuAIr04lmbVgl62VYVlH72"><span class="num" data-page-node-id="YT3TngNNVncd3Jqh3x9Pop">1</span>总体分层架构</h2>
+<p class="sechint" data-page-node-id="Kh3SiNgB1ZdUG4oRnLBrda">自上而下五层：展示层 → 接入层 → 业务服务层 → 数据与调度层 → 存储与外部源。层间单向依赖，禁止反向调用。</p>
+
+<div class="layer" data-page-node-id="1osmFZbYh3H2gyIoK2mQIW">
+  <div class="lhead" data-page-node-id="iDwL6lYXg1RrokRXpUKBtj">
+    <div class="ltitle" data-page-node-id="6PiamDNfhh9qqfBboLMyC2"><span class="dot" style="background:var(--blue)" data-page-node-id="P1Uwr3X3ro7V5WLSfeutjt"></span>展示层 · Frontend</div>
+    <div class="ldesc" data-page-node-id="wEygiIsVRCLYlt6TkTJCdX">React 18 · Vite 5 · Ant Design 5 · ECharts 5 · Vitest ｜ 151 个 tsx，约 108k 行</div>
+  </div>
+  <div class="chips c4" data-page-node-id="LHzVkL7tnmxklD89ffqCkG">
+    <div class="box b-blue" data-page-node-id="oJlY5TG0HwbxGWzd5HblMn"><div class="bt" data-page-node-id="eQugZEUZpi79GOEfbriSDC">今日决策</div><div class="bs" data-page-node-id="ufz1PgpwsDAmlwgClycpYJ">决策信号 · 交易计划 · 关联跳查</div></div>
+    <div class="box b-blue" data-page-node-id="o9uSdGlTAVdqluMuC1xEQD"><div class="bt" data-page-node-id="imJyBStiCi93OahWAGyxux">组合交易</div><div class="bs" data-page-node-id="aqTmJF5XM6brwdXQFECapx">持仓 · 成员 · 回测 · 治理七态</div></div>
+    <div class="box b-blue" data-page-node-id="j3eSYHCUSYRP2qpUBU6cve"><div class="bt" data-page-node-id="NiBFwkD4t2VP3LJbcP0Ccq">机会中心</div><div class="bs" data-page-node-id="7drSURQWxHt0nq8Ih2wFeT">候选池 · 观察池 · 已排除 · 扫描记录</div></div>
+    <div class="box b-blue" data-page-node-id="n5tJhrtmV8pWT17hIGhC2w"><div class="bt" data-page-node-id="pUr74gyTYgytgoXzVSrGMj">设置中心</div><div class="bs" data-page-node-id="G2wQo84RYBz1nZCinmduNF">数据 · 因子 · AI · 通知 · 调度</div></div>
+  </div>
+</div>
+<div class="arrow" data-page-node-id="5onu5sTZetE2BZ1xKbzQe8"><span data-page-node-id="RJaoHexUJSd1hCuJVq95uC">HTTP · /api/v1 · JSON</span></div>
+
+<div class="layer" data-page-node-id="miseuEdsUlNMxrh7ByGrlR">
+  <div class="lhead" data-page-node-id="bBQdKptrQiEJEw5G94N0Ly">
+    <div class="ltitle" data-page-node-id="sW8bKHuSZTOL0A6LA13dGp"><span class="dot" style="background:var(--teal)" data-page-node-id="7TNDfWD66ajMhbe0UHaAdN"></span>接入层 · API Gateway</div>
+    <div class="ldesc" data-page-node-id="L3FS17GSKHLMRb0QKvDEHl">FastAPI 应用 · 46 个路由模块 · 全局异常处理器 · 废弃期治理中间件</div>
+  </div>
+  <div class="chips c2" data-page-node-id="LOSBTOfYGmI3PKMEuvwAgw">
+    <div class="box b-teal" data-page-node-id="NrMnEsFDQBHZ23YLmAaj0g"><div class="bt" data-page-node-id="cr3vgDv4jVxrnxoHXjQwp8">统一错误协议</div><div class="bs" data-page-node-id="06EZP9hXaBPjbKX2yGnBvg">所有异常收敛为 UserError：user_message / impact / next_actions / correlation_id，技术细节折叠且脱敏</div></div>
+    <div class="box b-teal" data-page-node-id="3A6jDE3eWicUOkDKHJgtDB"><div class="bt" data-page-node-id="JhYUcW0UrkxR7kPFcUaQCq">废弃期治理</div><div class="bs" data-page-node-id="DzLZEgbfeBvfwXk3ghYX1C">Deprecation / Sunset / Link 响应头 + api_deprecation_logs 访问审计，Sunset 前不阻断</div></div>
+  </div>
+</div>
+<div class="arrow" data-page-node-id="N4hscKoEJZL5j0kFesqfGj"><span data-page-node-id="PsDbrCuzGcLNP3ERzqHiZ7">依赖注入 · Session(db: Session)</span></div>
+
+<div class="layer" data-page-node-id="GwC5TDjgmGUsJRKX7Nauym">
+  <div class="lhead" data-page-node-id="Y8Ak2IIBtZ3V6H9FO4KR6u">
+    <div class="ltitle" data-page-node-id="KReG72edKJUyt3u3DQd9Ta"><span class="dot" style="background:var(--purple)" data-page-node-id="fDE0DiXzhFhLazEVFkZZdD"></span>业务服务层 · Domain Services</div>
+    <div class="ldesc" data-page-node-id="CirTsSitv1ykK13csVtsRo">120 个服务模块 · 领域内聚 · 跨领域调用必须经防腐门面（Facade / Anti-Corruption Layer）</div>
+  </div>
+  <div class="chips c4" data-page-node-id="OYhTS4c56puEsAKNztY7mx">
+    <div class="box b-purple" data-page-node-id="N9TL1ZhYUpm8hMn5C6rBNQ"><div class="bt" data-page-node-id="xnU41JM81UDtWNGTrnV8iF">因子域</div><div class="bs" data-page-node-id="J9emHV0Edb2fCDSBbpoY37">42 个模块：编译 · 执行 · 评估 · 影子 · Ridge</div></div>
+    <div class="box b-purple" data-page-node-id="VBgDMkMNHW75XnTvvzuY1f"><div class="bt" data-page-node-id="Xbttdw0GkXxhEij4aneSXM">机会发现</div><div class="bs" data-page-node-id="lo34nFUYji7cfXTqfYxrwU">脏集合 · 阶段预算 · 快筛 · 打分 · 留存</div></div>
+    <div class="box b-purple" data-page-node-id="lFoV6uRX4wbtxtHP8eLBeY"><div class="bt" data-page-node-id="8vUMszIJRY5e4wgk40lt1f">组合与交易</div><div class="bs" data-page-node-id="pTuM7yqxPoMId7MeHPSzXK">成员 · 状态机 · 撮合 · 自动交易 · 对账</div></div>
+    <div class="box b-purple" data-page-node-id="jsdqO7gBzvM5rWoz7foZl1"><div class="bt" data-page-node-id="dn4XXjUgsRTBBDYTKIcYee">决策与回测</div><div class="bs" data-page-node-id="VNEFlgAUCKf7ZpqXKDkt2R">DecisionEngine 11 步 · vectorbt 回测</div></div>
+  </div>
+</div>
+<div class="arrow" data-page-node-id="ZQqUgX6GT1tcdrt9lGG14r"><span data-page-node-id="oYni7xe3gjA8kOtSiBGNDO">ORM / 仓储调用</span></div>
+
+<div class="layer" data-page-node-id="z2n6yZ4yHkSBnD7sbK68xV">
+  <div class="lhead" data-page-node-id="RKQyMqKwYFyRF5CgbrCYNx">
+    <div class="ltitle" data-page-node-id="qic1kRNbKSFpodoNUqpIdv"><span class="dot" style="background:var(--amber)" data-page-node-id="pQYms60J6HFvy2ZNhYfkMh"></span>数据与调度层 · Integration</div>
+    <div class="ldesc" data-page-node-id="UddmhGiVNs23lGkEp9xl0X">进程内异步循环（lifespan 托管）· 线程执行器 · 持久化任务表</div>
+  </div>
+  <div class="chips c4" data-page-node-id="ufANl2IddiYIMHxEHMSHbS">
+    <div class="box b-amber" data-page-node-id="HJ8AZpUnyHDAwPFdA8B8AH"><div class="bt" data-page-node-id="aOQJDV1Q2G1BXNNRyFLKkB">外部数据网关</div><div class="bs" data-page-node-id="KZ97UCTsXs8DdqVru2OEA9">L1–L4 缓存 · 单飞 · 三维限流 · 熔断 · 降级链</div></div>
+    <div class="box b-amber" data-page-node-id="rKQuWPtoOxLKIKkKkObOiq"><div class="bt" data-page-node-id="bStKeaQv9YDerQhlNP090H">异步任务</div><div class="bs" data-page-node-id="Ox1GIHDhlORvWFvR57e32l">状态机 queued→running→终态 · 幂等键 · 孤儿回收</div></div>
+    <div class="box b-amber" data-page-node-id="lsFZ7FAopCFSy9Ou0o6ByU"><div class="bt" data-page-node-id="XO4Z0tejGEHGAwoD8faGmw">定时调度</div><div class="bs" data-page-node-id="eha5wTPp79fSh4bNX0bD1Z">9 类周期任务 · 跨平台持久化 · 错峰窗口</div></div>
+    <div class="box b-amber" data-page-node-id="XGLJMuJfFQeJxUDwzvYP07"><div class="bt" data-page-node-id="XlVaHy7H0LyDz2t2AbjVb8">通知 Outbox</div><div class="bs" data-page-node-id="kaqCHUMF2qVlkWp5IkzrEC">业务只入队 · 6 类渠道 · 免打扰 · 投递重试</div></div>
+  </div>
+</div>
+<div class="arrow" data-page-node-id="sue1KfZa1gwVfu1sINzDCt"><span data-page-node-id="fGkWgiz3kKga5aR16TM4Sz">SQL / Parquet / HTTP</span></div>
+
+<div class="layer" data-page-node-id="BAvBCaB1dcbwNqWdLRdgVw">
+  <div class="lhead" data-page-node-id="IuJZ5Gdkq1I4ONv6HYjFS2">
+    <div class="ltitle" data-page-node-id="KXr1lvJNaQk3PMTdCfoQXh"><span class="dot" style="background:var(--gray)" data-page-node-id="U0Ddk52NHd8zPjP2ehKIb2"></span>存储与外部源 · Storage &amp; Sources</div>
+    <div class="ldesc" data-page-node-id="2WnwJ4xfw9Z7kcmQw0JCHg">108 张业务表 · Alembic 迁移链 · DatabaseManager 支持 SQLite ↔ MySQL 运行时热切换</div>
+  </div>
+  <div class="chips c3" data-page-node-id="FnkiunNIGMM2CFJspuAJCm">
+    <div class="box b-gray" data-page-node-id="SAn51uJNLfF45W8NsgLxlO"><div class="bt" data-page-node-id="KR0WWZ9jxd7nISqmJB21de">业务数据库</div><div class="bs" data-page-node-id="vVmPoHFj403hH8eeNnYglV">SQLite（默认，临时目录）或 MySQL 5.7+/8.0，66 个 ORM 模型</div></div>
+    <div class="box b-gray" data-page-node-id="8vJcrSI6YEMkpGieEJYXim"><div class="bt" data-page-node-id="FKIC0hs94QOREMhfjy0dzy">因子数仓</div><div class="bs" data-page-node-id="roVdNiRL1Fjz3LSG3iEuit">DuckDB 单写多读，warehouse_lock 串行化，SCHEMA_VERSION=3</div></div>
+    <div class="box b-gray" data-page-node-id="8LuBZLHYM1CgSW0wn6u9ja"><div class="bt" data-page-node-id="rbEa7H15vknVzhVVSTP4zR">外部数据源</div><div class="bs" data-page-node-id="8GywdVwKtkFog43G6whuAe">AkShare 1.18 · TDX 通达信本地解析 · 东方财富人气榜 / 龙虎榜</div></div>
+  </div>
+</div>
+
+<div class="legend" data-page-node-id="2Jh07r5LRkG2AvUlMdtmAV">
+  <span data-page-node-id="yMmtRKoAgH42XGEFfBmKe6"><i style="background:var(--blue)" data-page-node-id="bF7WjxuObCfoBTATi6Zxrn"></i>展示层</span>
+  <span data-page-node-id="WiGnPQej5tiOREL8bGx2Tj"><i style="background:var(--teal)" data-page-node-id="2E3vPnda9AXhkwTR5WFCtA"></i>接入层</span>
+  <span data-page-node-id="2fFtQAijAEqoPZ2YAPmDVp"><i style="background:var(--purple)" data-page-node-id="nRTHl8r3iwUtwkIOZeD9du"></i>业务服务层</span>
+  <span data-page-node-id="ohHD2JnHxImOCLNAtucR57"><i style="background:var(--amber)" data-page-node-id="fHNxMdpshLqsnomBDaRfH7"></i>数据/调度层</span>
+  <span data-page-node-id="KkqMBLmQSvN83yy0Pimu7i"><i style="background:var(--gray)" data-page-node-id="7FZksQpYN3gdj3TlgDdKyq"></i>存储与外部源</span>
+</div>
+
+<!-- 2 -->
+<h2 class="sec" data-page-node-id="JfFfkLylXxTFEoQDiCJePP"><span class="num" data-page-node-id="HNIeyCvDNyxRkPlrIL4q5q">2</span>核心业务链路</h2>
+<p class="sechint" data-page-node-id="h3ujkI6I7eRGsHbV9TIO1Q">一条数据从外部抓取到驱动交易决策的完整路径。每一跳都有落表产物，保证可回溯、可对账。</p>
+
+<div class="flow" data-page-node-id="0T4wtMNS4B5HTW3u5b7uZm">
+  <div class="step" data-page-node-id="JycROIybwuuLTfEjnzKP5W"><div class="sn" data-page-node-id="rnwYUGXKDWVaSUUg3G3mcz">STEP 01</div><div class="st" data-page-node-id="9BU3GZifr86pfkHvWJFsOL">数据采集</div><div class="sd" data-page-node-id="M1uBRyVfBJYARoIPnqmiA4">universe 标的池 · 日线/指数/财务/资金流 · SourceChain 血缘</div></div>
+  <div class="farr" data-page-node-id="49JNPa1XlAE0ItNhbWmuaO">→</div>
+  <div class="step" data-page-node-id="04GQXXKwHxzHX56J4X2SOx"><div class="sn" data-page-node-id="9KlwQvJJeULvLqFBJAcX3s">STEP 02</div><div class="st" data-page-node-id="Ju9b8VxFbDk5G3Va02EdwQ">因子流水线</div><div class="sd" data-page-node-id="KV4e6eCRXMKSLD6Ut5c0M8">mirror → factors → targets → train → score 五阶段</div></div>
+  <div class="farr" data-page-node-id="ngla78qMhmec3G1NN3oDBL">→</div>
+  <div class="step" data-page-node-id="kvN2qalW36lUi3l5oaZ4db"><div class="sn" data-page-node-id="ThE5HCY5dDIzE6qTNcOxPn">STEP 03</div><div class="st" data-page-node-id="K0DA1Bjabf3RGlaeM0gtI0">综合评分</div><div class="sd" data-page-node-id="hhfUZ8AASY1ijnI2qjXYSF">6 维加权（趋势/动量/波动/流动性/活跃/题材）</div></div>
+  <div class="farr" data-page-node-id="aJQsLTzoCXHMjrK6LovqZf">→</div>
+  <div class="step" data-page-node-id="0cHOXh9DHVZlQknYjk9gzl"><div class="sn" data-page-node-id="grHwlZE7YEFAt0x14DPdAm">STEP 04</div><div class="st" data-page-node-id="08nXAnkJvJ6sesdNpOkxoa">机会发现</div><div class="sd" data-page-node-id="QjGI65ay3cAfhkZhBoTCvw">脏集合增量 · 阶段预算 · 快筛 → 候选池</div></div>
+  <div class="farr" data-page-node-id="ccbcRRzy3uG4YnTFerkUxJ">→</div>
+  <div class="step" data-page-node-id="dOO4yKWWBb82URPDCw2B1D"><div class="sn" data-page-node-id="8zBlWa4aL283W2WaeKZCtt">STEP 05</div><div class="st" data-page-node-id="8y8UgXiROu08vkkBSglOqb">决策引擎</div><div class="sd" data-page-node-id="TQDz4BKw902Xb6ruJVoBAq">11 步编排 · 证据链落表 · 订单计划</div></div>
+  <div class="farr" data-page-node-id="4qqfQ0qwKDCG26TZYvKYf2">→</div>
+  <div class="step" data-page-node-id="Wl8kMrOJxo80FZQdYP8Ho2"><div class="sn" data-page-node-id="KgC9djaVGrSCMXtLleaQij">STEP 06</div><div class="st" data-page-node-id="H9cLOxsQ2Z0NwlCyCcg6kU">组合交易</div><div class="sd" data-page-node-id="EZ6eeHp9bzSWY77eM9FWjf">成员 → 风控 → 撮合 → 持仓 → 对账</div></div>
+  <div class="farr" data-page-node-id="LNZ3tm8OrCA8H8qPcfM8mq">→</div>
+  <div class="step" data-page-node-id="RQSrYDYF5J2Naj0DmO9TG2"><div class="sn" data-page-node-id="ZlmACmUgmRVsNJQgWcGyYb">STEP 07</div><div class="st" data-page-node-id="EiVBNaY6LvLJ86cShnHVa4">回测与通知</div><div class="sd" data-page-node-id="Prtg7yF8UIKiGvFXKlqrce">vectorbt 绩效归因 · Outbox 多渠道触达</div></div>
+</div>
+
+<!-- 3 -->
+<h2 class="sec" data-page-node-id="28DJ98RdwojRYRjlrLmBC5"><span class="num" data-page-node-id="hFZJWFSpvjeeq4VTmXH0Ru">3</span>后端模块地图</h2>
+<p class="sechint" data-page-node-id="6Co6mCeF7RPOXRFiyD9RrB">按领域划分的服务与路由分布。因子域规模最大且设有防腐层，外部调用方只能走 <code data-page-node-id="aHuy7Ljd2gEQXvTWNQ7SOe">scoring_facade</code>。</p>
+
+<div class="grid2" data-page-node-id="2AOQd5yYHl6nVgWEc5fqAx">
+  <div class="card" data-page-node-id="MPfa2UjlziF2oJDoEF8NRa">
+    <h3 data-page-node-id="auhGtllHvQt3jIoa7gIqiP">因子域 <code data-page-node-id="ABQTG4DdIklxiTSMF0bYFZ">app/services/factors/</code> · 42 模块</h3>
+    <ul data-page-node-id="OCNC9g8yIHqFoPJivYUnUH">
+      <li data-page-node-id="Em1yo5LddzCzz64Mm8McJD"><b data-page-node-id="FOkaZW8EaDP4tUZu3hw6TN">定义与编译</b>：definitions / formula_catalog / factor_compiler（受控 DSL + AST 沙箱）</li>
+      <li data-page-node-id="TXMBcw6MTUxvV9lFYm95mO"><b data-page-node-id="GuwVelT12FLjwTLeeXZX7A">执行与存储</b>：factor_engine / factor_executor / bar_mirror / store（DuckDB）</li>
+      <li data-page-node-id="Edi5tcFmvivBOw9Tcjs4ex"><b data-page-node-id="Jgo72x484tcLv1tpUSH6Xg">模型与打分</b>：target_engine / ridge_model / factor_set_executor / scoring_bridge</li>
+      <li data-page-node-id="WV0nptC9NIsfp3ah8kLDKS"><b data-page-node-id="IyhG5CHGMPc0MFRiscJWZP">评估与治理</b>：factor_evaluator / factor_stress / factor_shadow / health / readiness</li>
+      <li data-page-node-id="FN3GwvKnjQYWmyOiKMgxTY"><b data-page-node-id="Ei1wk7mDBn9yE1LfppIv3K">防腐层</b>：<code data-page-node-id="ESBY0YcuKJxAB6GJV6Wvqe">__facade__.py</code> + 路由 <code data-page-node-id="sv4ihlAjHNCgD3vs8XAHwH">scoring_facade</code>，域外禁止直连内部 ORM</li>
+    </ul>
+  </div>
+  <div class="card" data-page-node-id="iVobkIVHB3iUuBawiZpuvE">
+    <h3 data-page-node-id="9fowEtR7gai1EhxZ9Sg2UF">机会发现 <code data-page-node-id="B3JdhHq1f17sZFxsgCwQHA">discovery*</code> · 12 模块</h3>
+    <ul data-page-node-id="d7wW8t7J0IzpCcBMVXaGM3">
+      <li data-page-node-id="DPb6kvDUclp5BuCSVAY5jr">discovery_dirty_set：脏集合增量，只算变化的标的</li>
+      <li data-page-node-id="zg3HZ2D80Z1r1w205A9RP7">discovery_stage_budget：阶段预算与超时熔断</li>
+      <li data-page-node-id="sHLIv2v2cmVsZbuymBNThv">discovery_fast_scan：多进程快筛</li>
+      <li data-page-node-id="zplSGBBlnUhkJWKxgIwsZR">discovery_results / retention / cleanup：结果缓存与过期清理</li>
+      <li data-page-node-id="V78nWqXSWvcFL3OKbbhA8B">前端四页签：候选池 / 观察池 / 已排除 / 扫描记录</li>
+    </ul>
+  </div>
+  <div class="card" data-page-node-id="XmqWqoGI8DsX4sTFoUwUfN">
+    <h3 data-page-node-id="VlW0jM4nElFJ2aXnBD3rKw">组合与交易 <code data-page-node-id="HuwPmvlLGszG3FqR4WKC3g">portfolio*</code> · 20 模块</h3>
+    <ul data-page-node-id="EBh4MENv3EraFT53Nq6Gig">
+      <li data-page-node-id="uFsbiYViCA0RBmxBAZtDfn">portfolio_members：成员 CRUD + 归档（不物理删除）</li>
+      <li data-page-node-id="CqCSJkkxYEIf4QeLUoYZAI">portfolio_state_machine / fsm：七态治理 + 状态流转</li>
+      <li data-page-node-id="F60qumIQPPVPnTtPueGRHC">simulation_matching_engine：模拟撮合（含涨跌停顺延）</li>
+      <li data-page-node-id="B9k8Nugwa1fFa4SOwGAUNA">auto_trade*：就绪检查 / 安全闸 / 双跑 / 成员来源</li>
+      <li data-page-node-id="YMSarro3TWZFs17EyR5e5p">reconciliation_conservation：守恒对账；equity_snapshot：净值快照</li>
+    </ul>
+  </div>
+  <div class="card" data-page-node-id="rmY7UDXplYdMWRLmcAOsjX">
+    <h3 data-page-node-id="GXCLvUObD8qQmZT1fPSHri">横切能力</h3>
+    <ul data-page-node-id="xpdLlW4d2tJVp36IWTfUAK">
+      <li data-page-node-id="yNnDkUpUEK5ZCiLlePuJpQ"><b data-page-node-id="1KvwnamngbvWvCLM5vjyAa">能力门</b>：capability_gates 8 项（行情/评分/因子/发现/组合/自动交易/AI/消息）</li>
+      <li data-page-node-id="Hp8BsN21qASGxJ7oenJN5w"><b data-page-node-id="XiakuiRIgejQO8FAOnb2He">异步任务</b>：async_tasks + task_state_machine，30 分钟僵死判定</li>
+      <li data-page-node-id="UHMmHb5pkB2LPEuj3UkaAf"><b data-page-node-id="QaDLFjBokqFXhmiCWEa8cw">通知</b>：notifications/ 14 模块，Outbox + 6 渠道适配器 + 免打扰 + 熔断</li>
+      <li data-page-node-id="1GwV1P0h0NvUzphWBtlk3P"><b data-page-node-id="m4GizxTyUUXCQWE1l8Te0R">AI</b>：ai/ LLM 客户端 + 主备降级 + 7 类工具 + 草案确认流 + 审计</li>
+      <li data-page-node-id="pVPuMGlo0t3UHvK8YFoqrg"><b data-page-node-id="19lW02PapywQBGlAMIr4OD">观测</b>：middleware/deprecation_log · schemas/errors · data_governance_audit</li>
+    </ul>
+  </div>
+</div>
+
+<!-- 4 -->
+<h2 class="sec" data-page-node-id="6D2C7AyEFxRL59cacKFW8O"><span class="num" data-page-node-id="wugISJzjJjG14XlYKHjurM">4</span>运行时与生命周期</h2>
+<p class="sechint" data-page-node-id="3VtCFeLbDrYilbDEx75d2d">FastAPI <code data-page-node-id="5z5yeGohS1pPPmuXCsavTN">lifespan</code> 统一托管所有后台循环；关闭时按序优雅退出，避免线程泄漏与 DuckDB 锁残留。</p>
+
+<div class="grid2" data-page-node-id="h62CZCPYbyyIGCSe5B8Ql2">
+  <div class="card" data-page-node-id="KWRttQCsvRoutHlg1SACHy">
+    <h3 data-page-node-id="a15Y9bqSfJRcGaaVDahvmu">启动（startup）</h3>
+    <ul data-page-node-id="EBt0u4vDjTxChN2QOeQkjn">
+      <li data-page-node-id="tvuouprWVQrcM1gf1fPf0R">① <code data-page-node-id="8t2Zo7eu14lOdjDRvD8Oh5">initialize_runtime_database()</code>：优先 <code data-page-node-id="9yCaaU3ClAEC2DJcpReErF">DATABASE_URL</code> → 其次 <code data-page-node-id="LgeFcdKItpmzYcmtBtRFjS">config/db_config.json</code> → 最后 SQLite</li>
+      <li data-page-node-id="OjNdYhv8a77hQT2IuFGRSZ">② <code data-page-node-id="zaKGxHjc0724gQjDF6YHCw">init_db()</code>：建表 + 自动对齐 schema + 修复基础数据完整性</li>
+      <li data-page-node-id="l2j6fmB3lGbgpAXtm7TWmY">③ 启动清理：孤儿异步任务置 interrupted、过期挖掘结果删除、僵尸标的下线、因子流水线任务恢复</li>
+      <li data-page-node-id="z4jJUWucUMX7RIa9ARtKQi">④ 拉起 4 个常驻循环：定期清理（30 min）· 调度器 · 通知 Outbox · Universe 自动初始化</li>
+    </ul>
+  </div>
+  <div class="card" data-page-node-id="DmSfNoVYRbtA72R1FobXt2">
+    <h3 data-page-node-id="5HHtqSqXBVJGJ5fFppanu9">关闭（shutdown）</h3>
+    <ul data-page-node-id="Gl3gGRMHMNxglqwxcUWGWT">
+      <li data-page-node-id="9DEcxMkJpwaici4E0w86D5">① <code data-page-node-id="Rv0FWjAU21k1dD8Am6vHca">request_all_workers_stop()</code> 请求同步工作线程提前让出</li>
+      <li data-page-node-id="IMfTmffAd4yzSAtiGZ54KH">② <code data-page-node-id="7NXAjoWeupSXIFC6L44Qsd">wait_workers_stopped(30s)</code> 等待，超时则标记 <code data-page-node-id="8jnSCEYeEBjRfYI8dFirV1">graceful_interrupted</code></li>
+      <li data-page-node-id="cKlbbNqscqxNkHm6ISBNk0">③ <code data-page-node-id="X4xAUxFVXFN3WDnT6JYfMg">shutdown_factor_warehouse_pools()</code> 关闭 DuckDB 连接池</li>
+      <li data-page-node-id="M1vUES4hAhBQ21ynuesiXH">④ 取消 asyncio 任务 → 关闭探测线程池 → <code data-page-node-id="saBcGcDg7317CwC2BSawgR">mgr.dispose()</code> 释放数据库引擎</li>
+    </ul>
+  </div>
+</div>
+
+<h3 style="font-size:14px;margin:22px 0 4px;" data-page-node-id="YnYoOMJLIEm2ctt5fuxVxk">定时调度任务（scheduled_tasks · 9 类）</h3>
+<table data-page-node-id="9j6KbMAXz5WEBNi2hsHyUB">
+  <thead data-page-node-id="4DHkNIWgKJwRmYt3WbPutD"><tr data-page-node-id="MOosB0fb9udoGttwzUmkIx"><th style="width:26%" data-page-node-id="9WnRfymeCpDMjV9L9F8yEC">task_type</th><th style="width:18%" data-page-node-id="g3gYl1CEkoS9tA942WEp5p">名称</th><th data-page-node-id="yEC7uGgzr58TxMCH08wutS">说明</th></tr></thead>
+  <tbody data-page-node-id="KKpT4RM4WlaKSjpLALn5HR">
+    <tr data-page-node-id="M7t2HBDWG8EPAtxJF20u8r"><td data-page-node-id="f75sBRxnmFF5tbD9ijAX0J"><code data-page-node-id="HtYrZhpEGsBIySnu4ZsGxk">universe_incremental_sync</code></td><td data-page-node-id="ydkBPWJ8YUH8dx3SRmlkYL">行情增量同步</td><td data-page-node-id="Ky59pL4zCMEvzK2MT9B4xg">增量同步基础股票池过期日线，5 并发，覆盖 A股/ETF/美股</td></tr>
+    <tr data-page-node-id="MPt9OOBrKIE8YYu8ZNRSYX"><td data-page-node-id="zIE6SHmZJ5IGqEMqmjfg7O"><code data-page-node-id="1Ti7IoB7ic7kZdoKNOXiF7">external_data_sync</code></td><td data-page-node-id="sRKdT2jKAeVXOpezbp5zKK">因子输入估值同步</td><td data-page-node-id="F17Qwix8zy2g8qy5pn6gKC">全市场 A 股 PE/PB/市值增量快照，供因子公式使用</td></tr>
+    <tr data-page-node-id="KOWWQWwO8okbRK5mfFte6v"><td data-page-node-id="TcK6CerVPxk0o0NaTFLTi6"><code data-page-node-id="6r5hTAjp1NiADGo2dchOfR">factor_pipeline</code></td><td data-page-node-id="86d3t1OEuJhHnCC2ylZyy4">因子流水线</td><td data-page-node-id="tUhMEEQEEY1W4AdI8bmwiI">本地镜像 → 因子计算 → 标签 → 模型 → 评分快照</td></tr>
+    <tr data-page-node-id="QKTKFa6tQlHVgsWxw32g6i"><td data-page-node-id="wYvquGjOIk36gKk7JdyA6d"><code data-page-node-id="i8gNckWsGA5kOh7OsNBcMC">hot_rank_snapshot</code></td><td data-page-node-id="9RMxtPQilWSan5TNUqZiAt">人气榜快照</td><td data-page-node-id="CmygmTujfk4dPwzFeHeWhh">东方财富前 100 名，免费接口不支持历史回填</td></tr>
+    <tr data-page-node-id="Hv93CbIdTHZsa0aX8rGp1J"><td data-page-node-id="ipYiAR0dZkA6FQ03mcHUqF"><code data-page-node-id="oJWRP1Zmc8DGNikXODISjx">tail_proxy_snapshot</code></td><td data-page-node-id="REXWyvs5W451zPSDn4y683">尾盘量价代理</td><td data-page-node-id="M25c6Xijpua6NbtbCd1NvV">候选前 20 只 1 分钟量价 → 尾盘代理指标</td></tr>
+    <tr data-page-node-id="snPA7bKQiG3oDudvIVIdKI"><td data-page-node-id="Iwcu5OXDgFo61oEwgIQ3KN"><code data-page-node-id="I26wh0eY5GpdAvBO6kd2Zz">lhb_institution_sync</code></td><td data-page-node-id="uZFACy8c9EeNWAxhccDHAU">龙虎榜机构席位</td><td data-page-node-id="NtVQDVigqHgszuXOpYPGOI">近 3 日机构席位买入/卖出/净额</td></tr>
+    <tr data-page-node-id="O95fuPUoDLGXweddaEycNQ"><td data-page-node-id="0PGNdVUt60d3IFRNRg9ija"><code data-page-node-id="d4EhrQYBEHNjZhXEByhEor">financial_report_sync</code></td><td data-page-node-id="Pgbukiqwyzs5fww3cZiakL">财报历史同步</td><td data-page-node-id="AuATj6SYbiDwEd7BmlOANc">按公告日同步自选股财务分析历史，默认 20 只</td></tr>
+    <tr data-page-node-id="tGcpNFDfmR0UufWApSVcGj"><td data-page-node-id="wJVWDbMCmsvWwi5ZDcshMG"><code data-page-node-id="yDbC5QxBWdke5Z4qGsfbfG">discovery_mining</code></td><td data-page-node-id="wYMqjYrFhvTz8iPMBdiUv2">机会挖掘</td><td data-page-node-id="utdQmWoTmAr8t1TMR9gepQ">本地股票池扫描 + 候选生成，min_score 默认 55</td></tr>
+    <tr data-page-node-id="Gdp8N1iFHdbJOlQL6GS9wt"><td data-page-node-id="bWTqBlhZN2Yt4sG2PkvmFn"><code data-page-node-id="6jqXfx1AHGmGlhDT6Cx7mf">portfolio_equity_snapshot</code></td><td data-page-node-id="D3EHkoRu3FPsxGJiYgFIZp">组合净值快照</td><td data-page-node-id="qHSQiNyw8PfrQiEzFphF0N">收盘后写入模拟组合净值（历史不可回溯，务必每日执行）</td></tr>
+    <tr data-page-node-id="HKFFnAkqWOvub4wIMGM1z1"><td data-page-node-id="L4IyDRt43VTgEZmrLCbdrj"><code data-page-node-id="6OFpidtw9qI47eer9H6eeJ">index_daily_sync</code></td><td data-page-node-id="WUJAv8QBwbauOzXVkbhl6d">指数日线同步</td><td data-page-node-id="jQ1yMDrDLD7qpy6FVCPP9m">沪深 300 等到 index_prices，供 benchmark 对比</td></tr>
+    <tr data-page-node-id="WWdhkoMAkEvKNjXR8HGe5T"><td data-page-node-id="KDJM0JyExSPRTrPI9B4xaX"><code data-page-node-id="Q0E2K8w0KA5X3Bf8tbCxsl">portfolio_auto_trade</code></td><td data-page-node-id="CAZizyBEYWjszijG6QCqMW">组合自动交易</td><td data-page-node-id="nmOBDBMdXwCyPtdwMD02k5">收盘前对开启开关的模拟组合执行自动买卖评估与下单</td></tr>
+  </tbody>
+</table>
+
+<!-- 5 -->
+<h2 class="sec" data-page-node-id="DLleDcEDcYs4HO7crkhDus"><span class="num" data-page-node-id="Sf5UL4oz3QNDoUSt6GcEGe">5</span>外部数据网关（稳定性底座）</h2>
+<p class="sechint" data-page-node-id="DQXoiD0KoXTtz3ufYMltGC">所有第三方接口调用收敛到 <code data-page-node-id="sLDKiKKpTtLjvZaIhVPBdP">external_data_gateway.fetch()</code>，缓存/限流/熔断/降级对业务透明。</p>
+
+<div class="flow" data-page-node-id="CaXJb68ZonBdxjYa4JHCe8">
+  <div class="step" data-page-node-id="U3wxMakymXl1HELAl1FpES"><div class="sn" data-page-node-id="mIQ5htesZrDFxCeQ2Xu2WY">L1</div><div class="st" data-page-node-id="dAZjYrFH4zSNX4qmAkKZcv">进程缓存</div><div class="sd" data-page-node-id="dTHaHllmxNV0WJjAHh5o0T">TTL 60s · 最大 512 条 · 命中直接返回</div></div>
+  <div class="farr" data-page-node-id="lGXtdMUNxTxXkA1XrtaigY">→</div>
+  <div class="step" data-page-node-id="8Vf1e6D7oeInUPbl7MrBP8"><div class="sn" data-page-node-id="fgGs9VAgaDAKGpkawfOzXr">L2</div><div class="st" data-page-node-id="AH2TbCzSWWaCZ5w7ygrgWy">业务库</div><div class="sd" data-page-node-id="h1zpRUrCLxqHKuEBm3T7Mu">daily_bars / index_prices 等已入库数据</div></div>
+  <div class="farr" data-page-node-id="bHTY4VEj7rH9VfjFsEBlRO">→</div>
+  <div class="step" data-page-node-id="eW03BeNGjJgMENKvRYPkdP"><div class="sn" data-page-node-id="i6zVNanN5fKZDAGieFZSKM">L3</div><div class="st" data-page-node-id="AiaBE59GTmx0GOWZAFbbzP">DuckDB 快照</div><div class="sd" data-page-node-id="h1GAMnjWDQTRiQCMI0tnaS">因子数仓冷数据，单写锁保护</div></div>
+  <div class="farr" data-page-node-id="hjHD333ubW25fy614BSQYu">→</div>
+  <div class="step" data-page-node-id="zSchTNzElh8dG3hQPPOKAh"><div class="sn" data-page-node-id="penXMRgdyeSQwdxAGrirDc">L4</div><div class="st" data-page-node-id="RKEvRq0KgyNIocr82U0PFv">第三方接口</div><div class="sd" data-page-node-id="CfXJADbMJWtEQMZSBAShrb">AkShare / TDX，失败按 L3→L2→L1 回退</div></div>
+  <div class="farr" data-page-node-id="rKudqdHX6ppER4XKLT9CVr">→</div>
+  <div class="step" data-page-node-id="DQEQeuZ1MQx9kTP249lG7i"><div class="sn" data-page-node-id="caTQ7aQ77ScocomHVV8kMb">GOV</div><div class="st" data-page-node-id="QPoGNSxeJdBZoh9b67am1U">稳定性治理</div><div class="sd" data-page-node-id="qb2inkDkvyomdGDSIk395X">单飞 · 主机/接口/任务三维限流 · 熔断 closed→open→half_open</div></div>
+</div>
+
+<!-- 6 -->
+<h2 class="sec" data-page-node-id="AOCtjCXsaDNriLbxaAOEGa"><span class="num" data-page-node-id="saWGiXMax14LZ3CADOXK6X">6</span>测试与交付体系</h2>
+<p class="sechint" data-page-node-id="JgCFOCkAt0NIuXsdY25UWJ">四层测试金字塔 + 人工 UAT。CI 在 GitHub Actions 上跑白盒 + 前端，提交前由 pre-commit 兜底。</p>
+
+<table data-page-node-id="ACRD6aMezoDnSIcDOLQFXc">
+  <thead data-page-node-id="I5IGeH6PLcgMS0xtAHA6V2"><tr data-page-node-id="tipsLDoBSdNMOLIvZqqgZy"><th style="width:14%" data-page-node-id="kEOrfhA5DJqvXupHiteaMi">层级</th><th style="width:30%" data-page-node-id="ioNTajZJ4iUPcVPnX0d5Hd">命令</th><th style="width:10%" data-page-node-id="0gqngTgnDg4KxWkarK3EsR">规模</th><th data-page-node-id="Ucxj10PkJmjh4rEV3F2D5d">说明</th></tr></thead>
+  <tbody data-page-node-id="o0PXGGQ6qA6cKcLgUQwDjb">
+    <tr data-page-node-id="wKVzuavDjG2EZQT1j1PBfQ"><td data-page-node-id="SGgCGPVRbBfld9UQNf0meB">白盒单元</td><td data-page-node-id="UtjfhkHRU1ygmsxMuY7gTQ"><code data-page-node-id="6ISDTE7Z1B87uFx7E8z48C">pytest -m whitebox</code></td><td data-page-node-id="6EJhsymmcvEczLRIJ7Fuil">~260</td><td data-page-node-id="CrC60XDpC0twsOuArlKERn">直接调用服务层/路由，无需启动后端，SQLite 内存库隔离</td></tr>
+    <tr data-page-node-id="aXb2iDoFVmilQaVHCvSbUt"><td data-page-node-id="twHs3TVkaaP3guZ7ho4dkh">前端组件</td><td data-page-node-id="gOfNUnv2KHeV73oTOVWpk8"><code data-page-node-id="gWcbiDT3KligOAQ8ZcQgfm">cd frontend &amp;&amp; npm test</code></td><td data-page-node-id="mAsPHnT7LuAw9GP8E9Ex5J">~216</td><td data-page-node-id="yDLiLn0z5AwD3iCORBIbeL">Vitest + Testing Library + jsdom</td></tr>
+    <tr data-page-node-id="7GzjVCMo8Dwl1UCRZFC7PB"><td data-page-node-id="6OgE2l8M0zcd1umHseFsSF">黑盒集成</td><td data-page-node-id="sr0C6MTIExb7ZuHPzfEAnn"><code data-page-node-id="nEud4iMBn2Gd8B5lpCHDMg">pytest -m blackbox</code></td><td data-page-node-id="OfEwNGEj4FjggfcqjWCXi4">~47</td><td data-page-node-id="QXNH5HCuKNVDNB2Z7Lfn6x">httpx 直连已启动的后端，验证 API 契约</td></tr>
+    <tr data-page-node-id="EZI8pKeBwfNrC7xrf1Gk5h"><td data-page-node-id="iZPfY4ow91OUMLnfUkCIB1">E2E</td><td data-page-node-id="77AKwRztFQLxdTs8dygxuG"><code data-page-node-id="9cY3kIJUJzpyjvqTE8WJFh">pytest tests/e2e/ -m e2e</code></td><td data-page-node-id="7DhwVfEUtCzW41A2fL5rVG">~27</td><td data-page-node-id="cxAuX8AuxXwU9fRm4ooC3N">Playwright 真实浏览器，需前后端同时运行</td></tr>
+    <tr data-page-node-id="xSlxWFwnz5pVjZl8dA6Vuk"><td data-page-node-id="cqilZ3h2KIZySqjOAhpEuR">UAT 人工</td><td data-page-node-id="Pi0X3LcIsW9SXqzltdXEuB">见 <code data-page-node-id="WhaoL5rO3o2OvMFvNBvcsp">docs/uat-checklist.md</code></td><td data-page-node-id="qH3tMCNARMe8pAXazLgxbv">167 项</td><td data-page-node-id="jrjcT1bb1z8oYEBhuLlsG2">人工执行的验收清单</td></tr>
+  </tbody>
+</table>
+
+<div class="grid2" style="margin-top:16px;" data-page-node-id="bGuDDyyZEKBPEnuFeR2XKK">
+  <div class="card" data-page-node-id="VIWgYTxFzUko5C3pZRNCMn">
+    <h3 data-page-node-id="s9DbZETAKdkAHEiIkcdlBj">规模统计</h3>
+    <ul data-page-node-id="fuOBBeAdFBaApOhwuW6IOa">
+      <li data-page-node-id="U4K6ebHMDgzoFAS9ATFLz8">后端 Python：394 个文件 / 约 140,096 行（<code data-page-node-id="mULDuD1PJNsITmxLACXl6n">app/</code>）</li>
+      <li data-page-node-id="96A2A8KPNPklP8Q342Wvts">前端 TS/TSX：151 个 tsx / 约 107,508 行</li>
+      <li data-page-node-id="F8pgyMu4nmoMpgo6YqUHrh">ORM 模型 66 个 · 业务表 108 张 · Pydantic Schema 39 个</li>
+      <li data-page-node-id="qwnhEBR6ccwE9zbmHj7JFN">路由模块 46 个 · 服务模块 120 个（因子域 42 个）</li>
+      <li data-page-node-id="H6LjAJag053imGQSbcDMub">测试文件 257 个 · Alembic 迁移 20+ 个</li>
+    </ul>
+  </div>
+  <div class="card" data-page-node-id="Q30BG53VMzlKAbwJwFbcCg">
+    <h3 data-page-node-id="ZA07dMkUtWRMTeeFvd83tt">关键架构约束</h3>
+    <ul data-page-node-id="WPC8RAJMXXOHqeJwRpUJtX">
+      <li data-page-node-id="jMbee1ydoEW9Z9oHWbkfkL">层间单向依赖，服务层不得反向引用路由层</li>
+      <li data-page-node-id="P5nCFfnh8gvBfs75RtnLJG">因子域内部 ORM/服务禁止域外直连（conftest 有导入门禁）</li>
+      <li data-page-node-id="x412fTnEss8EQYMUIW94md">所有对外异常必须收敛为 UserError，敏感信息经 <code data-page-node-id="RgzBiemM8Dxw6ky2qsSWKQ">sanitize_message</code> 脱敏</li>
+      <li data-page-node-id="qwOKbCT6i2k8Por4qbBvFY">MySQL 连接错误禁止暴露明文密码</li>
+      <li data-page-node-id="ESxndx5Kiyjljwi2j56LZj">关键数据操作必须 commit 后再继续后续处理</li>
+      <li data-page-node-id="vygmWszRwucg27HplfaBrY">第三方库（akshare/sklearn）缺失时用 MagicMock stub 兜底，不得阻断导入</li>
+    </ul>
+  </div>
+</div>
+
+<footer data-page-node-id="wdXBjxyrKsqriGbgpArPk4">
+  Personal Quant Workbench · 架构图 v1.0 ｜ 依据代码现状自动生成，未修改任何源码 ｜ 配套文档：<code data-page-node-id="KzCdWOALu39ZcVD8vFTp8v">docs/开发手册.md</code>
+</footer>
+
+</div>
+<script>
+function toggleTheme(){
+  var r=document.documentElement;
+  r.dataset.theme = r.dataset.theme==="dark" ? "light" : "dark";
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 57 items
+
+tests\services\factors\experience\test_api.py ...........                [ 19%]
+tests\services\factors\experience\test_fingerprint.py ..........         [ 36%]
+tests\services\factors\experience\test_generalization.py ..............  [ 61%]
+tests\services\factors\experience\test_sample.py ..........F...          [ 85%]
+tests\services\factors\experience\test_store.py ........                 [100%]
+
+================================== FAILURES ===================================
+______________ TestRelatedExperiences.test_same_category_ranked _______________
+tests\services\factors\experience\test_sample.py:132: in test_same_category_ranked
+    _store(db_session, category="volatility")
+tests\services\factors\experience\test_sample.py:39: in _store
+    assert status == "created"
+E   AssertionError: assert 'duplicate' == 'created'
+E     
+E     - created
+E     + duplicate
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/services/factors/experience/test_sample.py::TestRelatedExperiences::test_same_category_ranked
+============= 1 failed, 56 passed, 1 warning in 87.16s (0:01:27) ==============

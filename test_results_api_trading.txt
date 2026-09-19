@@ -1,0 +1,792 @@
+====================================================================================================
+COMPREHENSIVE BLACK-BOX API TEST RESULTS
+Target: http://127.0.0.1:8000/api/v1
+Timestamp: 2026-07-24 21:59:36
+====================================================================================================
+
+------------------------------------------------------------
+SUMMARY
+------------------------------------------------------------
+Total tests:  80
+Passed (2xx success):       36
+Passed (4xx expected err):  42
+Failed (5xx server error):  2
+Errors (connection fail):   0
+Pass rate:    97.5%
+
+
+====================================================================================================
+MODULE: 1. Trade Setups
+====================================================================================================
+
+  Test:       GET latest trade setup (valid symbol & portfolio)
+  Method:     GET
+  Endpoint:   /trade-setups/latest/3276
+  Request:    {"symbol_id": 3276, "portfolio_id": 1}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"id": 28718, "portfolio_id": 1, "symbol_id": 3276, "score_id": 41919, "scan_run_id": null, "stage": "start", "action": "open", "entry_min": 1239.14, "entry_max": 1358.15, "stop_loss": 1164.79, "target_price": 1521.72, "recommended_position_pct": 0.0679, "recommended_position_amount": 33950.0, "risk_reward_ratio": 0.85, "allow_add_position": 1, "is_sector_overweight": 0, "is_asset_overweight": 0, ... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET latest trade setup (missing portfolio_id)
+  Method:     GET
+  Endpoint:   /trade-setups/latest/3276
+  Request:    {"symbol_id": 3276, "portfolio_id": "<missing>"}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "query.portfolio_id: Field required", "stack_summary": null, "db_error_code"... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET latest trade setup (nonexistent symbol_id=999999)
+  Method:     GET
+  Endpoint:   /trade-setups/latest/999999
+  Request:    {"symbol_id": 999999, "portfolio_id": 1}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Trade setup not found", "stack_summary": null, "db_error_code": null, "upstre... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST generate trade setup (valid)
+  Method:     POST
+  Endpoint:   /trade-setups/generate
+  Request:    {"body": {"portfolio_id": 1, "symbol_id": 3276}}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"id": 28718, "portfolio_id": 1, "symbol_id": 3276, "score_id": 41919, "scan_run_id": null, "stage": "start", "action": "open", "entry_min": 1239.14, "entry_max": 1358.15, "stop_loss": 1164.79, "target_price": 1521.72, "recommended_position_pct": 0.0, "recommended_position_amount": 0.0, "risk_reward_ratio": 0.85, "allow_add_position": 0, "is_sector_overweight": 0, "is_asset_overweight": 0, "setup_... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST generate trade setup (empty body)
+  Method:     POST
+  Endpoint:   /trade-setups/generate
+  Request:    {}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.portfolio_id: Field required; body.symbol_id: Field required", "stack_... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST generate trade setup (invalid symbol_id=999999)
+  Method:     POST
+  Endpoint:   /trade-setups/generate
+  Request:    {"body": {"portfolio_id": 1, "symbol_id": 999999}}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Portfolio, symbol, or score not found", "stack_summary": null, "db_error_code... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       PATCH tranches (nonexistent setup_id=999999)
+  Method:     PATCH
+  Endpoint:   /trade-setups/999999/tranches
+  Request:    {"body": {"tranche_plan": []}}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Trade setup not found", "stack_summary": null, "db_error_code": null, "upstre... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+====================================================================================================
+MODULE: 2. Sim Accounts
+====================================================================================================
+
+  Test:       GET sim account (valid portfolio)
+  Method:     GET
+  Endpoint:   /portfolios/1/sim-account
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"summary": {"cash_balance": 305515.0, "available_cash": 305515.0, "market_value": 194012.7, "total_equity": 499527.7, "realized_pnl": 3.5, "unrealized_pnl": -305.8, "cash_pct": 0.6116, "invested_pct": 0.3884, "position_count": 4, "trade_count_7d": 1, "last_trade_at": "2026-07-24T13:56:03"}, "recent_trades": [{"id": 8, "symbol_id": 3276, "symbol": "600519", "name": "贵州茅台", "side": "buy", "quantity... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET sim account (with trade_limit & ledger_limit)
+  Method:     GET
+  Endpoint:   /portfolios/1/sim-account
+  Request:    {"portfolio_id": 1, "trade_limit": 10, "ledger_limit": 20}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"summary": {"cash_balance": 305515.0, "available_cash": 305515.0, "market_value": 194012.7, "total_equity": 499527.7, "realized_pnl": 3.5, "unrealized_pnl": -305.8, "cash_pct": 0.6116, "invested_pct": 0.3884, "position_count": 4, "trade_count_7d": 1, "last_trade_at": "2026-07-24T13:56:03"}, "recent_trades": [{"id": 8, "symbol_id": 3276, "symbol": "600519", "name": "贵州茅台", "side": "buy", "quantity... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET sim account (nonexistent portfolio_id=999999)
+  Method:     GET
+  Endpoint:   /portfolios/999999/sim-account
+  Request:    {}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Portfolio not found", "stack_summary": null, "db_error_code": null, "upstream... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST sim order (valid buy)
+  Method:     POST
+  Endpoint:   /portfolios/1/sim-orders
+  Request:    {"body": {"symbol_id": 3276, "side": "buy", "quantity": 100}}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"order": {"id": 9, "portfolio_id": 1, "symbol_id": 3276, "side": "buy", "order_type": "market", "quantity": 100.0, "submitted_price": 1305.0, "status": "filled", "filled_quantity": 100.0, "filled_price": 1306.31, "filled_amount": 130631.0, "fee": 169.82, "note": null, "created_at": "2026-07-24T13:59:26", "filled_at": "2026-07-24T13:59:26"}, "trade": {"id": 9, "symbol_id": 3276, "symbol": "600519"... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST sim order (empty body)
+  Method:     POST
+  Endpoint:   /portfolios/1/sim-orders
+  Request:    {}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.symbol_id: Field required; body.side: Field required; body.quantity: F... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST sim order (invalid side='fly')
+  Method:     POST
+  Endpoint:   /portfolios/1/sim-orders
+  Request:    {"body": {"symbol_id": 3276, "side": "fly", "quantity": 100}}
+  Status:     400
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "UNKNOWN_ERROR", "user_message": "服务暂时不可用，请稍后重试", "impact": "本次操作未完成", "retryable": true, "completed": 0.0, "next_actions": [{"label": "重试", "action_type": "retry", "target": null, "reason": null}], "technical_details": {"exception_type": "HTTPException", "status_code": 400, "error_message": "Order side must be buy or sell", "stack_summary": null, "db_error_code": null, "upstream_re... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST sim order (zero quantity)
+  Method:     POST
+  Endpoint:   /portfolios/1/sim-orders
+  Request:    {"body": {"symbol_id": 3276, "side": "buy", "quantity": 0}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.quantity: Input should be greater than 0", "stack_summary": null, "db_... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST sim order (negative quantity)
+  Method:     POST
+  Endpoint:   /portfolios/1/sim-orders
+  Request:    {"body": {"symbol_id": 3276, "side": "buy", "quantity": -10}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.quantity: Input should be greater than 0", "stack_summary": null, "db_... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST sim order (nonexistent portfolio_id=999999)
+  Method:     POST
+  Endpoint:   /portfolios/999999/sim-orders
+  Request:    {"body": {"symbol_id": 3276, "side": "buy", "quantity": 100}}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Portfolio not found", "stack_summary": null, "db_error_code": null, "upstream... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+====================================================================================================
+MODULE: 3. Backtest
+====================================================================================================
+
+  Test:       GET backtest runs (valid portfolio)
+  Method:     GET
+  Endpoint:   /backtest/runs
+  Request:    {"portfolio_id": 1}
+  Status:     200
+  Verdict:    PASS
+  Response:   [{"id": 24, "portfolio_id": 1, "run_name": "Backtest 20260724_215554", "symbols_json": "[3276]", "rule_config_json": "{\"buy_conditions\": {}, \"sell_conditions\": {}, \"position_config\": {}, \"execution_config\": {}}", "cost_config_json": "{\"commission_rate\": 0.0003, \"min_commission\": 5.0, \"stamp_tax_rate\": 0.001, \"slippage_rate\": 0.001}", "score_weight_mode": "manual", "factor_model_run... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET backtest runs (missing portfolio_id)
+  Method:     GET
+  Endpoint:   /backtest/runs
+  Request:    {"portfolio_id": "<missing>"}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "query.portfolio_id: Field required", "stack_summary": null, "db_error_code"... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET backtest runs (nonexistent portfolio_id=999999)
+  Method:     GET
+  Endpoint:   /backtest/runs
+  Request:    {"portfolio_id": 999999}
+  Status:     200
+  Verdict:    PASS
+  Response:   []
+  --------------------------------------------------------------------------------
+
+  Test:       POST backtest run (valid config)
+  Method:     POST
+  Endpoint:   /backtest/run
+  Request:    {"body": {"portfolio_id": 1, "symbol_ids": [3276], "start_date": "2024-01-01", "end_date": "2024-12-31", "rule_config": {"buy_conditions": {"quality_score_min": 60}, "sell_conditions": {"take_profit_pct": 0.1}}}}
+  Status:     500
+  Verdict:    FAIL (server error)
+  Response:   {"error_code": "UNKNOWN_ERROR", "user_message": "服务暂时不可用，请稍后重试", "impact": "本次操作未完成", "retryable": true, "completed": 0.0, "next_actions": [{"label": "重试", "action_type": "retry", "target": null, "reason": null}], "technical_details": {"exception_type": "HTTPException", "status_code": 500, "error_message": "回测执行失败，请检查配置或稍后重试", "stack_summary": null, "db_error_code": null, "upstream_response": null... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST backtest run (empty body)
+  Method:     POST
+  Endpoint:   /backtest/run
+  Request:    {}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.portfolio_id: Field required; body.symbol_ids: Field required; body.st... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST backtest run (missing symbol_ids)
+  Method:     POST
+  Endpoint:   /backtest/run
+  Request:    {"body": {"portfolio_id": 1, "start_date": "2024-01-01", "end_date": "2024-12-31", "rule_config": {}}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.symbol_ids: Field required", "stack_summary": null, "db_error_code": n... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST backtest run (invalid date format)
+  Method:     POST
+  Endpoint:   /backtest/run
+  Request:    {"body": {"portfolio_id": 1, "symbol_ids": [3276], "start_date": "not-a-date", "end_date": "also-not", "rule_config": {}}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.start_date: Input should be a valid date or datetime, invalid characte... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST backtest run (end_date before start_date)
+  Method:     POST
+  Endpoint:   /backtest/run
+  Request:    {"body": {"portfolio_id": 1, "symbol_ids": [3276], "start_date": "2025-12-31", "end_date": "2024-01-01", "rule_config": {}}}
+  Status:     500
+  Verdict:    FAIL (server error)
+  Response:   {"error_code": "UNKNOWN_ERROR", "user_message": "服务暂时不可用，请稍后重试", "impact": "本次操作未完成", "retryable": true, "completed": 0.0, "next_actions": [{"label": "重试", "action_type": "retry", "target": null, "reason": null}], "technical_details": {"exception_type": "HTTPException", "status_code": 500, "error_message": "回测执行失败，请检查配置或稍后重试", "stack_summary": null, "db_error_code": null, "upstream_response": null... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET backtest templates
+  Method:     GET
+  Endpoint:   /backtest/templates
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   []
+  --------------------------------------------------------------------------------
+
+  Test:       POST backtest template (valid)
+  Method:     POST
+  Endpoint:   /backtest/templates
+  Request:    {"body": {"name": "API Test Template", "description": "Test template", "rule_config": {"buy_conditions": {}}}}
+  Status:     201
+  Verdict:    PASS
+  Response:   {"id": 1, "name": "API Test Template", "description": "Test template", "rule_config": {"buy_conditions": {}}, "created_at": "2026-07-24T13:59:29", "updated_at": "2026-07-24T13:59:29"}
+  --------------------------------------------------------------------------------
+
+  Test:       POST backtest template (missing name)
+  Method:     POST
+  Endpoint:   /backtest/templates
+  Request:    {"body": {"description": "No name provided", "rule_config": {}}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.name: Field required", "stack_summary": null, "db_error_code": null, "... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET backtest run (nonexistent run_id=999999)
+  Method:     GET
+  Endpoint:   /backtest/runs/999999
+  Request:    {}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Backtest run not found", "stack_summary": null, "db_error_code": null, "upstr... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST portfolio backtest run (valid)
+  Method:     POST
+  Endpoint:   /backtest/portfolio/run
+  Request:    {"body": {"portfolio_id": 1, "start_date": "2024-06-01", "end_date": "2024-12-31"}}
+  Status:     409
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "UNKNOWN_ERROR", "user_message": "服务暂时不可用，请稍后重试", "impact": "本次操作未完成", "retryable": true, "completed": 0.0, "next_actions": [{"label": "重试", "action_type": "retry", "target": null, "reason": null}], "technical_details": {"exception_type": "HTTPException", "status_code": 409, "error_message": "Portfolio 1 auto_trade_enabled is 0. Whole-portfolio backtest requires auto_trade_enabled=1... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST portfolio backtest run (empty body)
+  Method:     POST
+  Endpoint:   /backtest/portfolio/run
+  Request:    {}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.portfolio_id: Field required; body.start_date: Field required; body.en... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+====================================================================================================
+MODULE: 4. Alerts
+====================================================================================================
+
+  Test:       GET alert events
+  Method:     GET
+  Endpoint:   /alerts/events
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"events": [], "unacknowledged_count": 0}
+  --------------------------------------------------------------------------------
+
+  Test:       GET alert events (limit=5, include_acknowledged=true)
+  Method:     GET
+  Endpoint:   /alerts/events
+  Request:    {"limit": 5, "include_acknowledged": true}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"events": [{"id": 7237, "rule_id": 12, "alert_type": "task_failed", "severity": "error", "title": "factor_pipeline 任务失败", "message": "任务 e17dea60…：任务执行失败，未能完成", "symbol_id": null, "data": {"task_id": "e17dea60eb2c4201a28a385da7f8717b", "task_type": "factor_pipeline", "stage": "failed", "processed": 900, "total": 5532, "error_code": "TASK_FAILED", "technical_details": "因子仓库被占用或繁忙，请稍后重试；若持续失败可重启后端释... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET active alerts
+  Method:     GET
+  Endpoint:   /alerts/active
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"events": [], "count": 0}
+  --------------------------------------------------------------------------------
+
+  Test:       GET active alerts (limit=3)
+  Method:     GET
+  Endpoint:   /alerts/active
+  Request:    {"limit": 3}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"events": [], "count": 0}
+  --------------------------------------------------------------------------------
+
+  Test:       GET alert rules
+  Method:     GET
+  Endpoint:   /alerts/rules
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   [{"id": 10, "name": "评分低于40", "alert_type": "score_drop", "enabled": 1, "severity": "warn", "config_json": "{\"threshold\": 40}", "last_triggered_at": "2026-07-24T13:55:08", "cooldown_minutes": 120, "created_at": "2026-07-02T12:50:18", "updated_at": "2026-07-24T13:55:08"}, {"id": 11, "name": "K线超过7天未更新", "alert_type": "data_stale", "enabled": 1, "severity": "warn", "config_json": "{\"stale_days\":... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST alert rule (valid - score_drop)
+  Method:     POST
+  Endpoint:   /alerts/rules
+  Request:    {"body": {"name": "API Test Alert Rule", "alert_type": "score_drop", "enabled": true, "severity": "warn", "config": {"threshold": 40}, "cooldown_minutes": 60}}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"id": 14, "name": "API Test Alert Rule", "alert_type": "score_drop", "enabled": 1, "severity": "warn", "config_json": "{\"threshold\": 40}", "last_triggered_at": null, "cooldown_minutes": 60, "created_at": "2026-07-24T13:59:30", "updated_at": "2026-07-24T13:59:30"}
+  --------------------------------------------------------------------------------
+
+  Test:       POST alert rule (missing name & alert_type)
+  Method:     POST
+  Endpoint:   /alerts/rules
+  Request:    {"body": {"enabled": true}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.name: Field required; body.alert_type: Field required", "stack_summary... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST alert rule (empty body)
+  Method:     POST
+  Endpoint:   /alerts/rules
+  Request:    {}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.name: Field required; body.alert_type: Field required", "stack_summary... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST alert rule (invalid alert_type='price_change')
+  Method:     POST
+  Endpoint:   /alerts/rules
+  Request:    {"body": {"name": "Bad Type Alert", "alert_type": "price_change"}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.alert_type: Value error, alert_type must be one of {'task_failed', 'in... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST alert rule (valid - watchlist_signal)
+  Method:     POST
+  Endpoint:   /alerts/rules
+  Request:    {"body": {"name": "API Test Watchlist Signal", "alert_type": "watchlist_signal", "enabled": false, "severity": "info", "config": {}, "cooldown_minutes": 30}}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"id": 15, "name": "API Test Watchlist Signal", "alert_type": "watchlist_signal", "enabled": 0, "severity": "info", "config_json": null, "last_triggered_at": null, "cooldown_minutes": 30, "created_at": "2026-07-24T13:59:30", "updated_at": "2026-07-24T13:59:30"}
+  --------------------------------------------------------------------------------
+
+  Test:       PATCH alert rule (valid update, id=14)
+  Method:     PATCH
+  Endpoint:   /alerts/rules/14
+  Request:    {"body": {"name": "Updated API Test Rule", "severity": "error"}}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"id": 14, "name": "Updated API Test Rule", "alert_type": "score_drop", "enabled": 1, "severity": "error", "config_json": "{\"threshold\": 40}", "last_triggered_at": null, "cooldown_minutes": 60, "created_at": "2026-07-24T13:59:30", "updated_at": "2026-07-24T13:59:31"}
+  --------------------------------------------------------------------------------
+
+  Test:       PATCH alert rule (nonexistent id=999999)
+  Method:     PATCH
+  Endpoint:   /alerts/rules/999999
+  Request:    {"body": {"name": "Ghost Rule"}}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Alert rule not found", "stack_summary": null, "db_error_code": null, "upstrea... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST evaluate alerts
+  Method:     POST
+  Endpoint:   /alerts/evaluate
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"evaluated": true, "new_events": 33, "events": [{"id": 7270, "rule_id": 14, "alert_type": "score_drop", "severity": "error", "title": "评分跌破阈值: 000004 国华退", "message": "000004 国华退 最新评分 37.1（2026-07-10）低于阈值 40.0", "symbol_id": 7, "created_at": "2026-07-24T13:59:32"}, {"id": 7269, "rule_id": 14, "alert_type": "score_drop", "severity": "error", "title": "评分跌破阈值: 002808 恒久退", "message": "002808 恒久退 最新... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST acknowledge all alerts
+  Method:     POST
+  Endpoint:   /alerts/acknowledge-all
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"acknowledged_count": 33}
+  --------------------------------------------------------------------------------
+
+  Test:       POST acknowledge event (nonexistent event_id=999999)
+  Method:     POST
+  Endpoint:   /alerts/acknowledge/999999
+  Request:    {}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Alert event not found", "stack_summary": null, "db_error_code": null, "upstre... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET alert context (nonexistent alert_id=999999)
+  Method:     GET
+  Endpoint:   /alerts/999999/context
+  Request:    {}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Alert event not found", "stack_summary": null, "db_error_code": null, "upstre... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       DELETE alert rule (cleanup, id=14)
+  Method:     DELETE
+  Endpoint:   /alerts/rules/14
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"deleted": 14}
+  --------------------------------------------------------------------------------
+
+  Test:       DELETE alert rule (cleanup, id=15)
+  Method:     DELETE
+  Endpoint:   /alerts/rules/15
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"deleted": 15}
+  --------------------------------------------------------------------------------
+
+  Test:       DELETE alert rule (nonexistent id=999999)
+  Method:     DELETE
+  Endpoint:   /alerts/rules/999999
+  Request:    {}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Alert rule not found", "stack_summary": null, "db_error_code": null, "upstrea... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+====================================================================================================
+MODULE: 5. Auto Trade
+====================================================================================================
+
+  Test:       GET auto-trade member status (valid portfolio)
+  Method:     GET
+  Endpoint:   /portfolios/1/auto-trade/member-status
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"portfolio_id": 1, "members": [], "total": 0}
+  --------------------------------------------------------------------------------
+
+  Test:       GET auto-trade member status (nonexistent portfolio)
+  Method:     GET
+  Endpoint:   /portfolios/999999/auto-trade/member-status
+  Request:    {}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Portfolio not found", "stack_summary": null, "db_error_code": null, "upstream... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET auto-trade member source status (valid portfolio)
+  Method:     GET
+  Endpoint:   /portfolios/1/auto-trade/member-source-status
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"portfolio_id": 1, "enabled": false, "env_var_name": "AUTO_TRADE_MEMBER_SOURCE_ENABLED", "env_flag": "false", "whitelist_match": false, "blacklist_match": false, "whitelist": [], "blacklist": []}
+  --------------------------------------------------------------------------------
+
+  Test:       GET auto-trade dry-run diff (valid portfolio)
+  Method:     GET
+  Endpoint:   /portfolios/1/auto-trade/dry-run-diff
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"portfolio_id": 1, "old_set": {"buys": [], "sells": [], "rejected": []}, "new_set": {"buys": [], "sells": [], "rejected": []}, "diffs": []}
+  --------------------------------------------------------------------------------
+
+  Test:       POST auto-trade execute (dry_run=true)
+  Method:     POST
+  Endpoint:   /portfolios/1/auto-trade/execute
+  Request:    {"body": {"dry_run": true, "buy_candidate_limit": 5}}
+  Status:     409
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "UNKNOWN_ERROR", "user_message": "服务暂时不可用，请稍后重试", "impact": "本次操作未完成", "retryable": true, "completed": 0.0, "next_actions": [{"label": "重试", "action_type": "retry", "target": null, "reason": null}], "technical_details": {"exception_type": "HTTPException", "status_code": 409, "error_message": "Portfolio 1 auto_trade_enabled is 0. Enable auto-trade first.", "stack_summary": null, "db_... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST auto-trade execute (empty body)
+  Method:     POST
+  Endpoint:   /portfolios/1/auto-trade/execute
+  Request:    {}
+  Status:     409
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "UNKNOWN_ERROR", "user_message": "服务暂时不可用，请稍后重试", "impact": "本次操作未完成", "retryable": true, "completed": 0.0, "next_actions": [{"label": "重试", "action_type": "retry", "target": null, "reason": null}], "technical_details": {"exception_type": "HTTPException", "status_code": 409, "error_message": "Portfolio 1 auto_trade_enabled is 0. Enable auto-trade first.", "stack_summary": null, "db_... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST auto-trade execute (nonexistent portfolio)
+  Method:     POST
+  Endpoint:   /portfolios/999999/auto-trade/execute
+  Request:    {"body": {"dry_run": true}}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Portfolio 999999 not found", "stack_summary": null, "db_error_code": null, "u... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET backtest source status (valid portfolio)
+  Method:     GET
+  Endpoint:   /portfolios/1/backtest/source-status
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"enabled": true, "env_flag": "PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED", "source_label": "members"}
+  --------------------------------------------------------------------------------
+
+  Test:       POST auto-trade rollback (valid portfolio)
+  Method:     POST
+  Endpoint:   /portfolios/1/auto-trade/rollback-to-old-source
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"ok": true, "portfolio_id": 1, "message": "已回退到旧来源（新来源开关已关闭）"}
+  --------------------------------------------------------------------------------
+
+====================================================================================================
+MODULE: 6. Signal Rules
+====================================================================================================
+
+  Test:       GET signal rule presets
+  Method:     GET
+  Endpoint:   /signal-rules/presets
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   [{"mode": "conservative", "rule_name": "保守模式", "description": "匹配更严格，适合只相信高相似样本。", "quality_tolerance": 8.0, "timing_tolerance": 8.0, "min_sample_count": 10, "max_samples": 60, "same_region": true, "same_asset_type": true, "same_stage": true, "same_action": true}, {"mode": "balanced", "rule_name": "均衡模式", "description": "默认方案，兼顾样本数量和相似度。", "quality_tolerance": 12.0, "timing_tolerance": 12.0, "min_... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET signal rule stats (valid symbol_id=3276)
+  Method:     GET
+  Endpoint:   /signal-rules/stats/3276
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"sample_count": 25, "matched_count": 240, "scope": {"region": "cn", "asset_type": "stock", "stage": "start", "action": "open", "rule_name": "均衡模式", "mode": "balanced", "quality_tolerance": 12.0, "timing_tolerance": 12.0, "min_sample_count": 3, "max_samples": 60, "same_region": true, "same_asset_type": true, "same_stage": true, "same_action": true}, "min_sample_count": 3, "win_rate_3d": 0.68, "win... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET signal rule stats (nonexistent symbol_id=999999)
+  Method:     GET
+  Endpoint:   /signal-rules/stats/999999
+  Request:    {}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Symbol not found", "stack_summary": null, "db_error_code": null, "upstream_re... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET signal rule stats (with portfolio_id=1)
+  Method:     GET
+  Endpoint:   /signal-rules/stats/3276
+  Request:    {"symbol_id": 3276, "portfolio_id": 1}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"sample_count": 25, "matched_count": 240, "scope": {"region": "cn", "asset_type": "stock", "stage": "start", "action": "open", "rule_name": "均衡模式", "mode": "balanced", "quality_tolerance": 12.0, "timing_tolerance": 12.0, "min_sample_count": 3, "max_samples": 60, "same_region": true, "same_asset_type": true, "same_stage": true, "same_action": true}, "min_sample_count": 3, "win_rate_3d": 0.68, "win... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       GET portfolio signal rule (valid portfolio)
+  Method:     GET
+  Endpoint:   /portfolios/1/signal-rule
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"rule_name": "均衡模式", "mode": "balanced", "quality_tolerance": 12.0, "timing_tolerance": 12.0, "min_sample_count": 3, "max_samples": 60, "same_region": true, "same_asset_type": true, "same_stage": true, "same_action": true, "id": 1, "portfolio_id": 1, "is_active": true}
+  --------------------------------------------------------------------------------
+
+  Test:       POST portfolio signal rule (valid upsert)
+  Method:     POST
+  Endpoint:   /portfolios/1/signal-rule
+  Request:    {"body": {"rule_name": "API Test Signal Rule", "mode": "conservative", "quality_tolerance": 0.8, "timing_tolerance": 24.0, "min_sample_count": 10, "max_samples": 100}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.quality_tolerance: Input should be greater than or equal to 1", "stack... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST portfolio signal rule (empty body)
+  Method:     POST
+  Endpoint:   /portfolios/1/signal-rule
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"rule_name": "balanced", "mode": "balanced", "quality_tolerance": 12.0, "timing_tolerance": 12.0, "min_sample_count": 3, "max_samples": 60, "same_region": true, "same_asset_type": true, "same_stage": true, "same_action": true, "id": 1, "portfolio_id": 1, "is_active": true}
+  --------------------------------------------------------------------------------
+
+  Test:       POST portfolio signal rule (nonexistent portfolio)
+  Method:     POST
+  Endpoint:   /portfolios/999999/signal-rule
+  Request:    {"body": {"rule_name": "Ghost Rule", "mode": "aggressive"}}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Portfolio not found", "stack_summary": null, "db_error_code": null, "upstream... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST signal rule preview (valid)
+  Method:     POST
+  Endpoint:   /portfolios/1/signal-rule/preview
+  Request:    {"body": {"rule_name": "Preview Test", "mode": "conservative", "quality_tolerance": 0.5, "symbol_id": 3276}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.quality_tolerance: Input should be greater than or equal to 1", "stack... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST signal rule preview (empty body)
+  Method:     POST
+  Endpoint:   /portfolios/1/signal-rule/preview
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"symbol_id": null, "symbol": null, "name": null, "status": "idle", "message": "请选择一个标的后预览规则", "stats": null}
+  --------------------------------------------------------------------------------
+
+====================================================================================================
+MODULE: 7. Custom Indicators
+====================================================================================================
+
+  Test:       GET custom indicators (all)
+  Method:     GET
+  Endpoint:   /settings/custom-indicators
+  Request:    {}
+  Status:     200
+  Verdict:    PASS
+  Response:   [{"name": "测试demo", "key": "kk_12", "description": "", "category": "custom", "formula": "sma(20) > sma(60) and rsi(14) < 70", "value_type": "boolean", "params": [], "scope": ["backtest", "discovery"], "enabled": true, "id": 1, "created_at": "2026-07-03T04:34:58", "updated_at": "2026-07-03T04:34:58", "version": 1}]
+  --------------------------------------------------------------------------------
+
+  Test:       GET custom indicators (enabled=true)
+  Method:     GET
+  Endpoint:   /settings/custom-indicators
+  Request:    {"enabled": true}
+  Status:     200
+  Verdict:    PASS
+  Response:   [{"name": "测试demo", "key": "kk_12", "description": "", "category": "custom", "formula": "sma(20) > sma(60) and rsi(14) < 70", "value_type": "boolean", "params": [], "scope": ["backtest", "discovery"], "enabled": true, "id": 1, "created_at": "2026-07-03T04:34:58", "updated_at": "2026-07-03T04:34:58", "version": 1}]
+  --------------------------------------------------------------------------------
+
+  Test:       POST custom indicator (valid formula)
+  Method:     POST
+  Endpoint:   /settings/custom-indicators
+  Request:    {"body": {"name": "API Test Indicator", "key": "api_test_ind_v3", "description": "Test indicator created by API test", "formula": "close > open ? 1 : 0", "value_type": "number", "category": "test", "enabled": true, "change_note": "Initial creation by API test"}}
+  Status:     400
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "UNKNOWN_ERROR", "user_message": "服务暂时不可用，请稍后重试", "impact": "本次操作未完成", "retryable": true, "completed": 0.0, "next_actions": [{"label": "重试", "action_type": "retry", "target": null, "reason": null}], "technical_details": {"exception_type": "HTTPException", "status_code": 400, "error_message": "Syntax error: invalid syntax", "stack_summary": null, "db_error_code": null, "upstream_resp... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST custom indicator (missing name, key, formula)
+  Method:     POST
+  Endpoint:   /settings/custom-indicators
+  Request:    {"body": {"description": "Missing required fields"}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.name: Field required; body.key: Field required; body.formula: Field re... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST custom indicator (empty body)
+  Method:     POST
+  Endpoint:   /settings/custom-indicators
+  Request:    {}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.name: Field required; body.key: Field required; body.formula: Field re... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST custom indicator (invalid value_type='integer')
+  Method:     POST
+  Endpoint:   /settings/custom-indicators
+  Request:    {"body": {"name": "Bad Type Indicator", "key": "bad_type_ind", "formula": "close * 2", "value_type": "integer", "change_note": "Testing invalid value_type"}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.value_type: Input should be 'boolean' or 'number'", "stack_summary": n... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST custom indicator (duplicate key)
+  Method:     POST
+  Endpoint:   /settings/custom-indicators
+  Request:    {"body": {"name": "Duplicate Key Indicator", "key": "api_test_ind_v3", "formula": "close * 2", "change_note": "Testing duplicate key"}}
+  Status:     201
+  Verdict:    PASS
+  Response:   {"name": "Duplicate Key Indicator", "key": "api_test_ind_v3", "description": "", "category": "custom", "formula": "close * 2", "value_type": "boolean", "params": [], "scope": ["backtest", "discovery"], "enabled": true, "id": 2, "created_at": "2026-07-24T13:59:36", "updated_at": "2026-07-24T13:59:36", "version": 1}
+  --------------------------------------------------------------------------------
+
+  Test:       POST custom indicator preview (valid)
+  Method:     POST
+  Endpoint:   /settings/custom-indicators/preview
+  Request:    {"body": {"symbol_id": 3276, "formula": "close > open ? 1 : 0", "value_type": "number", "recent_count": 30}}
+  Status:     400
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "UNKNOWN_ERROR", "user_message": "服务暂时不可用，请稍后重试", "impact": "本次操作未完成", "retryable": true, "completed": 0.0, "next_actions": [{"label": "重试", "action_type": "retry", "target": null, "reason": null}], "technical_details": {"exception_type": "HTTPException", "status_code": 400, "error_message": "Syntax error: invalid syntax", "stack_summary": null, "db_error_code": null, "upstream_resp... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       POST custom indicator preview (missing symbol_id)
+  Method:     POST
+  Endpoint:   /settings/custom-indicators/preview
+  Request:    {"body": {"formula": "close > open ? 1 : 0"}}
+  Status:     422
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "VALIDATION_ERROR", "user_message": "输入参数有误", "impact": "请修改后重试", "retryable": false, "completed": 0.0, "next_actions": [{"label": "修改后重试", "action_type": "retry", "target": null, "reason": "请按提示修正输入参数"}], "technical_details": {"exception_type": "RequestValidationError", "status_code": 422, "error_message": "body.symbol_id: Field required", "stack_summary": null, "db_error_code": nu... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       PUT custom indicator (guessed id=1)
+  Method:     PUT
+  Endpoint:   /settings/custom-indicators/1
+  Request:    {"body": {"name": "Updated", "change_note": "test"}}
+  Status:     200
+  Verdict:    PASS
+  Response:   {"name": "Updated", "key": "kk_12", "description": "", "category": "custom", "formula": "sma(20) > sma(60) and rsi(14) < 70", "value_type": "boolean", "params": [], "scope": ["backtest", "discovery"], "enabled": true, "id": 1, "created_at": "2026-07-03T04:34:58", "updated_at": "2026-07-24T13:59:37", "version": 1}
+  --------------------------------------------------------------------------------
+
+  Test:       PUT custom indicator (nonexistent id=999999)
+  Method:     PUT
+  Endpoint:   /settings/custom-indicators/999999
+  Request:    {"body": {"name": "Ghost Indicator"}}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Custom indicator not found", "stack_summary": null, "db_error_code": null, "u... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+  Test:       DELETE custom indicator (nonexistent id=999999)
+  Method:     DELETE
+  Endpoint:   /settings/custom-indicators/999999
+  Request:    {}
+  Status:     404
+  Verdict:    PASS (expected client error)
+  Response:   {"error_code": "NOT_FOUND", "user_message": "请求的资源不存在", "impact": "请检查输入或返回列表查看", "retryable": false, "completed": 0.0, "next_actions": [{"label": "返回观察池", "action_type": "dismiss", "target": null, "reason": "关闭错误提示，返回观察池列表"}], "technical_details": {"exception_type": "HTTPException", "status_code": 404, "error_message": "Custom indicator not found", "stack_summary": null, "db_error_code": null, "u... [TRUNCATED]
+  --------------------------------------------------------------------------------
+
+====================================================================================================
+ANOMALIES & ISSUES
+====================================================================================================
+
+SERVER ERRORS (5xx):
+  [POST /backtest/run] Status=500 - POST backtest run (valid config)
+    Response: {"error_code": "UNKNOWN_ERROR", "user_message": "服务暂时不可用，请稍后重试", "impact": "本次操作未完成", "retryable": true, "completed": 0.0, "next_actions": [{"label": "重试", "action_type": "retry", "target": null, "rea
+  [POST /backtest/run] Status=500 - POST backtest run (end_date before start_date)
+    Response: {"error_code": "UNKNOWN_ERROR", "user_message": "服务暂时不可用，请稍后重试", "impact": "本次操作未完成", "retryable": true, "completed": 0.0, "next_actions": [{"label": "重试", "action_type": "retry", "target": null, "rea
+
+UNEXPECTED BEHAVIORS:
+  GET /backtest/runs returned 200 for nonexistent resource (should be 404)
+  POST /portfolios/1/signal-rule returned 200 with empty body (should validate required fields)
+  POST /portfolios/1/signal-rule/preview returned 200 with empty body (should validate required fields)
+
+STATUS CODE DISTRIBUTION:
+  200: 34 tests
+  201: 2 tests
+  400: 3 tests
+  404: 16 tests
+  409: 3 tests
+  422: 20 tests
+  500: 2 tests
+
+====================================================================================================
+END OF REPORT
+====================================================================================================

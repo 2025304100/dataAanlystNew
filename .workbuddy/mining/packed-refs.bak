@@ -1,0 +1,16 @@
+# pack-refs with: peeled fully-peeled sorted 
+d8ad516911e433ab4e7d3aba530ba62f72d98672 refs/heads/main
+47ee046e0c4c1ca9baa0590baf45f31072f7bfd9 refs/heads/main_qw
+d633d018e1f1375d4ead6c6459356d8197339930 refs/heads/main_qw_react
+ca4e3ff56698ed46d2aa334ce843576b627211b3 refs/heads/main_react
+5151ee37b602baa5934fefd645da2eae5101c833 refs/heads/main_work_v0.5
+a668065b372c2c4052ff607ec760f276fae085fa refs/heads/main_work_v0.55
+829bc756b0979f142d3708d7c23050f77471971a refs/heads/main_work_v0.8
+a78dd25f0abfe6a9a57f4f03410451adf32a8aea refs/remotes/origin/main
+47ee046e0c4c1ca9baa0590baf45f31072f7bfd9 refs/remotes/origin/main_qw
+d633d018e1f1375d4ead6c6459356d8197339930 refs/remotes/origin/main_qw_react
+47ee046e0c4c1ca9baa0590baf45f31072f7bfd9 refs/remotes/origin/main_react
+c7d116113d6d689e9ac27174daa2630767bb5331 refs/remotes/origin/main_work_v0.5
+aae970bb4f9bf5a84010348437470dd346b0742b refs/remotes/origin/main_work_v0.55
+a97062d657757e012ff3fb53eb16997f26a4d5a2 refs/remotes/origin/main_work_v0.8
+bb93617d17d9de903b6e8a6ee18f383d8f7baa34 refs/stash

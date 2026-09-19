@@ -1,0 +1,49 @@
+"""T-A3: Q5.3 关键成员 key_members_json 列（Portfolios + StrategyExecutionSnapshots）
+
+Revision ID: wps_0033_033_key_members_json
+Revises: wps_0032_032_extend_existing_tables
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+revision = "wps_0033_033_key_members_json"
+down_revision = "wps_0032_032_extend_existing_tables"
+branch_labels = None
+depends_on = None
+
+
+def _has_col(table: str, column: str) -> bool:
+    insp = sa.inspect(op.get_bind())
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
+def _add(table: str, *col_defs):
+    for col in col_defs:
+        if not _has_col(table, col.name):
+            op.add_column(table, col)
+
+
+def upgrade():
+    _add(
+        "portfolios",
+        sa.Column(
+            "key_members_json",
+            sa.Text(),
+            nullable=True,
+            comment="Q5.3 关键成员 symbol_id 列表 JSON(list[int])；NULL/空=全组合默认关键",
+        ),
+    )
+    _add(
+        "strategy_execution_snapshots",
+        sa.Column(
+            "key_members_json",
+            sa.Text(),
+            nullable=True,
+            comment="Q5.3 关键成员 symbol_id 列表 JSON(list[int])；NULL/空=继承 Portfolio 或全默认",
+        ),
+    )
+
+
+def downgrade():
+    pass

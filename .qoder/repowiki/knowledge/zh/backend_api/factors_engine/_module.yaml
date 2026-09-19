@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: backend_api/factors_engine
+title: factors_engine
+scope:
+    - app/api/routes/factors.py
+    - app/api/routes/factor_models.py
+    - app/api/routes/factor_pipeline.py
+    - app/api/routes/factor_sets.py
+    - app/api/routes/factor_shadow.py
+    - app/api/routes/factor_evaluation.py
+source_files: []
+depends_on: []
+related_to: []

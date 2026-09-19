@@ -1,0 +1,3791 @@
+{
+  "meta": {
+    "window_start": "2024-08-10",
+    "window_end": "2024-09-08",
+    "n_trade_dates": 30,
+    "symbols": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "config_hash": "4e232e92302b413ed84c332c8718dae424e31aba9b9a39d143abc2b578d17865",
+    "config": {
+      "filter_new_listing": true,
+      "filter_st": true,
+      "filter_suspended": true,
+      "force_delisting_liquidation": true,
+      "delisting_period_excluded": true,
+      "min_listing_age_calendar_days": 120,
+      "production_fidelity": true
+    },
+    "symbol_scenarios": {
+      "1": "次新股 IPO 2024-04-23；前20日排除（age<120），8/21起纳入",
+      "2": "2024-08-10 起 ST, 08-25 解除",
+      "3": "2024-08-15 单日停牌",
+      "4": "2024-08-20 起进入退市整理期",
+      "5": "2024-09-01 正式摘牌, 前一日收盘 10.5",
+      "6-10": "全程正常"
+    },
+    "total_effective_count": 244,
+    "total_trades_count": 236
+  },
+  "days": [
+    {
+      "trade_date": "2024-08-10",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 100,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 952,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1166,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1609,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2274,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3500,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3065,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2644,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2232,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1797,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "7dda61f504e5f1db4aa703d874cadac834da6bc3c3d91f36b4bc0e9dc913435c"
+    },
+    {
+      "trade_date": "2024-08-11",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 101,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 953,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1167,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1610,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2275,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3501,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3066,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2645,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2233,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1798,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "354f7729802b9e036566af3ae961acf0d1c69026f4efdf80a789947c016b6b40"
+    },
+    {
+      "trade_date": "2024-08-12",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 102,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 954,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1168,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1611,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2276,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3502,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3067,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2646,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2234,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1799,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "c6c5302c0cd5cdd3c5912f16fce58bc5d29489326c3764273bf0c9a937886f62"
+    },
+    {
+      "trade_date": "2024-08-13",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 103,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 955,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1169,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1612,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2277,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3503,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3068,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2647,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2235,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1800,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "6995a6b4ccef2d9e27fee7bd0cffb5862c02135eedd72d3f1c6ee7cf9eca32f7"
+    },
+    {
+      "trade_date": "2024-08-14",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 104,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 956,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1170,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1613,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2278,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3504,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3069,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2648,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2236,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1801,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "d51d2113e48a65d204d1eb5e4b6f8e2cac95493eb0508e903126185871860189"
+    },
+    {
+      "trade_date": "2024-08-15",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 105,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 957,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "SUSPENDED",
+          "listing_age_calendar_days": 1171,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": true,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1614,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2279,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3505,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3070,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2649,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2237,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1802,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 7,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1,
+        "SUSPENDED_EXCLUDE": 1
+      },
+      "frozen_count": 1,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 7,
+      "sha256_signature": "024a7b5edf6ea84f7833edb420feef141c7a640f9f00ef76c8d52870addd52e2"
+    },
+    {
+      "trade_date": "2024-08-16",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 106,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 958,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1172,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1615,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2280,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3506,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3071,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2650,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2238,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1803,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "5abade0a5ce1d8288f3a754b0bce45c8d5f093076a909727001f0a72dfa684d5"
+    },
+    {
+      "trade_date": "2024-08-17",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 107,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 959,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1173,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1616,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2281,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3507,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3072,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2651,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2239,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1804,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "e21b33b592cd4ffdad2a925623f1717a605ed6052e4bcc6c68978a72e77762ed"
+    },
+    {
+      "trade_date": "2024-08-18",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 108,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 960,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1174,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1617,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2282,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3508,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3073,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2652,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2240,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1805,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "e86c4a1d1d4f1825cbe96bb5aea722b6868a0124d61fa146077559283c9f0eb0"
+    },
+    {
+      "trade_date": "2024-08-19",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 109,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 961,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1175,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1618,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2283,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3509,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3074,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2653,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2241,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1806,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "7d6ebdb9a4a1588f8e1551e40e4e9e3a6c4e848fad01f4b792d760481abc2699"
+    },
+    {
+      "trade_date": "2024-08-20",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 110,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 962,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1176,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1619,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2284,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3510,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3075,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2654,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2242,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1807,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 7,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1,
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 7,
+      "sha256_signature": "d7744dbd547bd028a4a683995e0d3cffd5375a0891de09243589ce5af2535e38"
+    },
+    {
+      "trade_date": "2024-08-21",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 111,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 963,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1177,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1620,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2285,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3511,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3076,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2655,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2243,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1808,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 7,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1,
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 7,
+      "sha256_signature": "ec90daa14def2a98143e0ef77baa4f2fef34b42f93c600048d88552dd3b442e3"
+    },
+    {
+      "trade_date": "2024-08-22",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 112,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 964,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1178,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1621,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2286,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3512,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3077,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2656,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2244,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1809,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 7,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1,
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 7,
+      "sha256_signature": "56e748c3b0cae81e41eef546da90b193260e4ead8499b9e2d183531998e800a5"
+    },
+    {
+      "trade_date": "2024-08-23",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 113,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 965,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1179,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1622,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2287,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3513,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3078,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2657,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2245,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1810,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 7,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1,
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 7,
+      "sha256_signature": "184215084892db0b63512c7fea7490d2f1bb616517c3622f864b091a61849829"
+    },
+    {
+      "trade_date": "2024-08-24",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 114,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "ST",
+          "listing_age_calendar_days": 966,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": true,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1180,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1623,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2288,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3514,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3079,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2658,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2246,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1811,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 7,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "ST_EXCLUDE": 1,
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 7,
+      "sha256_signature": "b5cfa9961bc8a1f52aaadad81dde2a1ab136912f66fb051e4b6640ca81f32406"
+    },
+    {
+      "trade_date": "2024-08-25",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 115,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 967,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1181,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1624,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2289,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3515,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3080,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2659,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2247,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1812,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "742fab81de426c9008624ac0223fba28b9928a243fb2c32be2edd45fb74262dc"
+    },
+    {
+      "trade_date": "2024-08-26",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 116,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 968,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1182,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1625,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2290,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3516,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3081,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2660,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2248,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1813,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "0087f52d4c9f5d1a96b50dc35a33dc522078c39e505a1c20726116fbec69cfd6"
+    },
+    {
+      "trade_date": "2024-08-27",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 117,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 969,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1183,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1626,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2291,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3517,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3082,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2661,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2249,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1814,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "ece5460169326982f0a8b0b6620714af797fdfd92ca761ac0d97f117ba3ce715"
+    },
+    {
+      "trade_date": "2024-08-28",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 118,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 970,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1184,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1627,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2292,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3518,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3083,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2662,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2250,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1815,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "4fade730847a8bac37372bb07077b39eecbb7eb0b3de8adea75a2d7c3c74b4f7"
+    },
+    {
+      "trade_date": "2024-08-29",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 119,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 971,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1185,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1628,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2293,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3519,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3084,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2663,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2251,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1816,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "NEW_LISTING_EXCLUDE": 1,
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 8,
+      "sha256_signature": "1713432b5cf2bbeaca599c11ec7c6aaf3093612a686334bdad272132b22c49fa"
+    },
+    {
+      "trade_date": "2024-08-30",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 120,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 972,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1186,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1629,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2294,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3520,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3085,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2664,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2252,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1817,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 9,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 9,
+      "sha256_signature": "f53d65409abcb740b0ca502a651afe33dfec4cf7b76bf7630ec070e1bc91b071"
+    },
+    {
+      "trade_date": "2024-08-31",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 121,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 973,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1187,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1630,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2295,
+          "listing_date": "2018-05-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3521,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3086,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2665,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2253,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1818,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 9,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 0,
+      "eligible_candidates": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 9,
+      "sha256_signature": "17c23fa254cf77167ef03601952f413525b1c501131704924d24cf149b8f1177"
+    },
+    {
+      "trade_date": "2024-09-01",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 122,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 974,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1188,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1631,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "DELISTED",
+          "listing_age_calendar_days": 2296,
+          "listing_date": "2018-05-20",
+          "delisting_date": "2024-09-01",
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": false
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3522,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3087,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2666,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2254,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1819,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 1,
+      "eligible_candidates": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 9,
+      "sha256_signature": "546fafbc18b382ac82a57319ada4b61142c60b1e922044f2cd71bc5b30ae22f0"
+    },
+    {
+      "trade_date": "2024-09-02",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 123,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 975,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1189,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1632,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "DELISTED",
+          "listing_age_calendar_days": 2297,
+          "listing_date": "2018-05-20",
+          "delisting_date": "2024-09-01",
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": false
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3523,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3088,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2667,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2255,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1820,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 1,
+      "eligible_candidates": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 9,
+      "sha256_signature": "a48b8636e92453c393f956bd08cb7e85de1f1859fdeb8c8e76e7cf7c443ba6ad"
+    },
+    {
+      "trade_date": "2024-09-03",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 124,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 976,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1190,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1633,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "DELISTED",
+          "listing_age_calendar_days": 2298,
+          "listing_date": "2018-05-20",
+          "delisting_date": "2024-09-01",
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": false
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3524,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3089,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2668,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2256,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1821,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 1,
+      "eligible_candidates": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 9,
+      "sha256_signature": "60a9322db5c2a73bc7d9056c78aef99edbd42480559fb67ec897174f5265e1e2"
+    },
+    {
+      "trade_date": "2024-09-04",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 125,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 977,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1191,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1634,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "DELISTED",
+          "listing_age_calendar_days": 2299,
+          "listing_date": "2018-05-20",
+          "delisting_date": "2024-09-01",
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": false
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3525,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3090,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2669,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2257,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1822,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 1,
+      "eligible_candidates": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 9,
+      "sha256_signature": "8df39458d990b4ba28fe8bde9199e3a5330b78e14afaaa167a50b41e7ab85b51"
+    },
+    {
+      "trade_date": "2024-09-05",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 126,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 978,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1192,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1635,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "DELISTED",
+          "listing_age_calendar_days": 2300,
+          "listing_date": "2018-05-20",
+          "delisting_date": "2024-09-01",
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": false
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3526,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3091,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2670,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2258,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1823,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 1,
+      "eligible_candidates": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 9,
+      "sha256_signature": "b57b53cbd18511469ab61c3f5d53eff928d27ac26f9271a55e8e0ab0f358819b"
+    },
+    {
+      "trade_date": "2024-09-06",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 127,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 979,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1193,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1636,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "DELISTED",
+          "listing_age_calendar_days": 2301,
+          "listing_date": "2018-05-20",
+          "delisting_date": "2024-09-01",
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": false
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3527,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3092,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2671,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2259,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1824,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 1,
+      "eligible_candidates": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 9,
+      "sha256_signature": "e5798967dd81c22d956d775d060323264c4ac5f7158d5ac77f8c6a878af56de1"
+    },
+    {
+      "trade_date": "2024-09-07",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 128,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 980,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1194,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1637,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "DELISTED",
+          "listing_age_calendar_days": 2302,
+          "listing_date": "2018-05-20",
+          "delisting_date": "2024-09-01",
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": false
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3528,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3093,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2672,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2260,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1825,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 1,
+      "eligible_candidates": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 9,
+      "sha256_signature": "9afa784eacd8ee7dd201e4fd99fc9da32c53132810fb78350a175455ae1982fe"
+    },
+    {
+      "trade_date": "2024-09-08",
+      "statuses": {
+        "1": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 129,
+          "listing_date": "2024-05-02",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "2": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 981,
+          "listing_date": "2022-01-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "3": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1195,
+          "listing_date": "2021-06-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "4": {
+          "status": "DELISTING_PERIOD",
+          "listing_age_calendar_days": 1638,
+          "listing_date": "2020-03-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": true,
+          "is_listed": true
+        },
+        "5": {
+          "status": "DELISTED",
+          "listing_age_calendar_days": 2303,
+          "listing_date": "2018-05-20",
+          "delisting_date": "2024-09-01",
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": false
+        },
+        "6": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3529,
+          "listing_date": "2015-01-10",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "7": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 3094,
+          "listing_date": "2016-03-20",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "8": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2673,
+          "listing_date": "2017-05-15",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "9": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 2261,
+          "listing_date": "2018-07-01",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        },
+        "10": {
+          "status": "LISTED",
+          "listing_age_calendar_days": 1826,
+          "listing_date": "2019-09-09",
+          "delisting_date": null,
+          "is_st": false,
+          "is_suspended": false,
+          "is_delisting_period": false,
+          "is_listed": true
+        }
+      },
+      "trades_count": 8,
+      "holdings_count": 3,
+      "exclude_count_by_rule": {
+        "DELISTING_PERIOD_EXCLUDE": 1
+      },
+      "frozen_count": 0,
+      "delisting_candidate_count": 1,
+      "eligible_candidates": [
+        1,
+        2,
+        3,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "effective_count": 9,
+      "sha256_signature": "ea26ba442a05e538372b3b1655a65582af439f36cc26e11ae04d187cd2fe7528"
+    }
+  ]
+}

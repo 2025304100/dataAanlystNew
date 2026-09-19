@@ -1,0 +1,11 @@
+T26 keys=id,phase,title,deps,gate,budget,writes,reads,artifacts,dod,not_do,pitfalls
+T26 status=None
+T26 alembic writes:
+  alembic/versions/2026_*_0058_*.py
+versions dir tail:
+  2026_09_16_0053_wps_0023_051_factor_mining_core.py
+  2026_09_16_0054_wps_0023_052_mining_fk_constraints.py
+  2026_09_17_0055_wps_0023_053_factor_audit_pool_id.py
+  2026_09_18_0056_wps_0023_054_factor_audit_model_run_fk.py
+  2026_09_18_0057_wps_0023_055_accounting_float_to_double.py
+  2026_09_18_0058_wps_0023_056_td6_snapshot_binding_columns.py

@@ -1,0 +1,53 @@
+"""T-A4 Q6.1: Fail-Closed 新增 is_result_production_eligible 列（BacktestRuns + DecisionRuns）
+
+Revision ID: wps_0034_034_fail_closed_is_prod_eligible
+Revises: wps_0033_033_key_members_json
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+revision = "wps_0034_034_fail_closed_is_prod_eligible"
+down_revision = "wps_0033_033_key_members_json"
+branch_labels = None
+depends_on = None
+
+
+def _has_col(table: str, column: str) -> bool:
+    insp = sa.inspect(op.get_bind())
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
+def _add(table: str, *col_defs):
+    for col in col_defs:
+        if not _has_col(table, col.name):
+            op.add_column(table, col)
+
+
+def upgrade():
+    _add(
+        "backtest_runs",
+        sa.Column(
+            "is_result_production_eligible",
+            sa.Integer(),
+            nullable=False,
+            server_default=sa.text("1"),
+            default=1,
+            comment="T-A4 Q6.1: 结果是否可进入生产；BOOLEAN(0/1)，历史数据默认1兼容",
+        ),
+    )
+    _add(
+        "decision_runs",
+        sa.Column(
+            "is_result_production_eligible",
+            sa.Integer(),
+            nullable=False,
+            server_default=sa.text("1"),
+            default=1,
+            comment="T-A4 Q6.1: 结果是否可进入生产；BOOLEAN(0/1)，历史数据默认1兼容",
+        ),
+    )
+
+
+def downgrade():
+    pass

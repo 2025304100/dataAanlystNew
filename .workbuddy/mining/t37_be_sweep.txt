@@ -1,0 +1,93 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 1090 items
+
+tests\services\factors\mining\test_ai_generator.py ..................... [  1%]
+.....................................................                    [  6%]
+tests\services\factors\mining\test_config_hash.py ...................... [  8%]
+....................                                                     [ 10%]
+tests\services\factors\mining\test_dedup.py ............................ [ 13%]
+..............................................                           [ 17%]
+tests\services\factors\mining\test_dialect_and_executor.py ............. [ 18%]
+........................................................................ [ 25%]
+........                                                                 [ 25%]
+tests\services\factors\mining\test_dsl_cross_section.py ................ [ 27%]
+........................................................................ [ 34%]
+..........                                                               [ 34%]
+tests\services\factors\mining\test_dsl_time_series.py .................. [ 36%]
+........................................................................ [ 43%]
+.............                                                            [ 44%]
+tests\services\factors\mining\test_evaluation_adapter_split.py ......... [ 45%]
+...................................................                      [ 49%]
+tests\services\factors\mining\test_final_eval.py ...................     [ 51%]
+tests\services\factors\mining\test_ga_loop.py .......................... [ 54%]
+...............                                                          [ 55%]
+tests\services\factors\mining\test_grading.py .......................... [ 57%]
+..                                                                       [ 57%]
+tests\services\factors\mining\test_initial_population.py ............... [ 59%]
+.......................................                                  [ 62%]
+tests\services\factors\mining\test_metrics_json_hygiene.py ............  [ 64%]
+tests\services\factors\mining\test_mining_e2e.py ....                    [ 64%]
+tests\services\factors\mining\test_probe.py ............................ [ 66%]
+.............................                                            [ 69%]
+tests\services\factors\mining\test_random_generator.py ................. [ 71%]
+............................                                             [ 73%]
+tests\services\factors\mining\test_reproduction.py ..................... [ 75%]
+..............                                                           [ 76%]
+tests\services\factors\mining\test_selection.py ........................ [ 79%]
+..............                                                           [ 80%]
+tests\services\factors\mining\test_statistical_tests.py ................ [ 81%]
+..............                                                           [ 83%]
+tests\services\factors\mining\test_subexpr_cache.py .................... [ 85%]
+.................................................................        [ 91%]
+tests\services\factors\mining\test_submit_candidate.py ................  [ 92%]
+tests\services\factors\mining\test_task_lock_concurrency.py ............ [ 93%]
+.........                                                                [ 94%]
+tests\services\factors\mining\test_task_runner.py ..............         [ 95%]
+tests\services\factors\mining\test_template_compile_rate.py ............ [ 96%]
+..............                                                           [ 98%]
+tests\services\factors\mining\test_validation.py .....................   [100%]
+
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_conflict_queues_fifo
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x16c6f3eeae0> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x16c6f3ed6d0>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_conflict_queues_fifo
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x16c6f3edaf0> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x16c6f3ec980>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_re_enqueue_is_idempotent
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x16c6f67a6f0> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x16c6f6799a0>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_release_promotes_head_and_keeps_rest
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x16c6f402ed0> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x16c6f403230>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_release_promotes_head_and_keeps_rest
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x16c6f4033e0> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x16c6ce07ad0>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_release_then_reacquire_drains_queue_in_order
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x16c69f8fdd0> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x16c6f387ef0>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_release_then_reacquire_drains_queue_in_order
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x16c6f36fd70> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x16c6f3856d0>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestHeartbeatAndExpiry::test_expire_promotes_queue_instead_of_dropping_it
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x16c6cd67f80> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x16c6cd64500>
+    db.commit()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================ 1090 passed, 9 warnings in 337.22s (0:05:37) =================
+EXIT=0

@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>添加候选标的</title>
+    <style id="theme-vars">
+/* Portfolio Trading Redesign — Professional Calm Finance Theme */
+/* Brand prefix: pt */
+
+:root {
+  /* Neutral scale */
+  --pt-white: #ffffff;
+  --pt-black: #000000;
+  --pt-slate-50: #f8fafc;
+  --pt-slate-100: #f1f5f9;
+  --pt-slate-200: #e2e8f0;
+  --pt-slate-300: #cbd5e1;
+  --pt-slate-400: #94a3b8;
+  --pt-slate-500: #64748b;
+  --pt-slate-600: #475569;
+  --pt-slate-700: #334155;
+  --pt-slate-800: #1e293b;
+  --pt-slate-900: #0f172a;
+  --pt-slate-950: #020617;
+
+  /* Primary cyan scale (single brand hue) */
+  --pt-cyan-50: #ecfeff;
+  --pt-cyan-100: #cffafe;
+  --pt-cyan-200: #a5f3fc;
+  --pt-cyan-300: #67e8f9;
+  --pt-cyan-400: #22d3ee;
+  --pt-cyan-500: #06b6d4;
+  --pt-cyan-600: #0891b2;
+  --pt-cyan-700: #0e7490;
+  --pt-cyan-800: #155e75;
+  --pt-cyan-900: #164e63;
+  --pt-cyan-950: #083344;
+
+  /* State colors (semantic only) */
+  --pt-state-success: #10b981;
+  --pt-state-success-dim: rgba(16, 185, 129, 0.12);
+  --pt-state-warning: #f59e0b;
+  --pt-state-warning-dim: rgba(245, 158, 11, 0.12);
+  --pt-state-error: #ef4444;
+  --pt-state-error-dim: rgba(239, 68, 68, 0.12);
+  --pt-state-info: #3b82f6;
+  --pt-state-info-dim: rgba(59, 130, 246, 0.12);
+
+  /* Semantic aliases */
+  --pt-background: #0b1120;
+  --pt-foreground: #f8fafc;
+  --pt-card: #111827;
+  --pt-card-foreground: #f8fafc;
+  --pt-popover: #111827;
+  --pt-popover-foreground: #f8fafc;
+  --pt-primary: #06b6d4;
+  --pt-primary-foreground: #020617;
+  --pt-muted: #1f2937;
+  --pt-muted-foreground: #94a3b8;
+  --pt-border: #374151;
+  --pt-input: #1f2937;
+  --pt-ring: #06b6d4;
+
+  /* Radius scale (restrained) */
+  --pt-radius-sm: 4px;
+  --pt-radius-md: 8px;
+  --pt-radius-lg: 12px;
+  --pt-radius-full: 9999px;
+
+  /* Surface depth */
+  --pt-surface-1: #0b1120;
+  --pt-surface-2: #111827;
+  --pt-surface-3: #1f2937;
+  --pt-surface-4: #27354f;
+
+  /* Typography */
+  --pt-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+  --pt-font-mono: "SF Mono", "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
+
+  /* Spacing scale */
+  --pt-space-1: 4px;
+  --pt-space-2: 8px;
+  --pt-space-3: 12px;
+  --pt-space-4: 16px;
+  --pt-space-5: 20px;
+  --pt-space-6: 24px;
+  --pt-space-8: 32px;
+  --pt-space-10: 40px;
+  --pt-space-12: 48px;
+
+  /* Shadows (only for floating layers, alpha <= 0.15) */
+  --pt-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --pt-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --pt-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
+  --pt-shadow-glow: 0 0 20px rgba(6, 182, 212, 0.15);
+}
+
+/* Base typography classes */
+.pt-text-xs { font-size: 11px; line-height: 16px; }
+.pt-text-sm { font-size: 12px; line-height: 18px; }
+.pt-text-base { font-size: 13px; line-height: 20px; }
+.pt-text-md { font-size: 14px; line-height: 22px; }
+.pt-text-lg { font-size: 16px; line-height: 24px; }
+.pt-text-xl { font-size: 18px; line-height: 28px; }
+.pt-text-2xl { font-size: 20px; line-height: 30px; }
+.pt-text-3xl { font-size: 24px; line-height: 32px; }
+
+.pt-font-normal { font-weight: 400; }
+.pt-font-medium { font-weight: 500; }
+.pt-font-semibold { font-weight: 600; }
+.pt-font-bold { font-weight: 700; }
+
+.pt-tracking-tight { letter-spacing: -0.01em; }
+.pt-tracking-wide { letter-spacing: 0.03em; }
+
+/* Utility color classes */
+.pt-text-primary { color: var(--pt-foreground); }
+.pt-text-secondary { color: var(--pt-muted-foreground); }
+.pt-text-muted { color: var(--pt-slate-500); }
+.pt-text-cyan { color: var(--pt-primary); }
+.pt-text-success { color: var(--pt-state-success); }
+.pt-text-warning { color: var(--pt-state-warning); }
+.pt-text-error { color: var(--pt-state-error); }
+.pt-text-info { color: var(--pt-state-info); }
+
+.pt-bg-background { background-color: var(--pt-background); }
+.pt-bg-card { background-color: var(--pt-card); }
+.pt-bg-muted { background-color: var(--pt-muted); }
+.pt-bg-surface-3 { background-color: var(--pt-surface-3); }
+.pt-bg-primary { background-color: var(--pt-primary); }
+.pt-bg-primary-dim { background-color: rgba(6, 182, 212, 0.12); }
+.pt-bg-success-dim { background-color: var(--pt-state-success-dim); }
+.pt-bg-warning-dim { background-color: var(--pt-state-warning-dim); }
+.pt-bg-error-dim { background-color: var(--pt-state-error-dim); }
+
+.pt-border { border-color: var(--pt-border); }
+.pt-border-primary { border-color: var(--pt-primary); }
+
+/* Financial data styling */
+.pt-mono { font-family: var(--pt-font-mono); }
+.pt-positive { color: var(--pt-state-success); }
+.pt-negative { color: var(--pt-state-error); }
+.pt-neutral { color: var(--pt-muted-foreground); }
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--pt-background);
+    --color-foreground: var(--pt-foreground);
+    --color-card: var(--pt-card);
+    --color-card-foreground: var(--pt-card-foreground);
+    --color-popover: var(--pt-popover);
+    --color-popover-foreground: var(--pt-popover-foreground);
+    --color-primary: var(--pt-primary);
+    --color-primary-foreground: var(--pt-primary-foreground);
+    --color-muted: var(--pt-muted);
+    --color-muted-foreground: var(--pt-muted-foreground);
+    --color-border: var(--pt-border);
+    --color-input: var(--pt-input);
+    --color-ring: var(--pt-ring);
+    --radius-sm: var(--pt-radius-sm);
+    --radius-md: var(--pt-radius-md);
+    --radius-lg: var(--pt-radius-lg);
+  }
+  @layer base {
+    body { background: var(--pt-background); color: var(--pt-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--pt-background); }
+      .text-background { color: var(--pt-background); }
+      .border-background { border-color: var(--pt-background); }
+      .ring-background { --tw-ring-color: var(--pt-background); }
+      .bg-foreground { background-color: var(--pt-foreground); }
+      .text-foreground { color: var(--pt-foreground); }
+      .border-foreground { border-color: var(--pt-foreground); }
+      .ring-foreground { --tw-ring-color: var(--pt-foreground); }
+      .bg-card { background-color: var(--pt-card); }
+      .text-card { color: var(--pt-card); }
+      .border-card { border-color: var(--pt-card); }
+      .ring-card { --tw-ring-color: var(--pt-card); }
+      .bg-card-foreground { background-color: var(--pt-card-foreground); }
+      .text-card-foreground { color: var(--pt-card-foreground); }
+      .border-card-foreground { border-color: var(--pt-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--pt-card-foreground); }
+      .bg-popover { background-color: var(--pt-popover); }
+      .text-popover { color: var(--pt-popover); }
+      .border-popover { border-color: var(--pt-popover); }
+      .ring-popover { --tw-ring-color: var(--pt-popover); }
+      .bg-popover-foreground { background-color: var(--pt-popover-foreground); }
+      .text-popover-foreground { color: var(--pt-popover-foreground); }
+      .border-popover-foreground { border-color: var(--pt-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--pt-popover-foreground); }
+      .bg-primary { background-color: var(--pt-primary); }
+      .text-primary { color: var(--pt-primary); }
+      .border-primary { border-color: var(--pt-primary); }
+      .ring-primary { --tw-ring-color: var(--pt-primary); }
+      .bg-primary-foreground { background-color: var(--pt-primary-foreground); }
+      .text-primary-foreground { color: var(--pt-primary-foreground); }
+      .border-primary-foreground { border-color: var(--pt-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--pt-primary-foreground); }
+      .bg-muted { background-color: var(--pt-muted); }
+      .text-muted { color: var(--pt-muted); }
+      .border-muted { border-color: var(--pt-muted); }
+      .ring-muted { --tw-ring-color: var(--pt-muted); }
+      .bg-muted-foreground { background-color: var(--pt-muted-foreground); }
+      .text-muted-foreground { color: var(--pt-muted-foreground); }
+      .border-muted-foreground { border-color: var(--pt-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--pt-muted-foreground); }
+      .bg-border { background-color: var(--pt-border); }
+      .text-border { color: var(--pt-border); }
+      .border-border { border-color: var(--pt-border); }
+      .ring-border { --tw-ring-color: var(--pt-border); }
+      .bg-input { background-color: var(--pt-input); }
+      .text-input { color: var(--pt-input); }
+      .border-input { border-color: var(--pt-input); }
+      .ring-input { --tw-ring-color: var(--pt-input); }
+      .bg-ring { background-color: var(--pt-ring); }
+      .text-ring { color: var(--pt-ring); }
+      .border-ring { border-color: var(--pt-ring); }
+      .ring-ring { --tw-ring-color: var(--pt-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body data-node-id="page-add-candidate">
+    <!-- Background backdrop -->
+    <div id="modal-backdrop"
+         data-dom-id="modal-backdrop-close"
+         class="modal-backdrop fixed inset-0 z-40"
+         style="background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(3px);">
+    </div>
+
+    <!-- Centered modal -->
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+        <div id="modal-panel"
+             class="modal-panel pointer-events-auto flex flex-col"
+             style="width: 560px; max-height: calc(100vh - 80px); background: var(--pt-surface-2); border: 1px solid var(--pt-border); border-radius: var(--pt-radius-lg); box-shadow: var(--pt-shadow-lg);">
+
+            <!-- Modal Header -->
+            <div class="flex items-start justify-between px-5 pt-5 pb-4"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="flex flex-col gap-1">
+                    <h2 class="pt-text-xl pt-font-semibold text-white m-0">添加候选标的</h2>
+                    <p class="pt-text-sm pt-neutral m-0">从候选池中选择标的加入当前组合</p>
+                </div>
+                <button type="button"
+                        data-dom-id="modal-close-btn"
+                        class="pt-btn pt-btn-ghost pt-btn-sm !w-8 !h-8 !p-0 rounded-md shrink-0"
+                        aria-label="关闭">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Search & Filter -->
+            <div class="px-5 py-3 flex gap-3"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <div class="relative flex-1">
+                    <i data-lucide="search" class="search-icon w-4 h-4"></i>
+                    <input type="text"
+                           data-dom-id="candidate-search"
+                           class="search-input"
+                           placeholder="搜索代码/名称">
+                </div>
+                <div class="select-wrapper shrink-0">
+                    <select data-dom-id="pool-selector">
+                        <option>全部候选池</option>
+                        <option>自选候选池</option>
+                        <option>策略候选池</option>
+                        <option>关注候选池</option>
+                    </select>
+                    <i data-lucide="chevron-down" class="chevron w-4 h-4"></i>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="px-5 flex gap-6"
+                 style="border-bottom: 1px solid var(--pt-border);">
+                <button type="button"
+                        data-dom-id="tab-all"
+                        class="pt-tab active"
+                        data-tab="all">
+                    全部
+                </button>
+                <button type="button"
+                        data-dom-id="tab-factor"
+                        class="pt-tab"
+                        data-tab="factor">
+                    因子评分池
+                </button>
+                <button type="button"
+                        data-dom-id="tab-technical"
+                        class="pt-tab"
+                        data-tab="technical">
+                    技术信号池
+                </button>
+                <button type="button"
+                        data-dom-id="tab-theme"
+                        class="pt-tab"
+                        data-tab="theme">
+                    主题机会池
+                </button>
+            </div>
+
+            <!-- Candidate List -->
+            <div class="flex-1 overflow-y-auto custom-scroll" style="min-height: 0;">
+                <!-- Row 1 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-1"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="1">
+                    <div class="custom-checkbox checked" data-dom-id="candidate-checkbox-1" role="checkbox" aria-checked="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">600519</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">贵州茅台</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(6, 182, 212, 0.15); color: var(--pt-primary);">92</span>
+                        <span class="tag-badge tag-cyan">趋势加速</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥1,685.00</div>
+                        <div class="pt-text-xs pt-mono pt-positive">+2.35%</div>
+                    </div>
+                </div>
+
+                <!-- Row 2 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-2"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="2">
+                    <div class="custom-checkbox checked" data-dom-id="candidate-checkbox-2" role="checkbox" aria-checked="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">000858</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">五粮液</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(6, 182, 212, 0.15); color: var(--pt-primary);">88</span>
+                        <span class="tag-badge tag-green">量价齐升</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥156.20</div>
+                        <div class="pt-text-xs pt-mono pt-positive">+1.82%</div>
+                    </div>
+                </div>
+
+                <!-- Row 3 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-3"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="3">
+                    <div class="custom-checkbox" data-dom-id="candidate-checkbox-3" role="checkbox" aria-checked="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">300750</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">宁德时代</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(6, 182, 212, 0.15); color: var(--pt-primary);">85</span>
+                        <span class="tag-badge tag-amber">超跌反弹</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥198.50</div>
+                        <div class="pt-text-xs pt-mono pt-negative">-0.65%</div>
+                    </div>
+                </div>
+
+                <!-- Row 4 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-4"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="4">
+                    <div class="custom-checkbox" data-dom-id="candidate-checkbox-4" role="checkbox" aria-checked="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">601318</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">中国平安</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(148, 163, 184, 0.15); color: var(--pt-muted-foreground);">78</span>
+                        <span class="tag-badge tag-slate">低位企稳</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥45.30</div>
+                        <div class="pt-text-xs pt-mono pt-positive">+0.42%</div>
+                    </div>
+                </div>
+
+                <!-- Row 5 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-5"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="5">
+                    <div class="custom-checkbox checked" data-dom-id="candidate-checkbox-5" role="checkbox" aria-checked="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">002594</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">比亚迪</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(6, 182, 212, 0.15); color: var(--pt-primary);">82</span>
+                        <span class="tag-badge tag-cyan">突破信号</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥256.80</div>
+                        <div class="pt-text-xs pt-mono pt-positive">+3.21%</div>
+                    </div>
+                </div>
+
+                <!-- Row 6 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-6"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="6">
+                    <div class="custom-checkbox" data-dom-id="candidate-checkbox-6" role="checkbox" aria-checked="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">600036</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">招商银行</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(148, 163, 184, 0.15); color: var(--pt-muted-foreground);">75</span>
+                        <span class="tag-badge tag-slate">震荡整理</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥35.60</div>
+                        <div class="pt-text-xs pt-mono pt-negative">-0.28%</div>
+                    </div>
+                </div>
+
+                <!-- Row 7 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-7"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="7">
+                    <div class="custom-checkbox" data-dom-id="candidate-checkbox-7" role="checkbox" aria-checked="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">603259</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">药明康德</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(148, 163, 184, 0.15); color: var(--pt-muted-foreground);">70</span>
+                        <span class="tag-badge tag-red">高位过热</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥72.40</div>
+                        <div class="pt-text-xs pt-mono pt-negative">-1.56%</div>
+                    </div>
+                </div>
+
+                <!-- Row 8 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-8"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="8">
+                    <div class="custom-checkbox" data-dom-id="candidate-checkbox-8" role="checkbox" aria-checked="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">002475</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">立讯精密</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(6, 182, 212, 0.15); color: var(--pt-primary);">80</span>
+                        <span class="tag-badge tag-cyan">趋势加速</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥32.15</div>
+                        <div class="pt-text-xs pt-mono pt-positive">+1.10%</div>
+                    </div>
+                </div>
+
+                <!-- Row 9 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-9"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="9">
+                    <div class="custom-checkbox" data-dom-id="candidate-checkbox-9" role="checkbox" aria-checked="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">601899</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">紫金矿业</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(148, 163, 184, 0.15); color: var(--pt-muted-foreground);">73</span>
+                        <span class="tag-badge tag-amber">周期上行</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥15.80</div>
+                        <div class="pt-text-xs pt-mono pt-positive">+2.75%</div>
+                    </div>
+                </div>
+
+                <!-- Row 10 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-10"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="10">
+                    <div class="custom-checkbox" data-dom-id="candidate-checkbox-10" role="checkbox" aria-checked="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">000333</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">美的集团</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(148, 163, 184, 0.15); color: var(--pt-muted-foreground);">77</span>
+                        <span class="tag-badge tag-blue">价值回归</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥62.40</div>
+                        <div class="pt-text-xs pt-mono pt-positive">+0.85%</div>
+                    </div>
+                </div>
+
+                <!-- Row 11 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-11"
+                     style="height: 48px; border-bottom: 1px solid var(--pt-border);"
+                     data-index="11">
+                    <div class="custom-checkbox" data-dom-id="candidate-checkbox-11" role="checkbox" aria-checked="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">300059</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">东方财富</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(148, 163, 184, 0.15); color: var(--pt-muted-foreground);">68</span>
+                        <span class="tag-badge tag-slate">震荡偏弱</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥15.25</div>
+                        <div class="pt-text-xs pt-mono pt-negative">-0.95%</div>
+                    </div>
+                </div>
+
+                <!-- Row 12 -->
+                <div class="candidate-row flex items-center gap-3 px-5"
+                     data-dom-id="candidate-row-12"
+                     style="height: 48px;"
+                     data-index="12">
+                    <div class="custom-checkbox" data-dom-id="candidate-checkbox-12" role="checkbox" aria-checked="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0" style="width: 130px;">
+                        <span class="pt-text-sm pt-mono pt-neutral">600900</span>
+                        <span class="pt-text-sm pt-font-medium text-white truncate">长江电力</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="score-pill" style="background: rgba(6, 182, 212, 0.15); color: var(--pt-primary);">83</span>
+                        <span class="tag-badge tag-green">稳健防御</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="pt-text-sm pt-mono text-white">¥28.60</div>
+                        <div class="pt-text-xs pt-mono pt-positive">+0.55%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Selection Bar -->
+            <div class="px-5 py-3 flex items-center justify-between gap-3"
+                 style="border-top: 1px solid var(--pt-border); background: var(--pt-surface-2); border-radius: 0 0 var(--pt-radius-lg) var(--pt-radius-lg);">
+                <div class="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+                    <span class="pt-text-sm pt-neutral shrink-0">已选 <span id="selected-count" class="pt-cyan pt-font-medium">3</span> 只</span>
+                    <div id="selected-tags" class="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto" style="scrollbar-width: none;">
+                        <span class="selected-tag" data-index="1">
+                            贵州茅台
+                            <button type="button" data-remove="1" aria-label="移除">
+                                <i data-lucide="x" class="w-3 h-3"></i>
+                            </button>
+                        </span>
+                        <span class="selected-tag" data-index="2">
+                            五粮液
+                            <button type="button" data-remove="2" aria-label="移除">
+                                <i data-lucide="x" class="w-3 h-3"></i>
+                            </button>
+                        </span>
+                        <span class="selected-tag" data-index="5">
+                            比亚迪
+                            <button type="button" data-remove="5" aria-label="移除">
+                                <i data-lucide="x" class="w-3 h-3"></i>
+                            </button>
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <button type="button"
+                            data-dom-id="btn-modal-cancel"
+                            class="pt-btn pt-btn-secondary">
+                        取消
+                    </button>
+                    <button type="button"
+                            data-dom-id="btn-modal-confirm"
+                            class="pt-btn pt-btn-primary">
+                        确认添加
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        if (window.lucide) lucide.createIcons();
+
+        // Candidate data
+        const candidates = [
+            { index: 1, code: '600519', name: '贵州茅台', score: 92, tag: '趋势加速', price: '¥1,685.00', change: '+2.35%', positive: true, selected: true },
+            { index: 2, code: '000858', name: '五粮液', score: 88, tag: '量价齐升', price: '¥156.20', change: '+1.82%', positive: true, selected: true },
+            { index: 3, code: '300750', name: '宁德时代', score: 85, tag: '超跌反弹', price: '¥198.50', change: '-0.65%', positive: false, selected: false },
+            { index: 4, code: '601318', name: '中国平安', score: 78, tag: '低位企稳', price: '¥45.30', change: '+0.42%', positive: true, selected: false },
+            { index: 5, code: '002594', name: '比亚迪', score: 82, tag: '突破信号', price: '¥256.80', change: '+3.21%', positive: true, selected: true },
+            { index: 6, code: '600036', name: '招商银行', score: 75, tag: '震荡整理', price: '¥35.60', change: '-0.28%', positive: false, selected: false },
+            { index: 7, code: '603259', name: '药明康德', score: 70, tag: '高位过热', price: '¥72.40', change: '-1.56%', positive: false, selected: false },
+            { index: 8, code: '002475', name: '立讯精密', score: 80, tag: '趋势加速', price: '¥32.15', change: '+1.10%', positive: true, selected: false },
+            { index: 9, code: '601899', name: '紫金矿业', score: 73, tag: '周期上行', price: '¥15.80', change: '+2.75%', positive: true, selected: false },
+            { index: 10, code: '000333', name: '美的集团', score: 77, tag: '价值回归', price: '¥62.40', change: '+0.85%', positive: true, selected: false },
+            { index: 11, code: '300059', name: '东方财富', score: 68, tag: '震荡偏弱', price: '¥15.25', change: '-0.95%', positive: false, selected: false },
+            { index: 12, code: '600900', name: '长江电力', score: 83, tag: '稳健防御', price: '¥28.60', change: '+0.55%', positive: true, selected: false }
+        ];
+
+        // Tab switching
+        const tabs = document.querySelectorAll('.pt-tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                tabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                // Tab switching logic could filter the list
+                const tabType = this.getAttribute('data-tab');
+                console.log('Switch to tab:', tabType);
+            });
+        });
+
+        // Checkbox toggle
+        function toggleCheckbox(index) {
+            const checkbox = document.querySelector(`[data-dom-id="candidate-checkbox-${index}"]`);
+            const candidate = candidates.find(c => c.index === index);
+            if (!candidate) return;
+
+            candidate.selected = !candidate.selected;
+            checkbox.classList.toggle('checked', candidate.selected);
+            checkbox.setAttribute('aria-checked', candidate.selected);
+
+            updateSelectedTags();
+        }
+
+        // Row click toggles checkbox
+        document.querySelectorAll('.candidate-row').forEach(row => {
+            row.addEventListener('click', function(e) {
+                if (e.target.closest('button')) return;
+                const index = parseInt(this.getAttribute('data-index'));
+                toggleCheckbox(index);
+            });
+        });
+
+        // Update selected tags bar
+        function updateSelectedTags() {
+            const selected = candidates.filter(c => c.selected);
+            const countEl = document.getElementById('selected-count');
+            const tagsEl = document.getElementById('selected-tags');
+
+            countEl.textContent = selected.length;
+
+            // Rebuild tags
+            tagsEl.innerHTML = selected.map(c => `
+                <span class="selected-tag" data-index="${c.index}">
+                    ${c.name}
+                    <button type="button" data-remove="${c.index}" aria-label="移除">
+                        <i data-lucide="x" class="w-3 h-3"></i>
+                    </button>
+                </span>
+            `).join('');
+
+            // Re-init lucide icons for new tags
+            if (window.lucide) lucide.createIcons();
+
+            // Bind remove buttons
+            tagsEl.querySelectorAll('[data-remove]').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const idx = parseInt(this.getAttribute('data-remove'));
+                    toggleCheckbox(idx);
+                });
+            });
+        }
+
+        // Close modal
+        function closeModal() {
+            const panel = document.getElementById('modal-panel');
+            const backdrop = document.getElementById('modal-backdrop');
+
+            panel.style.transition = 'all 0.2s ease-out';
+            panel.style.opacity = '0';
+            panel.style.transform = 'scale(0.96) translateY(-4px)';
+
+            backdrop.style.transition = 'opacity 0.2s ease-out';
+            backdrop.style.opacity = '0';
+
+            setTimeout(() => {
+                panel.style.display = 'none';
+                backdrop.style.display = 'none';
+            }, 200);
+        }
+
+        document.getElementById('modal-backdrop').addEventListener('click', closeModal);
+        document.querySelector('[data-dom-id="modal-close-btn"]').addEventListener('click', closeModal);
+        document.querySelector('[data-dom-id="btn-modal-cancel"]').addEventListener('click', closeModal);
+
+        // Confirm button
+        document.querySelector('[data-dom-id="btn-modal-confirm"]').addEventListener('click', function() {
+            const selected = candidates.filter(c => c.selected);
+            console.log('Confirm adding candidates:', selected.map(c => `${c.code} ${c.name}`));
+            closeModal();
+        });
+
+        // Search input
+        document.querySelector('[data-dom-id="candidate-search"]').addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            console.log('Search:', query);
+        });
+
+        // Pool selector
+        document.querySelector('[data-dom-id="pool-selector"]').addEventListener('change', function(e) {
+            console.log('Pool:', e.target.value);
+        });
+    </script>
+</body>
+</html>

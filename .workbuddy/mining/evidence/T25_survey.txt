@@ -1,0 +1,204 @@
+==========================================================================
+① factor_registry：create_factor_version / get_latest_version
+==========================================================================
+def create_factor_version(
+    db: Session,
+    *,
+    factor_id: int,
+    request: FactorVersionCreate,
+) -> FactorVersion:
+    """创建因子版本。
+
+    流程：
+    1. 校验因子存在
+    2. 编译公式（WP2-04：生成执行计划、content_hash、依赖收集）
+    3. 幂等检查（同内容返回既有版本）
+    4. 检查上一最新版本是否被引用（不可变），若不可变则阻止切换 is_latest
+    5. 新建版本，version = max + 1，is_latest = 1
+    6. 旧最新版本 is_latest 置 0
+
+    WP2 集成：
+    - 编译成功：填充 formula_ast_json、data_dependencies_json、compiler_version、
+      execution_plan_hash、complexity_score，validation_status="valid"
+    - 编译失败：validation_status="invalid"，validation_errors_json 记录错误，
+      execution_plan_hash 仍用基础 content_hash 保证幂等
+    """
+    factor = get_factor(db, factor_id)
+    if factor is None:
+        raise ValueError("factor_not_found")
+
+    # WP2-04: 编译公式
+    from app.services.factors.factor_compiler import compile_formula, COMPILER_VERSION
+
+    compile_result = compile_formula(
+        formula=requ
+   ---
+def get_latest_version(db: Session, factor_id: int) -> FactorVersion | None:
+    """获取因子的当前最新版本（is_latest=1）。"""
+    return db.execute(
+        select(FactorVersion)
+        .where(
+            FactorVersion.factor_id == factor_id,
+            FactorVersion.is_latest == 1,
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+# ── 因子版本创建 ──────────────────────────────────────────
+
+
+def create_factor_version(
+    db: Session,
+    *,
+    factor_id: int,
+    request: FactorVersionCreate,
+) -> FactorVersion:
+    """创建因子版本。
+
+    流程：
+    1. 校验因子存在
+    2. 编译公式（WP2-04：生成执行计划、content_hash、依赖收集）
+    3. 幂等检查（同内容返回既有版本）
+    4. 检查上一最新版本是否被引用（不可变），若不可变则阻止切换 is_latest
+    5. 新建版本，version = max + 1，is_latest = 1
+    6. 旧最新版本 is_latest 置 0
+
+    WP2 集成：
+    - 编译成功：填充 formula_ast_json、data_dependencies_json、compiler_version、
+      execution_plan_hash、complexity_score，validation_status="valid"
+    - 编译失败
+   ---
+def get_factor_by_code(db: Session, code: str) -> Factor | None:
+    """按 code 获取因子。"""
+    return db.execute(
+        select(Factor).where(Factor.code == code)
+    ).scalar_one_or_none()
+
+
+# ── 因子创建 ──────────────────────────────────────────────
+
+
+def create_factor_draft(
+    db: Session,
+    *,
+    draft: FactorDraftCreate,
+) -> Factor:
+    """创建因子草稿。
+
+    约束：
+    - lifecycle_status = 'draft'
+    - origin = 'user'
+    - status = 'draft'（legacy 兼容字段）
+    - is_active = 0
+    - code 必须唯一
+    """
+    existing = get_factor_by_code(db, draft.code)
+    if existing is not None:
+        raise ValueError(f"factor_code_conflict:{draft.code}")
+
+    factor = Factor(
+        code=draft.code,
+        name=draft.name,
+        category=draft.category,
+        direction=draft.direction,
+        status="draft",  # legacy compat
+        is_active=0,
+        default_missing_policy=draft.default_missing_pol
+   ---
+
+==========================================================================
+② FactorVersionCreate 字段（版本初始状态）
+==========================================================================
+class FactorVersionCreate(BaseModel):
+    """创建因子版本请求。"""
+
+    formula_expr: str = Field(..., min_length=1)
+    params: dict[str, Any] = Field(default_factory=dict)
+    direction: Literal["higher_better", "lower_better", "nonlinear"] = "higher_better"
+    source_mapping: dict[str, Any] = Field(default_factory=dict)
+    postprocess: dict[str, Any] | None = None
+    parameter_schema: dict[str, Any] | None = None
+    change_note: str = ""
+    created_by: str = "local_user"
+    created_via: CreatedVia = "manual"
+
+
+class FactorTransitionRequest(BaseModel):
+    """因子状态迁移请求。"""
+
+    action: TransitionAction
+    actor: str = "local_user"
+    reason: str | None = None
+    evidence_run_id: str | None = None
+    request_id: str | None = None  # 幂等键，相同 request_id 二次调用返回既有审计结果
+
+
+# --- WP4-03: FactorDraft Schema（AI 草案结构化契约） ---
+
+class FactorDraftSchema(BaseModel):
+    """因子草案结构（WP4-03）。
+
+    AI 草案服务返回
+
+class FactorDraftCreate(BaseModel):
+    """创建因子草稿请求。"""
+
+    code: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
+    name: str = Field(..., min_length=1, max_length=128)
+    category: str = Field(..., max_length=64)
+    direction: Literal["higher_better", "lower_better"
+
+==========================================================================
+③ factor_set_service.add_member / create 签名与约束
+==========================================================================
+  add_member(db: Session, *, factor_set_id: str, payload: FactorSetMemberCreate,)
+  remove_member(db: Session, *, factor_set_id: str, factor_id: int,)
+def add_member(
+    db: Session,
+    *,
+    factor_set_id: str,
+    payload: FactorSetMemberCreate,
+) -> FactorSetMember:
+    """向 FactorSet 添加成员。
+
+    约束：
+    - FactorSet 必须为 draft 状态（frozen/deprecated 拒绝修改）
+    - factor_version_id 必须存在且状态为 testing/shadow/active
+    - 同 factor_id 不允许重复加入（唯一约束）
+    """
+    factor_set = _get_set_or_raise(db, factor_set_id)
+
+    if factor_set.status != "draft":
+        raise FactorSetError(
+            "set_not_mutable",
+            f"FactorSet {factor_set_id} 状态为 {factor_set.status}，不允许修改成员",
+        )
+
+    # 校验 factor_version
+    version = db.get(FactorVersion, payload.factor_version_id)
+    if version is None:
+        raise FactorSetError(
+            "version_not_found",
+            f"FactorVersion {payload.factor_version_id} 不存在",
+        )
+
+    factor = db.get(Factor, payload.factor_id)
+    if factor is None:
+        raise FactorSetError(
+            "factor_not_found",
+            f"Factor {payload.factor_id} 不存在",
+        )
+
+    # 版本状态门禁
+    version_status = getattr(version, "validation_status", None) or "pending"
+    if version_status not in ALLOWED_VERSION_STATUSES:
+        raise FactorSetError(
+            "version_status_not_allowed",
+            f"FactorVersion {payload.factor_version_id} 状态为 {version_status}，"
+            f"只允许 {sorte
+
+==========================================================================
+④ 向导 §8.4 后续操作（批量操作段）
+==========================================================================
+

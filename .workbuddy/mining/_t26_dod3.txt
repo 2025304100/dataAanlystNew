@@ -1,0 +1,12 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 57 items
+
+tests\services\factors\experience\test_api.py ...........                [ 19%]
+tests\services\factors\experience\test_fingerprint.py ..........         [ 36%]
+tests\services\factors\experience\test_generalization.py ..............  [ 61%]
+tests\services\factors\experience\test_sample.py ..........F...          [ 85%]
+tests\services\factors\experience\test_store.py ....

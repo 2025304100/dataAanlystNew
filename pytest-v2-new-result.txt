@@ -1,0 +1,64 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0 -- C:\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 27 items
+
+tests/test_whitebox_universe_refresh.py::test_refresh_universe_with_timeout_returns_none_on_block FAILED [  3%]
+tests/test_whitebox_universe_refresh.py::test_refresh_universe_with_timeout_passes_through_on_success PASSED [  7%]
+tests/test_whitebox_universe_refresh.py::test_refresh_cn_etf_universe_wraps_fund_etf_spot_em_with_retry PASSED [ 11%]
+tests/test_whitebox_universe_refresh.py::test_refresh_cn_etf_universe_falls_back_to_sina_on_failure PASSED [ 14%]
+tests/test_whitebox_universe_refresh.py::test_watchdog_skips_heartbeat_in_prepare_stage PASSED [ 18%]
+tests/test_whitebox_universe_refresh.py::test_watchdog_updates_heartbeat_in_sync_stage PASSED [ 22%]
+tests/test_whitebox_universe_refresh.py::test_watchdog_logs_failure_instead_of_silent_swallow PASSED [ 25%]
+tests/test_whitebox_probe_thread_pool.py::test_probe_uses_independent_executor PASSED [ 29%]
+tests/test_whitebox_probe_thread_pool.py::test_probe_executor_max_workers_is_8 PASSED [ 33%]
+tests/test_whitebox_probe_thread_pool.py::test_probe_logs_start_and_done PASSED [ 37%]
+tests/test_whitebox_probe_thread_pool.py::test_probe_logs_timeout FAILED [ 40%]
+tests/test_whitebox_data_correctness.py::test_probe_result_fields_complete PASSED [ 44%]
+tests/test_whitebox_data_correctness.py::test_probe_latency_ms_is_int_or_null PASSED [ 48%]
+tests/test_whitebox_data_correctness.py::test_sync_one_symbol_returns_ok_dict PASSED [ 51%]
+tests/test_whitebox_data_correctness.py::test_sync_timeout_records_failed_count PASSED [ 55%]
+tests/test_whitebox_data_correctness.py::test_universe_refresh_returns_seen_and_created PASSED [ 59%]
+tests/test_whitebox_data_correctness.py::test_universe_refresh_timeout_returns_none_and_records_error PASSED [ 62%]
+tests/test_whitebox_data_correctness.py::test_watchdog_does_not_overwrite_terminal_status PASSED [ 66%]
+tests/test_whitebox_data_correctness.py::test_fetch_history_retries_only_once_per_source PASSED [ 70%]
+tests/test_whitebox_data_correctness.py::test_sync_one_symbol_uses_independent_db_session PASSED [ 74%]
+tests/test_whitebox_data_correctness.py::test_probe_akshare_api_content_type_header PASSED [ 77%]
+tests/test_whitebox_interaction.py::test_batch_probe_disables_all_single_buttons PASSED [ 81%]
+tests/test_whitebox_interaction.py::test_batch_probe_releases_buttons_after_done PASSED [ 85%]
+tests/test_whitebox_interaction.py::test_batch_probe_concurrency_is_3 PASSED [ 88%]
+tests/test_whitebox_interaction.py::test_stale_warning_appears_after_2min PASSED [ 92%]
+tests/test_whitebox_interaction.py::test_stale_warning_disappears_on_cancel PASSED [ 96%]
+tests/test_whitebox_interaction.py::test_probe_all_shows_summary_message PASSED [100%]
+
+================================== FAILURES ===================================
+__________ test_refresh_universe_with_timeout_returns_none_on_block ___________
+tests\test_whitebox_universe_refresh.py:60: in test_refresh_universe_with_timeout_returns_none_on_block
+    assert elapsed < 2.0, f"应在 0.5s 超时，实际耗时 {elapsed:.1f}s"
+E   AssertionError: 应在 0.5s 超时，实际耗时 10.0s
+E   assert 10.001678466796875 < 2.0
+------------------------------ Captured log call ------------------------------
+ERROR    app.services.discovery_tasks:discovery_tasks.py:862 universe refresh TIMEOUT after 0s, payload scope=cn-stock
+___________________________ test_probe_logs_timeout ___________________________
+tests\test_whitebox_probe_thread_pool.py:116: in test_probe_logs_timeout
+    asyncio.run(akshare_apis.probe_api("test_api", mock_db))
+C:\Python312\Lib\asyncio\runners.py:194: in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+C:\Python312\Lib\asyncio\runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python312\Lib\asyncio\base_events.py:685: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+app\api\routes\akshare_apis.py:211: in probe_api
+    raise HTTPException(status_code=500, detail=f"akshare has no attribute: {api_key}")
+E   fastapi.exceptions.HTTPException: 500: akshare has no attribute: test_api
+=========================== short test summary info ===========================
+FAILED tests/test_whitebox_universe_refresh.py::test_refresh_universe_with_timeout_returns_none_on_block - AssertionError: 应在 0.5s 超时，实际耗时 10.0s
+assert 10.001678466796875 < 2.0
+FAILED tests/test_whitebox_probe_thread_pool.py::test_probe_logs_timeout - fastapi.exceptions.HTTPException: 500: akshare has no attribute: test_api
+=================== 2 failed, 25 passed in 68.05s (0:01:08) ===================

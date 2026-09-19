@@ -1,0 +1,31 @@
+fastapi==0.135.1
+uvicorn==0.42.0
+sqlalchemy==2.0.48
+akshare==1.18.30
+pandas==2.3.3
+numpy>=1.26,<3
+vectorbt==0.28.5
+duckdb>=1.2,<2
+scikit-learn>=1.5,<2
+alembic==1.15.2
+pymysql>=1.1.0
+cryptography>=41.0.0
+
+# 因子挖掘（M1a，2026-09-16 显式声明）
+# scipy 此前仅作为 scikit-learn 的传递依赖存在（环境内已装 1.18.0），
+# M2 统计层 8 方法（t 检验/Bootstrap/置换/DSR 偏度峰度）为其直接消费方，
+# 挖掘统计层（t 检验 / 置换检验 / DSR 偏度峰度）直接 import，属隐式依赖，
+# sklearn 升级或换环境时会断，故显式声明。
+scipy>=1.13
+# 股票池文件导入（挖掘向导 Step1 方式 A）
+# 读 .xlsx 用 openpyxl；读旧版 .xls 用 xlrd（2.x 仅支持 .xls）
+openpyxl>=3.1
+xlrd>=2.0
+# HTTP 文件上传（multipart/form-data）。FastAPI 的 File()/Form() 在**路由注册期**
+# 就会检查它，缺失会让整个应用 import 失败 —— 属运行必需的显式声明，不是可选增强。
+python-multipart>=0.0.9
+
+# 测试依赖
+pytest>=8.0.0
+httpx>=0.27.0
+pytest-playwright>=1.4.0

@@ -1,0 +1,181 @@
+==========================================================================
+向导 §8.3.7 最终验证
+==========================================================================
+#### 8.3.7 最终验证
+
+进化结束（收敛/达到最大代数/用户提前停止）后，对最终种群Top 50（可配置）做全量评估（完整挖掘区间）：
+
+- 计算精确的IC/Rank IC、ICIR、覆盖率、分层收益、多空收益、换手率
+- 样本外（OOS）验证
+- 与已有因子库比对去重
+- 通过门禁（ICIR≥0.3、覆盖率≥80%、OOS方向一致、相关性<0.95）的为有效因子
+
+最终验证进度单独展示，完成后进入结果总览。
+
+### 8.4 结果总览
+
+进化完成后展示：
+
+**概览区：** 进化代数、收敛状态、最优ICIR、平均ICIR、种群多样性、有效因子数、总耗时
+
+**进化曲线：** 完整的ICIR进化曲线（最优/平均），可悬停查看每代详情
+
+**有效因子列表：** 通过门禁的因子，按校正后 ICIR 排序，展示公式、**经济逻辑**、**原始 ICIR / 校正后 ICIR**、**质量分级标签（S/A/B/C/D，M2）**、覆盖率、分层收益、换手率、**衰减率**、来源（哪一代、变异/交叉/精英/AI生成/枚举）、血缘追溯
+
+**历史最优因子：** 整个进化过程中所有代的Top因子（不只是最终代），按全量验证ICIR排序
+
+**种群分析：** 因子类型分布、复杂度分布、血缘关系图
+
+**被淘汰个体：** 按代展示被淘汰的个体及原因（ICIR不足/相似/复杂度超标）
+
+**操作：** 导出、批量回测、加入FactorSet、提交为正式因子版本、保存配置为模板、保存优质骨架为个人模板、**跳转因子模型页**
+
+**按等级批量处理（v3.3 新增）**
+
+- 排行榜顶部等级筛选 chip：`全部 / S / A / B / C / D`，每个 chip 显示该级数量
+- 表格左侧复选框；**D 级默认不勾选**（可手动勾选）
+- 批量操作条：「加入 FactorSet」「提交正式因子」「驳回」
+- 加入前按 `formula_hash` 查重，已存在则跳过并提示「X 个因子已存在，已跳过」
+- 选择集含 D 级时二次确认：「选中的 N 个因子中含 M 个 D 级因子，确认要加入吗？」
+
+#### 8.4.1 因子详情证据抽屉（v3.3 新增）
+
+点因子行展开右侧抽屉，回答「**为什么是这个等级**」。
+
+**Tab 1 · 定级证据**
+
+- 顶部：等级大标签（S/A/B/C/D）+ **一句话定级理由**
+  > 例：「OOS ICIR=0.18 未达 A 级 0.3 门槛，故评为 B 级」
+- **8 维度雷达图**：每维度按「当前值 / 该级阈值」归一化，达标绿、未达标红
+- **8 维度明细表**：维度 / 当前值 / 该级阈值 / 是否达标 / 差距
+- 阈值来源提示：显示「默认阈值」或「自定义阈值（设置页）」
+
+**Tab 2 · 统计检验证据（8 项）**
+
+| 方法 | 示例结果 | 判定阈值 | 通过 |
+|------|---------|---------|------|
+| t 检验 | p=0.003 | p<0.05 | ✅ |
+| Bonferroni | p_adj=0.021 | p<0.001 | ❌ |
+| FDR (BH) | q=0.008 | q<0.1 | ✅ |
+| Bootstrap | CI=[0.12, 0.78] | 下限>0 | ✅ |
+| 置换检验 | p=0.002 | p<0.001 | ❌ |
+| Deflated Sharpe | dsr_icir=0.31 | — | 参考 |
+| 衰减率 | 0.67 | ≥0.5 | ✅ |
+| Walk-Forward | 4/4 窗口同向 | ≥3/4 | ✅ |
+
+- **Walk-Forward 窗口可视化**：横向条形/折线展示每个窗口 test 段 ICIR + 方向箭头（↑/↓），`≥3/4 同向`标绿；标注「窗口滚动重叠，仅作方向一致性观察，不作独立统计检验」
+- **`total_trials` 说明**：显示「本任务累计评估 1,987 个因子，DSR 已按此校正」
+- **月频降级样式**：Bootstrap / 置换两行**灰掉**并标注「test 仅 12 点，样本不足，未计算」；抽屉顶部黄色提示「月频任务最高评为 B 级」
+
+**Tab 3 · 血缘与来源**
+
+- 进化路径（代数 / 父代 ID / 操作类型 elite·mutation·crossover·random·ai_generated·enumerated）
+- 来源标签 + **经济逻辑**（AI 生成因子必显示）
+
+#### 8.4.2 人工调整等级（v3.3 新增）
+
+- 抽屉右上「**人工调整等级**」按钮（仅本人 / admin）
+- 弹窗：目标等级下拉（S/A/B/C/D）+ **调整原因（必填，≥10 字）** + 二次确认
+- 提交后：写 `factor_grade_history`（`trigger=manual`）、置 `grade_manual_adjusted=1`
+- **影响提示**：「该因子已被人工调整为 A 级，季度重评不会自动覆盖。如需恢复自动评定，请点击『恢复自动』」
+- 「**恢复自动**」按钮：置 `grade_manual_adjusted=0`，下次重评自动接管
+
+#### 8.4.3 季度重评交互（v3.3 新增）
+
+**通知中心摘要**：「本季度因子复评完成：升级 3 个、降级 2 个、移出 FactorSet 1 个」→ 点击进详情列表
+
+| 场景 | 前端表现 |
+|------|---------|
+| **升级（B→A）** | 抽屉顶部**绿色横幅**：「本季度评级由 B 升为 A。原因：连续 2 季 ICIR 稳定在 0.35 以上」+ 通知推送 |
+| **降级（S/A→低）** | **红色横幅**：「本季度评级由 A 降为 C。原因：ICIR 较上季下降 42%，超过 30% 阈值」 |
+| **降级并移出 FactorSet** | 追加提示：「该因子已自动从 FactorSet『xxx』移出」+ 影响说明 + **高优先级通知**；因子库中标红 |
+| **等级变更标记** | 等级标签旁显示「新」角标，保留 7 天 |
+| **评级历史** | 抽屉「评级历史」区：时间轴展示每次变化（等级 / 时间 / 触发方式 / 原因） |
+
+> **研究声明（强制展示）**：结果页顶部必须标注「**研究结论，不代表可交易策略**」。因子挖掘在约 2,000 次试验中筛选，存在多重检验偏差；即使通过统计校正，仍需前瞻跟踪验证后才能用于实盘。
+>
+> **统计说明**：M2 起结果页同时展示原始 ICIR 与校正后 ICIR（Deflated Sharpe，基于 `total_trials`）；**衰减率 `test_ICIR/train_ICIR < 0.5` 的因子标记疑似过拟合且不得评为 B 级以上**。月频任务因 test 段仅 12 点，不做 Bootstrap/置换，最高评 B 级，页面需显式提示。
+
+AI评价功能标注"后续开放（二期）"，首期灰掉。结果页不自动激活因子或模型。
+
+**后续操作说明：**
+- **跳转因子模型页（v3.2 新增）：** 结果页提供「去因子模型页训练」按钮，跳转时携带 `factor_set_id`、`data_cutoff_at`、`candidate_pool_snapshot_id`、`rebalance_frequency`。**训练/影子/激活不在本模块范围**。
+- **回测入口：** 选中因子后点"回测验证"，跳转到现有回测模块并自动携带因子公式、股票池快照和调仓频率；若现有回测暂不支持单因子回测，首期提供"导出因子公式"功能。
+- **加入 FactorSet：** 批量加入前按 formula_hash 检查目标 draft FactorSet 中是否已存在相同公式，已存在的跳过并提示"X 个因子已存在，已跳过"；必须选择一个 draft 状态的 FactorSet，frozen 集合不可写。
+- **候选转正式因子：** 用户在结果页点"提交评估"后，系统在现有 factors 表创建 draft 状态的因子版本并触发正式评估，评估通过门禁后进入 testing 状态；后续 shadow、active 流程属于因子模型页。
+- **保存为模板：** 优质公式骨架可保存为个人模板，下次作为初始种群的高质量起点。
+- **F1 沉淀（M1）：** 因子入库后自动调用 `POST /factor-experience` 存回历史经验库，无需人工操作。
+
+### 8.4 草稿与模板
+
+向导顶部显示当前草稿名称和“切换草稿”入口。草稿列表展示名称、最后修改时间、完成步骤、状态和继续/复制/删除操作；配置不完整也允许保存，删除需要二次确认。字段校验失败进入数据修复时，草稿状态为“待修复后重校验”，不影响其他草稿。
+
+模板分为系统预设和个人模板两类（单用户场景，不涉及团队共享）。系统预设不可删除，只能复制。**首期模板管理在向导的"快速开始"区域内完成（新建/编辑/删除），不做独立管理页面；模板数量超过 20 个后再独立成页。** 模板保存规则和参数，不保存具体股票代码、候选结果或计算结果；可在任意步骤保存部分模板，但未完成的模板只能生成草稿，不能直接执行。**模板完整性校验：** 使用前检查配置完整性，不完整的模板在卡片上标注"配置不完整"并禁用"直接开始"按钮，仅允许"查
+
+==========================================================================
+draft_service 公开 API（create_factor_draft 等）
+==========================================================================
+  def _utcnow()
+  def _dumps(payload: Any)
+  def _loads(raw: str | None, fallback: Any = None)
+  def _to_view(row: FactorMiningDraft)
+  def get_draft(db: Session, *, draft_id: str)
+  def list_drafts(db: Session, *, owner: str | None = None, limit: int = 20, status: str | None = None)
+  def save_draft(db: Session, *, payload: Mapping[str, Any])
+  def set_draft_status(db: Session, *, draft_id: str, status: str)
+  def mark_waiting_data_recheck(db: Session, *, draft_id: str)
+  def draft_config_hash(db: Session, *, draft_id: str)
+  def _run_to_view(row: FactorDataValidationRun, *, reused: bool = False)
+  def find_active_validation_run(db: Session, *, draft_id: str, config_hash: str,)
+  def create_or_reuse_validation_run(db: Session, *, draft_id: str, config_hash: str | None = None, fields: Sequence[Any] | None = None, task_id: s)
+  def get_validation_run(db: Session, *, run_id: str)
+  def latest_validation_run(db: Session, *, draft_id: str)
+  def update_validation_run(db: Session, *, run_id: str, status: str | None = None, task_id: str | None = None, done_shards: int | None = )
+  def is_validation_run_valid(db: Session, *, run_id: str, now: datetime | None = None)
+
+  create_factor_draft docstring:
+
+
+==========================================================================
+evaluation_adapter.evaluate_full 全文
+==========================================================================
+def evaluate_full(
+    ctx: MiningContext, *, individual: Individual
+) -> Any:
+    """最终验证：全量区间评估，**test 段仅此一次**（红线 C8）。
+
+    实现要点：
+      1. `factor_registry.create_factor_draft` 先生成临时版本号（评估需要 factor_version_id）
+      2. 复用 `factor_evaluator.run_evaluation(db, *, factor_version_id, factor_values,
+         forward_returns, config, ...)`，`EvaluationConfig` 的切分直接用 `ctx.split`
+      3. 结果落 `factor_evaluation_runs`，并回填 `test_start_date` / `test_end_date`
+      4. 评估完成后 `run.status: validating → succeeded`，**禁止回炉**
+    TODO(M10): 接入 factor_evaluator.run_evaluation。
+    """
+    raise NotImplementedError("M10: evaluate_full")
+
+
+__all__ = [
+    "REBALANCE_INTERVAL_DAYS",
+    "SPLIT_MINIMUMS",
+    "DEGRADED_TEST_THRESHOLD",
+    "SPLIT_ALGORITHM_VERSION",
+    "MiningSplitError",
+    "normalize_purge_points",
+    "normalize_purge_trading_days",
+    "compute_split_budget",
+    "build_split",
+    "assert_no_leakage",
+    "build_context_split",
+    "evaluate_short",
+    "evaluate_full",
+]
+
+
+==========================================================================
+MINING_TEST_LOCKED / run 状态流转的既有定义
+==========================================================================
+  app/api/routes/mining_candidate_pool.py:155: "MINING_TEST_LOCKED": 409,
+  app/schemas/errors.py:368: "MINING_TEST_LOCKED": {
+
+=== run 状态常量（factor_mining.py）===

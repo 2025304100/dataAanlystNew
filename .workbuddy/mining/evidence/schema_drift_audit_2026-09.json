@@ -1,0 +1,2359 @@
+{
+ "tool": "verify_schema_drift.py",
+ "version": "2.0 (TD5 扩展)",
+ "generated_at": "2026-09-18T15:12:34+08:00",
+ "db": "mysql+pymysql://***@127.0.0.1:3306/gpfx?charset=utf8mb4",
+ "dialect": "mysql",
+ "db_default_charset": "utf8",
+ "checks_covered": [
+  "column",
+  "index",
+  "unique_constraint",
+  "foreign_key",
+  "engine",
+  "charset",
+  "check_constraint"
+ ],
+ "summary": {
+  "total": 127,
+  "drift": 49,
+  "ok": 78,
+  "warn": 0,
+  "by_class": {
+   "missing_orm": 0,
+   "missing_db": 0,
+   "col_db_only": 10,
+   "col_orm_only": 1,
+   "missing_idx": 0,
+   "extra_idx": 26,
+   "missing_uq": 1,
+   "missing_fk": 18,
+   "extra_fk": 0,
+   "fk_mismatch": 12,
+   "engine": 0,
+   "charset": 0,
+   "missing_check": 11
+  }
+ },
+ "notes": [
+  "字符集全量明细见 drift_tables/warn_rows 的 options.collation 字段"
+ ],
+ "drift_tables": [
+  {
+   "table": "alert_events",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [
+    "uq_alert_events_dedupe_incident"
+   ],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_alert_events_status",
+    "ck_alert_events_severity_level"
+   ],
+   "stats": {
+    "idx": 10,
+    "cols": 20,
+    "fk": 0
+   }
+  },
+  {
+   "table": "async_tasks",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_async_tasks_status_terminal_locked"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 7,
+    "cols": 33,
+    "fk": 0
+   }
+  },
+  {
+   "table": "backtest_filter_events",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 3,
+    "cols": 12,
+    "fk": 2
+   }
+  },
+  {
+   "table": "backtest_rule_templates",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "name"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 1,
+    "cols": 6,
+    "fk": 0
+   }
+  },
+  {
+   "table": "backtest_runs",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_backtest_runs_benchmark_status",
+    "ix_backtest_runs_pit_mode",
+    "ix_runs_dedup_key"
+   ],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "strategy_snapshot_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 11,
+    "cols": 57,
+    "fk": 1
+   }
+  },
+  {
+   "table": "backtest_trades",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "decision_evidence_id"
+    ],
+    [
+     "exit_evidence_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 4,
+    "cols": 21,
+    "fk": 2
+   }
+  },
+  {
+   "table": "cash_ledger",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "portfolio_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 3,
+    "cols": 9,
+    "fk": 0
+   }
+  },
+  {
+   "table": "custom_indicator_versions",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "indicator_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 1,
+    "cols": 8,
+    "fk": 0
+   }
+  },
+  {
+   "table": "daily_bars",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "symbol_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 3,
+    "cols": 12,
+    "fk": 0
+   }
+  },
+  {
+   "table": "data_governance_audit_events",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_dg_audit_correlation_id_p12"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_dg_audit_action_values"
+   ],
+   "stats": {
+    "idx": 7,
+    "cols": 12,
+    "fk": 1
+   }
+  },
+  {
+   "table": "decision_evidence",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_decision_evidence_manual_price_flag",
+    "ix_decision_evidence_match_mode",
+    "ix_decision_evidence_pit_safe_flag",
+    "ix_decision_evidence_score_id",
+    "uq_decision_evidence_idempotency_key"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('decision_run_id',) 期望->decision_runs('id',)(RESTRICT) 实际->decision_runs('id',)(NO ACTION)",
+    "('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_decision_evidence_action_6values"
+   ],
+   "stats": {
+    "idx": 17,
+    "cols": 41,
+    "fk": 3
+   }
+  },
+  {
+   "table": "decision_order_plans",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('decision_run_id',) 期望->decision_runs('id',)(RESTRICT) 实际->decision_runs('id',)(NO ACTION)",
+    "('evidence_id',) 期望->decision_evidence('id',)(RESTRICT) 实际->decision_evidence('id',)(NO ACTION)",
+    "('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)",
+    "('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 11,
+    "cols": 14,
+    "fk": 4
+   }
+  },
+  {
+   "table": "decision_runs",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_decision_runs_blocking_status",
+    "ix_decision_runs_match_mode",
+    "ix_decision_runs_task_id_p12"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('strategy_snapshot_id',) 期望->strategy_execution_snapshots('id',)(RESTRICT) 实际->strategy_execution_snapshots('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_decision_runs_run_type_3values",
+    "ck_decision_runs_status_6values"
+   ],
+   "stats": {
+    "idx": 14,
+    "cols": 32,
+    "fk": 1
+   }
+  },
+  {
+   "table": "discovery_candidates",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "universe_symbol_id"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 4,
+    "cols": 19,
+    "fk": 2
+   }
+  },
+  {
+   "table": "factor_drafts",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "draft_no"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 7,
+    "cols": 19,
+    "fk": 1
+   }
+  },
+  {
+   "table": "factor_evaluation_runs",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [
+    "test_end_date",
+    "test_start_date"
+   ],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 5,
+    "cols": 31,
+    "fk": 1
+   }
+  },
+  {
+   "table": "factor_set_members",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "factor_id",
+    "factor_version_id"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 4,
+    "cols": 12,
+    "fk": 3
+   }
+  },
+  {
+   "table": "factor_transition_audits",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "evidence_run_id",
+    "factor_version_id"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 5,
+    "cols": 11,
+    "fk": 3
+   }
+  },
+  {
+   "table": "factor_values",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "factor_id"
+    ],
+    [
+     "symbol_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 4,
+    "cols": 8,
+    "fk": 0
+   }
+  },
+  {
+   "table": "factor_weight_snapshots",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_factor_weight_snapshots_model_id"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 4,
+    "cols": 17,
+    "fk": 0
+   }
+  },
+  {
+   "table": "factors",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "code",
+    "ix_factors_code"
+   ],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "active_version_id"
+    ],
+    [
+     "shadow_version_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 5,
+    "cols": 24,
+    "fk": 0
+   }
+  },
+  {
+   "table": "governance_events_outbox",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_gov_outbox_retry_count_range",
+    "ck_gov_outbox_status_values"
+   ],
+   "stats": {
+    "idx": 12,
+    "cols": 20,
+    "fk": 2
+   }
+  },
+  {
+   "table": "idempotency_records",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [
+    "resource_type",
+    "result_json",
+    "status"
+   ],
+   "col_orm_only": [
+    "id"
+   ],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_idempotency_records_resource_type",
+    "ix_idempotency_records_status"
+   ],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "portfolio_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 13,
+    "cols": 13,
+    "fk": 0
+   }
+  },
+  {
+   "table": "journal_entries",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_journal_entries_created_at",
+    "ix_journal_entries_entry_type",
+    "trade_setup_id"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 6,
+    "cols": 18,
+    "fk": 4
+   }
+  },
+  {
+   "table": "manual_price_overrides",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)",
+    "('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_manual_price_override_resolved_mode_3values"
+   ],
+   "stats": {
+    "idx": 12,
+    "cols": 16,
+    "fk": 4
+   }
+  },
+  {
+   "table": "notification_deliveries",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [
+    "billing_units",
+    "delivery_trace_id",
+    "provider_response_json",
+    "recipient_info_json",
+    "retry_of_delivery_id"
+   ],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 4,
+    "cols": 17,
+    "fk": 1
+   }
+  },
+  {
+   "table": "notification_templates",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [
+    "content_footer_template",
+    "default_channel_ids_json",
+    "icon_key",
+    "jump_url_template",
+    "language_code",
+    "template_category"
+   ],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_notification_templates_is_active"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 3,
+    "cols": 16,
+    "fk": 0
+   }
+  },
+  {
+   "table": "outbox_events",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_outbox_events_status_values"
+   ],
+   "stats": {
+    "idx": 7,
+    "cols": 10,
+    "fk": 1
+   }
+  },
+  {
+   "table": "portfolio_candidates",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(CASCADE)",
+    "('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(CASCADE)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 5,
+    "cols": 19,
+    "fk": 2
+   }
+  },
+  {
+   "table": "portfolio_cron_schedules",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_portfolio_cron_schedules_enabled",
+    "ix_portfolio_cron_schedules_schedule_type"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_portfolio_cron_sched_hour",
+    "ck_portfolio_cron_sched_type",
+    "ck_portfolio_cron_sched_minute"
+   ],
+   "stats": {
+    "idx": 5,
+    "cols": 9,
+    "fk": 1
+   }
+  },
+  {
+   "table": "portfolio_factor_usage",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('factor_model_run_id',) 期望->factor_model_runs('id',)(RESTRICT) 实际->factor_model_runs('id',)(NO ACTION)",
+    "('factor_set_id',) 期望->factor_sets('id',)(RESTRICT) 实际->factor_sets('id',)(NO ACTION)",
+    "('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_pfu_binding_status_values"
+   ],
+   "stats": {
+    "idx": 6,
+    "cols": 10,
+    "fk": 3
+   }
+  },
+  {
+   "table": "portfolio_factor_usages",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 6,
+    "cols": 19,
+    "fk": 1
+   }
+  },
+  {
+   "table": "portfolio_members",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [
+    "deviation_pct",
+    "target_weight_pct"
+   ],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_portfolio_members_execution_mode",
+    "ix_portfolio_members_source_type",
+    "ix_portfolio_members_status"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 11,
+    "cols": 18,
+    "fk": 0
+   }
+  },
+  {
+   "table": "portfolio_rules",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [
+    "factor_weights_json",
+    "rebalance_frequency",
+    "universe_key",
+    "weighting_method"
+   ],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "portfolio_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 1,
+    "cols": 17,
+    "fk": 0
+   }
+  },
+  {
+   "table": "portfolios",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [
+    "portfolio_status"
+   ],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "name"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_portfolios_status_data_values",
+    "ck_portfolios_status_score_values",
+    "ck_portfolios_status_model_values",
+    "ck_portfolios_status_reconciliation_values"
+   ],
+   "stats": {
+    "idx": 7,
+    "cols": 32,
+    "fk": 0
+   }
+  },
+  {
+   "table": "positions",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [
+    "target_weight_pct"
+   ],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "portfolio_id"
+    ],
+    [
+     "symbol_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 3,
+    "cols": 13,
+    "fk": 0
+   }
+  },
+  {
+   "table": "scan_presets",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "name"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 1,
+    "cols": 10,
+    "fk": 0
+   }
+  },
+  {
+   "table": "scan_results",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "scan_run_id"
+    ],
+    [
+     "symbol_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 5,
+    "cols": 19,
+    "fk": 0
+   }
+  },
+  {
+   "table": "scan_runs",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "portfolio_id",
+    "portfolio_rule_id",
+    "preset_id"
+   ],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "portfolio_id"
+    ],
+    [
+     "portfolio_rule_id"
+    ],
+    [
+     "preset_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 6,
+    "cols": 19,
+    "fk": 0
+   }
+  },
+  {
+   "table": "scores",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_scores_factor_member_versions_json",
+    "ix_scores_fmr_symbol_cutoff",
+    "ix_scores_fmr_symbol_trade_date",
+    "ix_scores_published_at_pit_safety"
+   ],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "symbol_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 16,
+    "cols": 44,
+    "fk": 0
+   }
+  },
+  {
+   "table": "security_status_daily",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 2,
+    "cols": 12,
+    "fk": 1
+   }
+  },
+  {
+   "table": "signal_rules",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "portfolio_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 1,
+    "cols": 15,
+    "fk": 0
+   }
+  },
+  {
+   "table": "sim_orders",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [
+    "sim_account_id"
+   ],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_sim_orders_review_by",
+    "ix_sim_orders_review_deadline_at",
+    "ix_sim_orders_reviewed_at",
+    "ix_sim_orders_sim_account_id"
+   ],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "member_id"
+    ],
+    [
+     "portfolio_id"
+    ],
+    [
+     "symbol_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 18,
+    "cols": 35,
+    "fk": 1
+   }
+  },
+  {
+   "table": "sim_trades",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "order_id"
+    ],
+    [
+     "portfolio_id"
+    ],
+    [
+     "symbol_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 5,
+    "cols": 12,
+    "fk": 0
+   }
+  },
+  {
+   "table": "strategy_execution_snapshots",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [
+    "content_hash",
+    "snapshot_json",
+    "usage_binding_id"
+   ],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_strategy_execution_snapshots_content_hash",
+    "ix_strategy_execution_snapshots_snapshot_no",
+    "ix_strategy_execution_snapshots_usage_binding_id"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [
+    "('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)"
+   ],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 13,
+    "cols": 30,
+    "fk": 2
+   }
+  },
+  {
+   "table": "task_idempotencies",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [
+    "ck_task_idempotencies_task_type_4values"
+   ],
+   "stats": {
+    "idx": 9,
+    "cols": 11,
+    "fk": 0
+   }
+  },
+  {
+   "table": "trade_setups",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "ix_trade_setups_scan_run_id"
+   ],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "portfolio_id"
+    ],
+    [
+     "scan_run_id"
+    ],
+    [
+     "score_id"
+    ],
+    [
+     "symbol_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 4,
+    "cols": 22,
+    "fk": 0
+   }
+  },
+  {
+   "table": "watchlist_items",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "idx_watchlist_items_origin_id",
+    "idx_watchlist_items_status",
+    "idx_watchlist_items_target_portfolio_id",
+    "symbol_id"
+   ],
+   "missing_uq": [],
+   "missing_fk": [
+    [
+     "symbol_id"
+    ],
+    [
+     "target_portfolio_id"
+    ],
+    [
+     "watchlist_id"
+    ]
+   ],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 7,
+    "cols": 15,
+    "fk": 0
+   }
+  },
+  {
+   "table": "watchlists",
+   "check_error": null,
+   "warnings": [],
+   "options": {
+    "engine": "InnoDB",
+    "collation": "utf8_general_ci",
+    "charset": "utf8"
+   },
+   "missing_orm": [],
+   "missing_db": [],
+   "col_db_only": [],
+   "col_orm_only": [],
+   "missing_idx": [],
+   "extra_idx": [
+    "name"
+   ],
+   "missing_uq": [],
+   "missing_fk": [],
+   "extra_fk": [],
+   "fk_mismatch": [],
+   "engine": [],
+   "charset": [],
+   "missing_check": [],
+   "stats": {
+    "idx": 1,
+    "cols": 6,
+    "fk": 0
+   }
+  }
+ ],
+ "warn_rows": [],
+ "table_options": {
+  "ai_action_audits": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "ai_messages": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "ai_profiles": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "ai_sessions": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "akshare_api_config": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "alert_events": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "alert_rules": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "api_deprecation_logs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "async_tasks": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "backtest_execution_fills": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "backtest_filter_events": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "backtest_rule_templates": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "backtest_runs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "backtest_trades": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "backtest_valuation_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "capital_flows": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "cash_ledger": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "custom_indicator_versions": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "custom_indicators": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "daily_bars": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "data_governance_audit_events": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "data_quality_quarantines": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "data_quality_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "data_sync_partitions": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "data_sync_plans": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "decision_evidence": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "decision_order_plans": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "decision_runs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "discovery_candidates": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "discovery_plans": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "discovery_score_snapshot_items": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "discovery_score_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "discovery_tasks": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "etf_indicators": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "external_endpoint_runtime": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_audit_logs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_data_validation_runs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_drafts": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_evaluation_runs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_formula_templates": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_mining_candidates": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_mining_drafts": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_mining_generations": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_mining_prescreen_fingerprints": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_mining_runs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_mining_template_versions": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_mining_templates": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_model_audit_logs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_model_members": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_model_runs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_quality_daily": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_runtime_state": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_set_members": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_set_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_sets": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_shadow_observations": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_system_config": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_training_checkpoints": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_transition_audits": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_values": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_versions": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factor_weight_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "factors": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "g5_dual_run_reports": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "governance_events_outbox": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "idempotency_records": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "index_prices": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "investment_themes": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "journal_entries": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "lhb_institution_trades": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "macro_indicator_values": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "macro_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "manual_price_overrides": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "market_events": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "news_events": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "news_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "northbound_flows": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "notification_channels": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "notification_deliveries": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "notification_outbox": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "notification_policies": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "notification_policy_channels": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "notification_templates": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "opportunity_transition_events": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "outbox_events": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "portfolio_candidates": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "portfolio_cron_schedules": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "portfolio_equity_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "portfolio_factor_usage": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "portfolio_factor_usages": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "portfolio_members": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "portfolio_reviews": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "portfolio_rules": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "portfolios": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "positions": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "scan_presets": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "scan_results": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "scan_runs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "scheduled_task_runs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "scheduled_task_seed_state": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "scheduled_tasks": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "scores": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "scoring_configs": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "scoring_lineage": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "security_status_daily": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "signal_rules": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "sim_orders": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "sim_trades": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "stock_financial_reports": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "stock_hot_rank_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "stock_valuations": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "strategy_execution_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "symbol_theme_mappings": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "symbols": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "tail_accumulation_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "task_idempotencies": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "task_locks": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "theme_catalysts": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "trade_setups": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "trade_signals": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "training_candidate_pool_members": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "training_candidate_pool_snapshots": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "training_candidate_pools": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "universe_daily_bars": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "universe_symbols": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "watchlist_items": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  },
+  "watchlists": {
+   "engine": "InnoDB",
+   "collation": "utf8_general_ci",
+   "charset": "utf8"
+  }
+ }
+}

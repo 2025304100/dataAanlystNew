@@ -1,0 +1,42 @@
+"""T-A6 Q6.3: DecisionEvidence 新增 legacy_fallback_flag 列
+
+Revision ID: wps_0035_035_decision_evidence_legacy_fallback_flag
+Revises: wps_0034_034_fail_closed_is_prod_eligible
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+revision = "wps_0035_035_decision_evidence_legacy_fallback_flag"
+down_revision = "wps_0034_034_fail_closed_is_prod_eligible"
+branch_labels = None
+depends_on = None
+
+
+def _has_col(table: str, column: str) -> bool:
+    insp = sa.inspect(op.get_bind())
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
+def _add(table: str, *col_defs):
+    for col in col_defs:
+        if not _has_col(table, col.name):
+            op.add_column(table, col)
+
+
+def upgrade():
+    _add(
+        "decision_evidence",
+        sa.Column(
+            "legacy_fallback_flag",
+            sa.Integer(),
+            nullable=False,
+            server_default=sa.text("0"),
+            default=0,
+            comment="T-A6 Q6.3: 是否使用 legacy_score fallback；BOOLEAN(0/1)，默认0",
+        ),
+    )
+
+
+def downgrade():
+    pass

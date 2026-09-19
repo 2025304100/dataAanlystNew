@@ -1,0 +1,370 @@
+﻿node.exe : [33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you
+ rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consi
+der using "deps.optimizer.web.include"[39m
+所在位置 行:1 字符: 1
++ & "C:\Users\demo\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[7m[33m ...b.include"[39m 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mrenders runtime / models / factorSets after 
+load
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mrenders runtime / models / factorSets after 
+load
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mshows empty placeholders when no models and 
+no factor sets
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mfalls back to FactorSet id when a historical
+ name is irreversibly garbled
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mfalls back to FactorSet id when a historical
+ name is irreversibly garbled
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mshows fallback button disabled when weight_m
+ode is manual
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mshows fallback button disabled when weight_m
+ode is manual
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2menables fallback button when weight_mode is 
+ridge
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mrenders rejected model with rejected tag ins
+tead of activate buttons
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Tooltip] `overlayInnerStyle` is deprecated. Please use `styles=
+{{ body: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mrenders rejected model with rejected tag ins
+tead of activate buttons
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mshows shadow and ridge activate buttons for 
+validated model
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mshows shadow and ridge activate buttons for 
+validated model
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mloads model detail with weights and audit lo
+gs on click
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mloads model detail with weights and audit lo
+gs on click
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mopens activate modal and submits successfull
+y
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mopens activate modal and submits successfull
+y
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mshows error when activate fails
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mopens fallback modal and warns when reason i
+s empty
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2msubmits fallback successfully when reason is
+ provided
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2msubmits fallback successfully when reason is
+ provided
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2msubmits fallback successfully when reason is
+ provided
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mshows error when load fails
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mshows rejection reason alert in model detail
+ when rejected
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Tooltip] `overlayInnerStyle` is deprecated. Please use `styles=
+{{ body: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorModelPage.test.tsx[2m > [22m
+[2mFactorModelPage[2m > [22m[2mshows score weight mode tag when score_weigh
+t_mode is ridge
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+ [32m鉁?[39m src/components/__tests__/FactorModelPage.test.tsx [2m([22m[2m15 tests[22m[2m)[22m[33m 3167[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorModelPage[2m > [22mrenders runtime / models / factorSets after load [33m526[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m15 passed[39m[22m[90m (15)[39m
+[2m   Start at [22m 14:27:13
+[2m   Duration [22m 25.06s[2m (transform 250ms, setup 357ms, collect 16.28s, tests 3.17s, environment 2.72s, prepare 552ms)[22m
+
+EXIT=0

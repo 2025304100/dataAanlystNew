@@ -1,0 +1,14 @@
+schema_version: 1
+module_path: backend_api/portfolio_trading
+title: 组合交易与模拟撮合服务
+scope:
+    - app/services/portfolio_*.py
+    - app/services/sim_accounts.py
+    - app/services/auto_trade_*.py
+    - app/services/trade_plans.py
+    - app/services/simulation_matching_engine.py
+    - app/services/allocation.py
+    - app/services/cost_model.py
+source_files: []
+depends_on: []
+related_to: []

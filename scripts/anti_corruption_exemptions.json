@@ -1,0 +1,398 @@
+{
+  "backend": [
+    {
+      "file": "app/api/routes/backtest.py",
+      "module": "app.services.factors.runtime",
+      "symbol": "get_factor_runtime_snapshot",
+      "reason": "回测核心路径依赖因子 runtime 快照，thin-facade 路线图规划 Q4 交付后解耦",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/api/routes/scores.py",
+      "module": "app.services.factors.score_scope",
+      "symbol": "apply_active_score_scope",
+      "reason": "评分与信号域需复用 active score scope 查询切面，thin-facade Q4 解耦规划中",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/api/routes/signal_rules.py",
+      "module": "app.services.factors.score_scope",
+      "symbol": "apply_active_score_scope",
+      "reason": "评分与信号域需复用 active score scope 查询切面，thin-facade Q4 解耦规划中",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/api/routes/symbols.py",
+      "module": "app.services.factors.score_scope",
+      "symbol": "apply_active_score_scope",
+      "reason": "评分与信号域需复用 active score scope 查询切面，thin-facade Q4 解耦规划中",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/db/init_db.py",
+      "module": "app.services.factors.definitions",
+      "symbol": "seed_factor_definitions",
+      "reason": "初始化种子数据需内建因子定义，属启动期强依赖，短期不具备解耦条件",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/data_quality.py",
+      "module": "app.services.factors.store",
+      "symbol": "FactorWarehouse",
+      "reason": "外部数据链路与因子仓/数据同步深度耦合，属于 near-relative 受控边缘面",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/external_data_gateway.py",
+      "module": "app.services.factors.store",
+      "symbol": "FactorWarehouse",
+      "reason": "外部数据链路与因子仓/数据同步深度耦合，属于 near-relative 受控边缘面",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/external_data_gateway.py",
+      "module": "app.services.factors.store",
+      "symbol": "FactorWarehouse",
+      "reason": "外部数据链路与因子仓/数据同步深度耦合，属于 near-relative 受控边缘面",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/external_data_sync_task.py",
+      "module": "app.services.factors.store",
+      "symbol": "FactorWarehouse",
+      "reason": "外部数据链路与因子仓/数据同步深度耦合，属于 near-relative 受控边缘面",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/external_data_sync_task.py",
+      "module": "app.services.factors.data_sync",
+      "symbol": "mirror_factor_inputs",
+      "reason": "外部数据链路与因子仓/数据同步深度耦合，属于 near-relative 受控边缘面",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/financial_data.py",
+      "module": "app.services.factors.fundamental",
+      "symbol": "",
+      "reason": "行情/舆情/财务数据规范化函数复用因子域契约层，待 DSL 契约抽离后解耦",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/fundamental_data.py",
+      "module": "app.services.factors.fundamental",
+      "symbol": "normalize_stock_value_frame",
+      "reason": "行情/舆情/财务数据规范化函数复用因子域契约层，待 DSL 契约抽离后解耦",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/hot_rank_data.py",
+      "module": "app.services.factors.contracts",
+      "symbol": "normalize_symbol",
+      "reason": "行情/舆情/财务数据规范化函数复用因子域契约层，待 DSL 契约抽离后解耦",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/hot_rank_data.py",
+      "module": "app.services.factors.sentiment",
+      "symbol": "normalize_hot_rank_frame",
+      "reason": "行情/舆情/财务数据规范化函数复用因子域契约层，待 DSL 契约抽离后解耦",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/lhb_data.py",
+      "module": "app.services.factors.capital_flow",
+      "symbol": "",
+      "reason": "行情/舆情/财务数据规范化函数复用因子域契约层，待 DSL 契约抽离后解耦",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/lhb_data.py",
+      "module": "app.services.factors.contracts",
+      "symbol": "normalize_symbol",
+      "reason": "行情/舆情/财务数据规范化函数复用因子域契约层，待 DSL 契约抽离后解耦",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/signal_stats.py",
+      "module": "app.services.factors.score_scope",
+      "symbol": "apply_active_score_scope",
+      "reason": "评分与信号域需复用 active score scope 查询切面，thin-facade Q4 解耦规划中",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/tail_proxy_data.py",
+      "module": "app.services.factors.tail_proxy",
+      "symbol": "calculate_tail_proxy",
+      "reason": "尾部风险代理链路直接复用因子域 proxy 与输入同步，属风控受控依赖",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/tail_proxy_import.py",
+      "module": "app.services.factors.tail_proxy",
+      "symbol": "calculate_tail_proxy",
+      "reason": "尾部风险代理链路直接复用因子域 proxy 与输入同步，属风控受控依赖",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/tail_proxy_import.py",
+      "module": "app.services.factors.data_sync",
+      "symbol": "mirror_factor_inputs",
+      "reason": "尾部风险代理链路直接复用因子域 proxy 与输入同步，属风控受控依赖",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "app/services/trade_plans.py",
+      "module": "app.services.factors.score_scope",
+      "symbol": "apply_active_score_scope",
+      "reason": "评分与信号域需复用 active score scope 查询切面，thin-facade Q4 解耦规划中",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "scripts/initialize_factor_data.py",
+      "module": "app.services.factors.config",
+      "symbol": "update_factor_system_config",
+      "reason": "运维脚本直接调用因子 runtime/仓库以完成预热，属受控工具路径",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "scripts/initialize_factor_data.py",
+      "module": "app.services.factors.store",
+      "symbol": "FactorWarehouse",
+      "reason": "运维脚本直接调用因子 runtime/仓库以完成预热，属受控工具路径",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "scripts/run_local_factor_warmup.py",
+      "module": "app.services.factors.bar_mirror",
+      "symbol": "mirror_daily_bars",
+      "reason": "运维脚本直接调用因子 runtime/仓库以完成预热，属受控工具路径",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "scripts/run_local_factor_warmup.py",
+      "module": "app.services.factors.config",
+      "symbol": "get_factor_system_config",
+      "reason": "运维脚本直接调用因子 runtime/仓库以完成预热，属受控工具路径",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "scripts/run_local_factor_warmup.py",
+      "module": "app.services.factors.data_sync",
+      "symbol": "mirror_factor_inputs",
+      "reason": "运维脚本直接调用因子 runtime/仓库以完成预热，属受控工具路径",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "scripts/run_local_factor_warmup.py",
+      "module": "app.services.factors.factor_engine",
+      "symbol": "calculate_stock_factors",
+      "reason": "运维脚本直接调用因子 runtime/仓库以完成预热，属受控工具路径",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "scripts/run_local_factor_warmup.py",
+      "module": "app.services.factors.health",
+      "symbol": "get_factor_health",
+      "reason": "运维脚本直接调用因子 runtime/仓库以完成预热，属受控工具路径",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "scripts/run_local_factor_warmup.py",
+      "module": "app.services.factors.store",
+      "symbol": "FactorWarehouse",
+      "reason": "运维脚本直接调用因子 runtime/仓库以完成预热，属受控工具路径",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "scripts/run_local_factor_warmup.py",
+      "module": "app.services.factors.target_engine",
+      "symbol": "calculate_targets",
+      "reason": "运维脚本直接调用因子 runtime/仓库以完成预热，属受控工具路径",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    }
+  ],
+  "frontend": [
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factors/overview",
+      "method": "GET",
+      "reason": "API client 层提供因子中心管理视图，属 B 类因子中心内部入口受控使用，Q4 薄封替代规划中",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factors/config",
+      "method": "PATCH",
+      "reason": "因子系统配置写入仅限因子中心 Settings 内页，B 类受控入口，Q4 迁移到 scoring 薄封",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factors/warehouse/initialize",
+      "method": "POST",
+      "reason": "因子仓初始化仅限因子中心管理员页面触发，B 类内部功能，Q4 统一走 scoring/warehouse",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-models",
+      "method": "GET",
+      "reason": "因子模型列表法专供因子模型管理页（B 类），外部页统一用 scoring/models 薄封",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-models/{modelRunId}",
+      "method": "GET",
+      "reason": "因子模型详情查询仅限因子模型管理详情页内使用（B 类受控内页）",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-models/{modelRunId}/activate",
+      "method": "POST",
+      "reason": "模型激活 lifecycle 动作仅限因子科学家在 B 类因子模型页执行",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-models/train",
+      "method": "POST",
+      "reason": "模型训练入口是因子中心工作流核心，B 类受控页，Q4 将通过 scoring/factorsets 薄封",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-models/fallback",
+      "method": "POST",
+      "reason": "模型降级到 manual 是因子中心管理员应急操作，B 类页面内权限受控",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-sets",
+      "method": "GET",
+      "reason": "因子集列表为因子中心内页使用，外部组件一律使用 scoring/factorsets 薄封",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-sets/{factorSetId}/freeze",
+      "method": "POST",
+      "reason": "因子集冻结是 P1.2 训练门禁入口，B 类 Settings 页内受控操作",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-sets/{factorSetId}/deprecate",
+      "method": "POST",
+      "reason": "因子集废弃是因子中心生命周期管理功能，仅在 B 类内页对具备权限用户开放",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-pipeline/tasks",
+      "method": "POST",
+      "reason": "流水线任务创建属因子中心内部调度，外部入口统一迁移 scoring/tasks 薄封",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-pipeline/tasks",
+      "method": "GET",
+      "reason": "流水线任务列表在因子中心 TaskCenter 子页内使用，外部走 scoring/tasks 镜像",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-pipeline/tasks/{taskId}",
+      "method": "GET",
+      "reason": "流水线单任务详情查询属因子中心运维功能，B 类页面内部使用",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-pipeline/tasks/{taskId}/cancel",
+      "method": "POST",
+      "reason": "流水线取消是管理员操作，仅限因子中心 TaskCenter B 类内页触发",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factor-pipeline/eta",
+      "method": "GET",
+      "reason": "流水线 ETA 查询为因子中心 Settings 调度辅助，外部走 scoring/pipeline/eta 镜像",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factors",
+      "method": "GET",
+      "reason": "因子库列表 CRUD 专供专业因子库 B 类内页，外部统一走 scoring/factor-definitions",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factors/{factorCode}",
+      "method": "GET",
+      "reason": "因子库详情页为因子科学家专业工具，B 类内页使用，不走跨域链路",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    },
+    {
+      "file": "frontend/src/api/client.ts",
+      "api_url": "/factors/{factorCode}/versions",
+      "method": "POST",
+      "reason": "因子版本创建为专业因子库 B 类内页 CRUD 功能，调用方都在因子中心目录",
+      "approver": "验收整改",
+      "expires_on": "2026-12-31"
+    }
+  ]
+}

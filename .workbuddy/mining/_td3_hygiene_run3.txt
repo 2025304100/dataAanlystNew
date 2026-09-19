@@ -1,0 +1,10 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: d:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 12 items
+
+tests\services\factors\mining\test_metrics_json_hygiene.py ............  [100%]
+
+============================= 12 passed in 8.23s ==============================

@@ -1,0 +1,54 @@
+﻿node.exe : [33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you
+ rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consi
+der using "deps.optimizer.web.include"[39m
+所在位置 行:1 字符: 1
++ & "C:\Users\demo\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[7m[33m ...b.include"[39m 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+ [31m鉂?[39m src/components/factors/mining/wizard/step1/MiningPoolStep.test.tsx [2m([22m[2m0 test[22m[2m)[22m
+
+[31m鈳幆鈳幆鈳幆[1m[7m Failed Suites 1 [27m[22m鈳幆鈳幆鈳幆鈳?[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/factors/mining/wizard/step1/M
+iningPoolStep.test.tsx[2m [ src/components/factors/mining/wizard/step1/MiningP
+oolStep.test.tsx ][22m
+[31m[1mError[22m: Transform failed with 1 error:
+D:/ai_project/dataAanlystNew/frontend/src/components/factors/mining/wizard/step
+1/MiningPoolStep.test.tsx:146:4: ERROR: "await" can only be used inside an "asy
+nc" function[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/ai_project/dataAanlystNew/frontend/src/components/factors/minin
+g/wizard/step1/MiningPoolStep.test.tsx[39m:146:4
+[33m  
+  [33m"await" can only be used inside an "async" function[33m
+  144|      // 闃叉姈鍥炶皟閲?`previewPool(...).then(setPreview)` 鏄?microtask锛?  145| 
+     // fake timers 涓嬪繀椤诲啀 flush 涓€娆★紝鍚﹀垯鏂█鏃╀簬 setState 钀藉湴銆?  146|      await
+ act(async () => {
+     |      ^
+  147|        await Promise.resolve();
+  148|      });
+  [39m
+[90m [2m鉂?[22m failureErrorWithLog node_modules/esbuild/lib/main.js:[2m1472:
+15[22m[39m
+[90m [2m鉂?[22m node_modules/esbuild/lib/main.js:[2m755:50[22m[39m
+[90m [2m鉂?[22m responseCallbacks.<computed> node_modules/esbuild/lib/main.js:
+[2m622:9[22m[39m
+[90m [2m鉂?[22m handleIncomingPacket node_modules/esbuild/lib/main.js:[2m677:
+12[22m[39m
+[90m [2m鉂?[22m Socket.readFromStdout node_modules/esbuild/lib/main.js:[2m600
+:7[22m[39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[1/1]鈳?[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [2mno tests[22m
+[2m   Start at [22m 22:00:25
+[2m   Duration [22m 10.02s[2m (transform 32ms, setup 336ms, collect 0ms, tests 0ms, environment 2.94s, prepare 412ms)[22m
+
+EXIT=1

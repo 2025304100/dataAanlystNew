@@ -1,0 +1,58 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: d:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 19 items
+
+tests\test_stage3_factor_binding_contract.py ...........FFFFFF..         [100%]
+
+================================== FAILURES ===================================
+______ test_model_train_api_rejects_non_frozen_factor_set_in_every_mode _______
+tests\test_stage3_factor_binding_contract.py:572: in test_model_train_api_rejects_non_frozen_factor_set_in_every_mode
+    train_factor_model(
+app\api\routes\factor_models.py:240: in train_factor_model
+    actor = _actor_from_context(request, payload.actor)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\api\routes\factor_models.py:47: in _actor_from_context
+    hdr = request.headers.get("X-Actor")
+          ^^^^^^^^^^^^^^^
+E   AttributeError: 'Session' object has no attribute 'headers'
+_ test_async_training_task_rejects_unready_factor_set_before_queueing[None-None-FACTOR_SET_REQUIRED] _
+tests\test_stage3_factor_binding_contract.py:626: in test_async_training_task_rejects_unready_factor_set_before_queueing
+    assert error.value.status_code == 422
+E   AssertionError: assert 409 == 422
+E    +  where 409 = HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。').status_code
+E    +    where HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。') = <ExceptionInfo HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。') tblen=2>.value
+_ test_async_training_task_rejects_unready_factor_set_before_queueing[-None-FACTOR_SET_REQUIRED] _
+tests\test_stage3_factor_binding_contract.py:626: in test_async_training_task_rejects_unready_factor_set_before_queueing
+    assert error.value.status_code == 422
+E   AssertionError: assert 409 == 422
+E    +  where 409 = HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。').status_code
+E    +    where HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。') = <ExceptionInfo HTTPException(status_code=409, detail='[PIPELINE_NO_FACTOR_SET] 训练模式需要显式选择一个已冻结因子集合。请前往 设置 → 选择集合 或 因子中心 冻结集合。') tblen=2>.value
+_ test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-missing-None-FACTOR_SET_NOT_FOUND] _
+tests\test_stage3_factor_binding_contract.py:626: in test_async_training_task_rejects_unready_factor_set_before_queueing
+    assert error.value.status_code == 422
+E   assert 409 == 422
+E    +  where 409 = HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FOUND] 流水线请求的 factor_set_id='fs-stage3-pipeline-missing' 在数据库中不存在。请前往因子中心查看可用的已冻结集合。").status_code
+E    +    where HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FOUND] 流水线请求的 factor_set_id='fs-stage3-pipeline-missing' 在数据库中不存在。请前往因子中心查看可用的已冻结集合。") = <ExceptionInfo HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FOUND] 流水线请求的 factor_set_id='fs-stage3-pipeline-missing' 在数据库中不存在。请前往因子中心查看可用的已冻结集合。") tblen=2>.value
+_ test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-draft-draft-FACTOR_SET_NOT_FROZEN] _
+tests\test_stage3_factor_binding_contract.py:626: in test_async_training_task_rejects_unready_factor_set_before_queueing
+    assert error.value.status_code == 422
+E   assert 409 == 422
+E    +  where 409 = HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FROZEN] FactorSet(id=fs-stage3-pipeline-draft) status='draft'，frozen_at 为空。训练模式必须使用已冻结集合。").status_code
+E    +    where HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FROZEN] FactorSet(id=fs-stage3-pipeline-draft) status='draft'，frozen_at 为空。训练模式必须使用已冻结集合。") = <ExceptionInfo HTTPException(status_code=409, detail="[PIPELINE_FACTOR_SET_NOT_FROZEN] FactorSet(id=fs-stage3-pipeline-draft) status='draft'，frozen_at 为空。训练模式必须使用已冻结集合。") tblen=2>.value
+_ test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-no-hash-no_hash-FACTOR_SET_NO_CONTENT_HASH] _
+tests\test_stage3_factor_binding_contract.py:626: in test_async_training_task_rejects_unready_factor_set_before_queueing
+    assert error.value.status_code == 422
+E   AssertionError: assert 409 == 422
+E    +  where 409 = HTTPException(status_code=409, detail='[PIPELINE_FACTOR_SET_NOT_READY] FactorSet(id=fs-stage3-pipeline-no-hash) 未通过 readiness 综合门禁（code=NO_CONTENT_HASH）：冻结 FactorSet 缺少 content_hash 签名，非法；请重新 freeze。请按提示修复后重试。').status_code
+E    +    where HTTPException(status_code=409, detail='[PIPELINE_FACTOR_SET_NOT_READY] FactorSet(id=fs-stage3-pipeline-no-hash) 未通过 readiness 综合门禁（code=NO_CONTENT_HASH）：冻结 FactorSet 缺少 content_hash 签名，非法；请重新 freeze。请按提示修复后重试。') = <ExceptionInfo HTTPException(status_code=409, detail='[PIPELINE_FACTOR_SET_NOT_READY] FactorSet(id=fs-stage3-pipeline-no-hash) 未通过 readiness 综合门禁（code=NO_CONTENT_HASH）：冻结 FactorSet 缺少 content_hash 签名，非法；请重新 freeze。请按提示修复后重试。') tblen=2>.value
+=========================== short test summary info ===========================
+FAILED tests/test_stage3_factor_binding_contract.py::test_model_train_api_rejects_non_frozen_factor_set_in_every_mode
+FAILED tests/test_stage3_factor_binding_contract.py::test_async_training_task_rejects_unready_factor_set_before_queueing[None-None-FACTOR_SET_REQUIRED]
+FAILED tests/test_stage3_factor_binding_contract.py::test_async_training_task_rejects_unready_factor_set_before_queueing[-None-FACTOR_SET_REQUIRED]
+FAILED tests/test_stage3_factor_binding_contract.py::test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-missing-None-FACTOR_SET_NOT_FOUND]
+FAILED tests/test_stage3_factor_binding_contract.py::test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-draft-draft-FACTOR_SET_NOT_FROZEN]
+FAILED tests/test_stage3_factor_binding_contract.py::test_async_training_task_rejects_unready_factor_set_before_queueing[fs-stage3-pipeline-no-hash-no_hash-FACTOR_SET_NO_CONTENT_HASH]
+=================== 6 failed, 13 passed in 74.37s (0:01:14) ===================

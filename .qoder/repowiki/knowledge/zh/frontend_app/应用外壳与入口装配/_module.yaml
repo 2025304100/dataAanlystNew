@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: frontend_app/app_shell
+title: 应用外壳与入口装配
+scope:
+    - frontend/src/App.tsx
+    - frontend/src/main.tsx
+    - frontend/src/universe-standalone.tsx
+source_files: []
+depends_on: []
+related_to: []

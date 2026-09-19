@@ -1,0 +1,15 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0 -- C:\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.12.1
+collecting ... collected 5 items
+
+tests/test_blackbox_api_mgmt.py::test_probe_unknown_key_returns_404 PASSED [ 20%]
+tests/test_blackbox_api_mgmt.py::test_probe_known_key_returns_result PASSED [ 40%]
+tests/test_blackbox_api_mgmt.py::test_probe_returns_within_30s PASSED    [ 60%]
+tests/test_blackbox_api_mgmt.py::test_probe_returns_within_30s_with_real_backend PASSED [ 80%]
+tests/test_blackbox_api_mgmt.py::test_discovery_tasks_list_returns_quickly PASSED [100%]
+
+============================= 5 passed in 10.83s ==============================

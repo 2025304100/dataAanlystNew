@@ -1,0 +1,11 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 41 items
+
+tests\services\factors\mining\test_ga_loop.py .......................... [ 63%]
+...............                                                          [100%]
+
+============================= 41 passed in 30.40s =============================

@@ -1,0 +1,31 @@
+{
+  "snapshot_date": "2026-07-19",
+  "database": "mysql",
+  "counts": {
+    "symbols": 7498,
+    "watchlists": 1,
+    "watchlist_items": 6,
+    "discovery_candidates": 31,
+    "discovery_tasks": 98,
+    "scan_runs": 137,
+    "scan_results": 1999,
+    "portfolios": 2,
+    "portfolio_rules": 5,
+    "positions": 3,
+    "cash_ledger": 9,
+    "sim_orders": 7,
+    "sim_trades": 7,
+    "backtest_runs": 22,
+    "portfolio_equity_snapshots": 2,
+    "scheduled_tasks": 11,
+    "scheduled_task_runs": 24,
+    "alert_rules": 3,
+    "alert_events": 95
+  },
+  "notes": [
+    "数量来自 2026-07-19 对当前工作区所选 MySQL 业务库的只读查询，仅用于迁移估算",
+    "实际实施前必须重新查询，不得把数量写进业务逻辑",
+    "历史组合名称可能存在 UTF-8 显示异常风险，迁移前应单独做字符集核对",
+    "本次迁移不得自动重命名用户组合"
+  ]
+}

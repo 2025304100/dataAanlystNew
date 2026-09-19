@@ -1,0 +1,483 @@
+﻿node.exe : [33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you
+ rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consi
+der using "deps.optimizer.web.include"[39m
+所在位置 行:1 字符: 1
++ & "C:\Users\demo\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[7m[33m ...b.include"[39m 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.t13-suppleme
+nt.test.tsx[2m > [22m[2mT13鈶狅細绌烘€?hero 鎸夐挳锛坧laceholder 鍖哄ぇ鍙?+ 鏂板缓锛?[2m > [2
+2m[2m绌洪泦鍚?hero btn 鐐瑰嚮 鈫?modal-create-factorset 鎵撳紑锛屽苟鏄剧ず銆庢柊寤哄洜瀛愰泦鍚堛€忔爣棰?[22m
+[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroy
+OnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.collections.
+test.tsx[2m > [22m[2mTR-2.1 9 鍏冪礌瀛樺湪鎬э紙Task 2 鈶犫憽鈶⑩懀鈶も懃鈶︹懅鈶級[2m > [22m[2
+m鍚屾椂娓叉煋 鑽夌/鍐荤粨/搴熷純 涓夌闆嗗悎鍗＄墖 + 椤堕儴鎸夐挳 + 绌哄崰浣?+ Drawer鏍囬 + 鍐荤粨鎽樿 + 璁粌瀵硅瘽妗唖ub
+mit + 鐘舵€佸窘绔?[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. P
+lease use `destroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.collections.
+test.tsx[2m > [22m[2mTR-2.1 9 鍏冪礌瀛樺湪鎬э紙Task 2 鈶犫憽鈶⑩懀鈶も懃鈶︹懅鈶級[2m > [22m[2
+m鍚屾椂娓叉煋 鑽夌/鍐荤粨/搴熷純 涓夌闆嗗悎鍗＄墖 + 椤堕儴鎸夐挳 + 绌哄崰浣?+ Drawer鏍囬 + 鍐荤粨鎽樿 + 璁粌瀵硅瘽妗唖ub
+mit + 鐘舵€佸窘绔?[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated
+. Please use `styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.t13-suppleme
+nt.test.tsx[2m > [22m[2mT13鈶★細鍐荤粨鎽樿 鈥?涓嶅彲閫嗗嬀閫夊惎鐢?okBtn[2m > [22m[2m鍐荤粨 M
+odal 鏈嬀閫?鈫?okBtn disabled锛涘嬀閫?鈫?okBtn 鍚敤
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.t13-suppleme
+nt.test.tsx[2m > [22m[2mT13鈶★細鍐荤粨鎽樿 鈥?涓嶅彲閫嗗嬀閫夊惎鐢?okBtn[2m > [22m[2m鍐荤粨 M
+odal 鏈嬀閫?鈫?okBtn disabled锛涘嬀閫?鈫?okBtn 鍚敤
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.t13-suppleme
+nt.test.tsx[2m > [22m[2mT13鈶細璁粌 Dialog 鍐呴儴 ID 涓嶆毚闇?Alert 瀛樺湪[2m > [22m[
+2m璁粌 Modal 鎵撳紑鍚?DOM 鍐呭嚭鐜?message=銆庡唴閮?ID 涓嶆毚闇层€忕殑 Alert
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.t13-suppleme
+nt.test.tsx[2m > [22m[2mT13鈶ｏ細Drawer 缂栬緫鎴愬憳涓や釜瀛?Tab 鍒囨崲[2m > [22m[2m鎵撳紑 D
+rawer锛氶粯璁?tab=all锛涚偣鍑?selected Tab 鈫?selected 闈㈡澘锛涚偣鍑?all 鍙堝洖鏉?[22m[39mWarnin
+g: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHidden` i
+nstead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.collections.
+test.tsx[2m > [22m[2mTR-2.1 9 鍏冪礌瀛樺湪鎬э紙Task 2 鈶犫憽鈶⑩懀鈶も懃鈶︹懅鈶級[2m > [22m[2
+m鍚屾椂娓叉煋 鑽夌/鍐荤粨/搴熷純 涓夌闆嗗悎鍗＄墖 + 椤堕儴鎸夐挳 + 绌哄崰浣?+ Drawer鏍囬 + 鍐荤粨鎽樿 + 璁粌瀵硅瘽妗唖ub
+mit + 鐘舵€佸窘绔?[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated
+. Please use `styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.collections.
+test.tsx[2m > [22m[2mTR-2.1 9 鍏冪礌瀛樺湪鎬э紙Task 2 鈶犫憽鈶⑩懀鈶も懃鈶︹懅鈶級[2m > [22m[2
+m鈶?绌洪泦鍚?placeholder 瀛樺湪 + hero 鎸夐挳鍙偣鍑?[22m[39mWarning: [antd: Modal] `destro
+yOnClose` is deprecated. Please use `destroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.t13-suppleme
+nt.test.tsx[2m > [22m[2mT13鈶わ細涓夋€?Tag 钃濈豢鐏?class 瀵瑰簲[2m > [22m[2mdraft 鏍囩
+甯?blue锛沠rozen 甯?green锛沝eprecated 甯?default锛堢伆锛?[22m[39mWarning: [antd: Modal
+] `destroyOnClose` is deprecated. Please use `destroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.t13-suppleme
+nt.test.tsx[2m > [22m[2mT13鈶ワ細搴熷純闂ㄧ 鈥?琚娇鐢ㄧ殑闆嗗悎 disabled + 鏂囨鍚€庢鍦ㄤ娇鐢ㄧ殑妯″
+瀷銆?[2m > [22m[2mactive_factor_set_id 鎸囧悜璇ラ泦鍚?鈫?btn-deprecate disabled锛沝ata-ga
+te-tooltip 鍚€庢鍦ㄤ娇鐢ㄧ殑妯″瀷銆?[22m[39mWarning: [antd: Modal] `destroyOnClose` is
+ deprecated. Please use `destroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+ [31m鉂?[39m src/components/factors/__tests__/FactorModelPage.t13-supplement.test.tsx [2m([22m[2m6 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 2611[2mms[22m[39m
+   [33m[2m鉁?[22m[39m T13鈶狅細绌烘€?hero 鎸夐挳锛坧laceholder 鍖哄ぇ鍙?+ 鏂板缓锛?[2m > [22m绌洪泦鍚?hero btn 鐐瑰嚮 鈫?modal-create-factorset 鎵撳紑锛屽苟鏄剧ず銆庢柊寤哄洜瀛愰泦鍚堛€忔爣棰?[33m725[2mms[22m[39m
+   [33m[2m鉁?[22m[39m T13鈶★細鍐荤粨鎽樿 鈥?涓嶅彲閫嗗嬀閫夊惎鐢?okBtn[2m > [22m鍐荤粨 Modal 鏈嬀閫?鈫?okBtn disabled锛涘嬀閫?鈫?okBtn 鍚敤 [33m366[2mms[22m[39m
+   [33m[2m鉁?[22m[39m T13鈶細璁粌 Dialog 鍐呴儴 ID 涓嶆毚闇?Alert 瀛樺湪[2m > [22m璁粌 Modal 鎵撳紑鍚?DOM 鍐呭嚭鐜?message=銆庡唴閮?ID 涓嶆毚闇层€忕殑 Alert [33m339[2mms[22m[39m
+   [33m[2m鉁?[22m[39m T13鈶ｏ細Drawer 缂栬緫鎴愬憳涓や釜瀛?Tab 鍒囨崲[2m > [22m鎵撳紑 Drawer锛氶粯璁?tab=all锛涚偣鍑?selected Tab 鈫?selected 闈㈡澘锛涚偣鍑?all 鍙堝洖鏉?[33m636[2mms[22m[39m
+[31m   [31m脳[31m T13鈶ワ細搴熷純闂ㄧ 鈥?琚娇鐢ㄧ殑闆嗗悎 disabled + 鏂囨鍚€庢鍦ㄤ娇鐢ㄧ殑妯″瀷銆?[2m > [22mactive_factor_set_id 鎸囧悜璇ラ泦鍚?鈫?btn-deprecate disabled锛沝ata-gate-tooltip 鍚€庢鍦ㄤ娇鐢ㄧ殑妯″瀷銆?[90m 258[2mms[22m[31m[39m
+[31m     鈫?[2mexpect([22m[31melement[31m[2m).toBeDisabled()[22m
+
+Received element is not disabled:
+  [31m<button
+  aria-describedby="test-id"
+  class="ant-btn css-dev-only-do-not-override-mncuj7 ant-btn-default ant-btn-dangerous ant-btn-color-dangerous ant-btn-variant-outlined ant-btn-sm"
+  data-gate-tooltip="搴熷純璇ラ泦鍚堬紙涓嶅彲鍐嶈缁冩柊妯″瀷锛屽巻鍙叉ā鍨嬩笉鍙楀奖鍝嶏級"
+  data-testid="btn-deprecate-fs-in-use"
+  type="button"
+/>[31m[39m
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.collections.
+test.tsx[2m > [22m[2mTR-2.2 鍐荤粨涓夐棬绂?disabled=true + tooltip[2m > [22m[2mG
+ATE-1锛歯_members=0 鈫?鍐荤粨鎸夐挳 disabled 涓?tooltip 鍚€岃嚦灏?1 涓洜瀛愩€?[22m[39mWarning
+: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHidden` in
+stead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.collections.
+test.tsx[2m > [22m[2mTR-2.2 鍐荤粨涓夐棬绂?disabled=true + tooltip[2m > [22m[2mG
+ATE-2锛歠eature_count=0锛堝叏浣?control锛夆啋 鍐荤粨 disabled 涓?tooltip 鍚€屾病鏈?feature銆?[2
+2m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destr
+oyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.collections.
+test.tsx[2m > [22m[2mTR-2.2 鍐荤粨涓夐棬绂?disabled=true + tooltip[2m > [22m[2mG
+ATE-3锛氭垚鍛樼増鏈姸鎬?= draft锛堥潪 trainable锛夆啋 鍐荤粨 disabled 涓?tooltip 鍚€岃崏绋?宸插簾寮冦€?[
+22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `dest
+royOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.collections.
+test.tsx[2m > [22m[2mTR-2.3 鎴愬憳鏄庣粏琛ㄦ牸 6 鍒?脳 3 琛?脳 feature=3[2m > [22m[2m1
+ frozen + 3 feature 鎴愬憳 鈫?鎴愬憳琛?6 鍒楁覆鏌撳嚭 3 琛岋紝feature 鏁?3
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.collections.
+test.tsx[2m > [22m[2mTR-2.4 璁粌闂ㄧ 閿欒 Banner 鏄剧ず detail_zh 鍘熸枃[2m > [22m
+[2m鍚庣杩斿洖 TRAIN_GATE_IC_OUT_OF_RANGE 鈫?Banner description === detail_zh 鍘熸枃
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Descriptions] `labelStyle` is deprecated. Please use `styles={{
+ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/factors/__tests__/FactorModelPage.collections.
+test.tsx[2m > [22m[2mTR-2.4 璁粌闂ㄧ 閿欒 Banner 鏄剧ず detail_zh 鍘熸枃[2m > [22m
+[2m鍚庣杩斿洖 TRAIN_GATE_IC_OUT_OF_RANGE 鈫?Banner description === detail_zh 鍘熸枃
+[22m[39mWarning: [antd: Descriptions] `labelStyle` is deprecated. Please use 
+`styles={{ label: {} }}` instead.
+Warning: [antd: Descriptions] `contentStyle` is deprecated. Please use `styles=
+{{ content: {} }}` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+ [32m鉁?[39m src/components/factors/__tests__/FactorModelPage.collections.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 4292[2mms[22m[39m
+   [33m[2m鉁?[22m[39m TR-2.1 9 鍏冪礌瀛樺湪鎬э紙Task 2 鈶犫憽鈶⑩懀鈶も懃鈶︹懅鈶級[2m > [22m鍚屾椂娓叉煋 鑽夌/鍐荤粨/搴熷純 涓夌闆嗗悎鍗＄墖 + 椤堕儴鎸夐挳 + 绌哄崰浣?+ Drawer鏍囬 + 鍐荤粨鎽樿 + 璁粌瀵硅瘽妗唖ubmit + 鐘舵€佸窘绔?[33m2246[2mms[22m[39m
+   [33m[2m鉁?[22m[39m TR-2.3 鎴愬憳鏄庣粏琛ㄦ牸 6 鍒?脳 3 琛?脳 feature=3[2m > [22m1 frozen + 3 feature 鎴愬憳 鈫?鎴愬憳琛?6 鍒楁覆鏌撳嚭 3 琛岋紝feature 鏁?3 [33m305[2mms[22m[39m
+   [33m[2m鉁?[22m[39m TR-2.4 璁粌闂ㄧ 閿欒 Banner 鏄剧ず detail_zh 鍘熸枃[2m > [22m鍚庣杩斿洖 TRAIN_GATE_IC_OUT_OF_RANGE 鈫?Banner description === detail_zh 鍘熸枃 [33m760[2mms[22m[39m
+
+[31m鈳幆鈳幆鈳幆鈳?[1m[7m Failed Tests 1 [27m[22m鈳幆鈳幆鈳幆鈳?[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/components/factors/__tests__/FactorModel
+Page.t13-supplement.test.tsx[2m > [22mT13鈶ワ細搴熷純闂ㄧ 鈥?琚娇鐢ㄧ殑闆嗗悎 disabled + 鏂囨
+鍚€庢鍦ㄤ娇鐢ㄧ殑妯″瀷銆?[2m > [22mactive_factor_set_id 鎸囧悜璇ラ泦鍚?鈫?btn-deprecate disable
+d锛沝ata-gate-tooltip 鍚€庢鍦ㄤ娇鐢ㄧ殑妯″瀷銆?[31m[1mError[22m: [2mexpect([22m[31me
+lement[31m[2m).toBeDisabled()[22m
+
+Received element is not disabled:
+  [31m<button
+  aria-describedby="test-id"
+  class="ant-btn css-dev-only-do-not-override-mncuj7 ant-btn-default ant-btn-da
+ngerous ant-btn-color-dangerous ant-btn-variant-outlined ant-btn-sm"
+  data-gate-tooltip="搴熷純璇ラ泦鍚堬紙涓嶅彲鍐嶈缁冩柊妯″瀷锛屽巻鍙叉ā鍨嬩笉鍙楀奖鍝嶏級"
+  data-testid="btn-deprecate-fs-in-use"
+  type="button"
+/>[31m[39m
+[36m [2m鉂?[22m src/components/factors/__tests__/FactorModelPage.t13-supplemen
+t.test.tsx:[2m346:21[22m[39m
+    [90m344| [39m    [35mconst[39m btnNotUsed [33m=[39m screen[33m.[39m
+[34mgetByTestId[39m([32m"btn-deprecate-fs-not-used"[39m)[33m;[39m
+    [90m345| [39m
+    [90m346| [39m    [34mexpect[39m(btnUsed)[33m.[39m[34mtoBeDisabled[3
+9m()[33m;[39m
+    [90m   | [39m                    [31m^[39m
+    [90m347| [39m    [34mexpect[39m(btnNotUsed)[33m.[39mnot[33m.[39m[3
+4mtoBeDisabled[39m()[33m;[39m
+    [90m348| [39m
+
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[1/1]鈳?[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m12 passed[39m[22m[90m (13)[39m
+[2m   Start at [22m 13:46:50
+[2m   Duration [22m 29.41s[2m (transform 278ms, setup 783ms, collect 38.58s, tests 6.90s, environment 5.59s, prepare 1.30s)[22m
+
+EXIT=1

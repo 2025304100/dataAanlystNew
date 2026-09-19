@@ -1,0 +1,223 @@
+DB  : mysql+pymysql://***@127.0.0.1:3306/gpfx?charset=utf8mb4
+范围: 132 张表
+  [OK]    ai_action_audits  索引 8 列10 外键 1 引擎INNODB
+  [OK]    ai_messages  索引 6 列13 外键 1 引擎INNODB
+  [OK]    ai_profiles  索引 6 列22 外键 0 引擎INNODB
+  [OK]    ai_sessions  索引 9 列13 外键 0 引擎INNODB
+  [OK]    akshare_api_config  索引 1 列16 外键 0 引擎INNODB
+  [DRIFT] alert_events
+          缺唯一约束: ['uq_alert_events_dedupe_incident']
+          缺检查约束: ['ck_alert_events_status', 'ck_alert_events_severity_level']
+  [OK]    alert_rules  索引 1 列10 外键 0 引擎INNODB
+  [OK]    api_deprecation_logs  索引 2 列10 外键 0 引擎INNODB
+  [DRIFT] async_tasks
+          多索引   : ['ix_async_tasks_status_terminal_locked']
+  [OK]    backtest_execution_fills  索引 8 列13 外键 4 引擎INNODB
+  [DRIFT] backtest_filter_events
+          外键不符 : ('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(NO ACTION)
+  [DRIFT] backtest_rule_templates
+          多索引   : ['name']
+  [DRIFT] backtest_runs
+          多索引   : ['ix_backtest_runs_benchmark_status', 'ix_backtest_runs_pit_mode', 'ix_runs_dedup_key']
+          缺外键   : [('strategy_snapshot_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [DRIFT] backtest_trades
+          缺外键   : [('decision_evidence_id',), ('exit_evidence_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [OK]    backtest_valuation_snapshots  索引 4 列12 外键 2 引擎INNODB
+  [OK]    capital_flows  索引 3 列13 外键 1 引擎INNODB
+  [DRIFT] cash_ledger
+          缺外键   : [('portfolio_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [DRIFT] custom_indicator_versions
+          缺外键   : [('indicator_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [OK]    custom_indicators  索引 7 列16 外键 0 引擎INNODB
+  [DRIFT] daily_bars
+          缺外键   : [('symbol_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [DRIFT] data_governance_audit_events
+          多索引   : ['ix_dg_audit_correlation_id_p12']
+          缺检查约束: ['ck_dg_audit_action_values']
+  [OK]    data_quality_quarantines  索引10 列16 外键 1 引擎INNODB
+  [OK]    data_quality_snapshots  索引 6 列19 外键 0 引擎INNODB
+  [OK]    data_sync_partitions  索引 4 列15 外键 2 引擎INNODB
+  [OK]    data_sync_plans  索引 6 列19 外键 1 引擎INNODB
+  [DRIFT] decision_evidence
+          多索引   : ['ix_decision_evidence_manual_price_flag', 'ix_decision_evidence_match_mode', 'ix_decision_evidence_pit_safe_flag', 'ix_decision_evidence_score_id', 'uq_decision_evidence_idempotency_key']
+          外键不符 : ('decision_run_id',) 期望->decision_runs('id',)(RESTRICT) 实际->decision_runs('id',)(NO ACTION)
+          外键不符 : ('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(NO ACTION)
+          缺检查约束: ['ck_decision_evidence_action_6values']
+  [DRIFT] decision_order_plans
+          外键不符 : ('decision_run_id',) 期望->decision_runs('id',)(RESTRICT) 实际->decision_runs('id',)(NO ACTION)
+          外键不符 : ('evidence_id',) 期望->decision_evidence('id',)(RESTRICT) 实际->decision_evidence('id',)(NO ACTION)
+          外键不符 : ('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)
+          外键不符 : ('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(NO ACTION)
+  [DRIFT] decision_runs
+          多索引   : ['ix_decision_runs_blocking_status', 'ix_decision_runs_match_mode', 'ix_decision_runs_task_id_p12']
+          外键不符 : ('strategy_snapshot_id',) 期望->strategy_execution_snapshots('id',)(RESTRICT) 实际->strategy_execution_snapshots('id',)(NO ACTION)
+          缺检查约束: ['ck_decision_runs_status_6values', 'ck_decision_runs_run_type_3values']
+  [DRIFT] discovery_candidates
+          多索引   : ['universe_symbol_id']
+  [OK]    discovery_plans  索引 1 列 7 外键 0 引擎INNODB
+  [OK]    discovery_score_snapshot_items  索引 6 列13 外键 1 引擎INNODB
+  [OK]    discovery_score_snapshots  索引 7 列18 外键 0 引擎INNODB
+  [OK]    discovery_tasks  索引 6 列45 外键 0 引擎INNODB
+  [OK]    etf_indicators  索引 3 列14 外键 1 引擎INNODB
+  [OK]    external_endpoint_runtime  索引 3 列12 外键 0 引擎INNODB
+  [OK]    factor_audit_logs  索引 6 列10 外键 1 引擎INNODB
+  [OK]    factor_data_validation_runs  索引 3 列15 外键 0 引擎INNODB
+  [DRIFT] factor_drafts
+          多索引   : ['draft_no']
+  [DRIFT] factor_evaluation_runs
+          列差异   : 库多=['test_end_date', 'test_start_date'] ORM多=[]
+  [OK]    factor_experience  索引 3 列19 外键 0 引擎INNODB
+  [OK]    factor_experience_field_deps  索引 1 列 5 外键 0 引擎INNODB
+  [OK]    factor_experience_metrics  索引 1 列 7 外键 0 引擎INNODB
+  [OK]    factor_experience_tags  索引 2 列 5 外键 0 引擎INNODB
+  [OK]    factor_formula_templates  索引 2 列13 外键 0 引擎INNODB
+  [OK]    factor_grade_history  索引 2 列18 外键 0 引擎INNODB
+  [OK]    factor_mining_candidates  索引 5 列36 外键 1 引擎INNODB
+  [OK]    factor_mining_drafts  索引 1 列12 外键 0 引擎INNODB
+  [OK]    factor_mining_generations  索引 2 列41 外键 1 引擎INNODB
+  [OK]    factor_mining_prescreen_fingerprints  索引 1 列 9 外键 0 引擎INNODB
+  [OK]    factor_mining_runs  索引 3 列30 外键 0 引擎INNODB
+  [OK]    factor_mining_template_versions  索引 2 列 8 外键 1 引擎INNODB
+  [OK]    factor_mining_templates  索引 0 列 8 外键 0 引擎INNODB
+  [OK]    factor_model_audit_logs  索引 3 列10 外键 1 引擎INNODB
+  [OK]    factor_model_members  索引 4 列11 外键 1 引擎INNODB
+  [OK]    factor_model_runs  索引 5 列20 外键 0 引擎INNODB
+  [OK]    factor_quality_daily  索引 4 列11 外键 0 引擎INNODB
+  [OK]    factor_runtime_state  索引 2 列 7 外键 1 引擎INNODB
+  [DRIFT] factor_set_members
+          多索引   : ['factor_id', 'factor_version_id']
+  [OK]    factor_set_snapshots  索引 5 列 9 外键 1 引擎INNODB
+  [OK]    factor_sets  索引 2 列 9 外键 0 引擎INNODB
+  [OK]    factor_shadow_observations  索引 5 列16 外键 2 引擎INNODB
+  [OK]    factor_system_config  索引 0 列 6 外键 0 引擎INNODB
+  [OK]    factor_training_checkpoints  索引 2 列10 外键 1 引擎INNODB
+  [DRIFT] factor_transition_audits
+          多索引   : ['evidence_run_id', 'factor_version_id']
+  [DRIFT] factor_values
+          缺外键   : [('factor_id',), ('symbol_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [OK]    factor_versions  索引 6 列23 外键 1 引擎INNODB
+  [DRIFT] factor_weight_snapshots
+          多索引   : ['ix_factor_weight_snapshots_model_id']
+  [DRIFT] factors
+          多索引   : ['code', 'ix_factors_code']
+          缺外键   : [('active_version_id',), ('shadow_version_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [OK]    g5_dual_run_reports  索引 7 列13 外键 1 引擎INNODB
+  [DRIFT] governance_events_outbox
+          缺检查约束: ['ck_gov_outbox_retry_count_range', 'ck_gov_outbox_status_values']
+  [DRIFT] idempotency_records
+          列差异   : 库多=['resource_type', 'result_json', 'status'] ORM多=['id']
+          多索引   : ['ix_idempotency_records_resource_type', 'ix_idempotency_records_status']
+          缺外键   : [('portfolio_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [OK]    index_prices  索引 3 列11 外键 0 引擎INNODB
+  [OK]    investment_themes  索引 3 列 8 外键 0 引擎INNODB
+  [DRIFT] journal_entries
+          多索引   : ['ix_journal_entries_created_at', 'ix_journal_entries_entry_type', 'trade_setup_id']
+  [OK]    lhb_institution_trades  索引 3 列15 外键 0 引擎INNODB
+  [OK]    macro_indicator_values  索引 7 列17 外键 0 引擎INNODB
+  [OK]    macro_snapshots  索引 2 列13 外键 0 引擎INNODB
+  [DRIFT] manual_price_overrides
+          外键不符 : ('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)
+          外键不符 : ('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(NO ACTION)
+          缺检查约束: ['ck_manual_price_override_resolved_mode_3values']
+  [OK]    market_events  索引 7 列16 外键 0 引擎INNODB
+  [OK]    news_events  索引 4 列16 外键 1 引擎INNODB
+  [OK]    news_snapshots  索引 3 列16 外键 2 引擎INNODB
+  [OK]    northbound_flows  索引 2 列 7 外键 0 引擎INNODB
+  [OK]    notification_channels  索引 4 列14 外键 0 引擎INNODB
+  [DRIFT] notification_deliveries
+          列差异   : 库多=['billing_units', 'delivery_trace_id', 'provider_response_json', 'recipient_info_json', 'retry_of_delivery_id'] ORM多=[]
+  [OK]    notification_outbox  索引15 列19 外键 1 引擎INNODB
+  [OK]    notification_policies  索引 5 列15 外键 0 引擎INNODB
+  [OK]    notification_policy_channels  索引 3 列 4 外键 2 引擎INNODB
+  [DRIFT] notification_templates
+          列差异   : 库多=['content_footer_template', 'default_channel_ids_json', 'icon_key', 'jump_url_template', 'language_code', 'template_category'] ORM多=[]
+          多索引   : ['ix_notification_templates_is_active']
+  [OK]    opportunity_transition_events  索引10 列13 外键 0 引擎INNODB
+  [DRIFT] outbox_events
+          外键不符 : ('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)
+          缺检查约束: ['ck_outbox_events_status_values']
+  [DRIFT] portfolio_candidates
+          外键不符 : ('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(CASCADE)
+          外键不符 : ('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(CASCADE)
+  [DRIFT] portfolio_cron_schedules
+          多索引   : ['ix_portfolio_cron_schedules_enabled', 'ix_portfolio_cron_schedules_schedule_type']
+          外键不符 : ('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)
+          缺检查约束: ['ck_portfolio_cron_sched_minute', 'ck_portfolio_cron_sched_hour', 'ck_portfolio_cron_sched_type']
+  [OK]    portfolio_equity_snapshots  索引 3 列11 外键 1 引擎INNODB
+  [DRIFT] portfolio_factor_usage
+          外键不符 : ('factor_model_run_id',) 期望->factor_model_runs('id',)(RESTRICT) 实际->factor_model_runs('id',)(NO ACTION)
+          外键不符 : ('factor_set_id',) 期望->factor_sets('id',)(RESTRICT) 实际->factor_sets('id',)(NO ACTION)
+          外键不符 : ('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)
+          缺检查约束: ['ck_pfu_binding_status_values']
+  [DRIFT] portfolio_factor_usages
+          外键不符 : ('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)
+  [DRIFT] portfolio_members
+          列差异   : 库多=['deviation_pct', 'target_weight_pct'] ORM多=[]
+          多索引   : ['ix_portfolio_members_execution_mode', 'ix_portfolio_members_source_type', 'ix_portfolio_members_status']
+  [OK]    portfolio_reviews  索引 2 列 9 外键 1 引擎INNODB
+  [DRIFT] portfolio_rules
+          列差异   : 库多=['factor_weights_json', 'rebalance_frequency', 'universe_key', 'weighting_method'] ORM多=[]
+          缺外键   : [('portfolio_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [DRIFT] portfolios
+          列差异   : 库多=['portfolio_status'] ORM多=[]
+          多索引   : ['name']
+          缺检查约束: ['ck_portfolios_status_data_values', 'ck_portfolios_status_model_values', 'ck_portfolios_status_reconciliation_values', 'ck_portfolios_status_score_values']
+  [DRIFT] positions
+          列差异   : 库多=['target_weight_pct'] ORM多=[]
+          缺外键   : [('portfolio_id',), ('symbol_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [DRIFT] scan_presets
+          多索引   : ['name']
+  [DRIFT] scan_results
+          缺外键   : [('scan_run_id',), ('symbol_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [DRIFT] scan_runs
+          多索引   : ['portfolio_id', 'portfolio_rule_id', 'preset_id']
+          缺外键   : [('portfolio_id',), ('portfolio_rule_id',), ('preset_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [OK]    scheduled_task_runs  索引 3 列 8 外键 1 引擎INNODB
+  [OK]    scheduled_task_seed_state  索引 0 列 2 外键 0 引擎INNODB
+  [OK]    scheduled_tasks  索引 4 列17 外键 0 引擎INNODB
+  [DRIFT] scores
+          多索引   : ['ix_scores_factor_member_versions_json', 'ix_scores_fmr_symbol_cutoff', 'ix_scores_fmr_symbol_trade_date', 'ix_scores_published_at_pit_safety']
+          缺外键   : [('symbol_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [OK]    scoring_configs  索引 6 列14 外键 0 引擎INNODB
+  [OK]    scoring_lineage  索引 8 列12 外键 2 引擎INNODB
+  [DRIFT] security_status_daily
+          外键不符 : ('symbol_id',) 期望->symbols('id',)(RESTRICT) 实际->symbols('id',)(NO ACTION)
+  [DRIFT] signal_rules
+          缺外键   : [('portfolio_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [DRIFT] sim_orders
+          列差异   : 库多=['sim_account_id'] ORM多=[]
+          多索引   : ['ix_sim_orders_review_by', 'ix_sim_orders_review_deadline_at', 'ix_sim_orders_reviewed_at', 'ix_sim_orders_sim_account_id']
+          缺外键   : [('member_id',), ('portfolio_id',), ('symbol_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [DRIFT] sim_trades
+          缺外键   : [('order_id',), ('portfolio_id',), ('symbol_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [OK]    stock_financial_reports  索引 4 列13 外键 1 引擎INNODB
+  [OK]    stock_hot_rank_snapshots  索引 3 列 9 外键 0 引擎INNODB
+  [OK]    stock_valuations  索引 3 列14 外键 1 引擎INNODB
+  [DRIFT] strategy_execution_snapshots
+          外键不符 : ('portfolio_id',) 期望->portfolios('id',)(RESTRICT) 实际->portfolios('id',)(NO ACTION)
+  [OK]    symbol_theme_mappings  索引 4 列 9 外键 2 引擎INNODB
+  [OK]    symbols  索引 4 列13 外键 0 引擎INNODB
+  [OK]    tail_accumulation_snapshots  索引 3 列15 外键 0 引擎INNODB
+  [DRIFT] task_idempotencies
+          缺检查约束: ['ck_task_idempotencies_task_type_4values']
+  [OK]    task_locks  索引 1 列 6 外键 0 引擎INNODB
+  [OK]    theme_catalysts  索引 5 列11 外键 2 引擎INNODB
+  [DRIFT] trade_setups
+          多索引   : ['ix_trade_setups_scan_run_id']
+          缺外键   : [('portfolio_id',), ('scan_run_id',), ('score_id',), ('symbol_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [OK]    trade_signals  索引 3 列10 外键 3 引擎INNODB
+  [OK]    training_candidate_pool_members  索引 4 列 7 外键 1 引擎INNODB
+  [OK]    training_candidate_pool_snapshots  索引 2 列15 外键 1 引擎INNODB
+  [OK]    training_candidate_pools  索引 1 列13 外键 0 引擎INNODB
+  [OK]    universe_daily_bars  索引 3 列12 外键 1 引擎INNODB
+  [OK]    universe_symbols  索引 4 列16 外键 0 引擎INNODB
+  [DRIFT] watchlist_items
+          多索引   : ['idx_watchlist_items_origin_id', 'idx_watchlist_items_status', 'idx_watchlist_items_target_portfolio_id', 'symbol_id']
+          缺外键   : [('symbol_id',), ('target_portfolio_id',), ('watchlist_id',)]   <-- 迁移可能被 MyISAM 吞掉了 FK 定义
+  [DRIFT] watchlists
+          多索引   : ['name']
+
+❌ 存在漂移：49/132 张表不一致
+   注意：应用启动时 _auto_align_all_schema 会自动补齐这些差异，
+         所以『应用能跑』并不代表迁移是对的。请修**迁移文件**，
+         而不是依赖 auto-align 兜底。

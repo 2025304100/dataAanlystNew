@@ -1,0 +1,22 @@
+﻿node.exe : [33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you
+ rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consi
+der using "deps.optimizer.web.include"[39m
+所在位置 行:1 字符: 1
++ & "C:\Users\demo\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[7m[33m ...b.include"[39m 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+ [32m鉁?[39m src/components/__tests__/FactorLibrary.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 723[2mms[22m[39m
+   [33m[2m鉁?[22m[39m FactorLibrary[2m > [22mloads factor statistics within the API page-size contract [33m722[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 14:37:42
+[2m   Duration [22m 23.06s[2m (transform 166ms, setup 365ms, collect 16.69s, tests 723ms, environment 2.95s, prepare 404ms)[22m
+
+EXIT=0

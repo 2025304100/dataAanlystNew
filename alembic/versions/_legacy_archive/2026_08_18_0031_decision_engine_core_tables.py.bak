@@ -1,0 +1,257 @@
+"""G0-WP0-2a: Decision Engine 4 core tables + content hash/indexes
+
+Revision ID: wps_0031_031_decision_engine_core_tables
+Revises: wps_0030_030_data_quality_snapshots
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+revision = "wps_0031_031_decision_engine_core_tables"
+down_revision = "wps_0030_030_data_quality_snapshots"
+branch_labels = None
+depends_on = None
+
+
+def _ensure_index(op, inspector, table: str, name: str, columns, *, unique=False):
+    """Create index idempotently: if index with same name exists, skip."""
+    existing = {idx["name"] for idx in inspector.get_indexes(table)}
+    if name in existing:
+        return
+    op.create_index(name, table, columns, unique=unique)
+
+
+def upgrade():
+    inspector = sa.inspect(op.get_bind())
+    tables = inspector.get_table_names()
+
+    # ------------------------------------------------------------------ 1
+    if "portfolio_factor_usages" not in tables:
+        op.create_table(
+            "portfolio_factor_usages",
+            sa.Column("id", sa.String(length=64), primary_key=True),
+            sa.Column("portfolio_id", sa.Integer(), sa.ForeignKey(
+                "portfolios.id", ondelete="CASCADE"), nullable=False, index=True),
+            sa.Column("factor_model_run_id", sa.String(length=64),
+                      nullable=False, index=True,
+                      comment="Must equal global FactorRuntimeState.active_model_run_id (方案A)"),
+            sa.Column("factor_set_id", sa.String(length=64), nullable=True),
+            sa.Column("rule_id", sa.Integer(), nullable=True),
+            sa.Column("rule_version", sa.Integer(), nullable=True),
+            sa.Column("run_mode", sa.String(length=16), nullable=False,
+                      server_default="research",
+                      comment="research | production_pit | production_sim"),
+            sa.Column("pit_mode", sa.String(length=16), nullable=False,
+                      server_default="best_effort",
+                      comment="best_effort | strict_pit_safe"),
+            sa.Column("score_sla_coverage_pct", sa.Float(), nullable=False,
+                      server_default="95.0"),
+            sa.Column("score_sla_max_age_days", sa.Integer(), nullable=False,
+                      server_default="1"),
+            sa.Column("status", sa.String(length=16), nullable=False,
+                      server_default="draft", index=True,
+                      comment="draft | active | deprecated | rollback_pending"),
+            sa.Column("rollback_target_model_run_id", sa.String(length=64),
+                      nullable=True),
+            sa.Column("versions_json", sa.Text(), nullable=True,
+                      comment="Dict of model_version/factor_set_hash/rule_version_hash/gate_policy_version"),
+            sa.Column("content_hash", sa.String(length=64), nullable=False, index=True,
+                      comment="SHA-256 of canonical (portfolio_id+fmr+fs+rule+mode)"),
+            sa.Column("effective_from", sa.DateTime(), nullable=False, index=True),
+            sa.Column("effective_to", sa.DateTime(), nullable=True),
+            sa.Column("created_by", sa.String(length=128), nullable=False,
+                      server_default="local_user"),
+            sa.Column("created_at", sa.DateTime(), nullable=False, index=True),
+            sa.Column("updated_at", sa.DateTime(), nullable=False),
+        )
+    # Indexes are applied regardless of whether the table was created in this
+    # run (env.py runs auto_align_all_schema before Alembic, which may create
+    # the table from the SQLAlchemy Model first — so `if not in tables` would
+    # skip indexes otherwise).
+    _ensure_index(op, inspector, "portfolio_factor_usages",
+                  "ix_pfu_portfolio_effective",
+                  ["portfolio_id", "effective_from"])
+    _ensure_index(op, inspector, "portfolio_factor_usages",
+                  "ix_pfu_content_hash",
+                  ["content_hash"])
+
+    # ------------------------------------------------------------------ 2
+    if "strategy_execution_snapshots" not in tables:
+        op.create_table(
+            "strategy_execution_snapshots",
+            sa.Column("id", sa.String(length=64), primary_key=True),
+            sa.Column("portfolio_id", sa.Integer(), sa.ForeignKey(
+                "portfolios.id", ondelete="CASCADE"), nullable=False, index=True),
+            sa.Column("portfolio_factor_usage_id", sa.String(length=64),
+                      sa.ForeignKey("portfolio_factor_usages.id", ondelete="SET NULL"),
+                      nullable=True, index=True),
+            sa.Column("factor_model_run_id", sa.String(length=64), nullable=True, index=True),
+            sa.Column("factor_set_id", sa.String(length=64), nullable=True, index=True),
+            sa.Column("rule_id", sa.Integer(), nullable=True),
+            sa.Column("rule_version", sa.Integer(), nullable=True),
+            sa.Column("decision_clock_json", sa.Text(), nullable=False,
+                      comment="Clock contract: default decision_at=15:05, data_cutoff_at=15:00 Asia/Shanghai, execution_at=T+1 open"),
+            sa.Column("cost_config_json", sa.Text(), nullable=True,
+                      comment="Slippage bp, commission bps, stamp duty — overrides per run"),
+            sa.Column("member_snapshot_json", sa.Text(), nullable=False,
+                      comment="Array of PortfolioMember at effective_from: id/symbol_id/effective_from/effective_to/execution_mode/priority"),
+            sa.Column("candidate_pool_json", sa.Text(), nullable=True),
+            sa.Column("universe_type", sa.String(length=32), nullable=False,
+                      server_default="portfolio_members",
+                      comment="portfolio_members | candidate_pool_union. 禁止 heuristic 指数池。"),
+            sa.Column("benchmark_code", sa.String(length=32), nullable=True,
+                      comment="仅用于基准收益曲线，不参与选股。"),
+            sa.Column("snapshot_type", sa.String(length=16), nullable=False,
+                      server_default="save_and_apply",
+                      comment="preflight | save_and_apply | task_locked"),
+            sa.Column("snapshot_hash", sa.String(length=64), nullable=False, index=True),
+            sa.Column("idempotency_key", sa.String(length=64), nullable=True, index=True,
+                      comment="portfolio_id+snapshot_id+decision_at+trade_date+run_type SHA-256"),
+            sa.Column("gate_policy_version", sa.String(length=32), nullable=True),
+            sa.Column("gate_result_json", sa.Text(), nullable=True,
+                      comment="Result of ModelGate at snapshot creation time"),
+            sa.Column("versions_json", sa.Text(), nullable=True),
+            sa.Column("effective_from", sa.DateTime(), nullable=False, index=True),
+            sa.Column("task_locked_at", sa.DateTime(), nullable=True,
+                      comment="When a backtest/auto-trade task copies & locks this snapshot"),
+            sa.Column("task_id", sa.String(length=64), nullable=True, index=True),
+            sa.Column("locked_by_run_type", sa.String(length=16), nullable=True,
+                      comment="backtest | auto_sim | research"),
+            sa.Column("created_by", sa.String(length=128), nullable=False,
+                      server_default="local_user"),
+            sa.Column("created_at", sa.DateTime(), nullable=False, index=True),
+        )
+    _ensure_index(op, inspector, "strategy_execution_snapshots",
+                  "ix_ses_portfolio_effective",
+                  ["portfolio_id", "effective_from"])
+    _ensure_index(op, inspector, "strategy_execution_snapshots",
+                  "ix_ses_hash",
+                  ["snapshot_hash"])
+    # Idempotency unique enforcement via unique index (SQLite supports
+    # unique on nullable columns via CREATE UNIQUE INDEX).
+    _ensure_index(op, inspector, "strategy_execution_snapshots",
+                  "uq_ses_idempotency",
+                  ["idempotency_key"], unique=True)
+
+    # ------------------------------------------------------------------ 3
+    if "decision_runs" not in tables:
+        op.create_table(
+            "decision_runs",
+            sa.Column("id", sa.String(length=64), primary_key=True),
+            sa.Column("strategy_snapshot_id", sa.String(length=64), sa.ForeignKey(
+                "strategy_execution_snapshots.id", ondelete="CASCADE"),
+                      nullable=False, index=True),
+            sa.Column("portfolio_id", sa.Integer(), nullable=False, index=True),
+            sa.Column("run_type", sa.String(length=16), nullable=False, index=True,
+                      comment="backtest | auto_sim | research_preflight"),
+            sa.Column("trade_date", sa.Date(), nullable=False, index=True),
+            sa.Column("decision_at", sa.DateTime(), nullable=False,
+                      comment="Asia/Shanghai wall-clock of decision; DB stores UTC naive"),
+            sa.Column("data_cutoff_at", sa.DateTime(), nullable=False,
+                      comment="Asia/Shanghai 15:00 of T-day; DB stores UTC naive"),
+            sa.Column("execution_at", sa.DateTime(), nullable=False,
+                      comment="Asia/Shanghai T+1 09:30 open; DB stores UTC naive"),
+            sa.Column("run_mode", sa.String(length=16), nullable=False,
+                      server_default="research"),
+            sa.Column("pit_mode", sa.String(length=16), nullable=False,
+                      server_default="best_effort"),
+            sa.Column("universe_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("member_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("score_count_expected", sa.Integer(), nullable=True),
+            sa.Column("score_count_actual", sa.Integer(), nullable=True),
+            sa.Column("score_coverage_pct", sa.Float(), nullable=True,
+                      comment="按 成员×交易日 计算"),
+            sa.Column("score_max_age_days", sa.Integer(), nullable=True),
+            sa.Column("blocking_status", sa.String(length=32), nullable=False,
+                      server_default="READY",
+                      comment="READY|DATA_INCOMPLETE_PAUSED|RECONCILIATION_BLOCKED|MODEL_INACTIVE|SCORE_STALE"),
+            sa.Column("blocking_reasons_json", sa.Text(), nullable=True),
+            sa.Column("idempotency_key", sa.String(length=64), nullable=True, index=True),
+            sa.Column("versions_json", sa.Text(), nullable=True),
+            sa.Column("started_at", sa.DateTime(), nullable=True),
+            sa.Column("finished_at", sa.DateTime(), nullable=True),
+            sa.Column("duration_ms", sa.Integer(), nullable=True),
+            sa.Column("created_at", sa.DateTime(), nullable=False, index=True),
+        )
+    _ensure_index(op, inspector, "decision_runs",
+                  "ix_dr_snapshot_trade_date",
+                  ["strategy_snapshot_id", "trade_date"])
+    _ensure_index(op, inspector, "decision_runs",
+                  "ix_dr_portfolio_trade_date",
+                  ["portfolio_id", "trade_date"])
+    _ensure_index(op, inspector, "decision_runs",
+                  "uq_dr_idempotency",
+                  ["idempotency_key"], unique=True)
+
+    # ------------------------------------------------------------------ 4
+    if "decision_evidence" not in tables:
+        op.create_table(
+            "decision_evidence",
+            sa.Column("id", sa.String(length=64), primary_key=True),
+            sa.Column("decision_run_id", sa.String(length=64), sa.ForeignKey(
+                "decision_runs.id", ondelete="CASCADE"), nullable=False, index=True),
+            sa.Column("strategy_snapshot_id", sa.String(length=64), nullable=False, index=True),
+            sa.Column("portfolio_id", sa.Integer(), nullable=False, index=True),
+            sa.Column("symbol_id", sa.Integer(), sa.ForeignKey(
+                "symbols.id", ondelete="CASCADE"), nullable=False, index=True),
+            sa.Column("trade_date", sa.Date(), nullable=False, index=True),
+            sa.Column("decision_at", sa.DateTime(), nullable=False),
+            sa.Column("data_cutoff_at", sa.DateTime(), nullable=False),
+            sa.Column("execution_at", sa.DateTime(), nullable=False),
+            sa.Column("action", sa.String(length=24), nullable=False, index=True,
+                      comment="BUY|SELL|HOLD|NO_ACTION|REJECTED|DATA_BLOCKED"),
+            sa.Column("action_subtype", sa.String(length=32), nullable=True, index=True,
+                      comment="SELL_STOP_LOSS|SELL_RISK_EXIT|SELL_STRATEGY_EXIT|REJECTED_STALE_SCORE|REJECTED_ORDER_BELOW_LOT_SIZE|..."),
+            sa.Column("target_position_pct", sa.Float(), nullable=True,
+                      comment="After sequential clamp, pre-min-lot rounding"),
+            sa.Column("min_lot_size", sa.Integer(), nullable=True, server_default="100"),
+            sa.Column("target_quantity", sa.Float(), nullable=True,
+                      comment="Final quantity after lot rounding; 0 if REJECTED"),
+            sa.Column("intended_price", sa.Float(), nullable=True,
+                      comment="NEXT_OPEN * direction (×1.0005 buy / ×0.9995 sell)"),
+            sa.Column("executed_price", sa.Float(), nullable=True),
+            sa.Column("slippage_bps", sa.Float(), nullable=True),
+            sa.Column("rejection_reason", sa.String(length=64), nullable=True, index=True),
+            sa.Column("rejection_detail", sa.Text(), nullable=True),
+            sa.Column("score_id", sa.Integer(), sa.ForeignKey(
+                "scores.id", ondelete="SET NULL"), nullable=True),
+            sa.Column("score_value", sa.Float(), nullable=True),
+            sa.Column("score_rank", sa.Integer(), nullable=True),
+            sa.Column("score_published_at", sa.DateTime(), nullable=True,
+                      comment="Score.published_at; NULL => NOT_PIT_SAFE for strict_pit"),
+            sa.Column("pit_safe_flag", sa.String(length=16), nullable=False,
+                      server_default="UNKNOWN",
+                      comment="PIT_SAFE|NOT_PIT_SAFE|UNKNOWN"),
+            sa.Column("constraints_json", sa.Text(), nullable=True,
+                      comment="Sequential clamp steps: before/after/triggered_constraint/remaining_delta"),
+            sa.Column("versions_json", sa.Text(), nullable=True,
+                      comment="All versioned inputs bound to this decision"),
+            sa.Column("reason_codes_json", sa.Text(), nullable=True,
+                      comment="Ordered list of gate/eligibility/signal/risk rule hits"),
+            sa.Column("factor_contributions_json", sa.Text(), nullable=True,
+                      comment="Per-factor signed contributions to score (shallow, deep in Parquet)"),
+            sa.Column("content_hash", sa.String(length=64), nullable=False),
+            sa.Column("idempotency_key", sa.String(length=64), nullable=True, index=True),
+            sa.Column("created_at", sa.DateTime(), nullable=False, index=True),
+        )
+    _ensure_index(op, inspector, "decision_evidence",
+                  "ix_de_run_symbol",
+                  ["decision_run_id", "symbol_id"])
+    _ensure_index(op, inspector, "decision_evidence",
+                  "ix_de_portfolio_action_date",
+                  ["portfolio_id", "action", "trade_date"])
+    _ensure_index(op, inspector, "decision_evidence",
+                  "ix_de_rejection",
+                  ["rejection_reason", "trade_date"])
+    _ensure_index(op, inspector, "decision_evidence",
+                  "uq_de_idempotency",
+                  ["idempotency_key"], unique=True)
+
+
+def downgrade():
+    inspector = sa.inspect(op.get_bind())
+    tables = inspector.get_table_names()
+    for t in ("decision_evidence", "decision_runs",
+              "strategy_execution_snapshots", "portfolio_factor_usages"):
+        if t in tables:
+            op.drop_table(t)

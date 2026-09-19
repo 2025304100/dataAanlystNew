@@ -1,0 +1,10 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 19 items
+
+tests\services\factors\mining\test_final_eval.py ...................     [100%]
+
+============================= 19 passed in 25.61s =============================

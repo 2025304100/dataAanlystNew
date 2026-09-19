@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: backend_api/market_data_sources
+title: market_data_sources
+scope:
+    - app/api/routes/market_data.py
+    - app/api/routes/akshare_apis.py
+    - app/api/routes/macro.py
+    - app/api/routes/news.py
+    - app/api/routes/symbols.py
+source_files: []
+depends_on: []
+related_to: []

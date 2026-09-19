@@ -1,0 +1,179 @@
+==========================================================================
+① MiningContext 字段（contracts.py）
+==========================================================================
+class MiningContext:
+    """一次挖掘实验的不可变上下文（由 experiment snapshot 还原）。"""
+
+    run_id: str
+    candidate_pool_snapshot_id: str
+    data_cutoff_at: datetime
+    start_date: date
+    end_date: date
+    rebalance_frequency: RebalanceFrequency
+    target_horizon: int
+    split: TimeSplit
+    purge_points: int
+    embargo_points: int
+    train_ratio: float
+    validation_ratio: float
+    random_seed: int
+    config_hash: str
+    split_algorithm_version: str = "split-1.0.0"
+
+
+
+==========================================================================
+② factor_registry.create_factor_draft
+==========================================================================
+def create_factor_draft(
+    db: Session,
+    *,
+    draft: FactorDraftCreate,
+) -> Factor:
+    """创建因子草稿。
+
+    约束：
+    - lifecycle_status = 'draft'
+    - origin = 'user'
+    - status = 'draft'（legacy 兼容字段）
+    - is_active = 0
+    - code 必须唯一
+    """
+    existing = get_factor_by_code(db, draft.code)
+    if existing is not None:
+        raise ValueError(f"factor_code_conflict:{draft.code}")
+
+    factor = Factor(
+        code=draft.code,
+        name=draft.name,
+        category=draft.category,
+        direction=draft.direction,
+        status="draft",  # legacy compat
+        is_active=0,
+        default_missing_policy=draft.default_missing_policy,
+        description=draft.description,
+        formula_expr=None,
+        frequency=draft.frequency,
+        # WP1 lifecycle fields
+        origin="user",
+        lifecycle_status="draft",
+        owner=draft.owner,
+        thesis=draft.thesis,
+        factor_kind=draft.factor_kind,
+        asset_scope_json=_dumps_or_none(draft.asset_scope),
+        risk_level=draft.risk_level,
+    )
+    db.add(factor)
+    db.flush()
+    return factor
+
+
+# ── 因子版本查询 ──────────────────────────────────────────
+
+
+
+
+==========================================================================
+③ factor_evaluator.run_evaluation / EvaluationConfig
+==========================================================================
+def run_evaluation(
+    db: Session,
+    *,
+    factor_version_id: int,
+    factor_values: pd.DataFrame,
+    forward_returns: pd.DataFrame,
+    config: EvaluationConfig,
+    data_cutoff_at: datetime | None = None,
+    ctd_evidence: CompleteTradeDayEvidence | None = None,
+    created_by: str = "local_user",
+    task_id: str | None = None,
+) -> EvaluationOutcome:
+    """执行完整评估流程。
+
+    流程：创建运行 → 时间切分 → 对齐 → IC → 分组 → 换手 → 成本 → 覆盖 → 门禁 → 写入
+
+    幂等保护：如果同参数运行已终态（passed/rejected），直接返回既有结果不重新计算。
+    """
+    config_dict = config.to_dict()
+    config_hash = compute_config_hash(config_dict)
+
+    cutoff_date = (
+        data_cutoff_at.date() if isinstance(data_cutoff_at, datetime)
+        else data_cutoff_at if isinstance(data_cutoff_at, date)
+        else date.today()
+    )
+
+    # 幂等检查：如果同参数运行已终态，直接返回既有结果
+    existing_run_id = build_evaluation_run_id(
+        factor_version_id=factor_version_id,
+        config_hash=config_hash,
+        data_cutoff=cutoff_date,
+    )
+    existing_run = db.get(EvaluationRun, existing_run_id)
+    if existing_run is not None and existing_run.gate_result in TERMINAL_GATE_RESULTS:
+        # Replayed/idempotent evaluations may be requested by a new async
+        # task. Keep the run discoverable from that task without changing its
+        # immutable metrics or gate result.
+        if task_id and existing_run.task_id != task_id:
+            existing_run.task_id = task_id
+            db.flush()
+        # 已终态，返回既有结果
+        existing_metrics = json.loads(existin
+@dataclass
+class EvaluationConfig:
+    """评估配置。"""
+
+    factor_kind: str = "continuous"
+    target_code: str = "target_5d_return"
+    target_horizon: int = 5
+    n_groups: int = 5
+    cost_rate: float = 0.001
+    train_ratio: float = 0.6
+    validation_ratio: float = 0.2
+    purge_days: int = 5
+    embargo_days: int = 5
+    event_dates: list[date] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "evaluator_version": EVALUATOR_VERSION,
+            "factor_kind": self.factor_kind,
+            "target_code": self.target_code,
+            "target_horizon": self.target_horizon,
+            "n_groups": self.n_groups,
+            "cost_rate": self.cost_rate,
+            "train_ratio": self.train_ratio,
+            "validation_ratio": self.validation_ratio,
+            "purge_days": self.purge_days,
+            "embargo_days": self.embargo_days,
+            "event_dates": [d.isoformat() for d in self.event_dates] if self.event_dates else None,
+        }
+
+
+
+
+==========================================================================
+④ MINING_TEST_LOCKED 错误码 + 域错误类型
+==========================================================================
+ep=3",
+    },
+    "MINING_AI_BUDGET_EXCEEDED": {
+        "user_message": "AI 生成已达次数/成本上限，剩余名额已回退为随机生成",
+        "impact": "本次挖掘不受影响（属预期降级行为）；AI 实际入库占比可能低于配置值",
+        "retryable": False,
+    },
+    "MINING_TEST_LOCKED": {
+        "user_message": "该挖掘任务的 test 段已评估过，不可回炉重挖",
+        "impact": "本次操作被拒绝；test 段全程锁定、仅最终确认时评估一次，这是防过拟合的硬约束",
+        "retryable": False,
+        "fix_link": "/settings/factor-mining",
+    },
+}
+
+
+# ── BFG 项目统一 7 要素结构化错误 (FR-13 / Task 4 item 5) ────────────
+# 字段：error_code / title_zh / detail_zh / correlation_id / impact / fix_link / retryable
+
+
+class FactorSevenError(Val
+  域错误类: FactorSevenError

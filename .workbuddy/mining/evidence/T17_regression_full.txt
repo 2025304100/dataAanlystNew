@@ -1,0 +1,93 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 822 items
+
+tests\services\factors\candidate_pool\test_e2e.py ...................... [  2%]
+...                                                                      [  3%]
+tests\services\factors\candidate_pool\test_importer.py ................. [  5%]
+...................................                                      [  9%]
+tests\services\factors\candidate_pool\test_rules_presets.py ............ [ 10%]
+........................................................................ [ 19%]
+............                                                             [ 21%]
+tests\services\factors\candidate_pool\test_service.py .................. [ 23%]
+.........................                                                [ 26%]
+tests\services\factors\mining\test_config_hash.py ...................... [ 28%]
+....................                                                     [ 31%]
+tests\services\factors\mining\test_dialect_and_executor.py ............. [ 32%]
+........................................................................ [ 41%]
+........                                                                 [ 42%]
+tests\services\factors\mining\test_dsl_cross_section.py ................ [ 44%]
+........................................................................ [ 53%]
+..........                                                               [ 54%]
+tests\services\factors\mining\test_dsl_time_series.py .................. [ 56%]
+........................................................................ [ 65%]
+.............                                                            [ 67%]
+tests\services\factors\mining\test_evaluation_adapter_split.py ......... [ 68%]
+....................................................                     [ 74%]
+tests\services\factors\mining\test_initial_population.py ............... [ 76%]
+.......................................                                  [ 81%]
+tests\services\factors\mining\test_task_lock_concurrency.py ............ [ 82%]
+.........                                                                [ 83%]
+tests\services\factors\mining\test_task_runner.py ..............         [ 85%]
+tests\services\factors\mining\test_template_compile_rate.py ............ [ 86%]
+..............                                                           [ 88%]
+tests\services\factors\mining\test_validation.py .....................   [ 91%]
+tests\services\factors\test_mirror_task.py .........................     [ 94%]
+tests\factors\test_eval_real_targets.py ..........                       [ 95%]
+tests\factors\test_evaluation_golden.py ..........                       [ 96%]
+tests\factors\test_executor_panel.py ..........                          [ 97%]
+tests\factors\test_idempotency_and_column.py .........                   [ 98%]
+tests\factors\test_preflight_api.py ....                                 [ 99%]
+tests\factors\test_state_machine_consistency.py ..                       [ 99%]
+tests\factors\test_wp5_execution_plan_diagnosis.py ...                   [100%]
+
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_conflict_queues_fifo
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x1ce612c6150> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x1ce612c51f0>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_conflict_queues_fifo
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x1ce612c57c0> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x1ce503899d0>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_re_enqueue_is_idempotent
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x1ce4ffd3bc0> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x1ce63941610>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_release_promotes_head_and_keeps_rest
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x1ce612b0e60> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x1ce637d1040>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_release_promotes_head_and_keeps_rest
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x1ce612b0140> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x1ce637d0ce0>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_release_then_reacquire_drains_queue_in_order
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x1ce63ad5f70> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x1ce63ad48c0>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestDuckDBWriteQueue::test_release_then_reacquire_drains_queue_in_order
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x1ce63ad7230> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x1ce63ad7710>
+    db.commit()
+
+tests/services/factors/mining/test_task_lock_concurrency.py::TestHeartbeatAndExpiry::test_expire_promotes_queue_instead_of_dropping_it
+  D:\ai_project\dataAanlystNew\app\services\factors\mining\task_lock.py:177: SAWarning: New instance <TaskLock at 0x1ce63d876b0> with identity key (<class 'app.models.task_lock.TaskLock'>, ('duckdb_write',), None) conflicts with persistent instance <TaskLock at 0x1ce63d85610>
+    db.commit()
+
+tests/factors/test_evaluation_golden.py::test_write_golden_output_json
+  D:\ai_project\dataAanlystNew\tests\factors\test_evaluation_golden.py:586: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "generated_at_utc": datetime.utcnow().isoformat() + "Z",
+
+tests/factors/test_wp5_execution_plan_diagnosis.py::TestFactorExecutorReadErrors::test_read_source_data_returns_structured_sql_errors
+  D:\ai_project\dataAanlystNew\app\services\factors\factor_executor.py:811: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`).Please use a specific unit instead.
+    range_start = trade_date - pd.Timedelta(days=history_days)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================ 822 passed, 11 warnings in 587.94s (0:09:47) =================

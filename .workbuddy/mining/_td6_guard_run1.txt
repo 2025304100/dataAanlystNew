@@ -1,0 +1,19 @@
+============================= test session starts =============================
+collected 12 items
+
+tests\test_text_charset_guard.py ...F........                            [100%]
+
+================================== FAILURES ===================================
+____________________ TestFind4ByteChars.test_dedup_and_cap ____________________
+tests\test_text_charset_guard.py:42: in test_dedup_and_cap
+    assert out.count("(U+") <= 5 and "U+1F601" not in out
+E   assert (2 <= 5 and 'U+1F601' not in "'😀'(U+1F600) '😁'(U+1F601)"
+E    +  where 2 = <built-in method count of str object at 0x000002D494542290>('(U+')
+E    +    where <built-in method count of str object at 0x000002D494542290> = "'😀'(U+1F600) '😁'(U+1F601)".count
+E     
+E     'U+1F601' is contained here:
+E       '😀'(U+1F600) '😁'(U+1F601)
+E     ?                  +++++++)
+=========================== short test summary info ===========================
+FAILED tests/test_text_charset_guard.py::TestFind4ByteChars::test_dedup_and_cap
+======================== 1 failed, 11 passed in 1.78s =========================

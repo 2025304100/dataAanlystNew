@@ -1,0 +1,823 @@
+﻿node.exe : [33m[7m[33m Vitest [33m[27m "deps.inline" is deprecated. If you
+ rely on vite-node directly, use "server.deps.inline" instead. Otherwise, consi
+der using "deps.optimizer.web.include"[39m
+所在位置 行:1 字符: 1
++ & "C:\Users\demo\.workbuddy\binaries\node\versions\22.22.2-3/node.exe ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[7m[33m ...b.include"[39m 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/ai_project/dataAanlystNew/frontend[39m
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mrenders task list with status and st
+age
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to MeasureRow inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at MeasureRow (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\
+lib\Body\MeasureRow.js:18:24)
+    at tbody
+    at Body (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\Bo
+dy\index.js:23:33)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:76:7)
+    at table
+    at div
+    at div
+    at div
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-resize
+-observer\lib\SingleObserver\DomWrapper.js:21:34)
+    at SingleObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\SingleObserver\index.js:18:24)
+    at ResizeObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\index.js:24:24)
+    at Provider (D:\ai_project\dataAanlystNew\frontend\node_modules\@rc-compone
+nt\context\lib\context.js:21:22)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to BodyRow inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at BodyRow (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib
+\Body\BodyRow.js:95:33)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:76:7)
+    at tbody
+    at Body (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\Bo
+dy\index.js:23:33)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:76:7)
+    at table
+    at div
+    at div
+    at div
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-resize
+-observer\lib\SingleObserver\DomWrapper.js:21:34)
+    at SingleObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\SingleObserver\index.js:18:24)
+    at ResizeObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\index.js:24:24)
+    at Provider (D:\ai_project\dataAanlystNew\frontend\node_modules\@rc-compone
+nt\context\lib\context.js:21:22)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Body inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Body (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\Bo
+dy\index.js:23:33)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:76:7)
+    at table
+    at div
+    at div
+    at div
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-resize
+-observer\lib\SingleObserver\DomWrapper.js:21:34)
+    at SingleObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\SingleObserver\index.js:18:24)
+    at ResizeObserver (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-re
+size-observer\lib\index.js:24:24)
+    at Provider (D:\ai_project\dataAanlystNew\frontend\node_modules\@rc-compone
+nt\context\lib\context.js:21:22)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mshows rejection reasons for rejected
+ run
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mrenders structured rejection reasons
+ without crashing
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mnormalizes nested backend metrics in
+ the run report
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+
+[90mstderr[2m | src/components/__tests__/FactorEvaluationLab.test.tsx[2m > 
+[22m[2mFactorEvaluationLab[2m > [22m[2mdisplays complete trade day evidence
+[22m[39mWarning: [antd: Modal] `destroyOnClose` is deprecated. Please use `de
+stroyOnHidden` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: [antd: Modal] `destroyOnClose` is deprecated. Please use `destroyOnHid
+den` instead.
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+Warning: An update to Table inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(.
+..):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser
+. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-table\lib\T
+able.js:131:28)
+    at ImmutableComponent (D:\ai_project\dataAanlystNew\frontend\node_modules\@
+rc-component\context\lib\Immutable.js:42:34)
+    at div
+    at div
+    at Spin (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\spin\i
+ndex.js:35:18)
+    at div
+    at InternalTable (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\l
+ib\table\InternalTable.js:43:16)
+    at Table (D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\table
+\Table.js:17:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at EvaluationRunReport (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:3030:32)
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\TabPanelL
+ist\TabPane.js:14:25
+    at DomWrapper (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion
+\lib\DomWrapper.js:20:34)
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-motion\lib\CSSMoti
+on.js:42:32
+    at div
+    at div
+    at TabPanelList (D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs
+\lib\TabPanelList\index.js:22:18)
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\rc-tabs\lib\Tabs.js:4
+0:18
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\tabs\index.j
+s:35:7
+    at div
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\card\Card.js
+:53:18
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\col.js:
+40:13
+    at div
+    at D:\ai_project\dataAanlystNew\frontend\node_modules\antd\lib\grid\row.js:
+57:18
+    at div
+    at FactorEvaluationLab (D:\ai_project\dataAanlystNew\frontend\src\component
+s\factors\FactorEvaluationLab.tsx:358:51)
+

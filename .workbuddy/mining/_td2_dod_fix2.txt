@@ -1,0 +1,65 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\ai_project\dataAanlystNew
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 27 items
+
+tests\integration\test_factor_evaluation_blockers.py ..................  [ 66%]
+tests\integration\test_factor_evaluation_e2e.py .                        [ 70%]
+tests\integration\test_factor_no_cross_regression.py .....               [ 88%]
+tests\integration\test_factor_regression_infra.py ...                    [100%]
+
+
+
+
+
+
+ 17%|█▋        | 3/18 [00:18<01:40,  6.70s/it][A[A[A[A[A[A[A
+
+
+
+
+
+
+
+
+
+
+
+
+
+  6%|▌         | 1/18 [00:07<02:10,  7.68s/it][A[A[A[A[A[A[A[A[A[A[A[A[A[A
+
+ 22%|██▏       | 4/18 [00:21<01:23,  5.95s/it][A[A
+
+============================== warnings summary ===============================
+tests/integration/test_factor_evaluation_blockers.py::test_blocker_missing_field
+  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/integration/test_factor_evaluation_blockers.py: 34 warnings
+tests/integration/test_factor_evaluation_e2e.py: 2 warnings
+tests/integration/test_factor_regression_infra.py: 2 warnings
+  D:\ai_project\dataAanlystNew\.venv\Lib\site-packages\sqlalchemy\engine\default.py:952: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    cursor.execute(statement, parameters)
+
+tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
+  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:75: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
+  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:76: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow(),
+
+tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
+  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:89: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+tests/integration/test_factor_regression_infra.py::test_TR_1_2_test_isolated_db_session
+  D:\ai_project\dataAanlystNew\tests\integration\test_factor_regression_infra.py:90: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+====================== 27 passed, 43 warnings in 35.00s =======================
+EXIT=0

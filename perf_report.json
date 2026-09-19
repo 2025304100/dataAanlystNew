@@ -1,0 +1,51 @@
+{
+  "benchmark": "bfg_filter_governance",
+  "generated_at": "2026-09-02T14:28:20",
+  "args": {
+    "n_symbols": 5000,
+    "n_days": 1000,
+    "status_iterations": 50,
+    "filter_iterations": 50,
+    "overhead_iterations": 30,
+    "full_chain_only": true,
+    "full_chain_days": 1000
+  },
+  "thresholds": {
+    "status_batch_p95_ms": 50.0,
+    "apply_daily_filters_mean_ms_per_day": 100.0,
+    "filter_overhead_pct": 15.0
+  },
+  "status_batch": {
+    "iterations": 50,
+    "iterations_completed": 50,
+    "n_symbols": 5000,
+    "mean_ms": 47.60016000022006,
+    "p50_ms": 42.91494999961287,
+    "p95_ms": 74.73179999942658,
+    "max_ms": 80.96870000008494,
+    "min_ms": 39.523699997516815,
+    "threshold_ms": 50.0,
+    "pass": false
+  },
+  "apply_daily_filters": null,
+  "overhead_ratio": null,
+  "task10_full_chain": {
+    "full_chain_ms": {
+      "p50": 297741.537,
+      "p95": 297741.537,
+      "p99": 297741.537
+    },
+    "full_chain_note": "single-run, all percentiles equal elapsed",
+    "throughput_symdays_per_s": 10344.543,
+    "completed_symdays": 3080000,
+    "total_symdays": 5000000,
+    "rows_inserted_simulated": 0,
+    "n_symbols": 5000,
+    "n_days": 1000,
+    "batch_size": 1000,
+    "elapsed_s": 297.742
+  },
+  "timed_out": true,
+  "overall_pass": false,
+  "elapsed_total_sec": 300.152
+}

@@ -1,0 +1,6 @@
+[factor_evaluation_runs] nan_literal_rows=0 invalid_json=0 sample_ids=[]
+[factor_shadow_observations] nan_literal_rows=0 invalid_json=0 sample_ids=[]
+[factor_model_runs] nan_literal_rows=0 invalid_json=0 sample_ids=[]
+------------------------------------------------------------
+mode=DRY-RUN total_nan_literal_rows=0 total_invalid_json=0 cleaned=0
+DoD② 达标：报告完成，未写库

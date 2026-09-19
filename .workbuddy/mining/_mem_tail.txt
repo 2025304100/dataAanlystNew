@@ -1,0 +1,13 @@
+TOTAL_LINES=208
+收工：PROGRESS TD5 done + tasks.json TD5/TD3(对齐) done + 看板 734 行。
+
+**教训**
+- SQLAlchemy TextClause 禁 `raw or ""`——其 __bool__ 抛 TypeError；先 str() 再判空
+  （selftest 首跑抓出）。
+- 重构把逻辑搬进函数后，只被某条 CLI 路径执行的分支（如默认模式 [OK] 打印）是盲区：
+  --json 不经过、selftest 也不经过，NameError 到 DoD② 默认模式首跑才炸。
+  **多路径工具每条路径都必须实跑**。
+- MySQL 中 RESTRICT ≡ NO ACTION（都是立即拒绝）；12 项 fk_mismatch 里 10 项是等价
+  声明漂移，只有 CASCADE 反转是行为差异——分类先判语义差异再定优先级。
+- information_schema.TABLES 一把抓全库 ENGINE/COLLATION（配 @@character_set_database），
+  比逐表探测省事；「未声明字符集」检查做 warning 级，防库默认本身不标准时全表误报。

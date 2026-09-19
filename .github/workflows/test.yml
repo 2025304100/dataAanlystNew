@@ -1,0 +1,100 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  # ── 后端白盒测试（无需后端运行）──────────────────────────
+  backend-whitebox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run whitebox tests
+        run: pytest -m whitebox --tb=short -q
+
+  # ── 前端测试 ──────────────────────────────────────────────
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: cd frontend && npm ci
+      - name: Run frontend tests
+        run: cd frontend && npm test
+
+  # ── 后端黑盒测试（需启动后端）────────────────────────────
+  backend-blackbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Start backend
+        run: |
+          python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+      - name: Wait for backend
+        run: |
+          for i in {1..30}; do
+            curl -s http://localhost:8000/health && break
+            sleep 1
+          done
+      - name: Run blackbox tests
+        run: pytest -m blackbox --tb=short -q
+
+  # ── E2E 测试（需前后端 + 浏览器）─────────────────────────
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+      - name: Install Playwright
+        run: python -m playwright install chromium
+      - name: Start backend
+        run: |
+          python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+      - name: Start frontend
+        run: |
+          cd frontend && npm run dev &
+          sleep 10
+      - name: Run E2E tests
+        run: pytest tests/e2e/ -m e2e --tb=short -q

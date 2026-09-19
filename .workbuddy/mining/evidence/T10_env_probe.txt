@@ -1,0 +1,62 @@
+========================================================================
+1. Excel / CSV 解析依赖
+========================================================================
+  openpyxl   已安装  version=3.1.5
+  xlrd       已安装  version=2.0.2
+  pandas     已安装  version=2.3.3
+
+  pandas.read_excel engine 探测:
+    openpyxl 写入 + pandas 读回 OK, 形状: (1, 2)
+    内容: [{'symbol': '000001', 'name': '平安银行'}]
+
+========================================================================
+2. symbols 表结构（T08 确认成员 symbol_id 即 symbols.id）
+========================================================================
+  列（13）:
+    id               INTEGER
+    symbol           VARCHAR(32)
+    name             VARCHAR(128)
+    asset_type       VARCHAR(16)
+    market           VARCHAR(16)
+    board            VARCHAR(32)
+    industry         VARCHAR(64)
+    theme            VARCHAR(64)
+    is_st            INTEGER
+    is_active        INTEGER
+    listed_at        DATE
+    created_at       DATETIME
+    updated_at       DATETIME
+
+  asset_type 分布:
+    stock        5562
+    etf          2077
+
+  is_active 分布（用于「已停牌/不可交易」判定）:
+    is_active=1      7272
+    is_active=0      367
+
+  is_active=0 的样例（看是否真是停牌/退市）:
+    ('600193', '退市创兴', 'stock', 'sh', 'main', 0, 0)
+    ('600421', '退市华嵘', 'stock', 'sh', 'main', 0, 0)
+    ('600599', '退市熊猫', 'stock', 'sh', 'main', 0, 0)
+    ('600608', '退市沪科', 'stock', 'sh', 'main', 0, 0)
+    ('600636', '退市国化', 'stock', 'sh', 'main', 0, 0)
+    ('600696', '退市岩石', 'stock', 'sh', 'main', 0, 0)
+    ('605081', '退市太和', 'stock', 'sh', 'main', 0, 0)
+    ('169201', '浙商鼎盈LOF', 'etf', 'sz', 'main', 0, 0)
+    ('169106', '东方红创优定开', 'etf', 'sz', 'main', 0, 0)
+    ('169105', '东方红睿华LOF', 'etf', 'sz', 'main', 0, 0)
+    ('169104', '东方红睿满LOF', 'etf', 'sz', 'main', 0, 0)
+    ('169101', '东方红睿丰LOF', 'etf', 'sz', 'main', 0, 0)
+
+  is_active=0 中 name 含 ST/退 的比例:
+    7 / 367
+
+  A 股 stock 中 is_active=0 的数（导入筛的是这个）:
+    7 / 5561
+
+  symbol 格式校验：长度分布（帮助定「格式错误」规则）:
+    长度 4: 1
+    长度 6: 5561
+
+  非 6 位数字的 A 股 stock 样例（判断是否存在特殊代码）:
