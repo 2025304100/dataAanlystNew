@@ -56,6 +56,12 @@ class FactorVersion(Base):
     validation_errors_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow_naive)
 
+    # ── B1 (rev 060): 质量分级当前态（M2；历史序列走 factor_grade_history）──
+    quality_grade: Mapped[str | None] = mapped_column(String(2), nullable=True)        # S/A/B/C/D
+    grade_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    grade_metrics_json: Mapped[str | None] = mapped_column(Text, nullable=True)        # {grade, reason, metrics}
+    grade_manual_adjusted: Mapped[int] = mapped_column(Integer, default=0)             # 1=人工调整，季度任务不覆盖
+
 
 class FactorModelRun(Base):
     __tablename__ = "factor_model_runs"

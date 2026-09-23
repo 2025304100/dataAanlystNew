@@ -32,6 +32,12 @@ export {
 
 const DEFAULT_CHART_WINDOW = 60;
 
+/**
+ * toast 去重窗口（毫秒）：同 type + 同文案在此窗口内只提示一次。
+ * 场景：一次刷新里 N 个接口同时超时会各弹一条，屏幕上叠成一摞一模一样的红条。
+ */
+const TOAST_DEDUPE_MS = 4000;
+
 interface AppState {
   portfolios: Portfolio[];
   portfolioId: number | null;
@@ -233,6 +239,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const portfolioIdRef = useRef<number | null>(null);
   // detailCache 的 ref 镜像：供 useCallback 读取最新值而不必进入依赖数组
   const detailCacheRef = useRef<Record<number, SymbolDetail>>({});
+  /** toast 去重记录：key=`type::文案` → 上次提示时间戳 */
+  const toastDedupeRef = useRef<Map<string, number>>(new Map());
   const detailFocusRequestRef = useRef(0);
 
   const update = useCallback((partial: Partial<AppState>) => {
@@ -243,6 +251,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const showToast = useCallback((type: "success" | "error" | "info", msg: ReactNode) => {
     if (!msg) return;
+    // 同文案去重：多个并行请求同时失败（如一次刷新的 N 个接口同时超时）会各弹一条，
+    // 屏幕上叠成一摞相同 toast。4 秒内同 type + 同文案只提示一次。
+    const dedupeKey = `${type}::${typeof msg === "string" ? msg : String(msg)}`;
+    const now = Date.now();
+    if (toastDedupeRef.current.has(dedupeKey)) {
+      const last = toastDedupeRef.current.get(dedupeKey) ?? 0;
+      if (now - last < TOAST_DEDUPE_MS) return;
+    }
+    toastDedupeRef.current.set(dedupeKey, now);
     // 优先使用 antd <App> 上下文注入的 messageApi，消除静态调用警告；
     // 回退到静态 message.*（测试/服务端渲染时依然可用）
     if (state.antdMessageApi) {

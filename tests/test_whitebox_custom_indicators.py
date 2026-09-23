@@ -149,6 +149,21 @@ def test_list_custom_indicators_filter_by_enabled(db_session):
     assert result[0]["name"] == "QA-Off"
 
 
+def test_list_custom_indicators_filters_dirty_key(db_session):
+    """【P1-4】不合规 key 的脏行（如下划线开头的测试遗留）被容错过滤，不再击穿列表 500。
+
+    回归锚点：`__p22_smoke_*` 等 key 不匹配 `^[a-zA-Z][a-zA-Z0-9_]*$`，
+    `CustomIndicatorRead.key` 的 pattern 校验会让整页 ResponseValidationError → 500。
+    """
+    _make_indicator(db_session, name="QA-Clean", key="qa_clean")
+    _make_indicator(db_session, name="QA-Dirty", key="__p22_smoke_915ca71f")
+    _make_indicator(db_session, name="QA-Dirty2", key=".bad-key")
+
+    result = list_custom_indicators(scope=None, enabled=None, db=db_session)
+    assert len(result) == 1
+    assert result[0]["name"] == "QA-Clean"
+
+
 # ----------------------------------------------------------------------------
 # 3. POST /settings/custom-indicators 创建
 # ----------------------------------------------------------------------------

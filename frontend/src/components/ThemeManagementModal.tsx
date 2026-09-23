@@ -155,7 +155,7 @@ export default function ThemeManagementModal({ open, onClose }: ThemeManagementM
   };
 
   return (
-    <Modal open={open} onCancel={onClose} footer={null} width={780} title="主题管理" destroyOnClose>
+    <Modal open={open} onCancel={onClose} footer={null} width={780} title="主题管理" destroyOnHidden>
       <Alert
         type="info"
         showIcon

@@ -21,7 +21,7 @@ import random
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.db_numeric import to_db_float
@@ -368,6 +368,89 @@ def related_experiences(
     ]
 
 
+def _experience_dict(db: Session, row: FactorExperience) -> dict[str, Any]:
+    """经验详情序列化（含指标历史；数值过 to_db_float 纪律）。"""
+    metrics = db.execute(
+        select(FactorExperienceMetric)
+        .where(FactorExperienceMetric.experience_id == row.id)
+        .order_by(FactorExperienceMetric.recorded_at.asc())
+    ).scalars().all()
+    complexity: dict[str, Any] = {}
+    try:
+        complexity = json.loads(row.complexity_json or "{}")
+    except ValueError:
+        complexity = {}
+    return {
+        "experience_id": row.id,
+        "formula_template": row.formula_template,
+        "category": row.category,
+        "source": row.source,
+        "complexity": complexity,
+        "avg_icir": to_db_float(row.avg_icir),
+        "use_count": int(row.use_count or 0),
+        "success_count": int(row.success_count or 0),
+        "success_rate": to_db_float(row.success_rate),
+        "status": row.status,
+        "is_negative_sample": int(row.is_negative_sample or 0),
+        "metrics": [
+            {
+                "metric_type": m.metric_type,
+                "value": to_db_float(m.value),
+                "period": m.period,
+                "is_oos": int(m.is_oos or 0),
+            }
+            for m in metrics
+        ],
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def list_experiences(
+    db: Session, *, page: int = 1, page_size: int = 20,
+    category: str | None = None, source: str | None = None,
+    is_negative_sample: int | None = None,
+) -> dict[str, Any]:
+    """分页经验列表（B3；archived 也返回，供前端归档管理）。"""
+    q = select(FactorExperience)
+    cq = select(func.count()).select_from(FactorExperience)
+    if category:
+        q = q.where(FactorExperience.category == str(category))
+        cq = cq.where(FactorExperience.category == str(category))
+    if source:
+        q = q.where(FactorExperience.source == str(source))
+        cq = cq.where(FactorExperience.source == str(source))
+    if is_negative_sample is not None:
+        q = q.where(FactorExperience.is_negative_sample == int(bool(is_negative_sample)))
+        cq = cq.where(FactorExperience.is_negative_sample == int(bool(is_negative_sample)))
+    total = int(db.execute(cq).scalar_one() or 0)
+    rows = db.execute(
+        q.order_by(FactorExperience.created_at.desc())
+        .offset((max(1, page) - 1) * max(1, page_size))
+        .limit(max(1, page_size))
+    ).scalars().all()
+    return {"items": [_experience_dict(db, r) for r in rows],
+            "total": total, "page": max(1, page),
+            "page_size": max(1, page_size)}
+
+
+def get_experience(db: Session, experience_id: str) -> dict[str, Any] | None:
+    """经验详情（含指标历史）。"""
+    row = db.get(FactorExperience, str(experience_id))
+    if row is None:
+        return None
+    return _experience_dict(db, row)
+
+
+def archive_experience(db: Session, experience_id: str) -> dict[str, Any]:
+    """归档经验：status → archived（抽取与抽样硬化排除：负样本规避 + archived）。"""
+    row = db.get(FactorExperience, str(experience_id))
+    if row is None:
+        raise ValueError(f"experience_not_found:{experience_id}")
+    row.status = _STATUS_ARCHIVED
+    db.commit()
+    return {"experience_id": row.id, "status": row.status}
+
+
 __all__ = [
     "CATEGORY_WHITELIST",
     "SOURCE_WHITELIST",
@@ -375,4 +458,7 @@ __all__ = [
     "store_experience",
     "sample_experiences",
     "related_experiences",
+    "list_experiences",
+    "get_experience",
+    "archive_experience",
 ]

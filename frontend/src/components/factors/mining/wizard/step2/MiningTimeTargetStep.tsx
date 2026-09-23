@@ -1,5 +1,7 @@
 import { useState } from "react";
+import dayjs from "dayjs";
 import { t } from "../../../../../i18n";
+import { DatePicker, InputNumber, Select } from "antd";
 import MirrorGuideBanner from "./MirrorGuideBanner";
 import MiningSplitPanel from "./MiningSplitPanel";
 import {
@@ -17,6 +19,7 @@ import type {
  * Step2 时间与目标（向导 §4）—— 编排页：
  * 起止日期 / 调仓频率 / 预测持有期 / 预测目标 + 三段切分面板 + 镜像引导。
  *
+ * 控件统一 antd（DatePicker / Select / InputNumber）。
  * 口径：
  * - 结束日不得晚于数据截止日（由父级/后端校验，此处只收集）；
  * - 最小样本量硬门槛 日 252 / 周 104 / 月 36，**生产建议** 周 156 / 月 60
@@ -72,88 +75,114 @@ export default function MiningTimeTargetStep({
 
   const floor = FREQUENCY_FLOOR[frequency];
   const recommended = FREQUENCY_RECOMMENDED[frequency];
+  // 后端降级响应（available=false / 缺 total_points）不透传给切分面板，避免展示 undefined
+  const effectiveBudget =
+    budget != null && typeof budget === "object" && "total_points" in budget
+      ? budget
+      : null;
+
+  const startDayjs = startDate ? dayjs(startDate) : null;
+  const endDayjs = endDate ? dayjs(endDate) : null;
 
   return (
     <div className="mining-time-target-step" data-time-target-step>
       <div className="mining-time-grid">
         <label>
           <span>{t("miningTimeStart")}</span>
-          <input
-            type="date"
+          <DatePicker
             data-time-start
-            value={startDate}
-            onChange={(e) => {
-              setStartDate(e.target.value);
-              emit({ start_date: e.target.value });
+            value={startDayjs}
+            format="YYYY-MM-DD"
+            allowClear
+            onChange={(d) => {
+              const v = d ? d.format("YYYY-MM-DD") : "";
+              setStartDate(v);
+              emit({ start_date: v });
             }}
           />
         </label>
         <label>
           <span>{t("miningTimeEnd")}</span>
-          <input
-            type="date"
+          <DatePicker
             data-time-end
-            max={dataCutoffAt ?? undefined}
-            value={endDate}
-            onChange={(e) => {
-              setEndDate(e.target.value);
-              emit({ end_date: e.target.value });
+            value={endDayjs}
+            format="YYYY-MM-DD"
+            allowClear
+            disabledDate={(d) => (dataCutoffAt ? d.isAfter(dayjs(dataCutoffAt), "day") : false)}
+            onChange={(d) => {
+              const v = d ? d.format("YYYY-MM-DD") : "";
+              setEndDate(v);
+              emit({ end_date: v });
             }}
           />
+          <span className="mining-time-hint">
+            {t("miningPoolBoardAsOf")}:{" "}
+            {String(dataCutoffAt ?? "").split("T")[0] || "-"}
+          </span>
         </label>
         <label>
           <span>{t("miningTimeFreq")}</span>
-          <select
+          <Select
             data-time-frequency
             value={frequency}
-            onChange={(e) => {
-              const v = e.target.value as MiningFrequency;
+            options={[
+              { value: "daily", label: t("miningFreqDaily") },
+              { value: "weekly", label: t("miningFreqWeekly") },
+              { value: "monthly", label: t("miningFreqMonthly") },
+            ]}
+            onChange={(v: MiningFrequency) => {
               setFrequency(v);
               emit({ rebalance_frequency: v });
             }}
-          >
-            <option value="daily">{t("miningFreqDaily")}</option>
-            <option value="weekly">{t("miningFreqWeekly")}</option>
-            <option value="monthly">{t("miningFreqMonthly")}</option>
-          </select>
+          />
+          <span className="mining-time-hint">{t("miningTimeHintFreq")}</span>
         </label>
         <label>
           <span>{t("miningTimeHorizon")}</span>
-          <input
-            type="number"
+          <InputNumber
             data-time-horizon
             min={1}
             max={20}
             value={horizon}
-            onChange={(e) => {
-              const v = Number.parseInt(e.target.value, 10);
-              const next = Number.isNaN(v) ? 5 : v;
+            onChange={(v) => {
+              const next = v == null || Number.isNaN(v) ? 5 : v;
               setHorizon(next);
               emit({ target_horizon: next });
             }}
           />
+          <span className="mining-time-hint">{t("miningTimeHintHorizon")}</span>
         </label>
         <label>
           <span>{t("miningTimeTarget")}</span>
-          <select
+          <Select
             data-time-target-type
             value={targetType}
-            onChange={(e) => {
-              const v = e.target.value as MiningTargetType;
+            options={[
+              { value: "simple", label: t("miningTargetSimple") },
+              { value: "log", label: t("miningTargetLog") },
+              { value: "excess", label: t("miningTargetExcess") },
+              { value: "rank", label: t("miningTargetRank") },
+            ]}
+            onChange={(v: MiningTargetType) => {
               setTargetType(v);
               emit({ target_type: v });
             }}
-          >
-            <option value="simple">{t("miningTargetSimple")}</option>
-            <option value="log">{t("miningTargetLog")}</option>
-            <option value="excess">{t("miningTargetExcess")}</option>
-            <option value="rank">{t("miningTargetRank")}</option>
-          </select>
+          />
+          <span className="mining-time-hint">{t("miningTimeHintTarget")}</span>
         </label>
       </div>
 
+      {/* 最低可运行 / 建议样本量对比（§4：生产建议高于硬门槛，界面必须显示差异） */}
       <div className="mining-time-floor" data-time-floor>
-        {t("miningSplitFloor")}: {floor} / {t("miningSplitTotalPoints")}: {recommended}
+        <span className="mining-chip mining-chip--warn">
+          {t("miningTimeFloorMinimum")}: {floor}
+        </span>
+        <span className="mining-chip mining-chip--brand">
+          {t("miningTimeFloorRecommended")}: {recommended}
+        </span>
+        <span className="mining-hint">
+          {t("miningTimeFloorCompare")} · {t("miningTimeFreqNote")}
+        </span>
       </div>
 
       <MirrorGuideBanner
@@ -167,7 +196,7 @@ export default function MiningTimeTargetStep({
       />
 
       <MiningSplitPanel
-        budget={budget}
+        budget={effectiveBudget}
         ratios={ratios}
         onChange={(next) => {
           setRatios(next);

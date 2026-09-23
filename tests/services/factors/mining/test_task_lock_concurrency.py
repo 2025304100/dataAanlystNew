@@ -37,6 +37,18 @@ def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _acquire_write_slot(session, **kw):
+    """在锁行已持久化的同一 Session 里安全地再排队。
+
+    task_lock.acquire_write_slot 总是新建同主键 TaskLock 再 commit；当 Session
+    里已有对应 `duckdb_write` 持久实例时，会触发 identity-key 冲突 SAWarning
+    （task_lock.py:177）。测试侧先 `expunge_all` 清空 identity map，让重排走的
+    是「INSERT→IntegrityError→读改写」路径，无告警且语义不变。
+    """
+    session.expunge_all()
+    return TL.acquire_write_slot(session, **kw)
+
+
 @pytest.fixture
 def new_session(db_session):
     """每线程独立 Session（Session 非线程安全），绑定同一 engine。"""
@@ -95,8 +107,8 @@ class TestDuckDBWriteQueue:
     def test_conflict_queues_fifo(self, db_session):
         TL.acquire_write_slot(db_session, task_id="w1", run_id="r1")
         for i, tid in enumerate(("w2", "w3", "w4"), start=1):
-            handle, pos = TL.acquire_write_slot(db_session, task_id=tid,
-                                                run_id=f"r{tid}")
+            handle, pos = _acquire_write_slot(db_session, task_id=tid,
+                                              run_id=f"r{tid}")
             assert handle is None
             assert pos == i
 
@@ -108,9 +120,9 @@ class TestDuckDBWriteQueue:
     def test_re_enqueue_is_idempotent(self, db_session):
         """同一任务重复排队 → 位次不变，队列不重复（网络重试场景）。"""
         TL.acquire_write_slot(db_session, task_id="w1", run_id="r1")
-        h, p1 = TL.acquire_write_slot(db_session, task_id="w2", run_id="r2")
+        h, p1 = _acquire_write_slot(db_session, task_id="w2", run_id="r2")
         assert (h, p1) == (None, 1)
-        h, p2 = TL.acquire_write_slot(db_session, task_id="w2", run_id="r2")
+        h, p2 = _acquire_write_slot(db_session, task_id="w2", run_id="r2")
         assert (h, p2) == (None, 1)          # 位次不变
         status = TL.get_lock_status(db_session)
         assert status.duckdb_write["queue"] == ["w2"]
@@ -118,7 +130,7 @@ class TestDuckDBWriteQueue:
     def test_release_promotes_head_and_keeps_rest(self, db_session):
         TL.acquire_write_slot(db_session, task_id="w1", run_id="r1")
         for tid in ("w2", "w3", "w4"):
-            TL.acquire_write_slot(db_session, task_id=tid, run_id=f"r{tid}")
+            _acquire_write_slot(db_session, task_id=tid, run_id=f"r{tid}")
 
         nxt = TL.release_lock(db_session, lock_key=TL.LOCK_DUCKDB_WRITE, task_id="w1")
         assert nxt == "w2"                    # FIFO
@@ -128,14 +140,14 @@ class TestDuckDBWriteQueue:
         assert status.duckdb_write["queue"] == ["w3", "w4"]
 
         # 队首现在持有锁 → 再抢会排队到队尾
-        h, pos = TL.acquire_write_slot(db_session, task_id="w5", run_id="r5")
+        h, pos = _acquire_write_slot(db_session, task_id="w5", run_id="r5")
         assert (h, pos) == (None, 3)
 
     def test_release_then_reacquire_drains_queue_in_order(self, db_session):
         order: list[str] = []
         TL.acquire_write_slot(db_session, task_id="w1", run_id="r1")
         for tid in ("w2", "w3", "w4"):
-            TL.acquire_write_slot(db_session, task_id=tid, run_id=f"r{tid}")
+            _acquire_write_slot(db_session, task_id=tid, run_id=f"r{tid}")
 
         order.append("w1")
         while True:
@@ -223,7 +235,7 @@ class TestHeartbeatAndExpiry:
         会把 queue_json 里**整个排队队列**一起删掉 → 排队任务永久卡死。"""
         TL.acquire_write_slot(db_session, task_id="w1", run_id="r1")
         for tid in ("w2", "w3"):
-            TL.acquire_write_slot(db_session, task_id=tid, run_id=f"r{tid}")
+            _acquire_write_slot(db_session, task_id=tid, run_id=f"r{tid}")
         # 持有者心跳超时
         row = db_session.get(TL.TaskLock, TL.LOCK_DUCKDB_WRITE)
         row.heartbeat_at = _utcnow() - timedelta(hours=2)

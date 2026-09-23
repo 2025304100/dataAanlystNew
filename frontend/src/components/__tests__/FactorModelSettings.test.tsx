@@ -123,11 +123,21 @@ const { mockApi, showToast } = vi.hoisted(() => ({
     cancelFactorPipelineTask: vi.fn(),
     updateFactorSystemConfig: vi.fn(async () => ({})),
     initializeFactorWarehouse: vi.fn(async () => ({})),
-    scoringGetOverviewAsFactor: vi.fn(async () => ({ feature_enabled: true, config: {}, runtime: {}, health: {}, latest_trade_date: null, factor_coverage: [] })),
+    scoringGetOverviewAsFactor: vi.fn(async (): Promise<any> => ({ feature_enabled: true, config: {}, runtime: {}, health: {}, latest_trade_date: null, factor_coverage: [] })),
     scoringListTasks: vi.fn(async () => []),  // 组件对 tasks 直接 .find()，必须返回数组,
     getInboxNotifications: vi.fn(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
     scoringGetFactorDefinition: vi.fn(async () => ({})),
-    scoringGetFactorModelListAsFactor: vi.fn(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
+    scoringGetFactorModelListAsFactor: vi.fn(async (): Promise<any> => ({ items: [], total: 0, page: 1, page_size: 20 })),
+    scoringListFactorSetsAsFactor: vi.fn(async () => [
+      {
+        id: "fs-20d",
+        name: "20日换手率Z分数集合",
+        label: "20日换手率Z分数集合",
+        status: "frozen",
+        n_members: 5,
+        feature_count: 5,
+      },
+    ]),
     getEvaluationTaskHeartbeat: vi.fn(async () => ({})),
     activateFactorModel: vi.fn(async () => ({})),
     fallbackFactorModel: vi.fn(async () => ({})),
@@ -145,8 +155,75 @@ describe("FactorModelSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
-  // TODO(P1.1 镜像适配层)：9 个 scoring* mock 已补至顶级、tasks 已返回数组，但数据仍未送达（页面只有头部）；下批先在测试里打印组件 catch 的 err。见 PROGRESS.debt.TD-FE-RED-2。
-  it.skip("loads runtime and supports shadow activation and pipeline start", async () => {
+  it("loads runtime and supports shadow activation and pipeline start", async () => {
+    mockApi.scoringGetOverviewAsFactor.mockResolvedValue({
+      config: {
+        feature_enabled: true,
+        warehouse_path: "factor.duckdb",
+        updated_by: "test",
+        updated_at: null,
+      },
+      feature_enabled: true,
+      warehouse_error: null,
+      runtime: {
+        weight_mode: "manual",
+        score_weight_mode: "manual",
+        active_model_run_id: null,
+        updated_by: "environment",
+        fallback_reason: null,
+        version: 1,
+        updated_at: null,
+      },
+      health: {
+        status: "healthy",
+        warehouse_available: true,
+        warehouse_path: "factor.duckdb",
+        schema_version: "1",
+        calc_batch_id: "batch-1",
+        latest_bar_date: "2026-07-14",
+        raw_tables: [],
+        factors: [],
+        reasons: [],
+      },
+      latest_trade_date: "2026-07-14",
+      factor_coverage: [
+        {
+          factor_code: "ep_ttm",
+          latest_trade_date: "2026-07-14",
+          universe_symbols: 100,
+          eligible_symbols: 90,
+          imputed_symbols: 0,
+          coverage: 0.9,
+        },
+      ],
+    });
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({
+      items: [
+        {
+          id: "ridge-20260714",
+          model_type: "ridge",
+          asset_type: "stock",
+          target_code: "target_5d_return",
+          data_cutoff_at: "2026-07-14T18:00:00",
+          feature_versions: {},
+          hyperparameters: {},
+          metrics: { validation_ic: 0.08 },
+          sample_count: 10000,
+          symbol_count: 300,
+          trade_date_count: 250,
+          status: "validated",
+          rejection_reason: null,
+          artifact_path: null,
+          created_at: "2026-07-14T18:00:00",
+          activated_at: null,
+          weights: [],
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    });
+
     render(<FactorModelSettings />);
 
     await waitFor(() => {
@@ -163,7 +240,7 @@ describe("FactorModelSettings", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /运行流水线/ }));
+    fireEvent.click(screen.getByRole("button", { name: /启动流水线/ }));
     await waitFor(() => {
       expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -176,9 +253,9 @@ describe("FactorModelSettings", () => {
       );
     });
   });
-  // TODO(P1.1 镜像适配层)：9 个 scoring* mock 已补至顶级、tasks 已返回数组，但数据仍未送达（页面只有头部）；下批先在测试里打印组件 catch 的 err。见 PROGRESS.debt.TD-FE-RED-2。
-  it.skip("blocks pipeline while disabled and can enable the feature", async () => {
-    mockApi.getFactorOverview.mockResolvedValueOnce({
+
+  it("blocks pipeline while disabled and can enable the feature", async () => {
+    mockApi.scoringGetOverviewAsFactor.mockResolvedValue({
       config: {
         feature_enabled: false,
         warehouse_path: "factor.duckdb",
@@ -213,16 +290,16 @@ describe("FactorModelSettings", () => {
 
     render(<FactorModelSettings />);
 
-    const runButton = await screen.findByRole("button", { name: /运行流水线/ });
+    const runButton = await screen.findByRole("button", { name: /启动流水线/ });
     expect(runButton).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "启用因子功能" }));
     await waitFor(() => {
-      expect(mockApi.updateFactorSystemConfig).toHaveBeenCalledWith(true);
+      expect(mockApi.scoringUpdateSystemConfig).toHaveBeenCalledWith(true, "settings:toggle");
     });
   });
-  // TODO(P1.1 镜像适配层)：9 个 scoring* mock 已补至顶级、tasks 已返回数组，但数据仍未送达（页面只有头部）；下批先在测试里打印组件 catch 的 err。见 PROGRESS.debt.TD-FE-RED-2。
-  it.skip("offers warehouse initialization when enabled but unavailable", async () => {
-    mockApi.getFactorOverview.mockResolvedValueOnce({
+
+  it("offers warehouse initialization when enabled but unavailable", async () => {
+    mockApi.scoringGetOverviewAsFactor.mockResolvedValue({
       config: {
         feature_enabled: true,
         warehouse_path: "factor.duckdb",
@@ -258,7 +335,7 @@ describe("FactorModelSettings", () => {
     render(<FactorModelSettings />);
     fireEvent.click(await screen.findByRole("button", { name: "初始化仓库" }));
     await waitFor(() => {
-      expect(mockApi.initializeFactorWarehouse).toHaveBeenCalledTimes(1);
+      expect(mockApi.scoringInitializeWarehouse).toHaveBeenCalledTimes(1);
     });
   });
 });

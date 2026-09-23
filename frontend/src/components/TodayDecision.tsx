@@ -271,7 +271,8 @@ function adaptScoringToFactorOverview(s: ScoringOverview | null): FactorOverview
 export default function TodayDecision() {
   const ctx = useApp();
   const workbench = ctx.workbench;
-  const portfolioId = ctx.portfolioId ?? 1;
+  // P1-1：portfolioId 为 0/空时兜底 1（0 是无效组合 id，`?? 1` 会保留 0）
+  const portfolioId = ctx.portfolioId != null && ctx.portfolioId > 0 ? ctx.portfolioId : 1;
   const [macro, setMacro] = useState<MacroOverview | null>(null);
   const [events, setEvents] = useState<MarketEvent[]>([]);
   const [health, setHealth] = useState<DataHealth | null>(null);

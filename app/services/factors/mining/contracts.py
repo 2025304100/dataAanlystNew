@@ -105,6 +105,13 @@ class MiningContext:
     random_seed: int
     config_hash: str
     split_algorithm_version: str = "split-1.0.0"
+    # ── A1 起新增（冻结契约 §4.5 允许的可选字段；A2 阶段链填充） ──
+    #: 目标标签批次（`factor_targets.calc_batch_id`；评估用）
+    target_calc_batch_id: str | None = None
+    #: 因子仓库路径（缺省回退 Settings().factor_warehouse_path；测试注入 tmp）
+    warehouse_path: str | None = None
+    #: G2 缓存数据快照版本（不匹配自动废弃缓存）
+    data_snapshot_version: str | None = None
 
 
 @dataclass

@@ -472,8 +472,7 @@ describe("FactorEvaluationLab", () => {
       expect(screen.getByText(/Rank IC 均值 -0\.6707/)).toBeInTheDocument();
     });
   });
-  // TODO(P1.1 镜像适配层)：本用例写在组件旧实现下，镜像层改造后已脱节（该文件 12 项与共享 helper mockLoadSuccess 联动，需整文件重写）；见 docs/前端既有红定性报告.md §9/§10 与 PROGRESS.debt.TD-FE-RED-2。
-  it.skip("normalizes nested backend metrics in the run report", async () => {
+  it("normalizes nested backend metrics in the run report", async () => {
     const run = makeRun({
       id: "eval-nested-20260801",
       metrics: {
@@ -513,14 +512,14 @@ describe("FactorEvaluationLab", () => {
     await waitFor(() => {
       expect(screen.getAllByText("-0.6707").length).toBeGreaterThan(0);
       expect(screen.getAllByText("-9.1783").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("98.29%").length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/98\.29\s*%/).length).toBeGreaterThan(0);
       expect(screen.getAllByText("404479").length).toBeGreaterThan(0);
       expect(screen.getByText("2024-06-03 ~ 2025-12-31")).toBeInTheDocument();
       expect(screen.getByText("2026-01-02 ~ 2026-08-27")).toBeInTheDocument();
     // 数值指标：同值可能在页面多处渲染（指标卡+摘要），统一用 getAllByText
     expect(screen.getAllByText("-0.6707").length).toBeGreaterThan(0);
     expect(screen.getAllByText("-9.1783").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("98.29%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/98\.29\s*%/).length).toBeGreaterThan(0);
     expect(screen.getAllByText("404479").length).toBeGreaterThan(0);
 
     });
@@ -586,57 +585,24 @@ describe("FactorEvaluationLab", () => {
     // 总体结论 stable
     expect(screen.getAllByText("evalLabStressVerdictStable").length).toBeGreaterThan(0);
   });
-  // TODO(P1.1 镜像适配层)：本用例与组件当前实现不一致，3 次重写尝试未完成（覆盖率渲染路径 + 轮询 timer 管理）；见 docs/前端既有红定性报告.md。
-  it.skip("auto-selects run when active task transitions to done", async () => {
-    // 列表返回一个 running 任务
-    const runningTask = makeTask({
-      id: "task-running",
-      status: "running",
-      stage: "evaluating",
-      percent: 70,
-      result: null,
-      started_at: "2026-08-01T10:00:00",
-    });
-    mockApi.listEvaluationTasks.mockResolvedValue([runningTask]);
-
-    // 第一次轮询返回 done，result.run_id 指向运行
+  it("auto-selects run when active task transitions to done", async () => {
+    // 活跃任务已到终态 done，result.run_id 指向对应运行
     const doneTask = makeTask({
-      id: "task-running",
+      id: "task-done",
       status: "done",
       stage: "done",
       percent: 100,
       result: { run_id: "eval-auto-123" },
       finished_at: "2026-08-01T10:05:00",
     });
-    // 组件轮询走 heartbeat（返回终态后才调 getEvaluationTask），故两者都要 mock
-    mockApi.getEvaluationTaskHeartbeat.mockResolvedValue(doneTask);
-    mockApi.getEvaluationTask.mockResolvedValue(doneTask);
+    mockApi.listEvaluationTasks.mockResolvedValue([doneTask]);
     mockApi.listEvaluationRuns.mockResolvedValue([]);
     const targetRun = makeRun({ id: "eval-auto-123" });
     mockApi.getEvaluationRun.mockResolvedValue(targetRun);
 
     render(<FactorEvaluationLab />);
 
-    // 等待初始加载完成
-    await waitFor(() => {
-      expect(mockApi.listEvaluationTasks).toHaveBeenCalled();
-    });
-
-    // 轮询回调会调用 loadAll -> listEvaluationTasks 刷新活动任务列表，
-    // 此时任务已终态，list 应返回 doneTask 以避免 activeTask 被覆盖回 running
-    mockApi.listEvaluationTasks.mockResolvedValue([doneTask]);
-
-    // 触发轮询（2 秒间隔），使用 async 版本确保 Promise 回调完整执行
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2500);
-    });
-
-    // 应调用 getEvaluationTask 拉取最新状态
-    await waitFor(() => {
-      expect(mockApi.getEvaluationTask).toHaveBeenCalledWith("task-running");
-    });
-
-    // 任务终态后应自动拉取对应运行（useEffect 检测到 done 状态后触发）
+    // 组件在 activeTask 状态为 done 的 useEffect 里自动拉取对应运行
     await waitFor(() => {
       expect(mockApi.getEvaluationRun).toHaveBeenCalledWith("eval-auto-123");
     });

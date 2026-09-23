@@ -66,14 +66,17 @@ class DatabaseManager:
                 engine_kwargs.setdefault("pool_pre_ping", True)
                 # Recycle sockets before a low MySQL wait_timeout closes them.
                 # LIFO favors the most recently verified pooled connection.
+                # 2026-09-21 调优：wait_timeout=120s 实测下 60s 回收仍出现
+                # 2006/InterfaceError（长时间进化任务持连接跨多线程），收紧到 30s；
+                # 2026-09-22 进一步收紧到 20s，并缩池（worker+心跳+HTTP 并发
+                # 槽位无需 30 个），降低长任务期间连接被 MySQL 半开的机会。
                 engine_kwargs.setdefault(
-                    "pool_recycle", int(os.environ.get("DB_POOL_RECYCLE", "60"))
+                    "pool_recycle", int(os.environ.get("DB_POOL_RECYCLE", "20"))
                 )
                 engine_kwargs.setdefault("pool_use_lifo", True)
-                # 连接池大小：支持并发挖掘（3 worker + 主线程 + watchdog + HTTP 请求）
-                # 可通过环境变量 DB_POOL_SIZE / DB_MAX_OVERFLOW 覆盖
-                engine_kwargs.setdefault("pool_size", int(os.environ.get("DB_POOL_SIZE", "10")))
-                engine_kwargs.setdefault("max_overflow", int(os.environ.get("DB_MAX_OVERFLOW", "20")))
+                # 连接池大小：挖掘 worker + 心跳 pump + HTTP 请求并发够用即可
+                engine_kwargs.setdefault("pool_size", int(os.environ.get("DB_POOL_SIZE", "6")))
+                engine_kwargs.setdefault("max_overflow", int(os.environ.get("DB_MAX_OVERFLOW", "10")))
                 # pymysql 连接超时：防止 DB 操作永久卡住（Lost connection / 连接被 MySQL 关闭）
                 # Defaults: connect_timeout=10s, read/write timeout=60s.
                 # WPD-05: charset=utf8mb4 确保 pymysql 连接级字符集正确，

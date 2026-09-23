@@ -597,13 +597,27 @@ class TestVerifySample:
                                rng=__import__("random").Random(1))
         assert res["sampled"] == len(batch["per_factor"])
 
-    def test_cache_miss_counted_as_mismatch(self):
+    def test_cache_miss_is_skipped_not_mismatch(self):
+        """缓存缺失（空缓存 / 子式被质量门禁拒写）→ 归入 `skipped`，不判不一致、不废弃缓存。
+
+        ⚠️ 2026-09-23 语义修正（原断言 `mismatches[0].reason == "cache_miss"` 已废）：
+        把「缓存里没有可比对的东西」当成「缓存结果算错了」，会导致
+        「废弃整份缓存 → 下一代冷启动 → 再次 cache_miss」的死循环 ——
+        而被质量门禁拒绝写入的子表达式**不会因为废弃缓存而变好**。
+        真实后果：实测 20 代里只有 3 代 `cache_validation_passed=1`，且每代全量重算。
+
+        安全语义**未放宽**：真实数值差异仍判失败并废弃缓存
+        （见 `test_mismatch_discards_cache`）。
+        """
         batch = SC.extract_batch([{"id": "f1", "formula": "close+volume"}])
         c = _cache()     # 空缓存 → 组装必缺
         res = SC.verify_sample(["f1"], cache=c, per_factor=batch["per_factor"],
                                direct_compute=lambda k: np.array([1.0]),
                                rng=__import__("random").Random(1))
-        assert res["mismatches"][0]["reason"] == "cache_miss"
+        assert res["mismatches"] == []
+        assert res["skipped"][0]["reason"] == "cache_miss"
+        assert res["discarded"] is False
+        assert c.discarded is False
 
     def test_empty_factor_list(self):
         res = SC.verify_sample([], cache=_cache(), per_factor={},

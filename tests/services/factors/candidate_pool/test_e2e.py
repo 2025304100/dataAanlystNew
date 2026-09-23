@@ -339,6 +339,44 @@ class TestAnalyzePoolGuards:
         assert board["is_locked"] is True
         assert board["analysis"]["as_of_date"] == "2026-08-21"
 
+    def test_large_members_json_roundtrip_not_truncated(self, db_session):
+        """0062 回归：>64KB 成员 JSON 必须完整保存且可解析。
+
+        曾在真实 MySQL 捕获：`members_json` 为 `Text`（65535 字节上限）时，
+        数千成员的 JSON 被 MySQL **静默截断** → `json.loads` 抛
+        JSONDecodeError → `analyze_pool` 500 → 向导「生成挖掘物料」不可用。
+        SQLite 的 TEXT 无长度上限不会截断，本用例作为「写入/读取不截断、
+        可完整往返」的契约哨兵（防 model 改回小类型 / 写入端截断回归）。
+        """
+        import json as _json
+        from datetime import datetime as _dt
+
+        from app.models.mining_candidate_pool import TrainingCandidatePoolSnapshot
+
+        big = [
+            {"symbol": f"{i:06d}", "name": f"股票{i:05d}", "market": "sz",
+             "reason_zh": ("模拟纳入原因" * 5)}
+            for i in range(6000)
+        ]
+        payload = _json.dumps(big, ensure_ascii=False)
+        assert len(payload.encode("utf-8")) > 65535, "用例必须超过 MySQL Text 上限"
+
+        pool = S.create_pool(db_session, name="big-pool", source_type="filter",
+                             filter_config={"markets": ["sh"]})
+        snap = TrainingCandidatePoolSnapshot(
+            id="snap-big-1", pool_id=pool.id,
+            members_json=payload, rule_hash="",
+            data_cutoff_at=_dt(2026, 1, 1),
+            stats_json="{}", analysis_status="not_analyzed",
+            member_count=len(big), is_locked=0,
+        )
+        db_session.add(snap)
+        db_session.commit()
+
+        back = _json.loads(db_session.get(TrainingCandidatePoolSnapshot, "snap-big-1").members_json)
+        assert len(back) == len(big)
+        assert back[-1]["symbol"] == f"{len(big) - 1:06d}"
+
 
 # ══════════════════════════════════════════════════════════
 # 4. HTTP 层

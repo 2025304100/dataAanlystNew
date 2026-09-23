@@ -87,4 +87,47 @@ def related_experiences(
         items=[RelatedExperienceItem(**i) for i in items])
 
 
+# ══════════════════════════════════════════════════════════
+# B3：列表 / 详情 / 归档（前端经验库页 + 第一批沉淀可核验）
+# ══════════════════════════════════════════════════════════
+
+
+@router.get("/factor-experience")
+def list_experiences(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
+    category: str | None = Query(default=None, description="6 类之一"),
+    source: str | None = Query(default=None),
+    is_negative_sample: int | None = Query(default=None, description="1=负样本"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """分页经验列表（负样本/归档也返回，供管理侧核验）。"""
+    return experience_service.list_experiences(
+        db, page=page, page_size=page_size,
+        category=category, source=source,
+        is_negative_sample=is_negative_sample)
+
+
+@router.get("/factor-experience/{experience_id}")
+def get_experience(experience_id: str, db: Session = Depends(get_db)):
+    """经验详情（含指标历史）。"""
+    item = experience_service.get_experience(db, experience_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail={
+            "error_code": "EXPERIENCE_NOT_FOUND",
+            "title_zh": "经验不存在",
+            "detail_zh": f"未找到经验 {experience_id}。",
+        })
+    return item
+
+
+@router.post("/factor-experience/{experience_id}/archive")
+def archive_experience(experience_id: str, db: Session = Depends(get_db)):
+    """归档经验（抽取与抽样硬化排除；负样本规避不受影响）。"""
+    try:
+        return experience_service.archive_experience(db, experience_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 __all__ = ["router"]

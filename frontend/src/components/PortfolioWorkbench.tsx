@@ -102,7 +102,8 @@ export default function PortfolioWorkbench({ openMetricModal }: PortfolioWorkben
   }, [workbench, ctx.candidateSearch]);
 
   // ── P2: 持仓管理 & 组合暴露 state ──
-  const portfolioId = ctx.portfolioId ?? 1;
+  // P1-1：portfolioId 为 0/空时兜底 1（0 是无效组合 id，`?? 1` 会保留 0）
+  const portfolioId = ctx.portfolioId != null && ctx.portfolioId > 0 ? ctx.portfolioId : 1;
   const [positions, setPositions] = useState<Position[]>(workbench?.positions ?? []);
   const [positionsLoading, setPositionsLoading] = useState(false);
   const [allocation, setAllocation] = useState<AllocationSnapshot | null>(null);

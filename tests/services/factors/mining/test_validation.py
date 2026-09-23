@@ -208,7 +208,7 @@ class TestShardResume:
         assert "boom" in shards["pe_ttm"]["error"]
         assert shards["close"]["status"] == VS.SHARD_DONE
 
-    def test_resume_skips_completed_shards(self, val_env):
+    def test_resume_skips_completed_shards(self, val_env, monkeypatch):
         """🚨 核心硬规则：续跑**不重复已完成分片** —— 用计数器证明。"""
         calls: list = []
         r1 = VS.create_or_reuse_validation(
@@ -220,9 +220,13 @@ class TestShardResume:
 
         # resume 走的是**默认检查器**（服务不转发自定义 checker），
         # 所以 monkeypatch 它，让续跑也计数。
-        import pytest as _pytest
-        _pytest.MonkeyPatch().setattr(VS, "_default_field_checker",
-                                      _fake_checker(calls))
+        #
+        # ⚠️ 2026-09-23 修复：原先这里用 `_pytest.MonkeyPatch()`（临时实例）
+        # **从不 undo** → 永久替换 `VS._default_field_checker`，污染同进程内
+        # 后续**所有**测试文件（真实后果：`test_validation_dsl_fields.py` 11 条
+        # 在整目录跑时全挂，而单独跑全绿 —— 典型的测试间污染）。
+        # 改用 `monkeypatch` fixture：作用域结束自动撤销。
+        monkeypatch.setattr(VS, "_default_field_checker", _fake_checker(calls))
         n_before = len(calls)
         r2 = VS.resume_validation(task_id=r1["task_id"])
         assert r2["resumed_from"] == r1["task_id"]

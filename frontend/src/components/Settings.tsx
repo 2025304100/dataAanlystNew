@@ -25,6 +25,7 @@ import { ChannelConfig } from "./notifications/ChannelConfig";
 import { PolicyEditor } from "./notifications/PolicyEditor";
 import { TemplateEditor } from "./notifications/TemplateEditor";
 import { DeliveryLog } from "./notifications/DeliveryLog";
+import FactorBasicSettings from "./settings/FactorBasicSettings";
 
 export default function Settings() {
   const ctx = useApp();
@@ -33,11 +34,11 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "alerts" | "scoring" | "factor-model" | "factor-center" | "data-center" | "api-mgmt" | "db" | "ai" | "factor-mining" | "notifications">(() => {
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "alerts" | "scoring" | "factor-model" | "factor-center" | "data-center" | "api-mgmt" | "db" | "ai" | "factor-mining" | "notifications" | "factor-basic">(() => {
     if (typeof window === "undefined") return "rules";
     const stored = window.localStorage.getItem("settings_active_section");
     if (stored === "external" || stored === "universe") return "data-center";
-    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "alerts" || stored === "scoring" || stored === "factor-model" || stored === "factor-center" || stored === "data-center" || stored === "api-mgmt" || stored === "db" || stored === "ai" || stored === "factor-mining" || stored === "notifications" ? stored : "rules";
+    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "alerts" || stored === "scoring" || stored === "factor-model" || stored === "factor-center" || stored === "data-center" || stored === "api-mgmt" || stored === "db" || stored === "ai" || stored === "factor-mining" || stored === "notifications" || stored === "factor-basic" ? stored : "rules";
   });
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<"formulas" | "plans">(() => {
     if (typeof window === "undefined") return "formulas";
@@ -540,6 +541,13 @@ export default function Settings() {
                     <DeliveryLog />
                   </div>
                 </div>
+              </section>
+            </div>
+          )}
+          {activeSection === "factor-basic" && (
+            <div className="settings-tab-container" data-settings-content="settings-factor-basic">
+              <section className="band">
+                <FactorBasicSettings />
               </section>
             </div>
           )}

@@ -32,7 +32,10 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Mapping, Sequence
+
+from sqlalchemy.exc import InterfaceError as _SAInterfaceError
+from sqlalchemy.exc import OperationalError as _SAOperationalError
 
 from app.models.async_task import AsyncTaskRecord
 from app.services import task_state_machine as TSM
@@ -254,19 +257,463 @@ def run_mining_worker(
         heartbeat_stop.set()
         if heartbeat_thread is not None:
             heartbeat_thread.join(timeout=5)
-        _release_all_locks(task_id)
+        _release_all_locks(task_id, resume_runner=stage_runner)
         db.close()
 
 
-def _default_stage_runner(ctx: MiningWorkerContext) -> dict[str, Any]:
-    """M1a 基础设施骨架：占位阶段，验证生命周期（心跳/锁/终态）走通。
+def skeleton_stage_runner(ctx: MiningWorkerContext) -> dict[str, Any]:
+    """**轻量骨架阶段**（M1a 语义，仅供基础设施生命周期联调）。
 
-    真实 GA 循环在 T22/T23 接入时替换 `stage_runner` 注入；
-    这里**绝不**抛 NotImplementedError —— 那会让每条提交都失败，
-    基础设施就没法联调了。
+    不依赖任何 run 数据，只验证 心跳/双锁/排队/状态机 走通；
+    生产默认阶段链是 `_default_stage_runner`（真实挖掘）。
     """
     ctx.heartbeat()
     return {"message_zh": "挖掘骨架完成（M1a 基础设施验证；GA 循环在 M1b 接入）"}
+
+
+def _resolve_selection_mode(evo: Mapping[str, Any]) -> str:
+    """推导 GA 选择路径（P0：让前端已提交的 M2 配置真实生效）。
+
+    - 显式 `selection_mode`（"naive"/"advanced"）优先 —— 回退与复现基准；
+    - 否则出现任一 M2 配置键且为真值（前端 Step4 默认提交 `adaptive: true`）
+      → `advanced`（A1/B1/B2 + C1-C3 + D1-D3 全链路）；
+    - 完全不带 M2 键的提交（API 脚本/既有测试）→ `naive`（M1 行为不变）。
+    """
+    explicit = str(evo.get("selection_mode") or "").strip().lower()
+    if explicit in ("naive", "advanced"):
+        return explicit
+    m2_keys = ("adaptive", "tournament_k", "objectives",
+               "cross_category_ratio", "mutation_ops_enabled")
+    if any(k in evo and evo.get(k) for k in m2_keys):
+        return "advanced"
+    return "naive"
+
+
+def _fill_random_exploration(
+    population: list[dict[str, Any]], *, target_size: int,
+    selected_fields: Sequence[str], seed: int,
+) -> int:
+    """受约束随机探索层（P0：两层结构第二层补齐）。
+
+    经典底座 + AI 之后的剩余名额由受约束随机公式填充（向导 §6.3.6/§6.3.7：
+    「AI 不足随机补，都不足允许种群略小于目标」）。生成器与 D2 注入同源
+    （`random_generator`）；失败返回 0 不阻断（种群允许略小于目标值）。
+    """
+    from app.services.factors.mining.random_generator import (
+        RandomGeneratorConfig,
+        generate_random_candidates,
+    )
+
+    remaining = max(0, int(target_size) - len(population))
+    if remaining <= 0:
+        return 0
+    existing = tuple(
+        str(p.get("canonical_formula") or p.get("formula") or "")
+        for p in population)
+    try:
+        result = generate_random_candidates(
+            cfg=RandomGeneratorConfig(target_count=remaining, seed=int(seed)),
+            selected_fields=list(selected_fields),
+            existing_formulas=list(existing),
+        )
+    except Exception:  # noqa: BLE001 - 随机层失败不阻断挖掘
+        return 0
+    added = 0
+    for item in (getattr(result, "candidates", None) or []):
+        entry = dict(item)
+        entry["operation"] = "random"
+        entry["generation"] = 0
+        if not entry.get("canonical_formula"):
+            entry["canonical_formula"] = str(entry.get("formula") or "")
+        if not entry.get("formula_hash"):
+            entry["formula_hash"] = entry["canonical_formula"]
+        population.append(entry)
+        added += 1
+    return added
+
+
+def _make_random_supplier(
+    *, selected_fields: Sequence[str], base_seed: int,
+    existing_formulas: Sequence[str],
+) -> Callable[[int], list[dict[str, Any]]]:
+    """D2 随机注入供给（`run_ga_loop.random_supplier` 注入点）。
+
+    每次按计数生成受约束随机公式（种子由 base_seed 派生，固定可复现）；
+    记忆已见公式避免代间重复。失败返回空列表 → GA 用变异兜底，不阻断进化。
+    """
+    from app.services.factors.mining.random_generator import (
+        RandomGeneratorConfig,
+        generate_random_candidates,
+    )
+
+    seen: set[str] = {str(f) for f in existing_formulas if str(f)}
+    calls = {"n": 0}
+
+    def _supply(count: int) -> list[dict[str, Any]]:
+        count = max(0, int(count))
+        if count <= 0:
+            return []
+        calls["n"] += 1
+        try:
+            result = generate_random_candidates(
+                cfg=RandomGeneratorConfig(
+                    target_count=count,
+                    seed=int(base_seed) + calls["n"] * 977),
+                selected_fields=list(selected_fields),
+                existing_formulas=list(seen),
+            )
+        except Exception:  # noqa: BLE001 - 注入失败 → 变异兜底
+            return []
+        out: list[dict[str, Any]] = []
+        for item in (getattr(result, "candidates", None) or []):
+            entry = dict(item)
+            formula = str(entry.get("canonical_formula")
+                          or entry.get("formula") or "")
+            if formula:
+                seen.add(formula)
+            out.append(entry)
+        return out
+
+    return _supply
+
+
+def _default_stage_runner(ctx: MiningWorkerContext) -> dict[str, Any]:
+    """**真实挖掘阶段链**（任务卡 A2，替换 M1a 基础设施骨架）。
+
+    流程：目标标签生成 → `initial_population`（经典模板底座 + AI + 随机探索层）→
+    `run_ga_loop`（**真实** `evaluate_short`，train 段/G2/探针；M2 配置生效）→
+    `finalize_run`（`payload.finalize_top_k=0` 可跳过，供分阶段联调）。
+
+    - 每代 `persist_generation` + `persist_candidates` + `sync_run_progress` + 探针落库；
+    - 心跳/双锁语义由 worker 既有机制负责（本函数只调用 `ctx.heartbeat()`）；
+    - 单个体评估失败由 GA 主循环隔离（沉底淘汰），**不中断整代**。
+    """
+    return _run_real_stages(ctx)
+
+
+def _fitness_dict(fitness: Any) -> dict[str, Any]:
+    """`Fitness` → dict（`run_ga_loop` 的 evaluate 回调要求 Mapping，内含 `icir`）。"""
+    return {
+        "icir": getattr(fitness, "icir", 0.0),
+        "coverage": getattr(fitness, "coverage", 0.0),
+        "turnover": getattr(fitness, "turnover", 0.0),
+        "ic_mean": getattr(fitness, "ic_mean", 0.0),
+        "complexity": getattr(fitness, "complexity", 0),
+        "valid_cross_sections": getattr(fitness, "valid_cross_sections", 0),
+        "sample_count": getattr(fitness, "sample_count", 0),
+    }
+
+
+def _to_individual(item: Mapping[str, Any]) -> Any:
+    """种群 dict → `contracts.Individual`（`execution_plan` 用不到，置 None）。"""
+    from app.services.factors.mining.contracts import Individual
+
+    formula = str(item.get("canonical_formula") or item.get("formula") or "")
+    return Individual(
+        formula_expr=str(item.get("formula") or formula),
+        canonical_formula=formula,
+        formula_hash=str(item.get("formula_hash") or "") or formula,
+        execution_plan=None,
+        dependency=None,
+        category=item.get("category"),
+        generation=int(item.get("generation") or 0),
+        parent_ids=tuple(str(p) for p in (item.get("parent_ids") or ())),
+        operation=item.get("operation") or "enumerated",
+        complexity=int(item.get("complexity") or (formula.count("("))),
+        economic_logic=item.get("economic_logic"),
+        expected_direction=item.get("expected_direction"),
+        logic_source=item.get("logic_source"),
+    )
+
+
+def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
+    """真实阶段链实现（见 `_default_stage_runner` docstring）。"""
+    from app.core.config import Settings
+    from app.services.factors.mining import (
+        ai_generator as AIG,
+        evaluation_adapter as EVA,
+        genetic_algorithm as GA,
+        initial_population as IP,
+        performance_probe as PROBE,
+        runtime_correlation as RC,
+        service as SVC,
+        subexpr_cache as SC,
+    )
+    from app.services.factors.mining.contracts import MiningContext
+    from app.services.factors.store import FactorWarehouse
+    from app.services.factors.target_engine import calculate_targets
+    from app.db.session import get_session_local
+
+    db = get_session_local()()
+    try:
+        run = SVC.load_run(db, ctx.run_id)
+        if run is None:
+            raise ValueError(f"run 不存在: {ctx.run_id!r}")
+        payload = dict(ctx.payload or {})
+        freq = str(run.rebalance_frequency or "daily")
+        horizon = int(getattr(run, "target_horizon", 0) or 5)
+        # 立即结束 `load_run` 开启的隐式事务并归还连接：目标计算与逐代进化
+        # 都是分钟级纯 DuckDB 计算，期间若继续持有 MySQL 连接，会被
+        # `wait_timeout`（实测本机 120s）断开，首代持久化即 2006
+        # （eval.db.mysql_gone_away_2006）→ worker crash。归还后由
+        # 连接池 pool_pre_ping/recycle=60s 在下次 checkout 时自动刷新。
+        db.rollback()
+
+        # ① 目标标签：按 run 区间生成（worker 已持 duckdb_write）
+        wh = FactorWarehouse(str(
+            payload.get("warehouse_path") or Settings().factor_warehouse_path))
+        calc_batch = f"mining-{ctx.run_id}"
+        calculate_targets(
+            wh, start_date=run.start_date.date(), end_date=run.end_date.date(),
+            calc_batch_id=calc_batch,
+        )
+
+        # ② MiningContext（切分走归一化入口；候选池过滤留 A5）
+        target_df, _bid, _tcode = wh.get_target_panel(calc_batch, "target_5d_return")
+        all_dates = sorted(
+            d for d in (EVA._as_date(v) for v in target_df["signal_date"].tolist())
+            if d is not None
+        )
+        split, budget = EVA.build_split(
+            all_dates=all_dates, frequency=freq, target_horizon=horizon)
+        mc = MiningContext(
+            run_id=run.id, candidate_pool_snapshot_id=str(run.candidate_pool_snapshot_id),
+            data_cutoff_at=run.data_cutoff_at, start_date=run.start_date.date(),
+            end_date=run.end_date.date(), rebalance_frequency=freq,
+            target_horizon=horizon, split=split,
+            purge_points=budget.purge_points, embargo_points=budget.embargo_points,
+            train_ratio=0.6, validation_ratio=0.2,
+            random_seed=int(getattr(run, "random_seed", 0) or 42),
+            config_hash=str(getattr(run, "config_hash", "") or ""),
+            split_algorithm_version=str(getattr(run, "split_algorithm_version", "")
+                                        or budget and "split-1.0.0"),
+            target_calc_batch_id=calc_batch,
+            warehouse_path=str(wh.path),
+            data_snapshot_version=str(getattr(run, "split_algorithm_version", "")
+                                      or "snapshot-default"),
+        )
+
+        # ③ 初始种群（经典模板底座；AI/随机探索层接入 A3）
+        evo = dict(payload.get("evolution_params") or {})
+        pop_size = max(4, int(evo.get("population_size", 60) or 60))
+        max_gen = max(1, int(evo.get("max_generations", 8) or 8))
+        fields = list(payload.get("selected_fields") or [
+            "close", "open", "high", "low", "volume", "amount", "turnover_rate"])
+        cats = list(evo.get("enabled_categories") or [
+            "trend", "reversal", "volatility", "volume_price"])
+        try:
+            result = IP.build_initial_population(
+                population_size=pop_size, selected_fields=fields,
+                enabled_categories=cats,
+                template_limit=evo.get("classic_template_limit"))
+        except Exception as exc:  # noqa: BLE001 - 模板/字段配置异常 → 阻断本任务
+            raise RuntimeError(f"初始种群生成失败: {type(exc).__name__}: {exc}") from exc
+        population: list[dict[str, Any]] = []
+        for row in (result.candidates or []):
+            formula = str(row.get("formula") or "")
+            if not formula:
+                continue
+            population.append({
+                **dict(row),
+                "canonical_formula": formula,
+                "formula_hash": str(row.get("formula_hash") or "") or formula,
+                "operation": "enumerated",
+                "generation": 0,
+                "source": "template",
+                "economic_logic": row.get("economic_logic") or row.get("economy_logic_zh"),
+            })
+        if not population:
+            logger.warning(
+                "初始种群经典层为空 run=%s（字段=%s），等待 AI/随机探索层补位",
+                run.id, fields)
+
+        # ③.5 AI 层填充剩余名额（`ai_enabled` 显式开才走；尽力而为，失败不阻断）
+        #     AIResult 契约：永不抛异常；accepted 条目自带 formula/formula_hash/
+        #     operation=ai_generated/economic_logic 等完整字段（验收报告 #16）。
+        if bool(evo.get("ai_enabled")):
+            remaining = max(0, pop_size - len(population))
+            if remaining > 0:
+                try:
+                    ai_cfg = AIG.AIGeneratorConfig(
+                        target_count=min(remaining, 12),
+                        selected_fields=tuple(fields),
+                        enabled_categories=tuple(cats),
+                        existing_formulas=tuple(
+                            str(p["canonical_formula"]) for p in population),
+                        seed=int(evo.get("random_seed", 0)
+                                 or int(getattr(run, "random_seed", 0) or 42)),
+                    )
+                    ai_res = AIG.generate_ai_candidates(ai_cfg, db=db)
+                    for _item in ai_res.candidates:
+                        population.append(_item)
+                    if ai_res.candidates:
+                        logger.info(
+                            "AI 初始种群填充 run=%s: +%d 个（来源 ai_generated）",
+                            run.id, len(ai_res.candidates))
+                except Exception as exc:  # noqa: BLE001 - AI 填充失败不阻断挖掘
+                    logger.warning("AI 初始种群填充失败 run=%s: %s", run.id, exc)
+
+        # ③.6 受约束随机探索层（P0：两层结构第二层补齐——经典+AI 之后的
+        #     剩余名额由随机填充；AI 关闭/失败时由本层兜底，种群不塌缩）。
+        remaining = max(0, pop_size - len(population))
+        if remaining > 0:
+            random_added = _fill_random_exploration(
+                population, target_size=pop_size, selected_fields=fields,
+                seed=int(evo.get("random_seed", 0)
+                         or int(getattr(run, "random_seed", 0) or 42)))
+            if random_added:
+                logger.info(
+                    "随机探索层填充 run=%s: +%d 个（经典+AI 后剩余名额）",
+                    run.id, random_added)
+
+        # ③.7 三来源全部为空才阻断（设计 §6.3：经典保底、AI/随机补位，均失败才失败）。
+        #     经典层为空但随机层可用时**不阻断**——随机层基于所选字段的受约束公式
+        #     （如 cs_rank(field)）恒可生成，保证种群不塌缩、run 贯通到结果页。
+        if not population:
+            raise RuntimeError(
+                "初始种群为空：经典模板与 AI/随机探索在所选字段（"
+                f"{', '.join(str(f) for f in fields[:8])}"
+                f"{'…' if len(fields) > 8 else ''}）下均未生成有效候选。"
+                "Step3 应选择行情/估值/财报等 DSL 已注册字段（如 close/pe_ttm），"
+                "而不是候选池筛选字段（如 avg_amount/avg_volume），否则经典模板无法展开。")
+
+        # ④ GA 主循环（真实 evaluate_short；每代持久化 + 探针落库）
+        # 进入前结束任何悬空事务（初始种群/AI 层可能已开隐式事务），
+        # 确保评估阶段不持有 MySQL 连接（防 wait_timeout 2006）。
+        db.rollback()
+        ga_cfg = GA.GAConfig(
+            population_size=pop_size, max_generations=max_gen,
+            selection_ratio=max(0.05, float(evo.get("selection_ratio", 0.3) or 0.3)),
+            mutation_rate=float(evo.get("mutation_rate", 0.55) or 0.55),
+            crossover_rate=float(evo.get("crossover_rate", 0.25) or 0.25),
+            random_rate=float(evo.get("random_rate", 0.20) or 0.20),
+            convergence_threshold=float(evo.get("convergence_threshold", 1e-3) or 1e-3),
+            convergence_generations=int(evo.get("convergence_generations", 2) or 2),
+            seed=int(evo.get("random_seed", 0) or int(getattr(run, "random_seed", 0) or 42)),
+            # ── M2 选择/繁殖（P0：前端已提交的配置现在真实生效） ──
+            selection_mode=_resolve_selection_mode(evo),
+            objectives=(tuple(str(o) for o in evo["objectives"])
+                        if evo.get("objectives") else None),
+            tournament_k=int(evo.get("tournament_k", 3) or 3),
+            adaptive=bool(evo.get("adaptive")),
+            cross_category_ratio=float(evo.get("cross_category_ratio", 0.2) or 0.2),
+            mutation_ops_enabled=(
+                tuple(str(k) for k in evo["mutation_ops_enabled"])
+                if evo.get("mutation_ops_enabled") else None),
+            selected_fields=tuple(fields) or None,
+        )
+        sample_len = str(payload.get("sample_length") or "1y")
+
+        # ── 性能（P5 收敛）：task 级共享 G2 缓存 + target 面板一次化 + 校验抽样 ──
+        # 此前每个 evaluate 新建 SubexpressionCache，50 个体/代间子表达式零复用，
+        # 且每次 evaluate 都全量直算比对（verify_sample_size=1）。现改为：
+        #   * CacheRegistry 按 (scope, snapshot) 共享一个缓存 → 唯一子式只算一次；
+        #   * 评估计数取模抽样校验（每 5 个因子验 1 个，守住 §6.11.1 兜底语义）。
+        cache_reg = SC.CacheRegistry(task_id=run.id)
+        snapshot_ver = str(getattr(mc, "data_snapshot_version", None) or "snapshot-default")
+        cache_access = {"seq": 0}
+        per_gen_probe: list[Any] = []
+
+        def _evaluate(item: Mapping[str, Any]) -> dict[str, Any]:
+            cache = cache_reg.for_scope(SC.SCOPE_PRESCREEN, data_snapshot_version=snapshot_ver)
+            verify = 1 if (cache_access["seq"] % 5 == 0) else 0
+            cache_access["seq"] += 1
+            fit, probe, _cache, sig = EVA.evaluate_short_signed(
+                mc, individual=_to_individual(item), sample_length=sample_len,
+                cache=cache, verify_sample_size=verify,
+            )
+            per_gen_probe.append(probe)
+            out = _fitness_dict(fit)
+            out["signature"] = sig
+            return out
+
+        def _runtime_dedup(ranked: Sequence[Mapping[str, Any]]) -> Any:
+            """第 4 层相关性去重（P1-6；naive/advanced 均启用）。"""
+            return RC.dedup_by_correlation(
+                ranked, seed=int(evo.get("random_seed", 0)
+                                 or int(getattr(run, "random_seed", 0) or 42)))
+
+        def _persist_generation_once(gen: int, record: Mapping[str, Any],
+                                 ranked: Sequence[Mapping[str, Any]]) -> None:
+            SVC.persist_generation(db, run_id=run.id, generation=gen, record=record)
+            SVC.persist_candidates(db, run_id=run.id, generation=gen, ranked=ranked)
+            SVC.sync_run_progress(db, run_id=run.id, generation=gen,
+                                  total_trials=int(record.get("total_trials") or 0))
+            if per_gen_probe:
+                try:
+                    PROBE.write_generation_probe(
+                        db, run_id=run.id, generation=gen, probe=per_gen_probe[-1])
+                except Exception as exc:  # noqa: BLE001 - 探针落库失败不中断进化
+                    logger.warning("探针落库失败 run=%s gen=%s: %s",
+                                   run.id, gen, exc)
+            # 每代立即提交：结束隐式事务、归还连接（配合 pool_pre_ping/
+            # recycle=60s 防 wait_timeout 断连），并保证 checkpoint 可持久。
+            db.commit()
+
+        def _on_generation(gen: int, record: Mapping[str, Any],
+                           ranked: Sequence[Mapping[str, Any]]) -> None:
+            nonlocal db
+            # MySQL 连接抖动（2006/2013/InterfaceError）兜底：rollback+重建
+            # session 后重试，最多 3 次。每次重建都会从连接池 checkout 新连接
+            # （pool_pre_ping 丢弃失效连接），环境性抖动后大概率成功。
+            for attempt in range(3):
+                try:
+                    _persist_generation_once(gen, record, ranked)
+                    break
+                except (_SAOperationalError, _SAInterfaceError) as exc:
+                    text = str(exc).lower()
+                    is_conn_lost = (
+                        "2006" in text or "2013" in text
+                        or "gone away" in text or "lost connection" in text
+                        or "interfaceerror" in type(exc).__name__.lower())
+                    if not is_conn_lost:
+                        raise
+                    if attempt == 2:
+                        raise
+                    logger.warning(
+                        "MySQL 连接异常 gen=%s run=%s（%s），重连重试 %s/2",
+                        gen, run.id, type(exc).__name__, attempt + 1)
+                    try:
+                        db.rollback()
+                    except Exception:  # noqa: BLE001 - 连接已损坏，丢弃重建
+                        db.close()
+                        db = get_session_local()()
+            ctx.heartbeat()
+
+        outcome = GA.run_ga_loop(
+            ga_cfg, population, evaluate=_evaluate,
+            random_supplier=_make_random_supplier(
+                selected_fields=fields, base_seed=ga_cfg.seed,
+                existing_formulas=tuple(
+                    str(p.get("canonical_formula") or p.get("formula") or "")
+                    for p in population)),
+            on_generation=_on_generation,
+            runtime_dedup=_runtime_dedup,
+        )
+
+        # ⑤ 最终验证（test-once；finalize_top_k=0 时跳过，仅收尾状态）
+        final_top_k = max(0, int(payload.get("finalize_top_k", 50) or 0))
+        final: dict[str, Any] | None = None
+        if final_top_k > 0:
+            final = SVC.finalize_run(db, ctx=mc, run_id=run.id, top_k=final_top_k)
+        else:
+            if run.status not in ("succeeded",):
+                SVC.set_run_status(db, run, "succeeded")
+            run.converged = 1
+            db.commit()
+
+        return {
+            "message_zh": "真实挖掘阶段完成",
+            "generations": outcome.generations_run,
+            "stopped_reason": outcome.stopped_reason,
+            "best_icir": outcome.best_icir,
+            "candidates": len(population),
+            "total_trials": outcome.total_trials,
+            "finalize_top_k": final_top_k,
+            "final": final,
+        }
+    finally:
+        db.close()
 
 
 # ══════════════════════════════════════════════════════════
@@ -306,11 +753,11 @@ def _start_heartbeat_pump(task_id: str) -> tuple[threading.Event, threading.Thre
     return stop_event, thread
 
 
-def _release_all_locks(task_id: str) -> str | None:
+def _release_all_locks(task_id: str, *, resume_runner: StageRunner | None = None) -> str | None:
     """释放双锁；`duckdb_write` 拉起队首并**唤醒**它（启动其 worker）。
 
-    Returns:
-        被拉起的 task_id（供日志/测试断言）。
+    被拉起的任务沿用 `resume_runner`（缺省 = 真实阶段链）：同批提交注入的
+    runner 会透传到队首任务（测试注入骨架/自定义时保持语义一致）。
     """
     from app.db.session import get_session_local
 
@@ -328,7 +775,7 @@ def _release_all_locks(task_id: str) -> str | None:
         db.close()
     if next_task_id:
         logger.info("mining task %s finished; promoted %s", task_id, next_task_id)
-        _start_worker(next_task_id, _make_worker(None))
+        _start_worker(next_task_id, _make_worker(resume_runner))
     return next_task_id
 
 
@@ -337,13 +784,17 @@ def _verify_holds_write(db: Any, task_id: str) -> bool:
     return status.duckdb_write.get("taskId") == task_id
 
 
-def resume_pending_mining_tasks() -> list[str]:
+def resume_pending_mining_tasks(
+    stage_runner: StageRunner | None = None,
+) -> list[str]:
     """补拉滞留在 queued 的挖掘任务（运维/应用启动时调用）。
 
     场景：持有者在「释放锁」与「唤醒队首」之间崩溃 → 队首任务滞留 queued。
     这里扫描 queued/running 的挖掘任务：若它持有 `duckdb_write` 但没有
     存活的 worker（无法直接判定，用「任务处于 queued 且锁行 owner 是它」
     近似），补启动 worker。
+
+    `stage_runner` 缺省用真实阶段链；基础设施测试可注入 `skeleton_stage_runner`。
     """
     from app.db.session import get_session_local
 
@@ -358,7 +809,7 @@ def resume_pending_mining_tasks() -> list[str]:
         ).scalars().all()
         for task in rows:
             if _verify_holds_write(db, task.id):
-                _start_worker(task.id, _make_worker(None))
+                _start_worker(task.id, _make_worker(stage_runner))
                 resumed.append(task.id)
     finally:
         db.close()
@@ -379,6 +830,7 @@ __all__ = [
     "TASK_HEARTBEAT_SECONDS",
     "MiningSubmitResult",
     "MiningWorkerContext",
+    "skeleton_stage_runner",
     "submit_mining_run",
     "run_mining_worker",
     "heartbeat_mining",

@@ -670,14 +670,20 @@ def verify_sample(
     import numpy as np
 
     mismatches: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
     checked = 0
     for key in picked:
         subs = per_factor[key]
         try:
             cached = assemble(cache, subs)
         except CacheMissError as exc:
-            mismatches.append({"factor": key, "reason": "cache_miss",
-                               "missing": exc.missing[:3]})
+            # ⚠️ 「缓存里没有可比对的东西」≠「缓存结果算错了」（2026-09-23 修复）：
+            # 子表达式因质量门禁（含 Inf/-Inf、NaN 比例超限）被拒绝写入后，
+            # assemble 必然 cache_miss；若把它计入不一致，会**废弃整份缓存** →
+            # 下一代冷启动 → 再次触发 → 缓存永远无效、每代全量重算（实测现场：
+            # 20 代仅 3 代 cache_validation_passed=1）。故单独归入 `skipped`。
+            skipped.append({"factor": key, "reason": "cache_miss",
+                            "missing": exc.missing[:3]})
             continue
         fresh = direct_compute(key)
         checked += 1
@@ -688,8 +694,15 @@ def verify_sample(
                 diff = float("inf")
             else:
                 mask = np.isfinite(a) & np.isfinite(b)
-                diff = float(np.max(np.abs(a[mask] - b[mask]))) if mask.any() \
-                    else float("inf")
+                if mask.any():
+                    diff = float(np.max(np.abs(a[mask] - b[mask])))
+                elif np.array_equal(np.isnan(a), np.isnan(b)):
+                    # 没有任何有限值可比较，但两侧 NaN 位置完全一致（缺失数据 /
+                    # `cs_zscore` 的退化截面返回 NaN 是**有意设计**）→ 视为一致。
+                    # 原实现此处取 inf → 全 NaN 面板被误判为不一致。
+                    diff = 0.0
+                else:
+                    diff = float("inf")
         except Exception:  # noqa: BLE001 - 不可数值比较 → 视为不一致
             diff = float("inf")
         if not (diff <= tolerance):
@@ -700,9 +713,15 @@ def verify_sample(
         "checked": checked,
         "sampled": len(picked),
         "mismatches": mismatches,
+        "skipped": skipped,
         "tolerance": tolerance,
         "discarded": False,
     }
+    if skipped:
+        logger.warning(
+            "G2 采样校验跳过 %d 个因子（缓存缺失，多为质量门禁拒写的子表达式）：%s",
+            len(skipped), skipped[:2],
+        )
     if mismatches:
         logger.error("G2 采样校验发现 %d 处不一致（容差 %s）：%s",
                      len(mismatches), tolerance, mismatches[:2])

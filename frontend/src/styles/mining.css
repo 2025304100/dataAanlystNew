@@ -1,0 +1,4381 @@
+/* ════════════════════════════════════════════════════════════════
+ * 因子挖掘（设置 → 因子挖掘）整体样式
+ * ------------------------------------------------------------------
+ * 与 workbench.css 同构：品牌色/文本色沿用其 CSS 变量（--accent/--line/--ink…），
+ * 并在此之上补齐挖掘模块自己的**设计令牌层**（--m-*）：间距、字号阶梯、
+ * 圆角、阴影、状态色。命名空间统一 `.mining-*`。
+ *
+ * ⚠️ data-mining-* / data-*-* 等属性是测试定位钩子，**不得改动或移除**；
+ *    本文件只做「看得见的部分」，不含任何行为逻辑。
+ *
+ * 结构导览：
+ *   1. 令牌与基础                    7. Step3 字段与校验
+ *   2. 通用原语（卡片/横幅/按钮…）     8. Step4 进化参数 + 资源确认
+ *   3. 外壳、子页签、步骤条           9. Step5 进化执行
+ *   4. antd 控件覆写（挖掘作用域）    10. 结果总览 + 证据抽屉
+ *   5. Step1 候选池                  11. 子页（经验库/模板/镜像）+ 批次列表
+ *   6. Step2 时间与目标              12. 响应式
+ * ════════════════════════════════════════════════════════════════ */
+
+/* ── 1. 令牌与基础 ─────────────────────────────────────────── */
+
+/* 令牌放在 :root：antd 弹窗会渲染到 body 下的浮层容器，
+   若只在 [data-mining-shell] 上定义，弹窗内取不到变量。 */
+:root {
+  /* 表面 */
+  --m-surface: #ffffff;
+  --m-surface-warm: #fffaf0;
+  --m-surface-tint: rgba(255, 250, 240, 0.55);
+  --m-surface-sunken: #f7f4ec;
+
+  /* 描边 */
+  --m-border: rgba(31, 41, 51, 0.12);
+  --m-border-strong: rgba(31, 41, 51, 0.2);
+  --m-border-brand: rgba(15, 118, 110, 0.28);
+
+  /* 文本（三级） */
+  --m-text: #1f2933;
+  --m-text-2: #52606d;
+  --m-text-3: #7b8794;
+
+  /* 品牌 */
+  --m-brand: #0f766e;
+  --m-brand-hover: #14857c;
+  --m-brand-soft: rgba(15, 118, 110, 0.1);
+  --m-brand-softer: rgba(15, 118, 110, 0.06);
+
+  /* 状态（成功/提示/警告/危险） */
+  --m-success: #15803d;
+  --m-success-soft: rgba(21, 128, 61, 0.1);
+  --m-info: #1d6fd8;
+  --m-info-soft: rgba(29, 111, 216, 0.1);
+  --m-warn: #b45309;
+  --m-warn-soft: rgba(180, 83, 9, 0.11);
+  --m-danger: #b42318;
+  --m-danger-soft: rgba(180, 35, 24, 0.09);
+
+  /* 质量分级色阶（S 最优 → D 最低；D 级在文案中固定为红色标签） */
+  --m-grade-s: #0b6b63;
+  --m-grade-a: #1d6fd8;
+  --m-grade-b: #b45309;
+  --m-grade-c: #c2410c;
+  --m-grade-d: #b42318;
+
+  /* 间距 */
+  --m-s1: 4px;
+  --m-s2: 6px;
+  --m-s3: 8px;
+  --m-s4: 12px;
+  --m-s5: 16px;
+  --m-s6: 20px;
+  --m-s7: 28px;
+
+  /* 圆角 */
+  --m-r-sm: 6px;
+  --m-r: 10px;
+  --m-r-lg: 14px;
+  --m-r-pill: 999px;
+
+  /* 字号阶梯 */
+  --m-fs-xs: 11px;
+  --m-fs-sm: 12px;
+  --m-fs: 13px;
+  --m-fs-md: 14px;
+  --m-fs-lg: 16px;
+  --m-fs-xl: 20px;
+  --m-fs-2xl: 26px;
+
+  /* 阴影 */
+  --m-shadow-1: 0 1px 2px rgba(31, 41, 51, 0.06);
+  --m-shadow-2: 0 4px 14px rgba(31, 41, 51, 0.08);
+  --m-shadow-3: 0 14px 44px rgba(31, 41, 51, 0.2);
+
+  /* 字体 */
+  --m-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+/* 兼容 workbench.css 中未定义但历史样式引用的变量 */
+:root {
+  --bg-soft: var(--m-surface-sunken);
+  --mono: var(--m-mono);
+}
+
+.mining-wizard-body,
+.mining-pool-step,
+.mining-time-target-step,
+.mining-field-step,
+.mining-evo-step,
+.mining-run-track,
+.mining-result-page,
+.mining-pool-filter,
+.mining-pool-import,
+.mining-exp-page {
+  display: grid;
+  gap: var(--m-s5);
+  min-width: 0;
+}
+
+/* ── 2. 通用原语 ───────────────────────────────────────────── */
+
+/* 卡片：模块内所有区块的统一容器 */
+.mining-card {
+  display: grid;
+  gap: var(--m-s4);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+  min-width: 0;
+}
+
+.mining-card--tint {
+  background: var(--m-surface-tint);
+  box-shadow: none;
+}
+
+.mining-card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.mining-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-s4);
+  flex-wrap: wrap;
+}
+
+.mining-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s3);
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-card-title::before {
+  content: "";
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--m-brand);
+}
+
+.mining-card-title--plain::before {
+  display: none;
+}
+
+.mining-card-sub {
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-3);
+}
+
+.mining-hint {
+  margin: 0;
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-3);
+  line-height: 1.6;
+}
+
+.mining-empty {
+  margin: 0;
+  padding: var(--m-s7) var(--m-s5);
+  border: 1px dashed var(--m-border-strong);
+  border-radius: var(--m-r);
+  background: var(--m-surface-tint);
+  color: var(--m-text-3);
+  text-align: center;
+  font-size: var(--m-fs);
+}
+
+.mining-divider {
+  height: 1px;
+  border: 0;
+  margin: 0;
+  background: var(--m-border);
+}
+
+.mining-placeholder {
+  margin: 0;
+  padding: var(--m-s7) var(--m-s5);
+  border: 1px dashed var(--m-border-strong);
+  border-radius: var(--m-r);
+  background: var(--m-surface-tint);
+  color: var(--m-text-3);
+  text-align: center;
+  font-size: var(--m-fs);
+}
+
+/* 键值对（看板/血缘等只读信息块） */
+.mining-kv {
+  display: grid;
+  grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);
+  gap: var(--m-s2) var(--m-s4);
+  font-size: var(--m-fs);
+  align-items: baseline;
+}
+
+.mining-kv > dt {
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-kv > dd {
+  margin: 0;
+  color: var(--m-text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 统计磁贴（概览数字） */
+.mining-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: var(--m-s3);
+}
+
+.mining-tile {
+  display: grid;
+  gap: 2px;
+  padding: var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+}
+
+.mining-tile--brand {
+  border-color: var(--m-border-brand);
+  background: var(--m-brand-softer);
+}
+
+.mining-tile--warn {
+  border-color: rgba(180, 83, 9, 0.32);
+  background: var(--m-warn-soft);
+}
+
+.mining-tile--danger {
+  border-color: rgba(180, 35, 24, 0.3);
+  background: var(--m-danger-soft);
+}
+
+.mining-tile-label {
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-3);
+  letter-spacing: 0.02em;
+}
+
+.mining-tile-value {
+  font-size: var(--m-fs-xl);
+  font-weight: 700;
+  color: var(--m-text);
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-tile-value--sm {
+  font-size: var(--m-fs-md);
+}
+
+.mining-tile-note {
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-3);
+}
+
+/* 进度条（覆盖率 / 资源占用 / 比例） */
+.mining-meter {
+  position: relative;
+  height: 8px;
+  border-radius: var(--m-r-pill);
+  background: rgba(31, 41, 51, 0.08);
+  overflow: hidden;
+}
+
+.mining-meter--sm {
+  height: 6px;
+}
+
+.mining-meter-fill {
+  height: 100%;
+  border-radius: var(--m-r-pill);
+  background: var(--m-brand);
+  transition: width 0.3s ease;
+}
+
+.mining-meter-fill--info {
+  background: var(--m-info);
+}
+
+.mining-meter-fill--warn {
+  background: var(--m-warn);
+}
+
+.mining-meter-fill--danger {
+  background: var(--m-danger);
+}
+
+.mining-meter-fill--success {
+  background: var(--m-success);
+}
+
+/* 横幅（提示 / 引导 / 告警 / 阻断） */
+.mining-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--m-s3);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-left-width: 3px;
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs);
+  line-height: 1.6;
+}
+
+.mining-banner-body {
+  display: grid;
+  gap: var(--m-s2);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mining-banner-title {
+  font-weight: 700;
+}
+
+.mining-banner-actions {
+  display: flex;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+  margin-top: var(--m-s1);
+}
+
+.mining-banner--info {
+  border-color: rgba(29, 111, 216, 0.3);
+  border-left-color: var(--m-info);
+  background: var(--m-info-soft);
+  color: #14539f;
+}
+
+.mining-banner--warn {
+  border-color: rgba(180, 83, 9, 0.32);
+  border-left-color: var(--m-warn);
+  background: var(--m-warn-soft);
+  color: #8a3f07;
+}
+
+.mining-banner--danger {
+  border-color: rgba(180, 35, 24, 0.3);
+  border-left-color: var(--m-danger);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+}
+
+.mining-banner--success {
+  border-color: rgba(21, 128, 61, 0.28);
+  border-left-color: var(--m-success);
+  background: var(--m-success-soft);
+  color: #12652f;
+}
+
+.mining-banner--muted {
+  border-left-color: var(--m-border-strong);
+  background: var(--m-surface-sunken);
+  color: var(--m-text-2);
+}
+
+/* 按钮 */
+.mining-btn,
+.mining-pool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--m-s2);
+  min-height: 34px;
+  padding: 0 var(--m-s5);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.mining-btn:hover:not(:disabled),
+.mining-pool-btn:hover:not(:disabled) {
+  border-color: var(--m-brand);
+  color: var(--m-brand);
+}
+
+.mining-btn--primary,
+.mining-pool-btn.primary {
+  border-color: var(--m-brand);
+  background: var(--m-brand);
+  color: #fff;
+}
+
+.mining-btn--primary:hover:not(:disabled),
+.mining-pool-btn.primary:hover:not(:disabled) {
+  background: var(--m-brand-hover);
+  color: #fff;
+}
+
+.mining-btn--danger {
+  border-color: rgba(180, 35, 24, 0.4);
+  color: var(--m-danger);
+}
+
+.mining-btn--danger:hover:not(:disabled) {
+  border-color: var(--m-danger);
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+}
+
+.mining-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--m-text-2);
+  font-weight: 500;
+}
+
+.mining-btn--ghost:hover:not(:disabled) {
+  background: var(--m-brand-softer);
+  color: var(--m-brand);
+}
+
+.mining-btn--sm {
+  min-height: 28px;
+  padding: 0 var(--m-s3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-btn:disabled,
+.mining-pool-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+/* 状态/标签 chip */
+.mining-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s1);
+  padding: 1px var(--m-s3);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-pill);
+  background: var(--m-surface);
+  color: var(--m-text-2);
+  font-size: var(--m-fs-xs);
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.mining-chip--brand {
+  border-color: var(--m-border-brand);
+  background: var(--m-brand-soft);
+  color: var(--m-brand);
+}
+
+.mining-chip--info {
+  border-color: rgba(29, 111, 216, 0.3);
+  background: var(--m-info-soft);
+  color: var(--m-info);
+}
+
+.mining-chip--warn {
+  border-color: rgba(180, 83, 9, 0.32);
+  background: var(--m-warn-soft);
+  color: var(--m-warn);
+}
+
+.mining-chip--danger {
+  border-color: rgba(180, 35, 24, 0.3);
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+}
+
+.mining-chip--success {
+  border-color: rgba(21, 128, 61, 0.28);
+  background: var(--m-success-soft);
+  color: var(--m-success);
+}
+
+.mining-chip--muted {
+  background: var(--m-surface-sunken);
+  color: var(--m-text-3);
+}
+
+/* 表格（候选成员 / 批次 / 结果 / 经验 / 模板 / 镜像 共用） */
+.mining-table-wrap,
+.mining-pool-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+}
+
+.mining-pool-table,
+.mining-runs-table,
+.mining-result-table,
+.mining-exp-table,
+.mining-run-top-table,
+.mining-perf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--m-fs);
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-pool-table th,
+.mining-pool-table td,
+.mining-runs-table th,
+.mining-runs-table td,
+.mining-result-table th,
+.mining-result-table td,
+.mining-exp-table th,
+.mining-exp-table td {
+  padding: var(--m-s3) var(--m-s4);
+  border-bottom: 1px solid var(--m-border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.mining-pool-table thead th,
+.mining-runs-table thead th,
+.mining-result-table thead th,
+.mining-exp-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--m-surface-sunken);
+  color: var(--m-text-2);
+  font-size: var(--m-fs-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mining-pool-table tbody tr:hover,
+.mining-runs-table tbody tr:hover,
+.mining-result-table tbody tr:hover,
+.mining-exp-table tbody tr:hover {
+  background: var(--m-brand-softer);
+}
+
+.mining-pool-table tbody tr:last-child td,
+.mining-runs-table tbody tr:last-child td,
+.mining-result-table tbody tr:last-child td,
+.mining-exp-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mining-cell-idx {
+  width: 48px;
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-cell-formula {
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+.mining-cell-muted {
+  color: var(--m-text-3);
+}
+
+.mining-table-empty td {
+  padding: var(--m-s7) var(--m-s5);
+  text-align: center;
+  color: var(--m-text-3);
+}
+
+/* 图标按钮（关闭/展开） */
+.mining-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--m-r-sm);
+  background: transparent;
+  color: var(--m-text-3);
+  font-size: var(--m-fs-lg);
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mining-icon-btn:hover {
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+}
+
+/* 图表容器 */
+.mining-chart {
+  width: 100%;
+  min-width: 0;
+}
+
+.mining-chart-empty,
+.mining-chart-skeleton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+/* 分段控件（简单/高级、按比例/自定义、入口互斥） */
+.mining-segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-sunken);
+  gap: 2px;
+}
+
+.mining-segmented > button {
+  min-height: 28px;
+  padding: 0 var(--m-s4);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--m-text-2);
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mining-segmented > button:hover:not(:disabled) {
+  color: var(--m-brand);
+}
+
+.mining-segmented > button.on {
+  background: var(--m-surface);
+  color: var(--m-brand);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-segmented > button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── 3. 外壳、子页签、步骤条 ───────────────────────────────── */
+
+.mining-shell {
+  display: grid;
+  gap: var(--m-s5);
+  min-width: 0;
+}
+
+/* 子页签（向导 / 批次列表 / 经验库 / 模板配置）—— 下划线式 */
+.mining-shell .sub-tabs {
+  display: flex;
+  gap: var(--m-s2);
+  border-bottom: 1px solid var(--m-border);
+  flex-wrap: wrap;
+}
+
+.mining-shell .sub-tab,
+.mining-pool-tabs .sub-tab,
+.mining-evo-mode .sub-tab,
+.mining-split-head .sub-tab {
+  position: relative;
+  min-height: 34px;
+  padding: 0 var(--m-s4);
+  border: 0;
+  border-radius: var(--m-r-sm) var(--m-r-sm) 0 0;
+  background: transparent;
+  color: var(--m-text-2);
+  font-size: var(--m-fs-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.mining-shell .sub-tab:hover:not(:disabled),
+.mining-pool-tabs .sub-tab:hover:not(:disabled),
+.mining-evo-mode .sub-tab:hover:not(:disabled),
+.mining-split-head .sub-tab:hover:not(:disabled) {
+  background: var(--m-brand-softer);
+  color: var(--m-brand);
+}
+
+.mining-shell .sub-tab.active,
+.mining-pool-tabs .sub-tab.active,
+.mining-evo-mode .sub-tab.active,
+.mining-split-head .sub-tab.active {
+  color: var(--m-brand);
+}
+
+.mining-shell .sub-tab.active::after,
+.mining-pool-tabs .sub-tab.active::after {
+  content: "";
+  position: absolute;
+  left: var(--m-s3);
+  right: var(--m-s3);
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--m-brand);
+}
+
+.mining-shell .sub-tab:disabled,
+.mining-pool-tabs .sub-tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mining-shell .sub-tab-container {
+  display: grid;
+  gap: var(--m-s5);
+  min-width: 0;
+}
+
+.mining-shell .sub-tab-container[hidden] {
+  display: none;
+}
+
+/* 步骤条：已完成 / 当前 / 阻断 / 未到 四态 + 连接线 */
+.mining-step-bar {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+  padding: var(--m-s4) var(--m-s5);
+  list-style: none;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+  overflow-x: auto;
+}
+
+.mining-step {
+  position: relative;
+  min-width: 0;
+  display: flex;
+}
+
+/* 连接线：从上一个步骤的圆点连到本步骤 */
+.mining-step + .mining-step::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  right: 50%;
+  left: -50%;
+  height: 2px;
+  margin: 0 20px;
+  background: var(--m-border);
+  z-index: 0;
+}
+
+.mining-step.done + .mining-step::before {
+  background: var(--m-brand);
+  opacity: 0.45;
+}
+
+.mining-step-btn {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: var(--m-s3);
+  row-gap: 2px;
+  width: 100%;
+  padding: var(--m-s2) var(--m-s4);
+  border: 1px solid transparent;
+  border-radius: var(--m-r-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.mining-step-btn:hover {
+  background: var(--m-brand-softer);
+}
+
+.mining-step-index {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--m-border-strong);
+  border-radius: 50%;
+  background: var(--m-surface);
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+  font-weight: 700;
+}
+
+.mining-step-label {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--m-text-2);
+  font-size: var(--m-fs);
+  font-weight: 600;
+}
+
+.mining-step-state {
+  grid-column: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--m-text-3);
+  font-size: var(--m-fs-xs);
+  font-weight: 500;
+}
+
+/* 已完成 */
+.mining-step.done .mining-step-index {
+  border-color: var(--m-brand);
+  background: var(--m-brand);
+  color: #fff;
+}
+
+.mining-step.done .mining-step-label {
+  color: var(--m-text);
+}
+
+.mining-step.done .mining-step-state {
+  color: var(--m-brand);
+}
+
+/* 当前（含进度条） */
+.mining-step.current .mining-step-btn {
+  border-color: var(--m-border-brand);
+  background: var(--m-brand-soft);
+}
+
+.mining-step.current .mining-step-index {
+  border-color: var(--m-brand);
+  background: var(--m-brand);
+  color: #fff;
+}
+
+.mining-step.current .mining-step-label {
+  color: var(--m-brand);
+}
+
+.mining-step.current .mining-step-state {
+  color: var(--m-brand);
+}
+
+.mining-step-progress {
+  grid-column: 2;
+  height: 3px;
+  margin-top: 2px;
+  border-radius: 2px;
+  background: rgba(15, 118, 110, 0.18);
+  overflow: hidden;
+}
+
+.mining-step-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--m-brand);
+}
+
+/* 阻断 */
+.mining-step.blocked .mining-step-btn {
+  border-color: rgba(180, 35, 24, 0.32);
+  background: var(--m-danger-soft);
+}
+
+.mining-step.blocked .mining-step-index {
+  border-color: var(--m-danger);
+  background: var(--m-danger);
+  color: #fff;
+}
+
+.mining-step.blocked .mining-step-label,
+.mining-step.blocked .mining-step-state {
+  color: var(--m-danger);
+}
+
+/* 未到 */
+.mining-step.todo .mining-step-index {
+  border-color: var(--m-border);
+  background: var(--m-surface-sunken);
+  color: var(--m-text-3);
+}
+
+/* 向导底部导航 */
+.mining-wizard-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--m-s3);
+  /* 与卡片内动作区分：作为整页底部导航，上分隔线 + 留白 */
+  margin-top: var(--m-s4);
+  padding-top: var(--m-s4);
+  border-top: 1px solid var(--m-border);
+}
+
+.mining-wizard-nav > button {
+  min-width: 104px;
+  min-height: 38px;
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.mining-wizard-nav > button:hover:not(:disabled) {
+  border-color: var(--m-brand);
+  color: var(--m-brand);
+}
+
+/* 最后一个按钮（下一步）作为主操作 */
+.mining-wizard-nav > button:last-child:not(:disabled) {
+  border-color: var(--m-brand);
+  background: var(--m-brand);
+  color: #fff;
+}
+
+.mining-wizard-nav > button:last-child:hover:not(:disabled) {
+  background: var(--m-brand-hover);
+  color: #fff;
+}
+
+.mining-wizard-nav > button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 提交提示区 */
+.mining-submit-msg {
+  display: grid;
+  gap: var(--m-s2);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-left: 3px solid var(--m-info);
+  border-radius: var(--m-r);
+  background: var(--m-info-soft);
+  font-size: var(--m-fs);
+}
+
+.mining-submit-msg > p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+}
+
+.mining-submit-pending {
+  color: var(--m-info);
+}
+
+.mining-submit-error {
+  color: var(--m-danger);
+  font-weight: 600;
+}
+
+.mining-submit-dismiss {
+  padding: 0 var(--m-s3);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text-2);
+  font-size: var(--m-fs-sm);
+  line-height: 22px;
+  cursor: pointer;
+}
+
+/* ── 4. antd 控件覆写（仅限挖掘作用域） ─────────────────────── */
+
+.mining-pool-filter .ant-collapse,
+.mining-pool-filter .ant-tabs,
+.mining-evo-step .ant-collapse {
+  font-size: var(--m-fs);
+}
+
+/* 数值输入：统一高度与内边距，消除「最小值~最大值」散件感 */
+.mining-pool-filter .ant-input-number,
+.mining-evo-step .ant-input-number,
+.mining-time-target-step .ant-input-number,
+.mining-split-panel .ant-input-number,
+.mining-field-step .ant-input-number {
+  min-height: 32px;
+  border-color: var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+}
+
+.mining-pool-filter .ant-input-number-input,
+.mining-evo-step .ant-input-number-input,
+.mining-time-target-step .ant-input-number-input,
+.mining-split-panel .ant-input-number-input {
+  height: 30px;
+  font-size: var(--m-fs);
+}
+
+.mining-pool-filter .ant-select-selector,
+.mining-time-target-step .ant-select-selector,
+.mining-evo-step .ant-select-selector,
+.mining-split-panel .ant-select-selector {
+  border-color: var(--m-border-strong) !important;
+  border-radius: var(--m-r-sm) !important;
+  font-size: var(--m-fs);
+}
+
+.mining-time-target-step .ant-picker,
+.mining-split-panel .ant-picker {
+  border-color: var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+}
+
+.mining-time-target-step .ant-picker input,
+.mining-split-panel .ant-picker input {
+  font-size: var(--m-fs);
+}
+
+.mining-evo-step .ant-slider {
+  margin: var(--m-s2) 0 var(--m-s5);
+}
+
+.mining-evo-step .ant-slider-mark-text {
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-3);
+  white-space: nowrap;
+}
+
+.mining-field-step .ant-checkbox-wrapper {
+  font-size: var(--m-fs);
+}
+
+.mining-run-track .ant-progress-inner,
+.mining-field-validation .ant-progress-inner {
+  background: rgba(31, 41, 51, 0.08);
+}
+
+/* ── 5. Step1 候选池 ──────────────────────────────────────── */
+
+.mining-pool-tabs {
+  display: flex;
+  gap: var(--m-s2);
+  border-bottom: 1px solid var(--m-border);
+}
+
+/* 锁定提示条（黄色） */
+.mining-pool-lock-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid rgba(180, 83, 9, 0.34);
+  border-left: 3px solid var(--m-warn);
+  border-radius: var(--m-r);
+  background: var(--m-warn-soft);
+  color: #8a3f07;
+  font-size: var(--m-fs);
+  font-weight: 600;
+}
+
+/* ── 条件筛选：左常用区间 + 右分类条件 双栏 ── */
+.mining-pool-filter {
+  display: grid;
+  gap: var(--m-s5);
+}
+
+.mining-pool-filter-layout {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: var(--m-s5);
+  align-items: start;
+  min-width: 0;
+}
+
+.mining-pool-filter-left {
+  display: grid;
+  gap: var(--m-s3);
+  padding: var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface-tint);
+  min-width: 0;
+}
+
+.mining-filter-left-title {
+  font-size: var(--m-fs-sm);
+  font-weight: 700;
+  color: var(--m-text-2);
+  letter-spacing: 0.02em;
+}
+
+/* 左栏 antd Tabs：改为「分组 chip 行 + 预设按钮网格」的纵向堆叠
+   （antd tabPosition="left" 默认 nav 与 content 并排，在窄栏里会挤成一团） */
+.mining-pool-filter-left .ant-tabs-left {
+  flex-direction: column;
+}
+
+.mining-pool-filter-left .ant-tabs-left > .ant-tabs-nav {
+  width: 100%;
+  margin: 0 0 var(--m-s3) 0;
+}
+
+.mining-pool-filter-left .ant-tabs-left > .ant-tabs-nav .ant-tabs-nav-wrap {
+  overflow: visible;
+}
+
+.mining-pool-filter-left .ant-tabs-left > .ant-tabs-nav .ant-tabs-nav-list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--m-s1);
+}
+
+.mining-pool-filter-left .ant-tabs-left > .ant-tabs-nav::before {
+  display: none;
+}
+
+.mining-pool-filter-left .ant-tabs-tab {
+  margin: 0 !important;
+  padding: var(--m-s2) var(--m-s3) !important;
+  border: 1px solid transparent;
+  border-radius: var(--m-r-sm);
+  font-size: var(--m-fs-sm);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.mining-pool-filter-left .ant-tabs-tab:hover {
+  background: var(--m-brand-softer);
+}
+
+.mining-pool-filter-left .ant-tabs-tab-active {
+  border-color: var(--m-border-brand);
+  background: var(--m-brand-soft);
+}
+
+.mining-pool-filter-left .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--m-brand) !important;
+  font-weight: 700;
+}
+
+.mining-pool-filter-left .ant-tabs-ink-bar {
+  display: none;
+}
+
+.mining-pool-filter-left .ant-tabs-content-holder {
+  width: 100%;
+}
+
+.mining-filter-preset-list .ant-btn {
+  width: 100%;
+  min-height: 32px;
+  border-radius: var(--m-r-sm);
+  font-size: var(--m-fs-sm);
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.mining-filter-preset-list .ant-tag {
+  margin: 0;
+  transform: scale(0.92);
+}
+
+.mining-filter-preset-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--m-s2);
+}
+
+.mining-filter-empty {
+  margin: 0;
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+/* 右栏：分类 Accordion */
+.mining-pool-filter-right {
+  display: grid;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  overflow: hidden;
+}
+
+.mining-pool-filter-right .ant-collapse {
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.mining-pool-filter-right .ant-collapse-item {
+  border-bottom: 1px solid var(--m-border);
+}
+
+.mining-pool-filter-right .ant-collapse-item:last-child {
+  border-bottom: 0;
+}
+
+.mining-pool-filter-right .ant-collapse-header {
+  align-items: center !important;
+  padding: var(--m-s4) var(--m-s5) !important;
+  background: var(--m-surface);
+  transition: background 0.15s ease;
+}
+
+.mining-pool-filter-right .ant-collapse-header:hover {
+  background: var(--m-brand-softer);
+}
+
+.mining-pool-filter-right .ant-collapse-item-active > .ant-collapse-header {
+  background: var(--m-surface-sunken);
+}
+
+.mining-pool-filter-right .ant-collapse-header-text {
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-pool-filter-right .ant-collapse-content-box {
+  padding: var(--m-s4) var(--m-s5) var(--m-s5) !important;
+  background: var(--m-surface);
+}
+
+.mining-filter-cat-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s3);
+  min-width: 0;
+  width: 100%;
+}
+
+.mining-filter-cat-head > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mining-filter-cat-head .ant-btn-link {
+  margin-left: auto;
+  padding: 0 var(--m-s2);
+  height: 24px;
+  font-size: var(--m-fs-sm);
+  font-weight: 500;
+  color: var(--m-text-3);
+}
+
+.mining-filter-cat-head .ant-btn-link:hover:not(:disabled) {
+  color: var(--m-danger);
+}
+
+.mining-filter-cat-head .ant-badge-count {
+  box-shadow: none;
+}
+
+/* 条件行：标签 + 范围输入 + 缺失处理 + 单位 */
+.mining-filter-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 168px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--m-s2) var(--m-s4);
+  padding: var(--m-s3) var(--m-s2);
+  border-radius: var(--m-r-sm);
+  border-bottom: 1px dashed rgba(31, 41, 51, 0.07);
+}
+
+.mining-filter-row:last-child {
+  border-bottom: 0;
+}
+
+.mining-filter-row:hover:not(.is-disabled) {
+  background: var(--m-brand-softer);
+}
+
+.mining-filter-row.is-disabled {
+  opacity: 0.72;
+}
+
+.mining-filter-row-label {
+  font-size: var(--m-fs);
+  color: var(--m-text);
+  font-weight: 500;
+}
+
+.mining-filter-range-inputs {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.mining-filter-range-inputs .ant-input-number {
+  width: 132px;
+}
+
+.mining-filter-sep {
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-filter-blocked-hint {
+  grid-column: 1 / -1;
+  color: var(--m-danger);
+  font-size: var(--m-fs-sm);
+  line-height: 1.5;
+}
+
+/* 市场/板块多选分组 */
+.mining-filter-row .ant-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s2) var(--m-s5);
+}
+
+.mining-filter-row .ant-checkbox-wrapper + .ant-checkbox-wrapper {
+  margin-inline-start: 0;
+}
+
+/* ── 底部实时统计条（命中 / 排除 / 逐规则 / 提示） ── */
+.mining-pool-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: var(--m-s3);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-pool-preview-item {
+  display: grid;
+  gap: 2px;
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+}
+
+.mining-pool-preview-item--hit {
+  border-color: var(--m-border-brand);
+  background: var(--m-brand-soft);
+}
+
+.mining-pool-preview-item--excluded {
+  border-color: rgba(180, 83, 9, 0.28);
+  background: var(--m-warn-soft);
+}
+
+.mining-pool-preview-label {
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-3);
+}
+
+.mining-pool-preview-value {
+  font-size: var(--m-fs-lg);
+  font-weight: 700;
+  color: var(--m-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-pool-preview-value--hit {
+  color: var(--m-brand);
+}
+
+.mining-pool-preview-value--excluded {
+  color: var(--m-warn);
+}
+
+.mining-pool-preview-value--sm {
+  font-size: var(--m-fs-md);
+  font-weight: 600;
+}
+
+.mining-pool-preview-note {
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-3);
+}
+
+/* 统计条内的逐规则明细（跨整行） */
+.mining-pool-preview-detail {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--m-s2);
+  padding-top: var(--m-s2);
+  border-top: 1px dashed var(--m-border);
+}
+
+.mining-pool-preview-detail-title {
+  font-size: var(--m-fs-sm);
+  font-weight: 700;
+  color: var(--m-text-2);
+}
+
+.mining-pool-preview-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s2);
+}
+
+.mining-pool-preview-rule {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s2);
+  padding: 2px var(--m-s3);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-pill);
+  background: var(--m-surface);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+}
+
+.mining-pool-preview-rule-num {
+  font-weight: 700;
+  color: var(--m-warn);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 阻断 / 硬门禁 */
+.mining-pool-blocked,
+.mining-time-floor,
+.mining-split-floor-fail,
+.mining-field-blocked {
+  display: grid;
+  gap: var(--m-s2);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid rgba(180, 35, 24, 0.3);
+  border-left: 3px solid var(--m-danger);
+  border-radius: var(--m-r);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+  font-size: var(--m-fs);
+  line-height: 1.6;
+}
+
+.mining-time-floor {
+  border-color: rgba(180, 83, 9, 0.32);
+  border-left-color: var(--m-warn);
+  background: var(--m-warn-soft);
+  color: #8a3f07;
+  display: flex;
+  align-items: center;
+  gap: var(--m-s4);
+  flex-wrap: wrap;
+}
+
+.mining-time-floor .mining-chip {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.mining-pool-actions,
+.mining-evo-actions,
+.mining-run-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+}
+
+.mining-pool-actions .mining-pool-btn[data-pool-bulk-delete] {
+  margin-right: auto;
+}
+
+/* 动作栏层次：破坏性操作靠左、主操作与其余按钮拉开间距（避免四个按钮等距平铺） */
+.mining-pool-actions,
+.mining-evo-actions,
+.mining-run-actions {
+  margin-top: var(--m-s3);
+}
+
+.mining-pool-actions > .mining-pool-btn[data-pool-bulk-delete] {
+  margin-right: auto;
+}
+
+.mining-pool-actions > .mining-pool-btn.primary,
+.mining-evo-actions > .mining-pool-btn.primary,
+.mining-run-actions > .mining-pool-btn.primary {
+  margin-left: var(--m-s4);
+}
+
+/* 破坏性操作（批量删除 / 放弃）红描边，不再与普通操作同款 */
+.mining-pool-btn.danger {
+  border-color: rgba(180, 35, 24, 0.4);
+  color: var(--m-danger);
+}
+
+.mining-pool-btn.danger:hover:not(:disabled) {
+  border-color: var(--m-danger);
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+}
+
+/* 次要操作弱化（如「保存草稿」），让主操作成为唯一视觉重心 */
+.mining-pool-btn.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--m-text-2);
+  font-weight: 500;
+}
+
+.mining-pool-btn.ghost:hover:not(:disabled) {
+  background: var(--m-brand-softer);
+  color: var(--m-brand);
+}
+
+/* 表格内的行操作按钮：紧凑尺寸（不与底部动作栏抢视觉） */
+.mining-runs-table .mining-pool-btn,
+.mining-exp-table .mining-pool-btn {
+  min-height: 28px;
+  padding: 0 var(--m-s3);
+  font-size: var(--m-fs-sm);
+}
+
+/* 确认块（保持既有类名） */
+.mining-pool-confirm,
+.mining-run-confirm,
+.mining-result-confirm {
+  display: grid;
+  gap: var(--m-s3);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-2);
+  font-size: var(--m-fs);
+}
+
+.mining-run-confirm > div,
+.mining-result-confirm > div {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+}
+
+.mining-run-confirm button,
+.mining-result-confirm button {
+  min-height: 30px;
+  padding: 0 var(--m-s4);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs);
+  cursor: pointer;
+}
+
+.mining-run-confirm button[data-run-stop-ok],
+.mining-run-confirm button[data-run-discard-ok],
+.mining-result-confirm button[data-result-dgrade-ok] {
+  border-color: var(--m-brand);
+  background: var(--m-brand);
+  color: #fff;
+}
+
+/* ── 导入股票池 ── */
+.mining-pool-import {
+  display: grid;
+  gap: var(--m-s4);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-pool-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s3);
+  align-items: center;
+}
+
+.mining-pool-file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s2);
+  min-height: 34px;
+  padding: 0 var(--m-s4);
+  border: 1px dashed var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+  color: var(--m-text-2);
+  cursor: pointer;
+  font-size: var(--m-fs);
+  font-weight: 600;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.mining-pool-file:hover {
+  border-color: var(--m-brand);
+  color: var(--m-brand);
+}
+
+.mining-pool-file input[type="file"] {
+  display: none;
+}
+
+.mining-pool-import-busy,
+.mining-pool-import-error {
+  margin: 0;
+  font-size: var(--m-fs);
+}
+
+.mining-pool-import-busy {
+  color: var(--m-info);
+}
+
+.mining-pool-import-error {
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid rgba(180, 35, 24, 0.3);
+  border-radius: var(--m-r-sm);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+}
+
+.mining-pool-import-result {
+  display: grid;
+  gap: var(--m-s4);
+}
+
+.mining-pool-import-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: var(--m-s2);
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-pool-import-stats > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--m-s2);
+  color: var(--m-text-2);
+}
+
+.mining-pool-import-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--m-fs-sm);
+}
+
+.mining-pool-import-table th,
+.mining-pool-import-table td {
+  padding: var(--m-s2) var(--m-s3);
+  border-bottom: 1px solid var(--m-border);
+  text-align: left;
+}
+
+.mining-pool-import-table thead th {
+  background: var(--m-surface-sunken);
+  color: var(--m-text-2);
+  font-weight: 700;
+}
+
+.mining-pool-import-ops {
+  display: flex;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ── 看板弹窗 ── */
+.mining-pool-modal-mask,
+.mining-resource-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--m-s7) var(--m-s5);
+  background: rgba(31, 41, 51, 0.45);
+  overflow-y: auto;
+  backdrop-filter: blur(1.5px);
+}
+
+.mining-pool-modal {
+  width: min(980px, 96vw);
+  border-radius: var(--m-r-lg);
+  background: var(--m-surface-warm);
+  box-shadow: var(--m-shadow-3);
+  overflow: hidden;
+}
+
+.mining-pool-modal-head {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s4);
+  flex-wrap: wrap;
+  padding: var(--m-s5) var(--m-s6);
+  border-bottom: 1px solid var(--m-border);
+  background: var(--m-surface);
+}
+
+.mining-pool-modal-head h3 {
+  margin: 0;
+  font-size: var(--m-fs-lg);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-pool-modal-meta {
+  display: flex;
+  gap: var(--m-s4);
+  flex-wrap: wrap;
+  margin-left: auto;
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-pool-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: var(--m-r-sm);
+  background: transparent;
+  color: var(--m-text-3);
+  font-size: var(--m-fs-xl);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mining-pool-modal-close:hover {
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+}
+
+.mining-pool-board-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: var(--m-s3);
+  padding: var(--m-s5) var(--m-s6);
+}
+
+.mining-pool-board-card {
+  display: grid;
+  gap: var(--m-s1);
+  padding: var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-pool-board-card-label {
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-3);
+}
+
+.mining-pool-board-card-value {
+  font-size: var(--m-fs-xl);
+  font-weight: 700;
+  color: var(--m-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 图表区：2×2 */
+.mining-pool-board-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--m-s4);
+  padding: 0 var(--m-s6) var(--m-s4);
+}
+
+.mining-pool-board-chart {
+  display: grid;
+  gap: var(--m-s3);
+  padding: var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  min-width: 0;
+}
+
+.mining-pool-board-chart h4 {
+  margin: 0;
+  font-size: var(--m-fs);
+  font-weight: 700;
+  color: var(--m-text);
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+}
+
+/* 市场环境：键值行 */
+.mining-pool-board-env {
+  display: grid;
+  gap: var(--m-s2);
+}
+
+.mining-pool-board-env-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-s3);
+  padding: var(--m-s2) var(--m-s3);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+  font-size: var(--m-fs);
+}
+
+.mining-pool-board-env-row > span:first-child {
+  color: var(--m-text-3);
+}
+
+.mining-pool-board-env-row > span:last-child {
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+/* 因子类型建议星级 */
+.mining-pool-board-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s2);
+}
+
+.mining-pool-board-suggest-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s2);
+  padding: 2px var(--m-s3);
+  border: 1px solid var(--m-border-brand);
+  border-radius: var(--m-r-pill);
+  background: var(--m-brand-soft);
+  color: var(--m-brand);
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+}
+
+.mining-pool-board-stars {
+  letter-spacing: 1px;
+  color: var(--m-brand);
+}
+
+/* 数据质量：覆盖率进度条 */
+.mining-pool-board-quality {
+  display: grid;
+  gap: var(--m-s3);
+  padding: 0 var(--m-s6) var(--m-s5);
+}
+
+.mining-pool-board-quality h4 {
+  margin: 0;
+  font-size: var(--m-fs);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-pool-board-cov {
+  display: grid;
+  gap: var(--m-s2);
+}
+
+.mining-pool-board-cov-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 140px) minmax(0, 1fr) 56px;
+  align-items: center;
+  gap: var(--m-s3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-pool-board-cov-code {
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mining-pool-board-cov-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--m-text-2);
+}
+
+.mining-pool-board-cov-pct.is-low {
+  color: var(--m-danger);
+}
+
+/* 低质量字段的明细（原 JSON 兜底） */
+.mining-pool-board-raw {
+  margin: 0;
+  padding: var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-sunken);
+  color: var(--m-text-2);
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-xs);
+  line-height: 1.6;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mining-pool-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--m-s3);
+  padding: var(--m-s4) var(--m-s6);
+  border-top: 1px solid var(--m-border);
+  background: var(--m-surface);
+}
+
+/* ── 6. Step2 时间与目标 ─────────────────────────────────── */
+
+.mining-time-target-step {
+  display: grid;
+  gap: var(--m-s5);
+}
+
+.mining-time-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
+  gap: var(--m-s3);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-time-grid label {
+  display: grid;
+  gap: var(--m-s2);
+  min-width: 0;
+}
+
+.mining-time-grid label > span:first-child {
+  font-size: var(--m-fs-sm);
+  font-weight: 700;
+  color: var(--m-text-2);
+}
+
+.mining-time-grid label > span.mining-time-hint {
+  font-size: var(--m-fs-xs);
+  font-weight: 400;
+  color: var(--m-text-3);
+  line-height: 1.5;
+}
+
+.mining-time-grid .ant-picker,
+.mining-time-grid .ant-select,
+.mining-time-grid .ant-input-number {
+  width: 100%;
+}
+
+/* 镜像引导块（保留既有类名，统一观感） */
+.mining-mirror-guide {
+  display: grid;
+  gap: var(--m-s3);
+}
+
+.mining-mirror-block {
+  border: 1px solid rgba(180, 35, 24, 0.3);
+  border-left-color: var(--m-danger);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+}
+
+.mining-mirror-warn,
+.mining-mirror-low {
+  border: 1px solid rgba(180, 83, 9, 0.32);
+  border-left-color: var(--m-warn);
+  background: var(--m-warn-soft);
+  color: #8a3f07;
+}
+
+.mining-mirror-low {
+  border-color: var(--m-border-strong);
+  border-left-color: var(--m-text-3);
+  background: var(--m-surface-sunken);
+  color: var(--m-text-2);
+}
+
+.mining-mirror-guide-tip {
+  border: 1px solid rgba(29, 111, 216, 0.3);
+  border-left-color: var(--m-info);
+  background: var(--m-info-soft);
+  color: #14539f;
+}
+
+.mining-mirror-block,
+.mining-mirror-warn,
+.mining-mirror-low,
+.mining-mirror-guide-tip {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s4);
+  flex-wrap: wrap;
+  padding: var(--m-s4) var(--m-s5);
+  border-left-width: 3px;
+  border-radius: var(--m-r);
+  font-size: var(--m-fs);
+  line-height: 1.6;
+}
+
+.mining-mirror-block > button,
+.mining-mirror-guide-tip > button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 var(--m-s4);
+  border: 1px solid currentColor;
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: inherit;
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── 三段切分面板 ── */
+.mining-split-panel {
+  display: grid;
+  gap: var(--m-s4);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-split-head {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+}
+
+.mining-split-head > span:first-child {
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+  margin-right: auto;
+}
+
+.mining-split-head .sub-tab {
+  min-height: 28px;
+  padding: 0 var(--m-s3);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-pill);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-split-head .sub-tab.active {
+  border-color: var(--m-border-brand);
+  background: var(--m-brand-soft);
+}
+
+/* 三段比例可视化条 */
+.mining-split-bar {
+  display: flex;
+  height: 34px;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  overflow: hidden;
+  background: var(--m-surface-sunken);
+}
+
+.mining-split-bar-seg {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  padding: 0 var(--m-s3);
+  color: #fff;
+  font-size: var(--m-fs-xs);
+  font-weight: 700;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: flex-basis 0.25s ease;
+}
+
+.mining-split-bar-seg--train {
+  background: var(--m-brand);
+}
+
+.mining-split-bar-seg--val {
+  background: var(--m-info);
+}
+
+.mining-split-bar-seg--test {
+  background: #7c5cbf;
+}
+
+.mining-split-bar-seg--empty {
+  flex: 1 1 100%;
+  background: var(--m-surface-sunken);
+  color: var(--m-text-3);
+  font-weight: 500;
+  justify-content: center;
+}
+
+.mining-split-bar-seg-date {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.mining-split-ratios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s4);
+  align-items: flex-end;
+}
+
+.mining-split-ratios label {
+  display: grid;
+  gap: var(--m-s2);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+  font-weight: 600;
+}
+
+.mining-split-ratios .ant-input-number {
+  width: 104px !important;
+}
+
+.mining-split-sum {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--m-s2);
+  padding: var(--m-s2) var(--m-s3);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+  font-size: var(--m-fs);
+  color: var(--m-text-2);
+  font-weight: 600;
+}
+
+.mining-split-sum.is-invalid {
+  border-color: rgba(180, 35, 24, 0.32);
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+}
+
+.mining-split-error {
+  grid-column: 1 / -1;
+  color: var(--m-danger);
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+}
+
+.mining-split-custom {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--m-s4);
+}
+
+.mining-split-custom label {
+  display: grid;
+  gap: var(--m-s2);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+  font-weight: 600;
+}
+
+.mining-split-nobudget {
+  margin: 0;
+  padding: var(--m-s4);
+  border: 1px dashed var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+  color: var(--m-text-3);
+  font-size: var(--m-fs);
+  text-align: center;
+}
+
+/* 预算统计磁贴：总点数 + 三段 + purge/embargo + 边界 */
+.mining-split-budget {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: var(--m-s3);
+}
+
+.mining-split-budget > div {
+  display: grid;
+  gap: 2px;
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+  line-height: 1.5;
+}
+
+/* 段边界/降级/门槛提示跨整行 */
+.mining-split-budget > div[data-split-boundary],
+.mining-split-budget > .mining-split-degraded,
+.mining-split-budget > .mining-split-floor-fail {
+  grid-column: 1 / -1;
+}
+
+.mining-split-budget > div[data-split-boundary] {
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-2);
+}
+
+.mining-split-degraded {
+  border: 1px solid rgba(29, 111, 216, 0.3);
+  border-left: 3px solid var(--m-info);
+  background: var(--m-info-soft);
+  color: #14539f;
+  border-radius: var(--m-r-sm);
+  padding: var(--m-s3) var(--m-s4);
+  font-size: var(--m-fs);
+}
+
+.mining-split-floor-fail {
+  border: 1px solid rgba(180, 35, 24, 0.3);
+  border-left: 3px solid var(--m-danger);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+  border-radius: var(--m-r-sm);
+  padding: var(--m-s3) var(--m-s4);
+  font-size: var(--m-fs);
+  font-weight: 600;
+}
+
+/* ── 7. Step3 字段与校验 ─────────────────────────────────── */
+
+.mining-field-step {
+  display: grid;
+  gap: var(--m-s4);
+}
+
+.mining-field-head {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+  font-size: var(--m-fs);
+  color: var(--m-text-2);
+}
+
+.mining-field-head > span:first-child {
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-field-head [data-field-selected-count] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 var(--m-s2);
+  border-radius: var(--m-r-pill);
+  background: var(--m-brand-soft);
+  color: var(--m-brand);
+  font-size: var(--m-fs);
+  font-weight: 700;
+}
+
+.mining-field-empty {
+  margin: 0;
+  padding: var(--m-s7) var(--m-s5);
+  border: 1px dashed var(--m-border-strong);
+  border-radius: var(--m-r);
+  background: var(--m-surface-tint);
+  color: var(--m-text-3);
+  text-align: center;
+  font-size: var(--m-fs);
+}
+
+.mining-field-group {
+  display: grid;
+  gap: var(--m-s2);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-field-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  padding-bottom: var(--m-s2);
+  border-bottom: 1px solid var(--m-border);
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+/* 字段行 → 带元数据的字段卡 */
+.mining-field-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.4fr) minmax(0, 2.6fr);
+  align-items: center;
+  gap: var(--m-s3);
+  padding: var(--m-s3) var(--m-s3);
+  border: 1px solid transparent;
+  border-radius: var(--m-r-sm);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.mining-field-row:hover {
+  border-color: var(--m-border);
+  background: var(--m-brand-softer);
+}
+
+.mining-field-row.is-selected {
+  border-color: var(--m-border-brand);
+  background: var(--m-brand-soft);
+}
+
+.mining-field-row.is-blocked {
+  cursor: not-allowed;
+  background: var(--m-surface-sunken);
+}
+
+.mining-field-row.is-blocked:hover {
+  border-color: rgba(180, 35, 24, 0.24);
+  background: var(--m-danger-soft);
+}
+
+.mining-field-row .ant-checkbox-wrapper {
+  min-width: 0;
+  color: var(--m-text);
+  font-weight: 600;
+}
+
+.mining-field-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--m-s2);
+  flex-wrap: wrap;
+}
+
+.mining-field-code {
+  padding: 1px var(--m-s2);
+  border-radius: 4px;
+  background: var(--m-surface-sunken);
+  color: var(--m-text-2);
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-xs);
+}
+
+/* 元数据网格：来源表 / 数据模式 / 最新日期 / 可用区间 / 覆盖率 */
+.mining-field-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s4);
+  flex-wrap: wrap;
+  min-width: 0;
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-3);
+}
+
+.mining-field-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s1);
+  min-width: 0;
+}
+
+.mining-field-meta-item > b {
+  font-weight: 600;
+  color: var(--m-text-2);
+}
+
+.mining-field-meta-item > code {
+  font-family: var(--m-mono);
+  color: var(--m-text-2);
+}
+
+.mining-field-cov {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s2);
+  min-width: 128px;
+}
+
+.mining-field-cov-bar {
+  width: 64px;
+}
+
+.mining-field-cov-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--m-text-2);
+  font-weight: 600;
+}
+
+.mining-field-cov-pct.is-low {
+  color: var(--m-danger);
+}
+
+.mining-field-blocked-tag {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s2);
+  padding: 2px var(--m-s3);
+  border: 1px solid rgba(180, 35, 24, 0.28);
+  border-radius: var(--m-r-sm);
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+  font-size: var(--m-fs-xs);
+  font-weight: 600;
+}
+
+/* 校验面板 */
+.mining-field-validation {
+  display: grid;
+  gap: var(--m-s3);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-field-validation:empty {
+  display: none;
+}
+
+.mining-field-progress {
+  display: grid;
+  gap: var(--m-s2);
+  font-size: var(--m-fs);
+  color: var(--m-text-2);
+}
+
+.mining-field-progress > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s2);
+}
+
+.mining-field-passed {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid rgba(21, 128, 61, 0.28);
+  border-left: 3px solid var(--m-success);
+  border-radius: var(--m-r);
+  background: var(--m-success-soft);
+  color: #12652f;
+  font-size: var(--m-fs);
+  font-weight: 700;
+}
+
+.mining-field-warnings {
+  display: grid;
+  gap: var(--m-s2);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid rgba(180, 83, 9, 0.32);
+  border-left: 3px solid var(--m-warn);
+  border-radius: var(--m-r);
+  background: var(--m-warn-soft);
+  color: #8a3f07;
+  font-size: var(--m-fs);
+}
+
+.mining-field-blocked-head {
+  font-weight: 700;
+  color: #8f1c12;
+}
+
+.mining-field-blocked-item {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) minmax(96px, 1fr) minmax(96px, 1fr) minmax(140px, 1.4fr);
+  gap: var(--m-s2) var(--m-s4);
+  align-items: baseline;
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid rgba(180, 35, 24, 0.2);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-field-blocked-item > span:first-child {
+  font-family: var(--m-mono);
+  font-weight: 700;
+  color: var(--m-danger);
+}
+
+.mining-field-exits {
+  display: flex;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+  margin-top: var(--m-s2);
+}
+
+.mining-field-exits > button {
+  min-height: 32px;
+  padding: 0 var(--m-s5);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mining-field-exits > button:hover {
+  border-color: var(--m-brand);
+  color: var(--m-brand);
+}
+
+/* ── 8. Step4 进化参数 + 资源确认 ────────────────────────── */
+
+.mining-evo-step {
+  display: grid;
+  gap: var(--m-s4);
+}
+
+.mining-evo-mode {
+  display: flex;
+  gap: var(--m-s2);
+  padding: 2px;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-sunken);
+  justify-self: start;
+}
+
+.mining-evo-mode .sub-tab {
+  min-height: 30px;
+  border-radius: 6px;
+  font-size: var(--m-fs-sm);
+}
+
+.mining-evo-mode .sub-tab.active {
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-evo-mode .sub-tab.active::after {
+  display: none;
+}
+
+.mining-evo-simple,
+.mining-evo-advanced {
+  display: grid;
+  gap: var(--m-s3);
+}
+
+.mining-evo-simple {
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+/* 参数行：标签 + 控件 + 说明 */
+.mining-evo-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 190px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--m-s3) var(--m-s5);
+  padding: var(--m-s2) 0;
+  min-width: 0;
+}
+
+.mining-evo-row.is-disabled {
+  opacity: 0.7;
+}
+
+.mining-evo-row > .mining-evo-field-label {
+  font-size: var(--m-fs);
+  font-weight: 600;
+  color: var(--m-text-2);
+}
+
+.mining-evo-field-label {
+  font-size: var(--m-fs);
+  font-weight: 600;
+  color: var(--m-text-2);
+}
+
+.mining-evo-muted {
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-3);
+  line-height: 1.5;
+}
+
+.mining-evo-auto {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--m-s3);
+  border-radius: var(--m-r-pill);
+  background: var(--m-surface-sunken);
+  color: var(--m-text-3);
+  font-size: var(--m-fs-xs);
+  font-weight: 600;
+}
+
+/* 高级模式折叠区（原生 details 改造） */
+.mining-evo-section {
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+  overflow: hidden;
+}
+
+.mining-evo-section > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  padding: var(--m-s4) var(--m-s5);
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+  cursor: pointer;
+  list-style: none;
+  background: var(--m-surface);
+}
+
+.mining-evo-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mining-evo-section > summary::before {
+  content: "▸";
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+  transition: transform 0.15s ease;
+}
+
+.mining-evo-section[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.mining-evo-section[open] > summary {
+  border-bottom: 1px solid var(--m-border);
+  background: var(--m-surface-sunken);
+}
+
+.mining-evo-section > .mining-evo-row {
+  padding: var(--m-s2) var(--m-s5);
+}
+
+.mining-evo-section > .mining-evo-row:last-child {
+  padding-bottom: var(--m-s4);
+}
+
+.mining-evo-section .ant-radio-group,
+.mining-evo-section .ant-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s2) var(--m-s5);
+}
+
+.mining-evo-section .ant-radio-wrapper,
+.mining-evo-section .ant-checkbox-wrapper + .ant-checkbox-wrapper {
+  margin-inline-start: 0;
+  font-size: var(--m-fs);
+}
+
+.mining-evo-actions {
+  padding-top: var(--m-s2);
+}
+
+/* 资源确认弹窗 */
+.mining-resource-modal {
+  width: min(600px, 96vw);
+  margin: auto;
+  display: grid;
+  gap: var(--m-s4);
+  padding: var(--m-s5) var(--m-s6);
+  border-radius: var(--m-r-lg);
+  background: var(--m-surface-warm);
+  box-shadow: var(--m-shadow-3);
+}
+
+.mining-resource-modal > header h3 {
+  margin: 0;
+  font-size: var(--m-fs-lg);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-resource-modal > div[data-lock-none],
+.mining-res-domain,
+.mining-res-write {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-left: 3px solid var(--m-success);
+  border-radius: var(--m-r);
+  background: var(--m-success-soft);
+  color: #12652f;
+  font-size: var(--m-fs);
+  font-weight: 600;
+}
+
+.mining-res-domain {
+  border-color: rgba(180, 35, 24, 0.3);
+  border-left-color: var(--m-danger);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+}
+
+.mining-res-write {
+  border-color: rgba(29, 111, 216, 0.3);
+  border-left-color: var(--m-info);
+  background: var(--m-info-soft);
+  color: #14539f;
+}
+
+.mining-resource-modal > div[data-eta] {
+  display: flex;
+  align-items: baseline;
+  gap: var(--m-s2);
+  flex-wrap: wrap;
+  font-size: var(--m-fs);
+  color: var(--m-text);
+}
+
+.mining-res-eta-note {
+  color: var(--m-warn);
+  font-size: var(--m-fs-xs);
+  font-weight: 600;
+}
+
+.mining-res-resource {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--m-s3);
+}
+
+.mining-res-resource > span {
+  display: grid;
+  gap: var(--m-s2);
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+}
+
+.mining-res-resource > span.risk {
+  border-color: rgba(180, 35, 24, 0.3);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+  font-weight: 700;
+}
+
+.mining-res-blocked {
+  display: grid;
+  gap: var(--m-s2);
+  border-radius: var(--m-r);
+  font-size: var(--m-fs);
+}
+
+.mining-resource-modal > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--m-s3);
+  padding-top: var(--m-s2);
+}
+
+.mining-resource-modal > footer button {
+  min-height: 34px;
+  padding: 0 var(--m-s5);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mining-resource-modal > footer button[data-evo-confirm-submit] {
+  border-color: var(--m-brand);
+  background: var(--m-brand);
+  color: #fff;
+}
+
+.mining-resource-modal > footer button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+/* ── 9. Step5 进化执行 ───────────────────────────────────── */
+
+.mining-run-track {
+  display: grid;
+  gap: var(--m-s4);
+}
+
+/* 进度总览 → 统计磁贴 */
+.mining-run-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--m-s3);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-run-overview > span {
+  display: grid;
+  gap: var(--m-s1);
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+  line-height: 1.5;
+}
+
+/* 多样性点阵（●●●●●○○○○○） */
+.mining-run-diversity-dots {
+  font-family: var(--m-mono);
+  letter-spacing: 1px;
+  color: var(--m-brand);
+}
+
+.mining-run-overview .ant-progress {
+  margin: var(--m-s2) 0 0 !important;
+  display: block !important;
+  width: 100% !important;
+}
+
+.mining-run-premature {
+  border: 1px solid rgba(180, 83, 9, 0.32);
+  border-left: 3px solid var(--m-warn);
+  background: var(--m-warn-soft);
+  color: #8a3f07;
+  font-weight: 600;
+}
+
+.mining-run-queued {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s4);
+  flex-wrap: wrap;
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid rgba(29, 111, 216, 0.3);
+  border-left: 3px solid var(--m-info);
+  border-radius: var(--m-r);
+  background: var(--m-info-soft);
+  color: #14539f;
+  font-size: var(--m-fs);
+  font-weight: 600;
+}
+
+.mining-run-premature,
+.mining-run-queued {
+  padding: var(--m-s4) var(--m-s5);
+  border-radius: var(--m-r);
+  font-size: var(--m-fs);
+}
+
+.mining-run-queued > button {
+  margin-left: auto;
+}
+
+/* 曲线区 */
+.mining-run-curve,
+.mining-run-diversity-curve {
+  display: grid;
+  gap: var(--m-s3);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-run-curve-title {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-run-curve-title::before {
+  content: "";
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--m-brand);
+}
+
+.mining-run-curve > div:not(.mining-run-curve-title):not(.mining-run-curve-legend):not(.mining-chart) {
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-3);
+}
+
+.mining-run-curve-legend {
+  display: flex;
+  gap: var(--m-s5);
+  flex-wrap: wrap;
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+}
+
+.mining-run-curve-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s2);
+}
+
+.mining-run-curve-legend > span::before {
+  content: "";
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--m-brand);
+}
+
+.mining-run-curve-legend > span:last-child::before {
+  background: var(--m-info);
+}
+
+.mining-run-converge-tip {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid rgba(21, 128, 61, 0.28);
+  border-left: 3px solid var(--m-success);
+  border-radius: var(--m-r);
+  background: var(--m-success-soft);
+  color: #12652f;
+  font-size: var(--m-fs);
+  font-weight: 600;
+}
+
+/* 当前种群 Top 因子 */
+.mining-run-top {
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  overflow: hidden;
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-run-top-title {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+  padding: var(--m-s4) var(--m-s5);
+  border-bottom: 1px solid var(--m-border);
+  background: var(--m-surface-sunken);
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-run-top-new-hint {
+  padding: 1px var(--m-s3);
+  border-radius: var(--m-r-pill);
+  background: var(--m-brand-soft);
+  color: var(--m-brand);
+  font-size: var(--m-fs-xs);
+  font-weight: 700;
+}
+
+.mining-run-top-table thead th {
+  padding: var(--m-s3) var(--m-s4);
+  border-bottom: 1px solid var(--m-border);
+  background: var(--m-surface-tint);
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.mining-run-top-table tbody td {
+  padding: var(--m-s3) var(--m-s4);
+  border-bottom: 1px solid var(--m-border);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text);
+  vertical-align: middle;
+}
+
+.mining-run-top-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mining-run-top-formula {
+  font-family: var(--m-mono);
+  word-break: break-all;
+  max-width: 420px;
+}
+
+tr.mining-run-top-new {
+  animation: mining-top-flash 1.8s ease 3;
+}
+
+@keyframes mining-top-flash {
+  0%,
+  100% {
+    background: transparent;
+  }
+  50% {
+    background: rgba(15, 118, 110, 0.16);
+  }
+}
+
+/* 最终验证 */
+.mining-run-final {
+  display: grid;
+  gap: var(--m-s3);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border-brand);
+  border-left: 3px solid var(--m-brand);
+  border-radius: var(--m-r);
+  background: var(--m-brand-softer);
+  font-size: var(--m-fs);
+  color: var(--m-text);
+}
+
+.mining-run-final-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-s3);
+  font-weight: 700;
+}
+
+.mining-run-final-status {
+  padding: 1px var(--m-s3);
+  border-radius: var(--m-r-pill);
+  background: var(--m-brand-soft);
+  color: var(--m-brand);
+  font-size: var(--m-fs-xs);
+  font-weight: 700;
+}
+
+.mining-run-final-overview-hint {
+  font-size: var(--m-fs-sm);
+  color: var(--m-brand);
+  font-weight: 600;
+}
+
+/* 资源占用 + 日志（§8.3.6） */
+.mining-run-res {
+  display: grid;
+  gap: var(--m-s3);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-run-res-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--m-s3);
+}
+
+.mining-run-res-item {
+  display: grid;
+  gap: var(--m-s2);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+}
+
+.mining-run-res-item > span:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--m-s2);
+}
+
+.mining-run-res-item > span:first-child b {
+  font-weight: 700;
+  color: var(--m-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-run-log {
+  display: grid;
+  gap: var(--m-s2);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-sunken);
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-xs);
+  line-height: 1.7;
+}
+
+.mining-run-log-group {
+  display: grid;
+  gap: var(--m-s1);
+}
+
+.mining-run-log-group > summary {
+  cursor: pointer;
+  color: var(--m-text-2);
+  font-weight: 700;
+  list-style: none;
+}
+
+.mining-run-log-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mining-run-log-row {
+  padding-left: var(--m-s4);
+  color: var(--m-text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mining-run-log-row.is-error {
+  color: var(--m-danger);
+}
+
+.mining-run-log-empty {
+  margin: 0;
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+/* 三操作按钮语义：中断/停止/放弃 */
+.mining-run-actions {
+  justify-content: flex-start;
+  padding-top: var(--m-s1);
+}
+
+.mining-run-actions > button {
+  min-height: 34px;
+  padding: 0 var(--m-s5);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.mining-run-actions > button:hover:not(:disabled) {
+  border-color: var(--m-brand);
+  color: var(--m-brand);
+}
+
+.mining-run-actions > button[data-run-stop] {
+  border-color: rgba(180, 83, 9, 0.4);
+  color: var(--m-warn);
+}
+
+.mining-run-actions > button[data-run-stop]:hover {
+  background: var(--m-warn-soft);
+}
+
+.mining-run-actions > button[data-run-discard] {
+  margin-left: auto;
+  border-color: rgba(180, 35, 24, 0.32);
+  color: var(--m-danger);
+}
+
+.mining-run-actions > button[data-run-discard]:hover {
+  background: var(--m-danger-soft);
+}
+
+/* 草稿保存反馈（成功/失败）——「保存草稿」不能静默 */
+.mining-draft-note {
+  margin: 0 0 var(--m-s3);
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid rgba(21, 128, 61, 0.35);
+  border-left: 3px solid var(--m-brand);
+  border-radius: var(--m-r-sm);
+  background: var(--m-brand-softer);
+  color: var(--m-text);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-draft-note--error {
+  border-color: rgba(180, 35, 24, 0.4);
+  border-left-color: var(--m-danger);
+  background: var(--m-danger-soft);
+  color: var(--m-text);
+}
+
+/* 停滞提示：running 但代数久未推进时，诚实告诉用户"卡住了" */
+.mining-run-stalled {
+  margin: 0 0 var(--m-s3);
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid rgba(180, 83, 9, 0.4);
+  border-left: 3px solid var(--m-warn);
+  border-radius: var(--m-r-sm);
+  background: var(--m-warn-soft);
+  color: var(--m-text);
+  font-size: var(--m-fs-sm);
+}
+
+/* 「已恢复最近任务」提示条（选项3）：本地自动恢复时展示，可关闭或一键新建 */
+.mining-restored-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--m-s3);
+  margin: 0 0 var(--m-s3);
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid rgba(29, 111, 216, 0.35);
+  border-left: 3px solid var(--m-info);
+  border-radius: var(--m-r-sm);
+  background: var(--m-info-soft);
+  color: var(--m-text);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-restored-new {
+  flex: 0 0 auto;
+  padding: var(--m-s1) var(--m-s3);
+  border: 1px solid var(--m-info);
+  border-radius: var(--m-r-sm);
+  background: transparent;
+  color: var(--m-info);
+  font-size: var(--m-fs-sm);
+  cursor: pointer;
+}
+
+.mining-restored-new:hover {
+  background: rgba(29, 111, 216, 0.12);
+}
+
+.mining-restored-close {
+  flex: 0 0 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--m-text-2);
+  font-size: var(--m-fs-sm);
+  cursor: pointer;
+}
+
+.mining-restored-close:hover {
+  color: var(--m-text);
+}
+
+/* ── 性能探针面板（调试态） ── */
+.mining-perf-panel {
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px dashed var(--m-border-strong);
+  border-radius: var(--m-r);
+  background: var(--m-surface-sunken);
+}
+
+.mining-perf-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  cursor: pointer;
+  font-size: var(--m-fs);
+  font-weight: 700;
+  color: var(--m-text-2);
+  list-style: none;
+}
+
+.mining-perf-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mining-perf-summary {
+  display: flex;
+  gap: var(--m-s5);
+  flex-wrap: wrap;
+  margin: var(--m-s4) 0 var(--m-s3);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text);
+}
+
+.mining-perf-muted {
+  color: var(--m-text-3);
+}
+
+.mining-perf-stages {
+  display: grid;
+  gap: var(--m-s2);
+  margin: var(--m-s3) 0 var(--m-s4);
+}
+
+.mining-perf-stage {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: var(--m-s3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-perf-stage-label {
+  color: var(--m-text-3);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mining-perf-bar-track {
+  height: 10px;
+  border-radius: var(--m-r-pill);
+  background: rgba(31, 41, 51, 0.08);
+  overflow: hidden;
+}
+
+.mining-perf-bar {
+  height: 100%;
+  min-width: 2px;
+  border-radius: var(--m-r-pill);
+  background: var(--m-brand);
+}
+
+.mining-perf-stage-ms {
+  color: var(--m-text-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.mining-perf-curve {
+  margin: var(--m-s4) 0;
+}
+
+.mining-perf-curve svg,
+.mining-run-curve svg {
+  width: 100%;
+  max-width: 520px;
+  height: auto;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-brand);
+}
+
+.mining-perf-table {
+  border-collapse: collapse;
+}
+
+.mining-perf-table th,
+.mining-perf-table td {
+  border: 1px solid var(--m-border);
+  padding: var(--m-s2) var(--m-s3);
+  text-align: left;
+}
+
+.mining-perf-table thead th {
+  background: var(--m-surface);
+  color: var(--m-text-2);
+  font-weight: 700;
+}
+
+.mining-perf-table tr.is-cache-fail td {
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+}
+
+.mining-perf-cache-ok,
+.mining-perf-cache-fail {
+  cursor: help;
+}
+
+.mining-perf-cache-warn {
+  margin: var(--m-s3) 0 0;
+  padding: var(--m-s3) var(--m-s4);
+  border-radius: var(--m-r-sm);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+  font-size: var(--m-fs-sm);
+}
+
+/* 结果预览区（Step5 内嵌候选排行榜） */
+.mining-result-section {
+  display: grid;
+  gap: var(--m-s4);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-result-head-row {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s4);
+  flex-wrap: wrap;
+}
+
+.mining-result-head-row > h4 {
+  margin: 0;
+  margin-right: auto;
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-result-empty {
+  margin: 0;
+  color: var(--m-text-3);
+  font-size: var(--m-fs);
+}
+
+/* ── 10. 结果总览 + 证据抽屉 ─────────────────────────────── */
+
+.mining-result-page {
+  display: grid;
+  gap: var(--m-s5);
+}
+
+/* 研究声明（必须在最顶部） */
+.mining-result-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--m-s3);
+  padding: var(--m-s5) var(--m-s6);
+  border: 1px solid rgba(180, 83, 9, 0.36);
+  border-left: 4px solid var(--m-warn);
+  border-radius: var(--m-r);
+  background: var(--m-warn-soft);
+  color: #8a3f07;
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.mining-result-disclaimer::before {
+  content: "!";
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--m-warn);
+  color: #fff;
+  font-size: var(--m-fs-sm);
+  font-weight: 800;
+}
+
+.mining-result-head {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-result-head > span:first-child {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--m-s2);
+  margin-right: auto;
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-result-head > button {
+  min-height: 32px;
+  padding: 0 var(--m-s4);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mining-result-head > button:hover:not(:disabled) {
+  border-color: var(--m-brand);
+  color: var(--m-brand);
+}
+
+.mining-result-head > button[data-result-goto-model] {
+  border-color: var(--m-brand);
+  background: var(--m-brand);
+  color: #fff;
+}
+
+.mining-result-head > button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+/* 等级筛选 chip */
+.mining-result-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s2);
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface-tint);
+}
+
+.mining-result-chips > button {
+  min-height: 30px;
+  padding: 0 var(--m-s4);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-pill);
+  background: var(--m-surface);
+  color: var(--m-text-2);
+  font-size: var(--m-fs-sm);
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.mining-result-chips > button:hover {
+  border-color: var(--m-brand);
+  color: var(--m-brand);
+}
+
+.mining-result-chips > button.on {
+  border-color: var(--m-brand);
+  background: var(--m-brand-soft);
+  color: var(--m-brand);
+}
+
+/* 批量操作条 */
+.mining-result-batch {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid var(--m-border-brand);
+  border-radius: var(--m-r);
+  background: var(--m-brand-softer);
+  font-size: var(--m-fs);
+  color: var(--m-text-2);
+}
+
+.mining-result-batch > span:first-child {
+  margin-right: auto;
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-result-batch > button {
+  min-height: 30px;
+  padding: 0 var(--m-s4);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mining-result-batch > button:hover {
+  border-color: var(--m-brand);
+  color: var(--m-brand);
+}
+
+/* 帕累托散点 */
+.mining-result-pareto {
+  display: grid;
+  gap: var(--m-s3);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-result-pareto-title {
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+}
+
+.mining-result-pareto-title::before {
+  content: "";
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--m-brand);
+}
+
+.mining-result-pareto svg {
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  color: var(--m-brand);
+}
+
+.mining-result-pareto-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s2) var(--m-s5);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+}
+
+.mining-result-pareto-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--m-s2);
+}
+
+/* 质量分级标签（S/A/B/C/D） */
+.mining-grade {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 var(--m-s2);
+  border: 1px solid currentColor;
+  border-radius: var(--m-r-sm);
+  font-size: var(--m-fs-sm);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.mining-grade--s {
+  color: var(--m-grade-s);
+  background: rgba(11, 107, 99, 0.1);
+}
+
+.mining-grade--a {
+  color: var(--m-grade-a);
+  background: rgba(29, 111, 216, 0.1);
+}
+
+.mining-grade--b {
+  color: var(--m-grade-b);
+  background: rgba(180, 83, 9, 0.1);
+}
+
+.mining-grade--c {
+  color: var(--m-grade-c);
+  background: rgba(194, 65, 12, 0.1);
+}
+
+.mining-grade--d {
+  color: var(--m-grade-d);
+  background: rgba(180, 35, 24, 0.1);
+}
+
+.mining-grade--new::after {
+  content: "新";
+  margin-left: var(--m-s1);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* 结果表数字列右对齐 */
+.mining-result-table td.mining-cell-num,
+.mining-result-table th.mining-cell-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-result-table .mining-result-formula {
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-sm);
+  overflow-wrap: anywhere;
+  max-width: 460px;
+}
+
+/* ── 等级证据抽屉 ── */
+.mining-evidence-drawer {
+  display: grid;
+  gap: var(--m-s4);
+  padding: var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-evidence-drawer > header {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s4);
+  padding-bottom: var(--m-s3);
+  border-bottom: 1px solid var(--m-border);
+}
+
+.mining-evidence-drawer > header > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--m-mono);
+  font-size: var(--m-fs);
+  font-weight: 700;
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+.mining-evidence-drawer > header > button {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--m-r-sm);
+  background: transparent;
+  color: var(--m-text-3);
+  font-size: var(--m-fs-lg);
+  cursor: pointer;
+}
+
+.mining-evidence-drawer > header > button:hover {
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+}
+
+.mining-evidence-monthly {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid rgba(180, 83, 9, 0.34);
+  border-left: 3px solid var(--m-warn);
+  border-radius: var(--m-r-sm);
+  background: var(--m-warn-soft);
+  color: #8a3f07;
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+}
+
+.mining-evidence-quarter {
+  padding: var(--m-s3) var(--m-s4);
+  border-left: 3px solid var(--m-text-3);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-sunken);
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+  color: var(--m-text-2);
+}
+
+.mining-evidence-quarter[data-direction="up"] {
+  border-color: var(--m-success);
+  background: var(--m-success-soft);
+  color: #12652f;
+}
+
+.mining-evidence-quarter[data-direction="down"] {
+  border-color: var(--m-danger);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+}
+
+.mining-evidence-removed {
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid rgba(180, 35, 24, 0.3);
+  border-left: 3px solid var(--m-danger);
+  border-radius: var(--m-r-sm);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+}
+
+.mining-evidence-manual {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+}
+
+.mining-evidence-manual > button {
+  margin-left: auto;
+  min-height: 28px;
+  padding: 0 var(--m-s4);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mining-evidence-drawer > button[data-evidence-adjust] {
+  justify-self: start;
+  min-height: 30px;
+  padding: 0 var(--m-s4);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mining-evidence-drawer > button[data-evidence-adjust]:hover {
+  border-color: var(--m-brand);
+  color: var(--m-brand);
+}
+
+.mining-evidence-adjust {
+  display: grid;
+  gap: var(--m-s3);
+  padding: var(--m-s4);
+  border: 1px solid var(--m-border-brand);
+  border-radius: var(--m-r-sm);
+  background: var(--m-brand-softer);
+}
+
+.mining-evidence-adjust > select,
+.mining-evidence-adjust > textarea {
+  padding: var(--m-s2) var(--m-s3);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs);
+  font-family: inherit;
+}
+
+.mining-evidence-adjust > textarea {
+  min-height: 68px;
+  resize: vertical;
+}
+
+.mining-evidence-adjust > button {
+  justify-self: end;
+  min-height: 32px;
+  padding: 0 var(--m-s5);
+  border: 1px solid var(--m-brand);
+  border-radius: var(--m-r-sm);
+  background: var(--m-brand);
+  color: #fff;
+  font-size: var(--m-fs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mining-evidence-adjust > button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+/* Tab 结构（恰好 3 个） */
+.mining-evidence-tabs {
+  display: flex;
+  gap: var(--m-s2);
+  padding: 2px;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-sunken);
+}
+
+.mining-evidence-tabs > button {
+  flex: 1 1 0;
+  min-height: 30px;
+  padding: 0 var(--m-s3);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--m-text-2);
+  font-size: var(--m-fs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mining-evidence-tabs > button[aria-pressed="true"] {
+  background: var(--m-surface);
+  color: var(--m-brand);
+  box-shadow: var(--m-shadow-1);
+}
+
+/* Tab1 定级证据 */
+.mining-evidence-grade-head {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s4);
+}
+
+.mining-evidence-grade-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: 2px solid currentColor;
+  border-radius: var(--m-r);
+  font-size: var(--m-fs-xl);
+  font-weight: 800;
+}
+
+.mining-evidence-reason {
+  font-size: var(--m-fs);
+  color: var(--m-text);
+  line-height: 1.65;
+}
+
+.mining-evidence-raw-grade {
+  display: none;
+}
+
+.mining-evidence-dim-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--m-fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-evidence-dim-table th,
+.mining-evidence-dim-table td {
+  padding: var(--m-s2) var(--m-s3);
+  border-bottom: 1px solid var(--m-border);
+  text-align: left;
+}
+
+.mining-evidence-dim-table thead th {
+  color: var(--m-text-3);
+  font-size: var(--m-fs-xs);
+  font-weight: 700;
+  background: var(--m-surface-tint);
+}
+
+.mining-evidence-dim-table td.is-pass {
+  color: var(--m-success);
+  font-weight: 700;
+}
+
+.mining-evidence-dim-table td.is-fail {
+  color: var(--m-danger);
+  font-weight: 700;
+}
+
+/* Tab2 统计检验 8 项 */
+.mining-evidence-stat-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--m-fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-evidence-stat-table th,
+.mining-evidence-stat-table td {
+  padding: var(--m-s3) var(--m-s3);
+  border-bottom: 1px solid var(--m-border);
+  text-align: left;
+}
+
+.mining-evidence-stat-table thead th {
+  color: var(--m-text-3);
+  font-size: var(--m-fs-xs);
+  font-weight: 700;
+  background: var(--m-surface-tint);
+}
+
+.mining-evidence-stat-table tr[data-disabled="true"] {
+  color: var(--m-text-3);
+  background: var(--m-surface-sunken);
+}
+
+.mining-evidence-stat-table tr[data-disabled="true"] td {
+  opacity: 0.7;
+}
+
+.mining-evidence-stat-value {
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text);
+}
+
+.mining-evidence-stat-note {
+  font-size: var(--m-fs-xs);
+  color: var(--m-warn);
+  font-weight: 600;
+}
+
+/* Walk-Forward 窗口可视化 */
+.mining-evidence-wf {
+  display: grid;
+  gap: var(--m-s2);
+  padding: var(--m-s4);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface-tint);
+}
+
+.mining-evidence-wf-title {
+  font-size: var(--m-fs-sm);
+  font-weight: 700;
+  color: var(--m-text-2);
+}
+
+.mining-evidence-wf-bars {
+  display: grid;
+  gap: var(--m-s2);
+}
+
+.mining-evidence-wf-bar {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: var(--m-s3);
+  font-size: var(--m-fs-xs);
+  color: var(--m-text-2);
+}
+
+.mining-evidence-wf-bar > span:last-child {
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mining-evidence-wf-bar.is-up > span:last-child {
+  color: var(--m-success);
+}
+
+.mining-evidence-wf-bar.is-down > span:last-child {
+  color: var(--m-danger);
+}
+
+/* Tab3 血缘 */
+.mining-evidence-lineage {
+  display: grid;
+  gap: var(--m-s3);
+}
+
+.mining-evidence-lineage-row {
+  display: grid;
+  grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);
+  gap: var(--m-s2) var(--m-s4);
+  font-size: var(--m-fs);
+  align-items: baseline;
+}
+
+.mining-evidence-lineage-row > span:first-child {
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-evidence-lineage-row > span:last-child {
+  color: var(--m-text);
+  overflow-wrap: anywhere;
+}
+
+/* 评级历史时间轴 */
+.mining-evidence-history {
+  display: grid;
+  gap: var(--m-s3);
+  padding-top: var(--m-s3);
+  border-top: 1px solid var(--m-border);
+}
+
+.mining-evidence-history > h4 {
+  margin: 0;
+  font-size: var(--m-fs);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-evidence-history-item {
+  display: grid;
+  grid-template-columns: 28px minmax(140px, max-content) minmax(72px, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--m-s3);
+  position: relative;
+  padding: var(--m-s2) 0 var(--m-s2) var(--m-s5);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+  border-left: 2px solid var(--m-border);
+}
+
+.mining-evidence-history-item::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--m-brand);
+}
+
+.mining-evidence-history-item > span:first-child {
+  font-weight: 800;
+  color: var(--m-text);
+}
+
+.mining-evidence-history-item > span:nth-child(2) {
+  color: var(--m-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 11. 子页（经验库 / 模板 / 镜像）+ 批次列表 ───────────── */
+
+.mining-exp-page {
+  display: grid;
+  gap: var(--m-s4);
+}
+
+.mining-exp-desc {
+  margin: 0;
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-left: 3px solid var(--m-brand);
+  border-radius: var(--m-r);
+  background: var(--m-brand-softer);
+  color: var(--m-text-2);
+  font-size: var(--m-fs);
+  line-height: 1.6;
+}
+
+[data-f1-exp-loading],
+[data-f1-exp-empty],
+[data-f1-exp-error],
+[data-tpl-loading],
+[data-tpl-empty],
+[data-tpl-error],
+[data-mirror-loading],
+[data-mirror-empty],
+[data-mirror-error],
+[data-mining-runs-loading],
+[data-mining-runs-empty],
+[data-mining-runs-error] {
+  margin: 0;
+  padding: var(--m-s7) var(--m-s5);
+  border: 1px dashed var(--m-border-strong);
+  border-radius: var(--m-r);
+  background: var(--m-surface-tint);
+  color: var(--m-text-3);
+  text-align: center;
+  font-size: var(--m-fs);
+}
+
+[data-f1-exp-error],
+[data-tpl-error],
+[data-mirror-error],
+[data-mining-runs-error] {
+  border-style: solid;
+  border-color: rgba(180, 35, 24, 0.3);
+  background: var(--m-danger-soft);
+  color: #8f1c12;
+}
+
+.mining-exp-negative {
+  margin-left: var(--m-s2);
+  padding: 0 var(--m-s2);
+  border: 1px solid rgba(180, 35, 24, 0.3);
+  border-radius: var(--m-r-sm);
+  background: var(--m-danger-soft);
+  color: var(--m-danger);
+  font-size: var(--m-fs-xs);
+  font-weight: 700;
+}
+
+.mining-exp-chips,
+.mining-exp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s2);
+  align-items: center;
+}
+
+.mining-exp-actions > button {
+  min-height: 32px;
+  padding: 0 var(--m-s4);
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mining-exp-actions > button:hover {
+  border-color: var(--m-brand);
+  color: var(--m-brand);
+}
+
+.mining-exp-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+}
+
+/* 弹窗内错误详情折叠 */
+.mining-mirror-error-detail {
+  margin-top: var(--m-s3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-mirror-error-detail > summary {
+  cursor: pointer;
+  color: var(--m-danger);
+  font-weight: 700;
+}
+
+.mining-mirror-error-detail > pre {
+  margin: var(--m-s2) 0 0;
+  padding: var(--m-s3);
+  border-radius: var(--m-r-sm);
+  background: rgba(31, 41, 51, 0.05);
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: auto;
+}
+
+/* 批次列表 / 模板 / 镜像：操作列按钮收紧 */
+.mining-runs-table td > .mining-pool-btn + .mining-pool-btn,
+.mining-exp-table td > .mining-pool-btn + .mining-pool-btn {
+  margin-left: var(--m-s2);
+}
+
+/* 状态语义色（批次状态 / 任务状态 / 分析可用性） */
+.mining-runs-table td:nth-child(2),
+.mining-exp-table td:nth-child(5) {
+  font-weight: 600;
+}
+
+/* 顶端小工具条 */
+.mining-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+/* ── 12. 响应式 ─────────────────────────────────────────── */
+
+@media (max-width: 1180px) {
+  .mining-pool-filter-layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .mining-pool-board-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 960px) {
+  .mining-pool-filter-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mining-filter-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mining-field-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mining-evo-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mining-split-head > span:first-child {
+    margin-right: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .mining-step-bar {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    gap: var(--m-s2);
+  }
+
+  .mining-step + .mining-step::before {
+    display: none;
+  }
+
+  .mining-pool-modal,
+  .mining-resource-modal {
+    width: 100%;
+  }
+
+  .mining-pool-board-cards {
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  }
+
+  .mining-field-blocked-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

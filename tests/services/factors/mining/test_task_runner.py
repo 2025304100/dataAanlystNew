@@ -107,7 +107,8 @@ class TestSubmitHappyPath:
         self, mining_env, db_session
     ):
         result = TR.submit_mining_run(
-            {"run_id": "run-1", "generations": 3}, run_id="run-1"
+            {"run_id": "run-1", "generations": 3}, run_id="run-1",
+            stage_runner=TR.skeleton_stage_runner,
         )
         assert result.queue_position == 0
         assert result.started is True
@@ -126,7 +127,8 @@ class TestSubmitHappyPath:
         assert locks.duckdb_write["queue"] == []
 
     def test_result_shape(self, mining_env, db_session):
-        result = TR.submit_mining_run({"run_id": "run-shape"}, run_id="run-shape")
+        result = TR.submit_mining_run({"run_id": "run-shape"}, run_id="run-shape",
+                                       stage_runner=TR.skeleton_stage_runner)
         _wait_terminal(db_session, result.task_id)
         d = result.to_dict()
         for key in ("task_id", "run_id", "status", "queue_position", "started",
@@ -269,7 +271,8 @@ class TestDuckDBWriteQueueing:
         assert locks.duckdb_write["queue"] == []
 
     def test_worker_transitions_queued_to_running(self, mining_env, db_session):
-        result = TR.submit_mining_run({"run_id": "run-t"}, run_id="run-t")
+        result = TR.submit_mining_run({"run_id": "run-t"}, run_id="run-t",
+                                      stage_runner=TR.skeleton_stage_runner)
         read = _wait_terminal(db_session, result.task_id)
         assert read["status"] == "done"
         # started_at 已由状态机补齐
@@ -338,7 +341,8 @@ class TestCancelAndResume:
     def test_global_stop_cancels_before_stages(self, mining_env, db_session):
         AT.request_all_workers_stop()
         try:
-            result = TR.submit_mining_run({"run_id": "run-stop"}, run_id="run-stop")
+            result = TR.submit_mining_run({"run_id": "run-stop"}, run_id="run-stop",
+                                          stage_runner=TR.skeleton_stage_runner)
             read = _wait_terminal(db_session, result.task_id)
             assert read["status"] == "cancelled"
         finally:
@@ -353,7 +357,8 @@ class TestCancelAndResume:
         TL.acquire_mining_lock(db_session, task_id=task.id, run_id="run-stuck")
         TL.acquire_write_slot(db_session, task_id=task.id, run_id="run-stuck")
 
-        resumed = TR.resume_pending_mining_tasks()
+        resumed = TR.resume_pending_mining_tasks(
+            stage_runner=TR.skeleton_stage_runner)
         assert task.id in resumed
 
         read = _wait_terminal(db_session, task.id)
@@ -366,7 +371,8 @@ class TestCancelAndResume:
     def test_resume_skips_tasks_without_lock(self, mining_env, db_session):
         AT.create_async_task(TR.TASK_TYPE, {"run_id": "run-nolock"},
                              use_control_plane=True)
-        resumed = TR.resume_pending_mining_tasks()
+        resumed = TR.resume_pending_mining_tasks(
+            stage_runner=TR.skeleton_stage_runner)
         assert resumed == []
 
 
@@ -419,7 +425,8 @@ class TestFailurePath:
         assert read1["status"] == "failed"
 
         # 域已空闲：新提交照常走完整生命周期
-        r2 = TR.submit_mining_run({"run_id": "run-f2"}, run_id="run-f2")
+        r2 = TR.submit_mining_run({"run_id": "run-f2"}, run_id="run-f2",
+                                  stage_runner=TR.skeleton_stage_runner)
         assert r2.started is True
         read2 = _wait_terminal(db_session, r2.task_id, timeout=40)
         assert read2["status"] == "done"

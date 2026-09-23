@@ -1237,7 +1237,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
         onClose={() => setDrawerOpen(false)}
         width={820}
         loading={drawerLoading}
-        destroyOnClose
+        destroyOnHidden
         data-testid="relations-drawer"
       >
         {drawerData?.unbound_reason ? (

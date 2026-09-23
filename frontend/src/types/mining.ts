@@ -56,6 +56,10 @@ export interface MiningRunCreated {
 export interface MiningRun {
   id: string;
   status: MiningRunStatus;
+  /** 挖掘快照 id（GET /runs/{id} 返回；结果页「跳转因子模型页」上下文用） */
+  candidate_pool_snapshot_id?: string | null;
+  /** 数据截止日（GET /runs/{id} 返回；同上） */
+  data_cutoff_at?: string | null;
   current_generation?: number | null;
   total_generations?: number | null;
   progress?: number | null;
@@ -79,10 +83,12 @@ export interface MiningPage<T> {
   page_size: number;
 }
 
-/** 候选因子（GET /factor-mining/runs/{run_id}/candidates） */
+/** 候选因子（GET /factor-mining/runs/{run_id}/candidates，A3 已实现） */
 export interface MiningCandidate {
   id: string;
   run_id: string;
+  factor_code?: string | null;
+  factor_version_id?: string | null;
   generation?: number | null;
   category?: string | null;
   grade?: MiningGrade | null;
@@ -91,16 +97,58 @@ export interface MiningCandidate {
   decay_ratio?: number | null;
   formula?: string | null;
   economic_logic?: string | null;
+  // ── A3 真实契约（service.list_candidates 序列化）──
+  formula_expr?: string | null;
+  canonical_formula?: string | null;
+  formula_hash?: string | null;
+  operation?: string | null;
+  generation_icir?: number | null;
+  generation_coverage?: number | null;
+  generation_complexity?: number | null;
+  generation_turnover?: number | null;
+  generation_rank?: number | null;
+  crowding_distance?: number | null;
+  expected_direction?: string | null;
 }
 
-/** 双锁状态（GET /factor-mining/locks/status，后端**已实现**） */
+/** 双锁状态（GET /factor-mining/locks/status，后端**已实现**；2026-09-21 对齐真实契约） */
 export interface MiningLockStatus {
-  owner_task_id?: string | null;
-  owner_run_id?: string | null;
-  owner_status?: string | null;
-  owner_generation?: number | null;
-  queue_length?: number;
-  [key: string]: unknown;
+  /** mining_domain 锁：域内唯一，冲突直接拒绝（不排队） */
+  miningDomain: {
+    busy: boolean;
+    taskId?: string | null;
+    runId?: string | null;
+    acquiredAt?: string | null;
+    heartbeatAt?: string | null;
+  };
+  /** duckdb_write 锁：写库互斥，冲突排队 */
+  duckdbWrite: {
+    busy: boolean;
+    taskId?: string | null;
+    /** 排队任务 id 列表（前面的排队数 = queue.length） */
+    queue: string[];
+  };
+}
+
+/** 切分预算（POST /factor-mining/split-budget；对齐后端 `contracts.SplitBudget` snake_case） */
+export interface SplitBudget {
+  frequency: MiningFrequency;
+  total_points: number;
+  train_points: number;
+  val_points: number;
+  test_points: number;
+  purge_points: number;
+  embargo_points: number;
+  purge_trading_days: number;
+  embargo_trading_days: number;
+  tail_loss: number;
+  frequency_floor: number;
+  meets_floor: boolean;
+  /** 月频 → True（不做 Bootstrap/置换，最高 B 级） */
+  statistically_degraded: boolean;
+  train_start?: string | null;
+  train_end?: string | null;
+  val_end?: string | null;
 }
 
 /** 向导 5 步（详细设计 §2：候选股票池/时间与目标/字段与校验/进化参数/进化执行与结果） */

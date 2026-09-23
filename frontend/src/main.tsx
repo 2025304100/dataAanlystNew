@@ -9,6 +9,7 @@ import "dayjs/locale/en";
 import WorkbenchApp from "./App";
 import { AppProvider, useApp } from "./context/AppContext";
 import "./styles/workbench.css";
+import "./styles/mining.css";
 
 function Root() {
   const { locale, setAntdMessageApi } = useApp();

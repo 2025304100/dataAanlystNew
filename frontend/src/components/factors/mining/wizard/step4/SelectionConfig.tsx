@@ -1,9 +1,9 @@
 import { t } from "../../../../../i18n";
+import { Checkbox, InputNumber, Tooltip } from "antd";
 
 /**
- * 选择机制配置（高级模式折叠区，向导 §6.5.5）—— 术语只在本折叠区出现。
- *
- * 简单模式**不得渲染本组件**（简单模式禁出现「赛道/锦标赛/帕累托」等术语）。
+ * 选择机制配置（§6.5 赛道竞争 + 多目标 + 锦标赛；antd 控件版）。
+ * 术语只在本折叠区出现（简单模式不渲染本组件）。
  */
 export interface SelectionConfigProps {
   trackEnabled?: boolean;
@@ -26,51 +26,63 @@ export default function SelectionConfig({
   return (
     <details className="mining-evo-section" data-evo-section="selection" open>
       <summary>{t("miningEvoAdvancedSelection")}</summary>
-      <label>
-        <span>{t("miningEvoTrackEnabled")}</span>
-        <input
-          type="checkbox"
-          data-evo-track-enabled
-          checked={trackEnabled}
-          onChange={(e) => emit({ track_enabled: e.target.checked })}
-        />
-      </label>
-      <label>
-        <span>{t("miningEvoTrackFloor")}</span>
-        <input
-          type="number" step="0.05" min="0" max="1"
+
+      <div className="mining-evo-row">
+        <span className="mining-evo-field-label">{t("miningEvoTrackEnabled")}</span>
+        <div data-evo-track-enabled>
+          <Checkbox
+            checked={trackEnabled}
+            onChange={(e) => emit({ track_enabled: e.target.checked })}
+          />
+        </div>
+      </div>
+
+      <div className="mining-evo-row">
+        <span className="mining-evo-field-label">{t("miningEvoTrackFloor")}</span>
+        <InputNumber
           data-evo-track-floor
-          defaultValue={trackFloorRatio}
-          onChange={(e) => emit({ track_floor_ratio: Number(e.target.value) })}
+          min={0}
+          max={1}
+          step={0.05}
+          value={trackFloorRatio}
+          onChange={(v) => emit({ track_floor_ratio: typeof v === "number" ? v : trackFloorRatio })}
         />
-      </label>
-      <label>
-        <span>{t("miningEvoWeakGenerations")}</span>
-        <input
-          type="number" min="1"
+      </div>
+
+      <div className="mining-evo-row">
+        <span className="mining-evo-field-label">{t("miningEvoWeakGenerations")}</span>
+        <InputNumber
           data-evo-weak-generations
-          defaultValue={weakGenerations}
-          onChange={(e) => emit({ weak_generations: Number(e.target.value) })}
+          min={1}
+          value={weakGenerations}
+          onChange={(v) => emit({ weak_generations: typeof v === "number" ? v : weakGenerations })}
         />
-      </label>
-      <label>
-        <span>{t("miningEvoCrossCategory")}</span>
-        <input
-          type="number" step="0.05" min="0" max="1"
+      </div>
+
+      <div className="mining-evo-row">
+        <span className="mining-evo-field-label">{t("miningEvoCrossCategory")}</span>
+        <InputNumber
           data-evo-cross-category
-          defaultValue={crossCategoryRatio}
-          onChange={(e) => emit({ cross_category_ratio: Number(e.target.value) })}
+          min={0}
+          max={1}
+          step={0.05}
+          value={crossCategoryRatio}
+          onChange={(v) => emit({ cross_category_ratio: typeof v === "number" ? v : crossCategoryRatio })}
         />
-      </label>
-      <label>
-        <span>{t("miningEvoTournamentK")}</span>
-        <input
-          type="number" min="2" max="7"
-          data-evo-tournament-k
-          defaultValue={tournamentK}
-          onChange={(e) => emit({ tournament_k: Number(e.target.value) })}
-        />
-      </label>
+      </div>
+
+      <div className="mining-evo-row">
+        <span className="mining-evo-field-label">{t("miningEvoTournamentK")}</span>
+        <Tooltip title={t("miningEvoTournamentNote")}>
+          <InputNumber
+            data-evo-tournament-k
+            min={2}
+            max={7}
+            value={tournamentK}
+            onChange={(v) => emit({ tournament_k: typeof v === "number" ? v : tournamentK })}
+          />
+        </Tooltip>
+      </div>
     </details>
   );
 }

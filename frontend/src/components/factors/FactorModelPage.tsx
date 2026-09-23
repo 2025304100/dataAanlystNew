@@ -1170,7 +1170,7 @@ export default function FactorModelPage() {
         return (
           <Popover
             placement="topLeft"
-            overlayInnerStyle={{ maxWidth: 520 }}
+            styles={{ body: { maxWidth: 520 } }}
             trigger={["hover", "click"]}
             title={
               <Space>
@@ -1741,7 +1741,7 @@ export default function FactorModelPage() {
         open={compareOpen}
         onClose={() => setCompareOpen(false)}
         width={N === 3 ? 1180 : N === 2 ? 980 : 820}
-        destroyOnClose
+        destroyOnHidden
         maskClosable
       >
         <Spin spinning={compareLoading}>
@@ -2635,7 +2635,7 @@ export default function FactorModelPage() {
                     </div>
 
                     {/* 指标条：成员数 / feature 数 / 可训练比例 / 更新时间 */}
-                    <Descriptions size="small" column={2} style={{ marginBottom: 8 }} labelStyle={{ fontSize: 11 }} contentStyle={{ fontSize: 12 }}>
+                    <Descriptions size="small" column={2} style={{ marginBottom: 8 }} styles={{ label: { fontSize: 11 }, content: { fontSize: 12 } }}>
                       <Descriptions.Item label="成员数 (n_members)">
                         <Text strong>{sortedMembers.length}</Text>
                       </Descriptions.Item>
@@ -3227,7 +3227,7 @@ export default function FactorModelPage() {
         confirmLoading={creating}
         okText="确认创建"
         cancelText={t("cancel")}
-        destroyOnClose
+        destroyOnHidden
         data-testid="modal-create-factorset"
       >
         <Form
@@ -3546,7 +3546,7 @@ export default function FactorModelPage() {
         width={Math.max(680, Math.min(860, typeof window !== "undefined" ? window.innerWidth * 0.55 : 720))}
         open={memberDrawerOpen}
         onClose={closeMemberDrawer}
-        destroyOnClose
+        destroyOnHidden
         maskClosable
         extra={
           <Space>
@@ -3665,7 +3665,7 @@ export default function FactorModelPage() {
                       </table>
                     </div>
 
-                    <Descriptions size="small" column={1} bordered style={{ marginBottom: 10 }} labelStyle={{ fontSize: 12 }}>
+                    <Descriptions size="small" column={1} bordered style={{ marginBottom: 10 }} styles={{ label: { fontSize: 12 } }}>
                       <Descriptions.Item label="选中因子（只读代码）">
                         {pendingFactorCode ? (
                           <Space>

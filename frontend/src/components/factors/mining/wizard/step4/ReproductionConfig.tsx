@@ -1,12 +1,12 @@
 import { t } from "../../../../../i18n";
+import { Checkbox, InputNumber } from "antd";
 
 /**
- * 繁殖与变异配置（高级模式折叠区，向导 §6.6.8）。
+ * 繁殖与变异配置（§6.6.8；antd 控件版）。
  *
- * - **自适应开启**（默认）：C2 类型比例 / C3 跨赛道率 / D2 注入率显示为灰色
- *   **「自动」**，不可手改（避免双调度）；
- * - 关闭自适应后才解锁手动配置，二选一不打架；
- * - 安全上下限与防抖参数**锁死不暴露**（不在此渲染）。
+ * - **自适应开启**（默认）：三率显示灰色「自动」，不可手改（避免双调度）；
+ * - 关闭自适应后解锁手动配置；
+ * - 安全上下限与防抖参数**锁死不暴露**。
  */
 export interface ReproductionConfigProps {
   adaptive: boolean;
@@ -38,34 +38,36 @@ export default function ReproductionConfig({
   return (
     <details className="mining-evo-section" data-evo-section="reproduction" open>
       <summary>{t("miningEvoAdaptiveSection")}</summary>
-      <label>
-        <span>{t("miningEvoAdaptive")}</span>
-        <input
-          type="checkbox"
-          data-evo-adaptive
-          checked={adaptive}
-          onChange={(e) => onAdaptiveChange?.(e.target.checked)}
-        />
-      </label>
+
+      <div className="mining-evo-row">
+        <span className="mining-evo-field-label">{t("miningEvoAdaptive")}</span>
+        <div data-evo-adaptive>
+          <Checkbox
+            checked={adaptive}
+            onChange={(e) => onAdaptiveChange?.(e.target.checked)}
+          />
+        </div>
+      </div>
+
       {rows.map(([key, value]) => (
-        <label key={key}>
-          <span>{labelOf[key]}</span>
+        <div className="mining-evo-row" key={key}>
+          <span className="mining-evo-field-label">{labelOf[key]}</span>
           {adaptive ? (
             <span data-evo-rate-auto={key} className="mining-evo-auto">
               {t("miningEvoAuto")}
             </span>
           ) : null}
-          <input
-            type="number"
-            step="0.05"
-            min="0"
-            max="1"
-            data-evo-rate-input={key}
-            disabled={adaptive}
-            defaultValue={value}
-            onChange={(e) => onChange?.({ [`${key}_rate`]: Number(e.target.value) })}
-          />
-        </label>
+          <div data-evo-rate-input={key}>
+            <InputNumber
+              min={0}
+              max={1}
+              step={0.05}
+              disabled={adaptive}
+              value={value}
+              onChange={(v) => onChange?.({ [`${key}_rate`]: typeof v === "number" ? v : value })}
+            />
+          </div>
+        </div>
       ))}
     </details>
   );

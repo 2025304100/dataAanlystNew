@@ -22,7 +22,7 @@ import json
 import math
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import numpy as np
 import pandas as pd
@@ -887,6 +887,7 @@ def run_evaluation(
     ctd_evidence: CompleteTradeDayEvidence | None = None,
     created_by: str = "local_user",
     task_id: str | None = None,
+    stats_provider: Callable[..., dict[str, Any]] | None = None,
 ) -> EvaluationOutcome:
     """执行完整评估流程。
 
@@ -1104,6 +1105,21 @@ def run_evaluation(
             "embargo_days": time_split.embargo_days,
         },
     }
+
+    # B2：统计层写库钩子（缺省 None → 行为完全不变；挖掘域注入后把
+    # `metrics_json.stats`（8 方法）与「原始/校正 ICIR」并入 metrics 一并落库）。
+    if stats_provider is not None:
+        try:
+            extra_metrics = stats_provider(
+                ic_series=ic_metrics.ic_series,
+                icir=ic_metrics.icir,
+                factor_panel=aligned.features.to_numpy(dtype=float),
+                return_panel=aligned.targets.to_numpy(dtype=float),
+            )
+            if isinstance(extra_metrics, dict):
+                metrics.update(extra_metrics)
+        except Exception:  # noqa: BLE001 - 统计层尽力而为，评估主链路不受影响
+            pass
 
     # 6. 写入门禁结论（终态保护）
     finalize_evaluation_run(

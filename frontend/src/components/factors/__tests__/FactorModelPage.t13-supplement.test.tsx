@@ -30,7 +30,7 @@ const { mockApi, mockMessage, mockModalConfirm } = vi.hoisted(() => ({
     getFactorSetDetail: vi.fn(),
     scoringListFactorDefinitions: vi.fn(),
     getFactorModel: vi.fn(),
-    scoringGetOverviewAsFactor: vi.fn(async () => ({ feature_enabled: true, config: {}, runtime: {}, health: {}, latest_trade_date: null, factor_coverage: [] })),
+    scoringGetOverviewAsFactor: vi.fn<any>(async () => ({ feature_enabled: true, config: {}, runtime: {}, health: {}, latest_trade_date: null, factor_coverage: [] })),
     scoringListTasks: vi.fn(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
     getInboxNotifications: vi.fn(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
     scoringGetFactorDefinition: vi.fn(async () => ({})),

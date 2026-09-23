@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.task_lock import TaskLock
+
+logger = logging.getLogger(__name__)
 
 # ══════════════════════════════════════════════════════════
 # 常量
@@ -343,6 +346,45 @@ def expire_stale_locks(
     return released
 
 
+def patrol_once(
+    session_factory: Any = None, *, timeout_seconds: int = HEARTBEAT_TIMEOUT
+) -> list[str]:
+    """巡检一次：回收心跳超时的锁（**供后台循环调用**）。
+
+    ⚠️ 为什么要有这个函数：`expire_stale_locks()` 实现一直存在且语义正确，
+    但**全仓没有任何调用方** —— 进程被强杀/重启后锁行永久残留，界面 Step4
+    提交恒被拒（弹窗「已有挖掘任务进行中」），用户没有任何自救入口。
+    本函数就是那个缺失的调用方入口：自带 session、失败不外抛（后台循环不能被
+    一次异常打死），由 `app.main` 的 lifespan 起循环定期调用。
+
+    Args:
+        session_factory: 可调用返回 Session 的工厂；None 时用进程默认工厂
+            （`DatabaseManager`），测试可注入以走真实代码路径。
+        timeout_seconds: 心跳超时阈值，默认 `HEARTBEAT_TIMEOUT`（30 分钟）。
+
+    Returns:
+        被释放的 task_id 列表（含被拉起的队首）；异常时返回空列表。
+    """
+    if session_factory is None:
+        from app.db.session import get_session_local  # 延迟导入，避免循环依赖
+
+        session_factory = get_session_local()
+
+    db = session_factory()
+    try:
+        return expire_stale_locks(db, timeout_seconds=timeout_seconds)
+    except Exception:
+        # 后台巡检：一次失败不得终止整个循环，也不得把异常抛给调用方
+        logger.exception("mining lock patrol failed; will retry on next tick")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return []
+    finally:
+        db.close()
+
+
 def get_lock_status(db: Session) -> LockStatus:
     """双锁总览（`GET /factor-mining/locks/status`）。"""
     status = LockStatus()
@@ -381,5 +423,6 @@ __all__ = [
     "promote_queue_head",
     "heartbeat",
     "expire_stale_locks",
+    "patrol_once",
     "get_lock_status",
 ]

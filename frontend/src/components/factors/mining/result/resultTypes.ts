@@ -20,6 +20,10 @@ export interface MiningResultRow {
   icir_adjusted: number;
   coverage?: number | null;
   turnover?: number | null;
+  /** 公式复杂度（帕累托散点点大小） */
+  complexity?: number | null;
+  /** NSGA-II 非支配 rank（1 = 帕累托前沿，散点高亮描边） */
+  generation_rank?: number | null;
   decay_ratio?: number | null;
   source?: CandidateSource | null;
   generation?: number | null;

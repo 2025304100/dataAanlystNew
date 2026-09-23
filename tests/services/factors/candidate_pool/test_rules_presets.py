@@ -658,7 +658,13 @@ class TestBlocking:
     def test_field_unavailable_is_reported_not_ignored(self, small_panel):
         res = _preview_with(small_panel, {"min_listed_trading_days": 120})
         assert res.blocking_issues[0]["reason"] == R.REASON_FIELD_UNAVAILABLE
-        assert "listed_at" in res.blocking_issues[0]["detail_zh"]
+        # 2026-09-22：「本项不可用」必须能被**机器**定位到具体字段（field 键），
+        # 而不是靠文案里出现表名（旧断言 `"listed_at" in detail_zh` 已废 ——
+        # 用户句禁止出现表名，技术口径改由 blocked_detail_zh 承载）。
+        assert res.blocking_issues[0]["field"] == "min_listed_trading_days"
+        detail = res.blocking_issues[0]["detail_zh"]
+        assert "上市满" in detail, f"用户句应点明是哪个条件：{detail}"
+        assert "`" not in detail and "listed_at" not in detail, "用户句不得泄漏内部标识"
 
     def test_root_cause_beats_symptom(self, small_panel):
         """根因优先：用户引用了无数据字段时，不能只报「命中太少」，

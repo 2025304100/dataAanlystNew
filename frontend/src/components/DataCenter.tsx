@@ -11,6 +11,7 @@ import {
 import ExternalDataSync from "./ExternalDataSync";
 import TaskCenter from "./TaskCenter";
 import UniverseDataPanel from "./UniverseDataPanel";
+import DataMirrorPage from "./factors/mining/config/DataMirrorPage";
 
 type CoverageRow = ExternalFieldCoverage & { dataset: string };
 
@@ -130,10 +131,10 @@ function CoverageDiagnostics() {
 }
 
 export default function DataCenter() {
-  const [activeTab, setActiveTab] = useState<"market" | "inputs" | "coverage" | "tasks">(() => {
+  const [activeTab, setActiveTab] = useState<"market" | "inputs" | "coverage" | "tasks" | "mirror">(() => {
     if (typeof window === "undefined") return "market";
     const stored = window.localStorage.getItem("settings_data_center_tab");
-    return stored === "inputs" || stored === "coverage" || stored === "tasks" ? stored : "market";
+    return stored === "inputs" || stored === "coverage" || stored === "tasks" || stored === "mirror" ? stored : "market";
   });
 
   useEffect(() => {
@@ -154,6 +155,7 @@ export default function DataCenter() {
       { key: "inputs", label: "因子输入", children: <ExternalDataSync /> },
       { key: "coverage", label: "覆盖诊断", children: <CoverageDiagnostics /> },
       { key: "tasks", label: "任务与批次", children: <TaskCenter /> },
+      { key: "mirror", label: "数据镜像", children: <DataMirrorPage /> },
     ]} />
   </section>;
 }

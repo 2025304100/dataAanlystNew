@@ -211,7 +211,10 @@ export default function FactorDetail({ factorCode, onOpenEditor, onBack }: Facto
   if (loading && !factor) {
     return (
       <Card>
-        <Spin tip={t("factorDetailLoading")} style={{ display: "block", padding: 48 }} />
+        {/* P2-3：Spin tip 独立使用会告警，改用嵌套模式使 tip 生效且不触发废弃警告 */}
+        <Spin spinning={true} tip={t("factorDetailLoading")}>
+          <div style={{ padding: 48 }} />
+        </Spin>
       </Card>
     );
   }

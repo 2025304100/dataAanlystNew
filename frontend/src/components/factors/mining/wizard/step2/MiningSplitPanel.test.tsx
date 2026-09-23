@@ -43,42 +43,41 @@ function bp(over: Partial<SplitBudget> = {}) {
 }
 
 describe("MiningSplitPanel 三段比例", () => {
+  /** antd InputNumber 会把 data-* 转发到**内层 input** 上（根是包装 div） */
+  const ratioInput = (id: string) =>
+    document.querySelector(`[data-split-ratio="${id}"]`) as HTMLInputElement;
+  /** 触发 antd InputNumber 变更（写内部 input） */
+  const changeRatio = (id: string, value: string) => {
+    fireEvent.change(ratioInput(id), { target: { value } });
+  };
+
   it("默认 60/20/20 且合计 100", () => {
     render(<MiningSplitPanel />);
-    const val = (id: string) =>
-      (document.querySelector(`[data-split-ratio="${id}"]`) as HTMLInputElement).value;
-    expect(val("train")).toBe("60");
-    expect(val("val")).toBe("20");
-    expect(val("test")).toBe("20");
+    expect(ratioInput("train").value).toBe("60");
+    expect(ratioInput("val").value).toBe("20");
+    expect(ratioInput("test").value).toBe("20");
     expect(document.querySelector("[data-split-sum]")?.textContent).toContain("100");
   });
 
   it("比例和不为 100 → 显示阻断提示", () => {
     render(<MiningSplitPanel />);
-    fireEvent.change(
-      document.querySelector('[data-split-ratio="test"]') as HTMLInputElement,
-      { target: { value: "5" } },
-    );
+    changeRatio("test", "5");
     expect(document.querySelector("[data-split-error]")).toBeTruthy();
     expect(document.querySelector("[data-split-sum]")?.textContent).toContain("85");
   });
 
   it("比例改回 100 后错误消失", () => {
     render(<MiningSplitPanel />);
-    const test = document.querySelector('[data-split-ratio="test"]') as HTMLInputElement;
-    fireEvent.change(test, { target: { value: "5" } });
+    changeRatio("test", "5");
     expect(document.querySelector("[data-split-error]")).toBeTruthy();
-    fireEvent.change(test, { target: { value: "20" } });
+    changeRatio("test", "20");
     expect(document.querySelector("[data-split-error]")).toBeNull();
   });
 
   it("比例变化回调上抛（由后端重算，前端不算切分）", () => {
     const onChange = vi.fn();
     render(<MiningSplitPanel onChange={onChange} />);
-    fireEvent.change(
-      document.querySelector('[data-split-ratio="train"]') as HTMLInputElement,
-      { target: { value: "50" } },
-    );
+    changeRatio("train", "50");
     expect(onChange).toHaveBeenCalled();
   });
 });
@@ -156,10 +155,10 @@ describe("MiningSplitPanel not_do 守卫", () => {
     const { rerender } = render(<MiningSplitPanel budget={BUDGET} />);
     const before = document.querySelector("[data-split-boundary]")?.textContent;
     expect(before).toBeTruthy();
-    fireEvent.change(
-      document.querySelector('[data-split-ratio="train"]') as HTMLInputElement,
-      { target: { value: "50" } },
-    );
+    const input = document.querySelector(
+      '[data-split-ratio="train"]',
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "50" } });
     rerender(<MiningSplitPanel budget={BUDGET} />);
     // 边界未随比例变化（切分由后端算，前端只收不发）
     expect(document.querySelector("[data-split-boundary]")?.textContent).toBe(before);

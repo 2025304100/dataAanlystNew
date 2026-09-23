@@ -339,7 +339,16 @@ def run_quarterly_review(
     for version_id, items in by_version.items():
         items.sort(key=lambda r: (r.created_at is None, r.created_at), reverse=True)
         latest = items[0]
-        if bool(latest.manual_adjusted):
+        # B2：季度重评消费真实列 —— `grade_manual_adjusted` 以 factor_versions
+        # 当前态为准（B1 已落库）；列缺失（老库迁移未执行）回退历史行字段。
+        from app.models.factor_model import FactorVersion
+        version = db.get(FactorVersion, version_id)
+        if version is not None and "grade_manual_adjusted" in \
+                FactorVersion.__table__.columns.keys():
+            manual = bool(version.grade_manual_adjusted)
+        else:
+            manual = bool(latest.manual_adjusted)
+        if manual:
             stats["skipped_manual"] += 1
             continue
 
@@ -385,6 +394,17 @@ def run_quarterly_review(
             icir=to_db_float(cur_icir),
             decay_ratio=to_db_float(latest.decay_ratio),
         ))
+        # B1：自动评定结果同步落到 `factor_versions` 当前态 4 列（grade() 结果可落库）。
+        # 孤立的 history version_id（版本行已被删）→ 尽力跳过，不阻断整批重评。
+        try:
+            from app.services.factors.mining.service import persist_grade_to_version
+            persist_grade_to_version(
+                db, factor_version_id=version_id,
+                grade_value=res.grade, reason=res.reason,
+                metrics={}, manual_adjusted=0,
+            )
+        except Exception:  # noqa: BLE001 - 当前态落库尽力而为，历史行已保证可追溯
+            pass
         stats["reviewed"] += 1
         if res.action == "promote":
             stats["promoted"] += 1

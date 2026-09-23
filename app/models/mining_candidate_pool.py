@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -88,7 +89,9 @@ class TrainingCandidatePoolSnapshot(Base):
     )
 
     #: 冻结成员（一次性载入内存分析表，避免逐行查主库）
-    members_json: Mapped[str] = mapped_column(Text)
+    #: ⚠️ MySQL `Text` 仅 64KB：大候选池（数千成员）JSON 超限会被静默截断 →
+    #:   `json.loads` 抛 JSONDecodeError（真实线上缺陷，0062 修复）。用 MEDIUMTEXT（16MB）。
+    members_json: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"))
     rule_hash: Mapped[str] = mapped_column(String(64))
     data_cutoff_at: Mapped[datetime] = mapped_column(DateTime)
     stats_json: Mapped[str | None] = mapped_column(Text, nullable=True)

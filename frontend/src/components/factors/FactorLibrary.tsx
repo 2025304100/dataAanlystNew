@@ -530,7 +530,7 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
         open={usageDrawerOpen}
         onClose={() => { setUsageDrawerOpen(false); setUsageDrawerCode(null); }}
         width={780}
-        destroyOnClose
+        destroyOnHidden
       >
         <Spin spinning={usageLoading}>
           {!u && !usageLoading ? (

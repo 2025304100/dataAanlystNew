@@ -21,16 +21,19 @@ const ROWS: MiningResultRow[] = [
     candidate_id: "c1", formula: "ts_mean(close,5)", grade: "S",
     icir: 0.62, icir_adjusted: 0.55, coverage: 0.95, turnover: 0.18,
     decay_ratio: 0.9, source: "elite", generation: 3,
+    complexity: 5, generation_rank: 1,
   },
   {
     candidate_id: "c2", formula: "cs_rank(pe_ttm)", grade: "B",
     icir: 0.24, icir_adjusted: 0.21, coverage: 0.78, turnover: 0.4,
     decay_ratio: 0.7, source: "mutation", generation: 5,
+    complexity: 3, generation_rank: 2,
   },
   {
     candidate_id: "c3", formula: "ts_std(volume,20)", grade: "D",
     icir: 0.08, icir_adjusted: 0.05, coverage: 0.55, turnover: 0.8,
     decay_ratio: 0.3, source: "random", generation: 7,
+    complexity: 8, generation_rank: 3,
   },
 ];
 
@@ -150,5 +153,29 @@ describe("FactorMiningResult 列表字段", () => {
     expect(body).toContain("0.9");             // 衰减率
     expect(body).toMatch(/精英|elite/);         // 来源
     expect(document.querySelector('[data-result-grade="c1"]')?.textContent).toBe("S");
+  });
+});
+
+describe("FactorMiningResult 帕累托散点（§6.5.6）", () => {
+  it("渲染散点：每点一个点、rank=1 前沿高亮描边", () => {
+    render(<FactorMiningResult rows={ROWS} context={CONTEXT} />);
+    const pareto = document.querySelector("[data-result-pareto]");
+    expect(pareto).toBeTruthy();
+    expect(document.querySelectorAll("[data-pareto-point]").length).toBe(3);
+    expect(document.querySelectorAll("[data-pareto-frontier]").length).toBe(1);
+    expect(document.querySelector('[data-pareto-frontier="c1"]')).toBeTruthy();
+    const legend = document.querySelector(".mining-result-pareto-legend")?.textContent ?? "";
+    expect(legend).toMatch(/换手率|turnover/);
+    expect(legend).toMatch(/ICIR/);
+  });
+
+  it("缺少换手率或 ICIR 的行不进散点", () => {
+    render(
+      <FactorMiningResult
+        rows={[{ ...ROWS[0], turnover: undefined }]}
+        context={CONTEXT}
+      />,
+    );
+    expect(document.querySelector("[data-result-pareto]")).toBeNull();
   });
 });

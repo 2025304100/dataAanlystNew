@@ -144,4 +144,101 @@ describe("FactorMiningRunTrack 最终验证", () => {
     expect(area?.textContent).toContain("20");
     expect(area?.textContent).toContain("50");
   });
+
+  it("§8.3.7：最终验证进度细化展示（进度条 + 状态 + 完成提示）", () => {
+    render(
+      <FactorMiningRunTrack
+        progress={p({
+          status: "validating",
+          final_validation: { done: 50, total: 50 },
+        })}
+      />,
+    );
+    const area = document.querySelector("[data-run-final-validation]");
+    expect(area?.querySelector("[data-run-final-progress]")).toBeTruthy();
+    expect(area?.querySelector("[data-run-final-status]")?.textContent).toContain("已完成");
+    expect(area?.querySelector("[data-run-final-overview-hint]")).toBeTruthy();
+  });
+});
+
+describe("FactorMiningRunTrack 当前种群 Top 因子（F2 §8.3.3）", () => {
+  it("有 topCandidates 时渲染 Top 列表（含 ICIR/覆盖率/来源）", () => {
+    render(
+      <FactorMiningRunTrack
+        progress={p({ generation: 8 })}
+        topCandidates={[
+          { rank: 1, formula: "std(close,5)/mean(std(close,20),60)", icir: 0.42, coverage: 0.95, source: "精英保留" },
+          { rank: 2, formula: "delta(roe_ttm,4)/std(delta(roe_ttm,4),8)", icir: 0.39, coverage: 0.88, source: "变异自第6代#3" },
+        ]}
+      />,
+    );
+    const list = document.querySelector("[data-run-top-list]");
+    expect(list).toBeTruthy();
+    expect(list?.textContent).toContain("std(close,5)");
+    expect(list?.textContent).toContain("0.42");
+    expect(list?.textContent).toContain("精英保留");
+    expect(list?.textContent).toContain("第 8 代");
+  });
+
+  it("新进 Top10 的条目标亮（换入新公式后 data-run-top-islot=new）", () => {
+    const { rerender } = render(
+      <FactorMiningRunTrack
+        progress={p({ generation: 8 })}
+        topCandidates={[
+          { rank: 1, formula: "aaa", icir: 0.4 },
+          { rank: 2, formula: "bbb", icir: 0.3 },
+        ]}
+      />,
+    );
+    // 首轮仅建基线，不闪烁
+    expect(document.querySelector('[data-run-top-islot="new"]')).toBeNull();
+    // 换代：bbb 掉出，ccc 新进 → ccc 标 new
+    rerender(
+      <FactorMiningRunTrack
+        progress={p({ generation: 9 })}
+        topCandidates={[
+          { rank: 1, formula: "aaa", icir: 0.4 },
+          { rank: 2, formula: "ccc", icir: 0.45 },
+        ]}
+      />,
+    );
+    const newRow = document.querySelector('[data-run-top-islot="new"]');
+    expect(newRow).toBeTruthy();
+    expect(newRow?.textContent).toContain("ccc");
+    // aaa 仍在 Top10 → 不标 new
+    expect(
+      document.querySelector('[data-run-top-row="1"]')?.getAttribute("data-run-top-islot"),
+    ).toBe("stable");
+  });
+
+  it("无 topCandidates 时不渲染 Top 列表", () => {
+    render(<FactorMiningRunTrack progress={PROGRESS} />);
+    expect(document.querySelector("[data-run-top-list]")).toBeNull();
+  });
+});
+
+describe("FactorMiningRunTrack 多样性 health 曲线（双轴）", () => {
+  it("有 diversity_curve 时渲染双轴曲线（左 ICIR + 右 health + 0.3 参考线）", () => {
+    render(
+      <FactorMiningRunTrack
+        progress={p({
+          diversity_curve: [
+            { generation: 1, diversity_health: 0.6 },
+            { generation: 2, diversity_health: 0.4 },
+            { generation: 3, diversity_health: 0.25 },
+          ],
+        })}
+      />,
+    );
+    const chart = document.querySelector("[data-run-diversity-curve]");
+    expect(chart).toBeTruthy();
+    expect(document.querySelectorAll("[data-diversity-icir]").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll("[data-diversity-health]").length).toBe(3);
+    expect(document.querySelector("[data-diversity-premature-line]")).toBeTruthy();
+  });
+
+  it("无 diversity_curve 时不渲染双轴曲线", () => {
+    render(<FactorMiningRunTrack progress={PROGRESS} />);
+    expect(document.querySelector("[data-run-diversity-curve]")).toBeNull();
+  });
 });

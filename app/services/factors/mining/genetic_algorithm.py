@@ -1,10 +1,12 @@
-"""GA 主循环（朴素版，M1）—— 选择 / 繁殖 / 收敛 / 逐代统计。
+"""GA 主循环 —— 选择 / 繁殖 / 收敛 / 逐代统计（M1 朴素 + M2 集成双路径）。
 
-**范围（任务卡 T23，M1 朴素）**
+**范围（任务卡 T23，M1 朴素；P0 集成卡补 M2 路径）**
 - 评估（短样本，**只用 train 段**）→ 观测 → 选择 → 繁殖 → 校验 → 停止
-- 选择：**朴素排序（按 ICIR 降序）**；A1 赛道竞争 / B1 NSGA-II / B2 锦标赛属 M2（T33）
-- 繁殖：**固定三率**（变异/交叉/注入），自适应调度属 M2（C1）
-- 变异 / 交叉为**参数级**（M1 朴素）；结构级变异 / 子树交叉属 M2（C2/C3）
+- `selection_mode="naive"`（默认）：**朴素排序（按 ICIR 降序）** + **固定三率** +
+  参数级变异/交叉 —— 与 M1 行为完全一致（回退与复现基准）
+- `selection_mode="advanced"`（M2）：A1 赛道竞争 / B1 NSGA-II / B2 锦标赛选父代；
+  C1 自适应调度（或固定三率）+ C2 四种变异 + C3 子树交叉 + D2 随机注入；
+  D3 三层多样性观测喂 C1；D1 先自救（stall≥2）后停止（stall≥3）
 
 **任务卡四条坑的落点**
 1. **收敛判断 = 连续 N 代提升 < 阈值**（`convergence_generations`），绝不是
@@ -31,6 +33,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
 
 from app.core import db_numeric as DN
+from app.services.factors.mining.dedup import ELIM_REASON_SIMILAR
 
 # ══════════════════════════════════════════════════════════
 # 配置与护栏
@@ -54,11 +57,11 @@ _NUM_RE = re.compile(r"(?<![A-Za-z_0-9.])(\d+(?:\.\d+)?)(?![A-Za-z_0-9])")
 
 @dataclass
 class GAConfig:
-    """GA 配置（需求 §6.1 输入项 + 收敛口径）。"""
+    """GA 配置（需求 §6.1 输入项 + 收敛口径；M2 字段见下方分组）。"""
 
     population_size: int = 60
     max_generations: int = 8
-    #: 精英比例（按 ICIR 排序取 Top；精英不参与繁殖）
+    #: 精英比例（按排序取 Top；精英不参与繁殖）
     selection_ratio: float = 0.20
     #: 固定三率（和为 1；护栏见常量）
     mutation_rate: float = 0.55
@@ -68,6 +71,24 @@ class GAConfig:
     convergence_threshold: float = 1e-3
     convergence_generations: int = 2
     seed: int = 42
+
+    # ── M2 选择/繁殖配置（P0 集成；缺省值 = 朴素路径，行为零变化） ──
+    #: "naive"（M1 朴素）| "advanced"（A1/B1/B2 + C1/C2/C3/D1/D2/D3）
+    selection_mode: str = "naive"
+    #: B1 启用目标（目标池子集，3~5 个）；None → DEFAULT_ENABLED_OBJECTIVES
+    objectives: tuple[str, ...] | None = None
+    #: B2 锦标赛 K（2~7，默认 3）
+    tournament_k: int = 3
+    #: C1 自适应调度开关；False → 用固定三率（但仍走 M2 选择/结构级繁殖）
+    adaptive: bool = False
+    #: C3 跨赛道交叉比例（非自适应时的固定值；自适应时由 C1 调节）
+    cross_category_ratio: float = 0.2
+    #: C2 启用的变异类型（param/op/field/struct 子集）；None → 四种全开
+    mutation_ops_enabled: tuple[str, ...] | None = None
+    #: 字段替换（C2）与随机注入（D2）的字段域；None → 不限
+    selected_fields: tuple[str, ...] | None = None
+    #: A1 弱赛道判定的 ICIR 预筛门槛
+    prefilter_icir: float = 0.1
 
     def __post_init__(self) -> None:
         if int(self.population_size) < 4:
@@ -81,7 +102,7 @@ class GAConfig:
             raise ValueError(
                 f"三率之和必须为 1（当前 {rate_sum:.6f}）："
                 f"mutation={self.mutation_rate} crossover={self.crossover_rate} "
-                f"random={self.random_rate}。")
+                f"random_rate={self.random_rate}。")
         for name, (lo, hi), value in (
             ("mutation_rate", GUARD_MUTATION, self.mutation_rate),
             ("crossover_rate", GUARD_CROSSOVER, self.crossover_rate),
@@ -90,6 +111,32 @@ class GAConfig:
             if not (lo <= value <= hi):
                 raise ValueError(
                     f"{name}={value} 超出安全护栏 [{lo}, {hi}]（需求 §6.1.2）。")
+        mode = str(self.selection_mode)
+        if mode not in ("naive", "advanced"):
+            raise ValueError(
+                f"selection_mode 必须是 'naive' 或 'advanced'（当前 {mode!r}）。")
+        if not (0.0 <= float(self.cross_category_ratio) <= 1.0):
+            raise ValueError("cross_category_ratio 必须在 [0, 1]。")
+        if self.mutation_ops_enabled is not None:
+            from app.services.factors.mining.reproduction.scheduler import (
+                MUTATION_TYPES,
+            )
+            unknown = set(self.mutation_ops_enabled) - set(MUTATION_TYPES)
+            if unknown:
+                raise ValueError(
+                    f"mutation_ops_enabled 含未知类型 {sorted(unknown)}；"
+                    f"合法值 {list(MUTATION_TYPES)}。")
+        if mode == "advanced":
+            # B1 目标池与数量（3~5）在配置期校验，失败早于任务启动
+            from app.services.factors.mining.selection.multi_objective import (
+                DEFAULT_ENABLED_OBJECTIVES,
+                resolve_specs,
+            )
+            from app.services.factors.mining.selection.tournament import (
+                validate_tournament_k,
+            )
+            resolve_specs(self.objectives or DEFAULT_ENABLED_OBJECTIVES)
+            validate_tournament_k(self.tournament_k)
 
 
 @dataclass
@@ -172,22 +219,108 @@ def math_is_nan_inf(value: float) -> bool:
     return math.isnan(value) or math.isinf(value)
 
 
+# ══════════════════════════════════════════════════════════
+# M2 集成辅助（A1/B1/B2 + C1/C2/C3 + D1/D2/D3 的编排胶水；
+# 算法本体在 selection/ 与 reproduction/ 包内，此处只做调用编排）
+# ══════════════════════════════════════════════════════════
+
+#: 从公式串提取字段名 / 算子名的正则（与 reproduction.mutation 同口径）
+_FORMULA_FIELD_RE = re.compile(
+    r"(?<![A-Za-z_0-9])([a-z_][a-z_0-9]*)(?![A-Za-z_0-9(])")
+_FORMULA_CALL_RE = re.compile(r"([A-Za-z_][A-Za-z_0-9]*)\s*\(")
+
+
+def classify_formula(formula: str, *, declared: str | None = None) -> str:
+    """按公式串重判 6 类归属（§6.5.2：变异/交叉后类别可能改变，须重新归类）。
+
+    字段 = 非「算子名(」的标识符；算子 = `name(` 调用名；整体取负 → 反转特征。
+    `declared` 仅在无任何特征命中时兜底（与 category.classify 契约一致）。
+    """
+    from app.services.factors.mining import category as CAT
+
+    src = str(formula or "").strip()
+    fields = [m.group(1) for m in _FORMULA_FIELD_RE.finditer(src)]
+    functions = [m.group(1) for m in _FORMULA_CALL_RE.finditer(src)]
+    return CAT.classify(
+        fields=fields, functions=functions,
+        negated=src.startswith("-"), declared=declared,
+    ).category
+
+
+def _b1_keys(ranked: Sequence[Mapping[str, Any]], specs: Any) -> list[Any]:
+    """B1 全种群 rank + CD（评估失败的个体目标全缺失 → 沉到最后层）。"""
+    from app.services.factors.mining.selection.multi_objective import (
+        rank_population,
+    )
+
+    objs = [(e.get("fitness") or {}) for e in ranked]
+    return rank_population(objs, specs)
+
+
+def _m2_fixed_strategy(cfg: GAConfig) -> Any:
+    """非自适应（adaptive=False）时的固定策略：配置三率 + 启用变异类型均分。"""
+    from app.services.factors.mining.contracts import Strategy
+    from app.services.factors.mining.reproduction.scheduler import MUTATION_TYPES
+
+    enabled = tuple(cfg.mutation_ops_enabled or MUTATION_TYPES)
+    share = 1.0 / len(enabled) if enabled else 0.0
+    return Strategy(
+        mutation_rate=float(cfg.mutation_rate),
+        crossover_rate=float(cfg.crossover_rate),
+        random_rate=float(cfg.random_rate),
+        mutation_type_distribution={k: share for k in enabled},
+        cross_category_ratio=float(cfg.cross_category_ratio),
+        adaptive_state="fixed",
+    )
+
+
+def _mutation_dist_for(distribution: Mapping[str, float] | None,
+                       enabled: Sequence[str] | None) -> dict[str, float]:
+    """把 C1 的变异类型分布过滤到启用集合并归一（空 → 启用集合内均分）。"""
+    from app.services.factors.mining.reproduction.scheduler import MUTATION_TYPES
+
+    keys = tuple(enabled) if enabled else MUTATION_TYPES
+    raw = {k: max(0.0, float((distribution or {}).get(k, 0.0))) for k in keys}
+    total = sum(raw.values())
+    if total <= 0:
+        share = 1.0 / len(keys) if keys else 0.0
+        return {k: share for k in keys}
+    return {k: v / total for k, v in raw.items()}
+
+
 def run_ga_loop(
     cfg: GAConfig, initial_population: Sequence[Mapping[str, Any]], *,
     evaluate: Callable[[Mapping[str, Any]], Mapping[str, Any]],
     random_supplier: Callable[[int], Sequence[Mapping[str, Any]]] | None = None,
     on_generation: Callable[[int, Mapping[str, Any], list[Mapping[str, Any]]],
                             None] | None = None,
+    runtime_dedup: Callable[[Sequence[Mapping[str, Any]]], Any] | None = None,
 ) -> GAResult:
-    """**朴素 GA 主循环**（M1）。
+    """**GA 主循环**（`selection_mode` 双路径）。
 
     Args:
         initial_population: 初始种群（T17/T18/T22/T19 产出的候选 dict）
         evaluate: 适应度评估（**只允许 train 段**，C8）→ 返回含 `icir` 的映射；
             **单个个体评估异常会被隔离**（该个体沉底淘汰），不中断整代
-        random_supplier: 受约束随机注入（T18）；缺省时用参数级变异兜底
+        random_supplier: 受约束随机注入（T18/D2）；缺省时 M2 路径回退
+            `inject_individuals`（仍受约束随机），两条路径最终都用变异兜底
         on_generation: 逐代持久化回调 `(generation, record, ranked)`；
             抛异常**会向上传播**（落库失败必须让调用方知道，不能静默丢代）
+        runtime_dedup: 第 4 层运行时相关性去重回调（P1-6）。每一代评估+排序后调用，
+            原地把近似个体标 `eliminated_similar` 并返回 `RuntimeDedupResult`；
+            被淘汰个体不进精英/繁殖池，但仍在 `ranked`（on_generation 落库用）。
+            `total_trials` 仍按**全量评估数**累加（去重不减 DSR 输入源）。
+
+    路径说明：
+    - `naive`（默认）：M1 朴素——ICIR 降序精英 + 固定三率 + 参数级算子，
+      收敛 = 连续 `convergence_generations` 代提升 < 阈值。
+    - `advanced`（M2）：B1 rank+CD 精英与排序 → A1 赛道配额（弱赛道流转）
+      → B2 锦标赛选父代 → C1 策略（自适应或固定）→ C2 四种变异 +
+      C3 子树交叉 + D2 随机注入 → D3 三层 health 落库；
+      D1 收敛 = 先自救（stall≥2 喂 C1）后停止（stall≥3，固定口径，
+      `convergence_generations` 仅对 naive 生效）。
+      `record` 额外携带 M2 代际字段（actual_ 三率/adaptive_state/diversity_*/
+      category_evenness/pareto_front_count 等，由 persist_generation 落库）。
 
     Returns:
         `GAResult`（`total_trials` 每代累加 = Σ 种群大小，DSR 唯一输入源）
@@ -196,6 +329,25 @@ def run_ga_loop(
     population: list[dict[str, Any]] = [dict(x) for x in initial_population]
     if not population:
         raise ValueError("初始种群为空。")
+
+    # ── M2 路径初始化（naive 时全部为 None，行为与 M1 完全一致） ──
+    m2 = str(cfg.selection_mode) == "advanced"
+    specs: Any = None
+    scheduler: Any = None
+    track_state: Any = None
+    if m2:
+        from app.services.factors.mining.reproduction.scheduler import (
+            AdaptiveScheduler,
+        )
+        from app.services.factors.mining.selection.multi_objective import (
+            DEFAULT_ENABLED_OBJECTIVES,
+            resolve_specs,
+        )
+        from app.services.factors.mining.selection.track import TrackQuotaState
+
+        specs = resolve_specs(cfg.objectives or DEFAULT_ENABLED_OBJECTIVES)
+        scheduler = AdaptiveScheduler() if cfg.adaptive else None
+        track_state = TrackQuotaState()
 
     total_trials = 0
     stall = 0
@@ -218,17 +370,11 @@ def run_ga_loop(
                 ranked.append(entry)
                 continue
             entry["fitness"] = fitness
+            entry["signature"] = fitness.pop("signature", None)
             entry["eval_error"] = None
             ranked.append(entry)
 
         ranked.sort(key=lambda e: _icir_of(e.get("fitness")), reverse=True)
-
-        # ── 2. 精英选择（朴素：按 ICIR 降序取 Top；不参与繁殖）──
-        elite_count = max(1, round(float(cfg.selection_ratio)
-                                   * int(cfg.population_size)))
-        elite_count = min(elite_count, len(ranked))
-        elites = [dict(e, operation=OP_ELITE) for e in ranked[:elite_count]]
-        breeding = ranked[elite_count:] or ranked[:1]      # 防全空
 
         gen_best = _icir_of(ranked[0].get("fitness")) if ranked else float("-inf")
         gen_best = None if gen_best == float("-inf") else gen_best
@@ -239,59 +385,353 @@ def run_ga_loop(
         median_icir = (round(sorted(values)[len(values) // 2], 6)
                        if values else None)
 
+        # ── 1.5 第 4 层运行时相关性去重（P1-6）──
+        # 评估+排序后标 `eliminated_similar`；淘汰个体不进精英/繁殖池，
+        # 但仍在 `ranked`（on_generation 落库保留淘汰元数据）。
+        # total_trials 按**全量评估数**累加（去重只减繁殖池，不减 DSR 输入源）。
+        evaluated_count = len(ranked)
+        if runtime_dedup is not None:
+            try:
+                runtime_dedup(ranked)
+            except Exception:  # noqa: BLE001 - 去重失败退化为全量繁殖，不阻断进化
+                for e in ranked:
+                    e.setdefault("elimination_status", "active")
+        active = [e for e in ranked
+                  if e.get("elimination_reason") != ELIM_REASON_SIMILAR]
+
+        # ── 2. 精英选择（naive：按 ICIR 降序；M2：按 B1 钥匙 rank→CD）──
+        elite_count = max(1, round(float(cfg.selection_ratio)
+                                   * int(cfg.population_size)))
+        elite_count = min(elite_count, len(active))
+
+        m2_extra: dict[str, Any] = {}
+        parents: list[dict[str, Any]] = []
+        strategy: Any = None
+        health: float | None = None
+        conv: Any = None
+
+        if m2:
+            # 2a. B1 全种群 rank+CD；active 重排为 B1 序（rank 升、同 rank CD 降）
+            keys = _b1_keys(active, specs)
+            for k in keys:
+                active[k.index]["_b1_key"] = (k.rank, k.cd)
+            active = [active[k.index] for k in keys]
+            m2_extra["pareto_front_count"] = sum(1 for k in keys if k.rank == 1)
+
+            # 2b. 类别归类补全（无 category 的个体按公式重判，§6.5.2）
+            counts_by_track: dict[str, int] = {}
+            for e in active:
+                cat = e.get("category") or classify_formula(
+                    str(e.get("formula") or e.get("canonical_formula") or ""))
+                e["category"] = cat
+                counts_by_track[cat] = counts_by_track.get(cat, 0) + 1
+            m2_extra["category_distribution_json"] = dict(counts_by_track)
+
+            # 2c. D3 观测（只产 health，不改任何率）
+            from app.services.factors.mining.diversity import (
+                diversity_health,
+                genotype_diversity,
+                phenotype_diversity,
+            )
+            from app.services.factors.mining.selection.track import (
+                category_evenness,
+            )
+
+            evenness = category_evenness(counts_by_track, len(active))
+            geno = genotype_diversity(
+                [str(e.get("formula") or "") for e in active])
+            pheno = phenotype_diversity(values)
+            health = diversity_health(evenness, geno, pheno)
+            m2_extra.update({
+                "category_evenness": round(evenness, 6),
+                "diversity_genotype": round(geno, 6),
+                "diversity_phenotype": round(pheno, 6),
+                "diversity_health": round(health, 6),
+                "diversity_score": round(health, 6),
+            })
+
+            # 2d. D1 观测（先自救 stall≥2，后停止 stall≥3；只判停止不调参）
+            from app.services.factors.mining.convergence import (
+                update_convergence,
+            )
+
+            conv = update_convergence(
+                best_icir=(gen_best if gen_best is not None else float("nan")),
+                prev_best=best_icir, stall_count=stall,
+                threshold=float(cfg.convergence_threshold))
+            stall = int(conv.stall_count)
+            m2_extra["convergence_delta"] = DN.to_db_float(conv.convergence_delta)
+
+            # 2e. A1 赛道配额 + B2 锦标赛选父代（精英不参与）
+            non_elites = active[elite_count:] or list(active[:1])
+            ne_counts: dict[str, int] = {}
+            best_rank_by_track: dict[str, tuple[int, float]] = {}
+            best_icir_by_track: dict[str, float] = {}
+
+            def _b1_better(a: tuple[int, float], b: tuple[int, float]) -> bool:
+                # B1 字典序：rank 升序优先，同 rank 比 CD 降序（与 tournament 一致）
+                return a[0] < b[0] or (a[0] == b[0] and a[1] > b[1])
+
+            for e in non_elites:
+                cat = str(e.get("category"))
+                ne_counts[cat] = ne_counts.get(cat, 0) + 1
+                key = e["_b1_key"]
+                if cat not in best_rank_by_track or _b1_better(
+                        key, best_rank_by_track[cat]):
+                    best_rank_by_track[cat] = key
+                icir_val = _icir_of(e.get("fitness"))
+                if cat not in best_icir_by_track or icir_val > best_icir_by_track[cat]:
+                    best_icir_by_track[cat] = icir_val
+
+            from app.services.factors.mining.selection.track import (
+                compute_quotas,
+                update_weak_streaks,
+            )
+
+            weak = update_weak_streaks(
+                track_state,
+                best_rank_by_track={c: k[0] for c, k in best_rank_by_track.items()},
+                best_icir_by_track=best_icir_by_track,
+                population_max_rank=max(k.rank for k in keys),
+                prefilter_icir=float(cfg.prefilter_icir))
+            try:
+                quotas = compute_quotas(
+                    len(non_elites), ne_counts,
+                    best_rank_by_track={c: k[0] for c, k in
+                                        best_rank_by_track.items()},
+                    best_icir_by_track=best_icir_by_track,
+                    weak_tracks=weak)
+            except ValueError:
+                quotas = {}                        # 防御：配额不可解 → 直通
+
+            from app.services.factors.mining.selection.tournament import (
+                tournament_select,
+            )
+
+            for track in sorted(quotas):
+                quota = int(quotas[track])
+                pool = [e for e in non_elites if e.get("category") == track]
+                if pool and quota > 0:
+                    parents.extend(tournament_select(
+                        pool, quota, k=int(cfg.tournament_k), rng=rng,
+                        key=lambda it: it["_b1_key"]))
+            if not parents:
+                parents = list(non_elites)
+
+            # 2f. C1 调度（唯一调参者；adaptive=False → 固定三率策略）
+            if scheduler is not None:
+                strategy = scheduler.step(
+                    generation=gen, max_generations=int(cfg.max_generations),
+                    health=health, stall_count=stall,
+                    convergence_delta=float(conv.convergence_delta),
+                    threshold=float(cfg.convergence_threshold))
+            else:
+                strategy = _m2_fixed_strategy(cfg)
+            m2_extra["adaptive_state"] = str(strategy.adaptive_state)
+            m2_extra["cross_category_ratio"] = DN.to_db_float(
+                strategy.cross_category_ratio)
+
+        elites = [dict(e, operation=OP_ELITE) for e in active[:elite_count]]
+        breeding = active[elite_count:] or active[:1]      # 防全空（naive 用）
+
         # ── 3. 繁殖配额（三率 × 非精英名额；余数归变异）──
         slots = max(0, int(cfg.population_size) - elite_count)
-        mutation_count = round(float(cfg.mutation_rate) * slots)
-        crossover_count = round(float(cfg.crossover_rate) * slots)
-        random_count = max(0, slots - mutation_count - crossover_count)
+        mutation_type_counts: dict[str, int] = {}
 
-        rng_shuffled = list(breeding)
-        rng.shuffle(rng_shuffled)
+        if m2:
+            # M2：C2 四种变异 + C3 子树交叉 + D2 随机注入（比例全部来自 C1）
+            from app.services.factors.mining.reproduction.crossover import (
+                crossover_formula as rep_crossover,
+                should_cross_category,
+            )
+            from app.services.factors.mining.reproduction.injection import (
+                injection_quota,
+            )
+            from app.services.factors.mining.reproduction.mutation import (
+                allocate_mutation_types,
+                mutate_formula as rep_mutate,
+            )
 
-        offspring: list[dict[str, Any]] = []
-        # 变异
-        for i in range(mutation_count):
-            parent = dict(rng_shuffled[i % len(rng_shuffled)])
-            parent["formula"] = mutate_formula(str(parent["formula"]), rng)
-            parent["operation"] = OP_MUTATION
-            parent["generation"] = gen + 1
-            parent["parent_ids"] = [str(parent.get("id") or parent.get("formula_hash") or "")]
-            parent.pop("fitness", None)
-            parent.pop("eval_error", None)
-            offspring.append(parent)
-        # 交叉
-        for i in range(crossover_count):
-            pa = dict(rng_shuffled[(i * 2) % len(rng_shuffled)])
-            pb = dict(rng_shuffled[(i * 2 + 1) % len(rng_shuffled)])
-            child = dict(pa)
-            child["formula"] = crossover_formulas(str(pa["formula"]),
-                                                  str(pb["formula"]), rng)
-            child["operation"] = OP_CROSSOVER
-            child["generation"] = gen + 1
-            child["parent_ids"] = [str(pa.get("id") or pa.get("formula_hash") or ""),
-                                   str(pb.get("id") or pb.get("formula_hash") or "")]
-            child.pop("fitness", None)
-            child.pop("eval_error", None)
-            offspring.append(child)
-        # 随机注入
-        if random_count and random_supplier is not None:
-            for item in random_supplier(random_count)[:random_count]:
-                injected = dict(item)
-                injected["operation"] = OP_RANDOM
-                injected["generation"] = gen + 1
-                offspring.append(injected)
-        # 兜底：名额不足时用参数级变异补齐（保证种群大小稳定）
-        while len(offspring) < slots:
-            parent = dict(rng_shuffled[len(offspring) % len(rng_shuffled)])
-            parent["formula"] = mutate_formula(str(parent["formula"]), rng)
-            parent["operation"] = OP_MUTATION
-            parent["generation"] = gen + 1
-            parent.pop("fitness", None)
-            parent.pop("eval_error", None)
-            offspring.append(parent)
-        offspring = offspring[:slots]
+            mutation_count = round(float(strategy.mutation_rate) * slots)
+            crossover_count = round(float(strategy.crossover_rate) * slots)
+            random_count = injection_quota(int(cfg.population_size),
+                                           float(strategy.random_rate))
+            # 名额对齐 slots（注入按全种群折算，与 slots 可能有 1~2 差异 → 调变异）
+            diff = slots - (mutation_count + crossover_count + random_count)
+            if diff > 0:
+                mutation_count += diff
+            elif diff < 0:
+                cut = min(-diff, mutation_count)
+                mutation_count -= cut
+                leftover = -diff - cut
+                if leftover > 0:
+                    random_count = max(0, random_count - leftover)
 
-        total_trials += len(ranked)
+            kinds = allocate_mutation_types(
+                mutation_count,
+                _mutation_dist_for(strategy.mutation_type_distribution,
+                                   cfg.mutation_ops_enabled),
+                rng=rng)
+            for kind in kinds:
+                mutation_type_counts[kind] = \
+                    mutation_type_counts.get(kind, 0) + 1
+
+            offspring: list[dict[str, Any]] = []
+            # C2 变异（四种类型，结构级；字段替换不越出已选字段域）
+            for i, kind in enumerate(kinds):
+                parent = dict(parents[i % len(parents)])
+                base_formula = str(parent.get("formula")
+                                   or parent.get("canonical_formula") or "")
+                new_formula = rep_mutate(
+                    base_formula, kind=kind, rng=rng,
+                    allowed_fields=(tuple(cfg.selected_fields)
+                                    if cfg.selected_fields else None))
+                child = dict(parent)
+                child["formula"] = new_formula
+                child["canonical_formula"] = new_formula
+                child["formula_hash"] = new_formula or parent.get("formula_hash")
+                child["operation"] = OP_MUTATION
+                child["generation"] = gen + 1
+                child["parent_ids"] = [str(parent.get("id")
+                                           or parent.get("formula_hash") or "")]
+                child.pop("fitness", None)
+                child.pop("eval_error", None)
+                child.pop("_b1_key", None)
+                child["category"] = classify_formula(
+                    new_formula, declared=parent.get("category"))
+                offspring.append(child)
+            # C3 子树交叉（同/跨赛道比例由 C1 决定）
+            for i in range(crossover_count):
+                pa = parents[(i * 2) % len(parents)]
+                if should_cross_category(float(strategy.cross_category_ratio),
+                                         rng):
+                    pool = [p for p in parents
+                            if p.get("category") != pa.get("category")]
+                else:
+                    pool = [p for p in parents
+                            if p.get("category") == pa.get("category")
+                            and p is not pa]
+                if not pool:
+                    pool = [p for p in parents if p is not pa] or [pa]
+                pb = pool[rng.randrange(len(pool))]
+                child_formula = rep_crossover(
+                    str(pa.get("formula") or pa.get("canonical_formula") or ""),
+                    str(pb.get("formula") or pb.get("canonical_formula") or ""),
+                    rng=rng)
+                child = dict(pa)
+                child["formula"] = child_formula
+                child["canonical_formula"] = child_formula
+                child["formula_hash"] = child_formula or pa.get("formula_hash")
+                child["operation"] = OP_CROSSOVER
+                child["generation"] = gen + 1
+                child["parent_ids"] = [
+                    str(pa.get("id") or pa.get("formula_hash") or ""),
+                    str(pb.get("id") or pb.get("formula_hash") or "")]
+                child.pop("fitness", None)
+                child.pop("eval_error", None)
+                child.pop("_b1_key", None)
+                child["category"] = classify_formula(child_formula)
+                offspring.append(child)
+            # D2 随机注入（注入个体为受约束随机公式）
+            if random_count:
+                injected: list[Mapping[str, Any]] = []
+                if random_supplier is not None:
+                    try:
+                        injected = list(random_supplier(random_count))
+                    except Exception:               # noqa: BLE001 - 注入失败回退
+                        injected = []
+                if not injected:
+                    from app.services.factors.mining.reproduction.injection import (
+                        inject_individuals,
+                    )
+                    injected = inject_individuals(
+                        strategy=strategy,
+                        population_size=int(cfg.population_size), rng=rng,
+                        selected_fields=(tuple(cfg.selected_fields)
+                                         if cfg.selected_fields else None),
+                        existing_formulas=[
+                            str(e.get("formula") or "") for e in ranked])
+                for item in injected[:random_count]:
+                    injected_item = dict(item)
+                    injected_item["operation"] = OP_RANDOM
+                    injected_item["generation"] = gen + 1
+                    injected_item.pop("fitness", None)
+                    injected_item.pop("eval_error", None)
+                    injected_item.pop("_b1_key", None)
+                    if not injected_item.get("category"):
+                        injected_item["category"] = classify_formula(
+                            str(injected_item.get("formula") or ""))
+                    offspring.append(injected_item)
+                # ⚠️ record 记**分配名额**（与 M1 口径一致）：supplier 返回不足时
+                #    由下方参数级变异兜底补齐，三角和恒等于非精英名额。
+            # 兜底：名额不足时用参数级变异补齐（保证种群大小稳定）
+            while len(offspring) < slots:
+                parent = dict(parents[len(offspring) % len(parents)])
+                base_formula = str(parent.get("formula")
+                                   or parent.get("canonical_formula") or "")
+                parent["formula"] = mutate_formula(base_formula, rng)
+                parent["operation"] = OP_MUTATION
+                parent["generation"] = gen + 1
+                parent.pop("fitness", None)
+                parent.pop("eval_error", None)
+                parent.pop("_b1_key", None)
+                parent["category"] = classify_formula(
+                    parent["formula"], declared=parent.get("category"))
+                offspring.append(parent)
+            offspring = offspring[:slots]
+        else:
+            # ── M1 朴素路径（固定三率 + 参数级算子；与原实现逐行等价） ──
+            mutation_count = round(float(cfg.mutation_rate) * slots)
+            crossover_count = round(float(cfg.crossover_rate) * slots)
+            random_count = max(0, slots - mutation_count - crossover_count)
+
+            rng_shuffled = list(breeding)
+            rng.shuffle(rng_shuffled)
+
+            offspring = []
+            # 变异
+            for i in range(mutation_count):
+                parent = dict(rng_shuffled[i % len(rng_shuffled)])
+                parent["formula"] = mutate_formula(str(parent["formula"]), rng)
+                parent["operation"] = OP_MUTATION
+                parent["generation"] = gen + 1
+                parent["parent_ids"] = [str(parent.get("id") or parent.get("formula_hash") or "")]
+                parent.pop("fitness", None)
+                parent.pop("eval_error", None)
+                offspring.append(parent)
+            # 交叉
+            for i in range(crossover_count):
+                pa = dict(rng_shuffled[(i * 2) % len(rng_shuffled)])
+                pb = dict(rng_shuffled[(i * 2 + 1) % len(rng_shuffled)])
+                child = dict(pa)
+                child["formula"] = crossover_formulas(str(pa["formula"]),
+                                                      str(pb["formula"]), rng)
+                child["operation"] = OP_CROSSOVER
+                child["generation"] = gen + 1
+                child["parent_ids"] = [str(pa.get("id") or pa.get("formula_hash") or ""),
+                                       str(pb.get("id") or pb.get("formula_hash") or "")]
+                child.pop("fitness", None)
+                child.pop("eval_error", None)
+                offspring.append(child)
+            # 随机注入
+            if random_count and random_supplier is not None:
+                for item in random_supplier(random_count)[:random_count]:
+                    injected = dict(item)
+                    injected["operation"] = OP_RANDOM
+                    injected["generation"] = gen + 1
+                    offspring.append(injected)
+            # 兜底：名额不足时用参数级变异补齐（保证种群大小稳定）
+            while len(offspring) < slots:
+                parent = dict(rng_shuffled[len(offspring) % len(rng_shuffled)])
+                parent["formula"] = mutate_formula(str(parent["formula"]), rng)
+                parent["operation"] = OP_MUTATION
+                parent["generation"] = gen + 1
+                parent.pop("fitness", None)
+                parent.pop("eval_error", None)
+                offspring.append(parent)
+            offspring = offspring[:slots]
+
+        total_trials += evaluated_count
         generations_run = gen + 1
 
         record = {
@@ -310,12 +750,33 @@ def run_ga_loop(
             "stall_count": stall,
             "eliminated_count": len([e for e in ranked if e.get("eval_error")]),
         }
+        if m2:
+            # M2 代际附加字段（persist_generation 落库；探针由 T21 另行合入）
+            record.update(m2_extra)
+            record["actual_mutation_rate"] = (
+                round(mutation_count / slots, 6) if slots > 0 else None)
+            record["actual_crossover_rate"] = (
+                round(crossover_count / slots, 6) if slots > 0 else None)
+            record["actual_random_rate"] = (
+                round(random_count / slots, 6) if slots > 0 else None)
+            if mutation_count > 0:
+                record["mutation_type_distribution_json"] = {
+                    k: round(v / mutation_count, 6)
+                    for k, v in mutation_type_counts.items()}
+            else:
+                record["mutation_type_distribution_json"] = {}
         history.append(record)
         if on_generation is not None:
             on_generation(gen, record, ranked)
 
-        # ── 4. 收敛判断：**连续 N 代**提升 < 阈值（不是固定 ICIR 门禁）──
-        if best_icir is not None and gen_best is not None:
+        # ── 4. 收敛判断 ──
+        # M2（D1）：先自救（stall≥2 已喂 C1）后停止（stall≥3）；
+        # naive：连续 convergence_generations 代提升 < 阈值。
+        if m2:
+            if conv is not None and conv.should_stop:
+                stopped_reason = "converged"
+                break
+        elif best_icir is not None and gen_best is not None:
             improvement = gen_best - best_icir
             if improvement < cfg.convergence_threshold:
                 stall += 1
@@ -347,7 +808,6 @@ def run_ga_loop(
 __all__ = [
     "GUARD_MUTATION", "GUARD_CROSSOVER", "GUARD_RANDOM", "RATE_SUM_TOLERANCE",
     "OP_ELITE", "OP_MUTATION", "OP_CROSSOVER", "OP_RANDOM",
-    "GAConfig", "GAResult",
-    "mutate_formula", "crossover_formulas",
-    "run_ga_loop",
+    "GAConfig", "GAResult", "run_ga_loop",
+    "mutate_formula", "crossover_formulas", "classify_formula",
 ]

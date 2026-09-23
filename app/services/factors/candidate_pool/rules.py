@@ -198,7 +198,10 @@ class FieldBinding:
     physical_table: str
     physical_column: str | None
     blocked: bool = False
+    #: **面向用户**的阻断原因（不得出现表名 / 常量名 / fixture / 列名）
     blocked_reason_zh: str | None = None
+    #: **面向开发**的实测口径（表名、常量、行数统计…）→ 前端放悬浮提示，日志可直接用
+    blocked_detail_zh: str | None = None
     #: 该字段的语义是否为「当前快照」而非 point-in-time（必须在 UI 与快照里标注）
     point_in_time: bool = True
 
@@ -213,34 +216,56 @@ class FieldBinding:
             "physical_column": self.physical_column,
             "point_in_time": self.point_in_time,
             "availability": "blocked" if self.blocked else "available",
+            # 两层文案：用户句给界面正文，开发句给悬浮提示/日志（分层渲染见前端 FieldBinding）
             "blocked_reason_zh": self.blocked_reason_zh,
+            "blocked_detail_zh": self.blocked_detail_zh,
         }
 
 
-_BLOCKED_LISTED_AT = (
+# ⚠️ 文案分两层（2026-09-22 用户实测反馈：界面直出内部表名/常量名）：
+#   *_USER    → `blocked_reason_zh`：给用户看的句子，**禁止**出现表名/常量/fixture/列名
+#   *_DETAIL  → `blocked_detail_zh`：给开发看的口径，前端放悬浮提示
+# 哨兵：tests/services/factors/candidate_pool/test_blocked_reason_copy.py
+
+_BLOCKED_LISTED_AT_USER = (
+    "上市日期数据暂缺，暂不能用它筛选。需先补齐上市日（按状态快照口径取数）后再开放。"
+)
+_BLOCKED_LISTED_AT_DETAIL = (
     "实测 `symbols.listed_at` 与 `universe_symbols.listed_at` **均为 0 行非空**（全 NULL）。"
     "向导 §3.3 明确要求「上市日使用状态快照中的上市日；状态来源不足时**不得以当前主表"
     "无提示替代**」，故该条件不可用。需先补采上市日（或由首个交易日回推并显式标注口径）。"
 )
-_BLOCKED_INDUSTRY = (
+
+_BLOCKED_INDUSTRY_USER = "行业分类尚未建设（缺少历史分类版本），暂不可用。"
+_BLOCKED_INDUSTRY_DETAIL = (
     "实测 `symbols.industry` 与 `universe_symbols.industry` **均为 0 行非空**（全 NULL）。"
     "行业分类尚未建设（向导 §3.2 也声明「当前行业不具备历史分类版本」）。"
 )
-_BLOCKED_DIVIDEND_YIELD = (
+
+_BLOCKED_DIVIDEND_YIELD_USER = "股息率数据尚未采集，暂不能用它筛选。需补齐估值快照采集后再开放。"
+_BLOCKED_DIVIDEND_YIELD_DETAIL = (
     "实测 `raw_valuation_snapshots.dividend_yield` **3,079,528 行全部为 NULL**（列存在但从未采集）。"
 )
-_BLOCKED_NET_PROFIT = (
+
+_BLOCKED_NET_PROFIT_USER = (
+    "净利润数据未采集，无法判断「近 N 年是否亏损」，暂不可用"
+    "（缺失年度不等于盈利，不做降级推断）。"
+)
+_BLOCKED_NET_PROFIT_DETAIL = (
     "实测 `raw_financial_reports.net_profit` **54,789 行全部为 NULL**。"
     "缺了它「近 N 年亏损」无法判定 —— 而缺失年度不等于盈利（向导 §3.4），"
     "故不支持降级为「用其它字段推断亏损」。"
 )
-_BLOCKED_NET_PROFIT_YOY = (
+
+_BLOCKED_NET_PROFIT_YOY_USER = "净利润同比数据尚未采集，暂不能用它筛选。需补齐财报采集后再开放。"
+_BLOCKED_NET_PROFIT_YOY_DETAIL = (
     "实测 `raw_financial_reports.net_profit_yoy` **54,789 行全部为 NULL**。"
 )
-_BLOCKED_SUSPENDED = (
-    "停牌状态无字段、无事件表。`security_status_daily` 不可用（见 `_BLOCKED_STATUS_TABLE`）。"
-)
-_BLOCKED_INDEX_MEMBER = "指数成分表尚未建设（`index_constituents` 类表不存在）。"
+
+_BLOCKED_SUSPENDED_USER = "停牌状态暂无可用数据源，暂不可用。需先接入交易日状态数据后开放。"
+
+_BLOCKED_INDEX_MEMBER_USER = "指数成分数据尚未建设，暂不能用它筛选。需先建成指数成分表后开放。"
+_BLOCKED_INDEX_MEMBER_DETAIL = "指数成分表尚未建设（`index_constituents` 类表不存在）。"
 
 #: `security_status_daily` 为什么不能用（这是个需要上报的数据卫生问题）
 _BLOCKED_STATUS_TABLE = (
@@ -251,6 +276,9 @@ _BLOCKED_STATUS_TABLE = (
     "把它当真实数据源会让「排除 ST/停牌」变成随机命中，故显式不用。"
 )
 
+#: 停牌字段的开发口径 = 结论 + 上面那张表的实测依据（用户句见 _BLOCKED_SUSPENDED_USER）
+_BLOCKED_SUSPENDED_DETAIL = "停牌状态无字段、无事件表。" + _BLOCKED_STATUS_TABLE
+
 FIELD_BINDINGS: dict[str, FieldBinding] = {
     # ── 1. 市场与交易状态 ──
     "board": FieldBinding("board", "板块", CATEGORY_UNIVERSE, "universe",
@@ -259,10 +287,12 @@ FIELD_BINDINGS: dict[str, FieldBinding] = {
                            "universe_symbols", "market"),
     "index_member": FieldBinding("index_member", "指数成分", CATEGORY_UNIVERSE, "universe",
                                  None, None, blocked=True,
-                                 blocked_reason_zh=_BLOCKED_INDEX_MEMBER),
+                                 blocked_reason_zh=_BLOCKED_INDEX_MEMBER_USER,
+                                 blocked_detail_zh=_BLOCKED_INDEX_MEMBER_DETAIL),
     "exclude_suspended": FieldBinding("exclude_suspended", "排除停牌", CATEGORY_UNIVERSE,
                                       "universe", None, None, blocked=True,
-                                      blocked_reason_zh=_BLOCKED_SUSPENDED),
+                                      blocked_reason_zh=_BLOCKED_SUSPENDED_USER,
+                                      blocked_detail_zh=_BLOCKED_SUSPENDED_DETAIL),
     "exclude_delisting": FieldBinding("exclude_delisting", "排除退市整理/已退市",
                                       CATEGORY_UNIVERSE, "universe", "universe_symbols",
                                       "name", point_in_time=False),
@@ -284,15 +314,18 @@ FIELD_BINDINGS: dict[str, FieldBinding] = {
     "dividend_yield": FieldBinding("dividend_yield", "股息率", CATEGORY_VALUATION,
                                    "valuation", "raw_valuation_snapshots",
                                    "dividend_yield", blocked=True,
-                                   blocked_reason_zh=_BLOCKED_DIVIDEND_YIELD),
+                                   blocked_reason_zh=_BLOCKED_DIVIDEND_YIELD_USER,
+                                   blocked_detail_zh=_BLOCKED_DIVIDEND_YIELD_DETAIL),
     # ── 4. 盈利质量 ──
     "loss": FieldBinding("loss", "近 N 年是否亏损", CATEGORY_PROFITABILITY, "financial",
                          "raw_financial_reports", "net_profit", blocked=True,
-                         blocked_reason_zh=_BLOCKED_NET_PROFIT),
+                         blocked_reason_zh=_BLOCKED_NET_PROFIT_USER,
+                         blocked_detail_zh=_BLOCKED_NET_PROFIT_DETAIL),
     "net_profit_yoy": FieldBinding("net_profit_yoy", "净利润同比", CATEGORY_PROFITABILITY,
                                    "financial", "raw_financial_reports",
                                    "net_profit_yoy", blocked=True,
-                                   blocked_reason_zh=_BLOCKED_NET_PROFIT_YOY),
+                                   blocked_reason_zh=_BLOCKED_NET_PROFIT_YOY_USER,
+                                   blocked_detail_zh=_BLOCKED_NET_PROFIT_YOY_DETAIL),
     "roe_ttm": FieldBinding("roe_ttm", "ROE_TTM", CATEGORY_PROFITABILITY, "financial",
                             "raw_financial_reports", "roe_ttm"),
     # ── 5. 流动性 ──
@@ -307,11 +340,13 @@ FIELD_BINDINGS: dict[str, FieldBinding] = {
     "min_listed_trading_days": FieldBinding("min_listed_trading_days", "上市满 N 个交易日",
                                             CATEGORY_LISTING, "universe",
                                             "universe_symbols", "listed_at", blocked=True,
-                                            blocked_reason_zh=_BLOCKED_LISTED_AT),
+                                            blocked_reason_zh=_BLOCKED_LISTED_AT_USER,
+                                            blocked_detail_zh=_BLOCKED_LISTED_AT_DETAIL),
     # ── 7. 行业 ──
     "industry": FieldBinding("industry", "行业包含/排除", CATEGORY_INDUSTRY, "universe",
                              "universe_symbols", "industry", blocked=True,
-                             blocked_reason_zh=_BLOCKED_INDUSTRY),
+                             blocked_reason_zh=_BLOCKED_INDUSTRY_USER,
+                             blocked_detail_zh=_BLOCKED_INDUSTRY_DETAIL),
 }
 
 

@@ -1,4 +1,5 @@
 import { t } from "../../../../../i18n";
+import { Progress } from "antd";
 import type { BlockedItem, ValidationStatus } from "./fieldTypes";
 
 /**
@@ -21,7 +22,7 @@ function BlockedRow({ item }: { item: BlockedItem }) {
     <div className="mining-field-blocked-item" data-field-blocked-item>
       <span>{item.field}</span>
       {item.name_zh ? <span>{item.name_zh}</span> : null}
-      <span>{item.issue ?? "-"}</span>
+      <span className="mining-chip mining-chip--danger">{item.issue ?? "-"}</span>
       <span>
         {t("miningFieldCurrent")}: {String(item.current ?? "-")} /{" "}
         {t("miningFieldRequired")}: {String(item.required ?? "-")}
@@ -37,6 +38,23 @@ export default function FieldValidationPanel({
 
   const blocked = status.blocked ?? [];
   const isBlocked = status.status === "blocked" || blocked.length > 0;
+  const isFailed = status.status === "failed";
+  const done = status.progress?.done ?? 0;
+  const total = status.progress?.total ?? 0;
+  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+
+  /** 后端结论标签（通过/警告/阻断）；无则按本地区分 */
+  const verdictLabel =
+    status.verdict_label_zh ??
+    (status.verdict === "pass"
+      ? t("miningFieldVerdictPass")
+      : status.verdict === "warn"
+        ? t("miningFieldVerdictWarn")
+        : status.verdict === "block"
+          ? t("miningFieldVerdictBlock")
+          : null);
+  const verdictTone =
+    status.verdict === "block" ? "danger" : status.verdict === "warn" ? "warn" : "success";
 
   return (
     <div className="mining-field-validation">
@@ -44,15 +62,42 @@ export default function FieldValidationPanel({
         <div className="mining-field-progress" data-field-progress>
           <span>
             {t("miningFieldProgress")}:{" "}
-            <span data-field-progress-done>{status.progress.done}</span> /{" "}
-            <span data-field-progress-total>{status.progress.total}</span>
+            <span data-field-progress-done>{done}</span> /{" "}
+            <span data-field-progress-total>{total}</span>
+            <span className="mining-card-sub">({percent}%)</span>
           </span>
+          <Progress percent={percent} showInfo={false} size="small" />
         </div>
       ) : null}
 
+      {verdictLabel && (
+        <div className="mining-card-head" data-field-verdict>
+          <span className={`mining-chip mining-chip--${verdictTone}`}>
+            {t("miningFieldVerdictLabel")}: {verdictLabel}
+          </span>
+          {status.valid_until && (
+            <span className="mining-card-sub">
+              {t("miningFieldValidUntil")}: {status.valid_until}
+            </span>
+          )}
+        </div>
+      )}
+
+      {isFailed && (
+        <div className="mining-banner mining-banner--danger" data-field-failed role="alert">
+          <div className="mining-banner-body">
+            <span className="mining-banner-title">{t("miningFieldFailed")}</span>
+            <span>{status.summary_zh ?? status.message ?? "-"}</span>
+          </div>
+        </div>
+      )}
+
       {status.passed && (
         <div className="mining-field-passed" data-field-passed role="status">
-          {t("miningFieldPassed")}
+          <span>{t("miningFieldPassed")}</span>
+          <span className="mining-card-sub">
+            {status.summary_zh ?? t("miningFieldPassedHint")}
+          </span>
         </div>
       )}
 
@@ -66,7 +111,10 @@ export default function FieldValidationPanel({
 
       {isBlocked && (
         <div className="mining-field-blocked" data-field-blocked>
-          <div className="mining-field-blocked-head">{t("miningFieldBlocked")}</div>
+          <div className="mining-field-blocked-head">
+            {t("miningFieldBlocked")}（{blocked.length}）
+          </div>
+          <span className="mining-card-sub">{t("miningFieldValidationTable")}</span>
           {blocked.map((item) => (
             <BlockedRow key={item.field} item={item} />
           ))}

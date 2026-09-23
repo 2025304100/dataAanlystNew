@@ -153,6 +153,72 @@ def _shards_from_payload(payload: Mapping[str, Any]) -> list[ValidationShard]:
 WARN_COVERAGE = 0.80
 
 
+#: DSL 虚字段 → 其依赖的真实物理列（字段本身无列但可用，覆盖度按依赖列取）
+_DERIVED_FIELD_SOURCE: dict[str, str] = {
+    # prev_close 由 `LAG(close) OVER (...)` 投影而来（factor_executor 两个取数点都走这条）
+    "prev_close": "close",
+}
+
+#: 已知带 `trade_date` 的宽表（其余表不猜列名，只统计行数/非空，避免误报失败）
+_TRADE_DATE_TABLES = frozenset({"raw_daily_bars", "raw_valuation_snapshots"})
+
+#: DSL 层 C（blocked）字段的用户可读阻断原因（不得出现表名/常量）
+_BLOCKED_LAYER_REASON_ZH = "该字段当前不可用：数据源尚未接入可评价的历史数据。"
+
+
+def _resolve_field_binding(field: str) -> dict[str, Any]:
+    """把字段解析为物理落点。
+
+    ⚠️ **DSL 目录优先**（2026-09-22 修复）：Step3 提交的是
+    `factor_compiler.FIELD_CATALOG`（公式/模板引用的字段），而本校验器原先只查
+    `candidate_pool.rules.FIELD_BINDINGS`（**筛选**字段表）—— 两套目录不是同一张表，
+    导致 `open/high/low/close/volume` 直接报「未注册」→ **任何含行情字段的配置
+    都被判阻断**（真实报告实测）。现在先查 DSL 目录，查不到才回退筛选目录。
+
+    Returns:
+        `{blocked: True, reason_zh}` 或
+        `{blocked: False, physical_table, physical_column, derived_from}`。
+    """
+    from app.services.factors.candidate_pool import rules as pool_rules
+
+    try:
+        from app.services.factors.factor_compiler import FIELD_CATALOG
+    except Exception:  # 编译器不可用时不阻塞回退路径
+        FIELD_CATALOG = {}
+
+    spec = FIELD_CATALOG.get(field)
+    if spec is not None:
+        layer = str(getattr(spec, "layer", "A") or "A")
+        if layer.startswith("C"):  # C_blocked 层
+            return {"blocked": True, "reason_zh": _BLOCKED_LAYER_REASON_ZH}
+        derived = _DERIVED_FIELD_SOURCE.get(field)
+        table = getattr(spec, "source_table", None)
+        column = derived or field
+        if not table:
+            return {"blocked": True, "reason_zh": "字段缺少物理绑定。"}
+        return {
+            "blocked": False,
+            "physical_table": table,
+            "physical_column": column,
+            "derived_from": derived,
+        }
+
+    binding = pool_rules.FIELD_BINDINGS.get(field)
+    if binding is None:
+        return {"blocked": True, "reason_zh": f"字段 {field} 未注册。"}
+    if binding.blocked:
+        return {"blocked": True, "reason_zh": binding.blocked_reason_zh or "",
+                "physical_table": binding.physical_table}
+    if not binding.physical_table or not binding.physical_column:
+        return {"blocked": True, "reason_zh": "字段缺少物理绑定。"}
+    return {
+        "blocked": False,
+        "physical_table": binding.physical_table,
+        "physical_column": binding.physical_column,
+        "derived_from": None,
+    }
+
+
 def _default_field_checker(shard: ValidationShard, ctx: Mapping[str, Any]) -> dict[str, Any]:
     """对单个字段做 DuckDB 元数据检查（只读，不占任何锁）。
 
@@ -161,24 +227,27 @@ def _default_field_checker(shard: ValidationShard, ctx: Mapping[str, Any]) -> di
     """
     from app.services.factors.candidate_pool import rules as pool_rules
 
-    binding = pool_rules.FIELD_BINDINGS.get(shard.field)
-    if binding is None:
-        return {"verdict": VERDICT_BLOCK, "reason_zh": f"字段 {shard.field} 未注册。"}
-    if binding.blocked:
-        return {"verdict": VERDICT_BLOCK, "reason_zh": binding.blocked_reason_zh or "",
-                "physical_table": binding.physical_table}
-    if not binding.physical_table or not binding.physical_column:
-        return {"verdict": VERDICT_BLOCK, "reason_zh": "字段缺少物理绑定。"}
+    resolved = _resolve_field_binding(shard.field)
+    if resolved.get("blocked"):
+        out = {"verdict": VERDICT_BLOCK, "reason_zh": resolved.get("reason_zh") or ""}
+        if resolved.get("physical_table"):
+            out["physical_table"] = resolved["physical_table"]
+        return out
 
     warehouse = ctx.get("warehouse") or pool_rules._default_warehouse(ctx.get("db"))
+    table = str(resolved["physical_table"])
+    col = str(resolved["physical_column"])
+    with_date = table in _TRADE_DATE_TABLES or table == "raw_financial_reports"
+    if with_date:
+        date_col = "announcement_date" if table == "raw_financial_reports" else "trade_date"
+        sql = (f"SELECT COUNT(*), COUNT({col}), MIN({date_col}), MAX({date_col}) "
+               f"FROM {table}")
+    else:
+        # 陌生表不猜日期列：只统计行数与非空，避免把"列名猜错"误报成分片失败
+        date_col = None
+        sql = f"SELECT COUNT(*), COUNT({col}), NULL, NULL FROM {table}"
     with warehouse.connection(read_only=True) as conn:
-        table = binding.physical_table
-        col = binding.physical_column
-        date_col = "trade_date" if table != "raw_financial_reports" else "announcement_date"
-        row = conn.execute(
-            f"SELECT COUNT(*), COUNT({col}), MIN({date_col}), MAX({date_col}) "
-            f"FROM {table}"
-        ).fetchone()
+        row = conn.execute(sql).fetchone()
     total, nonnull, min_d, max_d = row
     coverage = (nonnull / total) if total else 0.0
     verdict = VERDICT_PASS if coverage >= WARN_COVERAGE else VERDICT_WARN
@@ -187,6 +256,7 @@ def _default_field_checker(shard: ValidationShard, ctx: Mapping[str, Any]) -> di
         "physical_table": table,
         "physical_column": col,
         "date_column": date_col,
+        "derived_from": resolved.get("derived_from"),
         "total_rows": int(total or 0),
         "non_null_rows": int(nonnull or 0),
         "coverage": round(coverage, 6),

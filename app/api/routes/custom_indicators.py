@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -206,8 +207,15 @@ def list_custom_indicators(
     if enabled is not None:
         stmt = stmt.where(CustomIndicator.enabled == enabled)
     rows = db.execute(stmt).scalars().all()
+    # P1-4：`CustomIndicatorRead.key` 有 pattern 校验（`^[a-zA-Z][a-zA-Z0-9_]*$`），
+    # 测试/历史脏数据（如 `__p22_smoke_*`）会触发 ResponseValidationError → 整页 500。
+    # 这里对脏行做**容错过滤**：不合规 key 的指标不返回（不崩列表），
+    # 避免单行脏数据让「公式与计划 / 机会中心候选池」全部不可用。
+    key_pattern = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
     formatted = []
     for row in rows:
+        if not key_pattern.match(row.key or ""):
+            continue
         item_scope = _json_loads(row.scope_json, [])
         if scope and scope not in item_scope:
             continue

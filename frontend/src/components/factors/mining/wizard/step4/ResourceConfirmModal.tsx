@@ -20,6 +20,10 @@ export interface ResourceConfirmModalProps {
   lockStatus?: MiningLockStatus | null;
   etaSeconds?: number | null;
   resourcesOk?: boolean;
+  /** E2：磁盘剩余百分比（≥20% 达标）或缺省 null */
+  diskFreePercent?: number | null;
+  /** E2：可用内存 GB（≥2 达标）或缺省 null */
+  memoryFreeGb?: number | null;
   onConfirm?: () => void;
   onClose?: () => void;
 }
@@ -28,17 +32,22 @@ export default function ResourceConfirmModal({
   lockStatus = null,
   etaSeconds = null,
   resourcesOk = true,
+  diskFreePercent = null,
+  memoryFreeGb = null,
   onConfirm,
   onClose,
 }: ResourceConfirmModalProps) {
-  const domainBusy = Boolean(lockStatus?.mining_domain?.busy);
-  const writeBusy = Boolean(lockStatus?.duckdb_write?.busy);
-  const queuePosition = lockStatus?.duckdb_write?.queue_position ?? 0;
-  const etaMinutes = formatEtaMinutes(
-    etaSeconds ?? lockStatus?.duckdb_write?.eta_seconds ?? null,
-  );
+  const domainBusy = Boolean(lockStatus?.miningDomain?.busy);
+  const writeBusy = Boolean(lockStatus?.duckdbWrite?.busy);
+  // P1-8：后端返回排队任务 id 列表，前面排队数 = queue.length（1 表示队首在等）
+  const queuePosition = lockStatus?.duckdbWrite?.queue?.length ?? 0;
+  const etaMinutes = formatEtaMinutes(etaSeconds);
+  // E3：磁盘/内存不达标 → 资源不足阻断（与 mining_domain 冲突并列）
+  const diskOk = diskFreePercent == null || diskFreePercent >= 20;
+  const memOk = memoryFreeGb == null || memoryFreeGb >= 2;
+  const resourceInsufficient = !resourcesOk || !diskOk || !memOk;
   // mining_domain 冲突 → 禁用提交（不排队）；资源不足同样阻断
-  const blocked = domainBusy || !resourcesOk;
+  const blocked = domainBusy || resourceInsufficient;
 
   return (
     <div className="mining-resource-mask" role="dialog" aria-modal="true">
@@ -54,15 +63,14 @@ export default function ResourceConfirmModal({
         {domainBusy && (
           <div data-lock-domain className="mining-res-domain">
             {t("miningResLockDomain")
-              .replace("{task_id}", String(lockStatus?.mining_domain?.owner_task_id ?? "-"))
-              .replace("{generation}", String(lockStatus?.mining_domain?.owner_generation ?? "-"))}
+              .replace("{task_id}", String(lockStatus?.miningDomain?.taskId ?? "-"))}
           </div>
         )}
 
         {writeBusy && !domainBusy && (
           <div data-lock-write className="mining-res-write">
             {t("miningResLockWrite").replace(
-              "{task_type}", String(lockStatus?.duckdb_write?.owner_task_type ?? "-"),
+              "{task_id}", String(lockStatus?.duckdbWrite?.taskId ?? "-"),
             )}
             {queuePosition > 0 && (
               <span data-queue-position>
@@ -79,7 +87,23 @@ export default function ResourceConfirmModal({
           </div>
         )}
 
-        {!resourcesOk && (
+        {/* E2：资源卡片（磁盘/内存剩余；缺省不展示） */}
+        {(diskFreePercent != null || memoryFreeGb != null) && (
+          <div className="mining-res-resource" data-resource-card>
+            {diskFreePercent != null && (
+              <span data-resource-disk className={diskOk ? "" : "risk"}>
+                {t("miningResDisk").replace("{percent}", String(Math.round(diskFreePercent)))}
+              </span>
+            )}
+            {memoryFreeGb != null && (
+              <span data-resource-mem className={memOk ? "" : "risk"}>
+                {t("miningResMem").replace("{gb}", String(memoryFreeGb.toFixed(1)))}
+              </span>
+            )}
+          </div>
+        )}
+
+        {resourceInsufficient && (
           <div data-resource-blocked className="mining-res-blocked" role="alert">
             <div>{t("miningResResourceBlocked")}</div>
             <div>{t("miningResSuggestion")}</div>

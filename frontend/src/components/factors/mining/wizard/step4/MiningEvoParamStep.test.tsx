@@ -21,19 +21,18 @@ import MiningEvoParamStep from "./MiningEvoParamStep";
 import type { MiningLockStatus } from "./evoTypes";
 
 const LOCK_FREE: MiningLockStatus = {
-  mining_domain: { busy: false, owner_task_id: null, owner_status: null, owner_generation: null },
-  duckdb_write: { busy: false, owner_task_id: null, owner_task_type: null, queue_position: 0, eta_seconds: null },
+  miningDomain: { busy: false, taskId: null, runId: null, acquiredAt: null, heartbeatAt: null },
+  duckdbWrite: { busy: false, taskId: null, queue: [] },
 };
 
 const LOCK_DOMAIN: MiningLockStatus = {
-  mining_domain: { busy: true, owner_task_id: "run-42", owner_status: "running", owner_generation: 7 },
-  duckdb_write: { busy: false, owner_task_id: null, owner_task_type: null, queue_position: 0, eta_seconds: null },
+  miningDomain: { busy: true, taskId: "run-42", runId: "run-42", acquiredAt: null, heartbeatAt: null },
+  duckdbWrite: { busy: false, taskId: null, queue: [] },
 };
 
 const LOCK_WRITE: MiningLockStatus = {
-  mining_domain: { busy: false, owner_task_id: null, owner_status: null, owner_generation: null },
-  duckdb_write: { busy: true, owner_task_id: "task-9", owner_task_type: "factor_pipeline",
-    queue_position: 2, eta_seconds: 480 },
+  miningDomain: { busy: false, taskId: null, runId: null, acquiredAt: null, heartbeatAt: null },
+  duckdbWrite: { busy: true, taskId: "task-9", queue: ["ahead-1", "ahead-2"] },
 };
 
 const TERMS = ["帕累托", "非支配", "拥挤度", "赛道", "锦标赛"];
@@ -71,21 +70,21 @@ describe("MiningEvoParamStep 简单/高级模式", () => {
   it("自适应开启时三率显示「自动」且不可手改", () => {
     render(<MiningEvoParamStep />);
     fireEvent.click(document.querySelector("[data-evo-mode-advanced]") as HTMLElement);
-    const adaptive = document.querySelector("[data-evo-adaptive]") as HTMLInputElement;
+    const adaptive = document.querySelector("[data-evo-adaptive] input") as HTMLInputElement;
     expect(adaptive.checked).toBe(true);      // 默认开
     for (const key of ["mutation", "crossover", "random"]) {
       const cell = document.querySelector(`[data-evo-rate-auto="${key}"]`);
       expect(cell?.textContent).toContain("自动");
     }
-    const rate = document.querySelector('[data-evo-rate-input="mutation"]') as HTMLInputElement;
+    const rate = document.querySelector('[data-evo-rate-input="mutation"] input') as HTMLInputElement;
     expect(rate.disabled).toBe(true);
   });
 
   it("关闭自适应后可手动配置三率", () => {
     render(<MiningEvoParamStep />);
     fireEvent.click(document.querySelector("[data-evo-mode-advanced]") as HTMLElement);
-    fireEvent.click(document.querySelector("[data-evo-adaptive]") as HTMLElement);
-    const rate = document.querySelector('[data-evo-rate-input="mutation"]') as HTMLInputElement;
+    fireEvent.click(document.querySelector("[data-evo-adaptive] input") as HTMLElement);
+    const rate = document.querySelector('[data-evo-rate-input="mutation"] input') as HTMLInputElement;
     expect(rate.disabled).toBe(false);
   });
 });

@@ -191,8 +191,7 @@ export default function ExplanationCard({ response, onActionClick }: Explanation
           size="small"
           column={2}
           colon={false}
-          labelStyle={{ fontSize: 11, color: "#94a3b8" }}
-          contentStyle={{ fontSize: 11 }}
+          styles={{ label: { fontSize: 11, color: "#94a3b8" }, content: { fontSize: 11 } }}
         >
           {metadataItems.map((item, idx) => (
             <Descriptions.Item key={idx} label={item.label}>{item.value}</Descriptions.Item>

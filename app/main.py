@@ -63,6 +63,13 @@ logger = logging.getLogger(__name__)
 # 清理间隔（秒），默认 30 分钟
 CLEANUP_INTERVAL_SECONDS = 30 * 60
 
+# 挖掘双锁巡检间隔（秒）。
+# 背景：`expire_stale_locks()` 一直存在但**没有调用方** —— 进程被强杀/重启后
+# 锁行永久残留，界面 Step4 提交恒被拒（弹窗「已有挖掘任务进行中」且无自救入口）。
+# 这里定期调用它，让"心跳超时"这一设计语义真正生效。
+# 间隔取 60s：远小于心跳超时（1800s），又不会给数据库造成明显压力。
+MINING_LOCK_PATROL_INTERVAL_SECONDS = 60
+
 
 def _get_session_local():
     """延迟获取 SessionLocal（此时 manager 已初始化）。"""
@@ -122,6 +129,14 @@ async def lifespan(_: FastAPI):
     # 启动定期清理后台任务
     cleanup_task = asyncio.create_task(_periodic_cleanup())
 
+    # 挖掘双锁巡检：回收心跳超时的孤儿锁（僵尸锁会让挖掘功能彻底不可用）
+    mining_lock_patrol_task = asyncio.create_task(_mining_lock_patrol_loop())
+    logger.info(
+        "Mining lock patrol started (interval=%ds, heartbeat timeout=%ds)",
+        MINING_LOCK_PATROL_INTERVAL_SECONDS,
+        1800,
+    )
+
     # 跨平台持久化调度器：Linux / Windows 均由设置页统一管理。
     scheduled_task_loop = asyncio.create_task(scheduler_loop())
 
@@ -171,6 +186,14 @@ async def lifespan(_: FastAPI):
     except Exception:
         # 风控加固：不再静默吞没，记录日志便于定位 lifespan 关闭问题
         logger.exception("cleanup_task shutdown failed")
+
+    mining_lock_patrol_task.cancel()
+    try:
+        await mining_lock_patrol_task
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        logger.exception("mining_lock_patrol_task shutdown failed")
 
     scheduled_task_loop.cancel()
     try:
@@ -299,6 +322,37 @@ def _run_startup_cleanup() -> None:
             db.close()
     except Exception:
         logger.exception("Startup cleanup failed")
+
+
+async def _mining_lock_patrol_loop() -> None:
+    """定期巡检挖掘双锁 + 停滞批次。
+
+    每轮两件事：
+    1. `task_lock.patrol_once()` —— 按**心跳**回收孤儿锁（进程崩溃场景）；
+    2. `stall_watchdog.watchdog_once()` —— 按**推进时间**处理卡死的 running
+       （worker 卡住但心跳仍新鲜时，第 1 步永远救不了，会把功能入口永久锁死）。
+    """
+    while True:
+        await asyncio.sleep(MINING_LOCK_PATROL_INTERVAL_SECONDS)
+        try:
+            from app.services.factors.mining import stall_watchdog, task_lock
+
+            released = task_lock.patrol_once()
+            if released:
+                logger.warning(
+                    "Mining lock patrol released stale locks: %s",
+                    ", ".join(released),
+                )
+            reaped = stall_watchdog.watchdog_once()
+            if reaped:
+                logger.warning(
+                    "Stall watchdog marked stalled runs as failed: %s",
+                    ", ".join(reaped),
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Mining lock patrol failed")
 
 
 async def _periodic_cleanup() -> None:

@@ -1189,12 +1189,14 @@ export const DecisionEvidenceDrawer: React.FC<DecisionEvidenceDrawerProps> = ({
               <Descriptions
                 className="pt-evidence-summary"
                 size="small" column={isNarrowViewport ? 1 : 3} bordered
-                labelStyle={{
-                  fontSize: 11, color: "var(--pt-muted-foreground)",
-                  background: "rgba(148,163,184,0.06)",
-                  padding: "6px 10px",
+                styles={{
+                  label: {
+                    fontSize: 11, color: "var(--pt-muted-foreground)",
+                    background: "rgba(148,163,184,0.06)",
+                    padding: "6px 10px",
+                  },
+                  content: { fontSize: 12, padding: "6px 10px" },
                 }}
-                contentStyle={{ fontSize: 12, padding: "6px 10px" }}
                 style={{ fontSize: 12 }}
               >
                 <Descriptions.Item label="交易日">

@@ -1953,7 +1953,7 @@ export default function FactorEvaluationLab() {
         open={detailDrawer.open}
         onClose={closeDetailDrawer}
         width="min(1200px, 85vw)"
-        destroyOnClose
+        destroyOnHidden
         maskClosable={false}
       >
         <Spin spinning={detailDrawer.loading}>
@@ -2903,7 +2903,7 @@ function EvaluationRunReport({ run, metrics, stress }: EvaluationRunReportProps)
         onCancel={() => setAuditOpen(false)}
         footer={null}
         width={900}
-        destroyOnClose
+        destroyOnHidden
       >
         {auditEvents.length === 0 ? (
           <Empty description="暂未提供审计事件（后端可能尚未启用 BFG 过滤审计输出）" />

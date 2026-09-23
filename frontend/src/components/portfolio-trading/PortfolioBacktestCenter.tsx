@@ -717,6 +717,9 @@ const cutoffMismatchToastFiredRef = useRef(false);
     const t = window.setTimeout(() => {
       if (precheckAbortRef.current) { try { precheckAbortRef.current.abort(); } catch { /* noop */ } precheckAbortRef.current = null; }
       const ctrl = new AbortController(); precheckAbortRef.current = ctrl;
+      // P1-3：预检请求加 15s 超时——后端（如 DuckDB 连接）挂起时不再无限「预检中」，
+      // 超时即中止并落失败态（明确提示，而非一直转圈）。
+      const timeoutTimer = window.setTimeout(() => ctrl.abort("timeout"), 15000);
       setPrecheckLoading(true);
       void (async () => {
         try {
@@ -724,13 +727,24 @@ const cutoffMismatchToastFiredRef = useRef(false);
           setPrecheckResp(resp);
           if ((resp?.blocking_reasons?.length ?? 0) > 0) { try { setBlockingOpen(true); } catch { /* noop */ } }
         } catch (err: any) {
-          if (err instanceof Error && err.name === "AbortError") return;
+          if (err instanceof Error && err.name === "AbortError") {
+            // 区分「超时中止」与「组件卸载中止」：超时 → 落失败态
+            if (ctrl.signal.reason === "timeout") {
+              const msg = "预检超时（15 秒未返回），请检查数仓连接后重试";
+              setPrecheckResp(_pre500(msg));
+              try { setBlockingOpen(true); showToast("error", "回测预检超时，已阻断回测提交"); } catch { /* noop */ }
+            }
+            return;
+          }
           const sc = err?.status_code; const msg = String(err?.message ?? "");
           if (sc === 500 || /\b500\b|server.?error/i.test(`${msg} ${sc ?? ""}`)) {
             setPrecheckResp(_pre500(msg));
             try { setBlockingOpen(true); showToast("error", "回测预检服务异常，已阻断回测提交" + (msg ? `：${msg}` : "")); } catch { /* noop */ }
           }
-        } finally { if (precheckAbortRef.current === ctrl) { setPrecheckLoading(false); precheckAbortRef.current = null; } }
+        } finally {
+          window.clearTimeout(timeoutTimer);
+          if (precheckAbortRef.current === ctrl) { setPrecheckLoading(false); precheckAbortRef.current = null; }
+        }
       })();
     }, 300);
     return () => window.clearTimeout(t);
