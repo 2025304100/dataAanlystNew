@@ -148,7 +148,7 @@ class GAResult:
     best_icir: float | None
     best_formula: str | None
     stall_count: int
-    stopped_reason: str                     # converged / max_generations
+    stopped_reason: str                     # converged / max_generations / stopped
     history: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -295,6 +295,7 @@ def run_ga_loop(
     on_generation: Callable[[int, Mapping[str, Any], list[Mapping[str, Any]]],
                             None] | None = None,
     runtime_dedup: Callable[[Sequence[Mapping[str, Any]]], Any] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> GAResult:
     """**GA 主循环**（`selection_mode` 双路径）。
 
@@ -310,6 +311,10 @@ def run_ga_loop(
             原地把近似个体标 `eliminated_similar` 并返回 `RuntimeDedupResult`；
             被淘汰个体不进精英/繁殖池，但仍在 `ranked`（on_generation 落库用）。
             `total_trials` 仍按**全量评估数**累加（去重不减 DSR 输入源）。
+        should_stop: 协作式停止检查（DEF-12/DEF-3）。每代开始前与每个个体
+            评估前调用一次，返回 True → 循环尽快退出，`stopped_reason="stopped"`，
+            当前代**不落库**（部分代记录会破坏逐代完整性）。供 pause/看门狗
+            请求后 worker 自止，避免僵尸线程继续吃内存。
 
     路径说明：
     - `naive`（默认）：M1 朴素——ICIR 降序精英 + 固定三率 + 参数级算子，
@@ -358,9 +363,17 @@ def run_ga_loop(
     generations_run = 0
 
     for gen in range(int(cfg.max_generations)):
+        # ── 0. 协作式停止检查（DEF-12/DEF-3）：pause/看门狗请求后尽快自止 ──
+        if should_stop is not None and should_stop():
+            stopped_reason = "stopped"
+            break
+
         # ── 1. 评估（异常隔离：单个个体失败不中断整代）──
         ranked: list[dict[str, Any]] = []
         for item in population:
+            if should_stop is not None and should_stop():
+                stopped_reason = "stopped"
+                break
             entry = dict(item)
             try:
                 fitness = dict(evaluate(item))
@@ -373,6 +386,8 @@ def run_ga_loop(
             entry["signature"] = fitness.pop("signature", None)
             entry["eval_error"] = None
             ranked.append(entry)
+        if stopped_reason == "stopped":
+            break
 
         ranked.sort(key=lambda e: _icir_of(e.get("fitness")), reverse=True)
 

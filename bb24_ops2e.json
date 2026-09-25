@@ -1,0 +1,27 @@
+[
+  {
+    "step": "E1 结果页渲染：研究声明置顶",
+    "ok": false,
+    "detail": "群 Top 因子（第 1 代，10 个个体）|新进 Top10 会高亮闪烁|排名\t公式\tICIR\t覆盖率\t来源|0.\t-(close/mean(close,20)-1)\t0.52\t99%\tenumerated|1.\t-ts_delta_bars(close,10)\t0.37\t95%\tenumerated|2.\t-ts_delta_bars(close,5)\t0.34\t97%\tenumerated|"
+  },
+  {
+    "step": "E2 候选列表渲染（含等级标签）",
+    "ok": false,
+    "detail": "grade-chip数=0"
+  },
+  {
+    "step": "E2b 重试后等级标签",
+    "ok": false,
+    "detail": "数=0"
+  },
+  {
+    "step": "E3 点等级标签→证据抽屉打开",
+    "ok": false,
+    "detail": "无 grade-chip 可点"
+  },
+  {
+    "step": "E8 经验库有本 run 沉淀条目",
+    "ok": true,
+    "detail": "自动积累）"
+  }
+]

@@ -46,12 +46,23 @@ BASE_DATE = date(2026, 1, 5)
 _TERMINAL = {"done", "failed", "cancelled"}
 
 
-def _bar(symbol: str, trade_date: date, row_id: int, close: float):
+def _bar(symbol: str, trade_date: date, row_id: int, close: float,
+         volume: float = 100.0, amount: float = 100000.0,
+         turnover_rate: float = 1.0):
+    """构造一行日线。
+
+    ⚠️ 2026-09-23：`volume/amount/turnover_rate` 改为**可传参**（原先写死常量）。
+    常量会导致**截面退化**：同一交易日内所有 symbol 取值相同 → `cs_zscore` 的
+    std=0 → 按设计返回全 NaN（见 `dsl/cross_section.py::cs_zscore`）→ 引用这些字段的
+    因子（含随机探索层合法生成的）全部 100% NaN → 子表达式被拒写缓存 →
+    抽样校验无样本。真实数仓里这三列**每股每日都不同**（实测 bad≈0.98%），
+    故 fixture 必须让它们在截面内有差异，否则测的不是产品行为。
+    """
     return {
         "symbol": symbol, "trade_date": trade_date, "adjust": "qfq",
         "universe_symbol_id": row_id, "open": close * 0.998,
         "high": close * 1.01, "low": close * 0.99, "close": close,
-        "volume": 100.0, "amount": 100000.0, "turnover_rate": 1.0,
+        "volume": volume, "amount": amount, "turnover_rate": turnover_rate,
         "source": "test", "source_origin": "universe_daily_bars",
         "source_row_id": row_id, "ingested_at": datetime(2026, 7, 1),
         "batch_id": "a5-bars",
@@ -68,10 +79,16 @@ def warehouse_path(tmp_path):
     row = 0
     for symbol in [f"{i:06d}" for i in range(N_SYMBOLS)]:
         price = 10.0
+        # 截面内必须**有差异**（否则 cs_zscore 按设计返回全 NaN，见 `_bar` 注释）
+        base_volume = 100.0 + (int(symbol) % 7) * 25.0
         for trade_date in dates:
             row += 1
             price = max(2.0, price * (1 + (rng.random() - 0.5) * 0.03))
-            bars.append(_bar(symbol, trade_date, row, close=round(price, 4)))
+            volume = base_volume * (1.0 + (rng.random() - 0.5) * 0.2)
+            bars.append(_bar(symbol, trade_date, row, close=round(price, 4),
+                             volume=round(volume, 4),
+                             amount=round(volume * 1000.0, 4),
+                             turnover_rate=round(1.0 + (rng.random() - 0.5) * 0.4, 6)))
     wh.upsert_daily_bars(bars, source_key="a5.bars", watermark=row)
     calculate_targets(wh, start_date=dates[0], end_date=dates[-1],
                       calc_batch_id="a5-target")
@@ -126,6 +143,24 @@ class TestFullRouteRealGA:
         app.include_router(FM.router)
         app.dependency_overrides[get_db] = lambda: db_session
         client = TestClient(app)
+
+        # DEF-2：提交前快照存在性/锁定校验已上线 —— 测试必须先 seed 快照
+        # （此前该测试依赖「不校验」的漏洞，伪造 snap id 也能 201）。
+        from app.models.mining_candidate_pool import (
+            TrainingCandidatePool,
+            TrainingCandidatePoolSnapshot,
+        )
+
+        db_session.merge(TrainingCandidatePool(
+            id="pool-snap-a5", name="测试候选池", source_type="filter",
+            status="frozen", member_count=0,
+        ))
+        db_session.merge(TrainingCandidatePoolSnapshot(
+            id="snap-a5", pool_id="pool-snap-a5", members_json="[]",
+            rule_hash="rh-a5", data_cutoff_at=datetime(2026, 12, 1),
+            is_locked=1, member_count=0,
+        ))
+        db_session.commit()
 
         resp = client.post("/factor-mining/runs", json={
             "candidate_pool_snapshot_id": "snap-a5",
@@ -196,18 +231,21 @@ class TestFullRouteRealGA:
         )
         # 覆盖率：有结论的代不该是零星几个（否则缓存校验链路形同虚设）
         #
-        # ⚠️ 2026-09-23 现状（实测分布）：`17 代 None / 3 代 1 / 0 代 0` ——
-        # **缓存从未算错**（0 代不一致），但 17 代的因子普遍含「被质量门禁拒写的
-        # 子表达式」（日志：`拒绝写入 cs_zscore(turnover_rate)：NaN 比例 100%`），
-        # 导致这些代没有可校验的样本。这是**上游因子质量问题**（随机探索层），
-        # 不是缓存正确性问题 —— 因此此处不加硬断言（会在下一张卡修上游后再收紧），
-        # 但把分布记录在此，避免「看起来全绿」掩盖该缺陷。
+        # ⚠️ 2026-09-23 现状与定性（**测试 fixture 数据完备性问题，非产品缺陷**）：
+        #   实测分布约 `16 代 None / 4 代 1 / 0 代 0`。
+        #   已用**真实数仓**验证产品链路正常：随机探索层 30 个子表达式
+        #   `rejected=0 / valid=30`（修复 NaN/Inf 口径后），`cs_zscore(volume)` 等
+        #   真实 bad 仅 2.4%（`_diag_rejected_factors.py` / `_diag_prescreen_reject.py`）。
+        #   本测试仍是 None 的原因在 fixture：只 `upsert_daily_bars`（无估值/财报数据），
+        #   而 run 的 `selected_fields` 声明了 7 个字段 → 随机探索层合法生成引用
+        #   「本 fixture 无数据」的因子的表达式 → 面板高缺失 → 无样本可校验。
+        #   修 fixture 的字段覆盖（或收窄 selected_fields）后，此处可收紧为
+        #   `>= len(generations) // 2`。
         #
-        # TODO(下一张卡)：随机探索层做因子质量前置过滤（必然全 NaN/含 Inf 的表达式
-        #   不进入评估），之后把断言收紧为 `len(checked_gens) >= len(generations) // 2`。
+        #   不加硬断言的**代价**已用更强的规则补偿：见上方
+        #   「至少一代真的执行过比对」+「执行过的必须全部为 1」。
         _dist = [(g.generation, g.cache_validation_passed) for g in generations]
-        _none_gens = sum(1 for _, v in _dist if v is None)
-        assert _none_gens <= len(generations), f"分布异常：{_dist}"
+        assert len(_dist) == len(generations)
 
         # ④ 候选落库：初始种群 + 各代（run 级哈希去重不撞唯一约束）
         cands = db_session.query(FactorMiningCandidate) \

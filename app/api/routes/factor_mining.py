@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -73,6 +73,11 @@ class MiningRunCreate(BaseModel):
     random_seed: int = 42
     evolution_params: dict[str, Any] = Field(default_factory=dict)
     filter_config: dict[str, Any] = Field(default_factory=dict)
+    #: test 段最终验证 Top-K（DEF-9）。None = 未指定（回退 evolution_params /
+    #: 默认 50）；显式 0 = 分阶段联调跳过 finalize。此前该值默认 0 且只认
+    #: evolution_params（前端从不发这个 key），导致 finalize 全路径缺失：
+    #: run succeeded 但候选 factor_version_id 全 null，结果页不可达。
+    finalize_top_k: int | None = Field(default=None, ge=0, le=200)
 
 
 class MiningRunCreated(BaseModel):
@@ -123,24 +128,93 @@ def _busy_error(exc: mining_lock.MiningDomainBusy) -> FactorSevenError:
 
 
 def _task_for_run(db: Session, run_id: str) -> AsyncTaskRecord | None:
-    """按 `run_id` 反查挖掘任务（任务 payload 里带 run_id）。"""
+    """按 `run_id` 反查挖掘任务（任务 payload 里带 run_id）。
+
+    ⚙️ resume 会产生同 run 的多个任务（旧 cancelled + 新 running）：
+    必须优先返回**非终态的最新任务**，否则 cancel/pause 会打中旧任务、
+    新 worker 变僵尸（实测：resume 后 cancel 无效，任务持续 running）。"""
     rows = db.execute(
         select(AsyncTaskRecord).where(
             AsyncTaskRecord.task_type == mining_runner.TASK_TYPE)
     ).scalars().all()
+    matched: list[AsyncTaskRecord] = []
     for row in rows:
         try:
             payload = json.loads(row.payload_json or "{}") or {}
         except ValueError:
             continue
         if payload.get("run_id") == run_id:
-            return row
-    return None
+            matched.append(row)
+    if not matched:
+        return None
+    active = [r for r in matched if str(r.status) not in
+              ("done", "failed", "cancelled")]
+    pool = active or matched
+    return max(pool, key=lambda r: str(r.created_at or ""))
 
 
 # ══════════════════════════════════════════════════════════
 # 批次
 # ══════════════════════════════════════════════════════════
+
+
+def _resolve_finalize_top_k(payload: MiningRunCreate) -> int:
+    """test 段最终验证 Top-K（DEF-9）。
+
+    优先级：顶层 `finalize_top_k` > `evolution_params.finalize_top_k` > 默认 50。
+    设计 §7/§8.4：结果页 = 挖掘价值兑现的最后一公里，test 段最终验证是
+    **默认执行**的收官步骤，只有显式传 0（分阶段联调）才跳过 ——
+    绝不能因为前端/脚本没带这个 key 就静默跳过 finalize。
+    """
+    if payload.finalize_top_k is not None:
+        return max(0, int(payload.finalize_top_k))
+    evo = dict(payload.evolution_params or {})
+    if "finalize_top_k" in evo:
+        try:
+            return max(0, int(evo.get("finalize_top_k") or 0))
+        except (TypeError, ValueError):
+            return 50
+    return 50
+
+
+def _validate_snapshot_for_run(db: Session, snapshot_id: str) -> None:
+    """DEF-2：提交挖掘前校验候选池快照存在且已锁定（设计 §7 最终校验清单）。
+
+    真实缺陷（2026-09-24 全面测试报告）：伪造
+    `candidate_pool_snapshot_id="snap-not-exist-000"` 此前 201 创建 run 并
+    真实开跑，占用 mining_domain+duckdb_write 双锁数分钟，期间所有正常
+    提交 409 —— 恶意/失误输入即可锁死功能入口。校验在创建 run 行与
+    任务之前，拒绝时不留任何脏数据。
+    """
+    from app.models.mining_candidate_pool import TrainingCandidatePoolSnapshot
+
+    snap = db.get(TrainingCandidatePoolSnapshot, str(snapshot_id))
+    if snap is None:
+        raise _factor_seven_http(factor_structured_error(
+            "MINING_SNAPSHOT_NOT_FOUND",
+            title_zh="候选池快照不存在",
+            detail_zh=(
+                f"候选池快照 {snapshot_id} 不存在（可能已被删除或 id 有误），"
+                "本次提交被拒绝，未创建挖掘任务。请回到 Step1 重新生成挖掘物料。"
+            ),
+            impact="本次提交未执行",
+            fix_link="/settings/factor-mining?step=1",
+            retryable=False,
+            extras={"snapshot_id": str(snapshot_id)},
+        )) from None
+    if not int(getattr(snap, "is_locked", 0) or 0):
+        raise _factor_seven_http(factor_structured_error(
+            "MINING_SNAPSHOT_NOT_LOCKED",
+            title_zh="候选池快照尚未锁定",
+            detail_zh=(
+                f"候选池快照 {snapshot_id} 处于编辑态（未锁定），不能提交挖掘。"
+                "请先在 Step1 完成成员确认并锁定快照。"
+            ),
+            impact="本次提交未执行",
+            fix_link="/settings/factor-mining?step=1",
+            retryable=False,
+            extras={"snapshot_id": str(snapshot_id)},
+        )) from None
 
 
 @router.post("/factor-mining/runs", status_code=201)
@@ -155,6 +229,8 @@ def create_factor_mining_run(payload: MiningRunCreate,
     """
     run_id = uuid.uuid4().hex
     evolution = dict(payload.evolution_params or {})
+    # DEF-2：快照存在性/锁定态校验前置（拒绝时不建 run 行、不建任务、不占锁）
+    _validate_snapshot_for_run(db, payload.candidate_pool_snapshot_id)
     mining_service.create_run(
         db,
         run_id=run_id,
@@ -181,7 +257,7 @@ def create_factor_mining_run(payload: MiningRunCreate,
         "evolution_params": dict(payload.evolution_params or {}),
         "selected_fields": list((payload.filter_config or {}).get("selected_fields") or [
             "close", "open", "high", "low", "volume", "amount", "turnover_rate"]),
-        "finalize_top_k": int((payload.evolution_params or {}).get("finalize_top_k", 0) or 0),
+        "finalize_top_k": _resolve_finalize_top_k(payload),
         "warehouse_path": (payload.filter_config or {}).get("warehouse_path"),
     }
     try:
@@ -275,15 +351,22 @@ def resume_factor_mining_run(run_id: str, db: Session = Depends(get_db)):
         "end_date": str(run.end_date),
         "rebalance_frequency": str(run.rebalance_frequency or "daily"),
         "target_horizon": int(getattr(run, "target_horizon", 0) or 5),
-        "train_ratio": 0.6, "validation_ratio": 0.2,
+        # 恢复不得篡改原配置：优先用 run 行上的原始比例（旧数据无此列时回退默认）
+        "train_ratio": float(getattr(run, "train_ratio", 0) or 0.6),
+        "validation_ratio": float(getattr(run, "validation_ratio", 0) or 0.2),
         "random_seed": int(getattr(run, "random_seed", 0) or 42),
-        "finalize_top_k": 0,
+        # DEF-9：恢复后同样默认执行最终验证（此前 0 → 恢复的 run 永不收官）
+        "finalize_top_k": 50,
     }
     try:
         result = mining_runner.submit_mining_run(task_payload, run_id=run_id)
     except mining_lock.MiningDomainBusy as exc:
         raise _factor_seven_http(_busy_error(exc)) from exc
-    return {"run_id": run_id, "status": "queued", "task_id": result.task_id,
+    # V4b.3 回归修复：resume 提交成功后 run 行状态必须离开 paused，
+    # 否则批次列表/看板永远显示「已暂停」（worker 只推 task 状态，不碰 run）。
+    mining_service.set_run_status(db, run, "running")
+    db.commit()
+    return {"run_id": run_id, "status": "running", "task_id": result.task_id,
             "queue_position": result.queue_position}
 
 
@@ -470,6 +553,25 @@ class SplitBudgetRequest(BaseModel):
     train_ratio: float = Field(default=0.6, gt=0, lt=1)
     validation_ratio: float = Field(default=0.2, gt=0, lt=1)
 
+    @model_validator(mode="after")
+    def _check_split_ratios(self):
+        """DEF-1：三段比例之和必须给 test 段留出预算（设计 §4：train+val+test=100%）。
+
+        真实缺陷：train 0.6 + validation 0.6（和 >100%）此前返回 200 且
+        test_points=0、无任何告警 —— 用户把 test 段"算没了"仍显示
+        available=true。ratio 层面无法预知交易日点数，这里按保守口径：
+        test 段至少保留 10%，超出直接 422（中文 detail 由错误信封透出）。
+        """
+        total = self.train_ratio + self.validation_ratio
+        if total > 0.9:
+            raise ValueError(
+                f"切分比例无效：train_ratio({self.train_ratio}) + "
+                f"validation_ratio({self.validation_ratio}) = {total:.2f}，"
+                "留给 test 段的预算不足 10%（最终验证需要足够样本，"
+                "请调低 train/validation 比例）。"
+            )
+        return self
+
 
 @router.post("/factor-mining/split-budget")
 def get_split_budget(payload: SplitBudgetRequest,
@@ -477,15 +579,34 @@ def get_split_budget(payload: SplitBudgetRequest,
     """Step2 切分预算（向导 §4）：区间交易日 → 频率重采样 → 纯函数预算。
 
     数仓不可用/区间无交易日 → `available=False` + `reason_zh`（前端降级展示）。
+    DEF-8：数仓被占用（DuckDB IOException）同样降级，**禁止 500**。
     """
-    return mining_service.compute_split_budget_preview(
-        start_date=payload.start_date,
-        end_date=payload.end_date,
-        frequency=payload.frequency,
-        target_horizon=payload.target_horizon,
-        train_ratio=payload.train_ratio,
-        validation_ratio=payload.validation_ratio,
-    )
+    try:
+        return mining_service.compute_split_budget_preview(
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            frequency=payload.frequency,
+            target_horizon=payload.target_horizon,
+            train_ratio=payload.train_ratio,
+            validation_ratio=payload.validation_ratio,
+        )
+    except Exception as exc:  # noqa: BLE001 - 数仓忙降级为 available=False（非 500）
+        import duckdb as _duckdb
+
+        if not isinstance(exc, (_duckdb.IOException, OSError)):
+            raise
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "split-budget degraded (warehouse busy): %s", exc)
+        return {
+            "available": False,
+            "reason_zh": "数据仓库正被其他任务占用（如挖掘运行中），请稍后重试。",
+            "start_date": str(payload.start_date),
+            "end_date": str(payload.end_date),
+            "frequency": payload.frequency,
+            "total_points": 0,
+        }
 
 
 # ══════════════════════════════════════════════════════════
@@ -558,12 +679,29 @@ def list_mining_drafts(
 
 @router.post("/factor-mining/drafts", status_code=201)
 def save_mining_draft(payload: dict[str, Any], db: Session = Depends(get_db)):
-    """暂存/更新草稿（无 draft_id 则新建，多份并存）。"""
+    """暂存/更新草稿（无 draft_id 则新建，多份并存；入参校验 DEF-14）。"""
     try:
         view = mining_draft_service.save_draft(db, payload=dict(payload or {}))
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        # DEF-14：结构化中文信封（此前是裸字符串 detail，前端按未知错误码展示）
+        raise HTTPException(status_code=422, detail={
+            "error_code": "VALIDATION_ERROR",
+            "title_zh": "草稿保存被拒绝",
+            "detail_zh": str(exc),
+            "impact": "本次保存未执行",
+            "fix_link": "/settings/factor-mining",
+            "retryable": True,
+        }) from exc
     return view.to_dict()
+
+
+@router.delete("/factor-mining/drafts/{draft_id}")
+def delete_mining_draft(draft_id: str, db: Session = Depends(get_db)):
+    """删除草稿（DEF-5：此前无删除端点 → 405，草稿只进不出）。"""
+    result = mining_draft_service.delete_draft(db, draft_id=draft_id)
+    if not result.get("deleted"):
+        raise _not_found("草稿", draft_id)
+    return result
 
 
 @router.get("/factor-mining/drafts/{draft_id}")
@@ -621,7 +759,10 @@ def get_mining_template(template_id: str, db: Session = Depends(get_db)):
 
 @router.post("/factor-mining/templates", status_code=201)
 def create_mining_template(payload: dict[str, Any], db: Session = Depends(get_db)):
-    """个人模板创建（rule_config 必须含 formula）。"""
+    """个人模板创建（rule_config 必须含 formula，且**公式必须可解析**——DEF-13）。
+
+    校验失败 → 422 + 结构化中文信封（此前是裸字符串 detail，前端按未知错误码展示）。
+    """
     try:
         return mining_template_service.create_personal_template(
             db,
@@ -631,7 +772,14 @@ def create_mining_template(payload: dict[str, Any], db: Session = Depends(get_db
             owner=str((payload or {}).get("owner") or "local_user"),
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail={
+            "error_code": "VALIDATION_ERROR",
+            "title_zh": "模板创建被拒绝",
+            "detail_zh": str(exc),
+            "impact": "本次创建未执行",
+            "fix_link": "/settings/factor-mining",
+            "retryable": True,
+        }) from exc
 
 
 @router.post("/factor-mining/templates/{template_id}/copy")
@@ -656,6 +804,25 @@ def toggle_mining_template(template_id: str, payload: dict[str, Any],
             enabled=int((payload or {}).get("enabled", 1)))
     except ValueError as exc:
         raise _not_found("实验模板", template_id) from exc
+
+
+@router.delete("/factor-mining/templates/{template_id}")
+def delete_mining_template(template_id: str, db: Session = Depends(get_db)):
+    """删除个人模板（卡 A：模板生命周期闭环；system 模板受保护不可删）。"""
+    try:
+        return mining_template_service.delete_template(db, template_id=template_id)
+    except ValueError as exc:
+        msg = str(exc)
+        if msg.startswith("template_not_found"):
+            raise _not_found("实验模板", template_id) from exc
+        raise HTTPException(status_code=409, detail={
+            "error_code": "BUSINESS_BLOCKED",
+            "title_zh": "系统模板受保护",
+            "detail_zh": msg.split(":", 1)[-1] if ":" in msg else msg,
+            "impact": "本次删除未执行",
+            "fix_link": "/settings/factor-mining",
+            "retryable": False,
+        }) from exc
 
 
 @router.post("/factor-mining/runs/{run_id}/cleanup")

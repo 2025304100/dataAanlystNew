@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>因子挖掘 - 批次列表</title>
+<style>
+  :root {
+    --fm-brand-50: #f0fdfa;
+    --fm-brand-100: #ccfbf1;
+    --fm-brand-200: #99f6e4;
+    --fm-brand-300: #5eead4;
+    --fm-brand-400: #2dd4bf;
+    --fm-brand-500: #14b8a6;
+    --fm-brand-600: #0d9488;
+    --fm-brand-700: #0f766e;
+    --fm-brand-800: #115e59;
+    --fm-brand-900: #134e4a;
+    --fm-neutral-0: #ffffff;
+    --fm-neutral-50: #fafaf9;
+    --fm-neutral-100: #f5f5f4;
+    --fm-neutral-200: #e7e5e4;
+    --fm-neutral-300: #d6d3d1;
+    --fm-neutral-400: #a8a29e;
+    --fm-neutral-500: #78716c;
+    --fm-neutral-600: #57534e;
+    --fm-neutral-700: #44403c;
+    --fm-neutral-800: #292524;
+    --fm-neutral-900: #1c1917;
+    --fm-success: #15803d;
+    --fm-success-soft: #dcfce7;
+    --fm-info: #1d6fd8;
+    --fm-info-soft: #dbeafe;
+    --fm-warn: #b45309;
+    --fm-warn-soft: #ffedd5;
+    --fm-danger: #b42318;
+    --fm-danger-soft: #fee2e2;
+    --fm-grade-s: #0b6b63;
+    --fm-grade-a: #1d6fd8;
+    --fm-grade-b: #b45309;
+    --fm-grade-c: #c2410c;
+    --fm-grade-d: #b42318;
+
+    /* 暖色调 */
+    --fm-cream-50: #fffaf0;
+    --fm-cream-100: #fdf6eb;
+    --fm-cream-200: #f7f4ec;
+    --fm-cream-300: #e8e2d5;
+    --fm-cream-border: rgba(31, 41, 51, 0.08);
+
+    /* 文字四级灰度 */
+    --fm-text-primary: #1f2933;
+    --fm-text-secondary: #52606d;
+    --fm-text-tertiary: #7b8794;
+    --fm-text-quaternary: #9aa5b1;
+
+    --fm-background: var(--fm-cream-50);
+    --fm-foreground: var(--fm-text-primary);
+    --fm-card: var(--fm-neutral-0);
+    --fm-card-foreground: var(--fm-text-secondary);
+    --fm-primary: var(--fm-brand-700);
+    --fm-primary-foreground: var(--fm-neutral-0);
+    --fm-muted: var(--fm-cream-200);
+    --fm-muted-foreground: var(--fm-text-tertiary);
+    --fm-border: var(--fm-cream-border);
+    --fm-radius-sm: 6px;
+    --fm-radius-md: 10px;
+    --fm-radius-lg: 14px;
+    --fm-radius-xl: 18px;
+    --fm-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --fm-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --fm-text-xs: 11px;
+    --fm-text-sm: 12px;
+    --fm-text-base: 13px;
+    --fm-text-lg: 14px;
+    --fm-text-xl: 16px;
+    --fm-text-2xl: 18px;
+    --fm-text-3xl: 22px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--fm-font-sans);
+    font-size: var(--fm-text-base);
+    color: var(--fm-foreground);
+    background: var(--fm-background);
+    width: 1440px;
+    min-height: 100vh;
+  }
+
+  /* ===== App Shell ===== */
+  .app-shell { display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 232px;
+    background: var(--fm-neutral-900);
+    color: var(--fm-neutral-0);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-logo {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: var(--fm-text-xl);
+    font-weight: 600;
+    gap: 10px;
+  }
+  .sidebar-logo-icon {
+    width: 28px; height: 28px;
+    background: var(--fm-brand-500);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .sidebar-nav { padding: 12px 0; flex: 1; }
+  .nav-section-title {
+    padding: 8px 20px;
+    font-size: var(--fm-text-xs);
+    color: var(--fm-neutral-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .nav-item {
+    padding: 9px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-300);
+    transition: background 0.15s;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.05); }
+  .nav-item.active {
+    background: var(--fm-brand-800);
+    color: var(--fm-brand-100);
+    border-left: 3px solid var(--fm-brand-400);
+    padding-left: 17px;
+  }
+  .nav-item .nav-icon { width: 18px; text-align: center; }
+  .nav-submenu { padding-left: 48px; }
+  .nav-submenu .nav-item {
+    padding: 7px 20px 7px 12px;
+    font-size: var(--fm-text-sm);
+  }
+  .nav-submenu .nav-item.active {
+    border-left: none;
+    padding-left: 12px;
+    color: var(--fm-brand-300);
+    background: transparent;
+    font-weight: 500;
+  }
+
+  /* Main Area */
+  .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  /* Topbar */
+  .topbar {
+    height: 56px;
+    background: var(--fm-card);
+    border-bottom: 1px solid var(--fm-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    flex-shrink: 0;
+  }
+  .breadcrumb {
+    display: flex; align-items: center; gap: 8px;
+    font-size: var(--fm-text-base);
+    color: var(--fm-text-tertiary);
+  }
+  .breadcrumb .current { color: var(--fm-foreground); font-weight: 500; }
+  .breadcrumb .sep { color: var(--fm-text-quaternary); }
+  .topbar-right { display: flex; align-items: center; gap: 16px; }
+  .topbar-icon-btn {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: var(--fm-neutral-500);
+    position: relative;
+  }
+  .topbar-icon-btn:hover { background: var(--fm-neutral-100); }
+  .notification-dot {
+    position: absolute; top: 6px; right: 6px;
+    width: 6px; height: 6px;
+    background: var(--fm-danger);
+    border-radius: 50%;
+    border: 1.5px solid var(--fm-card);
+  }
+  .user-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--fm-brand-500), var(--fm-brand-700));
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: var(--fm-text-sm); font-weight: 500;
+    cursor: pointer;
+  }
+
+  /* Sub Tabs */
+  .sub-tabs {
+    height: 44px;
+    background: var(--fm-card);
+    border-bottom: 1px solid var(--fm-border);
+    display: flex;
+    align-items: flex-end;
+    padding: 0 24px;
+    gap: 24px;
+    flex-shrink: 0;
+  }
+  .sub-tab {
+    padding: 12px 0;
+    font-size: var(--fm-text-base);
+    color: var(--fm-text-tertiary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+  .sub-tab:hover { color: var(--fm-text-secondary); }
+  .sub-tab.active {
+    color: var(--fm-primary);
+    border-bottom-color: var(--fm-primary);
+    font-weight: 500;
+  }
+
+  /* Content */
+  .content {
+    flex: 1;
+    padding: 20px 24px;
+    overflow-y: auto;
+  }
+
+  /* ===== Shared ===== */
+  .btn {
+    padding: 7px 16px;
+    border-radius: 7px;
+    font-size: var(--fm-text-base);
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
+  }
+  .btn-primary {
+    background: var(--fm-primary);
+    color: var(--fm-primary-foreground);
+    border-color: var(--fm-primary);
+  }
+  .btn-primary:hover { background: var(--fm-brand-800); border-color: var(--fm-brand-800); }
+  .btn-secondary {
+    background: var(--fm-neutral-100);
+    color: var(--fm-neutral-700);
+    border-color: var(--fm-neutral-200);
+  }
+  .btn-secondary:hover { background: var(--fm-neutral-200); }
+  .btn-sm { padding: 5px 12px; font-size: var(--fm-text-sm); }
+  .btn-link {
+    background: transparent;
+    color: var(--fm-primary);
+    border-color: transparent;
+    padding: 4px 8px;
+  }
+  .btn-link:hover { text-decoration: underline; }
+
+  /* ===== Page Header ===== */
+  .page-header-card {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .page-title {
+    font-size: var(--fm-text-2xl);
+    font-weight: 700;
+    color: var(--fm-foreground);
+    margin-bottom: 4px;
+  }
+  .page-subtitle {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-tertiary);
+  }
+
+  /* ===== Filter Toolbar ===== */
+  .filter-toolbar {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .filter-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .filter-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* Status Pills */
+  .status-pill {
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: var(--fm-text-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid transparent;
+    background: var(--fm-neutral-100);
+    color: var(--fm-neutral-700);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .status-pill:hover { background: var(--fm-neutral-200); }
+  .status-pill.active {
+    background: var(--fm-primary);
+    color: var(--fm-primary-foreground);
+    border-color: var(--fm-primary);
+  }
+  .status-pill .pill-count {
+    font-weight: 600;
+    font-size: var(--fm-text-xs);
+    opacity: 0.8;
+  }
+  .status-pill.active .pill-count { opacity: 0.9; }
+
+  /* Search Box */
+  .search-box {
+    position: relative;
+  }
+  .search-box input {
+    width: 200px;
+    height: 34px;
+    padding: 0 12px 0 32px;
+    border: 1px solid var(--fm-border);
+    border-radius: 7px;
+    font-size: var(--fm-text-sm);
+    background: var(--fm-card);
+    color: var(--fm-foreground);
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .search-box input:focus {
+    outline: none;
+    border-color: var(--fm-brand-500);
+    box-shadow: 0 0 0 3px rgba(20,184,166,0.1);
+  }
+  .search-box input::placeholder { color: var(--fm-neutral-400); }
+  .search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    color: var(--fm-neutral-400);
+    font-size: 12px;
+  }
+
+  /* Date Range */
+  .date-range {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .date-range input[type="date"] {
+    height: 34px;
+    padding: 0 8px;
+    border: 1px solid var(--fm-border);
+    border-radius: 7px;
+    font-size: var(--fm-text-sm);
+    background: var(--fm-card);
+    color: var(--fm-foreground);
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .date-range input[type="date"]:focus {
+    outline: none;
+    border-color: var(--fm-brand-500);
+    box-shadow: 0 0 0 3px rgba(20,184,166,0.1);
+  }
+  .date-sep { color: var(--fm-neutral-400); }
+
+  /* ===== Runs Table Card ===== */
+  .runs-table-card {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+    overflow: hidden;
+  }
+  .runs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fm-text-base);
+  }
+  .runs-table thead {
+    background: var(--fm-cream-200);
+  }
+  .runs-table th {
+    padding: 11px 16px;
+    text-align: left;
+    font-weight: 600;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    border-bottom: 1px solid var(--fm-border);
+    white-space: nowrap;
+  }
+  .runs-table th.text-right { text-align: right; }
+  .runs-table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--fm-cream-300);
+    color: var(--fm-text-secondary);
+    vertical-align: middle;
+  }
+  .runs-table tbody tr:hover { background: var(--fm-cream-100); }
+  .runs-table tbody tr:last-child td { border-bottom: none; }
+
+  /* Batch ID + Time cell */
+  .batch-id-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .batch-id {
+    font-family: var(--fm-font-mono);
+    font-weight: 600;
+    font-size: var(--fm-text-base);
+    color: var(--fm-foreground);
+  }
+  .batch-time {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-neutral-400);
+  }
+
+  /* Status Cell */
+  .status-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 160px;
+  }
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: var(--fm-text-xs);
+    font-weight: 500;
+    width: fit-content;
+  }
+  .status-chip .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .status-chip.running {
+    background: var(--fm-info-soft);
+    color: var(--fm-info);
+  }
+  .status-chip.running .status-dot {
+    background: var(--fm-info);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .status-chip.success {
+    background: var(--fm-success-soft);
+    color: var(--fm-success);
+  }
+  .status-chip.success .status-dot { background: var(--fm-success); }
+  .status-chip.failed {
+    background: var(--fm-danger-soft);
+    color: var(--fm-danger);
+  }
+  .status-chip.failed .status-dot { background: var(--fm-danger); }
+  .status-chip.cancelled {
+    background: var(--fm-neutral-100);
+    color: var(--fm-neutral-500);
+  }
+  .status-chip.cancelled .status-dot { background: var(--fm-neutral-400); }
+
+  .status-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--fm-cream-200);
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 80px;
+  }
+  .status-progress-fill {
+    height: 100%;
+    border-radius: 3px;
+  }
+  .status-progress-fill.info { background: var(--fm-info); }
+  .status-progress-fill.success { background: var(--fm-success); width: 100%; }
+  .status-progress-fill.danger { background: var(--fm-danger); width: 0%; }
+  .status-progress-text {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-neutral-500);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .status-error {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-danger);
+    font-family: var(--fm-font-mono);
+  }
+
+  /* Config Summary Cell */
+  .config-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: var(--fm-text-xs);
+    color: var(--fm-text-tertiary);
+    min-width: 180px;
+  }
+  .config-line { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .config-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--fm-neutral-100);
+    color: var(--fm-neutral-600);
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  /* ICIR Cell */
+  .icir-cell {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 600;
+    font-size: var(--fm-text-lg);
+    font-variant-numeric: tabular-nums;
+  }
+  .icir-up { color: var(--fm-success); }
+  .icir-down { color: var(--fm-danger); }
+  .icir-flat { color: var(--fm-neutral-500); }
+  .icir-arrow {
+    font-size: var(--fm-text-base);
+    font-weight: 700;
+  }
+
+  /* Factor Count Cell */
+  .factor-count {
+    font-weight: 600;
+    font-size: var(--fm-text-base);
+    color: var(--fm-foreground);
+  }
+  .factor-count.zero { color: var(--fm-neutral-400); }
+
+  /* Action Cell */
+  .action-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+  .action-link {
+    color: var(--fm-primary);
+    cursor: pointer;
+    font-weight: 500;
+    font-size: var(--fm-text-sm);
+    padding: 4px 8px;
+    border-radius: 5px;
+    transition: background 0.15s;
+  }
+  .action-link:hover { background: var(--fm-brand-50); }
+  .action-more {
+    position: relative;
+    color: var(--fm-neutral-500);
+    cursor: pointer;
+    font-size: var(--fm-text-lg);
+    padding: 4px 8px;
+    border-radius: 5px;
+    transition: all 0.15s;
+  }
+  .action-more:hover {
+    background: var(--fm-neutral-100);
+    color: var(--fm-neutral-700);
+  }
+
+  /* Pagination */
+  .pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-top: 1px solid var(--fm-border);
+    background: var(--fm-cream-100);
+    font-size: var(--fm-text-sm);
+  }
+  .pagination-info { color: var(--fm-text-tertiary); }
+  .pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .page-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--fm-border);
+    border-radius: 6px;
+    background: var(--fm-card);
+    color: var(--fm-neutral-700);
+    font-size: var(--fm-text-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .page-btn:hover { background: var(--fm-neutral-100); }
+  .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .page-size-select {
+    height: 30px;
+    padding: 0 24px 0 8px;
+    border: 1px solid var(--fm-border);
+    border-radius: 6px;
+    font-size: var(--fm-text-sm);
+    background: var(--fm-card);
+    color: var(--fm-neutral-700);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2378716c' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    font-family: inherit;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="app-shell" id="page-runs">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">F</div>
+      <span>FactorLab</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">工作台</div>
+      <div class="nav-item"><span class="nav-icon">◱</span> 概览</div>
+      <div class="nav-item"><span class="nav-icon">◈</span> 因子库</div>
+      <div class="nav-item"><span class="nav-icon">◉</span> 因子模型</div>
+      <div class="nav-item"><span class="nav-icon">◔</span> 回测分析</div>
+
+      <div class="nav-section-title" style="margin-top:8px;">研究</div>
+      <div class="nav-item"><span class="nav-icon">⚡</span> 因子挖掘</div>
+      <div class="nav-item"><span class="nav-icon">⚙</span> 批量回测</div>
+
+      <div class="nav-section-title" style="margin-top:8px;">设置</div>
+      <div class="nav-item active"><span class="nav-icon">⚙</span> 因子挖掘</div>
+      <div class="nav-submenu">
+        <div class="nav-item">向导</div>
+        <div class="nav-item active">批次列表</div>
+        <div class="nav-item">经验库</div>
+        <div class="nav-item">模板配置</div>
+      </div>
+      <div class="nav-item"><span class="nav-icon">◐</span> 数据源</div>
+      <div class="nav-item"><span class="nav-icon">◯</span> 系统设置</div>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-area">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="breadcrumb">
+        <span>设置</span>
+        <span class="sep">/</span>
+        <span class="current">因子挖掘</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon-btn">
+          <span>🔍</span>
+        </div>
+        <div class="topbar-icon-btn">
+          <span>🔔</span>
+          <div class="notification-dot"></div>
+        </div>
+        <div class="user-avatar">ZH</div>
+      </div>
+    </header>
+
+    <!-- Sub Tabs -->
+    <div class="sub-tabs">
+      <div class="sub-tab">向导</div>
+      <div class="sub-tab active">批次列表</div>
+      <div class="sub-tab">经验库</div>
+      <div class="sub-tab">模板配置</div>
+    </div>
+
+    <!-- Content -->
+    <main class="content">
+      <!-- Page Header -->
+      <div class="page-header-card">
+        <div>
+          <div class="page-title">批次列表</div>
+          <div class="page-subtitle">查看、管理与恢复历史因子挖掘任务</div>
+        </div>
+        <button class="btn btn-secondary btn-sm">
+          <span>↻</span> 刷新
+        </button>
+      </div>
+
+      <!-- Filter Toolbar -->
+      <div class="filter-toolbar">
+        <div class="filter-left">
+          <div class="status-pill active">
+            <span>全部</span>
+            <span class="pill-count">(12)</span>
+          </div>
+          <div class="status-pill">
+            <span>运行中</span>
+            <span class="pill-count">(1)</span>
+          </div>
+          <div class="status-pill">
+            <span>排队中</span>
+            <span class="pill-count">(0)</span>
+          </div>
+          <div class="status-pill">
+            <span>已完成</span>
+            <span class="pill-count">(7)</span>
+          </div>
+          <div class="status-pill">
+            <span>已失败</span>
+            <span class="pill-count">(2)</span>
+          </div>
+          <div class="status-pill">
+            <span>已取消</span>
+            <span class="pill-count">(2)</span>
+          </div>
+        </div>
+        <div class="filter-right">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" placeholder="批次号/日期">
+          </div>
+          <div class="date-range">
+            <input type="date" value="2026-09-01">
+            <span class="date-sep">-</span>
+            <input type="date" value="2026-09-25">
+          </div>
+          <button class="btn btn-primary btn-sm">
+            <span>+</span> 新建挖掘
+          </button>
+        </div>
+      </div>
+
+      <!-- Runs Table Card -->
+      <div class="runs-table-card">
+        <table class="runs-table">
+          <thead>
+            <tr>
+              <th style="min-width:180px;">批次号</th>
+              <th style="min-width:180px;">状态</th>
+              <th style="min-width:200px;">配置摘要</th>
+              <th style="min-width:100px;">最优 ICIR</th>
+              <th style="min-width:90px; text-align:center;">有效因子数</th>
+              <th style="min-width:120px; text-align:right;">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Row 1: Running -->
+            <tr>
+              <td>
+                <div class="batch-id-cell">
+                  <span class="batch-id">#c61cb96a</span>
+                  <span class="batch-time">2026-09-20 14:30</span>
+                </div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <span class="status-chip running">
+                    <span class="status-dot"></span>
+                    运行中
+                  </span>
+                  <div class="status-progress">
+                    <div class="status-progress-bar">
+                      <div class="status-progress-fill info" style="width: 60%"></div>
+                    </div>
+                    <span class="status-progress-text">第 12/20 代</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="config-summary">
+                  <div class="config-line">
+                    <span class="config-tag">候选池 285只</span>
+                    <span class="config-tag">周频</span>
+                    <span class="config-tag">20代</span>
+                  </div>
+                  <div class="config-line">
+                    train 756点 · val 252点 · test 252点
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="icir-cell icir-up">
+                  <span>2.87</span>
+                  <span class="icir-arrow">↗</span>
+                </div>
+              </td>
+              <td style="text-align:center;">
+                <span class="factor-count zero">-</span>
+              </td>
+              <td>
+                <div class="action-cell">
+                  <span class="action-link">查看</span>
+                  <span class="action-more">⋯</span>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 2: Completed -->
+            <tr>
+              <td>
+                <div class="batch-id-cell">
+                  <span class="batch-id">#a9a1cd1a</span>
+                  <span class="batch-time">2026-09-19 10:15</span>
+                </div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <span class="status-chip success">
+                    <span class="status-dot"></span>
+                    已完成 ✓
+                  </span>
+                  <div class="status-progress">
+                    <div class="status-progress-bar">
+                      <div class="status-progress-fill success"></div>
+                    </div>
+                    <span class="status-progress-text">100%</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="config-summary">
+                  <div class="config-line">
+                    <span class="config-tag">候选池 320只</span>
+                    <span class="config-tag">日频</span>
+                    <span class="config-tag">15代</span>
+                  </div>
+                  <div class="config-line">
+                    train 756点 · val 252点 · test 252点
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="icir-cell icir-up">
+                  <span>3.12</span>
+                  <span class="icir-arrow">↗</span>
+                </div>
+              </td>
+              <td style="text-align:center;">
+                <span class="factor-count">22个</span>
+              </td>
+              <td>
+                <div class="action-cell">
+                  <span class="action-link">查看</span>
+                  <span class="action-more">⋯</span>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 3: Completed -->
+            <tr>
+              <td>
+                <div class="batch-id-cell">
+                  <span class="batch-id">#b7c3f4d2</span>
+                  <span class="batch-time">2026-09-18 16:42</span>
+                </div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <span class="status-chip success">
+                    <span class="status-dot"></span>
+                    已完成 ✓
+                  </span>
+                  <div class="status-progress">
+                    <div class="status-progress-bar">
+                      <div class="status-progress-fill success"></div>
+                    </div>
+                    <span class="status-progress-text">100%</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="config-summary">
+                  <div class="config-line">
+                    <span class="config-tag">候选池 285只</span>
+                    <span class="config-tag">周频</span>
+                    <span class="config-tag">20代</span>
+                  </div>
+                  <div class="config-line">
+                    train 756点 · val 252点 · test 252点
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="icir-cell icir-up">
+                  <span>2.65</span>
+                  <span class="icir-arrow">↗</span>
+                </div>
+              </td>
+              <td style="text-align:center;">
+                <span class="factor-count">18个</span>
+              </td>
+              <td>
+                <div class="action-cell">
+                  <span class="action-link">查看</span>
+                  <span class="action-more">⋯</span>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 4: Completed (flat) -->
+            <tr>
+              <td>
+                <div class="batch-id-cell">
+                  <span class="batch-id">#d4e8f9a1</span>
+                  <span class="batch-time">2026-09-17 09:20</span>
+                </div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <span class="status-chip success">
+                    <span class="status-dot"></span>
+                    已完成 ✓
+                  </span>
+                  <div class="status-progress">
+                    <div class="status-progress-bar">
+                      <div class="status-progress-fill success"></div>
+                    </div>
+                    <span class="status-progress-text">100%</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="config-summary">
+                  <div class="config-line">
+                    <span class="config-tag">候选池 150只</span>
+                    <span class="config-tag">月频</span>
+                    <span class="config-tag">10代</span>
+                  </div>
+                  <div class="config-line">
+                    train 500点 · val 168点 · test 168点
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="icir-cell icir-flat">
+                  <span>1.98</span>
+                  <span class="icir-arrow">→</span>
+                </div>
+              </td>
+              <td style="text-align:center;">
+                <span class="factor-count">8个</span>
+              </td>
+              <td>
+                <div class="action-cell">
+                  <span class="action-link">查看</span>
+                  <span class="action-more">⋯</span>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 5: Failed -->
+            <tr>
+              <td>
+                <div class="batch-id-cell">
+                  <span class="batch-id">#e2f5a7b3</span>
+                  <span class="batch-time">2026-09-16 11:05</span>
+                </div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <span class="status-chip failed">
+                    <span class="status-dot"></span>
+                    已失败 ✕
+                  </span>
+                  <span class="status-error">STALLED</span>
+                </div>
+              </td>
+              <td>
+                <div class="config-summary">
+                  <div class="config-line">
+                    <span class="config-tag">候选池 285只</span>
+                    <span class="config-tag">周频</span>
+                    <span class="config-tag">20代</span>
+                  </div>
+                  <div class="config-line">
+                    train 756点 · val 252点 · test 252点
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="icir-cell" style="color: var(--fm-neutral-400); font-weight: 500;">
+                  <span>-</span>
+                </div>
+              </td>
+              <td style="text-align:center;">
+                <span class="factor-count zero">0个</span>
+              </td>
+              <td>
+                <div class="action-cell">
+                  <span class="action-link">查看</span>
+                  <span class="action-more">⋯</span>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 6: Cancelled -->
+            <tr>
+              <td>
+                <div class="batch-id-cell">
+                  <span class="batch-id">#f1a2b4c5</span>
+                  <span class="batch-time">2026-09-15 15:30</span>
+                </div>
+              </td>
+              <td>
+                <div class="status-cell">
+                  <span class="status-chip cancelled">
+                    <span class="status-dot"></span>
+                    已取消 ⊘
+                  </span>
+                </div>
+              </td>
+              <td>
+                <div class="config-summary">
+                  <div class="config-line">
+                    <span class="config-tag">候选池 200只</span>
+                    <span class="config-tag">日频</span>
+                    <span class="config-tag">20代</span>
+                  </div>
+                  <div class="config-line">
+                    train 600点 · val 200点 · test 200点
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="icir-cell" style="color: var(--fm-neutral-500); font-weight: 500; font-size: var(--fm-text-base);">
+                  <span>0.85</span>
+                </div>
+              </td>
+              <td style="text-align:center;">
+                <span class="factor-count zero">0个</span>
+              </td>
+              <td>
+                <div class="action-cell">
+                  <span class="action-link">查看</span>
+                  <span class="action-more">⋯</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <div class="pagination-bar">
+          <div class="pagination-info">共 12 条 · 第 1/2 页</div>
+          <div class="pagination-controls">
+            <select class="page-size-select">
+              <option>每页 10 条</option>
+              <option>每页 20 条</option>
+              <option>每页 50 条</option>
+            </select>
+            <button class="page-btn" disabled>上一页</button>
+            <button class="page-btn">下一页</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

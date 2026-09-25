@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>因子挖掘 - 进化参数</title>
+<style>
+  :root {
+    /* Brand - Dark Teal */
+    --fm-brand-50: #f0fdfa;
+    --fm-brand-100: #ccfbf1;
+    --fm-brand-200: #99f6e4;
+    --fm-brand-300: #5eead4;
+    --fm-brand-400: #2dd4bf;
+    --fm-brand-500: #14b8a6;
+    --fm-brand-600: #0d9488;
+    --fm-brand-700: #0f766e;
+    --fm-brand-800: #115e59;
+    --fm-brand-900: #134e4a;
+
+    /* Warm Cream / Beige Palette */
+    --fm-cream-50: #fffaf0;  /* page background */
+    --fm-cream-100: #faf5e8;
+    --fm-cream-200: #f7f4ec;  /* accordion header, table header */
+    --fm-cream-300: #efe9d9;
+    --fm-cream-400: #e5dcc5;
+
+    /* Neutral */
+    --fm-neutral-0: #ffffff;
+    --fm-neutral-50: #fafaf9;
+    --fm-neutral-100: #f5f5f4;
+    --fm-neutral-200: #e7e5e4;
+    --fm-neutral-300: #d6d3d1;
+    --fm-neutral-400: #a8a29e;
+    --fm-neutral-500: #78716c;
+    --fm-neutral-600: #57534e;
+    --fm-neutral-700: #44403c;
+    --fm-neutral-800: #292524;
+    --fm-neutral-900: #1c1917;
+
+    /* Text */
+    --fm-text-primary: #1f2933;
+    --fm-text-secondary: #52606d;
+    --fm-text-tertiary: #7b8794;
+    --fm-text-quaternary: #9aa5b1;
+
+    /* Semantic */
+    --fm-success: #15803d;
+    --fm-success-soft: #dcfce7;
+    --fm-info: #1d6fd8;
+    --fm-info-soft: #dbeafe;
+    --fm-warn: #b45309;
+    --fm-warn-soft: #ffedd5;
+    --fm-danger: #b42318;
+    --fm-danger-soft: #fee2e2;
+    --fm-grade-s: #0b6b63;
+    --fm-grade-a: #1d6fd8;
+    --fm-grade-b: #b45309;
+    --fm-grade-c: #c2410c;
+    --fm-grade-d: #b42318;
+
+    /* Tokens */
+    --fm-background: var(--fm-cream-50);
+    --fm-foreground: var(--fm-text-primary);
+    --fm-card: var(--fm-neutral-0);
+    --fm-primary: var(--fm-brand-700);
+    --fm-primary-foreground: var(--fm-neutral-0);
+    --fm-muted: var(--fm-cream-200);
+    --fm-muted-foreground: var(--fm-text-tertiary);
+    --fm-border: rgba(31, 41, 51, 0.08);
+    --fm-border-strong: rgba(31, 41, 51, 0.12);
+    --fm-radius-sm: 6px;
+    --fm-radius-md: 10px;
+    --fm-radius-lg: 14px;
+    --fm-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --fm-text-xs: 11px;
+    --fm-text-sm: 12px;
+    --fm-text-base: 13px;
+    --fm-text-lg: 14px;
+    --fm-text-xl: 16px;
+    --fm-text-2xl: 18px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--fm-font-sans);
+    font-size: var(--fm-text-base);
+    color: var(--fm-foreground);
+    background: var(--fm-background);
+    min-width: 1440px;
+  }
+
+  /* App Shell Layout */
+  .app-shell { display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 232px; background: var(--fm-neutral-800); color: var(--fm-neutral-0);
+    flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; overflow-y: auto;
+  }
+  .sidebar-logo {
+    height: 56px; display: flex; align-items: center; padding: 0 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: var(--fm-text-lg); font-weight: 600; color: var(--fm-brand-300);
+  }
+  .sidebar-logo .logo-icon {
+    width: 28px; height: 28px; background: var(--fm-brand-600);
+    border-radius: var(--fm-radius-sm); display: inline-flex;
+    align-items: center; justify-content: center; margin-right: 10px;
+    font-size: var(--fm-text-sm); font-weight: 700;
+  }
+  .nav-section { padding: 12px 0; }
+  .nav-section-title {
+    padding: 8px 20px; font-size: var(--fm-text-xs); color: var(--fm-neutral-500);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .nav-item {
+    display: flex; align-items: center; padding: 9px 20px;
+    font-size: var(--fm-text-base); color: var(--fm-neutral-300);
+    cursor: pointer; border-left: 3px solid transparent;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.04); color: var(--fm-neutral-0); }
+  .nav-item.active {
+    background: rgba(20, 184, 166, 0.1); color: var(--fm-brand-300);
+    border-left-color: var(--fm-brand-400);
+  }
+  .nav-item .nav-icon { width: 18px; margin-right: 10px; text-align: center; font-size: var(--fm-text-lg); }
+  .nav-sub {
+    padding-left: 48px; font-size: var(--fm-text-sm); color: var(--fm-neutral-400);
+    padding-top: 6px; padding-bottom: 6px; cursor: pointer;
+  }
+  .nav-sub.active { color: var(--fm-brand-300); }
+
+  /* Main Area */
+  .main-area { flex: 1; margin-left: 232px; min-width: 0; }
+
+  /* Top Bar */
+  .topbar {
+    height: 56px; background: var(--fm-card); border-bottom: 1px solid var(--fm-border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; position: sticky; top: 0; z-index: 10;
+  }
+  .breadcrumb { font-size: var(--fm-text-base); color: var(--fm-neutral-600); }
+  .breadcrumb .sep { margin: 0 8px; color: var(--fm-neutral-400); }
+  .breadcrumb .current { color: var(--fm-foreground); font-weight: 500; }
+  .topbar-right { display: flex; align-items: center; gap: 16px; }
+  .topbar-icon {
+    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    border-radius: var(--fm-radius-sm); color: var(--fm-neutral-500); cursor: pointer; position: relative;
+  }
+  .topbar-icon:hover { background: var(--fm-neutral-100); }
+  .topbar-icon .badge {
+    position: absolute; top: 6px; right: 6px; width: 8px; height: 8px;
+    background: var(--fm-danger); border-radius: 50%; border: 1.5px solid var(--fm-card);
+  }
+  .user-avatar {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--fm-brand-600);
+    color: white; display: flex; align-items: center; justify-content: center;
+    font-size: var(--fm-text-sm); font-weight: 500; cursor: pointer;
+  }
+
+  /* Sub Tabs */
+  .sub-tabs {
+    background: var(--fm-card); border-bottom: 1px solid var(--fm-border);
+    padding: 0 24px; display: flex; gap: 32px;
+  }
+  .sub-tab {
+    padding: 14px 0; font-size: var(--fm-text-base); color: var(--fm-neutral-500);
+    cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500;
+  }
+  .sub-tab:hover { color: var(--fm-neutral-700); }
+  .sub-tab.active { color: var(--fm-brand-700); border-bottom-color: var(--fm-brand-600); }
+
+  /* Step Indicator (Professional) */
+  .step-bar {
+    background: var(--fm-card);
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--fm-border);
+  }
+  .step-track {
+    background: #fff;
+    border: 1px solid rgba(31, 41, 51, 0.08);
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    padding: 28px 32px;
+    display: flex;
+    justify-content: space-between;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .step-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    text-align: center;
+  }
+  /* Connector lines */
+  .step-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 24px;
+    left: calc(50% + 16px);
+    right: calc(-50% + 16px);
+    height: 2px;
+    background: #e7e5e4;
+    z-index: 0;
+  }
+  .step-item.done:not(:last-child)::after {
+    background: #0f766e;
+  }
+  .step-item.active:not(:last-child)::after {
+    background: linear-gradient(to right, #0f766e 0%, #0f766e 20%, #e7e5e4 20%, #e7e5e4 100%);
+  }
+  /* Step highlight wrapper */
+  .step-highlight {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+    padding: 8px 16px;
+    border-radius: 12px;
+  }
+  .step-item.active .step-highlight {
+    background: rgba(13, 148, 136, 0.06);
+  }
+  /* Circle node - 32px */
+  .step-circle {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    font-weight: 500;
+    background: #f0ede6;
+    color: #a8a29e;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  .step-item.done .step-circle {
+    background: linear-gradient(135deg, #0d9488, #0f766e);
+    color: #fff;
+    box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.12);
+  }
+  .step-item.active .step-circle {
+    background: #0f766e;
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.15), inset 0 1px 2px rgba(0,0,0,0.1);
+  }
+  /* Progress arc at bottom of active circle */
+  .step-item.active .step-circle::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 2px;
+    background: #14b8a6;
+    border-radius: 2px;
+  }
+  /* Text section */
+  .step-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    white-space: nowrap;
+    margin-top: 12px;
+    text-align: center;
+  }
+  .step-label {
+    font-size: 13px;
+    color: #78716c;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+  }
+  .step-item.done .step-label {
+    color: #0f766e;
+  }
+  .step-item.active .step-label {
+    color: #0f766e;
+  }
+  .step-sublabel {
+    font-size: 11px;
+    color: #a8a29e;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+  .step-item.done .step-sublabel,
+  .step-item.active .step-sublabel {
+    color: #0d9488;
+  }
+  .step-item.active .step-sublabel {
+    color: #0f766e;
+  }
+
+  /* Content Area */
+  .content-area { padding: 20px 24px 80px; background: var(--fm-background); max-width: 1100px; margin: 0 auto; }
+
+  /* Card */
+  .card {
+    background: var(--fm-card); border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md); margin-bottom: 16px;
+  }
+  .card-body { padding: 20px; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 8px 18px; border-radius: var(--fm-radius-sm);
+    font-size: var(--fm-text-base); font-weight: 500; cursor: pointer;
+    border: 1px solid transparent; transition: all 0.2s; font-family: inherit;
+    gap: 6px;
+  }
+  .btn-primary {
+    background: var(--fm-brand-700); color: var(--fm-primary-foreground);
+  }
+  .btn-primary:hover { background: var(--fm-brand-800); }
+  .btn-secondary {
+    background: var(--fm-card); color: var(--fm-neutral-700); border-color: var(--fm-border);
+  }
+  .btn-secondary:hover { background: var(--fm-neutral-50); }
+  .btn-ghost {
+    background: transparent; color: var(--fm-neutral-600); border-color: var(--fm-border);
+  }
+  .btn-ghost:hover { background: var(--fm-neutral-50); }
+  .btn-lg { padding: 10px 22px; font-size: var(--fm-text-lg); }
+
+  /* Mode Tabs */
+  .mode-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--fm-border);
+  }
+  .mode-tab {
+    padding: 12px 24px;
+    font-size: var(--fm-text-lg);
+    color: var(--fm-neutral-500);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+    margin-bottom: -1px;
+  }
+  .mode-tab:hover { color: var(--fm-neutral-700); }
+  .mode-tab.active {
+    color: var(--fm-brand-700);
+    border-bottom-color: var(--fm-brand-600);
+  }
+
+  /* Collapsible Sections */
+  details.evo-section {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  details.evo-section summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+  }
+  details.evo-section summary::-webkit-details-marker { display: none; }
+  details.evo-section summary:hover { background: var(--fm-cream-100); }
+  details.evo-section[open] summary {
+    border-bottom: 1px solid var(--fm-border);
+    background: var(--fm-cream-200);
+  }
+  .evo-section-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .evo-section-icon {
+    width: 32px; height: 32px;
+    border-radius: var(--fm-radius-sm);
+    background: var(--fm-brand-50);
+    color: var(--fm-brand-700);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .evo-section-title {
+    font-size: var(--fm-text-lg);
+    font-weight: 600;
+    color: var(--fm-foreground);
+  }
+  .evo-section-summary {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-muted-foreground);
+    margin-top: 2px;
+  }
+  .evo-section-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .chev {
+    width: 20px; height: 20px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--fm-neutral-400);
+    transition: transform 0.2s;
+    font-size: 12px;
+  }
+  details.evo-section[open] .chev { transform: rotate(180deg); }
+
+  .evo-section-content {
+    padding: 20px 24px;
+  }
+
+  /* Form Rows */
+  .form-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+  .form-row:last-child { margin-bottom: 0; }
+  .form-label {
+    width: 140px;
+    flex-shrink: 0;
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-700);
+    font-weight: 500;
+  }
+  .form-control {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .form-hint {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-muted-foreground);
+    margin-top: 4px;
+  }
+  .form-hint-warn {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-warn);
+    margin-top: 4px;
+  }
+
+  /* Number Input */
+  .num-input {
+    width: 120px;
+    height: 34px;
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-sm);
+    padding: 0 12px;
+    font-size: var(--fm-text-base);
+    color: var(--fm-foreground);
+    font-family: inherit;
+    background: var(--fm-card);
+    display: inline-flex;
+    align-items: center;
+  }
+  .num-input.disabled {
+    background: var(--fm-neutral-50);
+    color: var(--fm-neutral-400);
+  }
+  .num-range-hint {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-muted-foreground);
+  }
+  .preset-tag {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-brand-700);
+    background: var(--fm-brand-50);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+
+  /* Radio Group */
+  .radio-group {
+    display: flex;
+    gap: 20px;
+  }
+  .radio-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-700);
+  }
+  .radio-dot {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--fm-neutral-300);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .radio-item.checked .radio-dot {
+    border-color: var(--fm-brand-600);
+  }
+  .radio-item.checked .radio-dot::after {
+    content: '';
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--fm-brand-600);
+  }
+  .radio-item.checked { color: var(--fm-foreground); font-weight: 500; }
+
+  /* Switch */
+  .switch {
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: var(--fm-neutral-300);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .switch.on { background: var(--fm-brand-500); }
+  .switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: white;
+    transition: left 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .switch.on::after { left: 20px; }
+
+  /* Category Grid */
+  .cat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .cat-card {
+    border: 1.5px solid var(--fm-border);
+    border-radius: var(--fm-radius-sm);
+    padding: 12px 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    transition: all 0.2s;
+    background: var(--fm-card);
+  }
+  .cat-card.checked {
+    border-color: var(--fm-brand-500);
+    background: var(--fm-brand-50);
+  }
+  .cat-card:hover { border-color: var(--fm-brand-300); }
+  .cat-checkbox {
+    width: 16px; height: 16px;
+    border: 1.5px solid var(--fm-neutral-300);
+    border-radius: 3px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--fm-card);
+  }
+  .cat-card.checked .cat-checkbox {
+    background: var(--fm-brand-600);
+    border-color: var(--fm-brand-600);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .cat-info { flex: 1; }
+  .cat-name {
+    font-size: var(--fm-text-base);
+    font-weight: 500;
+    color: var(--fm-foreground);
+    margin-bottom: 2px;
+  }
+  .cat-count {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-muted-foreground);
+  }
+
+  /* Preset Radio Group */
+  .preset-group {
+    display: flex;
+    gap: 8px;
+  }
+  .preset-radio {
+    padding: 8px 16px;
+    border: 1.5px solid var(--fm-border);
+    border-radius: var(--fm-radius-sm);
+    cursor: pointer;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-neutral-600);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--fm-card);
+  }
+  .preset-radio:hover { border-color: var(--fm-brand-300); }
+  .preset-radio.checked {
+    border-color: var(--fm-brand-600);
+    background: var(--fm-brand-50);
+    color: var(--fm-brand-800);
+    font-weight: 500;
+  }
+  .preset-radio-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--fm-neutral-300);
+  }
+  .preset-radio.checked .preset-radio-dot {
+    border-color: var(--fm-brand-600);
+    background: var(--fm-brand-600);
+    box-shadow: inset 0 0 0 2px var(--fm-brand-50);
+  }
+
+  /* Right note */
+  .right-note {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-muted-foreground);
+    text-align: right;
+    margin-top: 8px;
+  }
+
+  /* Bottom Action Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 232px;
+    right: 0;
+    height: 64px;
+    background: var(--fm-card);
+    border-top: 1px solid var(--fm-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    z-index: 10;
+  }
+  .bottom-bar-right {
+    display: flex;
+    gap: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">量</span>
+      量化工作台
+    </div>
+    <nav class="nav-section">
+      <div class="nav-section-title">主要功能</div>
+      <div class="nav-item"><span class="nav-icon">📊</span>仪表盘</div>
+      <div class="nav-item"><span class="nav-icon">📈</span>策略组合</div>
+      <div class="nav-item"><span class="nav-icon">🔍</span>机会中心</div>
+      <div class="nav-item"><span class="nav-icon">🧪</span>回测中心</div>
+      <div class="nav-item"><span class="nav-icon">📐</span>因子中心</div>
+    </nav>
+    <nav class="nav-section">
+      <div class="nav-section-title">系统设置</div>
+      <div class="nav-item active"><span class="nav-icon">⚙️</span>设置</div>
+      <div class="nav-sub active">因子挖掘</div>
+      <div class="nav-sub">数据中心</div>
+      <div class="nav-sub">评分配置</div>
+      <div class="nav-sub">权限管理</div>
+      <div class="nav-item"><span class="nav-icon">👤</span>账户</div>
+    </nav>
+  </aside>
+
+  <!-- Main Area -->
+  <div class="main-area">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="breadcrumb">
+        设置 <span class="sep">/</span> <span class="current">因子挖掘</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon">🔔<span class="badge"></span></div>
+        <div class="topbar-icon">💬</div>
+        <div class="user-avatar">王</div>
+      </div>
+    </header>
+
+    <!-- Sub Tabs -->
+    <div class="sub-tabs">
+      <div class="sub-tab active">向导</div>
+      <div class="sub-tab">批次列表</div>
+      <div class="sub-tab">经验库</div>
+      <div class="sub-tab">模板配置</div>
+    </div>
+
+    <!-- Step Bar -->
+    <div class="step-bar">
+      <div class="step-track">
+        <div class="step-item done">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">候选股票池</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item done">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">时间与目标</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item done">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">字段与校验</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item active">
+          <div class="step-highlight">
+            <div class="step-circle">4</div>
+            <div class="step-text">
+              <div class="step-label">进化参数</div>
+              <div class="step-sublabel">进行中</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-highlight">
+            <div class="step-circle">5</div>
+            <div class="step-text">
+              <div class="step-label">进化执行与结果</div>
+              <div class="step-sublabel">待配置</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content-area">
+
+      <!-- Mode Tabs -->
+      <div class="mode-tabs">
+        <div class="mode-tab">简单模式</div>
+        <div class="mode-tab active">高级模式</div>
+      </div>
+
+      <!-- Section 1: 基础参数 (expanded) -->
+      <details class="evo-section" open>
+        <summary>
+          <div class="evo-section-left">
+            <div class="evo-section-icon">⚙</div>
+            <div>
+              <div class="evo-section-title">基础参数</div>
+              <div class="evo-section-summary">种群大小、代数、收敛阈值等核心参数</div>
+            </div>
+          </div>
+          <div class="chev">▼</div>
+        </summary>
+        <div class="evo-section-content">
+          <div class="form-row">
+            <div class="form-label">种群大小</div>
+            <div class="form-control">
+              <div class="num-input">100</div>
+              <span class="num-range-hint">范围 50 - 300</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">最大代数</div>
+            <div class="form-control">
+              <div class="num-input">20</div>
+              <span class="num-range-hint">范围 5 - 50</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">收敛阈值</div>
+            <div class="form-control">
+              <div class="num-input">0.01</div>
+              <span class="num-range-hint">范围 0.005 - 0.05</span>
+              <span class="form-hint">连续 3 代最优 ICIR 变化小于阈值则判定收敛</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">随机种子</div>
+            <div class="form-control">
+              <div class="num-input">42</div>
+              <span class="form-hint">固定种子可复现实验结果</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">快速试验</div>
+            <div class="form-control">
+              <div class="switch"></div>
+              <span class="form-hint">开启后减少种群和代数，用于快速验证配置可行性</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Section 2: 经典因子底座 (expanded) -->
+      <details class="evo-section" open>
+        <summary>
+          <div class="evo-section-left">
+            <div class="evo-section-icon">📚</div>
+            <div>
+              <div class="evo-section-title">经典因子底座</div>
+              <div class="evo-section-summary">从已知有效因子出发，加速进化收敛</div>
+            </div>
+          </div>
+          <div class="chev">▼</div>
+        </summary>
+        <div class="evo-section-content">
+          <div class="form-row">
+            <div class="form-label">覆盖策略</div>
+            <div class="form-control">
+              <div class="radio-group">
+                <div class="radio-item checked">
+                  <span class="radio-dot"></span>
+                  均衡覆盖
+                </div>
+                <div class="radio-item">
+                  <span class="radio-dot"></span>
+                  优先级覆盖
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">经典数量上限</div>
+            <div class="form-control">
+              <div class="num-input">40</div>
+              <span class="form-hint">硬上限 = 种群 × 60% = 60</span>
+            </div>
+          </div>
+          <div class="form-row" style="align-items: flex-start;">
+            <div class="form-label" style="padding-top: 8px;">因子类别</div>
+            <div class="form-control" style="flex-direction: column; align-items: stretch; gap: 0;">
+              <div class="cat-grid">
+                <div class="cat-card checked">
+                  <span class="cat-checkbox">✓</span>
+                  <div class="cat-info">
+                    <div class="cat-name">趋势类</div>
+                    <div class="cat-count">5 个模板</div>
+                  </div>
+                </div>
+                <div class="cat-card checked">
+                  <span class="cat-checkbox">✓</span>
+                  <div class="cat-info">
+                    <div class="cat-name">反转类</div>
+                    <div class="cat-count">4 个模板</div>
+                  </div>
+                </div>
+                <div class="cat-card checked">
+                  <span class="cat-checkbox">✓</span>
+                  <div class="cat-info">
+                    <div class="cat-name">波动率类</div>
+                    <div class="cat-count">4 个模板</div>
+                  </div>
+                </div>
+                <div class="cat-card checked">
+                  <span class="cat-checkbox">✓</span>
+                  <div class="cat-info">
+                    <div class="cat-name">估值类</div>
+                    <div class="cat-count">4 个模板</div>
+                  </div>
+                </div>
+                <div class="cat-card checked">
+                  <span class="cat-checkbox">✓</span>
+                  <div class="cat-info">
+                    <div class="cat-name">质量类</div>
+                    <div class="cat-count">4 个模板</div>
+                  </div>
+                </div>
+                <div class="cat-card checked">
+                  <span class="cat-checkbox">✓</span>
+                  <div class="cat-info">
+                    <div class="cat-name">量价类</div>
+                    <div class="cat-count">4 个模板</div>
+                  </div>
+                </div>
+              </div>
+              <div class="right-note">已选 6 类 · 共 25 个模板 · 实际入库 ≤ 数量上限</div>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Section 3: 探索配置 (expanded) -->
+      <details class="evo-section" open>
+        <summary>
+          <div class="evo-section-left">
+            <div class="evo-section-icon">🧬</div>
+            <div>
+              <div class="evo-section-title">探索配置</div>
+              <div class="evo-section-summary">AI 生成与随机生成的比例与策略</div>
+            </div>
+          </div>
+          <div class="chev">▼</div>
+        </summary>
+        <div class="evo-section-content">
+          <div class="form-row">
+            <div class="form-label">启用 AI 生成</div>
+            <div class="form-control">
+              <div class="switch on"></div>
+              <span class="form-hint">利用大模型生成符合经济逻辑的候选因子，提升挖掘效率</span>
+            </div>
+          </div>
+          <div class="form-row" style="align-items: flex-start;">
+            <div class="form-label" style="padding-top: 6px;">探索预设</div>
+            <div class="form-control" style="flex-direction: column; align-items: flex-start; gap: 10px;">
+              <div class="preset-group">
+                <div class="preset-radio">
+                  <span class="preset-radio-dot"></span>
+                  保守 (AI 40 : 随机 60)
+                </div>
+                <div class="preset-radio checked">
+                  <span class="preset-radio-dot"></span>
+                  平衡 (AI 57 : 随机 43)
+                </div>
+                <div class="preset-radio">
+                  <span class="preset-radio-dot"></span>
+                  激进 (AI 70 : 随机 30)
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">AI 生成比例</div>
+            <div class="form-control">
+              <div class="num-input disabled">57%</div>
+              <span class="preset-tag">预设值</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">随机生成比例</div>
+            <div class="form-control">
+              <div class="num-input disabled">43%</div>
+              <span class="preset-tag">预设值</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label"></div>
+            <div class="form-control">
+              <span class="form-hint">剩余名额 = 种群大小 - 经典实际入库数（当前 60 个）</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Section 4: 选择机制 (collapsed) -->
+      <details class="evo-section">
+        <summary>
+          <div class="evo-section-left">
+            <div class="evo-section-icon">🏆</div>
+            <div>
+              <div class="evo-section-title">选择机制</div>
+              <div class="evo-section-summary">赛道竞争 + 锦标赛 K=3</div>
+            </div>
+          </div>
+          <div class="chev">▼</div>
+        </summary>
+        <div class="evo-section-content">
+          <div class="form-row">
+            <div class="form-label">选择策略</div>
+            <div class="form-control">
+              <div class="radio-group">
+                <div class="radio-item checked">
+                  <span class="radio-dot"></span>
+                  赛道竞争 + 锦标赛
+                </div>
+                <div class="radio-item">
+                  <span class="radio-dot"></span>
+                  轮盘赌
+                </div>
+                <div class="radio-item">
+                  <span class="radio-dot"></span>
+                  纯锦标赛
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">锦标赛 K 值</div>
+            <div class="form-control">
+              <div class="num-input">3</div>
+              <span class="num-range-hint">范围 2 - 10</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">精英保留数</div>
+            <div class="form-control">
+              <div class="num-input">10</div>
+              <span class="form-hint">每代直接保留到下一代的最优因子数量</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Section 5: 繁殖与自适应 (collapsed) -->
+      <details class="evo-section">
+        <summary>
+          <div class="evo-section-left">
+            <div class="evo-section-icon">🔄</div>
+            <div>
+              <div class="evo-section-title">繁殖与自适应</div>
+              <div class="evo-section-summary">自适应开启 · 变异/交叉/随机注入自动调节</div>
+            </div>
+          </div>
+          <div class="chev">▼</div>
+        </summary>
+        <div class="evo-section-content">
+          <div class="form-row">
+            <div class="form-label">自适应调节</div>
+            <div class="form-control">
+              <div class="switch on"></div>
+              <span class="form-hint">根据种群多样性自动调节变异率与随机注入率</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">初始交叉率</div>
+            <div class="form-control">
+              <div class="num-input">0.6</div>
+              <span class="num-range-hint">范围 0.3 - 0.9</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">初始变异率</div>
+            <div class="form-control">
+              <div class="num-input">0.3</div>
+              <span class="num-range-hint">范围 0.1 - 0.6</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">随机注入率</div>
+            <div class="form-control">
+              <div class="num-input">0.1</div>
+              <span class="num-range-hint">范围 0 - 0.3</span>
+              <span class="form-hint-warn">多样性低于 70% 时自动提升</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+    </div>
+
+    <!-- Bottom Action Bar -->
+    <div class="bottom-bar">
+      <div>
+        <button class="btn btn-ghost">保存草稿</button>
+      </div>
+      <div class="bottom-bar-right">
+        <button class="btn btn-secondary">上一步</button>
+        <button class="btn btn-primary btn-lg">开始挖掘实验 →</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

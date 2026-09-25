@@ -70,6 +70,28 @@ def _seed_candidate(db_session, run_id: str, cand_id: str = "cand-c1",
     return row
 
 
+def _seed_snapshot(db_session, snap_id: str = "snap-c1", *, locked: int = 1):
+    """DEF-2：提交挖掘引用的候选池快照必须存在且已锁定（测试 seed）。"""
+    from app.models.mining_candidate_pool import (
+        TrainingCandidatePool,
+        TrainingCandidatePoolSnapshot,
+    )
+
+    pool = TrainingCandidatePool(
+        id=f"pool-{snap_id}", name="测试候选池", source_type="filter",
+        status="frozen", member_count=0,
+    )
+    db_session.merge(pool)
+    snap = TrainingCandidatePoolSnapshot(
+        id=snap_id, pool_id=f"pool-{snap_id}", members_json="[]",
+        rule_hash="rh-test", data_cutoff_at=datetime(2026, 11, 10),
+        is_locked=locked, member_count=0,
+    )
+    db_session.merge(snap)
+    db_session.commit()
+    return snap
+
+
 def _safe_json(values):
     import json
     return json.dumps(list(values or []))
@@ -111,6 +133,8 @@ class TestRoutesContract:
 
 class TestRunsApi:
     def test_create_run_submits_with_contract(self, db_session, monkeypatch):
+        _seed_snapshot(db_session, "snap-c1")
+
         @dataclass
         class _Ret:
             task_id: str = "task-c1"
@@ -141,6 +165,105 @@ class TestRunsApi:
         body = resp.json()
         for key in ("run_id", "task_id", "queue_position"):
             assert key in body
+
+    def test_create_run_finalize_top_k_resolution(self, db_session, monkeypatch):
+        """DEF-9 回归：finalize_top_k 解析契约。
+
+        真实缺陷：路由只认 evolution_params.finalize_top_k 且默认 0，而
+        前端从不发这个 key → 所有真实 run 都跳过 finalize（run succeeded
+        但候选 factor_version_id 全 null，结果页不可达）。
+        契约：顶层字段 > evolution_params > 默认 50；显式 0 = 联调跳过。
+        """
+        _seed_snapshot(db_session, "snap-fk")
+        captured: dict = {}
+
+        def _fake_submit(payload, run_id, operator_id="system"):
+            captured["payload"] = dict(payload)
+
+            @dataclass
+            class _Ret:
+                task_id: str = "task-fk"
+                run_id: str = "run-fk"
+                status: str = "queued"
+                queue_position: int = 0
+                started: bool = True
+
+            return _Ret(run_id=run_id)
+
+        monkeypatch.setattr(mining_runner, "submit_mining_run", _fake_submit)
+        client = _client(db_session)
+        base = {
+            "candidate_pool_snapshot_id": "snap-fk",
+            "data_cutoff_at": "2026-11-10T00:00:00",
+            "start_date": "2026-01-05T00:00:00",
+            "end_date": "2026-11-01T00:00:00",
+            "rebalance_frequency": "daily",
+            "target_horizon": 5,
+        }
+
+        # ① 什么都不带（前端现状）→ 默认执行最终验证 Top-K=50
+        r1 = client.post("/factor-mining/runs", json=dict(base))
+        assert r1.status_code == 201, r1.text
+        assert captured["payload"]["finalize_top_k"] == 50
+
+        # ② 顶层显式 3（黑盒脚本写法）→ 必须生效（此前被 pydantic 静默丢弃）
+        r2 = client.post("/factor-mining/runs", json={**base, "finalize_top_k": 3})
+        assert r2.status_code == 201, r2.text
+        assert captured["payload"]["finalize_top_k"] == 3
+
+        # ③ evolution_params 里的 0（分阶段联调）→ 尊重显式跳过
+        r3 = client.post("/factor-mining/runs", json={
+            **base, "evolution_params": {"finalize_top_k": 0}})
+        assert r3.status_code == 201, r3.text
+        assert captured["payload"]["finalize_top_k"] == 0
+
+    def test_create_run_rejects_missing_snapshot(self, db_session, monkeypatch):
+        """DEF-2：伪造不存在的 snapshot_id → 404 拒绝，不建 run/任务、不占锁。
+
+        真实缺陷：此前 201 创建 run 并真实开跑，占双锁数分钟，期间所有
+        正常提交 409（恶意/失误输入即可锁死功能入口）。
+        """
+        submitted: dict = {}
+
+        def _fake_submit(payload, run_id, operator_id="system"):
+            submitted["called"] = True
+            raise AssertionError("快照校验失败后不得走到 submit")
+
+        monkeypatch.setattr(mining_runner, "submit_mining_run", _fake_submit)
+        client = _client(db_session)
+        resp = client.post("/factor-mining/runs", json={
+            "candidate_pool_snapshot_id": "snap-not-exist-000",
+            "data_cutoff_at": "2026-11-10T00:00:00",
+            "start_date": "2026-01-05T00:00:00",
+            "end_date": "2026-11-01T00:00:00",
+            "rebalance_frequency": "daily",
+            "target_horizon": 5,
+        })
+        assert resp.status_code == 404, resp.text
+        body = resp.json()
+        assert body["detail"]["error_code"] == "MINING_SNAPSHOT_NOT_FOUND"
+        assert "未创建" in body["detail"]["detail_zh"]
+        assert not submitted, "submit 不得被调用"
+        # 不留 run 脏数据
+        runs = db_session.query(FactorMiningRun).filter_by(
+            candidate_pool_snapshot_id="snap-not-exist-000").all()
+        assert runs == []
+
+    def test_create_run_rejects_unlocked_snapshot(self, db_session, monkeypatch):
+        """DEF-2：快照存在但未锁定（编辑态）→ 409 拒绝。"""
+        _seed_snapshot(db_session, "snap-unlocked", locked=0)
+        client = _client(db_session)
+        resp = client.post("/factor-mining/runs", json={
+            "candidate_pool_snapshot_id": "snap-unlocked",
+            "data_cutoff_at": "2026-11-10T00:00:00",
+            "start_date": "2026-01-05T00:00:00",
+            "end_date": "2026-11-01T00:00:00",
+            "rebalance_frequency": "daily",
+            "target_horizon": 5,
+        })
+        assert resp.status_code == 409, resp.text
+        body = resp.json()
+        assert body["detail"]["error_code"] == "MINING_SNAPSHOT_NOT_LOCKED"
 
     def test_list_and_get_run(self, db_session):
         _seed_run(db_session)
@@ -246,6 +369,37 @@ class TestSplitBudgetApi:
         body = resp.json()
         assert body["available"] is False
         assert body["reason_zh"]
+
+    def test_ratios_sum_over_100_rejected(self, db_session):
+        """DEF-1：train+val > 100% → 422（此前 200 且 test_points=0 无告警）。
+
+        校验在 DTO 层（model_validator），不到数仓 → 不受 DuckDB 锁互扰影响。
+        """
+        resp = self._client(db_session).post("/factor-mining/split-budget", json={
+            "start_date": "2026-01-01T00:00:00",
+            "end_date": "2026-01-31T00:00:00",
+            "frequency": "daily",
+            "target_horizon": 5,
+            "train_ratio": 0.6,
+            "validation_ratio": 0.6,
+        })
+        assert resp.status_code == 422, resp.text
+        detail = str(resp.json())
+        assert "切分比例无效" in detail or "train_ratio" in detail
+
+    def test_ratios_leaving_test_budget_ok(self, db_session, monkeypatch):
+        """DEF-1 边界：train+val = 90%（test 恰好 10%）→ 放行。"""
+        self._patch_trade_dates(monkeypatch, self._weekdays())
+        resp = self._client(db_session).post("/factor-mining/split-budget", json={
+            "start_date": "2026-01-01T00:00:00",
+            "end_date": "2026-01-31T00:00:00",
+            "frequency": "daily",
+            "target_horizon": 5,
+            "train_ratio": 0.7,
+            "validation_ratio": 0.2,
+        })
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["available"] is True
 
 
 class TestResultsApi:

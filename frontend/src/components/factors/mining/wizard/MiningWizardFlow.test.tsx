@@ -100,6 +100,10 @@ const PANELS = ["pool", "time-target", "field", "evolution", "run"];
 /** 生成快照并推进到第 4 步（evolution，含提交按钮） */
 async function reachSubmitStep() {
   render(<MiningShell />);
+  // DEF-4：生成按钮在预览定型前置灰 —— 先等 300ms 防抖预览落地
+  await waitFor(() => {
+    expect(document.querySelector("[data-pool-preview-stats]")).toBeTruthy();
+  });
   // step1 生成挖掘物料（mock 返回 snap-1，is_locked=true）
   fireEvent.click(document.querySelector("[data-pool-generate]") as HTMLElement);
   await waitFor(() => {

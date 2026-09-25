@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from uuid import uuid4
 
 from app.api.router import api_router
@@ -125,6 +126,11 @@ async def lifespan(_: FastAPI):
 
     # 启动时清理：移除过期且未冻结的挖掘结果
     _run_startup_cleanup()
+
+    # 启动清理：上次进程遗留的 running 挖掘批次（心跳已停但状态仍是 running）
+    # → 标 STALLED 并释放双锁。否则锁会一直占到 watchdog(600s)/心跳超时(1800s)，
+    # 期间用户提交一律 409「已有挖掘任务进行中」，而那个批次其实早已随进程消失。
+    _reap_stale_mining_runs()
 
     # 启动定期清理后台任务
     cleanup_task = asyncio.create_task(_periodic_cleanup())
@@ -322,6 +328,30 @@ def _run_startup_cleanup() -> None:
             db.close()
     except Exception:
         logger.exception("Startup cleanup failed")
+
+
+def _reap_stale_mining_runs() -> None:
+    """启动清理：把上次进程遗留的 running 挖掘批次标 STALLED 并释放锁。
+
+    单进程部署下进程重启即意味着原 worker 线程全部消失；若不清理，
+    锁会一直占到 watchdog(600s) / 心跳超时(1800s)，期间提交一律 409。
+    """
+    try:
+        from app.services.factors.mining import stall_watchdog
+
+        db = _get_session_local()()
+        try:
+            reaped = stall_watchdog.reap_on_boot(db)
+        finally:
+            db.close()
+        if reaped:
+            logger.warning(
+                "Boot cleanup: stale mining runs marked failed: %s",
+                ", ".join(reaped),
+            )
+    except Exception:
+        # 启动清理失败不得阻塞服务启动
+        logger.exception("Boot cleanup for mining runs failed (non-fatal)")
 
 
 async def _mining_lock_patrol_loop() -> None:
@@ -643,7 +673,14 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         if not extras:
             extras = None
     elif exc.status_code < 500 and isinstance(detail, str) and detail.strip():
-        override_user_message = detail.strip()
+        # DEF-6：Starlette/FastAPI 框架自带的英文默认消息（未匹配路径的
+        # "Not Found"、方法不符的 "Method Not Allowed" 等）不得覆盖注册表的
+        # 中文文案；业务方自定义的字符串 detail 才透传。
+        _framework_default_messages = {
+            "not found", "method not allowed", "unauthorized", "forbidden",
+        }
+        if detail.strip().lower() not in _framework_default_messages:
+            override_user_message = detail.strip()
 
     user_error = build_user_error(
         error_code,
@@ -662,6 +699,35 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         status_code=exc.status_code,
         content=user_error.model_dump(mode="json"),
     )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """DEF-6 补口：Starlette 基类 HTTPException（路由 405/部分 404 等由框架
+    直接抛出，非 FastAPI 子类）此前绕过上方 handler，裸返回
+    `{"detail":"Method Not Allowed"}` 英文。统一转中文 UserError 信封。
+    FastAPI HTTPException 实例仍优先命中更具体的上方 handler，行为不变。"""
+    if isinstance(exc, HTTPException):
+        return await http_exception_handler(request, exc)
+    detail_text = exc.detail if isinstance(exc.detail, str) else ""
+    # 框架英文默认消息不透传，交给注册表中文文案
+    framework_defaults = {"not found", "method not allowed", "unauthorized", "forbidden"}
+    override = detail_text.strip() if detail_text.strip() and detail_text.strip().lower() not in framework_defaults else None
+    correlation_id = uuid4().hex
+    error_code = "NOT_FOUND" if exc.status_code == 404 else (
+        "VALIDATION_ERROR" if exc.status_code == 405 else "UNKNOWN_ERROR")
+    user_error = build_user_error(
+        error_code,
+        correlation_id=correlation_id,
+        technical_details=TechnicalDetails(
+            exception_type="StarletteHTTPException",
+            status_code=exc.status_code,
+            error_message=sanitize_message(str(exc.detail))[:500],
+        ),
+        override_user_message=override,
+    )
+    return JSONResponse(status_code=exc.status_code,
+                        content=user_error.model_dump(mode="json"))
 
 
 @app.exception_handler(CircuitBreakerOpenError)
@@ -816,7 +882,20 @@ def workbench(request: Request) -> Response:
 @app.get("/{full_path:path}", include_in_schema=False)
 def spa_fallback(full_path: str, request: Request) -> Response:
     if full_path.startswith(("api/", "static/", "health")):
-        raise HTTPException(status_code=404, detail="Not found")
+        # DEF-6（2026-09-24）：此前这里抛裸字符串 "Not found" —— 全局处理器
+        # 原样透出，用户看到英文 `{"detail":"Not found"}`（且不属于 BFG 7 要素
+        # 信封，前端只能按「未知错误码」降级展示）。API 路径不存在也必须给
+        # 结构化中文信封，与业务路由的 404 形态一致。
+        raise HTTPException(status_code=404, detail={
+            "error_code": "NOT_FOUND",
+            "title_zh": "接口不存在",
+            "detail_zh": (
+                f"未找到接口 /{full_path}（路径拼写有误，或该接口版本已变更）。"
+            ),
+            "impact": "本次请求未执行",
+            "fix_link": "/settings/factor-mining",
+            "retryable": False,
+        })
 
     proxied = _proxy_frontend_dev(request)
     if proxied is not None:

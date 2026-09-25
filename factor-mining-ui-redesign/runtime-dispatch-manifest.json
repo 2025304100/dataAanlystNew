@@ -1,0 +1,847 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-25T07:19:56.689Z",
+  "source": "build-page-dispatch-manifest.mjs",
+  "mode": "free-fast",
+  "summary_path": "runtime-orchestration-summary.json",
+  "skillProvenance": {
+    "name": "solo-design",
+    "version": "2026.09.25.0"
+  },
+  "dispatchPreflightManifest": [
+    {
+      "recorded_at": "2026-09-25T07:19:56.677Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "FreePagePacket",
+      "laneContract": {
+        "resolvedLane": "free_exploration",
+        "packetType": "FreePagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+      "nodeId": "page-wizard-pool",
+      "htmlSrc": "pages/wizard-pool.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/wizard-pool.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/wizard-pool.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+        "deterministicToolDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+          "validateFinishReadiness": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+          "validateRestoreContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node \"c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\" --node-id=\"page-wizard-pool\" --html-src=\"pages/wizard-pool.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\colors_and_type.css",
+      "htmlFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\pages\\wizard-pool.html",
+      "brandPrefix": "fm",
+      "aestheticsMode": "free-explore",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": "node \"c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs\" \"d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\colors_and_type.css\" \"d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\pages\\wizard-pool.html\" --title=\"因子挖掘向导 - 候选池\" --lang=\"zh-CN\" --prefix=\"fm\"",
+      "headFillMode": "skeleton-first",
+      "viewportMode": "app-shell",
+      "completionSchemaExpected": "compact",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {},
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md",
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "optionalContextFiles": [],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-09-25T07:19:56.677Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "FreePagePacket",
+      "laneContract": {
+        "resolvedLane": "free_exploration",
+        "packetType": "FreePagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+      "nodeId": "page-wizard-time",
+      "htmlSrc": "pages/wizard-time.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/wizard-time.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/wizard-time.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+        "deterministicToolDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+          "validateFinishReadiness": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+          "validateRestoreContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node \"c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\" --node-id=\"page-wizard-time\" --html-src=\"pages/wizard-time.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\colors_and_type.css",
+      "htmlFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\pages\\wizard-time.html",
+      "brandPrefix": "fm",
+      "aestheticsMode": "free-explore",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": null,
+      "headFillMode": "skeleton-first",
+      "viewportMode": "app-shell",
+      "completionSchemaExpected": "compact",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {},
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md",
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "optionalContextFiles": [],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-09-25T07:19:56.677Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "FreePagePacket",
+      "laneContract": {
+        "resolvedLane": "free_exploration",
+        "packetType": "FreePagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+      "nodeId": "page-wizard-fields",
+      "htmlSrc": "pages/wizard-fields.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/wizard-fields.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/wizard-fields.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+        "deterministicToolDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+          "validateFinishReadiness": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+          "validateRestoreContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node \"c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\" --node-id=\"page-wizard-fields\" --html-src=\"pages/wizard-fields.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\colors_and_type.css",
+      "htmlFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\pages\\wizard-fields.html",
+      "brandPrefix": "fm",
+      "aestheticsMode": "free-explore",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": null,
+      "headFillMode": "skeleton-first",
+      "viewportMode": "app-shell",
+      "completionSchemaExpected": "compact",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {},
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md",
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "optionalContextFiles": [],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-09-25T07:19:56.677Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "FreePagePacket",
+      "laneContract": {
+        "resolvedLane": "free_exploration",
+        "packetType": "FreePagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+      "nodeId": "page-wizard-evo",
+      "htmlSrc": "pages/wizard-evo.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/wizard-evo.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/wizard-evo.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+        "deterministicToolDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+          "validateFinishReadiness": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+          "validateRestoreContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node \"c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\" --node-id=\"page-wizard-evo\" --html-src=\"pages/wizard-evo.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\colors_and_type.css",
+      "htmlFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\pages\\wizard-evo.html",
+      "brandPrefix": "fm",
+      "aestheticsMode": "free-explore",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": null,
+      "headFillMode": "skeleton-first",
+      "viewportMode": "app-shell",
+      "completionSchemaExpected": "compact",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {},
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md",
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "optionalContextFiles": [],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-09-25T07:19:56.677Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "FreePagePacket",
+      "laneContract": {
+        "resolvedLane": "free_exploration",
+        "packetType": "FreePagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+      "nodeId": "page-wizard-run",
+      "htmlSrc": "pages/wizard-run.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/wizard-run.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/wizard-run.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+        "deterministicToolDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+          "validateFinishReadiness": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+          "validateRestoreContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node \"c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\" --node-id=\"page-wizard-run\" --html-src=\"pages/wizard-run.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\colors_and_type.css",
+      "htmlFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\pages\\wizard-run.html",
+      "brandPrefix": "fm",
+      "aestheticsMode": "free-explore",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": null,
+      "headFillMode": "skeleton-first",
+      "viewportMode": "app-shell",
+      "completionSchemaExpected": "compact",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {},
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md",
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "optionalContextFiles": [],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-09-25T07:19:56.677Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "FreePagePacket",
+      "laneContract": {
+        "resolvedLane": "free_exploration",
+        "packetType": "FreePagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+      "nodeId": "page-runs",
+      "htmlSrc": "pages/runs.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/runs.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/runs.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+        "deterministicToolDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+          "validateFinishReadiness": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+          "validateRestoreContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node \"c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\" --node-id=\"page-runs\" --html-src=\"pages/runs.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\colors_and_type.css",
+      "htmlFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\pages\\runs.html",
+      "brandPrefix": "fm",
+      "aestheticsMode": "free-explore",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": null,
+      "headFillMode": "skeleton-first",
+      "viewportMode": "app-shell",
+      "completionSchemaExpected": "compact",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {},
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md",
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "optionalContextFiles": [],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-09-25T07:19:56.677Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "FreePagePacket",
+      "laneContract": {
+        "resolvedLane": "free_exploration",
+        "packetType": "FreePagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+      "nodeId": "page-experience",
+      "htmlSrc": "pages/experience.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/experience.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/experience.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+        "deterministicToolDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+          "validateFinishReadiness": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+          "validateRestoreContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node \"c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\" --node-id=\"page-experience\" --html-src=\"pages/experience.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\colors_and_type.css",
+      "htmlFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\pages\\experience.html",
+      "brandPrefix": "fm",
+      "aestheticsMode": "free-explore",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": null,
+      "headFillMode": "skeleton-first",
+      "viewportMode": "app-shell",
+      "completionSchemaExpected": "compact",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {},
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md",
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "optionalContextFiles": [],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    },
+    {
+      "recorded_at": "2026-09-25T07:19:56.677Z",
+      "generatedBy": "build-page-dispatch-manifest.mjs",
+      "packetType": "FreePagePacket",
+      "laneContract": {
+        "resolvedLane": "free_exploration",
+        "packetType": "FreePagePacket",
+        "pageRuntimeGuide": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+        "dispatchContract": "intent-workflows/intent-page-free-exploration/dispatch-contract.md"
+      },
+      "taskLinePresent": true,
+      "outputPathPresent": true,
+      "sharedTemplate": "intent-workflows/intent-page-free-exploration/free-exploration-page-runtime.md",
+      "nodeId": "page-templates",
+      "htmlSrc": "pages/templates.html",
+      "supplementaryReads": [],
+      "allowedWritePaths": [
+        "pages/templates.html",
+        "assets/"
+      ],
+      "forbiddenWriteRoots": [
+        "*.design",
+        "runtime-orchestration-summary.json",
+        "validation-report.json",
+        "finish-readiness-report.json",
+        "restore-contract-report.json",
+        "page-generation-summary.json"
+      ],
+      "toolPolicy": {
+        "todoWriteAllowed": false,
+        "validationScriptsAllowed": false,
+        "previewAllowed": false,
+        "helperScriptsAllowed": false,
+        "designFileWriteAllowed": false,
+        "allowedWritePaths": [
+          "pages/templates.html",
+          "assets/"
+        ]
+      },
+      "skillRuntime": {
+        "skillDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design",
+        "deterministicToolDir": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling",
+        "toolPaths": {
+          "applyHtmlHeadContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\apply-html-head-contract.mjs",
+          "recordDispatchCompletion": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs",
+          "buildPageDispatchManifest": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\build-page-dispatch-manifest.mjs",
+          "validateDesignWorkspace": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-design-workspace.mjs",
+          "validateFinishReadiness": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-finish-readiness.mjs",
+          "validateRestoreContract": "c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\validate-restore-contract.mjs"
+        },
+        "requiredForPageSubAgent": [
+          "applyHtmlHeadContract",
+          "recordDispatchCompletion"
+        ],
+        "pathInjection": "absolute",
+        "pathContract": "Do not use {SKILL_DIR} placeholders inside Page Sub-Agent packets; use toolPaths.* absolute paths.",
+        "commandTemplates": {
+          "recordDispatchCompletion": "node \"c:\\Users\\demo\\.trae-cn\\builtin\\design\\default\\skills\\solo-design\\shared-runtime\\deterministic-tooling\\record-dispatch-completion.mjs\" \"d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\" --node-id=\"page-templates\" --html-src=\"pages/templates.html\" --status=completed --changed-files=<comma-separated-project-relative-files> --trace-digest=<main-agent-runtime-trace-digest> --tool-ledger-json=<tool-ledger-json-or-file>"
+        }
+      },
+      "cssFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\colors_and_type.css",
+      "htmlFilePath": "d:\\ai_project\\dataAanlystNew\\factor-mining-ui-redesign\\pages\\templates.html",
+      "brandPrefix": "fm",
+      "aestheticsMode": "free-explore",
+      "toolDisciplineBlockPresent": true,
+      "fillHtmlHeadCommand": null,
+      "headFillMode": "skeleton-first",
+      "viewportMode": "app-shell",
+      "completionSchemaExpected": "compact",
+      "restoreFields": null,
+      "restoreContractStatus": null,
+      "restoreCompactPacket": null,
+      "deterministicCommands": null,
+      "sourceAuthorityLock": null,
+      "preDispatchFileHashes": {},
+      "contextPreflight": {
+        "workflowPath": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+        "requiredContextFiles": [
+          "shared-runtime/runtime-boundaries/lane-runtime-contracts.md",
+          "shared-runtime/agent-dispatch-runtime/lane-dispatch-index.md",
+          "delivery-quality/page-rendering-quality-gate.md",
+          "delivery-quality/design-artifact-validation.md",
+          "delivery-quality/delivery-evidence-contract.md",
+          "visual-experience/visual-experience-guidelines.md"
+        ],
+        "optionalContextFiles": [],
+        "passed": true
+      },
+      "pageSliceOnly": true,
+      "requiredFieldsPresent": true,
+      "missingFields": [],
+      "fillHtmlHeadCommandValid": true,
+      "mobileNavigation": {
+        "required": false,
+        "appliesToThisPage": false,
+        "canonicalHtmlIncluded": false,
+        "missingFields": []
+      },
+      "persistedToSummary": true,
+      "taskQueryAudited": false,
+      "proofSource": "summary-only",
+      "largeWorkflowFilesInTaskQuery": null
+    }
+  ],
+  "deterministicCommandsByPage": {
+    "pages/wizard-pool.html": {},
+    "pages/wizard-time.html": {},
+    "pages/wizard-fields.html": {},
+    "pages/wizard-evo.html": {},
+    "pages/wizard-run.html": {},
+    "pages/runs.html": {},
+    "pages/experience.html": {},
+    "pages/templates.html": {}
+  }
+}

@@ -1,0 +1,27 @@
+[
+  {
+    "case": "T2a1 Step2 填入起止日期",
+    "ok": true,
+    "detail": "date inputs=2"
+  },
+  {
+    "case": "T2a2 UI 保存草稿成功",
+    "ok": true,
+    "detail": "note='草稿已保存：#b9a30242'"
+  },
+  {
+    "case": "T2b Step2 日期是否随草稿落库（在 Step4 保存时）",
+    "ok": true,
+    "detail": "draft=b9a30242b1cb4355b28125b50ccea39f step2={\"data_cutoff_at\": null, \"end_date\": \"2026-08-01\", \"rebalance_frequency\": \"daily\", \"start_date\": \"2025-03-01\", \"target_horizon\": 5, \"train_ratio\": 0.6, \"validation_ratio\": 0.2}"
+  },
+  {
+    "case": "T2c 草稿含 step1 快照引用（本会话未生成物料，允许为空）",
+    "ok": true,
+    "detail": "step1={\"candidate_pool_snapshot_id\": null, \"pool_id\": null}"
+  },
+  {
+    "case": "T2d 新会话页面出现草稿恢复入口/提示",
+    "ok": false,
+    "detail": "|数据中心|接口管理|数据库配置|AI 接口配置|消息管理|向导|批次列表|经验库|模板配置|1|候选股票池|进行中|2|时间与目标|待配置|3|字段与校验|待配置|4|进化参数|待配置|5|进化执行与结果|待配置|条件筛选|导入股票池|筛选条件|市值|估值|流动性|上市时间|全市场|微盘|小盘|中盘|大盘|市场与交易状态|清除本分类|市场|上证|深证|北交所|板块|上证主板|深证主板|创业板|科创板|北交所|排除退市整理/已退市|排除"
+  }
+]

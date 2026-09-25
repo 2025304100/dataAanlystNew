@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Mapping
@@ -24,6 +25,12 @@ from app.models.factor_mining import FactorMiningTemplate, FactorMiningTemplateV
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+#: DEF-13：个人模板名称长度上限（与候选池名称 64 对齐，防超长串污染模板列表）
+MAX_TEMPLATE_NAME_LEN = 64
+#: 公式长度上限（与编译器 `MAX_FORMULA_LENGTH` 同源，避免两处各写一份）
+MAX_FORMULA_LENGTH = 2000
 
 
 def _rule_config(tpl: Any) -> str:
@@ -140,9 +147,49 @@ def create_personal_template(
 ) -> dict[str, Any]:
     if not name or not str(name).strip():
         raise ValueError("template_name_required")
+    if len(str(name).strip()) > MAX_TEMPLATE_NAME_LEN:
+        raise ValueError(
+            f"template_name_too_long: 模板名称最长 {MAX_TEMPLATE_NAME_LEN} 字符，"
+            f"本次 {len(str(name).strip())} 字符。")
     if not isinstance(rule_config, Mapping) or \
             not rule_config.get("formula"):
         raise ValueError("template_rule_required: 缺少 formula 配置。")
+
+    # DEF-13（2026-09-25）：此前只判「formula 非空」——`这不是公式(((` 之类的
+    # 垃圾串也能入库，等到真正拿来跑挖掘时才炸（且报错与创建动作相隔很远，
+    # 无从溯源）。这里走**唯一真源** `factor_compiler.validate_formula`：
+    # 语法/未知函数/未知字段/长度与复杂度上限一并拦在创建入口。
+    formula = str(rule_config.get("formula") or "")
+    if len(formula) > MAX_FORMULA_LENGTH:
+        raise ValueError(
+            f"template_formula_too_long: 公式最长 {MAX_FORMULA_LENGTH} 字符，"
+            f"本次 {len(formula)} 字符。")
+    # ⚠️ 模板公式是**带参模板**（`mean(close,{n1})`）：必须先用 `params` 的
+    # 首个候选值把 `{占位符}` 代入再编译（实测 25 个系统模板 raw 公式 21 个
+    # 过不了编译器、代入后 25/25 全过）。缺候选值的占位符用 20 兜底
+    # （与窗口类参数常见量级一致，只影响校验、不影响落库内容）。
+    params = rule_config.get("params") if isinstance(
+        rule_config.get("params"), Mapping) else {}
+
+    def _render(m: "re.Match[str]") -> str:
+        vals = params.get(m.group(1))
+        return str(vals[0]) if vals else "20"
+
+    rendered = re.sub(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", _render, formula)
+    try:
+        from app.services.factors import factor_compiler as FC
+
+        errors = FC.validate_formula(rendered)
+    except Exception as exc:  # noqa: BLE001 - 编译器异常按不可解析处理
+        raise ValueError(
+            f"template_formula_invalid: 公式无法解析（{type(exc).__name__}: {exc}）。"
+        ) from exc
+    if errors:
+        first = errors[0]
+        raise ValueError(
+            "template_formula_invalid: "
+            + "；".join(f"[{e.error_code}] {e.message}" for e in errors[:3])
+            + f"（共 {len(errors)} 处问题，首个错误码 {first.error_code}）。")
     tpl_id = uuid.uuid4().hex
     rule = json.dumps(dict(rule_config), ensure_ascii=False, sort_keys=True)
     row = FactorMiningTemplate(
@@ -200,7 +247,30 @@ def set_template_enabled(
     return get_template(db, row.id) or {"template_id": row.id}
 
 
+def delete_template(db: Session, *, template_id: str) -> dict[str, Any]:
+    """删除个人模板（卡 A：模板此前只进不出，FUZZ-*/BB23-* 测试模板无法清理）。
+
+    - `scope=system` → **拒绝**（25 个系统模板是 GA 初始种群同源资产，
+      只允许启停，不允许删除）；
+    - `scope=personal` → 版本行 + 主题行一起删（版本无独立生命周期）。
+    """
+    row = db.get(FactorMiningTemplate, str(template_id))
+    if row is None:
+        raise ValueError(f"template_not_found:{template_id}")
+    if str(row.scope or "") == "system":
+        raise ValueError(
+            f"template_system_protected:{template_id} 系统模板不可删除，"
+            "如需下线请使用启停开关（enabled）。")
+    deleted_versions = db.query(FactorMiningTemplateVersion).filter_by(
+        template_id=str(template_id)).delete()
+    db.delete(row)
+    db.commit()
+    return {"template_id": str(template_id), "deleted": True,
+            "deleted_versions": int(deleted_versions or 0)}
+
+
 __all__ = [
     "seed_system_templates", "list_templates", "get_template",
     "create_personal_template", "copy_template", "set_template_enabled",
+    "delete_template",
 ]

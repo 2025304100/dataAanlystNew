@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>因子详情证据</title>
+<style>
+  :root {
+    --fm-brand-50: #f0fdfa;
+    --fm-brand-100: #ccfbf1;
+    --fm-brand-200: #99f6e4;
+    --fm-brand-300: #5eead4;
+    --fm-brand-400: #2dd4bf;
+    --fm-brand-500: #14b8a6;
+    --fm-brand-600: #0d9488;
+    --fm-brand-700: #0f766e;
+    --fm-brand-800: #115e59;
+    --fm-brand-900: #134e4a;
+    --fm-neutral-0: #ffffff;
+    --fm-neutral-50: #fafaf9;
+    --fm-neutral-100: #f5f5f4;
+    --fm-neutral-200: #e7e5e4;
+    --fm-neutral-300: #d6d3d1;
+    --fm-neutral-400: #a8a29e;
+    --fm-neutral-500: #78716c;
+    --fm-neutral-600: #57534e;
+    --fm-neutral-700: #44403c;
+    --fm-neutral-800: #292524;
+    --fm-neutral-900: #1c1917;
+    --fm-success: #15803d;
+    --fm-success-soft: #dcfce7;
+    --fm-info: #1d6fd8;
+    --fm-info-soft: #dbeafe;
+    --fm-warn: #b45309;
+    --fm-warn-soft: #ffedd5;
+    --fm-danger: #b42318;
+    --fm-danger-soft: #fee2e2;
+    --fm-grade-s: #0b6b63;
+    --fm-grade-a: #1d6fd8;
+    --fm-grade-b: #b45309;
+    --fm-grade-c: #c2410c;
+    --fm-grade-d: #b42318;
+
+    /* 暖色调 */
+    --fm-cream-50: #fffaf0;
+    --fm-cream-100: #fdf6eb;
+    --fm-cream-200: #f7f4ec;
+    --fm-cream-300: #e8e2d5;
+    --fm-cream-border: rgba(31, 41, 51, 0.08);
+
+    /* 文字四级灰度 */
+    --fm-text-primary: #1f2933;
+    --fm-text-secondary: #52606d;
+    --fm-text-tertiary: #7b8794;
+    --fm-text-quaternary: #9aa5b1;
+
+    --fm-background: var(--fm-cream-50);
+    --fm-foreground: var(--fm-text-primary);
+    --fm-card: var(--fm-neutral-0);
+    --fm-primary: var(--fm-brand-700);
+    --fm-primary-foreground: var(--fm-neutral-0);
+    --fm-muted: var(--fm-cream-200);
+    --fm-muted-foreground: var(--fm-text-tertiary);
+    --fm-border: var(--fm-cream-border);
+    --fm-radius-sm: 6px;
+    --fm-radius-md: 10px;
+    --fm-radius-lg: 14px;
+    --fm-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --fm-text-xs: 11px;
+    --fm-text-sm: 12px;
+    --fm-text-base: 13px;
+    --fm-text-lg: 14px;
+    --fm-text-xl: 16px;
+    --fm-text-2xl: 18px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--fm-font-sans);
+    font-size: var(--fm-text-base);
+    color: var(--fm-foreground);
+    background: var(--fm-background);
+    min-width: 1440px;
+    overflow: hidden;
+  }
+
+  /* Background page (dimmed) */
+  .bg-page {
+    position: fixed;
+    top: 0; left: 0; right: 560px; bottom: 0;
+    background: var(--fm-neutral-50);
+    filter: brightness(0.6) saturate(0.7);
+    opacity: 0.5;
+    overflow: hidden;
+  }
+  .bg-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 560px; bottom: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 1;
+  }
+
+  /* Sidebar (faded in background) */
+  .sidebar {
+    width: 232px; background: var(--fm-neutral-800); color: var(--fm-neutral-0);
+    position: absolute; top: 0; left: 0; bottom: 0;
+  }
+  .sidebar-logo {
+    height: 56px; display: flex; align-items: center; padding: 0 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: var(--fm-text-lg); font-weight: 600; color: var(--fm-brand-300);
+  }
+  .sidebar-logo .logo-icon {
+    width: 28px; height: 28px; background: var(--fm-brand-600);
+    border-radius: var(--fm-radius-sm); display: inline-flex;
+    align-items: center; justify-content: center; margin-right: 10px;
+    font-size: var(--fm-text-sm); font-weight: 700;
+  }
+  .nav-item {
+    display: flex; align-items: center; padding: 9px 20px;
+    font-size: var(--fm-text-base); color: var(--fm-neutral-300);
+  }
+  .nav-item.active {
+    background: rgba(20, 184, 166, 0.1); color: var(--fm-brand-300);
+    border-left: 3px solid var(--fm-brand-400);
+  }
+  .nav-sub { padding-left: 48px; font-size: var(--fm-text-sm); padding-top: 6px; padding-bottom: 6px; }
+  .nav-sub.active { color: var(--fm-brand-300); }
+
+  /* Background content preview */
+  .bg-content {
+    position: absolute;
+    top: 0; left: 232px; right: 0; bottom: 0;
+    padding: 20px;
+  }
+  .bg-card {
+    background: white;
+    border-radius: 8px;
+    height: 200px;
+    margin-bottom: 16px;
+    opacity: 0.3;
+  }
+
+  /* Drawer */
+  .drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 560px;
+    background: var(--fm-card);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Drawer Header */
+  .drawer-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--fm-border);
+    flex-shrink: 0;
+  }
+  .drawer-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .drawer-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .back-btn {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--fm-radius-sm);
+    cursor: pointer;
+    color: var(--fm-neutral-600);
+    font-size: 16px;
+  }
+  .back-btn:hover { background: var(--fm-neutral-100); }
+  .drawer-title {
+    font-size: var(--fm-text-xl);
+    font-weight: 600;
+    color: var(--fm-foreground);
+  }
+  .close-btn {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--fm-radius-sm);
+    cursor: pointer;
+    color: var(--fm-neutral-500);
+    font-size: 18px;
+  }
+  .close-btn:hover { background: var(--fm-neutral-100); }
+
+  .formula-row {
+    background: var(--fm-neutral-800);
+    color: var(--fm-brand-200);
+    padding: 10px 14px;
+    border-radius: var(--fm-radius-sm);
+    font-family: "SF Mono", "Monaco", "Inconsolata", "Consolas", monospace;
+    font-size: var(--fm-text-sm);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  /* Frequency Tip Bar */
+  .freq-tip {
+    background: var(--fm-success-soft);
+    color: var(--fm-success);
+    padding: 8px 16px;
+    font-size: var(--fm-text-xs);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--fm-border);
+    flex-shrink: 0;
+  }
+  .freq-tip .tip-icon { font-size: 14px; }
+
+  /* Quarterly Re-eval Banner */
+  .quarter-banner {
+    background: var(--fm-success-soft);
+    border-left: 3px solid var(--fm-success);
+    padding: 12px 16px;
+    margin: 16px 20px 0;
+    border-radius: 0 var(--fm-radius-sm) var(--fm-radius-sm) 0;
+  }
+  .quarter-banner .qb-title {
+    font-size: var(--fm-text-base);
+    font-weight: 600;
+    color: var(--fm-success);
+    margin-bottom: 2px;
+  }
+  .quarter-banner .qb-desc {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-success);
+    opacity: 0.8;
+  }
+
+  /* Manual Adjust */
+  .manual-adjust {
+    padding: 12px 20px 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .manual-adjust-desc {
+    flex: 1;
+    font-size: var(--fm-text-xs);
+    color: var(--fm-muted-foreground);
+    line-height: 1.5;
+    padding-top: 4px;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 6px 14px; border-radius: var(--fm-radius-sm);
+    font-size: var(--fm-text-sm); font-weight: 500; cursor: pointer;
+    border: 1px solid var(--fm-border); background: var(--fm-card);
+    color: var(--fm-neutral-700); transition: all 0.2s; font-family: inherit;
+  }
+  .btn:hover { background: var(--fm-neutral-50); }
+  .btn-primary {
+    background: var(--fm-brand-700); color: white; border-color: var(--fm-brand-700);
+  }
+  .btn-primary:hover { background: var(--fm-brand-800); }
+
+  /* Tabs */
+  .drawer-tabs {
+    display: flex;
+    gap: 0;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--fm-border);
+    margin-top: 16px;
+    flex-shrink: 0;
+  }
+  .drawer-tab {
+    padding: 10px 16px;
+    font-size: var(--fm-text-base);
+    color: var(--fm-text-tertiary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+    margin-bottom: -1px;
+  }
+  .drawer-tab:hover { color: var(--fm-text-secondary); }
+  .drawer-tab.active {
+    color: var(--fm-brand-700);
+    border-bottom-color: var(--fm-brand-700);
+  }
+
+  /* Drawer Body (scrollable) */
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+
+  /* Tab Content Sections */
+  .tab-section { margin-bottom: 24px; }
+  .tab-section:last-child { margin-bottom: 0; }
+
+  /* Grade Big Display */
+  .grade-display {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 8px;
+  }
+  .grade-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--fm-grade-s);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    font-weight: 700;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(11, 107, 99, 0.25);
+  }
+  .grade-reason {
+    flex: 1;
+    font-size: var(--fm-text-base);
+    color: var(--fm-text-secondary);
+    line-height: 1.6;
+  }
+  .grade-reason strong { color: var(--fm-foreground); }
+  .threshold-source {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-muted-foreground);
+    margin-top: 4px;
+  }
+
+  /* Radar Chart */
+  .radar-container {
+    display: flex;
+    justify-content: center;
+    padding: 16px 0;
+  }
+
+  /* Dimension Table */
+  .dim-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+    overflow: hidden;
+  }
+  .dim-table thead th {
+    padding: 10px 12px;
+    text-align: left;
+    font-size: var(--fm-text-xs);
+    font-weight: 600;
+    color: var(--fm-text-secondary);
+    background: var(--fm-cream-200);
+    border-bottom: 1px solid var(--fm-border);
+  }
+  .dim-table tbody td {
+    padding: 10px 12px;
+    font-size: var(--fm-text-sm);
+    border-bottom: 1px solid var(--fm-border);
+  }
+  .dim-table tbody tr:last-child td { border-bottom: none; }
+  .dim-table .dim-name {
+    font-weight: 500;
+    color: var(--fm-text-secondary);
+    width: 90px;
+  }
+  .dim-table .dim-value {
+    font-family: "SF Mono", "Monaco", monospace;
+    font-size: var(--fm-text-xs);
+    width: 80px;
+  }
+  .dim-table .dim-threshold {
+    font-family: "SF Mono", "Monaco", monospace;
+    font-size: var(--fm-text-xs);
+    color: var(--fm-muted-foreground);
+    width: 70px;
+  }
+  .dim-table .dim-status {
+    width: 60px;
+  }
+  .status-pass {
+    color: var(--fm-success);
+    font-weight: 600;
+    font-size: var(--fm-text-xs);
+  }
+  .dim-bar-wrap {
+    width: 100%;
+    height: 6px;
+    background: var(--fm-cream-200);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .dim-bar-fill {
+    height: 100%;
+    background: var(--fm-brand-500);
+    border-radius: 3px;
+  }
+  .dim-gap {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-muted-foreground);
+    margin-top: 2px;
+  }
+
+  /* Section Title */
+  .section-title {
+    font-size: var(--fm-text-lg);
+    font-weight: 600;
+    color: var(--fm-foreground);
+    margin-bottom: 12px;
+  }
+  .section-subtitle {
+    font-size: var(--fm-text-base);
+    font-weight: 600;
+    color: var(--fm-foreground);
+    margin-bottom: 10px;
+    margin-top: 20px;
+  }
+  .section-subtitle:first-child { margin-top: 0; }
+
+  /* Stat Test Cards */
+  .stat-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: var(--fm-cream-100);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-sm);
+    margin-bottom: 8px;
+  }
+  .stat-card:last-child { margin-bottom: 0; }
+  .stat-name {
+    font-size: var(--fm-text-base);
+    font-weight: 500;
+    color: var(--fm-text-secondary);
+  }
+  .stat-values {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-family: "SF Mono", "Monaco", monospace;
+    font-size: var(--fm-text-xs);
+  }
+  .stat-result { color: var(--fm-foreground); font-weight: 600; }
+  .stat-threshold { color: var(--fm-muted-foreground); }
+  .chip {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 4px;
+    font-size: var(--fm-text-xs); font-weight: 600;
+  }
+  .chip-pass { background: var(--fm-success-soft); color: var(--fm-success); }
+  .chip-fail { background: var(--fm-danger-soft); color: var(--fm-danger); }
+
+  /* Walk-Forward visualization */
+  .wf-visual {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    align-items: center;
+  }
+  .wf-bar {
+    flex: 1;
+    height: 28px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  .wf-bar.up { background: var(--fm-success-soft); color: var(--fm-success); }
+  .wf-bar.down { background: var(--fm-danger-soft); color: var(--fm-danger); }
+  .wf-legend {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: var(--fm-text-xs);
+    color: var(--fm-muted-foreground);
+  }
+  .wf-legend span { display: flex; align-items: center; gap: 4px; }
+  .wf-legend .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .wf-legend .dot.up { background: var(--fm-success); }
+  .wf-legend .dot.down { background: var(--fm-danger); }
+
+  /* Info Card */
+  .info-card {
+    background: var(--fm-cream-100);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .info-card-title {
+    font-size: var(--fm-text-base);
+    font-weight: 600;
+    color: var(--fm-foreground);
+    margin-bottom: 12px;
+  }
+  .info-row {
+    display: flex;
+    padding: 6px 0;
+    font-size: var(--fm-text-sm);
+  }
+  .info-row .info-label {
+    width: 100px;
+    color: var(--fm-muted-foreground);
+    flex-shrink: 0;
+  }
+  .info-row .info-value {
+    flex: 1;
+    color: var(--fm-text-secondary);
+  }
+  .info-row .info-value strong {
+    color: var(--fm-foreground);
+    font-weight: 600;
+  }
+  .src-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: var(--fm-text-xs); font-weight: 500;
+    background: var(--fm-brand-50); color: var(--fm-brand-700);
+  }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding-left: 24px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 4px;
+    bottom: 4px;
+    width: 2px;
+    background: var(--fm-neutral-200);
+  }
+  .timeline-item {
+    position: relative;
+    padding-bottom: 20px;
+  }
+  .timeline-item:last-child { padding-bottom: 0; }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -21px;
+    top: 4px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--fm-brand-500);
+    border: 2px solid var(--fm-card);
+    box-shadow: 0 0 0 2px var(--fm-brand-500);
+  }
+  .timeline-item.past::before {
+    background: var(--fm-neutral-400);
+    box-shadow: 0 0 0 2px var(--fm-neutral-300);
+  }
+  .timeline-date {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-muted-foreground);
+    margin-bottom: 2px;
+    font-family: "SF Mono", "Monaco", monospace;
+  }
+  .timeline-title {
+    font-size: var(--fm-text-sm);
+    font-weight: 500;
+    color: var(--fm-foreground);
+    margin-bottom: 2px;
+  }
+  .timeline-meta {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-neutral-600);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .grade-badge-sm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    color: white;
+  }
+  .grade-s { background: var(--fm-grade-s); }
+  .grade-a { background: var(--fm-grade-a); }
+  .grade-b { background: var(--fm-grade-b); }
+  .change-tag {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+  .change-up { background: var(--fm-success-soft); color: var(--fm-success); }
+  .change-same { background: var(--fm-neutral-100); color: var(--fm-neutral-600); }
+  .change-init { background: var(--fm-info-soft); color: var(--fm-info); }
+</style>
+</head>
+<body>
+  <!-- Background (dimmed results page) -->
+  <div class="bg-page">
+    <div class="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-icon">量</span>
+        量化工作台
+      </div>
+      <div style="padding: 20px;">
+        <div class="nav-item active" style="padding-left:20px;"><span style="width:18px;margin-right:10px;">⚙️</span>设置</div>
+        <div class="nav-sub active">因子挖掘</div>
+      </div>
+    </div>
+    <div class="bg-content">
+      <div class="bg-card"></div>
+      <div class="bg-card"></div>
+      <div class="bg-card"></div>
+    </div>
+  </div>
+  <div class="bg-overlay"></div>
+
+  <!-- Drawer -->
+  <div class="drawer">
+    <!-- Header -->
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <div class="drawer-header-left">
+          <div class="back-btn">←</div>
+          <div class="drawer-title">因子详情证据</div>
+        </div>
+        <div class="close-btn">✕</div>
+      </div>
+      <div class="formula-row">mean(close, 5) / mean(close, 20) - 1</div>
+    </div>
+
+    <!-- Frequency Tip -->
+    <div class="freq-tip">
+      <span class="tip-icon">✓</span>
+      <span>此因子为日频，参与全量评定。月频任务统计功效有限，最高评为 B 级。</span>
+    </div>
+
+    <!-- Quarter Banner -->
+    <div class="quarter-banner">
+      <div class="qb-title">2026 Q3 重评：维持 S 级</div>
+      <div class="qb-desc">较上季度无变化 · 触发方式：自动季度重评</div>
+    </div>
+
+    <!-- Manual Adjust -->
+    <div class="manual-adjust">
+      <div class="manual-adjust-desc">
+        调整后季度重评不会自动覆盖，可随时恢复自动评定
+      </div>
+      <button class="btn">人工调整等级</button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="drawer-tabs">
+      <div class="drawer-tab active">定级证据</div>
+      <div class="drawer-tab">统计检验</div>
+      <div class="drawer-tab">血缘与来源</div>
+    </div>
+
+    <!-- Body -->
+    <div class="drawer-body">
+
+      <!-- Tab 1: 定级证据 -->
+      <div class="tab-section">
+        <div class="grade-display">
+          <div class="grade-circle">S</div>
+          <div>
+            <div class="grade-reason">
+              <strong>统计显著性高，ICIR 优异，衰减慢，样本外稳定</strong>
+            </div>
+            <div class="threshold-source">阈值来源：默认阈值（系统标准）</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Radar Chart -->
+      <div class="tab-section">
+        <div class="section-subtitle">八维雷达图</div>
+        <div class="radar-container">
+          <svg width="280" height="280" viewBox="0 0 280 280">
+            <!-- Center at 140,140, radius 100 -->
+            <!-- Octagon grid - 4 levels -->
+            <!-- Level 4 (outer) -->
+            <polygon points="140,40 235,75 235,175 140,210 45,175 45,75"
+              fill="none" stroke="var(--fm-neutral-200)" stroke-width="1"/>
+            <!-- Level 3 -->
+            <polygon points="140,65 211,88 211,163 140,185 69,163 69,88"
+              fill="none" stroke="var(--fm-neutral-200)" stroke-width="1"/>
+            <!-- Level 2 -->
+            <polygon points="140,90 188,100 188,150 140,163 92,150 92,100"
+              fill="none" stroke="var(--fm-neutral-200)" stroke-width="1"/>
+            <!-- Level 1 (inner) -->
+            <polygon points="140,115 164,122 164,138 140,145 116,138 116,122"
+              fill="none" stroke="var(--fm-neutral-200)" stroke-width="1"/>
+            <!-- Axis lines -->
+            <g stroke="var(--fm-neutral-200)" stroke-width="1">
+              <line x1="140" y1="40" x2="140" y2="210"/>
+              <line x1="235" y1="75" x2="45" y2="175"/>
+              <line x1="235" y1="175" x2="45" y2="75"/>
+            </g>
+            <!-- Data polygon (8 dimensions, all high values) -->
+            <!-- Positions (approx high values ~90-95%):
+                 统计显著性: top - 95% → y=40+10 = 50
+                 ICIR: top-right - 92%
+                 覆盖率: bottom-right - 96%
+                 换手率: bottom - 88%
+                 衰减: bottom-left - 90%
+                 样本外稳定: left - 94%
+                 复杂度: top-left - 85%
+                 单调性: top - 93%
+            -->
+            <!-- Recalculating with proper octagon math:
+                 8 vertices at angles starting from top, clockwise:
+                 0: top (140, 40) - 统计显著性
+                 45deg: top-right - ICIR
+                 90deg: right - 覆盖率
+                 135deg: bottom-right - 换手率
+                 180deg: bottom - 衰减
+                 225deg: bottom-left - 样本外稳定
+                 270deg: left - 复杂度
+                 315deg: top-left - 单调性
+                 
+                 Actually let me use 8 axes for 8 dimensions.
+                 Radius = 100, center = (140,140)
+            -->
+            <!-- Let me redo with proper 8-axis radar:
+                 angle 0 = top (12 o'clock)
+                 step = 45 degrees
+                 dims: 统计显著性(0°), ICIR(45°), 覆盖率(90°), 换手率(135°),
+                       衰减(180°), 样本外稳定(225°), 复杂度(270°), 单调性(315°)
+                 
+                 Values (as percentage of max, all passing):
+                 统计显著性: 95% → r = 95
+                 ICIR: 92% → r = 92
+                 覆盖率: 96% → r = 96
+                 换手率: 72% → r = 72 (lower turnover is better, 28%/50% = 56%... hmm, actually let me think about this.
+                   For radar chart, all dimensions should be "higher is better". 
+                   Turnover of 28% with threshold 50% means it's well below threshold = good.
+                   Score = (1 - 28/50) = 0.44... that seems low. 
+                   Let me just use ratios that make it look good for an S-grade factor.
+                   All values between 75-96%.
+            -->
+            <!-- Values:
+                 统计显著性: 95% → 0.95 * 100 = 95
+                 ICIR: 92% → 92 (3.24/2.5=1.296, but cap at ~92% for visual)
+                 覆盖率: 96% → 96 (96.2/80=1.20, cap at 96%)
+                 换手率: 78% → 78 (1 - 28/50 = 0.44... let me use 78% as "good score")
+                 衰减比: 88% → 88 (0.85/0.7=1.21, cap at 88%)
+                 样本外稳定: 90% → 90 (0.92/0.8=1.15, cap at 90%)
+                 复杂度: 80% → 80 (5/6 = 83%)
+                 单调性: 85% → 85 (0.88/0.75=1.17, cap at 85%)
+            -->
+            <!-- 
+              angle to xy: x = cx + r*sin(angle), y = cy - r*cos(angle)
+              angle in radians
+            -->
+            <!-- 8 vertices:
+                 0° (统计显著性, r=95): x=140, y=45
+                 45° (ICIR, r=92): x=140+65=205, y=140-65=75
+                 90° (覆盖率, r=96): x=236, y=140
+                 135° (换手率, r=78): x=140+55=195, y=140+55=195
+                 180° (衰减, r=88): x=140, y=228
+                 225° (样本外稳定, r=90): x=140-64=76, y=140+64=204
+                 270° (复杂度, r=80): x=60, y=140
+                 315° (单调性, r=85): x=140-60=80, y=140-60=80
+            -->
+            <polygon 
+              points="140,45 205,75 236,140 195,195 140,228 76,204 60,140 80,80"
+              fill="rgba(20, 184, 166, 0.25)"
+              stroke="var(--fm-brand-600)"
+              stroke-width="2"/>
+            <!-- Data points -->
+            <g fill="var(--fm-brand-600)">
+              <circle cx="140" cy="45" r="4"/>
+              <circle cx="205" cy="75" r="4"/>
+              <circle cx="236" cy="140" r="4"/>
+              <circle cx="195" cy="195" r="4"/>
+              <circle cx="140" cy="228" r="4"/>
+              <circle cx="76" cy="204" r="4"/>
+              <circle cx="60" cy="140" r="4"/>
+              <circle cx="80" cy="80" r="4"/>
+            </g>
+            <!-- Axis labels -->
+            <g font-size="11" fill="var(--fm-neutral-600)" font-family="var(--fm-font-sans)">
+              <text x="140" y="28" text-anchor="middle" font-weight="500">统计显著性</text>
+              <text x="258" y="70" text-anchor="start" font-weight="500">ICIR</text>
+              <text x="258" y="144" text-anchor="start" font-weight="500">覆盖率</text>
+              <text x="248" y="222" text-anchor="start" font-weight="500">换手率</text>
+              <text x="140" y="250" text-anchor="middle" font-weight="500">衰减</text>
+              <text x="22" y="222" text-anchor="end" font-weight="500">样本外稳定</text>
+              <text x="22" y="144" text-anchor="end" font-weight="500">复杂度</text>
+              <text x="22" y="70" text-anchor="end" font-weight="500">单调性</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- 8 Dimension Detail Table -->
+      <div class="tab-section">
+        <div class="section-subtitle">八维明细</div>
+        <table class="dim-table">
+          <thead>
+            <tr>
+              <th>维度</th>
+              <th>当前值 / 阈值</th>
+              <th style="width: 50px;">状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="dim-name">统计显著性</td>
+              <td>
+                <div style="display:flex; justify-content:space-between;">
+                  <span class="stat-result dim-value">p &lt; 0.001</span>
+                  <span class="dim-threshold">p &lt; 0.05</span>
+                </div>
+                <div class="dim-bar-wrap">
+                  <div class="dim-bar-fill" style="width: 95%;"></div>
+                </div>
+                <div class="dim-gap">远超阈值</div>
+              </td>
+              <td class="dim-status"><span class="status-pass">✓ 达标</span></td>
+            </tr>
+            <tr>
+              <td class="dim-name">ICIR</td>
+              <td>
+                <div style="display:flex; justify-content:space-between;">
+                  <span class="stat-result dim-value">3.24</span>
+                  <span class="dim-threshold">2.5</span>
+                </div>
+                <div class="dim-bar-wrap">
+                  <div class="dim-bar-fill" style="width: 92%;"></div>
+                </div>
+                <div class="dim-gap">超出阈值 29.6%</div>
+              </td>
+              <td class="dim-status"><span class="status-pass">✓ 达标</span></td>
+            </tr>
+            <tr>
+              <td class="dim-name">覆盖率</td>
+              <td>
+                <div style="display:flex; justify-content:space-between;">
+                  <span class="stat-result dim-value">96.2%</span>
+                  <span class="dim-threshold">80%</span>
+                </div>
+                <div class="dim-bar-wrap">
+                  <div class="dim-bar-fill" style="width: 96%;"></div>
+                </div>
+                <div class="dim-gap">超出阈值 16.2pp</div>
+              </td>
+              <td class="dim-status"><span class="status-pass">✓ 达标</span></td>
+            </tr>
+            <tr>
+              <td class="dim-name">换手率</td>
+              <td>
+                <div style="display:flex; justify-content:space-between;">
+                  <span class="stat-result dim-value">28%</span>
+                  <span class="dim-threshold">≤ 50%</span>
+                </div>
+                <div class="dim-bar-wrap">
+                  <div class="dim-bar-fill" style="width: 78%; background: var(--fm-info);"></div>
+                </div>
+                <div class="dim-gap">低于阈值 22pp</div>
+              </td>
+              <td class="dim-status"><span class="status-pass">✓ 达标</span></td>
+            </tr>
+            <tr>
+              <td class="dim-name">衰减比</td>
+              <td>
+                <div style="display:flex; justify-content:space-between;">
+                  <span class="stat-result dim-value">0.85</span>
+                  <span class="dim-threshold">0.7</span>
+                </div>
+                <div class="dim-bar-wrap">
+                  <div class="dim-bar-fill" style="width: 88%;"></div>
+                </div>
+                <div class="dim-gap">超出阈值 21.4%</div>
+              </td>
+              <td class="dim-status"><span class="status-pass">✓ 达标</span></td>
+            </tr>
+            <tr>
+              <td class="dim-name">样本外稳定</td>
+              <td>
+                <div style="display:flex; justify-content:space-between;">
+                  <span class="stat-result dim-value">0.92</span>
+                  <span class="dim-threshold">0.8</span>
+                </div>
+                <div class="dim-bar-wrap">
+                  <div class="dim-bar-fill" style="width: 90%;"></div>
+                </div>
+                <div class="dim-gap">超出阈值 15%</div>
+              </td>
+              <td class="dim-status"><span class="status-pass">✓ 达标</span></td>
+            </tr>
+            <tr>
+              <td class="dim-name">复杂度</td>
+              <td>
+                <div style="display:flex; justify-content:space-between;">
+                  <span class="stat-result dim-value">5 算子</span>
+                  <span class="dim-threshold">≤ 6</span>
+                </div>
+                <div class="dim-bar-wrap">
+                  <div class="dim-bar-fill" style="width: 80%; background: var(--fm-warn);"></div>
+                </div>
+                <div class="dim-gap">低于上限 1 个算子</div>
+              </td>
+              <td class="dim-status"><span class="status-pass">✓ 达标</span></td>
+            </tr>
+            <tr>
+              <td class="dim-name">单调性</td>
+              <td>
+                <div style="display:flex; justify-content:space-between;">
+                  <span class="stat-result dim-value">0.88</span>
+                  <span class="dim-threshold">0.75</span>
+                </div>
+                <div class="dim-bar-wrap">
+                  <div class="dim-bar-fill" style="width: 85%;"></div>
+                </div>
+                <div class="dim-gap">超出阈值 17.3%</div>
+              </td>
+              <td class="dim-status"><span class="status-pass">✓ 达标</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Tab 2 section (shown in same scroll for prototype completeness) -->
+      <div class="tab-section" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--fm-border);">
+        <div class="section-subtitle">8 项统计检验</div>
+        
+        <div class="stat-card">
+          <div class="stat-name">t 检验</div>
+          <div class="stat-values">
+            <span class="stat-result">p = 0.0002</span>
+            <span class="stat-threshold">p &lt; 0.05</span>
+            <span class="chip chip-pass">通过 ✓</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-name">Bonferroni 校正</div>
+          <div class="stat-values">
+            <span class="stat-result">p_adj = 0.0016</span>
+            <span class="stat-threshold">p &lt; 0.05</span>
+            <span class="chip chip-pass">通过 ✓</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-name">FDR 控制</div>
+          <div class="stat-values">
+            <span class="stat-result">q = 0.0008</span>
+            <span class="stat-threshold">q &lt; 0.05</span>
+            <span class="chip chip-pass">通过 ✓</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-name">Bootstrap</div>
+          <div class="stat-values">
+            <span class="stat-result">CI = [2.91, 3.57]</span>
+            <span class="stat-threshold">不含 0</span>
+            <span class="chip chip-pass">通过 ✓</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-name">置换检验</div>
+          <div class="stat-values">
+            <span class="stat-result">p = 0.001</span>
+            <span class="stat-threshold">p &lt; 0.05</span>
+            <span class="chip chip-pass">通过 ✓</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-name">DSR</div>
+          <div class="stat-values">
+            <span class="stat-result">dsr_icir = 2.98</span>
+            <span class="stat-threshold">&gt; 2.0</span>
+            <span class="chip chip-pass">通过 ✓</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-name">衰减率</div>
+          <div class="stat-values">
+            <span class="stat-result">0.85</span>
+            <span class="stat-threshold">&gt; 0.7</span>
+            <span class="chip chip-pass">通过 ✓</span>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div style="flex: 1;">
+            <div class="stat-name">Walk-Forward</div>
+            <div class="wf-visual">
+              <div class="wf-bar up">↑</div>
+              <div class="wf-bar up">↑</div>
+              <div class="wf-bar up">↑</div>
+              <div class="wf-bar up">↑</div>
+              <div class="wf-bar up">↑</div>
+              <div class="wf-bar up">↑</div>
+              <div class="wf-bar up">↑</div>
+              <div class="wf-bar up">↑</div>
+              <div class="wf-bar down">↓</div>
+              <div class="wf-bar down">↓</div>
+            </div>
+            <div class="wf-legend">
+              <span><span class="dot up"></span>同向 8</span>
+              <span><span class="dot down"></span>反向 2</span>
+            </div>
+          </div>
+          <div class="stat-values" style="flex-direction: column; align-items: flex-end; gap: 4px;">
+            <span class="stat-result">同向 8/10</span>
+            <span class="stat-threshold">同向 &gt; 60%</span>
+            <span class="chip chip-pass">通过 ✓</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3 section -->
+      <div class="tab-section" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--fm-border);">
+        <div class="section-subtitle">进化信息</div>
+        <div class="info-card">
+          <div class="info-row">
+            <span class="info-label">出现代数</span>
+            <span class="info-value">第 <strong>3</strong> 代首次出现，第 <strong>12</strong> 代登顶</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">父代</span>
+            <span class="info-value">P-0042（变异） × P-0018（交叉）</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">操作类型</span>
+            <span class="info-value"><span class="src-tag">精英保留</span></span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">经济逻辑</span>
+            <span class="info-value">短期均线上穿长期均线，捕捉趋势启动</span>
+          </div>
+        </div>
+
+        <div class="section-subtitle">评级历史</div>
+        <div class="timeline">
+          <div class="timeline-item">
+            <div class="timeline-date">2026-09-20</div>
+            <div class="timeline-title">Q3 自动重评</div>
+            <div class="timeline-meta">
+              <span class="grade-badge-sm grade-s">S</span>
+              <span>S 级</span>
+              <span class="change-tag change-same">维持</span>
+            </div>
+          </div>
+          <div class="timeline-item past">
+            <div class="timeline-date">2026-06-15</div>
+            <div class="timeline-title">Q2 自动重评</div>
+            <div class="timeline-meta">
+              <span class="grade-badge-sm grade-a">A</span>
+              <span>A 级</span>
+              <span class="change-tag change-up">升级</span>
+            </div>
+          </div>
+          <div class="timeline-item past">
+            <div class="timeline-date">2026-03-10</div>
+            <div class="timeline-title">首次评定</div>
+            <div class="timeline-meta">
+              <span class="grade-badge-sm grade-b">B</span>
+              <span>B 级</span>
+              <span class="change-tag change-init">初始</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

@@ -339,7 +339,18 @@ def compute_split_budget_preview(
     from app.services.factors.store import FactorWarehouse
 
     wh = FactorWarehouse(str(warehouse_path or Settings().factor_warehouse_path))
-    raw = wh.list_trade_dates()  # DESC
+    # DEF-8：数仓被占/损坏（DuckDB IOException 单写锁）→ 按 §4/§5 精神降级为
+    # available=False + 可读原因，绝不冒 500（实测：并发时 IOException 直落
+    # unhandled_exception_handler，Step2 预算卡片整块炸掉）。
+    try:
+        raw = wh.list_trade_dates()  # DESC
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("split-budget 数仓不可用：%s: %s", type(exc).__name__, str(exc)[:200])
+        return {
+            "available": False,
+            "reason_zh": "数据仓库暂时不可用（可能被其它任务占用），切分预算暂不确定；"
+                         "请稍后重试或等待当前挖掘任务结束。",
+        }
     if not raw:
         return {"available": False, "reason_zh": "数仓暂无行情交易日（raw_daily_bars 为空）。"}
 
@@ -497,6 +508,11 @@ def finalize_run(
             raise                       # 锁定类错误必须向上抛（不吞）
         except Exception as exc:  # noqa: BLE001 - 单候选失败不中断整批
             cand.latest_evaluation_status = "failed"
+    
+            # 结果页永不可达且无从溯源）。
+            logger.warning(
+                "finalize_run: 候选评估失败 run=%s hash=%s: %s: %s",
+                run_id, cand.formula_hash, type(exc).__name__, str(exc)[:300])
             failures.append({"formula_hash": cand.formula_hash,
                              "error": f"{type(exc).__name__}: {exc}"[:300]})
             continue
@@ -694,6 +710,10 @@ def _run_to_dict(run: Any) -> dict[str, Any]:
         "rebalance_frequency": run.rebalance_frequency,
         "error_code": run.error_code,
         "created_at": str(run.created_at) if run.created_at else None,
+        # 观察项修复（2026-09-25）：暴露最近推进时间——touch_run_progress
+        # 每 30s 刷新它，前端据此显示「最近推进 N 秒前」，也让自动化测试
+        # 可直接断言代内推进（此前只能靠「不被看门狗误杀」间接证明）。
+        "updated_at": str(run.updated_at) if run.updated_at else None,
     }
 
 
@@ -758,6 +778,26 @@ def list_candidates(db: Any, run_id: str, *, page: int = 1, page_size: int = 20,
         .offset((max(1, page) - 1) * max(1, page_size))
         .limit(max(1, page_size))
     ).scalars().all()
+
+    # DEF-9：结果页需要等级列 —— grade 在 `factor_versions.quality_grade`
+    # （B1 4 列），候选表没有。批量取出本页候选的等级（老库列缺失时静默降级）。
+    grades: dict[int, str] = {}
+    version_ids = {int(c.factor_version_id) for c in rows
+                   if c.factor_version_id is not None}
+    if version_ids:
+        try:
+            from app.models.factor_model import FactorVersion
+
+            grade_cols = FactorVersion.__table__.columns.keys()
+            if "quality_grade" in grade_cols:
+                vrows = db.execute(
+                    select(FactorVersion.id, FactorVersion.quality_grade)
+                    .where(FactorVersion.id.in_(version_ids))
+                ).all()
+                grades = {int(vid): str(g) for vid, g in vrows if g}
+        except Exception:  # noqa: BLE001 - 等级联表失败降级为无等级，不炸列表
+            grades = {}
+
     items = []
     for c in rows:
         items.append({
@@ -777,6 +817,11 @@ def list_candidates(db: Any, run_id: str, *, page: int = 1, page_size: int = 20,
             if c.crowding_distance is not None else None,
             "economic_logic": c.economic_logic, "expected_direction": c.expected_direction,
             "log_sources": c.logic_source,
+            "latest_ic": DN.to_db_float(c.latest_ic)
+            if c.latest_ic is not None else None,
+            "latest_evaluation_status": c.latest_evaluation_status,
+            "grade": grades.get(int(c.factor_version_id))
+            if c.factor_version_id is not None else None,
         })
     return {"items": items, "total": total, "page": max(1, page),
             "page_size": max(1, page_size)}
@@ -1208,7 +1253,15 @@ def set_manual_grade_auto(db: Any, *, candidate_id: str) -> dict[str, Any]:
 
 
 def get_grade_evidence(db: Any, *, candidate_id: str) -> dict[str, Any]:
-    """定级证据：8 维度明细 + grade 纯函数评定 + 血缘。"""
+    """定级证据：8 维度明细 + grade 纯函数评定 + 血缘。
+
+    DEF-15/16（2026-09-25 重测轮）：输出对齐前端 `GradeEvidence` 契约——
+    补 `reason_zh`（原 `reason` 保留兼容）、`dimensions`（按当前等级的阈值
+    逐维对比，无数据维度如实 null）、`frequency`（月频降级依据）、
+    `manual_adjusted` 与 `grade_history`（factor_grade_history 时间轴）。
+    统计检验数据未落库时如实给 `stats.degraded=true` + null 字段，
+    前端据此灰显「样本不足，未计算」，绝不臆造。
+    """
     from app.services.factors.mining import factor_grading as FG
 
     cand = db.get(FactorMiningCandidate, str(candidate_id))
@@ -1225,14 +1278,81 @@ def get_grade_evidence(db: Any, *, candidate_id: str) -> dict[str, Any]:
     }
     grade, reason = FG.grade(metrics)
     lineage = get_candidate_lineage(db, cand.run_id, cand.id)
+
+    # frequency：run 的调仓频率（前端月频灰显 Bootstrap/置换的依据）
+    frequency = "daily"
+    run = db.get(FactorMiningRun, str(cand.run_id))
+    if run is not None:
+        frequency = str(getattr(run, "rebalance_frequency", None) or "daily")
+
+    # dimensions：当前等级阈值列逐维对比；缺数据维度 current/passed=null（如实呈现）
+    _UPPER_BOUND = {"turnover", "complexity"}   # ≤阈值 为达标；其余为 ≥阈值
+    dims: list[dict[str, Any]] = []
+    for key, by_grade in FG.DEFAULT_THRESHOLDS.items():
+        th = by_grade.get(grade)
+        cur = metrics.get(key)
+        passed: bool | None = None
+        gap: float | None = None
+        if th is not None and cur is not None:
+            if key in _UPPER_BOUND:
+                passed = float(cur) <= float(th)
+                gap = round(float(cur) - float(th), 6)
+            else:
+                passed = float(cur) >= float(th)
+                gap = round(float(cur) - float(th), 6)
+        dims.append({"key": key, "current": cur, "threshold": th,
+                     "passed": passed, "gap": gap})
+
+    # manual_adjusted / grade_history：经候选提交的因子版本查当前态与历史
+    manual_adjusted = 0
+    history: list[dict[str, Any]] = []
+    version_id = getattr(cand, "factor_version_id", None)
+    if version_id:
+        try:
+            from app.models.factor_grade_history import FactorGradeHistory
+            from app.models.factor_model import FactorVersion
+
+            version = db.get(FactorVersion, int(version_id))
+            if version is not None and "grade_manual_adjusted" in \
+                    FactorVersion.__table__.columns.keys():
+                manual_adjusted = int(getattr(version, "grade_manual_adjusted", 0) or 0)
+            # factor_grade_history.factor_version_id 是 String(64) 列，按字符串匹配
+            rows = db.execute(
+                select(FactorGradeHistory)
+                .where(FactorGradeHistory.factor_version_id == str(version_id))
+                .order_by(FactorGradeHistory.created_at.desc()).limit(20)
+            ).scalars().all()
+            history = [{
+                "grade": r.grade, "changed_at": str(r.created_at),
+                # 模型列名是 source（auto/manual/quarterly），映射到前端 trigger
+                "trigger": str(getattr(r, "source", None) or "auto"),
+                "reason": getattr(r, "reason", None),
+            } for r in rows]
+        except Exception:  # noqa: BLE001 - 历史表缺失（迁移未跑）不阻断证据主链路
+            logger.debug("grade history lookup skipped for %s", version_id)
+
     return {
         "candidate_id": candidate_id,
+        "formula": str(cand.canonical_formula or cand.formula_expr or ""),
         "grade": grade,
         "reason": reason,
+        "reason_zh": reason,
         "metrics": metrics,
         "thresholds_source": "default",
+        "frequency": frequency,
+        "dimensions": dims,
         "lineage": lineage,
         "stats": None,
+        # 统计检验未落库：给降级占位（前端 8 行灰显「样本不足，未计算」）
+        "stats_view": {
+            "t_test_p": None, "bonferroni_p": None, "fdr_q": None,
+            "bootstrap_ci": None, "permutation_p": None,
+            "dsr_icir": None, "decay_ratio": None,
+            "walk_forward": {}, "total_trials": None,
+            "degraded": True,
+        },
+        "manual_adjusted": bool(manual_adjusted),
+        "grade_history": history,
     }
 
 

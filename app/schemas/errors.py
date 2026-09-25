@@ -371,6 +371,12 @@ ERROR_CODE_LIBRARY: dict[str, dict[str, Any]] = {
         "retryable": False,
         "fix_link": "/settings/factor-mining",
     },
+    "MINING_SNAPSHOT_NOT_FOUND": {
+        "user_message": "候选池快照不存在或已失效",
+        "impact": "本次提交被拒绝，未创建挖掘任务；请回到 Step1 重新生成挖掘物料后再提交",
+        "retryable": False,
+        "fix_link": "/settings/factor-mining?step=1",
+    },
 }
 
 

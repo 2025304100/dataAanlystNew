@@ -3277,6 +3277,118 @@ tr.mining-run-top-new {
   font-size: var(--m-fs-sm);
 }
 
+/* DEF-3：Step5 运行操作失败提示（resume 撞 409 等不再静默） */
+.mining-run-op-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--m-s3);
+  margin: 0 0 var(--m-s3);
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid rgba(180, 35, 24, 0.4);
+  border-left: 3px solid var(--m-danger);
+  border-radius: var(--m-r-sm);
+  background: var(--m-danger-soft);
+  color: var(--m-text);
+  font-size: var(--m-fs-sm);
+}
+
+/* DEF-4：Step1 预设/字段/预览三态反馈 */
+.mining-filter-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--m-s3);
+  margin: 0 0 var(--m-s2);
+  padding: var(--m-s3);
+  border: 1px dashed rgba(31, 41, 51, 0.25);
+  border-radius: var(--m-r-sm);
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-filter-state--error {
+  border: 1px solid rgba(180, 35, 24, 0.4);
+  border-left: 3px solid var(--m-danger);
+  background: var(--m-danger-soft);
+  color: var(--m-text);
+}
+
+.mining-pool-preview-state {
+  margin: 0 0 var(--m-s3);
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px dashed rgba(31, 41, 51, 0.25);
+  border-radius: var(--m-r-sm);
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-pool-preview-state--error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--m-s3);
+  border: 1px solid rgba(180, 35, 24, 0.4);
+  border-left: 3px solid var(--m-danger);
+  background: var(--m-danger-soft);
+  color: var(--m-text);
+}
+
+/* DEF-10：草稿列表（载入 / 删除） */
+.mining-draft-list {
+  margin: var(--m-s3) 0 0;
+  padding: var(--m-s3) var(--m-s4);
+  border: 1px solid rgba(31, 41, 51, 0.12);
+  border-radius: var(--m-r-sm);
+}
+
+.mining-draft-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-s3);
+  margin-bottom: var(--m-s2);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-draft-list-note {
+  margin: 0;
+  color: var(--m-text-3);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-draft-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--m-s3);
+  padding: var(--m-s2) 0;
+  border-top: 1px dashed rgba(31, 41, 51, 0.12);
+  font-size: var(--m-fs-sm);
+}
+
+.mining-draft-item-title {
+  min-width: 120px;
+  font-weight: 600;
+}
+
+.mining-draft-item-note {
+  color: var(--m-text-3);
+}
+
+/* 待更新：保留上次结果但置灰，明确「正在重算」 */
+.mining-pool-preview--stale {
+  opacity: 0.55;
+}
+
+.mining-pool-preview-stale-note {
+  width: 100%;
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-3);
+}
+
 /* 「已恢复最近任务」提示条（选项3）：本地自动恢复时展示，可关闭或一键新建 */
 .mining-restored-notice {
   display: flex;

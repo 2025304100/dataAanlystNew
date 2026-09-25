@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { t } from "../../../../../i18n";
 import { InputNumber, Select, Slider, Switch } from "antd";
 import ClassicalBaseConfig from "./ClassicalBaseConfig";
@@ -31,6 +31,9 @@ export interface MiningEvoParamStepProps {
   resourcesOk?: boolean;
   onSubmit?: () => void;
   onSaveDraft?: () => void;
+  /** DEF-10：草稿回填——此前只有 onConfig 单向写，载入草稿后
+   * 本组件内部 state 仍显示默认值（与 wizardConfig 不一致）。 */
+  initial?: Partial<EvoConfig> | null;
   /** 进化参数变化时上报（A4：MiningShell 组装 evolution_params 用） */
   onConfig?: (config: EvoConfig) => void;
 }
@@ -39,6 +42,7 @@ export default function MiningEvoParamStep({
   lockStatus = null,
   etaSeconds = null,
   resourcesOk = true,
+  initial = null,
   onSubmit,
   onSaveDraft,
   onConfig,
@@ -53,6 +57,18 @@ export default function MiningEvoParamStep({
   // P1-7：高级折叠区（经典底座/探索/选择/繁殖）的 patch 汇总，随 emitConfig 上报
   const [advanced, setAdvanced] = useState<Record<string, unknown>>({});
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // DEF-10：initial 引用变化（载入草稿）时同步内部受控态。
+  useEffect(() => {
+    if (!initial) return;
+    if (initial.simple_mode !== undefined) setSimpleMode(Boolean(initial.simple_mode));
+    if (initial.strength !== undefined) setStrength(initial.strength as EvoStrength);
+    if (initial.preference !== undefined) setPreference(initial.preference as EvoPreference);
+    if (initial.ai_enabled !== undefined) setAiEnabled(Boolean(initial.ai_enabled));
+    if (initial.adaptive !== undefined) setAdaptive(Boolean(initial.adaptive));
+    if (initial.population_size !== undefined) setPopulation(Number(initial.population_size));
+    if (initial.max_generations !== undefined) setGenerations(Number(initial.max_generations));
+  }, [initial]);
 
   const emitConfig = (patch: Partial<EvoConfig> = {}, advancedPatch?: Record<string, unknown>) => {
     const nextAdvanced = advancedPatch ? { ...advanced, ...advancedPatch } : advanced;

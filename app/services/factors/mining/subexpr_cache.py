@@ -65,7 +65,16 @@ STATUS_COMPUTING = "computing"
 VALID_STATUSES: tuple[str, ...] = (STATUS_VALID, STATUS_FAILED, STATUS_COMPUTING)
 
 #: NaN 比例上限（超过即视为污染，不写缓存）。可配置。
-DEFAULT_MAX_NAN_RATIO = 0.5
+#:
+#: ⚠️ 2026-09-23 口径修正：原值 **0.5** 是按「行情字段（面板缺失 <1%）」想当然定的，
+#: 跨字段类型复用即失效 —— 实测（146 交易日 × 5461 股的真实面板）：
+#:     roe_ttm 缺失 **89.17%**、pe_ttm 缺失 **70.00%**，而 volume/amount/turnover_rate 仅 0.98%。
+#: 财报/估值类字段在面板口径下**天然高缺失**（季报只在披露日附近有值，未披露日与新股即 NaN），
+#: 于是任何引用 roe_ttm / pe_ttm 的合法因子（模板与随机探索层大量使用）都被拒写 →
+#: 缓存命中率极低（每代全量重算）+ `verify_sample` 无样本（`cache_validation_passed` 长期空/0）。
+#: 故阈值改为 0.99：**只拦「完全不可用」，不拦「高缺失」**。高缺失由因子**覆盖率**
+#: （IC 按有效截面计算）体现，不由缓存层一刀切。Inf 仍然一律拒绝（见 `value_quality`）。
+DEFAULT_MAX_NAN_RATIO = 0.99
 
 #: 采样校验容差（向导 §6.11.1：差异 > 1e-6 报警并废弃缓存）
 VERIFY_TOLERANCE = 1e-6
@@ -253,12 +262,22 @@ def extract_batch(
 
 
 def value_quality(value: Any) -> tuple[bool, float, str | None]:
-    """检查缓存值的健康度 → `(是否可缓存, NaN/非有限比例, 拒绝原因)`。
+    """检查缓存值的健康度 → `(是否可缓存, 非有限值比例, 拒绝原因)`。
 
     规则（向导 §6.11.1「NaN/Inf/空值比例异常不写入」）：
-    - `None` / 空数组 → 拒绝
-    - 含 `Inf` / `-Inf` → 拒绝（Inf 永远不可接受）
-    - NaN 比例 > `max_nan_ratio`（由调用方传阈值）→ 拒绝
+    - `None` / 空数组 → 拒绝（真不可用）
+    - **NaN 与 Inf/-Inf 同口径计入「非有限值比例」**，由调用方阈值 `max_nan_ratio` 判定
+
+    ⚠️ 2026-09-23 口径修正（Inf 不再一律拒绝）：
+    原实现「含 Inf/-Inf → 直接拒绝」看似严格，实际**保护是假的、代价是真的** ——
+    缓存拒写后 `evaluate_short` 会**回退直接计算**，含 Inf 的值照样进入下游；
+    而代价是：该因子在缓存中永久缺失 → `verify_sample` 无样本
+    （`cache_validation_passed` 长期为空）+ 下一代重复全量计算。
+    实测现场：`sqrt(amount)/ts_delta_periods(amount,20)` 仅含 0.0002% 的 Inf，
+    却因整式子被拒而拖垮缓存命中。
+
+    现改为：Inf 计入 bad 比例（与 NaN 同权），只有**比例超限**（默认 0.99，
+    即几乎全为 Inf/NaN）才拒绝 —— 既拦得住「完全不可用」，又不误伤算术常态。
     """
     if value is None:
         return False, 1.0, "值为 None"
@@ -270,10 +289,8 @@ def value_quality(value: Any) -> tuple[bool, float, str | None]:
             return False, 1.0, "值为空数组"
         if not np.issubdtype(arr.dtype, np.number):
             return True, 0.0, None      # 非数值（如对象）不参与 NaN 检查
-        finite = np.isfinite(arr)
+        finite = np.isfinite(arr)       # Inf / -Inf / NaN 统一视为「非有限」
         bad = float(1.0 - finite.mean())
-        if np.isinf(arr).any():
-            return False, bad, "含 Inf/-Inf"
         return True, bad, None
     except Exception:  # noqa: BLE001 - 非 numpy 可处理的值按「非数值」放行
         return True, 0.0, None

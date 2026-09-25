@@ -1,0 +1,99 @@
+{
+  "results": [
+    {
+      "case": "U0 进入 设置→因子挖掘（4子页签壳）",
+      "ok": true,
+      "detail": "向导/批次列表/经验库/模板配置"
+    },
+    {
+      "case": "U1 Step1 左栏预设+右栏筛选渲染",
+      "ok": true,
+      "detail": "预设按钮=5 区间输入=0"
+    },
+    {
+      "case": "U2 应用预设后预览统计/阻断在 20s 内渲染（§3.2 实时反馈）",
+      "ok": true,
+      "detail": "stats=1 blocked=0 at ~2s"
+    },
+    {
+      "case": "U2b preview 请求已发出且有响应",
+      "ok": true,
+      "detail": "[{'url': '/factor-mining/candidate-pools/preview', 'status': 200, 'ms': 1790328707836}]"
+    },
+    {
+      "case": "U3 输入市值下限后预览统计更新",
+      "ok": true,
+      "detail": "stats=True preview请求=[{'url': '/factor-mining/candidate-pools/preview', 'status': 200, 'ms': 1790328709991}]"
+    },
+    {
+      "case": "U4 生成物料后出现锁定横幅",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "case": "U5 候选池分析看板弹窗可开",
+      "ok": false,
+      "detail": "无入口按钮"
+    },
+    {
+      "case": "U6 进入 Step2 且切分预算区渲染",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "case": "U7 批次列表子页签渲染",
+      "ok": true,
+      "detail": "内容长度=1940"
+    },
+    {
+      "case": "U8 经验库子页签渲染",
+      "ok": true,
+      "detail": "内容长度=724"
+    },
+    {
+      "case": "U9 模板配置子页签渲染",
+      "ok": true,
+      "detail": "内容长度=946"
+    },
+    {
+      "case": "U10 模板页按类别分组展示（命中≥4类标签）",
+      "ok": true,
+      "detail": "类别标签=['估值', '反转', '波动率', '趋势', '量价']"
+    }
+  ],
+  "console_errors": [
+    "Warning: [antd: message] Static function can not consume context like dynamic theme. Please use 'App' component instead."
+  ],
+  "mining_requests": [
+    {
+      "url": "/factor-mining/candidate-pools/preview",
+      "status": 200,
+      "ms": 1790328709991
+    },
+    {
+      "url": "/factor-mining/candidate-pools/from-filter",
+      "status": 201,
+      "ms": 1790328719892
+    },
+    {
+      "url": "/factor-mining/candidate-pools/c0f33fbbcce840bdb983795c261109ed/snapsh",
+      "status": 201,
+      "ms": 1790328755360
+    },
+    {
+      "url": "/factor-mining/candidate-pools/c0f33fbbcce840bdb983795c261109ed/member",
+      "status": 200,
+      "ms": 1790328756646
+    },
+    {
+      "url": "/factor-mining/runs?page=1&page_size=20",
+      "status": 200,
+      "ms": 1790328758660
+    },
+    {
+      "url": "/factor-mining/templates?limit=200",
+      "status": 200,
+      "ms": 1790328762264
+    }
+  ]
+}

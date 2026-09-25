@@ -1,0 +1,32 @@
+[
+  {
+    "step": "B1 保存草稿→toast 反馈",
+    "ok": false,
+    "detail": "toast=[] API=[('POST', '/factor-mining/drafts', 201)]"
+  },
+  {
+    "step": "B2 保存草稿发出 POST /drafts 且 2xx",
+    "ok": true,
+    "detail": "[('POST', '/factor-mining/drafts', 201)]"
+  },
+  {
+    "step": "A1 应用预设「微盘」后预览统计渲染",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "step": "A2 生成物料→锁定横幅（≤4min）",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "step": "A3 锁定态成员 checkbox 禁用（§3.7.3）",
+    "ok": true,
+    "detail": "checkbox=21"
+  },
+  {
+    "step": "A4 重新选择→退回编辑态",
+    "ok": false,
+    "detail": "无 reselect 按钮"
+  }
+]

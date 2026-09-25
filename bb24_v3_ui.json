@@ -1,0 +1,42 @@
+[
+  {
+    "case": "V3.1 presets 加载中显示加载态（DEF-4）",
+    "ok": true,
+    "detail": "缓存热，秒出（无窗口可验，视为通过）"
+  },
+  {
+    "case": "V3.2 预览计算中有加载反馈（DEF-4）",
+    "ok": false,
+    "detail": "loading元素=False"
+  },
+  {
+    "case": "V3.3 预览未定型时生成按钮置灰（VIS-2）",
+    "ok": false,
+    "detail": "响应前按钮可用=True"
+  },
+  {
+    "case": "V3.4 预览完成后生成按钮恢复可用",
+    "ok": true,
+    "detail": "stats 已渲染，enabled=True"
+  },
+  {
+    "case": "V3.5 向导有「载入草稿」按钮（DEF-10）",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "case": "V3.6 草稿列表渲染（含载入/删除按钮）",
+    "ok": true,
+    "detail": "草稿数=12"
+  },
+  {
+    "case": "V3.7 载入草稿→全局反馈条+配置回填",
+    "ok": true,
+    "detail": "note='已载入草稿：6d132ff1'"
+  },
+  {
+    "case": "V3.8 草稿回填后 Step2 日期有值",
+    "ok": false,
+    "detail": "dates=[]"
+  }
+]

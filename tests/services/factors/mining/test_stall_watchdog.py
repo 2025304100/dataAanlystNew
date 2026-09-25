@@ -178,3 +178,95 @@ def test_lock_of_missing_run_is_released(db_session, factory):
 
     assert "run-does-not-exist" in WD.release_orphan_locks(db_session)
     assert TL.get_lock_status(db_session).mining_domain["busy"] is False
+
+
+# ══════════════════════════════════════════════════════════
+# 启动清理：进程重启后的遗留 running（不等时间阈值）
+# ══════════════════════════════════════════════════════════
+
+
+def test_reap_on_boot_clears_running_and_releases_lock(db_session, factory):
+    """哨兵 9：重启后遗留的 running 必须**立即**被标 STALLED 并释放锁。
+
+    实测现场（2026-09-23）：进程重启后锁表仍留着上次 running 批次的锁（心跳已停），
+    `release_orphan_locks` 不管 running、`reap_stalled_runs` 要等 600s、
+    `expire_stale_locks` 要等 1800s ⇒ **用户重启后端后 10 分钟内提交一律 409**。
+    单机部署下进程重启即意味着原 worker 线程全没了，可安全判定为遗留。
+    """
+    _make_run(db_session, "run-boot-orphan", status="running", age_minutes=0,
+              generation=3)
+    _hold_lock(db_session, task_id="task-boot", run_id="run-boot-orphan")
+    assert TL.get_lock_status(db_session).mining_domain["busy"] is True
+
+    reaped = WD.reap_on_boot(db_session)
+
+    assert reaped == ["run-boot-orphan"]
+    row = db_session.get(FactorMiningRun, "run-boot-orphan")
+    assert row.status == "failed"
+    assert row.error_code == WD.ERROR_CODE_STALLED
+    assert TL.get_lock_status(db_session).mining_domain["busy"] is False
+
+
+def test_reap_on_boot_leaves_terminal_and_draft_runs(db_session, factory):
+    """哨兵 10：终态 / 草稿批次不受启动清理影响（不重写历史）。"""
+    _make_run(db_session, "run-done", status="succeeded", age_minutes=1)
+    _make_run(db_session, "run-draft", status="draft", age_minutes=1)
+
+    assert WD.reap_on_boot(db_session) == []
+    assert db_session.get(FactorMiningRun, "run-done").status == "succeeded"
+    assert db_session.get(FactorMiningRun, "run-draft").status == "draft"
+
+
+def test_reap_on_boot_is_idempotent(db_session, factory):
+    """哨兵 11：重复调用无副作用（服务重启/热重载可能多次触发）。"""
+    _make_run(db_session, "run-x", status="running", age_minutes=0)
+    _hold_lock(db_session, task_id="task-x", run_id="run-x")
+
+    assert WD.reap_on_boot(db_session) == ["run-x"]
+    assert WD.reap_on_boot(db_session) == []
+
+
+# ══════════════════════════════════════════════════════════
+# DEF-12（2026-09-24）：reap 必须请求 worker 自止（僵尸评估线程）
+# ══════════════════════════════════════════════════════════
+
+
+def test_reap_requests_worker_cancel(db_session, factory):
+    """哨兵 12：reap 后对持锁任务写 cancel_requested=1。
+
+    2026-09-24 实测：看门狗只改库+放锁、不停 worker —— run 已 failed 后
+    评估线程继续跑，后端内存 2.3GB→4.3GB 攀升。修后 reap 对任务写
+    cancel_requested，worker 的 should_stop（含 cancel 检查）在下一检查点
+    协作式退出。
+    """
+    from app.models.async_task import AsyncTaskRecord
+
+    _make_run(db_session, "run-zombie", status="running", age_minutes=30)
+    _hold_lock(db_session, task_id="task-zombie", run_id="run-zombie")
+    db_session.add(AsyncTaskRecord(
+        id="task-zombie", task_type="factor_mining", status="running",
+        stage="running", percent=0, message="x", payload_json="{}",
+    ))
+    db_session.commit()
+
+    reaped = WD.reap_stalled_runs(db_session, threshold_seconds=600)
+
+    assert reaped == ["run-zombie"]
+    db_session.expire_all()
+    row = db_session.get(AsyncTaskRecord, "task-zombie")
+    assert row is not None
+    assert int(row.cancel_requested or 0) == 1, "reap 必须请求 worker 自止"
+    # run 本身照旧置 failed + 放锁
+    assert db_session.get(FactorMiningRun, "run-zombie").status == "failed"
+    assert TL.get_lock_status(db_session).mining_domain["busy"] is False
+
+
+def test_reap_skips_cancel_when_task_record_missing(db_session, factory):
+    """哨兵 13：任务记录不存在（单测注入/脏数据）→ 跳过 cancel，不炸主流程。"""
+    _make_run(db_session, "run-ghost-task", status="running", age_minutes=30)
+    _hold_lock(db_session, task_id="task-not-in-db", run_id="run-ghost-task")
+
+    reaped = WD.reap_stalled_runs(db_session, threshold_seconds=600)
+
+    assert reaped == ["run-ghost-task"]
+    assert TL.get_lock_status(db_session).mining_domain["busy"] is False

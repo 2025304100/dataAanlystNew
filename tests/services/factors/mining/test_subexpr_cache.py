@@ -261,9 +261,25 @@ class TestValueQuality:
         assert rec.status == SC.STATUS_FAILED
         assert rec.value is None
 
-    def test_inf_rejected(self):
-        ok, _, why = SC.value_quality(np.array([1.0, np.inf]))
-        assert not ok and "Inf" in why
+    def test_inf_treated_as_bad_ratio_not_hard_reject(self):
+        """含 Inf 不再「一律拒绝」，而是与 NaN 同口径计入 bad 比例（2026-09-23 修正）。
+
+        理由：缓存拒写后调用方会**回退直算**，含 Inf 的值照样进下游 —— 原「硬拒绝」
+        的保护是假的，代价却是真的（该因子在缓存中永久缺失 → 抽样校验无样本 +
+        每代重复全量计算）。实测：`sqrt(amount)/ts_delta_periods(amount,20)` 仅
+        0.0002% 的 Inf，却让整式子失去缓存资格。
+
+        仍拦得住「完全不可用」：全 Inf / 全 NaN 的 bad = 1.0 > 阈值 → 拒绝。
+        """
+        ok, ratio, why = SC.value_quality(np.array([1.0, np.inf]))
+        assert ok is True, "少量 Inf 不应让整式子失去缓存资格"
+        assert ratio == 0.5, ratio
+        assert why is None
+
+        c = _cache()
+        assert c.put("few_inf", np.array([1.0, np.nan, np.inf, 2.0])).status \
+            == SC.STATUS_VALID
+        assert c.put("all_inf", np.array([np.inf, np.inf])).status == SC.STATUS_FAILED
 
     def test_none_and_empty_rejected(self):
         assert SC.value_quality(None)[0] is False
@@ -289,8 +305,15 @@ class TestCacheWrite:
         assert rec.error
         assert c.rejected == 1
 
-    def test_put_rejects_inf(self):
-        rec = _cache().put("x", np.array([1.0, -np.inf]))
+    def test_put_rejects_all_inf(self):
+        """全 Inf = 完全不可用 → 拒绝。
+
+        2026-09-23 口径调整：原断言用 `[1.0, -inf]`（仅一半为 Inf）要求拒绝，
+        现按「Inf 与 NaN 同口径计入 bad 比例」不再拒绝 —— 该保护原本就是假的
+        （调用方回退直算后 Inf 照样进下游），见
+        `test_inf_treated_as_bad_ratio_not_hard_reject`。此处保留「完全不可用」覆盖。
+        """
+        rec = _cache().put("x", np.full(4, np.inf))
         assert rec.status == SC.STATUS_FAILED
 
     def test_nan_ratio_boundary_is_inclusive(self):

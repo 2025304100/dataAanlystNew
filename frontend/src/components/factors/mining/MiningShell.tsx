@@ -20,8 +20,9 @@ import MiningPoolStep from "./wizard/step1/MiningPoolStep";
 import MiningTimeTargetStep from "./wizard/step2/MiningTimeTargetStep";
 import F1ExperiencePage from "./experience/F1ExperiencePage";
 import TemplateConfigPage from "./config/TemplateConfigPage";
+import FactorMiningResult from "./result/FactorMiningResult";
 import ResultGotoFactorModelButton from "./result/ResultGotoFactorModelButton";
-import type { MiningResultContext } from "./result/resultTypes";
+import type { MiningResultContext, MiningResultRow, QualityGrade } from "./result/resultTypes";
 import FactorMiningRunTrack from "./wizard/step5/FactorMiningRunTrack";
 import PerfProbePanel from "./wizard/step5/PerfProbePanel";
 import type {
@@ -57,6 +58,21 @@ const STEP_LABEL_KEYS: Record<MiningStepKey, string> = {
 
 type ShellTab = "wizard" | "runs" | "experience" | "templates";
 
+/** DEF-10：草稿列表条目（后端 `GET /factor-mining/drafts` 的视图字段）。
+ * ⚠️ 列表视图用 `id`、详情视图用 `draft_id`（后端两接口字段名不一致），
+ * 前端统一经 `draftKey()` 取键，不得直接读 `draft_id`。 */
+interface DraftSummary {
+  draft_id?: string;
+  id?: string;
+  name?: string | null;
+  current_step?: number;
+  candidate_pool_snapshot_id?: string | null;
+  steps?: Record<string, unknown>;
+  updated_at?: string | null;
+}
+
+const draftKey = (d: DraftSummary): string => String(d.draft_id ?? d.id ?? "");
+
 /** 批次状态 → 语义标签（未知状态按中性展示，不改写后端取值） */
 function runStatusChipClass(status: string | null | undefined): string {
   const v = String(status ?? "").toLowerCase();
@@ -77,6 +93,21 @@ function runErrorHint(code: string | null | undefined): string | undefined {
   if (!v) return undefined;
   if (v === "STALLED") return t("miningRunErrorStalled");
   return v;
+}
+
+/** DEF-3：解析后端错误信封 → 可读文案（HTTPException detail 为 7 要素 dict）。 */
+function extractRunOpErrorText(err: unknown): string {
+  const detail = (
+    err as { response?: { data?: { detail?: unknown } } } | undefined
+  )?.response?.data?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (detail && typeof detail === "object") {
+    const d = detail as { title_zh?: string; detail_zh?: string; error_code?: string };
+    const text = [d.title_zh, d.detail_zh].filter(Boolean).join("：");
+    if (text) return text;
+    if (d.error_code) return d.error_code;
+  }
+  return t("miningRunOpError");
 }
 
 /** 批次状态 → 中文展示（后端枚举原值不改写，仅显示层映射；未知状态回落到原值） */
@@ -220,6 +251,9 @@ export default function MiningShell({
   const [submitting, setSubmitting] = useState(false);
   // P0-3：提交错误文案（null=无错）；缺快照/接口失败给出可关闭的明确提示
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // DEF-3：Step5 运行操作（中断/继续/停止/放弃）失败提示 —— 此前 409 被静默
+  // 吞掉（.catch(() => undefined)），页面零反馈，用户不知道为什么没生效
+  const [runOpError, setRunOpError] = useState<string | null>(null);
   // A5：#20 结果页数据 —— run 成功后拉取真实候选列表
   const [resultCandidates, setResultCandidates] = useState<MiningCandidate[] | null>(null);
   // P0-2：Step3 字段目录（挂载时调候选池 filter-fields 映射注入，真实可选字段）
@@ -240,6 +274,10 @@ export default function MiningShell({
   /** 草稿：已保存的 draft_id（二次保存走更新）+ 最近一次保存结果提示 */
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draftNote, setDraftNote] = useState<{ ok: boolean; text: string } | null>(null);
+  // DEF-10：草稿列表（载入/删除入口）—— 草稿此前只写不读
+  const [drafts, setDrafts] = useState<DraftSummary[]>([]);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [draftsLoading, setDraftsLoading] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /** 「已恢复最近任务」提示条（选项3）：仅 localStorage 自动恢复时展示，可关闭；点「新建任务」回 Step1 并停轮询 */
   const [restoredNotice, setRestoredNotice] = useState(false);
@@ -250,6 +288,29 @@ export default function MiningShell({
   const patchConfig = useCallback((patch: Partial<WizardConfig>) => {
     setWizardConfig((c) => ({ ...c, ...patch }));
   }, []);
+
+  /** DEF-10：Step2 回填源——仅在 wizardConfig 相关值变化时产生新引用，
+   * 避免每 render 新建对象触发子组件同步 effect。 */
+  const step2Initial = useMemo(() => {
+    const r: {
+      start_date?: string; end_date?: string; target_horizon?: number;
+      rebalance_frequency?: WizardConfig["rebalance_frequency"];
+      ratios?: { train: number; val: number; test: number };
+    } = {};
+    if (wizardConfig.start_date !== undefined) r.start_date = wizardConfig.start_date;
+    if (wizardConfig.end_date !== undefined) r.end_date = wizardConfig.end_date;
+    if (wizardConfig.rebalance_frequency !== undefined) r.rebalance_frequency = wizardConfig.rebalance_frequency;
+    if (wizardConfig.target_horizon !== undefined) r.target_horizon = wizardConfig.target_horizon;
+    if (wizardConfig.train_ratio !== undefined && wizardConfig.validation_ratio !== undefined) {
+      r.ratios = {
+        train: Math.round(wizardConfig.train_ratio * 100),
+        val: Math.round(wizardConfig.validation_ratio * 100),
+        test: 100 - Math.round(wizardConfig.train_ratio * 100) - Math.round(wizardConfig.validation_ratio * 100),
+      };
+    }
+    return Object.keys(r).length ? r : null;
+  }, [wizardConfig.start_date, wizardConfig.end_date, wizardConfig.rebalance_frequency,
+    wizardConfig.target_horizon, wizardConfig.train_ratio, wizardConfig.validation_ratio]);
 
   const loadRuns = useCallback(async () => {
     setLoading(true);
@@ -521,6 +582,29 @@ export default function MiningShell({
       }));
   }, [resultCandidates]);
 
+  // DEF-9 §8.4：结果页 rows —— run 收官（finalize）后有 factor_version_id 的
+  // 候选映射为 MiningResultRow（等级来自 factor_versions.quality_grade 联表，
+  // 后端 list_candidates 已回填 grade 字段）。无带等级候选时结果页不渲染，
+  // 回落既有「候选因子（结果预览）」表。
+  const resultRows: MiningResultRow[] = useMemo(() => {
+    if (!Array.isArray(resultCandidates)) return [];
+    return resultCandidates
+      .filter((c) => c.factor_version_id != null)
+      .map((c) => ({
+        candidate_id: c.id,
+        formula: c.canonical_formula ?? c.formula_expr ?? c.formula ?? c.id,
+        grade: (c.grade ?? "C") as QualityGrade,
+        icir: c.generation_icir ?? c.icir ?? 0,
+        icir_adjusted: c.latest_ic ?? c.generation_icir ?? c.icir ?? 0,
+        coverage: c.generation_coverage ?? null,
+        turnover: c.generation_turnover ?? null,
+        complexity: c.generation_complexity ?? null,
+        generation_rank: c.generation_rank ?? null,
+        source: c.operation ?? null,
+        generation: c.generation ?? null,
+      }));
+  }, [resultCandidates]);
+
   const buildPayload = (cfg: WizardConfig): MiningRunCreate => {
     const cutoff = cfg.data_cutoff_at ? new Date(cfg.data_cutoff_at) : new Date();
     const cutoffIso = Number.isNaN(cutoff.getTime())
@@ -693,6 +777,72 @@ export default function MiningShell({
     }
   }, [wizardConfig, draftId, currentStep, poolId]);
 
+  /** DEF-10：拉取草稿列表（此前草稿**只写不读**——新会话无任何恢复入口）。 */
+  const loadDrafts = useCallback(async () => {
+    setDraftsLoading(true);
+    setDraftsOpen(true);
+    try {
+      const res = await factorMiningApi.listDrafts({ limit: 20 });
+      setDrafts(Array.isArray(res) ? res as DraftSummary[] : []);
+    } catch {
+      setDrafts([]);
+      setDraftNote({ ok: false, text: t("miningDraftLoadFailed") });
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, []);
+
+  /** DEF-10：把草稿的 step1~step4 回填到向导（跨会话续配）。 */
+  const handleRestoreDraft = useCallback((draft: DraftSummary) => {
+    const steps = (draft.steps ?? {}) as Record<string, Record<string, unknown>>;
+    const s1 = steps.step1 ?? {};
+    const s2 = steps.step2 ?? {};
+    const s3 = steps.step3 ?? {};
+    const s4 = steps.step4 ?? {};
+    patchConfig({
+      candidate_pool_snapshot_id:
+        (s1.candidate_pool_snapshot_id as string | undefined)
+        ?? draft.candidate_pool_snapshot_id ?? undefined,
+      start_date: (s2.start_date as string | undefined) ?? undefined,
+      end_date: (s2.end_date as string | undefined) ?? undefined,
+      data_cutoff_at: (s2.data_cutoff_at as string | undefined) ?? undefined,
+      rebalance_frequency:
+        (s2.rebalance_frequency as WizardConfig["rebalance_frequency"]) ?? undefined,
+      target_horizon: (s2.target_horizon as number | undefined) ?? undefined,
+      train_ratio: (s2.train_ratio as number | undefined) ?? undefined,
+      validation_ratio: (s2.validation_ratio as number | undefined) ?? undefined,
+      selected_fields: (s3.selected_fields as string[] | undefined) ?? [],
+      evolution_params:
+        (s4.evolution_params as WizardConfig["evolution_params"]) ?? undefined,
+    });
+    if (s1.pool_id) setPoolId(String(s1.pool_id));
+    setDraftId(draftKey(draft));
+    // 跳到草稿记录的所在步（1-based → 0-based，钳到向导步长内）
+    const step = Math.min(
+      Math.max(0, Number(draft.current_step ?? 1) - 1),
+      MINING_STEPS.length - 1,
+    );
+    setCurrentStep(step);
+    setDraftsOpen(false);
+    setDraftNote({
+      ok: true,
+      text: t("miningDraftRestored").replace(
+        "{id}", draftKey(draft).slice(0, 8) || "-"),
+    });
+  }, [patchConfig]);
+
+  /** DEF-5：删除草稿（后端此前无删除端点 → 405，草稿只进不出）。 */
+  const handleDeleteDraft = useCallback(async (draftId_: string) => {
+    try {
+      await factorMiningApi.deleteDraft(draftId_);
+      setDrafts((prev) => prev.filter((d) => draftKey(d) !== draftId_));
+      if (draftId === draftId_) setDraftId(null);
+      setDraftNote({ ok: true, text: t("miningDraftDeleted") });
+    } catch {
+      setDraftNote({ ok: false, text: t("miningDraftDeleteFailed") });
+    }
+  }, [draftId]);
+
   const handleSubmit = async () => {
     const cfg = wizardConfig;
     if (!cfg.candidate_pool_snapshot_id) {
@@ -733,14 +883,21 @@ export default function MiningShell({
     }
   };
 
-  /** 第 5 步三操作（中断/继续/停止/放弃）接真实接口，操作后刷新一次 */
+  /** 第 5 步三操作（中断/继续/停止/放弃）接真实接口，操作后刷新一次。
+   *  DEF-3：失败（如 resume 撞 409 MINING_DOMAIN_BUSY）不再静默——
+   *  解析错误信封给出可读提示条，用户能明确知道「为什么没生效」。 */
   const runRemote = useCallback(
     (fn: (id: string) => Promise<unknown>) => {
       const id = runState?.run_id;
       if (!id) return;
       void fn(id)
-        .then(() => refreshRun(id))
-        .catch(() => undefined);
+        .then(() => {
+          setRunOpError(null);
+          return refreshRun(id);
+        })
+        .catch((err: unknown) => {
+          setRunOpError(extractRunOpErrorText(err));
+        });
     },
     [runState?.run_id, refreshRun],
   );
@@ -870,6 +1027,7 @@ export default function MiningShell({
             <div data-mining-step-panel="time-target">
               <MiningTimeTargetStep
                 budget={splitBudget}
+                initial={step2Initial}
                 dataCutoffAt={wizardConfig.data_cutoff_at}
                 mirroredFrom={mirrorRange.from}
                 mirroredTo={mirrorRange.to}
@@ -899,18 +1057,10 @@ export default function MiningShell({
           )}
           {currentStep === 3 && (
             <div data-mining-step-panel="evolution">
-              {draftNote && (
-                <p
-                  className={`mining-draft-note${draftNote.ok ? "" : " mining-draft-note--error"}`}
-                  data-mining-draft-note
-                  role="status"
-                >
-                  {draftNote.text}
-                </p>
-              )}
               <MiningEvoParamStep
                 onSubmit={() => void handleSubmit()}
                 onSaveDraft={() => void handleSaveDraft()}
+                initial={(wizardConfig.evolution_params as Record<string, unknown> | undefined) ?? null}
                 onConfig={(evo) => patchConfig({ evolution_params: { ...evo } })}
                 lockStatus={lockStatus}
                 etaSeconds={null}
@@ -948,6 +1098,23 @@ export default function MiningShell({
                 <p className="mining-run-stalled" data-mining-run-stalled role="status">
                   {t("miningRunStalled").replace("{s}", String(stallSeconds))}
                 </p>
+              )}
+              {runOpError && (
+                <div
+                  className="mining-run-op-error"
+                  data-run-op-error
+                  role="alert"
+                >
+                  <span>{runOpError}</span>
+                  <button
+                    type="button"
+                    className="mining-pool-btn"
+                    data-run-op-error-dismiss
+                    onClick={() => setRunOpError(null)}
+                  >
+                    {t("miningRunOpErrorDismiss")}
+                  </button>
+                </div>
               )}
               {activeProgress ? (
                 <FactorMiningRunTrack
@@ -995,7 +1162,14 @@ export default function MiningShell({
                       context={resultContext}
                     />
                   </div>
-                  {resultCandidates.length === 0 ? (
+                  {resultRows.length > 0 ? (
+                    /* DEF-9 §8.4：结果页（研究声明/等级列/帕累托散点）——
+                       finalize 收官后存在带等级候选时渲染完整结果页 */
+                    <FactorMiningResult
+                      rows={resultRows}
+                      context={resultContext}
+                    />
+                  ) : resultCandidates.length === 0 ? (
                     <p data-mining-result-empty>{t("miningResultEmpty")}</p>
                   ) : (
                     <table className="mining-result-table" data-mining-result-rows>
@@ -1041,6 +1215,15 @@ export default function MiningShell({
           >
             {t("miningWizardPrev")}
           </button>
+          {/* DEF-10：草稿此前只写不读 —— 这里给「读入」入口 */}
+          <button
+            type="button"
+            className="mining-pool-btn"
+            data-mining-draft-open
+            onClick={() => void loadDrafts()}
+          >
+            {t("miningDraftLoad")}
+          </button>
           <button
             type="button"
             data-mining-next
@@ -1050,6 +1233,77 @@ export default function MiningShell({
             {t("miningWizardNext")}
           </button>
         </div>
+
+        {/* DEF-10：草稿反馈条提为**全局可见**（此前只在 Step4 面板内，
+            载入草稿跳到其它步后就看不到任何反馈） */}
+        {draftNote && (
+          <p
+            className={`mining-draft-note${draftNote.ok ? "" : " mining-draft-note--error"}`}
+            data-mining-draft-note
+            role="status"
+          >
+            {draftNote.text}
+          </p>
+        )}
+
+        {/* DEF-10/DEF-5：草稿列表（载入 + 删除） */}
+        {draftsOpen && (
+          <div className="mining-draft-list" data-mining-draft-list>
+            <div className="mining-draft-list-head">
+              <span>{t("miningDraftListTitle")}</span>
+              <button
+                type="button"
+                className="mining-pool-btn"
+                data-mining-draft-close
+                onClick={() => setDraftsOpen(false)}
+              >
+                {t("miningRunOpErrorDismiss")}
+              </button>
+            </div>
+            {draftsLoading && (
+              <p className="mining-draft-list-note" data-mining-draft-loading role="status">
+                {t("miningDraftListLoading")}
+              </p>
+            )}
+            {!draftsLoading && drafts.length === 0 && (
+              <p className="mining-draft-list-note" data-mining-draft-empty>
+                {t("miningDraftListEmpty")}
+              </p>
+            )}
+            {!draftsLoading &&
+              drafts.map((d) => (
+                <div
+                  className="mining-draft-item"
+                  key={draftKey(d) || String(d.name ?? "")}
+                  data-mining-draft-item={draftKey(d)}
+                >
+                  <span className="mining-draft-item-title">
+                    {d.name || draftKey(d).slice(0, 8)}
+                  </span>
+                  <span className="mining-draft-item-note">
+                    {t("miningDraftItemStep").replace(
+                      "{step}", String(d.current_step ?? 1))}
+                  </span>
+                  <button
+                    type="button"
+                    className="mining-pool-btn"
+                    data-mining-draft-restore={draftKey(d)}
+                    onClick={() => handleRestoreDraft(d)}
+                  >
+                    {t("miningDraftRestore")}
+                  </button>
+                  <button
+                    type="button"
+                    className="mining-pool-btn danger"
+                    data-mining-draft-delete={draftKey(d)}
+                    onClick={() => void handleDeleteDraft(draftKey(d))}
+                  >
+                    {t("miningDraftDelete")}
+                  </button>
+                </div>
+              ))}
+          </div>
+        )}
 
         {(submitting || submitError) && (
           <div className="mining-submit-msg">

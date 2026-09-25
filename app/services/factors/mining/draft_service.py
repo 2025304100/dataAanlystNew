@@ -43,6 +43,9 @@ VALID_DRAFT_STATUSES: frozenset[str] = frozenset({
     DRAFT_STATUS_DRAFT, DRAFT_STATUS_WAITING_RECHECK, DRAFT_STATUS_INVALIDATED,
 })
 
+#: DEF-14：草稿名称长度上限（与候选池/模板 64 对齐）
+MAX_DRAFT_NAME_LEN = 64
+
 # ── 校验运行状态 ──
 RUN_QUEUED = "queued"
 RUN_RUNNING = "running"
@@ -165,6 +168,11 @@ def save_draft(db: Session, *, payload: Mapping[str, Any]) -> DraftView:
       需求 §3.5）；未出现的步骤原样保留。
     - `current_step` 越界 → 钳到 [1, 5]。
     - 状态变更走 `set_draft_status`（本函数不隐式改状态，除新建时置 draft）。
+
+    DEF-14（2026-09-25）入参校验：此前 steps 的值**任意类型**都能入库
+    （字符串/列表直接 JSON 序列化，读回来 step1="abc" 这类残缺结构会让前端
+    回填静默错乱）；名称超长无上限；引用不存在的快照 id 也照收（等 prepare
+    才报错，与保存动作相隔很远）。现在一律 422 拦在入口。
     """
     data = dict(payload or {})
     draft_id = data.get("draft_id") or data.get("id")
@@ -173,6 +181,29 @@ def save_draft(db: Session, *, payload: Mapping[str, Any]) -> DraftView:
     for key in CH.DRAFT_STEP_KEYS:
         if key in data and data[key] is not None:
             steps[key] = data[key]
+
+    # ── DEF-14：入参形状校验 ─────────────────────────────────────
+    name = data.get("name")
+    if name is not None:
+        if not str(name).strip():
+            raise ValueError("draft_name_required: 草稿名称不能为空字符串。")
+        if len(str(name).strip()) > MAX_DRAFT_NAME_LEN:
+            raise ValueError(
+                f"draft_name_too_long: 草稿名称最长 {MAX_DRAFT_NAME_LEN} 字符，"
+                f"本次 {len(str(name).strip())} 字符。")
+    for key, value in steps.items():
+        if not isinstance(value, Mapping):
+            raise ValueError(
+                f"draft_step_shape_invalid: {key} 必须是对象（收到 "
+                f"{type(value).__name__}），残缺结构会让恢复配置时静默错乱。")
+    snap_id = data.get("candidate_pool_snapshot_id")
+    if snap_id:
+        from app.models.mining_candidate_pool import TrainingCandidatePoolSnapshot
+
+        if db.get(TrainingCandidatePoolSnapshot, str(snap_id)) is None:
+            raise ValueError(
+                f"draft_snapshot_not_found: 引用的候选池快照 {snap_id} 不存在"
+                "（可能已被删除），请回到 Step1 重新生成挖掘物料。")
 
     row = db.get(FactorMiningDraft, draft_id) if draft_id else None
     if row is None:
@@ -233,6 +264,34 @@ def mark_waiting_data_recheck(db: Session, *, draft_id: str) -> DraftView:
     """
     return set_draft_status(db, draft_id=draft_id,
                             status=DRAFT_STATUS_WAITING_RECHECK)
+
+
+def delete_draft(db: Session, *, draft_id: str) -> dict[str, Any]:
+    """删除草稿（DEF-5：草稿生命周期闭环）。
+
+    此前后端**没有**删除端点（405），草稿只能存不能删。删除时一并把该草稿
+    的校验运行记录清掉（孤儿行会污染校验列表）。幂等：不存在返回
+    `deleted=False`，不抛错（前端重复点删除要能接受）。
+    """
+    row = db.get(FactorMiningDraft, str(draft_id))
+    if row is None:
+        return {"draft_id": str(draft_id), "deleted": False,
+                "reason": "draft_not_found"}
+    removed_runs = 0
+    try:
+        from app.models.factor_mining import FactorDataValidationRun
+
+        res = db.execute(
+            FactorDataValidationRun.__table__.delete()
+            .where(FactorDataValidationRun.draft_id == str(draft_id))
+        )
+        removed_runs = int(getattr(res, "rowcount", 0) or 0)
+    except Exception:  # noqa: BLE001 - 校验运行表缺失不阻断草稿删除
+        removed_runs = 0
+    db.delete(row)
+    db.commit()
+    return {"draft_id": str(draft_id), "deleted": True,
+            "deleted_validation_runs": removed_runs}
 
 
 def draft_config_hash(db: Session, *, draft_id: str) -> str:
@@ -434,6 +493,7 @@ __all__ = [
     "ValidationRunView",
     "get_draft",
     "list_drafts",
+    "delete_draft",
     "save_draft",
     "set_draft_status",
     "mark_waiting_data_recheck",

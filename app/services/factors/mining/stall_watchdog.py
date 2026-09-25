@@ -66,6 +66,40 @@ def find_stalled_runs(
     return stalled
 
 
+def _request_worker_stop(task_id: str | None) -> None:
+    """让停滞 run 的 worker 尽快自止（DEF-12）。
+
+    看门狗过去只改库+放锁，**不停 worker**——run 已 failed 后评估线程仍在
+    跑，内存持续攀升（实测 2.3GB→4.3GB）。这里对仍处非终态的任务写
+    `cancel_requested=1`；worker 的 `should_stop()`（含 5s 节流的取消检查，
+    见 task_runner）会在下一个检查点退出。任务已是终态时 cancel API 自身
+    幂等短路；任务记录不存在（如单测注入）则跳过。
+    """
+    if not task_id:
+        return
+    try:
+        from app.db.session import get_session_local
+        from app.models.async_task import AsyncTaskRecord
+        from app.services.async_tasks import cancel_async_task
+
+        db = get_session_local()()
+        try:
+            row = db.get(AsyncTaskRecord, task_id)
+        finally:
+            db.close()
+        if row is None:
+            logger.info(
+                "Stall watchdog: task %s not found; skip cancel request",
+                task_id)
+            return
+        cancel_async_task(task_id)
+        logger.warning(
+            "Stall watchdog: cancel requested for worker task %s", task_id)
+    except Exception:  # noqa: BLE001 - 请求停止失败不影响放锁主流程
+        logger.exception(
+            "Stall watchdog: failed to request stop for task %s", task_id)
+
+
 def reap_stalled_runs(
     db: Session, *, threshold_seconds: int = STALL_THRESHOLD_SECONDS
 ) -> list[str]:
@@ -74,13 +108,15 @@ def reap_stalled_runs(
     安全性要点：
     - 只处理 `status == 'running'`（终态幂等跳过，不重写历史）；
     - 只释放 `owner_run_id` 恰好等于该 run 的锁 —— 绝不误放他人/其他批次的锁；
-    - 释放走 `task_lock.release_lock`（同一事务语义，duckdb_write 有队列时拉起队首）。
+    - 释放走 `task_lock.release_lock`（同一事务语义，duckdb_write 有队列时拉起队首）；
+    - 放锁后对 worker 任务请求取消（DEF-12：不停 worker 的 reap = 僵尸评估线程）。
     """
     run_ids = find_stalled_runs(db, threshold_seconds=threshold_seconds)
     if not run_ids:
         return []
 
     reaped: list[str] = []
+    owner_task_ids: set[str] = set()
     for run_id in run_ids:
         row = db.get(FactorMiningRun, run_id)
         if row is None or row.status != "running":
@@ -99,12 +135,19 @@ def reap_stalled_runs(
             if lock is None or lock.owner_run_id != run_id:
                 continue
             owner = lock.owner_task_id
+            if owner:
+                owner_task_ids.add(str(owner))
             TL.release_lock(db, lock_key=lock_key, task_id=owner)
             logger.warning(
                 "Stall watchdog: released %s held by stalled run %s (task %s)",
                 lock_key, run_id, owner,
             )
         reaped.append(run_id)
+
+    # DEF-12：对仍存活的任务请求取消，让 worker 在下一个检查点自止
+    # （不 join/kill 线程——协作式退出，worker finally 会做幂等清理）。
+    for task_id in owner_task_ids:
+        _request_worker_stop(task_id)
     return reaped
 
 
@@ -141,6 +184,49 @@ def release_orphan_locks(db: Session) -> list[str]:
     return released
 
 
+def reap_on_boot(db: Session) -> list[str]:
+    """**进程启动时**清理上一次进程遗留的 running 批次（标 STALLED + 释放锁）。
+
+    为什么必须有这一条（实测现场 2026-09-23）：
+    进程重启后锁表仍留着上次 running 批次的锁（心跳已停止），而
+    - `release_orphan_locks` 只管**终态**批次，running 不碰；
+    - `reap_stalled_runs` 要等 `STALL_THRESHOLD_SECONDS`(600s) 才判停滞；
+    - `expire_stale_locks` 按心跳超时要等 1800s。
+    ⇒ **用户重启后端后 10~30 分钟内提交一律 409（「已有挖掘任务进行中」）**，
+      而界面上的那个 running 批次其实早已随进程消失。
+
+    安全性前提：本项目为**单进程部署**（`uvicorn` 单实例，见 `scripts/dev_services.py`），
+    因此进程启动时**不可能存在其它进程的活 worker**，遗留 running 必为死任务。
+    若将来改为多 worker/多实例部署，本函数需退化为「按心跳超时」的保守判定。
+
+    Returns:
+        被处理的 run_id 列表（幂等：重复调用第二次返回空）。
+    """
+    rows = db.execute(
+        select(FactorMiningRun).where(FactorMiningRun.status == "running")
+    ).scalars().all()
+    if not rows:
+        return []
+
+    reaped: list[str] = []
+    for row in rows:
+        row.status = "failed"
+        row.error_code = ERROR_CODE_STALLED
+        db.commit()
+        logger.warning(
+            "Boot cleanup: run %s marked failed (%s) — 进程重启，原 worker 已不存在",
+            row.id, ERROR_CODE_STALLED,
+        )
+        for lock_key in (TL.LOCK_MINING_DOMAIN, TL.LOCK_DUCKDB_WRITE):
+            lock = db.get(TaskLock, lock_key)
+            if lock is None or lock.owner_run_id != row.id:
+                continue
+            TL.release_lock(db, lock_key=lock_key, task_id=lock.owner_task_id)
+            logger.warning("Boot cleanup: released %s held by %s", lock_key, row.id)
+        reaped.append(row.id)
+    return reaped
+
+
 def watchdog_once(
     session_factory: Any = None, *, threshold_seconds: int = STALL_THRESHOLD_SECONDS
 ) -> list[str]:
@@ -174,5 +260,6 @@ __all__ = [
     "find_stalled_runs",
     "reap_stalled_runs",
     "release_orphan_locks",
+    "reap_on_boot",
     "watchdog_once",
 ]

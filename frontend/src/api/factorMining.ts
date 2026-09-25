@@ -101,6 +101,10 @@ export const factorMiningApi = {
   getDraft: (draftId: string): Promise<Record<string, unknown>> =>
     requestJson(`${BASE}/drafts/${encodeURIComponent(draftId)}`),
 
+  /** DEF-5：删除草稿（后端 2026-09-24 补齐；此前无端点 → 405）。 */
+  deleteDraft: (draftId: string): Promise<unknown> =>
+    requestJson(`${BASE}/drafts/${encodeURIComponent(draftId)}`, { method: "DELETE" }),
+
   /** 草稿 → 可提交状态（冻结因子集等前置）；失败时后端给明确错误码。 */
   prepareDraft: (draftId: string): Promise<unknown> =>
     requestJson(`${BASE}/drafts/${encodeURIComponent(draftId)}/prepare`, { method: "POST" }),
@@ -185,5 +189,24 @@ export const factorMiningApi = {
       method: "POST",
       headers: JSON_HEADERS,
       body: JSON.stringify({ actions, created_by: createdBy }),
+    }),
+
+  // ── 等级证据抽屉（DEF-15 接线：组件早已存在但生产页从未挂载）────────
+  /** 定级证据（8 维度 + 统计 + 血缘 + 历史）。返回形状由调用方 normalize。 */
+  getGradeEvidence: (candidateId: string): Promise<Record<string, unknown>> =>
+    requestJson(`${BASE}/candidates/${encodeURIComponent(candidateId)}/grade/evidence`),
+
+  /** 人工调整等级（原因必填 ≥10 字，后端双重校验）。 */
+  manualGrade: (candidateId: string, grade: string, reason: string): Promise<unknown> =>
+    requestJson(`${BASE}/candidates/${encodeURIComponent(candidateId)}/grade/manual`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ grade, reason }),
+    }),
+
+  /** 恢复自动评定（清除 grade_manual_adjusted，季度重评重新接管）。 */
+  restoreAutoGrade: (candidateId: string): Promise<unknown> =>
+    requestJson(`${BASE}/candidates/${encodeURIComponent(candidateId)}/grade/restore-auto`, {
+      method: "POST",
     }),
 };

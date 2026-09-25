@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
@@ -101,7 +102,104 @@ class MiningWorkerContext:
         heartbeat_mining(self.task_id)
 
     def should_stop(self) -> bool:
-        return is_worker_stop_requested(task_id=self.task_id)
+        """worker 应停止吗（DEF-12/DEF-3）：
+
+        ① 进程级优雅停机事件（既有语义）；
+        ② 任务被请求取消（`cancel_requested=1`，由 cancel API / 看门狗 reap 写入）。
+        ② 走 DB 但带 5s 节流缓存，逐个体调用不构成压力。
+        """
+        if is_worker_stop_requested(task_id=self.task_id):
+            return True
+        return _cancel_requested_cached(self.task_id)
+
+
+# ══════════════════════════════════════════════════════════
+# DEF-12：代内推进信号 + 取消请求感知
+# ══════════════════════════════════════════════════════════
+
+#: 代内评估 touch `run.updated_at` 的最小间隔（秒）。
+#: 30s 节流下每分钟至多 2 次轻量 UPDATE（控制平面连接），远低于看门狗 600s 阈值。
+TOUCH_RUN_MIN_INTERVAL = 30.0
+
+#: `cancel_requested` DB 复查间隔（秒）——逐个体 should_stop 调用的节流。
+CANCEL_CHECK_INTERVAL = 5.0
+
+_touch_state: dict[str, float] = {}
+_touch_guard = threading.Lock()
+_cancel_state: dict[str, tuple[float, bool]] = {}
+_cancel_guard = threading.Lock()
+
+
+def touch_run_progress(
+    run_id: str, *, min_interval: float = TOUCH_RUN_MIN_INTERVAL
+) -> bool:
+    """**代内评估推进信号**：轻量刷新 `run.updated_at`（节流）。
+
+    为什么需要（DEF-12，2026-09-24 实测）：停滞看门狗以 `run.updated_at`
+    为唯一推进信号，但代内评估只在每代末 `sync_run_progress` 时刷新它 ——
+    大种群（前端默认 100×20）单代评估实测 >10 分钟，正常任务必被误杀
+    STALLED 且锁被放、worker 却还在跑。本函数由个体评估回调周期性调用，
+    让看门狗看到「仍在推进」；单个个体内部卡死（真停滞）时无 touch、
+    仍会被正常回收，两不耽误。
+
+    Returns:
+        是否真的执行了 touch（节流窗口内返回 False）。
+    """
+    now = time.monotonic()
+    with _touch_guard:
+        last = _touch_state.get(run_id, 0.0)
+        if now - last < float(min_interval):
+            return False
+        _touch_state[run_id] = now
+    try:
+        from sqlalchemy import update as _sa_update
+
+        from app.db.session import get_control_session_local
+        from app.models.factor_mining import FactorMiningRun
+
+        db = get_control_session_local()()
+        try:
+            db.execute(
+                _sa_update(FactorMiningRun)
+                .where(FactorMiningRun.id == run_id)
+                .values(updated_at=_now())
+            )
+            db.commit()
+        finally:
+            db.close()
+        return True
+    except Exception:  # noqa: BLE001 - 推进信号失败不影响挖掘主流程
+        logger.debug("touch_run_progress failed for run %s", run_id,
+                     exc_info=True)
+        return False
+
+
+def _cancel_requested_cached(task_id: str) -> bool:
+    """带节流缓存地读 `async_task_records.cancel_requested`。
+
+    任务记录不存在 ⇒ 返回 False（保守：测试注入/直跑场景不误杀）。
+    """
+    now = time.monotonic()
+    with _cancel_guard:
+        hit = _cancel_state.get(task_id)
+        if hit is not None and now - hit[0] < CANCEL_CHECK_INTERVAL:
+            return hit[1]
+    requested = False
+    try:
+        from app.db.session import get_control_session_local
+
+        db = get_control_session_local()()
+        try:
+            row = db.get(AsyncTaskRecord, task_id)
+            requested = False if row is None else bool(
+                getattr(row, "cancel_requested", 0) or 0)
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 - 读不到取消标志按 False 处理，别误杀
+        requested = False
+    with _cancel_guard:
+        _cancel_state[task_id] = (now, requested)
+    return requested
 
 
 # ══════════════════════════════════════════════════════════
@@ -183,6 +281,22 @@ def _reject_if_mining_busy() -> None:
 # ══════════════════════════════════════════════════════════
 
 
+def _set_task_fresh(task_id: str, **updates) -> None:
+    """用新会话 + 断连重试写任务终态（DEF-9 稳定性，2026-09-25 实测）。
+
+    worker 的长寿命 session 跑完数十分钟进化后常被 MySQL wait_timeout 掉线
+    （2006/2013），直接拿它写 done/cancelled 会 crash → 任务结果丢失、
+    前端永远看不到 finalize 信息。run_in_retry_session 自带重建重试。
+    """
+    from app.db.manager import DatabaseManager
+
+    def _runner(session, do_commit):
+        _set_task(session, task_id, **updates)
+        do_commit()
+
+    DatabaseManager.get().run_in_retry_session(_runner)
+
+
 def _make_worker(stage_runner: StageRunner | None) -> Callable[[str], None]:
     def _worker(task_id: str) -> None:
         run_mining_worker(task_id, stage_runner=stage_runner)
@@ -233,20 +347,20 @@ def run_mining_worker(
         )
 
         if ctx.should_stop():
-            _set_task(db, task_id, status="cancelled", stage="cancelled",
-                      message="cancelled before stages", finished_at=_now())
+            _set_task_fresh(task_id, status="cancelled", stage="cancelled",
+                            message="cancelled before stages", finished_at=_now())
             return
 
         runner = stage_runner or _default_stage_runner
         result = runner(ctx) or {}
 
         if ctx.should_stop():
-            _set_task(db, task_id, status="cancelled", stage="cancelled",
-                      message="cancelled after stages", finished_at=_now())
+            _set_task_fresh(task_id, status="cancelled", stage="cancelled",
+                            message="cancelled after stages", finished_at=_now())
             return
 
-        _set_task(
-            db, task_id,
+        _set_task_fresh(
+            task_id,
             status="done", stage="done",
             percent=100,
             message=str(result.get("message_zh") or "mining finished"),
@@ -615,6 +729,9 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
         per_gen_probe: list[Any] = []
 
         def _evaluate(item: Mapping[str, Any]) -> dict[str, Any]:
+            # DEF-12：代内推进信号——大种群单代评估可超 10 分钟，
+            # 不刷新 updated_at 会被停滞看门狗误杀（STALLED）。
+            touch_run_progress(run.id)
             cache = cache_reg.for_scope(SC.SCOPE_PRESCREEN, data_snapshot_version=snapshot_ver)
             verify = 1 if (cache_access["seq"] % 5 == 0) else 0
             cache_access["seq"] += 1
@@ -689,12 +806,44 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
                     for p in population)),
             on_generation=_on_generation,
             runtime_dedup=_runtime_dedup,
+            # DEF-12/DEF-3：逐个体协作式停止——pause/看门狗请求后 worker 自止
+            should_stop=ctx.should_stop,
         )
+
+        # 停止请求后不再继续 finalize（run 可能已被看门狗置 failed）；
+        # worker 外层会把 task 置 cancelled 并释放锁。
+        if ctx.should_stop():
+            return {
+                "message_zh": "已按停止请求提前结束（未执行最终验证）",
+                "generations": outcome.generations_run,
+                "stopped_reason": outcome.stopped_reason,
+                "best_icir": outcome.best_icir,
+                "candidates": len(population),
+                "total_trials": outcome.total_trials,
+                "finalize_top_k": max(0, int(payload.get("finalize_top_k", 50) or 0)),
+                "final": None,
+            }
 
         # ⑤ 最终验证（test-once；finalize_top_k=0 时跳过，仅收尾状态）
         final_top_k = max(0, int(payload.get("finalize_top_k", 50) or 0))
         final: dict[str, Any] | None = None
         if final_top_k > 0:
+            # DEF-9 稳定性（2026-09-25 V4a 实测）：长进化后 worker 的 MySQL
+            # 会话常被 wait_timeout 掉线（2006/2013），finalize 若拿着死连接
+            # 会把整批候选 evaluate_full 吞成 failed → 结果页永不可达。
+            # 收官前自检，断连则重建会话（run 行由 finalize 按 id 重读）。
+            try:
+                db.execute(_sa_text("SELECT 1")).close()
+            except Exception:  # noqa: BLE001 - 任何断连/坏事务都重建
+                try:
+                    db.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    db.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                db = get_session_local()()
             final = SVC.finalize_run(db, ctx=mc, run_id=run.id, top_k=final_top_k)
         else:
             if run.status not in ("succeeded",):
@@ -823,16 +972,20 @@ def _dumps(payload: Any) -> str:
 
 
 from sqlalchemy import select  # noqa: E402  （resume_pending_mining_tasks 使用）
+from sqlalchemy import text as _sa_text  # noqa: E402  （finalize 前连接自检）
 
 
 __all__ = [
     "TASK_TYPE",
     "TASK_HEARTBEAT_SECONDS",
+    "TOUCH_RUN_MIN_INTERVAL",
+    "CANCEL_CHECK_INTERVAL",
     "MiningSubmitResult",
     "MiningWorkerContext",
     "skeleton_stage_runner",
     "submit_mining_run",
     "run_mining_worker",
     "heartbeat_mining",
+    "touch_run_progress",
     "resume_pending_mining_tasks",
 ]

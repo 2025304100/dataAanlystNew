@@ -59,6 +59,11 @@ export default function MiningPoolStep({
   const [pendingEntry, setPendingEntry] = useState<"filter" | "import" | null>(null);
   const [filterConfig, setFilterConfig] = useState<Record<string, unknown>>({});
   const [preview, setPreview] = useState<PoolPreview | null>(null);
+  // DEF-4：预览三态 —— 此前 15~90s 冷启动期间统计区完全空白（无 loading/
+  // 无"约 X 秒"提示），失败也静默 setPreview(null)；且未就绪期「生成挖掘
+  // 物料」按钮可点击（VIS-2：空条件静默创建全市场同名池）。
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [locked, setLocked] = useState(false);
   const [snapshot, setSnapshot] = useState<PoolSnapshot | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -78,18 +83,56 @@ export default function MiningPoolStep({
   // 并叠加 hits<50 兜底（系统硬下限，前端不得降低）。
   const blocked = Boolean(preview && (!preview.can_generate || preview.hits < MIN_POOL_SIZE));
   const firstBlocker = preview?.blocking_issues?.[0];
+  // DEF-4 / VIS-2：「生成挖掘物料」必须等预览就绪（有已定型的预览结果）才可用，
+  // 杜绝冷启动/计算中点按钮静默创建全市场同名池。锁定态（查看看板）不受限。
+  const generateNotReady =
+    entry === "filter" && !locked &&
+    (previewLoading || previewFailed || preview == null);
 
   // ── 防抖预览（仅展示，不落库）─────────────────────────────────────
+  // DEF-4：loading 在**发起时刻**点亮；返回后保留上一次结果并标「待更新」，
+  // 失败显式展示「加载失败·重试」而不是把统计区清空。
   const requestPreview = useCallback((config: Record<string, unknown>) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      void previewPool(config).then(setPreview).catch(() => setPreview(null));
+      setPreviewLoading(true);
+      void previewPool(config)
+        .then((result) => {
+          setPreview(result);
+          setPreviewFailed(false);
+        })
+        .catch(() => setPreviewFailed(true))
+        .finally(() => setPreviewLoading(false));
     }, DEBOUNCE_MS);
   }, []);
+
+  const retryPreview = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setPreviewLoading(true);
+    void previewPool(filterConfig)
+      .then((result) => {
+        setPreview(result);
+        setPreviewFailed(false);
+      })
+      .catch(() => setPreviewFailed(true))
+      .finally(() => setPreviewLoading(false));
+  }, [filterConfig]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
+
+  // DEF-4/VIS-2：进入筛选入口即自动触发**首次预览**（空条件 = 全市场命中
+  // 基线）。此前预览只在条件变化后才有，「生成」按钮在首改条件前永远
+  // 可点击 → 空条件静默创建全市场同名池；改成门控后又会让按钮永远置灰。
+  // 自动首查让「生成可用性」与预览结果真正联动，且 300ms 后就有反馈。
+  const bootPreviewRef = useRef(false);
+  useEffect(() => {
+    if (bootPreviewRef.current) return;
+    bootPreviewRef.current = true;
+    requestPreview(filterConfig);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载时首查一次
+  }, [requestPreview]);
 
   // ── 成员列表（池已存在时拉取；锁定态仍可查看，只是不能改）─────────
   useEffect(() => {
@@ -115,6 +158,9 @@ export default function MiningPoolStep({
     setPendingEntry(null);
     setFilterConfig({});
     setPreview(null);
+    // DEF-4：切回筛选入口后自动重查（配置已清空 = 全市场基线），
+    // 保证「生成」按钮的可用性始终有预览结果背书。
+    if (pendingEntry === "filter") requestPreview({});
   };
 
   // ── 生成挖掘物料 / 查看看板 ───────────────────────────────────────
@@ -305,9 +351,47 @@ export default function MiningPoolStep({
         />
       )}
 
+      {/* DEF-4：预览三态反馈（加载中 / 待更新 / 失败·重试）───────────── */}
+      {entry === "filter" && previewLoading && (
+        <div className="mining-pool-preview-state" data-pool-preview-loading role="status">
+          {t("miningPoolPreviewComputing")}
+        </div>
+      )}
+      {entry === "filter" && previewFailed && (
+        <div
+          className="mining-pool-preview-state mining-pool-preview-state--error"
+          data-pool-preview-error
+          role="alert"
+        >
+          <span>{t("miningPoolPreviewFailed")}</span>
+          <button
+            type="button"
+            className="mining-pool-btn"
+            data-pool-preview-retry
+            onClick={retryPreview}
+          >
+            {t("miningPoolPreviewRetry")}
+          </button>
+        </div>
+      )}
+      {entry === "filter" && !previewLoading && !previewFailed && preview == null && (
+        <div className="mining-pool-preview-state" data-pool-preview-hint role="status">
+          {t("miningPoolPreviewHintIdle")}
+        </div>
+      )}
+
       {/* 底部实时统计（设计 §3.2：命中/排除 + 按分类统计 + 硬下限提示） */}
       {preview && (
-        <div className="mining-pool-preview" data-pool-preview-stats>
+        <div
+          className={`mining-pool-preview${previewLoading ? " mining-pool-preview--stale" : ""}`}
+          data-pool-preview-stats
+          data-pool-preview-stale={previewLoading ? "true" : undefined}
+        >
+          {previewLoading && (
+            <div className="mining-pool-preview-stale-note" data-pool-preview-stale-note role="status">
+              {t("miningPoolPreviewStale")}
+            </div>
+          )}
           <div className="mining-pool-preview-item">
             <span className="mining-pool-preview-label">
               {t("miningPoolPreviewTotal")}
@@ -487,7 +571,14 @@ export default function MiningPoolStep({
           type="button"
           className="mining-pool-btn primary"
           data-pool-generate
-          disabled={blocked || generating}
+          disabled={blocked || generating || generateNotReady}
+          title={
+            generateNotReady
+              ? t("miningPoolGenerateNotReady")
+              : locked
+                ? t("miningPoolLockedHint")
+                : undefined
+          }
           onClick={onGenerateClick}
         >
           {generating

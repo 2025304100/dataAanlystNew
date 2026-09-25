@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../../../../i18n";
 import { Badge, Button, Checkbox, Collapse, InputNumber, Select, Tabs, Tag, Tooltip } from "antd";
 import { fetchFilterFields, fetchFilterPresets } from "./poolApi";
@@ -78,24 +78,48 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
   const [appliedPreset, setAppliedPreset] = useState<Record<string, string>>({});
   const [customizedPreset, setCustomizedPreset] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
+  // DEF-4：预设加载三态（loading/ready/failed）—— 此前 36~60s 冷启动期间
+  // 一直渲染「暂无可用预设」空态，用户以为功能坏了；失败也混在空态里。
+  const [presetsState, setPresetsState] = useState<"loading" | "ready" | "failed">("loading");
+  const [presetsErrorZh, setPresetsErrorZh] = useState<string | null>(null);
+  const [fieldsState, setFieldsState] = useState<"loading" | "ready" | "failed">("loading");
+
+  const loadPresetsAndFields = useCallback(() => {
+    setPresetsState("loading");
+    setFieldsState("loading");
+    setPresetsErrorZh(null);
     let alive = true;
     void Promise.allSettled([fetchFilterPresets(), fetchFilterFields()]).then(([p, f]) => {
       if (!alive) return;
       if (p.status === "fulfilled") {
-        setPresets(Array.isArray(p.value.presets) ? p.value.presets : []);
-        setGroups(Array.isArray(p.value.groups) && p.value.groups.length > 0 ? p.value.groups : []);
-        if (p.value.groups?.[0]?.group) setActiveGroup(p.value.groups[0].group);
+        const value = p.value as { available?: boolean; reason_zh?: string };
+        if (value.available === false) {
+          // DEF-8：后端数仓忙降级 → 按「加载失败·重试」渲染（非空态）
+          setPresetsState("failed");
+          setPresetsErrorZh(value.reason_zh ?? t("miningPoolPresetsFailed"));
+        } else {
+          setPresetsState("ready");
+          setPresets(Array.isArray(p.value.presets) ? p.value.presets : []);
+          setGroups(Array.isArray(p.value.groups) && p.value.groups.length > 0 ? p.value.groups : []);
+          if (p.value.groups?.[0]?.group) setActiveGroup(p.value.groups[0].group);
+        }
+      } else {
+        setPresetsState("failed");
       }
       if (f.status === "fulfilled") {
+        setFieldsState("ready");
         setFields(Array.isArray(f.value.fields) ? f.value.fields : []);
         setCategories(Array.isArray(f.value.categories) ? f.value.categories : []);
+      } else {
+        setFieldsState("failed");
       }
     });
     return () => {
       alive = false;
     };
   }, []);
+
+  useEffect(() => loadPresetsAndFields(), [loadPresetsAndFields]);
 
   // ── 写入 filter_config ──────────────────────────────────────────
   const patch = (next: Record<string, unknown>) => onChange({ ...value, ...next });
@@ -238,7 +262,13 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
   const booleanControl = (fieldName: string, label: string) => {
     const on = Boolean(value[fieldName]);
     return (
-      <div className="mining-filter-row" data-filter-bool={fieldName}>
+      // DEF-7：本控件在 `catFields.map()` 里返回 —— 此前**没有 key**，
+      // 分类含布尔条件（exclude_st / 排除退市）时 React 报 key 警告。
+      <div
+        className="mining-filter-row"
+        data-filter-bool={fieldName}
+        key={fieldName}
+      >
         <Checkbox
           checked={on}
           disabled={locked}
@@ -300,18 +330,25 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
         <div data-filter-category={cat.category}>
           {isMarketStatus && multiControl("markets", t("miningPoolMarkets"), MARKET_OPTIONS)}
           {isMarketStatus && multiControl("boards", t("miningPoolBoards"), BOARD_OPTIONS)}
-          {catFields.map((f) => {
+          {catFields.map((f, idx) => {
+            // DEF-7：key 带下标后缀 —— 后端字段目录若把同一字段归到多个分类
+            // （或返回重复项），纯 field 做 key 会撞车 → React 重复 key 警告。
+            const rowKey = `${f.field}-${idx}`;
             // board/market 已由上方 markets/boards 多选控件承载，不再重复渲染
             if (MULTI_HOSTED_FIELDS.has(f.field)) return null;
             // 布尔开关按后端分类归属渲染（exclude_st→风险标记、exclude_delisting→市场与交易状态）
             if (BOOLEAN_FIELDS.has(f.field)) return booleanControl(f.field, f.label_zh);
             if (RANGE_SLOT[f.field]) {
               return (
-                <Fragment key={f.field}>{rangeControl(f)}</Fragment>
+                <Fragment key={rowKey}>{rangeControl(f)}</Fragment>
               );
             }
             return (
-              <div className="mining-filter-row is-disabled" data-filter-blocked={f.field} key={f.field}>
+              <div
+                className="mining-filter-row is-disabled"
+                data-filter-blocked={f.field}
+                key={rowKey}
+              >
                 <span className="mining-filter-row-label">{f.label_zh}</span>
                 <span
                   className="mining-filter-blocked-hint"
@@ -418,7 +455,25 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
                       </Tooltip>
                     );
                   })}
-                  {activePresets.length === 0 && (
+                  {presetsState === "loading" && (
+                    <div className="mining-filter-state" data-filter-presets-loading role="status">
+                      {t("miningPoolPresetsLoading")}
+                    </div>
+                  )}
+                  {presetsState === "failed" && (
+                    <div className="mining-filter-state mining-filter-state--error" data-filter-presets-error role="alert">
+                      <span>{presetsErrorZh ?? t("miningPoolPresetsFailed")}</span>
+                      <button
+                        type="button"
+                        className="mining-pool-btn"
+                        data-filter-presets-retry
+                        onClick={loadPresetsAndFields}
+                      >
+                        {t("miningPoolPresetsRetry")}
+                      </button>
+                    </div>
+                  )}
+                  {presetsState === "ready" && activePresets.length === 0 && (
                     <p className="mining-filter-empty" data-filter-no-preset>
                       {t("miningPoolPresetEmpty")}
                     </p>
@@ -431,6 +486,24 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
 
         {/* 右栏：分类条件 Accordion */}
         <div className="mining-pool-filter-right" data-filter-right>
+          {fieldsState === "loading" && (
+            <div className="mining-filter-state" data-filter-fields-loading role="status">
+              {t("miningPoolFieldsLoading")}
+            </div>
+          )}
+          {fieldsState === "failed" && (
+            <div className="mining-filter-state mining-filter-state--error" data-filter-fields-error role="alert">
+              <span>{t("miningPoolFieldsFailed")}</span>
+              <button
+                type="button"
+                className="mining-pool-btn"
+                data-filter-fields-retry
+                onClick={loadPresetsAndFields}
+              >
+                {t("miningPoolPresetsRetry")}
+              </button>
+            </div>
+          )}
           <Collapse
             size="small"
             ghost

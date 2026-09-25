@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1440">
+    <title>资源确认弹窗</title>
+    <style>
+:root {
+  --fm-brand-50: #f0fdfa;
+  --fm-brand-100: #ccfbf1;
+  --fm-brand-200: #99f6e4;
+  --fm-brand-300: #5eead4;
+  --fm-brand-400: #2dd4bf;
+  --fm-brand-500: #14b8a6;
+  --fm-brand-600: #0d9488;
+  --fm-brand-700: #0f766e;
+  --fm-brand-800: #115e59;
+  --fm-brand-900: #134e4a;
+  --fm-neutral-0: #ffffff;
+  --fm-neutral-50: #fafaf9;
+  --fm-neutral-100: #f5f5f4;
+  --fm-neutral-200: #e7e5e4;
+  --fm-neutral-300: #d6d3d1;
+  --fm-neutral-400: #a8a29e;
+  --fm-neutral-500: #78716c;
+  --fm-neutral-600: #57534e;
+  --fm-neutral-700: #44403c;
+  --fm-neutral-800: #292524;
+  --fm-neutral-900: #1c1917;
+  --fm-success: #15803d;
+  --fm-success-soft: #dcfce7;
+  --fm-info: #1d6fd8;
+  --fm-info-soft: #dbeafe;
+  --fm-warn: #b45309;
+  --fm-warn-soft: #ffedd5;
+  --fm-danger: #b42318;
+  --fm-danger-soft: #fee2e2;
+  --fm-grade-s: #0b6b63;
+  --fm-grade-a: #1d6fd8;
+  --fm-grade-b: #b45309;
+  --fm-grade-c: #c2410c;
+  --fm-grade-d: #b42318;
+  --fm-background: var(--fm-neutral-50);
+  --fm-foreground: var(--fm-neutral-900);
+  --fm-card: var(--fm-neutral-0);
+  --fm-card-foreground: var(--fm-neutral-800);
+  --fm-primary: var(--fm-brand-700);
+  --fm-primary-foreground: var(--fm-neutral-0);
+  --fm-muted: var(--fm-neutral-100);
+  --fm-muted-foreground: var(--fm-neutral-500);
+  --fm-border: var(--fm-neutral-200);
+  --fm-radius-sm: 6px;
+  --fm-radius-md: 10px;
+  --fm-radius-lg: 14px;
+  --fm-radius-xl: 18px;
+  --fm-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --fm-text-xs: 11px;
+  --fm-text-sm: 12px;
+  --fm-text-base: 13px;
+  --fm-text-lg: 14px;
+  --fm-text-xl: 16px;
+  --fm-text-2xl: 18px;
+  --fm-text-3xl: 22px;
+  --fm-sidebar-width: 232px;
+  --fm-header-height: 56px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--fm-font-sans);
+  font-size: var(--fm-text-base);
+  line-height: 1.5;
+  color: var(--fm-foreground);
+  background: var(--fm-background);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ===== App Layout (blurred background) ===== */
+.app {
+  display: flex;
+  min-height: 100vh;
+  filter: blur(4px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ===== Sidebar ===== */
+.sidebar {
+  width: var(--fm-sidebar-width);
+  background: var(--fm-neutral-800);
+  color: var(--fm-neutral-0);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+}
+
+.sidebar-logo {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  gap: 10px;
+}
+
+.sidebar-logo-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--fm-brand-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.sidebar-logo-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fm-neutral-0);
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 10px;
+}
+
+.sidebar-nav-section {
+  margin-bottom: 16px;
+}
+
+.sidebar-nav-label {
+  font-size: 11px;
+  color: var(--fm-neutral-500);
+  padding: 6px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--fm-neutral-300);
+  margin-bottom: 2px;
+}
+
+.sidebar-nav-item.active {
+  background: var(--fm-brand-700);
+  color: var(--fm-neutral-0);
+  font-weight: 500;
+}
+
+.sidebar-nav-sub {
+  margin-left: 26px;
+  margin-top: 2px;
+}
+
+.sidebar-nav-sub-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.sidebar-nav-sub-item.active {
+  color: var(--fm-brand-300);
+  font-weight: 500;
+  background: rgba(20,184,166,0.1);
+}
+
+.sidebar-nav-sub-item .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--fm-brand-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar-user-info { flex: 1; min-width: 0; }
+.sidebar-user-name {
+  font-size: 12px; font-weight: 500; color: var(--fm-neutral-100);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sidebar-user-role { font-size: 11px; color: var(--fm-neutral-500); }
+
+/* ===== Main ===== */
+.main {
+  flex: 1;
+  margin-left: var(--fm-sidebar-width);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  height: 56px;
+  background: var(--fm-card);
+  border-bottom: 1px solid var(--fm-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.breadcrumb-item { color: var(--fm-neutral-600); }
+.breadcrumb-item.active { color: var(--fm-foreground); font-weight: 500; }
+.breadcrumb-sep { color: var(--fm-neutral-400); font-size: 12px; }
+
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.topbar-icon-btn {
+  width: 32px; height: 32px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fm-neutral-600); position: relative;
+}
+.topbar-icon-btn .badge {
+  position: absolute; top: 4px; right: 4px; width: 8px; height: 8px;
+  background: var(--fm-danger); border-radius: 50%; border: 2px solid var(--fm-card);
+}
+.topbar-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--fm-brand-600); display: flex;
+  align-items: center; justify-content: center;
+  color: white; font-size: 12px; font-weight: 600;
+}
+
+.subtabs {
+  height: 44px; background: var(--fm-card);
+  border-bottom: 1px solid var(--fm-border);
+  display: flex; align-items: center; padding: 0 24px; gap: 4px;
+}
+.subtab {
+  padding: 0 16px; height: 44px; display: flex; align-items: center;
+  gap: 6px; font-size: 13px; color: var(--fm-neutral-500);
+  border-bottom: 2px solid transparent;
+}
+.subtab.active {
+  color: var(--fm-primary); font-weight: 500;
+  border-bottom-color: var(--fm-primary);
+}
+
+/* Stepper placeholder */
+.stepper-wrapper {
+  background: var(--fm-card);
+  border-bottom: 1px solid var(--fm-border);
+  padding: 20px 24px;
+}
+.stepper {
+  display: flex; align-items: flex-start;
+  max-width: 900px; margin: 0 auto;
+}
+.step { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
+.step-circle {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; z-index: 1;
+  background: var(--fm-neutral-100); color: var(--fm-neutral-500);
+  border: 2px solid var(--fm-neutral-200);
+}
+.step.done .step-circle { background: var(--fm-brand-600); color: white; border-color: var(--fm-brand-600); }
+.step.current .step-circle {
+  background: var(--fm-info); color: white; border-color: var(--fm-info);
+  box-shadow: 0 0 0 4px rgba(29,111,216,0.15);
+}
+.step-label { margin-top: 8px; font-size: 12px; color: var(--fm-neutral-500); text-align: center; }
+.step.done .step-label, .step.current .step-label { color: var(--fm-neutral-700); font-weight: 500; }
+.step.current .step-label { color: var(--fm-info); }
+.step-line {
+  position: absolute; top: 14px; left: 50%; width: 100%; height: 2px;
+  background: var(--fm-neutral-200); z-index: 0;
+}
+.step:last-child .step-line { display: none; }
+.step.done .step-line { background: var(--fm-brand-600); }
+
+.content { flex: 1; padding: 24px; }
+.content-inner { max-width: 900px; margin: 0 auto; }
+.card {
+  background: var(--fm-card);
+  border: 1px solid var(--fm-border);
+  border-radius: var(--fm-radius-md);
+  margin-bottom: 20px;
+}
+.card-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--fm-border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.card-title { font-size: var(--fm-text-lg); font-weight: 600; color: var(--fm-foreground); }
+.card-body { padding: 20px; }
+
+/* ===== Modal Overlay ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(28, 25, 23, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(2px);
+}
+
+/* ===== Modal Dialog ===== */
+.modal {
+  width: 560px;
+  background: var(--fm-card);
+  border-radius: var(--fm-radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  animation: modalIn 0.25s ease-out;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-header {
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid var(--fm-border);
+  position: relative;
+}
+
+.modal-title {
+  font-size: var(--fm-text-xl);
+  font-weight: 600;
+  color: var(--fm-foreground);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-title-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--fm-brand-50);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fm-brand-700);
+}
+
+.modal-subtitle {
+  font-size: 12px;
+  color: var(--fm-neutral-500);
+  margin-left: 42px;
+}
+
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fm-neutral-500);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.modal-close:hover {
+  background: var(--fm-neutral-100);
+  color: var(--fm-neutral-700);
+}
+
+.modal-body {
+  padding: 20px 24px;
+}
+
+/* ===== Resource List ===== */
+.resource-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.resource-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--fm-neutral-50);
+  border-radius: 8px;
+  border: 1px solid var(--fm-border);
+}
+
+.resource-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.resource-icon.time { background: var(--fm-brand-50); }
+.resource-icon.memory { background: var(--fm-info-soft); }
+.resource-icon.lock { background: var(--fm-warn-soft); }
+.resource-icon.db { background: var(--fm-brand-100); }
+.resource-icon.cpu { background: var(--fm-success-soft); }
+
+.resource-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.resource-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fm-neutral-800);
+  margin-bottom: 2px;
+}
+
+.resource-desc {
+  font-size: 12px;
+  color: var(--fm-neutral-600);
+  line-height: 1.4;
+}
+
+.resource-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fm-brand-700);
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* ===== Info/Warn Bars in Modal ===== */
+.info-bar {
+  background: var(--fm-info-soft);
+  border: 1px solid rgba(29,111,216,0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--fm-info);
+  margin-bottom: 10px;
+}
+
+.info-bar .bar-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.info-bar strong {
+  font-weight: 600;
+}
+
+.warn-bar {
+  background: var(--fm-warn-soft);
+  border: 1px solid rgba(180,83,9,0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--fm-warn);
+}
+
+.warn-bar .bar-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.warn-bar strong {
+  font-weight: 600;
+}
+
+/* ===== Modal Footer ===== */
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--fm-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--fm-neutral-50);
+}
+
+.modal-footer-left {
+  font-size: 11px;
+  color: var(--fm-neutral-500);
+}
+
+.modal-footer-right {
+  display: flex;
+  gap: 10px;
+}
+
+/* ===== Buttons ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--fm-primary);
+  color: var(--fm-primary-foreground);
+}
+
+.btn-primary:hover {
+  background: var(--fm-brand-800);
+}
+
+.btn-secondary {
+  background: var(--fm-neutral-0);
+  color: var(--fm-neutral-700);
+  border: 1px solid var(--fm-border);
+}
+
+.btn-secondary:hover {
+  background: var(--fm-neutral-100);
+}
+
+/* Icons */
+.icon-svg {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.icon-svg-sm {
+  width: 14px;
+  height: 14px;
+}
+
+.icon-svg-lg {
+  width: 18px;
+  height: 18px;
+}
+    </style>
+</head>
+<body>
+<div class="app" id="page-evo-resource-modal">
+    <!-- Sidebar (blurred background) -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="sidebar-logo-icon">Q</div>
+            <div class="sidebar-logo-text">QuantLab</div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="sidebar-nav-section">
+                <div class="sidebar-nav-label">工作台</div>
+                <div class="sidebar-nav-item">
+                    <span class="icon"><span class="icon-svg"></span></span>
+                    <span>总览</span>
+                </div>
+                <div class="sidebar-nav-item">
+                    <span class="icon"><span class="icon-svg"></span></span>
+                    <span>策略中心</span>
+                </div>
+                <div class="sidebar-nav-item">
+                    <span class="icon"><span class="icon-svg"></span></span>
+                    <span>因子中心</span>
+                </div>
+            </div>
+            <div class="sidebar-nav-section">
+                <div class="sidebar-nav-label">系统</div>
+                <div class="sidebar-nav-item active">
+                    <span class="icon"><span class="icon-svg"></span></span>
+                    <span>设置</span>
+                </div>
+                <div class="sidebar-nav-sub">
+                    <div class="sidebar-nav-sub-item active">
+                        <span class="dot"></span>
+                        <span>因子挖掘</span>
+                    </div>
+                    <div class="sidebar-nav-sub-item">
+                        <span class="dot"></span>
+                        <span>数据管理</span>
+                    </div>
+                    <div class="sidebar-nav-sub-item">
+                        <span class="dot"></span>
+                        <span>模型配置</span>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="sidebar-avatar">QM</div>
+            <div class="sidebar-user-info">
+                <div class="sidebar-user-name">Quant Manager</div>
+                <div class="sidebar-user-role">管理员</div>
+            </div>
+        </div>
+    </aside>
+
+    <div class="main">
+        <header class="topbar">
+            <div class="breadcrumb">
+                <span class="breadcrumb-item">设置</span>
+                <span class="breadcrumb-sep">/</span>
+                <span class="breadcrumb-item active">因子挖掘</span>
+            </div>
+            <div class="topbar-right">
+                <div class="topbar-icon-btn"><span class="badge"></span></div>
+                <div class="topbar-avatar">QM</div>
+            </div>
+        </header>
+        <div class="subtabs">
+            <div class="subtab active"><span>向导</span></div>
+            <div class="subtab"><span>批次列表</span></div>
+            <div class="subtab"><span>经验库</span></div>
+            <div class="subtab"><span>模板配置</span></div>
+        </div>
+        <div class="stepper-wrapper">
+            <div class="stepper">
+                <div class="step done"><div class="step-line"></div><div class="step-circle">1</div><div class="step-label">候选股票池</div></div>
+                <div class="step done"><div class="step-line"></div><div class="step-circle">2</div><div class="step-label">时间与目标</div></div>
+                <div class="step done"><div class="step-line"></div><div class="step-circle">3</div><div class="step-label">字段与校验</div></div>
+                <div class="step done"><div class="step-line"></div><div class="step-circle">4</div><div class="step-label">进化参数</div></div>
+                <div class="step current"><div class="step-circle">5</div><div class="step-label">进化执行与结果</div></div>
+            </div>
+        </div>
+        <div class="content">
+            <div class="content-inner">
+                <div class="card">
+                    <div class="card-header"><div class="card-title">进化参数确认</div></div>
+                    <div class="card-body">
+                        <div style="height: 200px; background: var(--fm-neutral-50); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--fm-neutral-400);">
+                            进化参数配置内容...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Modal Overlay ===== -->
+<div class="modal-overlay">
+    <div class="modal">
+        <!-- Header -->
+        <div class="modal-header">
+            <div class="modal-title">
+                <span class="modal-title-icon">
+                    <svg class="icon-svg-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                </span>
+                资源占用确认
+            </div>
+            <div class="modal-subtitle">提交前请确认以下资源预估</div>
+            <div class="modal-close">
+                <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div class="modal-body">
+            <!-- Resource list -->
+            <div class="resource-list">
+                <div class="resource-item">
+                    <div class="resource-icon time">🕐</div>
+                    <div class="resource-content">
+                        <div class="resource-name">预计耗时</div>
+                        <div class="resource-desc">种群 100 × 20 代，含校验与回测</div>
+                    </div>
+                    <div class="resource-value">约 18 分钟</div>
+                </div>
+                <div class="resource-item">
+                    <div class="resource-icon memory">💾</div>
+                    <div class="resource-content">
+                        <div class="resource-name">内存占用</div>
+                        <div class="resource-desc">数据加载 + 进化引擎峰值</div>
+                    </div>
+                    <div class="resource-value">约 2.4 GB</div>
+                </div>
+                <div class="resource-item">
+                    <div class="resource-icon lock">🔒</div>
+                    <div class="resource-content">
+                        <div class="resource-name">挖掘锁</div>
+                        <div class="resource-desc">将占用 <code style="font-size: 11px; background: var(--fm-warn-soft); padding: 1px 4px; border-radius: 3px; color: var(--fm-warn);">mining_domain</code> 排他锁，期间无法提交其他挖掘任务</div>
+                    </div>
+                </div>
+                <div class="resource-item">
+                    <div class="resource-icon db">📊</div>
+                    <div class="resource-content">
+                        <div class="resource-name">DuckDB 写锁</div>
+                        <div class="resource-desc">将排队等待 <code style="font-size: 11px; background: var(--fm-brand-100); padding: 1px 4px; border-radius: 3px; color: var(--fm-brand-700);">duckdb_write</code> 锁</div>
+                    </div>
+                    <div class="resource-value" style="color: var(--fm-success);">队列 0 个</div>
+                </div>
+                <div class="resource-item">
+                    <div class="resource-icon cpu">⚡</div>
+                    <div class="resource-content">
+                        <div class="resource-name">并行度</div>
+                        <div class="resource-desc">自动保留 2 核给系统，确保稳定性</div>
+                    </div>
+                    <div class="resource-value">8 核</div>
+                </div>
+            </div>
+
+            <!-- Quota info bar -->
+            <div class="info-bar">
+                <svg class="bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span><strong>配额提示：</strong>本次消耗 1 次挖掘配额，剩余 4 次/日。每日 0 点重置配额，超出需升级套餐。</span>
+            </div>
+
+            <!-- Risk warning bar -->
+            <div class="warn-bar">
+                <svg class="bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span><strong>风险提示：</strong>进化过程中关闭页面不会中断任务，可在「批次列表」中随时查看进度和结果。</span>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="modal-footer">
+            <div class="modal-footer-left">
+                提交后将自动进入进化执行阶段
+            </div>
+            <div class="modal-footer-right">
+                <button class="btn btn-secondary">取消</button>
+                <button class="btn btn-primary">
+                    <svg class="icon-svg icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    确认提交
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

@@ -109,6 +109,9 @@ export interface MiningCandidate {
   generation_rank?: number | null;
   crowding_distance?: number | null;
   expected_direction?: string | null;
+  /** DEF-9：finalize 后回填（list_candidates 序列化新增） */
+  latest_ic?: number | null;
+  latest_evaluation_status?: string | null;
 }
 
 /** 双锁状态（GET /factor-mining/locks/status，后端**已实现**；2026-09-21 对齐真实契约） */

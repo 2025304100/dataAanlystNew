@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>候选池分析看板</title>
+<style>
+  :root {
+    --fm-brand-50: #f0fdfa;
+    --fm-brand-100: #ccfbf1;
+    --fm-brand-200: #99f6e4;
+    --fm-brand-300: #5eead4;
+    --fm-brand-400: #2dd4bf;
+    --fm-brand-500: #14b8a6;
+    --fm-brand-600: #0d9488;
+    --fm-brand-700: #0f766e;
+    --fm-brand-800: #115e59;
+    --fm-brand-900: #134e4a;
+    --fm-neutral-0: #ffffff;
+    --fm-neutral-50: #fafaf9;
+    --fm-neutral-100: #f5f5f4;
+    --fm-neutral-200: #e7e5e4;
+    --fm-neutral-300: #d6d3d1;
+    --fm-neutral-400: #a8a29e;
+    --fm-neutral-500: #78716c;
+    --fm-neutral-600: #57534e;
+    --fm-neutral-700: #44403c;
+    --fm-neutral-800: #292524;
+    --fm-neutral-900: #1c1917;
+    --fm-success: #15803d;
+    --fm-success-soft: #dcfce7;
+    --fm-info: #1d6fd8;
+    --fm-info-soft: #dbeafe;
+    --fm-warn: #b45309;
+    --fm-warn-soft: #ffedd5;
+    --fm-danger: #b42318;
+    --fm-danger-soft: #fee2e2;
+    --fm-grade-s: #0b6b63;
+    --fm-grade-a: #1d6fd8;
+    --fm-grade-b: #b45309;
+    --fm-grade-c: #c2410c;
+    --fm-grade-d: #b42318;
+
+    /* 暖色调 */
+    --fm-cream-50: #fffaf0;
+    --fm-cream-100: #fdf6eb;
+    --fm-cream-200: #f7f4ec;
+    --fm-cream-300: #e8e2d5;
+    --fm-cream-border: rgba(31, 41, 51, 0.08);
+
+    /* 文字四级灰度 */
+    --fm-text-primary: #1f2933;
+    --fm-text-secondary: #52606d;
+    --fm-text-tertiary: #7b8794;
+    --fm-text-quaternary: #9aa5b1;
+
+    --fm-background: var(--fm-cream-50);
+    --fm-foreground: var(--fm-text-primary);
+    --fm-card: var(--fm-neutral-0);
+    --fm-card-foreground: var(--fm-text-secondary);
+    --fm-primary: var(--fm-brand-700);
+    --fm-primary-foreground: var(--fm-neutral-0);
+    --fm-muted: var(--fm-cream-200);
+    --fm-muted-foreground: var(--fm-text-tertiary);
+    --fm-border: var(--fm-cream-border);
+    --fm-radius-sm: 6px;
+    --fm-radius-md: 10px;
+    --fm-radius-lg: 14px;
+    --fm-radius-xl: 18px;
+    --fm-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --fm-text-xs: 11px;
+    --fm-text-sm: 12px;
+    --fm-text-base: 13px;
+    --fm-text-lg: 14px;
+    --fm-text-xl: 16px;
+    --fm-text-2xl: 18px;
+    --fm-text-3xl: 22px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--fm-font-sans);
+    font-size: var(--fm-text-base);
+    color: var(--fm-foreground);
+    background: var(--fm-neutral-800);
+    width: 1440px;
+    min-height: 100vh;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Background overlay with blurred page hint */
+  .page-bg {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%);
+    opacity: 0.15;
+  }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  /* Modal */
+  .modal {
+    width: 900px;
+    max-height: 90vh;
+    background: var(--fm-card);
+    border-radius: var(--fm-radius-lg);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Modal Header */
+  .modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--fm-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    background: var(--fm-cream-100);
+  }
+  .modal-title {
+    font-size: var(--fm-text-2xl);
+    font-weight: 600;
+    color: var(--fm-foreground);
+    margin-bottom: 4px;
+  }
+  .modal-subtitle {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-tertiary);
+  }
+  .modal-close {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: var(--fm-neutral-400);
+    font-size: 18px;
+  }
+  .modal-close:hover { background: var(--fm-neutral-100); color: var(--fm-neutral-700); }
+
+  /* Modal Body */
+  .modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  /* Section title */
+  .section-title {
+    font-size: var(--fm-text-lg);
+    font-weight: 600;
+    color: var(--fm-foreground);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title::before {
+    content: '';
+    width: 3px;
+    height: 14px;
+    background: var(--fm-primary);
+    border-radius: 2px;
+  }
+
+  .section-row { margin-bottom: 20px; }
+  .section-row:last-child { margin-bottom: 0; }
+
+  /* Overview Cards */
+  .overview-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .overview-card {
+    padding: 16px;
+    background: var(--fm-cream-100);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+  }
+  .overview-card-value {
+    font-size: var(--fm-text-3xl);
+    font-weight: 700;
+    color: var(--fm-primary);
+    margin-bottom: 4px;
+  }
+  .overview-card-label {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    margin-bottom: 2px;
+  }
+  .overview-card-desc {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-text-quaternary);
+  }
+  .overview-card.success .overview-card-value { color: var(--fm-success); }
+  .overview-card.info .overview-card-value { color: var(--fm-info); }
+
+  /* Two column grid */
+  .two-col-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .chart-card {
+    background: var(--fm-cream-100);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+    padding: 16px;
+  }
+  .chart-title {
+    font-size: var(--fm-text-base);
+    font-weight: 600;
+    color: var(--fm-foreground);
+    margin-bottom: 12px;
+  }
+
+  /* Horizontal bar chart */
+  .hbar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .hbar-item:last-child { margin-bottom: 0; }
+  .hbar-label {
+    width: 60px;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    flex-shrink: 0;
+    text-align: right;
+  }
+  .hbar-track {
+    flex: 1;
+    height: 20px;
+    background: var(--fm-cream-200);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+  .hbar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--fm-brand-500), var(--fm-brand-700));
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 6px;
+  }
+  .hbar-fill.secondary {
+    background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+  }
+  .hbar-fill.tertiary {
+    background: linear-gradient(90deg, #f59e0b, #d97706);
+  }
+  .hbar-fill.quaternary {
+    background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+  }
+  .hbar-fill.quinary {
+    background: linear-gradient(90deg, #ec4899, #db2777);
+  }
+  .hbar-fill.senary {
+    background: linear-gradient(90deg, #10b981, #059669);
+  }
+  .hbar-fill.septenary {
+    background: linear-gradient(90deg, #f97316, #ea580c);
+  }
+  .hbar-fill.octonary {
+    background: linear-gradient(90deg, #6b7280, #4b5563);
+  }
+  .hbar-pct {
+    font-size: var(--fm-text-xs);
+    color: white;
+    font-weight: 500;
+  }
+
+  /* Industry bar chart variant */
+  .industry-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .industry-item:last-child { margin-bottom: 0; }
+  .industry-label {
+    width: 50px;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    flex-shrink: 0;
+  }
+  .industry-track {
+    flex: 1;
+    height: 18px;
+    background: var(--fm-cream-200);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .industry-fill {
+    height: 100%;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+  }
+  .industry-fill span {
+    font-size: 10px;
+    color: white;
+    font-weight: 500;
+  }
+
+  /* Radar Chart */
+  .radar-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 8px 0;
+  }
+  .radar-svg { width: 200px; height: 200px; }
+
+  /* Market Environment */
+  .market-env-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--fm-border);
+  }
+  .market-env-item:last-child { border-bottom: none; }
+  .market-env-label {
+    font-size: var(--fm-text-base);
+    color: var(--fm-text-secondary);
+  }
+  .market-env-value {
+    font-size: var(--fm-text-base);
+    font-weight: 500;
+    color: var(--fm-foreground);
+  }
+  .market-env-value.high { color: var(--fm-danger); }
+  .market-env-value.mid { color: var(--fm-warn); }
+  .market-env-value.low { color: var(--fm-success); }
+
+  .factor-suggest {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--fm-brand-50);
+    border-radius: 8px;
+    border: 1px solid var(--fm-brand-100);
+  }
+  .factor-suggest-title {
+    font-size: var(--fm-text-sm);
+    font-weight: 600;
+    color: var(--fm-brand-800);
+    margin-bottom: 8px;
+  }
+  .factor-suggest-items {
+    display: flex;
+    gap: 12px;
+  }
+  .factor-suggest-item {
+    font-size: var(--fm-text-xs);
+    color: var(--fm-brand-700);
+  }
+  .factor-suggest-item .stars {
+    color: var(--fm-brand-600);
+    letter-spacing: 1px;
+  }
+
+  /* Data Quality / Coverage */
+  .coverage-item {
+    margin-bottom: 8px;
+  }
+  .coverage-item:last-child { margin-bottom: 0; }
+  .coverage-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--fm-text-sm);
+    margin-bottom: 4px;
+  }
+  .coverage-name { color: var(--fm-text-secondary); }
+  .coverage-pct { color: var(--fm-foreground); font-weight: 500; }
+  .coverage-track {
+    height: 6px;
+    background: var(--fm-cream-200);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .coverage-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--fm-brand-400), var(--fm-brand-600));
+    border-radius: 3px;
+  }
+  .coverage-footer {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--fm-border);
+    font-size: var(--fm-text-xs);
+    color: var(--fm-text-tertiary);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* Modal Footer */
+  .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--fm-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--fm-cream-100);
+  }
+
+  .btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-size: var(--fm-text-base);
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary {
+    background: var(--fm-primary);
+    color: var(--fm-primary-foreground);
+    border-color: var(--fm-primary);
+  }
+  .btn-primary:hover { background: var(--fm-brand-800); border-color: var(--fm-brand-800); }
+  .btn-secondary {
+    background: var(--fm-neutral-0);
+    color: var(--fm-neutral-700);
+    border-color: var(--fm-border);
+  }
+  .btn-secondary:hover { background: var(--fm-neutral-100); }
+  .btn-lg { padding: 10px 22px; font-size: var(--fm-text-lg); }
+</style>
+</head>
+<body>
+  <div class="page-bg"></div>
+  <div class="overlay">
+    <div class="modal">
+      <!-- Header -->
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">候选池分析看板</div>
+          <div class="modal-subtitle">数据截止日：2026-09-20 &nbsp;|&nbsp; 分析时间：2026-09-20 14:30</div>
+        </div>
+        <div class="modal-close">×</div>
+      </div>
+
+      <!-- Body -->
+      <div class="modal-body">
+        <!-- Row 1: Overview Cards -->
+        <div class="section-row">
+          <div class="overview-cards">
+            <div class="overview-card">
+              <div class="overview-card-value">285</div>
+              <div class="overview-card-label">股票数量</div>
+              <div class="overview-card-desc">满足硬下限要求</div>
+            </div>
+            <div class="overview-card info">
+              <div class="overview-card-value">86 亿</div>
+              <div class="overview-card-label">平均市值</div>
+              <div class="overview-card-desc">中盘为主</div>
+            </div>
+            <div class="overview-card">
+              <div class="overview-card-value" style="color:var(--fm-neutral-400); font-size:var(--fm-text-2xl);">待配置</div>
+              <div class="overview-card-label">时间范围</div>
+              <div class="overview-card-desc">下一步设置</div>
+            </div>
+            <div class="overview-card success">
+              <div class="overview-card-value">98.5%</div>
+              <div class="overview-card-label">数据完整度</div>
+              <div class="overview-card-desc">行情字段均值</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: Market Cap Distribution + Industry Distribution -->
+        <div class="section-row">
+          <div class="two-col-grid">
+            <!-- Left: Market Cap Distribution -->
+            <div class="chart-card">
+              <div class="chart-title">市值分布</div>
+              <div style="padding: 8px 0;">
+                <div class="hbar-item">
+                  <span class="hbar-label">大盘</span>
+                  <div class="hbar-track">
+                    <div class="hbar-fill" style="width: 10%;">
+                      <span class="hbar-pct">10%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="hbar-item">
+                  <span class="hbar-label">中盘</span>
+                  <div class="hbar-track">
+                    <div class="hbar-fill secondary" style="width: 28%;">
+                      <span class="hbar-pct">28%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="hbar-item">
+                  <span class="hbar-label">小盘</span>
+                  <div class="hbar-track">
+                    <div class="hbar-fill tertiary" style="width: 62%;">
+                      <span class="hbar-pct">62%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Industry Distribution -->
+            <div class="chart-card">
+              <div class="chart-title">行业分布 Top 8</div>
+              <div style="padding: 4px 0;">
+                <div class="industry-item">
+                  <span class="industry-label">新能源</span>
+                  <div class="industry-track">
+                    <div class="industry-fill" style="width: 28%; background: linear-gradient(90deg, #14b8a6, #0d9488);">
+                      <span>28%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="industry-item">
+                  <span class="industry-label">医药</span>
+                  <div class="industry-track">
+                    <div class="industry-fill" style="width: 18%; background: linear-gradient(90deg, #3b82f6, #1d4ed8);">
+                      <span>18%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="industry-item">
+                  <span class="industry-label">TMT</span>
+                  <div class="industry-track">
+                    <div class="industry-fill" style="width: 15%; background: linear-gradient(90deg, #8b5cf6, #7c3aed);">
+                      <span>15%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="industry-item">
+                  <span class="industry-label">消费</span>
+                  <div class="industry-track">
+                    <div class="industry-fill" style="width: 12%; background: linear-gradient(90deg, #f59e0b, #d97706);">
+                      <span>12%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="industry-item">
+                  <span class="industry-label">金融</span>
+                  <div class="industry-track">
+                    <div class="industry-fill" style="width: 8%; background: linear-gradient(90deg, #10b981, #059669);">
+                      <span>8%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="industry-item">
+                  <span class="industry-label">制造</span>
+                  <div class="industry-track">
+                    <div class="industry-fill" style="width: 7%; background: linear-gradient(90deg, #ec4899, #db2777);">
+                      <span>7%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="industry-item">
+                  <span class="industry-label">周期</span>
+                  <div class="industry-track">
+                    <div class="industry-fill" style="width: 6%; background: linear-gradient(90deg, #f97316, #ea580c);">
+                      <span>6%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="industry-item">
+                  <span class="industry-label">其他</span>
+                  <div class="industry-track">
+                    <div class="industry-fill" style="width: 6%; background: linear-gradient(90deg, #6b7280, #4b5563);">
+                      <span>6%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 3: Style Radar + Market Environment -->
+        <div class="section-row">
+          <div class="two-col-grid">
+            <!-- Left: Style Radar -->
+            <div class="chart-card">
+              <div class="chart-title">风格暴露雷达</div>
+              <div class="radar-container">
+                <svg class="radar-svg" viewBox="0 0 200 200">
+                  <!-- Radar grid - pentagon -->
+                  <polygon points="100,25 171,75 144,160 56,160 29,75"
+                    fill="none" stroke="#e7e5e4" stroke-width="1"/>
+                  <polygon points="100,47 150,80 132,140 68,140 50,80"
+                    fill="none" stroke="#e7e5e4" stroke-width="1"/>
+                  <polygon points="100,70 129,92 120,120 80,120 71,92"
+                    fill="none" stroke="#e7e5e4" stroke-width="1"/>
+                  <polygon points="100,92 108,102 105,115 95,115 92,102"
+                    fill="none" stroke="#e7e5e4" stroke-width="1"/>
+                  <!-- Axes -->
+                  <line x1="100" y1="25" x2="100" y2="175" stroke="#e7e5e4" stroke-width="1"/>
+                  <line x1="29" y1="75" x2="171" y2="125" stroke="#e7e5e4" stroke-width="1"/>
+                  <line x1="171" y1="75" x2="29" y2="125" stroke="#e7e5e4" stroke-width="1"/>
+                  <!-- Data polygon (成长/价值/质量/动量/波动率) -->
+                  <!-- 成长 70%, 价值 55%, 质量 80%, 动量 65%, 波动率 45% -->
+                  <polygon points="100,52 148,83 135,132 66,134 56,88"
+                    fill="rgba(20,184,166,0.25)" stroke="#14b8a6" stroke-width="2"/>
+                  <!-- Data points -->
+                  <circle cx="100" cy="52" r="4" fill="#14b8a6"/>
+                  <circle cx="148" cy="83" r="4" fill="#14b8a6"/>
+                  <circle cx="135" cy="132" r="4" fill="#14b8a6"/>
+                  <circle cx="66" cy="134" r="4" fill="#14b8a6"/>
+                  <circle cx="56" cy="88" r="4" fill="#14b8a6"/>
+                  <!-- Labels -->
+                  <text x="100" y="18" text-anchor="middle" font-size="11" fill="#57534e" font-weight="500">成长</text>
+                  <text x="182" y="78" text-anchor="start" font-size="11" fill="#57534e" font-weight="500">价值</text>
+                  <text x="155" y="172" text-anchor="middle" font-size="11" fill="#57534e" font-weight="500">质量</text>
+                  <text x="45" y="172" text-anchor="middle" font-size="11" fill="#57534e" font-weight="500">动量</text>
+                  <text x="18" y="78" text-anchor="end" font-size="11" fill="#57534e" font-weight="500">波动率</text>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Right: Market Environment -->
+            <div class="chart-card">
+              <div class="chart-title">市场环境</div>
+              <div style="padding: 4px 0;">
+                <div class="market-env-item">
+                  <span class="market-env-label">市场阶段</span>
+                  <span class="market-env-value mid">震荡市</span>
+                </div>
+                <div class="market-env-item">
+                  <span class="market-env-label">波动率</span>
+                  <span class="market-env-value high">高（32%年化）</span>
+                </div>
+                <div class="market-env-item">
+                  <span class="market-env-label">趋势强度</span>
+                  <span class="market-env-value mid">中等</span>
+                </div>
+              </div>
+              <div class="factor-suggest">
+                <div class="factor-suggest-title">当前环境因子类型建议</div>
+                <div class="factor-suggest-items">
+                  <div class="factor-suggest-item">波动率 <span class="stars">★★★</span></div>
+                  <div class="factor-suggest-item">反转 <span class="stars">★★☆</span></div>
+                  <div class="factor-suggest-item">质量 <span class="stars">★★☆</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 4: Data Quality -->
+        <div class="section-row">
+          <div class="chart-card">
+            <div class="chart-title">数据质量（字段覆盖率）</div>
+            <div style="padding: 4px 0;">
+              <div class="coverage-item">
+                <div class="coverage-header">
+                  <span class="coverage-name">close</span>
+                  <span class="coverage-pct">99.7%</span>
+                </div>
+                <div class="coverage-track">
+                  <div class="coverage-fill" style="width: 99.7%;"></div>
+                </div>
+              </div>
+              <div class="coverage-item">
+                <div class="coverage-header">
+                  <span class="coverage-name">volume</span>
+                  <span class="coverage-pct">99.5%</span>
+                </div>
+                <div class="coverage-track">
+                  <div class="coverage-fill" style="width: 99.5%;"></div>
+                </div>
+              </div>
+              <div class="coverage-item">
+                <div class="coverage-header">
+                  <span class="coverage-name">turnover</span>
+                  <span class="coverage-pct">99.7%</span>
+                </div>
+                <div class="coverage-track">
+                  <div class="coverage-fill" style="width: 99.7%;"></div>
+                </div>
+              </div>
+              <div class="coverage-item">
+                <div class="coverage-header">
+                  <span class="coverage-name">pe_ttm</span>
+                  <span class="coverage-pct">92.1%</span>
+                </div>
+                <div class="coverage-track">
+                  <div class="coverage-fill" style="width: 92.1%;"></div>
+                </div>
+              </div>
+              <div class="coverage-item">
+                <div class="coverage-header">
+                  <span class="coverage-name">pb</span>
+                  <span class="coverage-pct">91.8%</span>
+                </div>
+                <div class="coverage-track">
+                  <div class="coverage-fill" style="width: 91.8%;"></div>
+                </div>
+              </div>
+              <div class="coverage-item">
+                <div class="coverage-header">
+                  <span class="coverage-name">roe_ttm</span>
+                  <span class="coverage-pct">85.3%</span>
+                </div>
+                <div class="coverage-track">
+                  <div class="coverage-fill" style="width: 85.3%;"></div>
+                </div>
+              </div>
+            </div>
+            <div class="coverage-footer">
+              <span>有效交易日：1215 天</span>
+              <span>平均每日有效标的：268 只</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="modal-footer">
+        <button class="btn btn-secondary">重新选择</button>
+        <button class="btn btn-primary btn-lg">下一步 →</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

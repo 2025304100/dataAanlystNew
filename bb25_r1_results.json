@@ -1,0 +1,57 @@
+[
+  {
+    "case": "R1.1 结果页研究声明置顶（§8.4/§6.9）",
+    "ok": true,
+    "detail": "群 Top 因子（第 0 代，10 个个体）|新进 Top10 会高亮闪烁|排名\t公式\tICIR\t覆盖率\t来源|0.\t-ts_delta_bars(close,10)\t0.37\t95%\tenumerated|1.\t-ts_delta_bars(close,5)\t0.34\t97%\tenumerated|2.\thighest((ts_atr(close,60)-round(close,5)),10)\t0.02\t74%\trandom|3.\tc"
+  },
+  {
+    "case": "R1.2 候选列表渲染等级标签",
+    "ok": true,
+    "detail": "grade-chip 数=6"
+  },
+  {
+    "case": "R1.2b 结果行有「证据」入口按钮（DEF-15 接线）",
+    "ok": true,
+    "detail": "按钮数=10"
+  },
+  {
+    "case": "R1.3 点等级标签→证据抽屉打开",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "case": "R1.4 抽屉含评级维度明细",
+    "ok": true,
+    "detail": "dimension元素=11 文本含'维度'=True"
+  },
+  {
+    "case": "R1.5 抽屉含定级理由区",
+    "ok": true,
+    "detail": "-ts_delta_bars(close,10)|×|月频任务最高评为 B 级（test 段样本不足，不做 Bootstrap/置换）|人工调整等级|定级证据|统计检验证据|血缘与来源|D|按 8 维度阈值评定为 D 级|阈值来源: 默认阈值|维度\t当前值\t该级阈值\t是否达标\t差距|ICIR\t0.3"
+  },
+  {
+    "case": "R1.6 短理由(<10字)被拦截（UI 或 API 4xx）",
+    "ok": true,
+    "detail": "UI 层拦截：提交按钮 disabled（canSubmit<10字）"
+  },
+  {
+    "case": "R1.7 合法理由人工调级成功",
+    "ok": false,
+    "detail": "API=[]"
+  },
+  {
+    "case": "R1.8 调级后显示人工提示+季度重评说明",
+    "ok": true,
+    "detail": "manual-tip=1"
+  },
+  {
+    "case": "R1.9 恢复自动评定成功（状态还原）",
+    "ok": false,
+    "detail": "API=无"
+  },
+  {
+    "case": "R1.10 经验库有成功 run 的沉淀条目",
+    "ok": true,
+    "detail": "式模板\t类别\t来源\t平均 ICIR\t状态\t|1\tstddev(close, {n1}) / mean(stddev(close, {n2}), {n3})负样本\tvolatility\tmanual\t0.0543\tnormal\t归档|2\tmean(close, {n1}) / mean(close, {n2}) - 1负样本\ttrend\tmanual\t-0.0012\tnormal\t归档|3\tema(stddev(cs_rank(close"
+  }
+]

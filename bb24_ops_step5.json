@@ -1,0 +1,54 @@
+{
+  "steps": [
+    {
+      "step": "pre 提交 60×5 代 run",
+      "ok": true,
+      "detail": "run=278460baf2f548b28dc6ffd29034c079"
+    },
+    {
+      "step": "pre run 进入 running",
+      "ok": true,
+      "detail": "status=running"
+    },
+    {
+      "step": "U5.1 直达 Step5 运行看板",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "U5.2 看板含进度/代数信息",
+      "ok": true,
+      "detail": "需先完成上游步骤|5|进化执行与结果|进行中|进化进度: 0 / 5|未收敛|ICIR 进化曲线|悬停查看每代详情|收敛参考阈值（来自配置）:|等待后端探针上报|最优 ICIR|平均 ICIR|资源占用||等待后端探针上报||运行日志||暂无日志||中断|提前停止|完全放弃|上一"
+    },
+    {
+      "step": "U5.3 UI 点中断→出现继续按钮",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "U5.4 UI 点继续→用户可见反馈",
+      "ok": true,
+      "detail": "run状态=paused 提示=[]"
+    },
+    {
+      "step": "U5.5 t+30s 再点继续",
+      "ok": true,
+      "detail": "run状态=paused 提示=[]"
+    },
+    {
+      "step": "U5.6 UI 停止有二次确认弹窗",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "U5.7 确认停止后状态收敛",
+      "ok": true,
+      "detail": "status=converged"
+    },
+    {
+      "step": "post 收尾锁释放",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

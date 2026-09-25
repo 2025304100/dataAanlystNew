@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>因子挖掘 - 进化执行与结果</title>
+<style>
+  :root {
+    /* Brand - Dark Teal */
+    --fm-brand-50: #f0fdfa;
+    --fm-brand-100: #ccfbf1;
+    --fm-brand-200: #99f6e4;
+    --fm-brand-300: #5eead4;
+    --fm-brand-400: #2dd4bf;
+    --fm-brand-500: #14b8a6;
+    --fm-brand-600: #0d9488;
+    --fm-brand-700: #0f766e;
+    --fm-brand-800: #115e59;
+    --fm-brand-900: #134e4a;
+
+    /* Warm Cream / Beige Palette */
+    --fm-cream-50: #fffaf0;  /* page background */
+    --fm-cream-100: #faf5e8;
+    --fm-cream-200: #f7f4ec;  /* accordion header, table header */
+    --fm-cream-300: #efe9d9;
+    --fm-cream-400: #e5dcc5;
+
+    /* Neutral */
+    --fm-neutral-0: #ffffff;
+    --fm-neutral-50: #fafaf9;
+    --fm-neutral-100: #f5f5f4;
+    --fm-neutral-200: #e7e5e4;
+    --fm-neutral-300: #d6d3d1;
+    --fm-neutral-400: #a8a29e;
+    --fm-neutral-500: #78716c;
+    --fm-neutral-600: #57534e;
+    --fm-neutral-700: #44403c;
+    --fm-neutral-800: #292524;
+    --fm-neutral-900: #1c1917;
+
+    /* Text */
+    --fm-text-primary: #1f2933;
+    --fm-text-secondary: #52606d;
+    --fm-text-tertiary: #7b8794;
+    --fm-text-quaternary: #9aa5b1;
+
+    /* Semantic */
+    --fm-success: #15803d;
+    --fm-success-soft: #dcfce7;
+    --fm-info: #1d6fd8;
+    --fm-info-soft: #dbeafe;
+    --fm-warn: #b45309;
+    --fm-warn-soft: #ffedd5;
+    --fm-danger: #b42318;
+    --fm-danger-soft: #fee2e2;
+    --fm-grade-s: #0b6b63;
+    --fm-grade-a: #1d6fd8;
+    --fm-grade-b: #b45309;
+    --fm-grade-c: #c2410c;
+    --fm-grade-d: #b42318;
+
+    /* Tokens */
+    --fm-background: var(--fm-cream-50);
+    --fm-foreground: var(--fm-text-primary);
+    --fm-card: var(--fm-neutral-0);
+    --fm-primary: var(--fm-brand-700);
+    --fm-primary-foreground: var(--fm-neutral-0);
+    --fm-muted: var(--fm-cream-200);
+    --fm-muted-foreground: var(--fm-text-tertiary);
+    --fm-border: rgba(31, 41, 51, 0.08);
+    --fm-border-strong: rgba(31, 41, 51, 0.12);
+    --fm-radius-sm: 6px;
+    --fm-radius-md: 10px;
+    --fm-radius-lg: 14px;
+    --fm-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --fm-text-xs: 11px;
+    --fm-text-sm: 12px;
+    --fm-text-base: 13px;
+    --fm-text-lg: 14px;
+    --fm-text-xl: 16px;
+    --fm-text-2xl: 18px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--fm-font-sans);
+    font-size: var(--fm-text-base);
+    color: var(--fm-foreground);
+    background: var(--fm-background);
+    min-width: 1440px;
+  }
+
+  /* App Shell Layout */
+  .app-shell {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 232px;
+    background: var(--fm-neutral-800);
+    color: var(--fm-neutral-0);
+    flex-shrink: 0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    overflow-y: auto;
+  }
+  .sidebar-logo {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: var(--fm-text-lg);
+    font-weight: 600;
+    color: var(--fm-brand-300);
+  }
+  .sidebar-logo .logo-icon {
+    width: 28px; height: 28px;
+    background: var(--fm-brand-600);
+    border-radius: var(--fm-radius-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 10px;
+    font-size: var(--fm-text-sm);
+    font-weight: 700;
+  }
+  .nav-section {
+    padding: 12px 0;
+  }
+  .nav-section-title {
+    padding: 8px 20px;
+    font-size: var(--fm-text-xs);
+    color: var(--fm-neutral-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    padding: 9px 20px;
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-300);
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  .nav-item:hover {
+    background: rgba(255,255,255,0.04);
+    color: var(--fm-neutral-0);
+  }
+  .nav-item.active {
+    background: rgba(20, 184, 166, 0.1);
+    color: var(--fm-brand-300);
+    border-left-color: var(--fm-brand-400);
+  }
+  .nav-item .nav-icon {
+    width: 18px;
+    margin-right: 10px;
+    text-align: center;
+    font-size: var(--fm-text-lg);
+  }
+  .nav-sub {
+    padding-left: 48px;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-neutral-400);
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .nav-sub.active {
+    color: var(--fm-brand-300);
+  }
+
+  /* Main Area */
+  .main-area {
+    flex: 1;
+    margin-left: 232px;
+    min-width: 0;
+  }
+
+  /* Top Bar */
+  .topbar {
+    height: 56px;
+    background: var(--fm-card);
+    border-bottom: 1px solid var(--fm-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .breadcrumb {
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-600);
+  }
+  .breadcrumb .sep {
+    margin: 0 8px;
+    color: var(--fm-neutral-400);
+  }
+  .breadcrumb .current {
+    color: var(--fm-foreground);
+    font-weight: 500;
+  }
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .topbar-icon {
+    width: 32px; height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--fm-radius-sm);
+    color: var(--fm-neutral-500);
+    cursor: pointer;
+    position: relative;
+  }
+  .topbar-icon:hover {
+    background: var(--fm-neutral-100);
+  }
+  .topbar-icon .badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 8px; height: 8px;
+    background: var(--fm-danger);
+    border-radius: 50%;
+    border: 1.5px solid var(--fm-card);
+  }
+  .user-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--fm-brand-600);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--fm-text-sm);
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  /* Sub Tabs */
+  .sub-tabs {
+    background: var(--fm-card);
+    border-bottom: 1px solid var(--fm-border);
+    padding: 0 24px;
+    display: flex;
+    gap: 32px;
+  }
+  .sub-tab {
+    padding: 14px 0;
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-500);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+  }
+  .sub-tab:hover {
+    color: var(--fm-neutral-700);
+  }
+  .sub-tab.active {
+    color: var(--fm-brand-700);
+    border-bottom-color: var(--fm-brand-600);
+  }
+
+  /* Step Indicator (Professional) */
+  .step-bar {
+    background: var(--fm-card);
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--fm-border);
+  }
+  .step-track {
+    background: #fff;
+    border: 1px solid rgba(31, 41, 51, 0.08);
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    padding: 28px 32px;
+    display: flex;
+    justify-content: space-between;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .step-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    text-align: center;
+  }
+  /* Connector lines */
+  .step-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 24px;
+    left: calc(50% + 16px);
+    right: calc(-50% + 16px);
+    height: 2px;
+    background: #e7e5e4;
+    z-index: 0;
+  }
+  .step-item.done:not(:last-child)::after {
+    background: #0f766e;
+  }
+  .step-item.active:not(:last-child)::after {
+    background: linear-gradient(to right, #0f766e 0%, #0f766e 20%, #e7e5e4 20%, #e7e5e4 100%);
+  }
+  /* Step highlight wrapper */
+  .step-highlight {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+    padding: 8px 16px;
+    border-radius: 12px;
+  }
+  .step-item.active .step-highlight {
+    background: rgba(13, 148, 136, 0.06);
+  }
+  /* Circle node - 32px */
+  .step-circle {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    font-weight: 500;
+    background: #f0ede6;
+    color: #a8a29e;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  .step-item.done .step-circle {
+    background: linear-gradient(135deg, #0d9488, #0f766e);
+    color: #fff;
+    box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.12);
+  }
+  .step-item.active .step-circle {
+    background: #0f766e;
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.15), inset 0 1px 2px rgba(0,0,0,0.1);
+  }
+  /* Progress arc at bottom of active circle */
+  .step-item.active .step-circle::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 2px;
+    background: #14b8a6;
+    border-radius: 2px;
+  }
+  /* Text section */
+  .step-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    white-space: nowrap;
+    margin-top: 12px;
+    text-align: center;
+  }
+  .step-label {
+    font-size: 13px;
+    color: #78716c;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+  }
+  .step-item.done .step-label {
+    color: #0f766e;
+  }
+  .step-item.active .step-label {
+    color: #0f766e;
+  }
+  .step-sublabel {
+    font-size: 11px;
+    color: #a8a29e;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+  .step-item.done .step-sublabel,
+  .step-item.active .step-sublabel {
+    color: #0d9488;
+  }
+  .step-item.active .step-sublabel {
+    color: #0f766e;
+  }
+
+  /* Content Area */
+  .content-area {
+    padding: 20px 24px 80px;
+    background: var(--fm-background);
+  }
+
+  /* Card */
+  .card {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+    margin-bottom: 16px;
+  }
+  .card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--fm-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-title {
+    font-size: var(--fm-text-lg);
+    font-weight: 600;
+    color: var(--fm-foreground);
+  }
+  .card-subtitle {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-muted-foreground);
+    margin-top: 2px;
+  }
+  .card-body {
+    padding: 20px;
+  }
+
+  /* Chip */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: var(--fm-text-xs);
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .chip-gray {
+    background: var(--fm-neutral-100);
+    color: var(--fm-neutral-600);
+  }
+  .chip-teal {
+    background: var(--fm-brand-50);
+    color: var(--fm-brand-700);
+  }
+  .chip-blue {
+    background: var(--fm-info-soft);
+    color: var(--fm-info);
+  }
+  .chip-orange {
+    background: var(--fm-warn-soft);
+    color: var(--fm-warn);
+  }
+  .chip-red {
+    background: var(--fm-danger-soft);
+    color: var(--fm-danger);
+  }
+  .chip-green {
+    background: var(--fm-success-soft);
+    color: var(--fm-success);
+  }
+  .chip-running {
+    background: var(--fm-info-soft);
+    color: var(--fm-info);
+  }
+  .chip-running::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--fm-info);
+    border-radius: 50%;
+    margin-right: 6px;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* Progress Overview */
+  .progress-overview {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr;
+    gap: 0;
+  }
+  .metric-item {
+    padding: 0 20px;
+    border-right: 1px solid var(--fm-border);
+  }
+  .metric-item:last-child {
+    border-right: none;
+  }
+  .metric-label {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-muted-foreground);
+    margin-bottom: 8px;
+  }
+  .metric-value {
+    font-size: var(--fm-text-2xl);
+    font-weight: 700;
+    color: var(--fm-foreground);
+    line-height: 1.2;
+  }
+  .metric-value.teal {
+    color: var(--fm-brand-700);
+    font-size: 28px;
+  }
+  .progress-bar {
+    height: 6px;
+    background: var(--fm-neutral-100);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--fm-brand-500);
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+  .diversity-dots {
+    display: flex;
+    gap: 3px;
+    margin-top: 8px;
+  }
+  .diversity-dots .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--fm-brand-500);
+  }
+  .diversity-dots .dot.empty {
+    background: var(--fm-neutral-200);
+  }
+
+  /* Warning Banner */
+  .warning-banner {
+    background: var(--fm-warn-soft);
+    border-left: 3px solid var(--fm-warn);
+    padding: 12px 20px;
+    border-radius: 0 var(--fm-radius-sm) var(--fm-radius-sm) 0;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .warning-banner .warn-icon {
+    color: var(--fm-warn);
+    font-size: 18px;
+    line-height: 1.4;
+    flex-shrink: 0;
+  }
+  .warning-banner .warn-text {
+    font-size: var(--fm-text-base);
+    color: var(--fm-warn);
+    line-height: 1.6;
+  }
+  .warning-banner .warn-text strong {
+    font-weight: 600;
+  }
+
+  /* Chart Container */
+  .chart-container {
+    width: 100%;
+    position: relative;
+  }
+  .chart-legend {
+    display: flex;
+    gap: 16px;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-muted-foreground);
+  }
+  .chart-legend .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+  .legend-line {
+    width: 20px; height: 2px;
+  }
+  .legend-line.dashed {
+    background: repeating-linear-gradient(to right, currentColor 0, currentColor 3px, transparent 3px, transparent 6px);
+    height: 2px;
+  }
+
+  /* Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  thead th {
+    padding: 10px 12px;
+    text-align: left;
+    font-size: var(--fm-text-sm);
+    font-weight: 600;
+    color: var(--fm-neutral-600);
+    background: var(--fm-cream-200);
+    border-bottom: 1px solid var(--fm-border);
+  }
+  tbody td {
+    padding: 12px;
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-700);
+    border-bottom: 1px solid var(--fm-border);
+  }
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+  tbody tr:hover {
+    background: var(--fm-neutral-50);
+  }
+  tbody tr.highlight {
+    background: var(--fm-brand-50);
+  }
+  tbody tr.highlight:hover {
+    background: var(--fm-brand-100);
+  }
+  .mono {
+    font-family: "SF Mono", "Monaco", "Inconsolata", "Consolas", monospace;
+    font-size: var(--fm-text-sm);
+  }
+  .formula-cell {
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Source tag */
+  .src-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: var(--fm-text-xs);
+    font-weight: 500;
+  }
+  .src-elite { background: var(--fm-brand-50); color: var(--fm-brand-700); }
+  .src-mutate { background: var(--fm-info-soft); color: var(--fm-info); }
+  .src-crossover { background: var(--fm-warn-soft); color: var(--fm-warn); }
+  .src-random { background: var(--fm-neutral-100); color: var(--fm-neutral-600); }
+
+  /* Final Validation */
+  .final-validation {
+    background: var(--fm-neutral-50);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .final-validation-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .final-validation-title {
+    font-size: var(--fm-text-lg);
+    font-weight: 600;
+  }
+  .final-validation-desc {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-muted-foreground);
+    margin-bottom: 12px;
+  }
+
+  /* Two Column Layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .col-card {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md);
+    margin-bottom: 0;
+  }
+
+  /* Resource Usage */
+  .resource-item {
+    margin-bottom: 16px;
+  }
+  .resource-item:last-child {
+    margin-bottom: 0;
+  }
+  .resource-label-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: var(--fm-text-sm);
+  }
+  .resource-label-row .label {
+    color: var(--fm-neutral-600);
+  }
+  .resource-label-row .value {
+    color: var(--fm-foreground);
+    font-weight: 500;
+  }
+
+  /* Log Panel */
+  .log-panel {
+    background: var(--fm-neutral-900);
+    border-radius: var(--fm-radius-sm);
+    padding: 12px;
+    font-family: "SF Mono", "Monaco", "Inconsolata", "Consolas", monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .log-line {
+    color: var(--fm-neutral-300);
+    display: flex;
+    gap: 10px;
+  }
+  .log-time {
+    color: var(--fm-neutral-500);
+    flex-shrink: 0;
+  }
+  .log-level {
+    flex-shrink: 0;
+    font-weight: 600;
+    width: 40px;
+  }
+  .log-level.info { color: var(--fm-brand-400); }
+  .log-level.warn { color: #f59e0b; }
+  .log-level.error { color: #f87171; }
+  .log-content {
+    color: var(--fm-neutral-200);
+    word-break: break-all;
+  }
+
+  details.log-gen {
+    margin-bottom: 4px;
+  }
+  details.log-gen summary {
+    cursor: pointer;
+    color: var(--fm-neutral-400);
+    padding: 4px 0;
+    font-size: 11px;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  details.log-gen summary::before {
+    content: '▶';
+    font-size: 8px;
+    transition: transform 0.2s;
+  }
+  details.log-gen[open] summary::before {
+    transform: rotate(90deg);
+  }
+  details.log-gen summary .gen-label {
+    font-weight: 600;
+    color: var(--fm-brand-400);
+  }
+
+  /* Bottom Action Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 232px;
+    right: 0;
+    height: 64px;
+    background: var(--fm-card);
+    border-top: 1px solid var(--fm-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    z-index: 10;
+  }
+  .bottom-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: var(--fm-text-base);
+  }
+  .bottom-bar-left .batch-id {
+    color: var(--fm-muted-foreground);
+    font-family: "SF Mono", "Monaco", monospace;
+    font-size: var(--fm-text-sm);
+  }
+  .bottom-bar-right {
+    display: flex;
+    gap: 10px;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 18px;
+    border-radius: var(--fm-radius-sm);
+    font-size: var(--fm-text-base);
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .btn-primary {
+    background: var(--fm-brand-700);
+    color: var(--fm-primary-foreground);
+  }
+  .btn-primary:hover {
+    background: var(--fm-brand-800);
+  }
+  .btn-secondary {
+    background: var(--fm-card);
+    color: var(--fm-neutral-700);
+    border-color: var(--fm-border);
+  }
+  .btn-secondary:hover {
+    background: var(--fm-neutral-50);
+  }
+  .btn-warn-outline {
+    background: var(--fm-card);
+    color: var(--fm-warn);
+    border-color: var(--fm-warn);
+  }
+  .btn-warn-outline:hover {
+    background: var(--fm-warn-soft);
+  }
+  .btn-danger {
+    background: var(--fm-danger);
+    color: white;
+  }
+  .btn-danger:hover {
+    background: #9a1f16;
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--fm-neutral-600);
+    border-color: var(--fm-border);
+  }
+  .btn-ghost:hover {
+    background: var(--fm-neutral-50);
+  }
+  .btn-sm {
+    padding: 5px 12px;
+    font-size: var(--fm-text-sm);
+  }
+  .btn-lg {
+    padding: 10px 22px;
+    font-size: var(--fm-text-lg);
+  }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">量</span>
+      量化工作台
+    </div>
+    <nav class="nav-section">
+      <div class="nav-section-title">主要功能</div>
+      <div class="nav-item"><span class="nav-icon">📊</span>仪表盘</div>
+      <div class="nav-item"><span class="nav-icon">📈</span>策略组合</div>
+      <div class="nav-item"><span class="nav-icon">🔍</span>机会中心</div>
+      <div class="nav-item"><span class="nav-icon">🧪</span>回测中心</div>
+      <div class="nav-item"><span class="nav-icon">📐</span>因子中心</div>
+    </nav>
+    <nav class="nav-section">
+      <div class="nav-section-title">系统设置</div>
+      <div class="nav-item active"><span class="nav-icon">⚙️</span>设置</div>
+      <div class="nav-sub active">因子挖掘</div>
+      <div class="nav-sub">数据中心</div>
+      <div class="nav-sub">评分配置</div>
+      <div class="nav-sub">权限管理</div>
+      <div class="nav-item"><span class="nav-icon">👤</span>账户</div>
+    </nav>
+  </aside>
+
+  <!-- Main Area -->
+  <div class="main-area">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="breadcrumb">
+        设置 <span class="sep">/</span> <span class="current">因子挖掘</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon">
+          🔔
+          <span class="badge"></span>
+        </div>
+        <div class="topbar-icon">💬</div>
+        <div class="user-avatar">王</div>
+      </div>
+    </header>
+
+    <!-- Sub Tabs -->
+    <div class="sub-tabs">
+      <div class="sub-tab active">向导</div>
+      <div class="sub-tab">批次列表</div>
+      <div class="sub-tab">经验库</div>
+      <div class="sub-tab">模板配置</div>
+    </div>
+
+    <!-- Step Bar -->
+    <div class="step-bar">
+      <div class="step-track">
+        <div class="step-item done">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">候选股票池</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item done">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">时间与目标</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item done">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">字段与校验</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item done">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">进化参数</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item active">
+          <div class="step-highlight">
+            <div class="step-circle">5</div>
+            <div class="step-text">
+              <div class="step-label">进化执行与结果</div>
+              <div class="step-sublabel">进行中</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content-area">
+
+      <!-- Progress Overview Card -->
+      <div class="card">
+        <div class="card-body">
+          <div class="progress-overview">
+            <div class="metric-item">
+              <div class="metric-label">进化进度</div>
+              <div class="metric-value">第 12 代 / 共 20 代</div>
+              <div class="progress-bar">
+                <div class="progress-bar-fill" style="width: 60%"></div>
+              </div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-label">收敛状态</div>
+              <div style="margin-top: 4px;">
+                <span class="chip chip-gray">未收敛</span>
+              </div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-label">种群多样性</div>
+              <div class="diversity-dots">
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                <span class="dot empty"></span><span class="dot empty"></span>
+                <span class="dot empty"></span><span class="dot empty"></span>
+              </div>
+              <div style="font-size: var(--fm-text-sm); color: var(--fm-muted-foreground); margin-top: 4px;">62%</div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-label">最优 ICIR</div>
+              <div class="metric-value teal">2.87</div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-label">种群大小</div>
+              <div class="metric-value">100</div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-label">预计剩余</div>
+              <div class="metric-value" style="font-size: var(--fm-text-xl);">约 8 分钟</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Warning Banner -->
+      <div class="warning-banner">
+        <span class="warn-icon">⚠</span>
+        <div class="warn-text">
+          <strong>种群多样性偏低（62%），可能出现早熟收敛。</strong>建议提高随机注入率或扩大种群规模。
+        </div>
+      </div>
+
+      <!-- Evolution Curve Card -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">进化曲线</div>
+            <div class="card-subtitle">最优 ICIR / 平均 ICIR</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <div class="chart-legend">
+              <div class="legend-item">
+                <span class="legend-line" style="background: var(--fm-brand-500);"></span>
+                最优 ICIR
+              </div>
+              <div class="legend-item">
+                <span class="legend-line dashed" style="color: var(--fm-info);"></span>
+                平均 ICIR
+              </div>
+              <div class="legend-item">
+                <span class="legend-line dashed" style="color: var(--fm-warn);"></span>
+                收敛阈值 2.50
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="chart-container">
+            <svg width="100%" height="280" viewBox="0 0 960 280" preserveAspectRatio="none">
+              <!-- Grid lines -->
+              <g stroke="var(--fm-neutral-100)" stroke-width="1">
+                <line x1="60" y1="30" x2="940" y2="30"/>
+                <line x1="60" y1="80" x2="940" y2="80"/>
+                <line x1="60" y1="130" x2="940" y2="130"/>
+                <line x1="60" y1="180" x2="940" y2="180"/>
+                <line x1="60" y1="230" x2="940" y2="230"/>
+              </g>
+              <!-- Y axis labels -->
+              <g fill="var(--fm-neutral-400)" font-size="11" font-family="var(--fm-font-sans)" text-anchor="end">
+                <text x="52" y="34">4.0</text>
+                <text x="52" y="84">3.0</text>
+                <text x="52" y="134">2.0</text>
+                <text x="52" y="184">1.0</text>
+                <text x="52" y="234">0.0</text>
+              </g>
+              <!-- X axis labels (generations 1-12) -->
+              <g fill="var(--fm-neutral-400)" font-size="11" font-family="var(--fm-font-sans)" text-anchor="middle">
+                <text x="60" y="254">1</text>
+                <text x="140" y="254">2</text>
+                <text x="220" y="254">3</text>
+                <text x="300" y="254">4</text>
+                <text x="380" y="254">5</text>
+                <text x="460" y="254">6</text>
+                <text x="540" y="254">7</text>
+                <text x="620" y="254">8</text>
+                <text x="700" y="254">9</text>
+                <text x="780" y="254">10</text>
+                <text x="860" y="254">11</text>
+                <text x="940" y="254">12</text>
+              </g>
+              <!-- Convergence threshold line (orange dashed at y=2.5) -->
+              <line x1="60" y1="105" x2="940" y2="105" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="6,4"/>
+              <text x="940" y="99" fill="#f59e0b" font-size="11" text-anchor="end" font-weight="500">收敛阈值 2.50</text>
+              
+              <!-- Average ICIR (dashed blue) - values: 0.5, 0.7, 0.9, 1.1, 1.25, 1.4, 1.55, 1.65, 1.72, 1.8, 1.87, 1.92 -->
+              <!-- y = 230 - val * 50 -->
+              <polyline fill="none" stroke="var(--fm-info)" stroke-width="2" stroke-dasharray="5,3"
+                points="60,205 140,195 220,185 300,175 380,167.5 460,160 540,152.5 620,147.5 700,144 780,140 860,136.5 940,134"/>
+              <!-- Average ICIR hollow dots -->
+              <g fill="white" stroke="var(--fm-info)" stroke-width="2">
+                <circle cx="60" cy="205" r="4"/>
+                <circle cx="140" cy="195" r="4"/>
+                <circle cx="220" cy="185" r="4"/>
+                <circle cx="300" cy="175" r="4"/>
+                <circle cx="380" cy="167.5" r="4"/>
+                <circle cx="460" cy="160" r="4"/>
+                <circle cx="540" cy="152.5" r="4"/>
+                <circle cx="620" cy="147.5" r="4"/>
+                <circle cx="700" cy="144" r="4"/>
+                <circle cx="780" cy="140" r="4"/>
+                <circle cx="860" cy="136.5" r="4"/>
+                <circle cx="940" cy="134" r="4"/>
+              </g>
+
+              <!-- Best ICIR (solid teal) - values: 0.8, 1.1, 1.4, 1.65, 1.9, 2.1, 2.25, 2.4, 2.55, 2.7, 2.8, 2.87 -->
+              <polyline fill="none" stroke="var(--fm-brand-500)" stroke-width="2.5"
+                points="60,190 140,175 220,160 300,147.5 380,135 460,125 540,117.5 620,110 700,102.5 780,95 860,90 940,86.5"/>
+              <!-- Best ICIR solid dots -->
+              <g fill="var(--fm-brand-500)">
+                <circle cx="60" cy="190" r="4.5"/>
+                <circle cx="140" cy="175" r="4.5"/>
+                <circle cx="220" cy="160" r="4.5"/>
+                <circle cx="300" cy="147.5" r="4.5"/>
+                <circle cx="380" cy="135" r="4.5"/>
+                <circle cx="460" cy="125" r="4.5"/>
+                <circle cx="540" cy="117.5" r="4.5"/>
+                <circle cx="620" cy="110" r="4.5"/>
+                <circle cx="700" cy="102.5" r="4.5"/>
+                <circle cx="780" cy="95" r="4.5"/>
+                <circle cx="860" cy="90" r="4.5"/>
+                <circle cx="940" cy="86.5" r="5"/>
+              </g>
+              <!-- Highlight last point -->
+              <circle cx="940" cy="86.5" r="9" fill="none" stroke="var(--fm-brand-500)" stroke-width="1" opacity="0.4"/>
+              <text x="920" y="76" fill="var(--fm-brand-700)" font-size="11" font-weight="600" text-anchor="end">2.87</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Factors Card -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">当前种群 Top 因子</div>
+            <div style="font-size: var(--fm-text-sm); color: var(--fm-brand-700); margin-top: 4px;">
+              新进 Top10：3 个
+            </div>
+          </div>
+          <span class="chip chip-teal">第 12 代 · 100 个</span>
+        </div>
+        <div class="card-body" style="padding: 0;">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 60px;">排名</th>
+                <th>因子公式</th>
+                <th style="width: 100px;">校正 ICIR</th>
+                <th style="width: 90px;">覆盖率</th>
+                <th style="width: 90px;">衰减率</th>
+                <th style="width: 110px;">来源</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="highlight">
+                <td style="font-weight: 700; color: var(--fm-brand-700);">1</td>
+                <td class="mono formula-cell">mean(close,5)/mean(close,20)-1</td>
+                <td style="font-weight: 600; color: var(--fm-brand-700);">2.87</td>
+                <td>96.2%</td>
+                <td>0.85</td>
+                <td><span class="src-tag src-elite">精英保留</span></td>
+              </tr>
+              <tr>
+                <td style="font-weight: 600;">2</td>
+                <td class="mono formula-cell">ts_rank(volume,20)*corr(close,volume,10)</td>
+                <td style="font-weight: 600;">2.65</td>
+                <td>94.8%</td>
+                <td>0.78</td>
+                <td><span class="src-tag src-mutate">变异</span></td>
+              </tr>
+              <tr>
+                <td style="font-weight: 600;">3</td>
+                <td class="mono formula-cell">(close-delay(close,5))/delay(close,5)*sign(volume)</td>
+                <td style="font-weight: 600;">2.48</td>
+                <td>92.1%</td>
+                <td>0.72</td>
+                <td><span class="src-tag src-crossover">交叉</span></td>
+              </tr>
+              <tr>
+                <td style="font-weight: 600;">4</td>
+                <td class="mono formula-cell">stddev(returns,10)/stddev(returns,30)</td>
+                <td style="font-weight: 600;">2.31</td>
+                <td>95.5%</td>
+                <td>0.81</td>
+                <td><span class="src-tag src-elite">精英保留</span></td>
+              </tr>
+              <tr>
+                <td style="font-weight: 600;">5</td>
+                <td class="mono formula-cell">max(high,5)/min(low,5)-1</td>
+                <td style="font-weight: 600;">2.19</td>
+                <td>91.3%</td>
+                <td>0.69</td>
+                <td><span class="src-tag src-random">随机注入</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Final Validation -->
+      <div class="final-validation">
+        <div class="final-validation-header">
+          <div class="final-validation-title">最终验证</div>
+          <span class="chip chip-gray">待执行</span>
+        </div>
+        <div class="final-validation-desc">
+          进化完成后对 Top 50 因子进行全样本最终验证，test 段全程锁定
+        </div>
+        <div class="progress-bar" style="height: 8px;">
+          <div class="progress-bar-fill" style="width: 0%; background: var(--fm-neutral-300);"></div>
+        </div>
+        <div style="font-size: var(--fm-text-xs); color: var(--fm-muted-foreground); margin-top: 6px;">
+          预计 2~3 分钟
+        </div>
+      </div>
+
+      <!-- Resource & Logs Two Column -->
+      <div class="two-col">
+        <div class="col-card">
+          <div class="card-header">
+            <div class="card-title">资源占用</div>
+          </div>
+          <div class="card-body">
+            <div class="resource-item">
+              <div class="resource-label-row">
+                <span class="label">CPU</span>
+                <span class="value">68%</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-bar-fill" style="width: 68%; background: var(--fm-info);"></div>
+              </div>
+            </div>
+            <div class="resource-item">
+              <div class="resource-label-row">
+                <span class="label">内存</span>
+                <span class="value">2.4 GB / 8 GB</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-bar-fill" style="width: 30%; background: var(--fm-brand-500);"></div>
+              </div>
+            </div>
+            <div class="resource-item">
+              <div class="resource-label-row">
+                <span class="label">磁盘</span>
+                <span class="value">12.3 MB</span>
+              </div>
+              <div style="font-size: var(--fm-text-sm); color: var(--fm-muted-foreground);">
+                中间结果与日志文件
+              </div>
+            </div>
+            <div class="resource-item">
+              <div class="resource-label-row">
+                <span class="label">进化速度</span>
+                <span class="value">1.4 代/分钟</span>
+              </div>
+              <div style="font-size: var(--fm-text-sm); color: var(--fm-muted-foreground);">
+                近 5 代平均
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-card">
+          <div class="card-header">
+            <div class="card-title">运行日志</div>
+          </div>
+          <div class="card-body">
+            <div class="log-panel">
+              <details class="log-gen" open>
+                <summary><span class="gen-label">第 12 代</span> · 正在运行</summary>
+                <div style="padding-left: 16px; padding-top: 4px;">
+                  <div class="log-line"><span class="log-time">14:32:18</span><span class="log-level info">[INFO]</span><span class="log-content">第 12 代评估完成，最优 ICIR = 2.87</span></div>
+                  <div class="log-line"><span class="log-time">14:32:15</span><span class="log-level info">[INFO]</span><span class="log-content">交叉操作生成 32 个子代，变异操作生成 28 个子代</span></div>
+                  <div class="log-line"><span class="log-time">14:32:10</span><span class="log-level warn">[WARN]</span><span class="log-content">种群多样性降至 62%，低于推荐阈值 70%</span></div>
+                  <div class="log-line"><span class="log-time">14:32:05</span><span class="log-level info">[INFO]</span><span class="log-content">选择阶段：锦标赛选择 K=3，精英保留 10 个</span></div>
+                  <div class="log-line"><span class="log-time">14:32:02</span><span class="log-level info">[INFO]</span><span class="log-content">第 12 代进化开始，种群大小 100</span></div>
+                </div>
+              </details>
+              <details class="log-gen">
+                <summary><span class="gen-label">第 11 代</span> · 已完成 · 最优 ICIR 2.80</summary>
+                <div style="padding-left: 16px; padding-top: 4px;">
+                  <div class="log-line"><span class="log-time">14:31:05</span><span class="log-level info">[INFO]</span><span class="log-content">第 11 代评估完成，最优 ICIR = 2.80</span></div>
+                  <div class="log-line"><span class="log-time">14:31:00</span><span class="log-level info">[INFO]</span><span class="log-content">交叉操作生成 35 个子代</span></div>
+                </div>
+              </details>
+              <details class="log-gen">
+                <summary><span class="gen-label">第 10 代</span> · 已完成 · 最优 ICIR 2.70</summary>
+              </details>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Action Bar -->
+    <div class="bottom-bar">
+      <div class="bottom-bar-left">
+        <span class="batch-id">批次号 #c61cb96a</span>
+        <span class="chip chip-running">运行中</span>
+      </div>
+      <div class="bottom-bar-right">
+        <button class="btn btn-warn-outline">中断</button>
+        <button class="btn btn-secondary">提前停止</button>
+        <button class="btn btn-danger">完全放弃</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

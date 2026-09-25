@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>因子挖掘 - 模板配置</title>
+    <style id="theme-vars">
+:root {
+  /* Brand: deep teal — professional, calm, data-driven */
+  --fm-brand-50: #f0fdfa;
+  --fm-brand-100: #ccfbf1;
+  --fm-brand-200: #99f6e4;
+  --fm-brand-300: #5eead4;
+  --fm-brand-400: #2dd4bf;
+  --fm-brand-500: #14b8a6;
+  --fm-brand-600: #0d9488;
+  --fm-brand-700: #0f766e;
+  --fm-brand-800: #115e59;
+  --fm-brand-900: #134e4a;
+
+  /* Neutral: warm slate for less clinical feel */
+  --fm-neutral-0: #ffffff;
+  --fm-neutral-50: #fafaf9;
+  --fm-neutral-100: #f5f5f4;
+  --fm-neutral-200: #e7e5e4;
+  --fm-neutral-300: #d6d3d1;
+  --fm-neutral-400: #a8a29e;
+  --fm-neutral-500: #78716c;
+  --fm-neutral-600: #57534e;
+  --fm-neutral-700: #44403c;
+  --fm-neutral-800: #292524;
+  --fm-neutral-900: #1c1917;
+
+  /* Semantic state colors */
+  --fm-success: #15803d;
+  --fm-success-soft: #dcfce7;
+  --fm-info: #1d6fd8;
+  --fm-info-soft: #dbeafe;
+  --fm-warn: #b45309;
+  --fm-warn-soft: #ffedd5;
+  --fm-danger: #b42318;
+  --fm-danger-soft: #fee2e2;
+
+  /* Grade palette */
+  --fm-grade-s: #0b6b63;
+  --fm-grade-a: #1d6fd8;
+  --fm-grade-b: #b45309;
+  --fm-grade-c: #c2410c;
+  --fm-grade-d: #b42318;
+
+  /* Core semantic theme — required by head contract */
+  --fm-background: var(--fm-neutral-50);
+  --fm-foreground: var(--fm-neutral-900);
+  --fm-card: var(--fm-neutral-0);
+  --fm-card-foreground: var(--fm-neutral-800);
+  --fm-popover: var(--fm-neutral-0);
+  --fm-popover-foreground: var(--fm-neutral-800);
+  --fm-primary: var(--fm-brand-700);
+  --fm-primary-foreground: var(--fm-neutral-0);
+  --fm-muted: var(--fm-neutral-100);
+  --fm-muted-foreground: var(--fm-neutral-500);
+  --fm-border: var(--fm-neutral-200);
+  --fm-input: var(--fm-neutral-200);
+  --fm-ring: var(--fm-brand-500);
+
+  /* Radius scale */
+  --fm-radius-sm: 6px;
+  --fm-radius-md: 10px;
+  --fm-radius-lg: 14px;
+  --fm-radius-xl: 18px;
+  --fm-radius-pill: 999px;
+
+  /* Typography */
+  --fm-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --fm-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, "Cascadia Mono", monospace;
+
+  /* Type scale */
+  --fm-text-xs: 11px;
+  --fm-text-sm: 12px;
+  --fm-text-base: 13px;
+  --fm-text-md: 14px;
+  --fm-text-lg: 16px;
+  --fm-text-xl: 18px;
+  --fm-text-2xl: 22px;
+  --fm-text-3xl: 28px;
+
+  /* Spacing scale */
+  --fm-space-1: 4px;
+  --fm-space-2: 6px;
+  --fm-space-3: 8px;
+  --fm-space-4: 12px;
+  --fm-space-5: 16px;
+  --fm-space-6: 20px;
+  --fm-space-7: 24px;
+  --fm-space-8: 32px;
+  --fm-space-9: 40px;
+
+  /* Shadow scale */
+  --fm-shadow-xs: 0 1px 2px rgba(28, 25, 23, 0.04);
+  --fm-shadow-sm: 0 1px 3px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
+  --fm-shadow-md: 0 4px 12px rgba(28, 25, 23, 0.06), 0 2px 4px rgba(28, 25, 23, 0.04);
+  --fm-shadow-lg: 0 12px 32px rgba(28, 25, 23, 0.08), 0 4px 8px rgba(28, 25, 23, 0.04);
+
+  /* Layout */
+  --fm-sidebar-width: 232px;
+  --fm-header-height: 56px;
+}
+
+html.light {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--fm-font-sans);
+  font-size: var(--fm-text-base);
+  line-height: 1.5;
+  color: var(--fm-foreground);
+  background: var(--fm-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* High-level primitives */
+.fm-surface {
+  background: var(--fm-card);
+  border: 1px solid var(--fm-border);
+  border-radius: var(--fm-radius-md);
+  box-shadow: var(--fm-shadow-sm);
+}
+
+.fm-surface-elevated {
+  background: var(--fm-card);
+  border: 1px solid var(--fm-border);
+  border-radius: var(--fm-radius-lg);
+  box-shadow: var(--fm-shadow-md);
+}
+
+.fm-title-1 {
+  font-size: var(--fm-text-2xl);
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--fm-foreground);
+  letter-spacing: -0.01em;
+}
+
+.fm-title-2 {
+  font-size: var(--fm-text-xl);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--fm-foreground);
+}
+
+.fm-title-3 {
+  font-size: var(--fm-text-lg);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--fm-foreground);
+}
+
+.fm-label {
+  font-size: var(--fm-text-sm);
+  font-weight: 500;
+  color: var(--fm-neutral-700);
+}
+
+.fm-caption {
+  font-size: var(--fm-text-xs);
+  color: var(--fm-muted-foreground);
+  line-height: 1.45;
+}
+
+.fm-text-muted {
+  color: var(--fm-muted-foreground);
+}
+
+.fm-mono {
+  font-family: var(--fm-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--fm-background);
+    --color-foreground: var(--fm-foreground);
+    --color-card: var(--fm-card);
+    --color-card-foreground: var(--fm-card-foreground);
+    --color-popover: var(--fm-popover);
+    --color-popover-foreground: var(--fm-popover-foreground);
+    --color-primary: var(--fm-primary);
+    --color-primary-foreground: var(--fm-primary-foreground);
+    --color-muted: var(--fm-muted);
+    --color-muted-foreground: var(--fm-muted-foreground);
+    --color-border: var(--fm-border);
+    --color-input: var(--fm-input);
+    --color-ring: var(--fm-ring);
+    --radius-sm: var(--fm-radius-sm);
+    --radius-md: var(--fm-radius-md);
+    --radius-lg: var(--fm-radius-lg);
+    --radius-xl: var(--fm-radius-xl);
+  }
+  @layer base {
+    body { background: var(--fm-background); color: var(--fm-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--fm-background); }
+      .text-background { color: var(--fm-background); }
+      .border-background { border-color: var(--fm-background); }
+      .ring-background { --tw-ring-color: var(--fm-background); }
+      .bg-foreground { background-color: var(--fm-foreground); }
+      .text-foreground { color: var(--fm-foreground); }
+      .border-foreground { border-color: var(--fm-foreground); }
+      .ring-foreground { --tw-ring-color: var(--fm-foreground); }
+      .bg-card { background-color: var(--fm-card); }
+      .text-card { color: var(--fm-card); }
+      .border-card { border-color: var(--fm-card); }
+      .ring-card { --tw-ring-color: var(--fm-card); }
+      .bg-card-foreground { background-color: var(--fm-card-foreground); }
+      .text-card-foreground { color: var(--fm-card-foreground); }
+      .border-card-foreground { border-color: var(--fm-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--fm-card-foreground); }
+      .bg-popover { background-color: var(--fm-popover); }
+      .text-popover { color: var(--fm-popover); }
+      .border-popover { border-color: var(--fm-popover); }
+      .ring-popover { --tw-ring-color: var(--fm-popover); }
+      .bg-popover-foreground { background-color: var(--fm-popover-foreground); }
+      .text-popover-foreground { color: var(--fm-popover-foreground); }
+      .border-popover-foreground { border-color: var(--fm-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--fm-popover-foreground); }
+      .bg-primary { background-color: var(--fm-primary); }
+      .text-primary { color: var(--fm-primary); }
+      .border-primary { border-color: var(--fm-primary); }
+      .ring-primary { --tw-ring-color: var(--fm-primary); }
+      .bg-primary-foreground { background-color: var(--fm-primary-foreground); }
+      .text-primary-foreground { color: var(--fm-primary-foreground); }
+      .border-primary-foreground { border-color: var(--fm-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--fm-primary-foreground); }
+      .bg-muted { background-color: var(--fm-muted); }
+      .text-muted { color: var(--fm-muted); }
+      .border-muted { border-color: var(--fm-muted); }
+      .ring-muted { --tw-ring-color: var(--fm-muted); }
+      .bg-muted-foreground { background-color: var(--fm-muted-foreground); }
+      .text-muted-foreground { color: var(--fm-muted-foreground); }
+      .border-muted-foreground { border-color: var(--fm-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--fm-muted-foreground); }
+      .bg-border { background-color: var(--fm-border); }
+      .text-border { color: var(--fm-border); }
+      .border-border { border-color: var(--fm-border); }
+      .ring-border { --tw-ring-color: var(--fm-border); }
+      .bg-input { background-color: var(--fm-input); }
+      .text-input { color: var(--fm-input); }
+      .border-input { border-color: var(--fm-input); }
+      .ring-input { --tw-ring-color: var(--fm-input); }
+      .bg-ring { background-color: var(--fm-ring); }
+      .text-ring { color: var(--fm-ring); }
+      .border-ring { border-color: var(--fm-ring); }
+      .ring-ring { --tw-ring-color: var(--fm-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen flex font-sans antialiased bg-background text-foreground">
+    <!-- Settings sidebar -->
+    <aside class="w-[232px] h-screen flex-shrink-0 bg-card border-r border-border flex flex-col" data-region="settings-sidebar">
+      <div class="h-[56px] flex items-center px-4 border-b border-border">
+        <a href="#" data-dom-id="settings-back" class="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          <i data-lucide="chevron-left" class="w-4 h-4"></i>
+          <span>设置</span>
+        </a>
+      </div>
+      <nav class="flex-1 overflow-auto py-3">
+        <ul class="space-y-1 px-3">
+          <li>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md bg-primary/10 text-primary text-sm font-medium">
+              <i data-lucide="pickaxe" class="w-4 h-4"></i>
+              <span>因子挖掘</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground text-sm font-medium transition-colors">
+              <i data-lucide="database" class="w-4 h-4"></i>
+              <span>数据管理</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground text-sm font-medium transition-colors">
+              <i data-lucide="layers" class="w-4 h-4"></i>
+              <span>模型配置</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground text-sm font-medium transition-colors">
+              <i data-lucide="bell" class="w-4 h-4"></i>
+              <span>通知中心</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground text-sm font-medium transition-colors">
+              <i data-lucide="shield" class="w-4 h-4"></i>
+              <span>权限与安全</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+      <div class="p-4 border-t border-border">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground">QM</div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium truncate text-foreground">Quant Manager</p>
+            <p class="text-xs text-muted-foreground truncate">管理员</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main app area -->
+    <main class="flex-1 flex flex-col h-screen overflow-hidden bg-background" data-region="app-shell">
+      <!-- Header -->
+      <header class="h-[56px] flex items-center justify-between px-5 border-b border-border bg-card flex-shrink-0" data-region="page-header">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground">
+            <i data-lucide="gem" class="w-4 h-4"></i>
+          </div>
+          <h1 class="fm-title-3">因子挖掘</h1>
+        </div>
+        <div class="flex items-center gap-3">
+          <button data-dom-id="pool-save-draft" class="inline-flex items-center justify-center gap-2 px-3 py-1.5 h-8 rounded-md border border-border bg-card text-sm font-medium text-foreground hover:bg-muted transition-colors">
+            <i data-lucide="save" class="w-3.5 h-3.5"></i>
+            <span>保存草稿</span>
+          </button>
+          <button class="inline-flex items-center justify-center gap-2 px-3 py-1.5 h-8 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span>新建任务</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Sub-tab bar -->
+      <div class="flex-shrink-0 bg-card border-b border-border" data-region="sub-tabs">
+        <div class="flex px-5">
+          <button data-dom-id="tab-wizard" class="relative inline-flex items-center gap-2 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <i data-lucide="wand-2" class="w-4 h-4"></i>
+            <span>向导</span>
+          </button>
+          <button data-dom-id="tab-runs" class="relative inline-flex items-center gap-2 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <i data-lucide="list" class="w-4 h-4"></i>
+            <span>批次列表</span>
+          </button>
+          <button data-dom-id="tab-experience" class="relative inline-flex items-center gap-2 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <i data-lucide="book-open" class="w-4 h-4"></i>
+            <span>经验库</span>
+          </button>
+          <button data-dom-id="tab-templates" class="relative inline-flex items-center gap-2 px-4 py-3 text-sm font-medium text-primary border-b-2 border-primary">
+            <i data-lucide="layout-template" class="w-4 h-4"></i>
+            <span>模板配置</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Step bar -->
+      <div class="hidden" data-region="step-bar"></div>
+
+      <!-- Scrollable content -->
+      <div class="flex-1 overflow-auto p-6" data-region="content-scroll">
+        <div data-region="tpl-config" class="max-w-[1280px] mx-auto">
+          <!-- Page header card -->
+          <div class="fm-surface px-5 py-4 mb-5 flex items-center justify-between">
+            <div>
+              <h2 class="fm-title-2">模板配置</h2>
+              <p class="fm-caption mt-1">管理公式模板、数据镜像与约束规则</p>
+            </div>
+            <button data-dom-id="tpl-new" class="inline-flex items-center justify-center gap-2 px-3 py-1.5 h-8 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              <span>新建模板</span>
+            </button>
+          </div>
+
+          <!-- Inner sub-tabs -->
+          <div class="flex-shrink-0 bg-card border-b border-border mb-5" data-region="tpl-inner-tabs">
+            <div class="flex">
+              <button data-dom-id="tpl-sub-formula" class="relative inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-primary border-b-2 border-primary">
+                <i data-lucide="file-code" class="w-4 h-4"></i>
+                <span>公式模板</span>
+              </button>
+              <button data-dom-id="tpl-sub-mirror" class="relative inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                <i data-lucide="database" class="w-4 h-4"></i>
+                <span>数据镜像</span>
+              </button>
+              <button data-dom-id="tpl-sub-constraints" class="relative inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                <i data-lucide="scale" class="w-4 h-4"></i>
+                <span>约束规则</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Template list + detail -->
+          <div class="grid grid-cols-12 gap-5 items-start">
+            <!-- Left: template list -->
+            <div class="col-span-4 fm-surface flex flex-col" data-region="tpl-list">
+              <div class="p-4 border-b border-border">
+                <div class="relative">
+                  <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"></i>
+                  <input data-dom-id="tpl-search" type="text" placeholder="搜索模板名称" class="w-full h-8 pl-8 pr-3 rounded-md border border-border bg-card text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+              </div>
+              <div class="flex-1 overflow-auto">
+                <ul class="divide-y divide-border">
+                  <li>
+                    <button data-dom-id="tpl-list-item-1" class="w-full text-left px-4 py-3 flex items-center justify-between bg-primary/5 border-l-2 border-primary">
+                      <div>
+                        <p class="text-sm font-medium text-foreground">经典交叉截面</p>
+                        <p class="text-xs text-muted-foreground mt-0.5"> cross_section(alpha, neutralize=true) </p>
+                      </div>
+                      <span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">12</span>
+                    </button>
+                  </li>
+                  <li>
+                    <button class="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors border-l-2 border-transparent">
+                      <div>
+                        <p class="text-sm font-medium text-foreground">时序动量</p>
+                        <p class="text-xs text-muted-foreground mt-0.5"> ts_momentum(close, window=20) </p>
+                      </div>
+                      <span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">8</span>
+                    </button>
+                  </li>
+                  <li>
+                    <button class="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors border-l-2 border-transparent">
+                      <div>
+                        <p class="text-sm font-medium text-foreground">基本面组合</p>
+                        <p class="text-xs text-muted-foreground mt-0.5"> combine([roe, roa, eps_growth], weights) </p>
+                      </div>
+                      <span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">5</span>
+                    </button>
+                  </li>
+                  <li>
+                    <button class="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors border-l-2 border-transparent">
+                      <div>
+                        <p class="text-sm font-medium text-foreground">量价背离</p>
+                        <p class="text-xs text-muted-foreground mt-0.5"> divergence(volume, price, lookback=10) </p>
+                      </div>
+                      <span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">3</span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Right: template detail -->
+            <div class="col-span-8 fm-surface flex flex-col" data-region="tpl-detail">
+              <div class="px-5 py-4 border-b border-border">
+                <h3 class="fm-label">模板详情</h3>
+              </div>
+              <div class="flex-1 overflow-auto p-5 space-y-5">
+                <!-- Title + description -->
+                <div class="grid grid-cols-2 gap-5">
+                  <div class="space-y-1.5">
+                    <label class="fm-label" for="tpl-name">模板名称</label>
+                    <input data-dom-id="tpl-name" id="tpl-name" type="text" value="经典交叉截面" class="w-full h-9 px-3 rounded-md border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                  </div>
+                  <div class="space-y-1.5">
+                    <label class="fm-label" for="tpl-desc">描述</label>
+                    <textarea data-dom-id="tpl-desc" id="tpl-desc" rows="3" class="w-full px-3 py-2 rounded-md border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none">基于截面数据进行行业中性化处理的经典模板，适用于大多数基本面与量价因子的标准化表达。</textarea>
+                  </div>
+                </div>
+
+                <!-- Expression -->
+                <div class="space-y-1.5">
+                  <label class="fm-label" for="tpl-expr">模板表达式</label>
+                  <textarea data-dom-id="tpl-expr" id="tpl-expr" rows="8" class="w-full px-3 py-2.5 rounded-md border border-border bg-muted fm-mono text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none">function cross_section(alpha, neutralize=true, group='industry_l1'):
+    alpha = winsorize(alpha, q=0.025)
+    alpha = standardize(alpha)
+    if neutralize:
+        alpha = neutralize(alpha, group=group)
+    return alpha
+
+// usage
+rank(cross_section(roe_ttm - roe_ttm.shift(4)))</textarea>
+                </div>
+
+                <!-- Parameters table -->
+                <div class="space-y-2">
+                  <h4 class="fm-label">参数列表</h4>
+                  <div class="overflow-auto rounded-md border border-border">
+                    <table class="w-full text-sm">
+                      <thead class="bg-muted text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th class="px-4 py-2.5 text-left font-medium">参数名</th>
+                          <th class="px-4 py-2.5 text-left font-medium">类型</th>
+                          <th class="px-4 py-2.5 text-left font-medium">默认值</th>
+                          <th class="px-4 py-2.5 text-left font-medium">说明</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-border text-foreground">
+                        <tr>
+                          <td class="px-4 py-2.5 font-mono">alpha</td>
+                          <td class="px-4 py-2.5">Expression</td>
+                          <td class="px-4 py-2.5 font-mono">-</td>
+                          <td class="px-4 py-2.5 text-muted-foreground">待处理的原始因子表达式</td>
+                        </tr>
+                        <tr>
+                          <td class="px-4 py-2.5 font-mono">neutralize</td>
+                          <td class="px-4 py-2.5">Boolean</td>
+                          <td class="px-4 py-2.5 font-mono">true</td>
+                          <td class="px-4 py-2.5 text-muted-foreground">是否执行行业中性化</td>
+                        </tr>
+                        <tr>
+                          <td class="px-4 py-2.5 font-mono">group</td>
+                          <td class="px-4 py-2.5">String</td>
+                          <td class="px-4 py-2.5 font-mono">'industry_l1'</td>
+                          <td class="px-4 py-2.5 text-muted-foreground">中性化分组字段</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Footer actions -->
+              <div class="px-5 py-3 border-t border-border flex items-center justify-end gap-3">
+                <button data-dom-id="tpl-delete" class="inline-flex items-center justify-center gap-2 px-4 h-8 rounded-md text-sm font-medium text-[var(--fm-danger)] hover:bg-[var(--fm-danger-soft)] transition-colors">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                  <span>删除</span>
+                </button>
+                <div class="flex-1"></div>
+                <button data-dom-id="tpl-reset" class="inline-flex items-center justify-center gap-2 px-4 h-8 rounded-md border border-border bg-card text-foreground text-sm font-medium hover:bg-muted transition-colors">
+                  <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                  <span>重置</span>
+                </button>
+                <button data-dom-id="tpl-save" class="inline-flex items-center justify-center gap-2 px-4 h-8 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+                  <i data-lucide="save" class="w-4 h-4"></i>
+                  <span>保存</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+      });
+    </script>
+</body>
+</html>

@@ -84,6 +84,7 @@ AUDIT_POOL_CREATED = "pool_created"
 AUDIT_POOL_UPDATED = "pool_updated"
 AUDIT_POOL_MEMBERS_ADDED = "pool_members_added"
 AUDIT_POOL_MEMBERS_SOFT_DELETED = "pool_members_soft_deleted"
+AUDIT_POOL_DELETED = "pool_deleted"
 
 MAX_NAME_LEN = 128
 MAX_BATCH = 5000  # 单次批量操作的标的数上限（防御性；导入走 T10）
@@ -389,6 +390,133 @@ def create_pool(
     db.commit()
     db.refresh(pool)
     return pool
+
+
+def find_reusable_pool(db: Session, *, name: str, rule_hash: str | None,
+                       source_type: str) -> TrainingCandidatePool | None:
+    """按「同名 + 同 rule_hash」查找可复用池（DEF-5，2026-09-24）。
+
+    真实缺陷：前端「生成挖掘物料」固定 `name="因子挖掘候选池"`、不查重不复用，
+    每点一次建一个池 → 库内累积 **50+ 个同名同规则的垃圾池**（含历次自动化
+    测试与 UI 反复点击）。规则完全相同时新建池没有任何信息增益，只是污染
+    池列表与快照表，故这里提供**服务端复用**（所有调用方一起受益）。
+
+    命中条件：同名 + 同 `rule_hash` + 同 `source_type` + 未作废（invalidated
+    表示规则已被判定不可用，不复用）。多个命中取最近创建的那个。
+    """
+    clean_name = (name or "").strip()
+    if not clean_name or not rule_hash:
+        return None
+    stmt = (
+        select(TrainingCandidatePool)
+        .where(
+            TrainingCandidatePool.name == clean_name,
+            TrainingCandidatePool.rule_hash == str(rule_hash),
+            TrainingCandidatePool.source_type == source_type,
+            TrainingCandidatePool.status != POOL_STATUS_INVALIDATED,
+        )
+        .order_by(TrainingCandidatePool.created_at.desc())
+        .limit(1)
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def delete_pool(db: Session, *, pool_id: str,
+                actor: str = "local_user") -> dict[str, Any]:
+    """删除候选池（DEF-5）：成员解除关联 + 快照级联失效校验 + 池行删除。
+
+    守卫：该池任一快照正被**进行中**的挖掘 run 引用 → 409 `BUSINESS_BLOCKED`
+    （删掉会让 run 的快照悬空，属于不可恢复的数据损失）。终态 run 的历史
+    引用不阻断（快照随之删除，run 行保留，前端按快照缺失提示）。
+
+    为什么必须显式实现：后端此前**没有**删除端点，池只能进不能出，
+    长期使用必然污染池列表（实测 50+ 同名池无法清理）。
+    """
+    from app.models.factor_mining import FactorMiningRun
+
+    pool = db.get(TrainingCandidatePool, str(pool_id))
+    if pool is None:
+        raise FactorSevenError(
+            "NOT_FOUND",
+            detail_zh=f"未找到候选池 {pool_id}。",
+            impact="本次删除未执行",
+            fix_link="/settings/factor-mining?step=1",
+            retryable=False,
+        )
+
+    snapshot_ids = [
+        str(row[0]) for row in db.execute(
+            select(TrainingCandidatePoolSnapshot.id)
+            .where(TrainingCandidatePoolSnapshot.pool_id == str(pool_id))
+        ).all()
+    ]
+    if snapshot_ids:
+        active = db.execute(
+            select(FactorMiningRun.id, FactorMiningRun.status)
+            .where(
+                FactorMiningRun.candidate_pool_snapshot_id.in_(snapshot_ids),
+                FactorMiningRun.status.in_(
+                    ("queued", "running", "validating", "paused")),
+            )
+        ).first()
+        if active is not None:
+            raise FactorSevenError(
+                "BUSINESS_BLOCKED",
+                detail_zh=(
+                    f"候选池 {pool_id} 的快照正被挖掘批次 {active[0]}"
+                    f"（状态 {active[1]}）引用，删除会让该批次的数据来源悬空。"
+                    "请先取消/放弃该批次，再删除候选池。"
+                ),
+                impact="本次删除未执行",
+                fix_link="/settings/factor-mining?step=1",
+                retryable=True,
+                extras={"pool_id": str(pool_id), "run_id": str(active[0]),
+                        "run_status": str(active[1])},
+            )
+
+    members = db.execute(
+        select(func.count())
+        .select_from(TrainingCandidatePoolMember)
+        .where(TrainingCandidatePoolMember.pool_id == str(pool_id))
+    ).scalar_one() or 0
+    # 成员表 FK 带 ON DELETE CASCADE，但本机 MySQL 历史库可能缺 FK（迁移
+    # 差异），这里**显式删除**保证行为一致（不依赖数据库级联）。
+    db.execute(
+        TrainingCandidatePoolMember.__table__.delete()
+        .where(TrainingCandidatePoolMember.pool_id == str(pool_id))
+    )
+    deleted_snapshots = 0
+    if snapshot_ids:
+        res = db.execute(
+            TrainingCandidatePoolSnapshot.__table__.delete()
+            .where(TrainingCandidatePoolSnapshot.pool_id == str(pool_id))
+        )
+        deleted_snapshots = int(getattr(res, "rowcount", 0) or 0)
+
+    before = {
+        "pool_id": pool.id, "name": pool.name,
+        "status": pool.status, "member_count": int(pool.member_count or 0),
+        "version": int(pool.version or 1),
+    }
+    db.delete(pool)
+    _write_audit(
+        db,
+        action=AUDIT_POOL_DELETED,
+        actor=actor,
+        pool_id=str(pool_id),
+        before=before,
+        after={"deleted": True, "snapshots_deleted": deleted_snapshots},
+        attributes={"pool_id": str(pool_id),
+                    "deleted_members": int(members),
+                    "deleted_snapshots": deleted_snapshots},
+    )
+    db.commit()
+    return {
+        "pool_id": str(pool_id),
+        "status": "deleted",
+        "deleted_members": int(members),
+        "deleted_snapshots": deleted_snapshots,
+    }
 
 
 def list_pools(
@@ -1127,6 +1255,7 @@ __all__ = [
     "AUDIT_POOL_MEMBERS_ADDED",
     "AUDIT_POOL_MEMBERS_SOFT_DELETED",
     "AUDIT_POOL_UPDATED",
+    "AUDIT_POOL_DELETED",
     "MAX_BATCH",
     "MIN_POOL_SIZE",
     "MemberChangeResult",

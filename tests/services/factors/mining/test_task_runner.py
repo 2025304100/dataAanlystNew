@@ -435,3 +435,53 @@ class TestFailurePath:
         locks = _locks(db_session)
         assert locks.mining_domain["busy"] is False
         assert locks.duckdb_write["busy"] is False
+
+
+# ══════════════════════════════════════════════════════════
+# 7. DEF-12：代内推进 touch + cancel_requested 感知
+# ══════════════════════════════════════════════════════════
+
+
+class TestDef12ProgressTouchAndCancel:
+    def test_touch_run_progress_refreshes_updated_at(self, mining_env,
+                                                     db_session):
+        """代内评估周期性 touch updated_at（看门狗推进信号），且带节流。"""
+        from app.models.factor_mining import FactorMiningRun
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        db_session.add(FactorMiningRun(
+            id="run-def12", status="running",
+            candidate_pool_snapshot_id="snap-def12",
+            data_cutoff_at=now, start_date=now, end_date=now,
+            rebalance_frequency="daily", max_generation=5,
+            created_at=now, updated_at=now,
+        ))
+        db_session.commit()
+        old_ts = db_session.get(FactorMiningRun, "run-def12").updated_at
+
+        assert TR.touch_run_progress("run-def12", min_interval=0.0) is True
+        db_session.expire_all()
+        new_ts = db_session.get(FactorMiningRun, "run-def12").updated_at
+        assert new_ts is not None and new_ts >= old_ts
+
+        # 节流窗口内的第二次调用必须短路（不给 DB 压力）
+        assert TR.touch_run_progress("run-def12", min_interval=3600) is False
+
+    def test_cancel_requested_makes_should_stop_true(self, mining_env,
+                                                     db_session, monkeypatch):
+        """cancel_async_task 写入 cancel_requested=1 后，ctx.should_stop() 变 True。"""
+        task = AT.create_async_task(TR.TASK_TYPE, {"run_id": "run-cancel12"},
+                                    use_control_plane=True)
+        ctx = TR.MiningWorkerContext(task_id=task.id, run_id="run-cancel12",
+                                     payload={}, holds_duckdb_write=True)
+        monkeypatch.setattr(TR, "_cancel_state", {})  # 清节流缓存
+        assert ctx.should_stop() is False
+
+        AT.cancel_async_task(task.id)
+        monkeypatch.setattr(TR, "_cancel_state", {})
+        assert ctx.should_stop() is True
+
+        # 终态任务的 cancel 不再翻转（幂等：已 cancelled 时 should_stop 仍 True 无妨，
+        # 但任务记录不存在时必须保守返回 False，防误杀直跑/测试注入场景）
+        monkeypatch.setattr(TR, "_cancel_state", {})
+        assert TR._cancel_requested_cached("no-such-task-id") is False

@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>因子挖掘 - 挖掘结果</title>
+<style>
+  :root {
+    --fm-brand-50: #f0fdfa;
+    --fm-brand-100: #ccfbf1;
+    --fm-brand-200: #99f6e4;
+    --fm-brand-300: #5eead4;
+    --fm-brand-400: #2dd4bf;
+    --fm-brand-500: #14b8a6;
+    --fm-brand-600: #0d9488;
+    --fm-brand-700: #0f766e;
+    --fm-brand-800: #115e59;
+    --fm-brand-900: #134e4a;
+    --fm-neutral-0: #ffffff;
+    --fm-neutral-50: #fafaf9;
+    --fm-neutral-100: #f5f5f4;
+    --fm-neutral-200: #e7e5e4;
+    --fm-neutral-300: #d6d3d1;
+    --fm-neutral-400: #a8a29e;
+    --fm-neutral-500: #78716c;
+    --fm-neutral-600: #57534e;
+    --fm-neutral-700: #44403c;
+    --fm-neutral-800: #292524;
+    --fm-neutral-900: #1c1917;
+    --fm-success: #15803d;
+    --fm-success-soft: #dcfce7;
+    --fm-info: #1d6fd8;
+    --fm-info-soft: #dbeafe;
+    --fm-warn: #b45309;
+    --fm-warn-soft: #ffedd5;
+    --fm-danger: #b42318;
+    --fm-danger-soft: #fee2e2;
+    --fm-grade-s: #0b6b63;
+    --fm-grade-a: #1d6fd8;
+    --fm-grade-b: #b45309;
+    --fm-grade-c: #c2410c;
+    --fm-grade-d: #b42318;
+
+    /* 暖色调 */
+    --fm-cream-50: #fffaf0;
+    --fm-cream-100: #fdf6eb;
+    --fm-cream-200: #f7f4ec;
+    --fm-cream-300: #e8e2d5;
+    --fm-cream-border: rgba(31, 41, 51, 0.08);
+
+    /* 文字四级灰度 */
+    --fm-text-primary: #1f2933;
+    --fm-text-secondary: #52606d;
+    --fm-text-tertiary: #7b8794;
+    --fm-text-quaternary: #9aa5b1;
+
+    --fm-background: var(--fm-cream-50);
+    --fm-foreground: var(--fm-text-primary);
+    --fm-card: var(--fm-neutral-0);
+    --fm-primary: var(--fm-brand-700);
+    --fm-primary-foreground: var(--fm-neutral-0);
+    --fm-muted: var(--fm-cream-200);
+    --fm-muted-foreground: var(--fm-text-tertiary);
+    --fm-border: var(--fm-cream-border);
+    --fm-radius-sm: 6px;
+    --fm-radius-md: 10px;
+    --fm-radius-lg: 14px;
+    --fm-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --fm-text-xs: 11px;
+    --fm-text-sm: 12px;
+    --fm-text-base: 13px;
+    --fm-text-lg: 14px;
+    --fm-text-xl: 16px;
+    --fm-text-2xl: 18px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--fm-font-sans);
+    font-size: var(--fm-text-base);
+    color: var(--fm-foreground);
+    background: var(--fm-background);
+    min-width: 1440px;
+  }
+
+  /* App Shell Layout */
+  .app-shell { display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 232px; background: var(--fm-neutral-800); color: var(--fm-neutral-0);
+    flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; overflow-y: auto;
+  }
+  .sidebar-logo {
+    height: 56px; display: flex; align-items: center; padding: 0 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: var(--fm-text-lg); font-weight: 600; color: var(--fm-brand-300);
+  }
+  .sidebar-logo .logo-icon {
+    width: 28px; height: 28px; background: var(--fm-brand-600);
+    border-radius: var(--fm-radius-sm); display: inline-flex;
+    align-items: center; justify-content: center; margin-right: 10px;
+    font-size: var(--fm-text-sm); font-weight: 700;
+  }
+  .nav-section { padding: 12px 0; }
+  .nav-section-title {
+    padding: 8px 20px; font-size: var(--fm-text-xs); color: var(--fm-neutral-500);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .nav-item {
+    display: flex; align-items: center; padding: 9px 20px;
+    font-size: var(--fm-text-base); color: var(--fm-neutral-300);
+    cursor: pointer; border-left: 3px solid transparent;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.04); color: var(--fm-neutral-0); }
+  .nav-item.active {
+    background: rgba(20, 184, 166, 0.1); color: var(--fm-brand-300);
+    border-left-color: var(--fm-brand-400);
+  }
+  .nav-item .nav-icon { width: 18px; margin-right: 10px; text-align: center; font-size: var(--fm-text-lg); }
+  .nav-sub {
+    padding-left: 48px; font-size: var(--fm-text-sm); color: var(--fm-neutral-400);
+    padding-top: 6px; padding-bottom: 6px; cursor: pointer;
+  }
+  .nav-sub.active { color: var(--fm-brand-300); }
+
+  /* Main Area */
+  .main-area { flex: 1; margin-left: 232px; min-width: 0; }
+
+  /* Top Bar */
+  .topbar {
+    height: 56px; background: var(--fm-card); border-bottom: 1px solid var(--fm-border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; position: sticky; top: 0; z-index: 10;
+  }
+  .breadcrumb { font-size: var(--fm-text-base); color: var(--fm-text-tertiary); }
+  .breadcrumb .sep { margin: 0 8px; color: var(--fm-text-quaternary); }
+  .breadcrumb .current { color: var(--fm-foreground); font-weight: 500; }
+  .topbar-right { display: flex; align-items: center; gap: 16px; }
+  .topbar-icon {
+    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    border-radius: var(--fm-radius-sm); color: var(--fm-neutral-500); cursor: pointer; position: relative;
+  }
+  .topbar-icon:hover { background: var(--fm-neutral-100); }
+  .topbar-icon .badge {
+    position: absolute; top: 6px; right: 6px; width: 8px; height: 8px;
+    background: var(--fm-danger); border-radius: 50%; border: 1.5px solid var(--fm-card);
+  }
+  .user-avatar {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--fm-brand-600);
+    color: white; display: flex; align-items: center; justify-content: center;
+    font-size: var(--fm-text-sm); font-weight: 500; cursor: pointer;
+  }
+
+  /* Sub Tabs */
+  .sub-tabs {
+    background: var(--fm-card); border-bottom: 1px solid var(--fm-border);
+    padding: 0 24px; display: flex; gap: 32px;
+  }
+  .sub-tab {
+    padding: 14px 0; font-size: var(--fm-text-base); color: var(--fm-text-tertiary);
+    cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500;
+  }
+  .sub-tab:hover { color: var(--fm-text-secondary); }
+  .sub-tab.active { color: var(--fm-brand-700); border-bottom-color: var(--fm-brand-600); }
+
+  /* Step Indicator (Professional) */
+  .step-bar { background: var(--fm-card); padding: 20px 24px; border-bottom: 1px solid var(--fm-border); }
+  .step-track {
+    background: #fff;
+    border: 1px solid rgba(31, 41, 51, 0.08);
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    padding: 28px 32px;
+    display: flex;
+    justify-content: space-between;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .step-item { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; text-align: center; }
+  /* Connector lines - all done, all teal */
+  .step-item:not(:last-child)::after {
+    content: ''; position: absolute; top: 24px;
+    left: calc(50% + 16px); right: calc(-50% + 16px);
+    height: 2px; background: #0f766e; z-index: 0;
+  }
+  /* Step highlight wrapper */
+  .step-highlight {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+    padding: 8px 16px;
+    border-radius: 12px;
+  }
+  /* Circle node - all done state */
+  .step-circle {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(135deg, #0d9488, #0f766e);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 500; z-index: 1; position: relative;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.12);
+  }
+  .step-text {
+    display: flex; flex-direction: column; gap: 3px;
+    white-space: nowrap; margin-top: 12px; text-align: center;
+  }
+  .step-label {
+    font-size: 13px;
+    color: #0f766e; font-weight: 600;
+    line-height: 1.2; text-align: center;
+  }
+  .step-sublabel {
+    font-size: 11px;
+    color: #0d9488;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+
+  /* Content Area */
+  .content-area { padding: 20px 24px; background: var(--fm-background); }
+
+  /* Card */
+  .card {
+    background: var(--fm-card); border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-md); margin-bottom: 16px;
+  }
+  .card-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--fm-border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-title { font-size: var(--fm-text-lg); font-weight: 600; color: var(--fm-foreground); }
+  .card-subtitle { font-size: var(--fm-text-sm); color: var(--fm-muted-foreground); margin-top: 2px; }
+  .card-body { padding: 20px; }
+
+  /* Research Banner */
+  .research-banner {
+    background: #fef9c3;
+    border-left: 3px solid #eab308;
+    padding: 14px 20px;
+    border-radius: 0 var(--fm-radius-sm) var(--fm-radius-sm) 0;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .research-banner .banner-icon {
+    color: #ca8a04;
+    font-size: 20px;
+    line-height: 1.3;
+    flex-shrink: 0;
+  }
+  .research-banner .banner-title {
+    font-size: var(--fm-text-base);
+    font-weight: 600;
+    color: #854d0e;
+    margin-bottom: 4px;
+  }
+  .research-banner .banner-text {
+    font-size: var(--fm-text-sm);
+    color: #854d0e;
+    line-height: 1.6;
+  }
+
+  /* Overview Tiles */
+  .overview-tiles {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .tile {
+    border-radius: var(--fm-radius-md);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    border: 1px solid var(--fm-cream-border);
+  }
+  .tile-primary {
+    background: var(--fm-brand-700);
+    color: white;
+  }
+  .tile-primary .tile-label { color: var(--fm-brand-200); }
+  .tile-primary .tile-value { font-size: 42px; font-weight: 700; line-height: 1.1; }
+  .tile-s { background: var(--fm-brand-50); }
+  .tile-s .tile-value { color: var(--fm-brand-700); }
+  .tile-a { background: var(--fm-info-soft); }
+  .tile-a .tile-value { color: var(--fm-info); }
+  .tile-b { background: var(--fm-warn-soft); }
+  .tile-b .tile-value { color: var(--fm-warn); }
+  .tile-c { background: #ffedd5; }
+  .tile-c .tile-value { color: var(--fm-grade-c); }
+  .tile-d { background: var(--fm-danger-soft); }
+  .tile-d .tile-value { color: var(--fm-danger); }
+  .tile-label {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-muted-foreground);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .tile-value {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .toolbar-left {
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-600);
+  }
+  .toolbar-left strong { color: var(--fm-foreground); font-weight: 600; }
+  .toolbar-right { display: flex; gap: 10px; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 8px 18px; border-radius: var(--fm-radius-sm);
+    font-size: var(--fm-text-base); font-weight: 500; cursor: pointer;
+    border: 1px solid transparent; transition: all 0.2s; font-family: inherit;
+    gap: 6px;
+  }
+  .btn-primary {
+    background: var(--fm-brand-700); color: var(--fm-primary-foreground);
+  }
+  .btn-primary:hover { background: var(--fm-brand-800); }
+  .btn-secondary {
+    background: var(--fm-card); color: var(--fm-neutral-700); border-color: var(--fm-border);
+  }
+  .btn-secondary:hover { background: var(--fm-neutral-50); }
+  .btn-ghost {
+    background: transparent; color: var(--fm-neutral-600); border-color: var(--fm-border);
+  }
+  .btn-ghost:hover { background: var(--fm-neutral-50); }
+  .btn-sm { padding: 5px 12px; font-size: var(--fm-text-sm); }
+
+  /* Grade Chips */
+  .grade-chips {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .grade-chip {
+    padding: 6px 16px;
+    border-radius: 999px;
+    font-size: var(--fm-text-sm);
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    color: var(--fm-neutral-600);
+    transition: all 0.2s;
+  }
+  .grade-chip:hover { border-color: var(--fm-neutral-300); }
+  .grade-chip.active {
+    background: var(--fm-brand-700);
+    color: white;
+    border-color: var(--fm-brand-700);
+  }
+  .grade-chip.grade-d:not(.active) {
+    color: var(--fm-danger);
+    border-color: var(--fm-danger-soft);
+    background: var(--fm-danger-soft);
+  }
+
+  /* Batch Action Bar */
+  .batch-bar {
+    background: var(--fm-brand-50);
+    border: 1px solid var(--fm-brand-200);
+    border-radius: var(--fm-radius-md);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .batch-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: var(--fm-text-base);
+    color: var(--fm-brand-800);
+  }
+  .batch-bar-left .chip-count {
+    background: var(--fm-brand-700);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: var(--fm-text-xs);
+    font-weight: 600;
+  }
+
+  /* Chip */
+  .chip {
+    display: inline-flex; align-items: center;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: var(--fm-text-xs); font-weight: 500; line-height: 1.5;
+  }
+  .chip-gray { background: var(--fm-neutral-100); color: var(--fm-neutral-600); }
+  .chip-teal { background: var(--fm-brand-50); color: var(--fm-brand-700); }
+  .chip-blue { background: var(--fm-info-soft); color: var(--fm-info); }
+
+  /* Chart */
+  .chart-container { width: 100%; position: relative; }
+  .chart-legend {
+    display: flex; gap: 16px; font-size: var(--fm-text-sm); color: var(--fm-muted-foreground);
+  }
+  .chart-legend .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    padding: 10px 12px; text-align: left;
+    font-size: var(--fm-text-sm); font-weight: 600; color: var(--fm-text-secondary);
+    background: var(--fm-cream-200); border-bottom: 1px solid var(--fm-border);
+  }
+  tbody td {
+    padding: 12px; font-size: var(--fm-text-base); color: var(--fm-text-secondary);
+    border-bottom: 1px solid var(--fm-border);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--fm-cream-100); }
+  tbody tr.row-s { background: var(--fm-brand-50); }
+  tbody tr.row-s:hover { background: var(--fm-brand-100); }
+  .mono {
+    font-family: "SF Mono", "Monaco", "Inconsolata", "Consolas", monospace;
+    font-size: var(--fm-text-sm);
+  }
+  .formula-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Grade Badge */
+  .grade-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    font-size: var(--fm-text-xs);
+    font-weight: 700;
+    color: white;
+  }
+  .grade-s { background: var(--fm-grade-s); }
+  .grade-a { background: var(--fm-grade-a); }
+  .grade-b { background: var(--fm-grade-b); }
+  .grade-c { background: var(--fm-grade-c); }
+  .grade-d { background: var(--fm-grade-d); }
+
+  /* Source tag */
+  .src-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: var(--fm-text-xs); font-weight: 500;
+  }
+  .src-elite { background: var(--fm-brand-50); color: var(--fm-brand-700); }
+  .src-mutate { background: var(--fm-info-soft); color: var(--fm-info); }
+  .src-crossover { background: var(--fm-warn-soft); color: var(--fm-warn); }
+  .src-random { background: var(--fm-neutral-100); color: var(--fm-neutral-600); }
+
+  .link-btn {
+    color: var(--fm-brand-700);
+    font-size: var(--fm-text-sm);
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .link-btn:hover { color: var(--fm-brand-800); text-decoration: underline; }
+
+  /* Checkbox */
+  .checkbox {
+    width: 16px; height: 16px;
+    border: 1.5px solid var(--fm-neutral-300);
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: var(--fm-card);
+  }
+  .checkbox.checked {
+    background: var(--fm-brand-700);
+    border-color: var(--fm-brand-700);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  /* Pagination */
+  .pagination {
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid var(--fm-border);
+    font-size: var(--fm-text-sm);
+    color: var(--fm-neutral-500);
+  }
+  .pagination-right { display: flex; gap: 8px; align-items: center; }
+  .page-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-sm);
+    background: var(--fm-card);
+    color: var(--fm-neutral-600);
+    cursor: pointer;
+    font-size: var(--fm-text-sm);
+  }
+  .page-btn:hover { border-color: var(--fm-brand-500); color: var(--fm-brand-700); }
+  .page-btn.disabled { color: var(--fm-neutral-300); cursor: not-allowed; }
+  .page-btn.disabled:hover { border-color: var(--fm-border); color: var(--fm-neutral-300); }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">量</span>
+      量化工作台
+    </div>
+    <nav class="nav-section">
+      <div class="nav-section-title">主要功能</div>
+      <div class="nav-item"><span class="nav-icon">📊</span>仪表盘</div>
+      <div class="nav-item"><span class="nav-icon">📈</span>策略组合</div>
+      <div class="nav-item"><span class="nav-icon">🔍</span>机会中心</div>
+      <div class="nav-item"><span class="nav-icon">🧪</span>回测中心</div>
+      <div class="nav-item"><span class="nav-icon">📐</span>因子中心</div>
+    </nav>
+    <nav class="nav-section">
+      <div class="nav-section-title">系统设置</div>
+      <div class="nav-item active"><span class="nav-icon">⚙️</span>设置</div>
+      <div class="nav-sub active">因子挖掘</div>
+      <div class="nav-sub">数据中心</div>
+      <div class="nav-sub">评分配置</div>
+      <div class="nav-sub">权限管理</div>
+      <div class="nav-item"><span class="nav-icon">👤</span>账户</div>
+    </nav>
+  </aside>
+
+  <!-- Main Area -->
+  <div class="main-area">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="breadcrumb">
+        设置 <span class="sep">/</span> <span class="current">因子挖掘</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon">🔔<span class="badge"></span></div>
+        <div class="topbar-icon">💬</div>
+        <div class="user-avatar">王</div>
+      </div>
+    </header>
+
+    <!-- Sub Tabs -->
+    <div class="sub-tabs">
+      <div class="sub-tab active">向导</div>
+      <div class="sub-tab">批次列表</div>
+      <div class="sub-tab">经验库</div>
+      <div class="sub-tab">模板配置</div>
+    </div>
+
+    <!-- Step Bar -->
+    <div class="step-bar">
+      <div class="step-track">
+        <div class="step-item">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">候选股票池</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">时间与目标</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">字段与校验</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">进化参数</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-highlight">
+            <div class="step-circle">✓</div>
+            <div class="step-text">
+              <div class="step-label">进化执行与结果</div>
+              <div class="step-sublabel">已完成</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content-area">
+
+      <!-- Research Statement Banner -->
+      <div class="research-banner">
+        <span class="banner-icon">⚠</span>
+        <div style="flex: 1;">
+          <div class="banner-title">研究声明</div>
+          <div class="banner-text">
+            本结果仅用于研究探索，不构成投资建议。挖掘因子基于历史数据，未来表现不具保证性。test 段数据全程锁定，仅用于最终验证，禁止回炉重挖。
+          </div>
+        </div>
+      </div>
+
+      <!-- Overview Tiles -->
+      <div class="overview-tiles">
+        <div class="tile tile-primary">
+          <div class="tile-label">有效因子数</div>
+          <div class="tile-value">22</div>
+        </div>
+        <div class="tile tile-s">
+          <div class="tile-label">S 级</div>
+          <div class="tile-value">1</div>
+        </div>
+        <div class="tile tile-a">
+          <div class="tile-label">A 级</div>
+          <div class="tile-value">3</div>
+        </div>
+        <div class="tile tile-b">
+          <div class="tile-label">B 级</div>
+          <div class="tile-value">7</div>
+        </div>
+        <div class="tile tile-c">
+          <div class="tile-label">C 级</div>
+          <div class="tile-value">8</div>
+        </div>
+        <div class="tile tile-d">
+          <div class="tile-label">D 级</div>
+          <div class="tile-value">3</div>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="toolbar-left">
+          有效因子 <strong>22</strong> 个 · 按校正后 ICIR 降序
+        </div>
+        <div class="toolbar-right">
+          <button class="btn btn-secondary">导出</button>
+          <button class="btn btn-primary">跳转因子模型页 →</button>
+        </div>
+      </div>
+
+      <!-- Grade Filter Chips -->
+      <div class="grade-chips">
+        <div class="grade-chip active">全部 (22)</div>
+        <div class="grade-chip">S (1)</div>
+        <div class="grade-chip">A (3)</div>
+        <div class="grade-chip">B (7)</div>
+        <div class="grade-chip">C (8)</div>
+        <div class="grade-chip grade-d">D (3)</div>
+      </div>
+
+      <!-- Batch Action Bar -->
+      <div class="batch-bar">
+        <div class="batch-bar-left">
+          <span class="chip-count">已选 2 个</span>
+          <span>含 D 级 0 个</span>
+          <span class="chip chip-gray">可加入因子集</span>
+        </div>
+        <div>
+          <button class="btn btn-primary">批量加入因子集</button>
+        </div>
+      </div>
+
+      <!-- Pareto Scatter Plot Card -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">帕累托前沿</div>
+            <div class="card-subtitle">X=换手率 · Y=ICIR · 点大小=复杂度 · 颜色=覆盖率</div>
+          </div>
+          <div class="chart-legend">
+            <div class="legend-item">
+              <span class="legend-dot" style="background: var(--fm-brand-600); border: 2px solid var(--fm-brand-800);"></span>
+              帕累托前沿
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: var(--fm-brand-400);"></span>
+              普通因子
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="chart-container">
+            <svg width="100%" height="260" viewBox="0 0 960 260" preserveAspectRatio="none">
+              <!-- Grid lines -->
+              <g stroke="var(--fm-neutral-100)" stroke-width="1">
+                <line x1="60" y1="20" x2="940" y2="20"/>
+                <line x1="60" y1="70" x2="940" y2="70"/>
+                <line x1="60" y1="120" x2="940" y2="120"/>
+                <line x1="60" y1="170" x2="940" y2="170"/>
+                <line x1="60" y1="220" x2="940" y2="220"/>
+              </g>
+              <!-- Y axis labels (ICIR 0-4) -->
+              <g fill="var(--fm-neutral-400)" font-size="11" font-family="var(--fm-font-sans)" text-anchor="end">
+                <text x="52" y="24">4.0</text>
+                <text x="52" y="74">3.0</text>
+                <text x="52" y="124">2.0</text>
+                <text x="52" y="174">1.0</text>
+                <text x="52" y="224">0.0</text>
+              </g>
+              <text x="20" y="120" fill="var(--fm-neutral-500)" font-size="11" font-family="var(--fm-font-sans)" text-anchor="middle" transform="rotate(-90 20 120)">ICIR</text>
+              <!-- X axis labels (turnover 0%-100%) -->
+              <g fill="var(--fm-neutral-400)" font-size="11" font-family="var(--fm-font-sans)" text-anchor="middle">
+                <text x="60" y="244">0%</text>
+                <text x="275" y="244">25%</text>
+                <text x="490" y="244">50%</text>
+                <text x="705" y="244">75%</text>
+                <text x="920" y="244">100%</text>
+              </g>
+              <text x="490" y="258" fill="var(--fm-neutral-500)" font-size="11" font-family="var(--fm-font-sans)" text-anchor="middle">换手率</text>
+
+              <!-- Pareto frontier line (connect top 3 points) -->
+              <polyline fill="none" stroke="var(--fm-brand-700)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"
+                points="140,45 380,80 600,130"/>
+
+              <!-- Scatter points - ~22 points, top-left dense, bottom-right sparse -->
+              <!-- Pareto frontier points (rank=1, highlighted with thick stroke) -->
+              <!-- Point 1: high ICIR, low turnover (S级因子) -->
+              <circle cx="140" cy="45" r="10" fill="var(--fm-brand-500)" stroke="var(--fm-brand-800)" stroke-width="2.5"/>
+              <!-- Point 2: mid ICIR, mid turnover -->
+              <circle cx="380" cy="80" r="8" fill="var(--fm-brand-500)" stroke="var(--fm-brand-800)" stroke-width="2.5"/>
+              <!-- Point 3: lower ICIR, higher turnover -->
+              <circle cx="600" cy="130" r="7" fill="var(--fm-brand-500)" stroke="var(--fm-brand-800)" stroke-width="2.5"/>
+
+              <!-- Regular points - various sizes and colors -->
+              <!-- High ICIR, low turnover cluster -->
+              <circle cx="100" cy="55" r="6" fill="var(--fm-brand-400)" opacity="0.85"/>
+              <circle cx="170" cy="62" r="5" fill="var(--fm-brand-400)" opacity="0.85"/>
+              <circle cx="200" cy="70" r="7" fill="var(--fm-brand-400)" opacity="0.8"/>
+              <circle cx="230" cy="78" r="5" fill="var(--fm-brand-300)" opacity="0.8"/>
+              <circle cx="130" cy="85" r="4" fill="var(--fm-brand-300)" opacity="0.75"/>
+              <circle cx="185" cy="92" r="6" fill="var(--fm-brand-400)" opacity="0.75"/>
+              
+              <!-- Mid cluster -->
+              <circle cx="320" cy="95" r="6" fill="var(--fm-brand-400)" opacity="0.8"/>
+              <circle cx="420" cy="100" r="5" fill="var(--fm-brand-300)" opacity="0.75"/>
+              <circle cx="350" cy="110" r="4" fill="var(--fm-brand-300)" opacity="0.7"/>
+              <circle cx="460" cy="115" r="5" fill="var(--fm-brand-400)" opacity="0.7"/>
+              <circle cx="290" cy="118" r="4" fill="var(--fm-brand-300)" opacity="0.7"/>
+              <circle cx="400" cy="130" r="6" fill="var(--fm-brand-300)" opacity="0.65"/>
+              <circle cx="520" cy="140" r="5" fill="var(--fm-brand-300)" opacity="0.65"/>
+
+              <!-- Lower right cluster (lower ICIR, higher turnover) -->
+              <circle cx="650" cy="150" r="4" fill="var(--fm-brand-300)" opacity="0.6"/>
+              <circle cx="700" cy="165" r="5" fill="var(--fm-brand-300)" opacity="0.55"/>
+              <circle cx="580" cy="160" r="3" fill="var(--fm-brand-200)" opacity="0.6"/>
+              <circle cx="750" cy="180" r="4" fill="var(--fm-brand-200)" opacity="0.55"/>
+              <circle cx="820" cy="195" r="3" fill="var(--fm-brand-200)" opacity="0.5"/>
+              <circle cx="680" cy="175" r="3" fill="var(--fm-brand-200)" opacity="0.5"/>
+              <circle cx="880" cy="205" r="3" fill="var(--fm-brand-200)" opacity="0.45"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Factor List Table Card -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">因子列表</div>
+          <div style="font-size: var(--fm-text-sm); color: var(--fm-muted-foreground);">
+            共 22 个有效因子
+          </div>
+        </div>
+        <div style="padding: 0;">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 40px;">
+                  <span class="checkbox checked">✓</span>
+                </th>
+                <th>公式</th>
+                <th style="width: 60px;">等级</th>
+                <th style="width: 90px;">原始 ICIR</th>
+                <th style="width: 100px;">校正 ICIR</th>
+                <th style="width: 80px;">覆盖率</th>
+                <th style="width: 70px;">衰减率</th>
+                <th style="width: 70px;">换手率</th>
+                <th style="width: 90px;">来源</th>
+                <th style="width: 80px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Row 1 - S级 -->
+              <tr class="row-s">
+                <td><span class="checkbox checked">✓</span></td>
+                <td class="mono formula-cell">mean(close,5)/mean(close,20)-1</td>
+                <td><span class="grade-badge grade-s">S</span></td>
+                <td>2.87</td>
+                <td style="font-weight: 600; color: var(--fm-brand-700);">3.24</td>
+                <td>96.2%</td>
+                <td>0.85</td>
+                <td>28%</td>
+                <td><span class="src-tag src-elite">精英保留</span></td>
+                <td><span class="link-btn">查看证据</span></td>
+              </tr>
+              <!-- Row 2 - A级 -->
+              <tr>
+                <td><span class="checkbox checked">✓</span></td>
+                <td class="mono formula-cell">ts_rank(volume,20)*corr(close,volume,10)</td>
+                <td><span class="grade-badge grade-a">A</span></td>
+                <td>2.65</td>
+                <td style="font-weight: 600;">2.91</td>
+                <td>94.8%</td>
+                <td>0.78</td>
+                <td>35%</td>
+                <td><span class="src-tag src-mutate">变异</span></td>
+                <td><span class="link-btn">查看证据</span></td>
+              </tr>
+              <!-- Row 3 - A级 -->
+              <tr>
+                <td><span class="checkbox"></span></td>
+                <td class="mono formula-cell">(close-delay(close,5))/delay(close,5)*sign(volume)</td>
+                <td><span class="grade-badge grade-a">A</span></td>
+                <td>2.48</td>
+                <td style="font-weight: 600;">2.72</td>
+                <td>92.1%</td>
+                <td>0.72</td>
+                <td>42%</td>
+                <td><span class="src-tag src-crossover">交叉</span></td>
+                <td><span class="link-btn">查看证据</span></td>
+              </tr>
+              <!-- Row 4 - A级 -->
+              <tr>
+                <td><span class="checkbox"></span></td>
+                <td class="mono formula-cell">stddev(returns,10)/stddev(returns,30)</td>
+                <td><span class="grade-badge grade-a">A</span></td>
+                <td>2.31</td>
+                <td style="font-weight: 600;">2.55</td>
+                <td>95.5%</td>
+                <td>0.81</td>
+                <td>22%</td>
+                <td><span class="src-tag src-elite">精英保留</span></td>
+                <td><span class="link-btn">查看证据</span></td>
+              </tr>
+              <!-- Row 5 - B级 -->
+              <tr>
+                <td><span class="checkbox"></span></td>
+                <td class="mono formula-cell">max(high,5)/min(low,5)-1</td>
+                <td><span class="grade-badge grade-b">B</span></td>
+                <td>2.19</td>
+                <td>2.31</td>
+                <td>91.3%</td>
+                <td>0.69</td>
+                <td>48%</td>
+                <td><span class="src-tag src-random">随机注入</span></td>
+                <td><span class="link-btn">查看证据</span></td>
+              </tr>
+              <!-- Row 6 - B级 -->
+              <tr>
+                <td><span class="checkbox"></span></td>
+                <td class="mono formula-cell">rank(pe)/rank(pb)-1</td>
+                <td><span class="grade-badge grade-b">B</span></td>
+                <td>2.05</td>
+                <td>2.18</td>
+                <td>88.7%</td>
+                <td>0.74</td>
+                <td>15%</td>
+                <td><span class="src-tag src-elite">精英保留</span></td>
+                <td><span class="link-btn">查看证据</span></td>
+              </tr>
+              <!-- Row 7 - B级 -->
+              <tr>
+                <td><span class="checkbox"></span></td>
+                <td class="mono formula-cell">roc(close,10)/ts_max(roc(close,10),20)</td>
+                <td><span class="grade-badge grade-b">B</span></td>
+                <td>1.98</td>
+                <td>2.10</td>
+                <td>93.4%</td>
+                <td>0.67</td>
+                <td>38%</td>
+                <td><span class="src-tag src-mutate">变异</span></td>
+                <td><span class="link-btn">查看证据</span></td>
+              </tr>
+              <!-- Row 8 - B级 -->
+              <tr>
+                <td><span class="checkbox"></span></td>
+                <td class="mono formula-cell">corr(close,volume,20)*sign(ret)</td>
+                <td><span class="grade-badge grade-b">B</span></td>
+                <td>1.92</td>
+                <td>2.03</td>
+                <td>90.1%</td>
+                <td>0.71</td>
+                <td>31%</td>
+                <td><span class="src-tag src-crossover">交叉</span></td>
+                <td><span class="link-btn">查看证据</span></td>
+              </tr>
+              <!-- Row 9 - C级 -->
+              <tr>
+                <td><span class="checkbox"></span></td>
+                <td class="mono formula-cell">delta(volume,5)/ma(volume,20)</td>
+                <td><span class="grade-badge grade-c">C</span></td>
+                <td>1.78</td>
+                <td>1.85</td>
+                <td>87.6%</td>
+                <td>0.63</td>
+                <td>55%</td>
+                <td><span class="src-tag src-mutate">变异</span></td>
+                <td><span class="link-btn">查看证据</span></td>
+              </tr>
+              <!-- Row 10 - C级 -->
+              <tr>
+                <td><span class="checkbox"></span></td>
+                <td class="mono formula-cell">bias(close,ma(close,60))</td>
+                <td><span class="grade-badge grade-c">C</span></td>
+                <td>1.65</td>
+                <td>1.72</td>
+                <td>89.2%</td>
+                <td>0.58</td>
+                <td>25%</td>
+                <td><span class="src-tag src-random">随机注入</span></td>
+                <td><span class="link-btn">查看证据</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination">
+            <div>共 22 条记录</div>
+            <div class="pagination-right">
+              <span>第 1/3 页</span>
+              <button class="page-btn disabled">上一页</button>
+              <button class="page-btn">下一页</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

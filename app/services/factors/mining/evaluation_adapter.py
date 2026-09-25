@@ -751,6 +751,43 @@ def _default_run_evaluator(db: Any, *, factor_version_id: int,
                           stats_provider=stats_provider)
 
 
+def build_full_panels(ctx: MiningContext, formula: str) -> tuple:
+    """为最终验证计算**全区间**因子面板与目标面板（DEF-9 生产链路补全）。
+
+    真实缺陷（2026-09-25 V4a 实测）：evaluate_full 的生产默认路径把
+    `factor_values=None` 直接透传给 `run_evaluation` → `None.index`
+    AttributeError → 整批候选 finalize 失败、结果页永不可达（历史测试
+    全部注入桩，未覆盖真实计算路径）。本函数复用 evaluate_short 同源
+    的仓库/子式计算件，按 ctx.split 全区间（train_start~test_end）算面板。
+    """
+    from app.services.factors.mining import performance_probe as PROBE
+
+    wh = _resolve_warehouse(ctx)
+    split = ctx.split
+    lo = _as_date(getattr(split, "train_start", None))
+    hi = _as_date(getattr(split, "test_end", None))
+
+    target_df, _bid, _tcode = wh.get_target_panel(
+        str(ctx.target_calc_batch_id or ""), target_code="target_5d_return")
+    if target_df is None or target_df.empty:
+        raise ValueError("target_panel_empty: 目标面板为空，无法做最终验证。")
+    fr = target_df.pivot(index="signal_date", columns="symbol",
+                         values="target_value")
+    fr.index = [_as_date(d) for d in fr.index]
+
+    fv = _pivot_dates_as_index(_subexpr_matrix(
+        wh, formula, start_date=lo, end_date=hi, probe=PROBE.new_probe()))
+    if fv is None or fv.empty:
+        raise ValueError("factor_panel_empty: 因子值计算为空，无法做最终验证。")
+    if lo is not None:
+        fv = fv.loc[[d is None or d >= lo for d in fv.index]]
+    if hi is not None:
+        fv = fv.loc[[d is None or d <= hi for d in fv.index]]
+    if fr is not None and lo is not None and hi is not None:
+        fr = fr.loc[[d is None or (lo <= d <= hi) for d in fr.index]]
+    return fv, fr
+
+
 def evaluate_full(
     ctx: MiningContext, *, individual: Any, db: Any,
     factor_values: Any, forward_returns: Any,
@@ -805,6 +842,11 @@ def evaluate_full(
 
     creator = draft_creator or create_candidate_draft
     runner = run_evaluator or _default_run_evaluator
+
+    # DEF-9：生产默认评估器需要真实面板；调用方（finalize_run）未传时
+    # 在此按 ctx 全区间计算（此前 None 直透 run_evaluation → None.index 崩）。
+    if runner is _default_run_evaluator and (factor_values is None or forward_returns is None):
+        factor_values, forward_returns = build_full_panels(ctx, formula)
 
     factor_version_id, code = creator(
         db, digest=digest, formula=formula,
@@ -863,5 +905,6 @@ __all__ = [
     "build_context_split",
     "evaluate_short",
     "evaluate_short_probed",
+    "build_full_panels",
     "evaluate_full",
 ]

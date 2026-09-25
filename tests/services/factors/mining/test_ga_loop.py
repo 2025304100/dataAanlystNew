@@ -547,3 +547,63 @@ class TestEndToEnd:
         assert row.probe_data_load_ms == 12
         assert row.probe_g2_hit_rate == pytest.approx(0.9)
         assert row.cache_validation_passed == 1
+
+
+# ══════════════════════════════════════════════════════════
+# DEF-12/DEF-3 · 协作式停止（should_stop 检查点）
+# ══════════════════════════════════════════════════════════
+
+
+class TestCooperativeStop:
+    def test_stop_before_first_generation(self, run_row):
+        """看门狗/pause 已请求停止 → 循环立即退出：0 代、0 评估、不落库。"""
+        outcome = GA.run_ga_loop(
+            _cfg(max_generations=5), _population(4),
+            evaluate=_flat_evaluator(0.1),
+            should_stop=lambda: True,
+        )
+        assert outcome.stopped_reason == "stopped"
+        assert outcome.generations_run == 0
+        assert outcome.total_trials == 0
+        assert outcome.history == []
+
+    def test_stop_mid_generation_keeps_completed_generations(self, run_row):
+        """第 3 代中途请求停止：前 2 代完整保留（checkpoint 语义），当前代不落库。
+
+        种群演化：初始 4 个 → 繁殖后回到 cfg.population_size=10
+        （elite 2 + offspring 8）。关掉收敛（convergence_generations 巨大），
+        排除 flat 评估器 2 代即 converged 的干扰。
+        """
+        evals = {"n": 0}
+
+        def _evaluate(item):
+            evals["n"] += 1
+            return {"icir": 0.1, "coverage": 0.8, "turnover": 0.2,
+                    "ic_mean": 0.01, "complexity": 5}
+
+        def _stop():
+            return evals["n"] >= 18  # gen0:4 + gen1:10 + gen2 进行到一半
+
+        outcome = GA.run_ga_loop(
+            _cfg(max_generations=8, convergence_generations=999),
+            _population(4), evaluate=_evaluate,
+            should_stop=_stop,
+        )
+        assert outcome.stopped_reason == "stopped"
+        assert outcome.generations_run == 2
+        # 中断代（第 3 代）跑了 4 个个体但不计数：total_trials 逐代累加，
+        # 被中止的代不落记录、不计入（与「部分代记录会破坏逐代完整性」一致）
+        assert outcome.total_trials == 14
+        assert len(outcome.history) == 2
+        assert evals["n"] == 18, "停止后不得再评估任何个体"
+
+    def test_no_should_stop_keeps_legacy_behavior(self, run_row):
+        """不传 should_stop 时行为与旧版完全一致（跑满 max_generations）。"""
+        outcome = GA.run_ga_loop(
+            _cfg(max_generations=2, convergence_generations=999),
+            _population(4),
+            evaluate=_flat_evaluator(0.1),
+        )
+        assert outcome.stopped_reason == "max_generations"
+        assert outcome.generations_run == 2
+        assert outcome.total_trials == 14  # gen0: 4 + gen1: 10（繁殖后回到种群规模）

@@ -115,11 +115,15 @@ class TestMigrationUpDown:
             ac.upgrade(_alembic_cfg(), "head")
             env = dict(os.environ)
             env["PYTHONPATH"] = str(ROOT)
+            # Windows 下 text=True 默认用 GBK 解码子进程输出，而校验脚本会打
+            # UTF-8 中文（迁移注释含全角箭头）→ UnicodeDecodeError。固定 UTF-8。
+            env["PYTHONIOENCODING"] = "utf-8"
             proc = subprocess.run(
                 [sys.executable, str(ROOT / ".workbuddy" / "mining"
                                     / "verify_schema_drift.py"),
                  "--tables", "factor_versions", "--url-from-env", "--json"],
                 capture_output=True, text=True, cwd=str(ROOT), env=env,
+                encoding="utf-8", errors="replace",
                 timeout=180,
             )
             assert proc.returncode == 0, proc.stderr[-2000:]

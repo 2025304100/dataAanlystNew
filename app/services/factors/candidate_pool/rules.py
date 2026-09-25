@@ -50,7 +50,10 @@ SQL 文本的一部分：DuckDB 查询只用常量标识符 + `?` 参数绑定�
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Mapping, Sequence
@@ -1449,9 +1452,63 @@ def load_financials_pit(conn, as_of_date: date, *, years: int,
     return merged
 
 
+# ── DEF-4：筛选面板进程级缓存（单飞 + TTL）────────────────────────
+#: 缓存条目：key -> (loaded_at_monotonic, panel)
+_PANEL_CACHE: dict[tuple, tuple[float, ScreeningPanel]] = {}
+_PANEL_CACHE_GUARD = threading.Lock()
+_panel_logger = logging.getLogger(__name__)
+
+#: 面板 TTL（秒）。数据截止日不变 ⇒ 面板内容不变；镜像补数靠手动失效或 TTL。
+PANEL_CACHE_TTL_SECONDS = 6 * 3600
+
+
+def clear_screening_panel_cache() -> int:
+    """清空筛选面板缓存（镜像补数/回填后调用），返回被清除的条目数。"""
+    with _PANEL_CACHE_GUARD:
+        n = len(_PANEL_CACHE)
+        _PANEL_CACHE.clear()
+    if n:
+        _panel_logger.info("screening panel cache cleared: %s entries", n)
+    return n
+
+
 def load_screening_panel(db: Session, rules: CompiledRules, *, as_of_date: date,
                          warehouse: Any | None = None) -> ScreeningPanel:
-    """装配筛选面板（MySQL universe + DuckDB 估值/流动性/财务）。"""
+    """装配筛选面板（MySQL universe + DuckDB 估值/流动性/财务）。
+
+    DEF-4（2026-09-24）：面板装配实测 15~90s（全市场 MySQL + 3 张 DuckDB 大表），
+    presets/preview 每次请求都重算一遍，且重复同参数也不缓存 —— Step1 冷启动
+    卡死、编辑期 300ms 防抖连续打爆。这里加**进程级单飞 + TTL 缓存**：
+
+    - 缓存键 = (markets, liquidity_window, loss_years, as_of_date)；
+    - 同进程同键请求**串行化**（先到的加载，后到的直接命中）—— 防抖并发
+      不再放大成 N 次全量装配；
+    - TTL 默认 6h：数据截止日不变则面板不变；镜像补数后可用
+      `clear_screening_panel_cache()` 失效（或等 TTL 自然过期）。
+    """
+    cache_key = (
+        tuple(rules.markets or ()),
+        int(getattr(rules, "liquidity_window", 0) or 0),
+        int(getattr(rules, "loss_years", 0) or 0),
+        as_of_date,
+    )
+    now = time.monotonic()
+    with _PANEL_CACHE_GUARD:
+        hit = _PANEL_CACHE.get(cache_key)
+        if hit is not None and now - hit[0] < PANEL_CACHE_TTL_SECONDS:
+            _panel_logger.info("screening panel cache hit: %s", cache_key)
+            return hit[1]
+        # 单飞：持锁加载（同进程并发请求只算一次，其余等缓存）
+        panel = _load_screening_panel_uncached(
+            db, rules, as_of_date=as_of_date, warehouse=warehouse)
+        _PANEL_CACHE[cache_key] = (now, panel)
+        return panel
+
+
+def _load_screening_panel_uncached(db: Session, rules: CompiledRules, *,
+                                   as_of_date: date,
+                                   warehouse: Any | None = None) -> ScreeningPanel:
+    """面板装配的**真实现**（无缓存；DEF-4 前的 `load_screening_panel` 原体）。"""
     universe = load_universe(db, rules)
     if universe.empty:
         return ScreeningPanel(universe=universe, liquidity_days_actual=0)
@@ -1767,6 +1824,32 @@ def preview_filter(db: Session, *, filter_config: Mapping[str, Any] | None,
     return result
 
 
+def preview_unavailable(*, reason_zh: str,
+                        as_of_requested: date | None = None,
+                        filter_config: Mapping[str, Any] | None = None,
+                        ) -> PreviewResult:
+    """数仓忙/不可用的**降级预览结果**（DEF-8/DEF-4，2026-09-24）。
+
+    设计 §3.2/§4 精神：预览**永不 4xx/5xx** —— 数仓被其他任务占用（如挖掘
+    持 duckdb_write）时抛 IOException 变 500 是错的；这里用既有阻断语义
+    （`WAREHOUSE_UNAVAILABLE`）表达「暂不可用」，前端据此显示
+    「加载失败·重试」而非空白/报错。
+    """
+    rules = compile_filter_config(filter_config)
+    result = PreviewResult(
+        as_of_date=None,
+        as_of_requested=as_of_requested,
+        as_of_date_adjusted=False,
+        rules=rules,
+        outcome=None,
+        warnings=[reason_zh],
+    )
+    result.blocking_issues = [
+        _blocking("VALIDATION_ERROR", REASON_WAREHOUSE_UNAVAILABLE, reason_zh)
+    ]
+    return result
+
+
 def assert_pool_generatable(result: PreviewResult) -> None:
     """生成候选池前的硬校验（向导 §3.5「必须阻断」）。
 
@@ -1832,12 +1915,15 @@ __all__ = [
     "compile_filter_config",
     "run_screening",
     "preview_filter",
+    "preview_unavailable",
     "assert_pool_generatable",
     "load_universe",
     "load_valuation",
     "load_liquidity",
     "load_financials_pit",
     "load_screening_panel",
+    "clear_screening_panel_cache",
+    "PANEL_CACHE_TTL_SECONDS",
     "list_available_fields",
     "pool_too_small_error",
     "empty_result_error",

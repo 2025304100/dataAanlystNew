@@ -1,0 +1,227 @@
+[
+  {
+    "case": "A1 字段目录 200 且分组含行情/估值/财报",
+    "ok": true,
+    "detail": "count=21 groups=['event', 'financial', 'flow', 'quote', 'valuation']"
+  },
+  {
+    "case": "A2 常用 DSL 字段在目录中(close/pe_ttm/roe_ttm)",
+    "ok": true,
+    "detail": "['amount', 'circulating_market_cap', 'close', 'dividend_yield', 'etf_fund_size', 'etf_premium_discount', 'etf_tracking_error', 'high', 'hot_rank_pct', 'lhb_institution_net', 'low', 'main_net_inflow']"
+  },
+  {
+    "case": "A3 blocked 字段附中文原因（不得可勾选）",
+    "ok": true,
+    "detail": "['dividend_yield', 'proxy_score']"
+  },
+  {
+    "case": "B1 锁状态接口 200（测试前基线应空闲）",
+    "ok": true,
+    "detail": "miningDomain.busy=False duckdbWrite.busy=False queue=[]"
+  },
+  {
+    "case": "C1 日频 1.6y 预算 ≥252 点门槛达标(meets_floor)",
+    "ok": true,
+    "detail": "{'available': True, 'total_points': 397, 'frequency_floor': 252, 'meets_floor': True, 'train_points': 238, 'val_points': 74, 'test_points': 70}"
+  },
+  {
+    "case": "C2 周频 1 年点数<104 时 meets_floor=False（如实给未达标）",
+    "ok": true,
+    "detail": "{'available': True, 'total_points': 51, 'frequency_floor': 104, 'meets_floor': False}"
+  },
+  {
+    "case": "C3 镜像范围外区间：available=False+原因（§4.1）",
+    "ok": true,
+    "detail": "{'available': False, 'reason_zh': '区间 2016-01-01 ~ 2018-12-31 内无数仓交易日。', 'total_points': None}"
+  },
+  {
+    "case": "C4 起止日期倒置：200+available=False 或 4xx（不得 5xx）",
+    "ok": true,
+    "detail": "status=200 body={\"available\":false,\"reason_zh\":\"开始日不能晚于结束日。\"}"
+  },
+  {
+    "case": "C5 train+val 比例之和>100% 被入参校验拦截(422)而非 500",
+    "ok": true,
+    "detail": "status=422 body={\"error_code\":\"VALIDATION_ERROR\",\"user_message\":\"输入参数有误\",\"impact\":\"请修改后重试\",\"retryable\":false,\"completed\":0.0,\"next_actions\":[{\"label\":\"修改后重试"
+  },
+  {
+    "case": "D1 预览接口 200 返回命中统计与 can_generate",
+    "ok": true,
+    "detail": "{'universe_size': 339, 'hits': 339, 'can_generate': True, 'min_pool_size': 50}"
+  },
+  {
+    "case": "D2 范围冲突(min>max)：预览 200+blocking_issues+can_generate=False（§3.3）",
+    "ok": true,
+    "detail": "status=200 issues=[{'code': 'VALIDATION_ERROR', 'reason': 'RANGE_CONFLICT', 'detail_zh': '总市值 的最小值 500000000000.0 大于最大值 100000000000.0，区间为空。请修正为「最小值 ≤ 最大值」（区间**包含端点**）。"
+  },
+  {
+    "case": "D3 极端区间预览命中=0（如实展示，不静默过滤）",
+    "ok": true,
+    "detail": "hits=0 can_generate=False"
+  },
+  {
+    "case": "D4 生成候选池命中<50 被 4xx 阻断且错误结构化（§3.5 硬下限，不得 500）",
+    "ok": true,
+    "detail": "status=400 code=VALIDATION_ERROR readable_zh=True top_msg=输入参数有误"
+  },
+  {
+    "case": "E1 条件建池成功（北交所）",
+    "ok": true,
+    "detail": "pool=511a6d471ad44d18b74b3ea5111777bc members=339"
+  },
+  {
+    "case": "E2 创建快照(生成挖掘物料) 201 且返回分析",
+    "ok": true,
+    "detail": "snap=5359a68cac3f4b4a8f10ef1c017cb704 keys=['analysis', 'analysis_status', 'data_cutoff_at', 'is_locked', 'pool', 'pool_id', 'snapshot_id']"
+  },
+  {
+    "case": "E3 查看最新快照 200 且 snapshot_id 一致",
+    "ok": true,
+    "detail": "status=200 latest=5359a68cac3f4b4a8f10ef1c017cb704 expect=5359a68cac3f4b4a8f10ef1c017cb704"
+  },
+  {
+    "case": "E4 重选快照（删除最新）后 latest 不再返回旧快照",
+    "ok": true,
+    "detail": "del=True latest_status_after=404"
+  },
+  {
+    "case": "E5 重新创建快照可用（重选后再生成）",
+    "ok": true,
+    "detail": "snap=dc8784dbcb1a40a98570768ffa9b8cdf"
+  },
+  {
+    "case": "F1 保存草稿 201",
+    "ok": true,
+    "detail": "draft=9a347c15e33c4540a07d39219bf6e9f1"
+  },
+  {
+    "case": "F2 读取草稿 200",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "case": "F3 最终准备：配置不完整时返回 blockers 清单（不静默放行）",
+    "ok": true,
+    "detail": "blockers=['候选股票池快照未生成（Step1 需先锁定）', '字段未勾选（Step3 至少一个字段）', '进化参数未配置（Step4）', '字段校验未通过或已过期（请重新发起校验）']"
+  },
+  {
+    "case": "G1 系统模板 seed 幂等可重入",
+    "ok": true,
+    "detail": "0"
+  },
+  {
+    "case": "G2 系统模板 ≥25 且覆盖 6 类（趋势/反转/波动率/估值/质量/量价）",
+    "ok": true,
+    "detail": "total=25 cats=['quality', 'reversal', 'trend', 'valuation', 'volatility', 'volume_price']"
+  },
+  {
+    "case": "G3 个人模板缺 formula 被拒(422)",
+    "ok": true,
+    "detail": "status=422"
+  },
+  {
+    "case": "G4 个人模板创建 201",
+    "ok": true,
+    "detail": "tpl=1866bd55a85c4f18b463b5aa5e69c83f"
+  },
+  {
+    "case": "G5 个人模板可停用",
+    "ok": true,
+    "detail": "status=200"
+  },
+  {
+    "case": "G6 模板 404 信封含中文结构字段",
+    "ok": true,
+    "detail": "资源不存在"
+  },
+  {
+    "case": "H1 创建校验任务 201",
+    "ok": true,
+    "detail": "task=8cb90d16e0644e449c42cffb09333b7e"
+  },
+  {
+    "case": "H2 相同 draft+config：活动态复用 / 首次已终态则新建合法（§5）",
+    "ok": true,
+    "detail": "reused=True same_vid=True first_status_at_r2=done"
+  },
+  {
+    "case": "H3 校验进度可查询（状态机可见）",
+    "ok": true,
+    "detail": "status=done"
+  },
+  {
+    "case": "H4 24h 有效期判定接口 200",
+    "ok": true,
+    "detail": "{'valid': True, 'verdict': 'pass', 'ttl_hours': 24}"
+  },
+  {
+    "case": "I1 伪造快照 id 提交被服务端拒绝（4xx，不允许静默跑空）",
+    "ok": true,
+    "detail": "status=404 body={\"error_code\":\"MINING_SNAPSHOT_NOT_FOUND\",\"user_message\":\"候选池快照不存在或已失效\",\"impact\":\"本次提交未执行\",\"retryable\":false,\"completed\":0.0,\"next_actions\":[],\"technical_detail"
+  },
+  {
+    "case": "I2 最小真实 run 提交成功 201（北交所小池，种群50×1代）",
+    "ok": true,
+    "detail": "run=0b6b6bdaecc448b1b6550b7f4a19231a queue_pos=0"
+  },
+  {
+    "case": "I3 mining_domain 冲突：第二任务被 409 拒绝且不排队（§8.2）",
+    "ok": true,
+    "detail": "status=409"
+  },
+  {
+    "case": "I4 锁状态查询反映占用（miningDomain busy=true）",
+    "ok": true,
+    "detail": "{'busy': True, 'taskId': '0c2ce1111f4e456089cf76d4a8be032f', 'runId': '0b6b6bdaecc448b1b6550b7f4a19231a', 'acquiredAt': '2026-09-25T07:26:29', 'heartbeatAt': '2026-09-25T07:26:29'}"
+  },
+  {
+    "case": "J1 中断(pause)→paused",
+    "ok": true,
+    "detail": "running → paused"
+  },
+  {
+    "case": "J2 继续(resume)→queued/running（允许锁释放延迟重试）",
+    "ok": true,
+    "detail": "首次=409 → running"
+  },
+  {
+    "case": "J3 取消(cancel)→cancelled",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "case": "J4 取消后锁回收（等待后不再永久占用，P1 自愈）",
+    "ok": true,
+    "detail": "immediately_busy=True released=True"
+  },
+  {
+    "case": "J5 每代汇总可查（含探针字段，§6.11.2）",
+    "ok": true,
+    "detail": "generations=0 keys=[]"
+  },
+  {
+    "case": "J6 完全放弃(discard)→cancelled",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "case": "K1 调整原因 <10 字被入参拦截(422)",
+    "ok": true,
+    "detail": "status=422"
+  },
+  {
+    "case": "K2 不存在候选人工定级→4xx 结构化",
+    "ok": true,
+    "detail": "status=400"
+  },
+  {
+    "case": "K3 证据抽屉接口对不存在候选返回 404 中文信封",
+    "ok": true,
+    "detail": "status=404 user_message=请求的资源不存在"
+  },
+  {
+    "case": "L1 F1 列表与 sample 接口可用",
+    "ok": true,
+    "detail": "list=200 sample=200"
+  }
+]

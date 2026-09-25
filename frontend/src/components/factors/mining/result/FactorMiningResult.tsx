@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { t } from "../../../../i18n";
+import { factorMiningApi } from "../../../../api/factorMining";
+import GradeEvidenceDrawer from "./GradeEvidenceDrawer";
+import type { Grade, GradeEvidence } from "./gradeEvidenceTypes";
 import { GRADE_CHIPS, contextComplete } from "./resultTypes";
 import type { MiningResultContext, MiningResultRow, QualityGrade } from "./resultTypes";
 
@@ -47,6 +50,48 @@ function fmt(value: number | null | undefined, digits = 3): string {
   return value == null ? "-" : Number(value).toFixed(digits);
 }
 
+/**
+ * DEF-15：后端证据形状 → 前端 `GradeEvidence` 契约归一化。
+ * 统计检验数据后端未落库时如实给降级占位（8 行灰显「样本不足，未计算」），
+ * 不臆造任何数值；缺字段全部走安全回退。
+ */
+function normalizeEvidence(raw: Record<string, unknown>): GradeEvidence {
+  const VALID: Grade[] = ["S", "A", "B", "C", "D"];
+  const statsRaw = (raw.stats_view ?? raw.stats ?? {}) as Partial<GradeEvidence["stats"]>;
+  const lineage = (raw.lineage ?? {}) as Record<string, unknown>;
+  const parents = Array.isArray(lineage.parents)
+    ? lineage.parents.map(String)
+    : Array.isArray(lineage.parent_ids) ? (lineage.parent_ids as unknown[]).map(String) : undefined;
+  return {
+    candidate_id: String(raw.candidate_id ?? ""),
+    formula: String(raw.formula ?? ""),
+    grade: (VALID.includes(String(raw.grade) as Grade) ? raw.grade : "D") as Grade,
+    reason_zh: String(raw.reason_zh ?? raw.reason ?? ""),
+    thresholds_source: raw.thresholds_source === "custom" ? "custom" : "default",
+    frequency: String(raw.frequency ?? "daily"),
+    dimensions: Array.isArray(raw.dimensions) ? (raw.dimensions as GradeEvidence["dimensions"]) : [],
+    stats: {
+      t_test_p: null, bonferroni_p: null, fdr_q: null,
+      bootstrap_ci: null, permutation_p: null, dsr_icir: null, decay_ratio: null,
+      walk_forward: {}, total_trials: null, degraded: true,
+      ...(statsRaw ?? {}),
+    } as GradeEvidence["stats"],
+    lineage: {
+      generation: typeof lineage.generation === "number" ? lineage.generation : null,
+      parent_ids: parents,
+      operation: typeof lineage.operation === "string" ? lineage.operation : null,
+      economic_logic: typeof lineage.economic_logic === "string" ? lineage.economic_logic : null,
+      logic_source: typeof lineage.logic_source === "string" ? lineage.logic_source : null,
+    },
+    manual_adjusted: Boolean(raw.manual_adjusted),
+    grade_history: Array.isArray(raw.grade_history)
+      ? (raw.grade_history as GradeEvidence["grade_history"]) : [],
+    quarter_change: (raw.quarter_change as GradeEvidence["quarter_change"]) ?? null,
+    removed_from_factor_set:
+      (raw.removed_from_factor_set as string | null) ?? null,
+  };
+}
+
 export default function FactorMiningResult({
   rows = [],
   context = null,
@@ -58,6 +103,41 @@ export default function FactorMiningResult({
   const [filter, setFilter] = useState<QualityGrade | "all">("all");
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmDGrade, setConfirmDGrade] = useState(false);
+  // DEF-15：证据抽屉（组件早已存在但生产页从未挂载 → 用户无处看「为什么是这个等级」）
+  const [evidenceTarget, setEvidenceTarget] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<GradeEvidence | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+
+  const loadEvidence = useCallback(async (candidateId: string) => {
+    setEvidence(null);
+    setEvidenceError(null);
+    try {
+      const raw = await factorMiningApi.getGradeEvidence(candidateId);
+      setEvidence(normalizeEvidence(raw));
+    } catch (e) {
+      setEvidenceError(
+        (e as { detail?: { user_message?: string } })?.detail?.user_message
+        ?? t("miningEvidenceLoadFailed"),
+      );
+    }
+  }, []);
+
+  const openEvidence = useCallback((candidateId: string) => {
+    setEvidenceTarget(candidateId);
+    void loadEvidence(candidateId);
+  }, [loadEvidence]);
+
+  const handleAdjustGrade = useCallback(async (grade: Grade, reason: string) => {
+    if (!evidenceTarget) return;
+    await factorMiningApi.manualGrade(evidenceTarget, grade, reason);
+    await loadEvidence(evidenceTarget);   // 刷新：manual-tip / 历史时间轴
+  }, [evidenceTarget, loadEvidence]);
+
+  const handleRestoreAuto = useCallback(async () => {
+    if (!evidenceTarget) return;
+    await factorMiningApi.restoreAutoGrade(evidenceTarget);
+    await loadEvidence(evidenceTarget);
+  }, [evidenceTarget, loadEvidence]);
 
   const countOf = (g: QualityGrade | "all") =>
     g === "all" ? rows.length : rows.filter((r) => r.grade === g).length;
@@ -302,6 +382,15 @@ export default function FactorMiningResult({
                 <td className="mining-result-formula">{r.formula}</td>
                 <td data-result-grade={r.candidate_id}>
                   <span className={gradeClass(r.grade)}>{r.grade}</span>
+                  {/* DEF-15：证据抽屉入口——回答「为什么是这个等级」（§8.4.1） */}
+                  <button
+                    type="button"
+                    className="mining-evidence-open"
+                    data-result-evidence={r.candidate_id}
+                    onClick={() => openEvidence(r.candidate_id)}
+                  >
+                    {t("miningResultEvidence")}
+                  </button>
                 </td>
                 <td className="mining-cell-num">{fmt(r.icir)}</td>
                 <td className="mining-cell-num">{fmt(r.icir_adjusted)}</td>
@@ -339,6 +428,28 @@ export default function FactorMiningResult({
             </button>
           </div>
         </div>
+      )}
+
+      {/* ⑨ DEF-15：证据抽屉挂载（§8.4.1——此前组件与生产页零接线，仅测试可见） */}
+      {evidenceTarget && (
+        evidence ? (
+          <GradeEvidenceDrawer
+            evidence={evidence}
+            onClose={() => setEvidenceTarget(null)}
+            onAdjustGrade={(g, reason) => void handleAdjustGrade(g, reason)}
+            onRestoreAuto={() => void handleRestoreAuto()}
+          />
+        ) : (
+          <aside className="mining-evidence-drawer" data-evidence-drawer
+                 role={evidenceError ? "alert" : "status"}>
+            <header>
+              <span>{t("miningEvidenceTitle")}</span>
+              <button type="button" data-evidence-close
+                onClick={() => setEvidenceTarget(null)}>×</button>
+            </header>
+            <p>{evidenceError ?? t("miningEvidenceLoading")}</p>
+          </aside>
+        )
       )}
     </div>
   );

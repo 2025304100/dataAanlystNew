@@ -1,0 +1,32 @@
+[
+  {
+    "step": "B1 保存草稿→内联反馈条可见(role=status)",
+    "ok": true,
+    "detail": "note='草稿已保存：#7672066d' API=[('POST', '/factor-mining/drafts', 201)]"
+  },
+  {
+    "step": "A1 生成物料→锁定",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "step": "A2 锁定态打开候选池分析看板弹窗",
+    "ok": true,
+    "detail": "modal=0 analysis_modal=1"
+  },
+  {
+    "step": "A3 看板内「重新选择」+二次确认→退编辑态",
+    "ok": true,
+    "detail": "确认弹窗=True"
+  },
+  {
+    "step": "A4 编辑态成员表加载",
+    "ok": true,
+    "detail": "checkbox=21"
+  },
+  {
+    "step": "A5 勾选2成员→批量删除（二次确认+API）",
+    "ok": false,
+    "detail": "count:已选 2 项→已选 0 项 API=[]"
+  }
+]

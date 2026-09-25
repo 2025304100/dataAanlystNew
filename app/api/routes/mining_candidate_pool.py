@@ -31,9 +31,11 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any
 
+import duckdb
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -47,7 +49,12 @@ from app.services.factors.candidate_pool import presets as pool_presets
 from app.services.factors.candidate_pool import rules as pool_rules
 from app.services.factors.candidate_pool import service as pool_service
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+#: 数仓忙时的统一降级文案（DEF-8/DEF-4：挖掘占 duckdb_write 时预览/预设不 500）
+_WAREHOUSE_BUSY_ZH = "数据仓库正被其他任务占用（如挖掘运行中），本次请求已降级，请稍后重试。"
 
 #: 单次请求的标的数上限（URL 长度 / UI 单页选择量决定；service 层另有 5000 的服务级防御）
 MAX_IDS_PER_REQUEST = 500
@@ -153,6 +160,8 @@ def _http_status(code: str) -> int:
         "BUSINESS_BLOCKED": 409,
         "MINING_DOMAIN_BUSY": 409,
         "MINING_TEST_LOCKED": 409,
+        "MINING_SNAPSHOT_NOT_FOUND": 404,
+        "MINING_SNAPSHOT_NOT_LOCKED": 409,
         "VALIDATION_ERROR": 400,
     }.get(code, 400)
 
@@ -307,6 +316,25 @@ def get_filter_presets(
         )
     except FactorSevenError as exc:
         _raise_http(exc)
+    except (duckdb.IOException, OSError) as exc:
+        # DEF-8/DEF-4：数仓被占用（挖掘持 duckdb_write 等）→ 降级不 500。
+        # `available=False` 让前端渲染「加载失败·重试」，而不是「暂无可用预设」。
+        logger.warning("filter-presets degraded (warehouse busy): %s", exc)
+        return {
+            "available": False,
+            "reason_zh": _WAREHOUSE_BUSY_ZH,
+            "as_of_date": None,
+            "as_of_requested": as_of_date.isoformat() if as_of_date else None,
+            "as_of_date_adjusted": False,
+            "markets": [],
+            "window_days": window_days,
+            "window_actual_days": 0,
+            "groups": [],
+            "presets": [],
+            "data_version": {},
+            "as_of_evidence": {},
+            "warnings": [_WAREHOUSE_BUSY_ZH],
+        }
     return response.to_dict()
 
 
@@ -325,6 +353,14 @@ def preview_filter(payload: FilterPreviewRequest,
         )
     except FactorSevenError as exc:
         _raise_http(exc)
+    except (duckdb.IOException, OSError) as exc:
+        # DEF-8/DEF-4：数仓被占用 → 阻断语义降级（WAREHOUSE_UNAVAILABLE），禁止 500。
+        logger.warning("preview degraded (warehouse busy): %s", exc)
+        result = pool_rules.preview_unavailable(
+            reason_zh=_WAREHOUSE_BUSY_ZH,
+            as_of_requested=payload.as_of_date,
+            filter_config=payload.filter_config,
+        )
     return result.to_dict()
 
 
@@ -365,16 +401,25 @@ def create_pool_from_filter(payload: FilterCreateRequest,
         "as_of_date": preview.as_of_date.isoformat() if preview.as_of_date else None,
         "data_version": preview.data_version,
     }
+    # DEF-5：同名 + 同 rule_hash 的池直接复用（前端固定名反复点击 → 曾累积
+    # 50+ 个垃圾池）。复用时只重写成员，规则语义完全一致。
+    reused_pool = pool_service.find_reusable_pool(
+        db, name=payload.name, rule_hash=preview.rule_hash,
+        source_type=pool_service.SOURCE_TYPE_FILTER,
+    )
     try:
-        pool = pool_service.create_pool(
-            db,
-            name=payload.name,
-            source_type=pool_service.SOURCE_TYPE_FILTER,
-            description=payload.description,
-            filter_config=stored_config,
-            rule_hash=preview.rule_hash,
-            created_by=payload.created_by,
-        )
+        if reused_pool is not None:
+            pool = reused_pool
+        else:
+            pool = pool_service.create_pool(
+                db,
+                name=payload.name,
+                source_type=pool_service.SOURCE_TYPE_FILTER,
+                description=payload.description,
+                filter_config=stored_config,
+                rule_hash=preview.rule_hash,
+                created_by=payload.created_by,
+            )
     except FactorSevenError as exc:
         _raise_http(exc)
 
@@ -402,6 +447,8 @@ def create_pool_from_filter(payload: FilterCreateRequest,
         **pool_service.get_pool_detail(db, pool.id),
         "as_of_date": stored_config["as_of_date"],
         "rule_hash": preview.rule_hash,
+        # DEF-5：复用标记（前端据此提示「已复用既有候选池，未新建」）
+        "reused": reused_pool is not None,
         "member_write": {
             "requested": len(symbol_ids),
             "chunks": len(chunks),
@@ -686,6 +733,24 @@ def get_candidate_pool(pool_id: str, db: Session = Depends(get_db)) -> dict[str,
     """池详情 + 成员统计（含有效/软删除计数与锁定态）。"""
     try:
         return pool_service.get_pool_detail(db, pool_id)
+    except FactorSevenError as exc:
+        _raise_http(exc)
+
+
+@router.delete("/factor-mining/candidate-pools/{pool_id}")
+def delete_candidate_pool(
+    pool_id: str,
+    operator_id: str = Query(default="local_user"),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """删除候选池（DEF-5：池生命周期闭环）。
+
+    成员**硬删除**（整池都没了，保留孤儿关联无意义）+ 快照一并删除；
+    若任一快照正被进行中的挖掘批次引用 → 409 `BUSINESS_BLOCKED`
+    （先取消/放弃该批次再删），避免 run 的数据来源悬空。
+    """
+    try:
+        return pool_service.delete_pool(db, pool_id=pool_id, actor=operator_id)
     except FactorSevenError as exc:
         _raise_http(exc)
 

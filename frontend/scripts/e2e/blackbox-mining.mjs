@@ -152,10 +152,20 @@ const rm = await page.locator("[data-resource-modal]").count();
 check("S9.1 资源确认弹窗", rm > 0);
 if (rm > 0) {
   const confirmDisabled = await page.locator("[data-evo-confirm-submit]").isDisabled().catch(() => false);
-  const lockArea = (await page.locator(".mining-res-modal").textContent().catch(() => "")) ?? "";
-  // 无锁占用 → 按钮可用（主流程不被卡死）；有锁占用 → 按钮禁用（拒绝语义）
-  const lockNone = lockArea.includes("无冲突") || lockArea.includes("可立即开始") || !lockArea.includes("挖掘任务进行中");
-  check("S9.2 锁状态反映到提交按钮（无冲突→可用）", lockNone ? !confirmDisabled : confirmDisabled, lockArea.replace(/\s+/g, " ").slice(0, 120));
+  // 锁状态以接口实况为准（旧版靠弹窗文案猜测：文案一改就误判，2026-09-25 重测教训）
+  const lockBusy = await page.evaluate(async () => {
+    try {
+      const r = await fetch("/api/v1/factor-mining/locks/status");
+      const j = await r.json();
+      return Boolean(j && j.miningDomain && j.miningDomain.busy);
+    } catch { return null; }
+  });
+  const expectEnabled = lockBusy !== true; // 查不到按无锁期望
+  check(
+    "S9.2 锁状态反映到提交按钮（无冲突→可用；有锁→禁用）",
+    expectEnabled ? !confirmDisabled : confirmDisabled,
+    `lockBusy=${lockBusy} confirmDisabled=${confirmDisabled}`,
+  );
   await shot("s9_lock_blocked");
   await page.locator("[data-resource-close]").first().click().catch(() => null);
 }

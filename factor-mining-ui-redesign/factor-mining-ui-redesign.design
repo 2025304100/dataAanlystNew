@@ -1,0 +1,727 @@
+{
+  "data": [
+    {
+      "id": "page-wizard-evo",
+      "title": "因子挖掘向导 - 进化参数",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790321600000,
+      "canvasData": {
+        "x": 480,
+        "y": 386,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1706,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-4eccb317",
+          "measuredAt": 1790331454726
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/wizard-evo.html",
+        "stateGroupId": "mining-wizard",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool.html",
+        "interactions": [
+          {
+            "domId": "settings-back",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-wizard",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-runs",
+            "targetPageId": "page-runs"
+          },
+          {
+            "domId": "tab-experience",
+            "targetPageId": "page-experience"
+          },
+          {
+            "domId": "tab-templates",
+            "targetPageId": "page-templates"
+          },
+          {
+            "domId": "step-pool",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "step-time",
+            "targetPageId": "page-wizard-time-v2"
+          },
+          {
+            "domId": "step-fields",
+            "targetPageId": "page-wizard-fields-v2"
+          },
+          {
+            "domId": "step-evo",
+            "targetPageId": "page-wizard-evo"
+          },
+          {
+            "domId": "step-run",
+            "targetPageId": "page-wizard-run"
+          },
+          {
+            "domId": "evo-prev",
+            "targetPageId": "page-wizard-fields-v2"
+          },
+          {
+            "domId": "evo-submit",
+            "targetPageId": "page-wizard-run"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-wizard-run",
+      "title": "因子挖掘向导 - 运行跟踪",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790321600000,
+      "canvasData": {
+        "x": 108,
+        "y": 2184,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1787,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-af3c6836",
+          "measuredAt": 1790331454726
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/wizard-run.html",
+        "stateGroupId": "mining-wizard",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool.html",
+        "interactions": [
+          {
+            "domId": "settings-back",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-wizard",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-runs",
+            "targetPageId": "page-runs"
+          },
+          {
+            "domId": "tab-experience",
+            "targetPageId": "page-experience"
+          },
+          {
+            "domId": "tab-templates",
+            "targetPageId": "page-templates"
+          },
+          {
+            "domId": "step-pool",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "step-time",
+            "targetPageId": "page-wizard-time-v2"
+          },
+          {
+            "domId": "step-fields",
+            "targetPageId": "page-wizard-fields-v2"
+          },
+          {
+            "domId": "step-evo",
+            "targetPageId": "page-wizard-evo"
+          },
+          {
+            "domId": "step-run",
+            "targetPageId": "page-wizard-run"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-runs",
+      "title": "因子挖掘 - 批次列表",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790321600000,
+      "canvasData": {
+        "x": 0,
+        "y": 793.9999999999994,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-0d31a53f",
+          "measuredAt": 1790329895738
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/runs.html",
+        "stateGroupId": "mining-wizard",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool.html",
+        "interactions": [
+          {
+            "domId": "settings-back",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-wizard",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-runs",
+            "targetPageId": "page-runs"
+          },
+          {
+            "domId": "tab-experience",
+            "targetPageId": "page-experience"
+          },
+          {
+            "domId": "tab-templates",
+            "targetPageId": "page-templates"
+          },
+          {
+            "domId": "run-row-view-1",
+            "targetPageId": "page-wizard-run"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-experience",
+      "title": "因子挖掘 - 经验库",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790321600000,
+      "canvasData": {
+        "x": 24,
+        "y": 1344,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-16cfc0a8",
+          "measuredAt": 1790321713970
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/experience.html",
+        "stateGroupId": "mining-wizard",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool.html",
+        "interactions": [
+          {
+            "domId": "settings-back",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-wizard",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-runs",
+            "targetPageId": "page-runs"
+          },
+          {
+            "domId": "tab-experience",
+            "targetPageId": "page-experience"
+          },
+          {
+            "domId": "tab-templates",
+            "targetPageId": "page-templates"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-templates",
+      "title": "因子挖掘 - 模板配置",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790321600000,
+      "canvasData": {
+        "x": 24,
+        "y": 1752,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-57c2b94d",
+          "measuredAt": 1790321713970
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/templates.html",
+        "stateGroupId": "mining-wizard",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool.html",
+        "interactions": [
+          {
+            "domId": "settings-back",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-wizard",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-runs",
+            "targetPageId": "page-runs"
+          },
+          {
+            "domId": "tab-experience",
+            "targetPageId": "page-experience"
+          },
+          {
+            "domId": "tab-templates",
+            "targetPageId": "page-templates"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-wizard-pool-v2",
+      "title": "Step1 候选池 - 完整版",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790324677497,
+      "canvasData": {
+        "x": 0,
+        "y": 373,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 2051,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-bd89667b",
+          "measuredAt": 1790331454726
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/wizard-pool-v2.html",
+        "stateGroupId": "mining-wizard-v2",
+        "stateRole": "base",
+        "interactions": [
+          {
+            "domId": "tab-wizard",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-runs",
+            "targetPageId": "page-runs"
+          },
+          {
+            "domId": "tab-experience",
+            "targetPageId": "page-experience"
+          },
+          {
+            "domId": "tab-templates",
+            "targetPageId": "page-templates"
+          },
+          {
+            "domId": "step-pool",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "step-time",
+            "targetPageId": "page-wizard-time-v2"
+          },
+          {
+            "domId": "step-fields",
+            "targetPageId": "page-wizard-fields-v2"
+          },
+          {
+            "domId": "step-evo",
+            "targetPageId": "page-wizard-evo"
+          },
+          {
+            "domId": "step-run",
+            "targetPageId": "page-wizard-result"
+          },
+          {
+            "domId": "pool-generate-btn",
+            "targetPageId": "page-pool-analysis"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-pool-analysis",
+      "title": "候选池分析看板",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790324677497,
+      "canvasData": {
+        "x": 612,
+        "y": 4944,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-pool-analysis",
+          "measuredAt": 1790324677497
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/pool-analysis-modal.html",
+        "stateGroupId": "mining-wizard-v2",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool-v2.html",
+        "interactions": [
+          {
+            "domId": "analysis-next",
+            "targetPageId": "page-wizard-time-v2"
+          },
+          {
+            "domId": "analysis-reselect",
+            "targetPageId": "page-wizard-pool-v2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-wizard-time-v2",
+      "title": "Step2 时间与目标 - 完整版",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790324677497,
+      "canvasData": {
+        "x": 60,
+        "y": 2892,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1272,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-836a77ee",
+          "measuredAt": 1790332767454
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/wizard-time-v2.html",
+        "stateGroupId": "mining-wizard-v2",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool-v2.html",
+        "interactions": [
+          {
+            "domId": "tab-wizard",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-runs",
+            "targetPageId": "page-runs"
+          },
+          {
+            "domId": "tab-experience",
+            "targetPageId": "page-experience"
+          },
+          {
+            "domId": "tab-templates",
+            "targetPageId": "page-templates"
+          },
+          {
+            "domId": "step-pool",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "step-time",
+            "targetPageId": "page-wizard-time-v2"
+          },
+          {
+            "domId": "step-fields",
+            "targetPageId": "page-wizard-fields-v2"
+          },
+          {
+            "domId": "step-evo",
+            "targetPageId": "page-wizard-evo"
+          },
+          {
+            "domId": "step-run",
+            "targetPageId": "page-wizard-result"
+          },
+          {
+            "domId": "time-prev",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "time-next",
+            "targetPageId": "page-wizard-fields-v2"
+          },
+          {
+            "domId": "goto-mirror",
+            "targetPageId": "page-data-mirror"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-wizard-fields-v2",
+      "title": "Step3 字段与校验 - 完整版",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790324677497,
+      "canvasData": {
+        "x": 96,
+        "y": 3450,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-fields-v2",
+          "measuredAt": 1790324677497
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/wizard-fields-v2.html",
+        "stateGroupId": "mining-wizard-v2",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool-v2.html",
+        "interactions": [
+          {
+            "domId": "tab-wizard",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-runs",
+            "targetPageId": "page-runs"
+          },
+          {
+            "domId": "tab-experience",
+            "targetPageId": "page-experience"
+          },
+          {
+            "domId": "tab-templates",
+            "targetPageId": "page-templates"
+          },
+          {
+            "domId": "step-pool",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "step-time",
+            "targetPageId": "page-wizard-time-v2"
+          },
+          {
+            "domId": "step-fields",
+            "targetPageId": "page-wizard-fields-v2"
+          },
+          {
+            "domId": "step-evo",
+            "targetPageId": "page-wizard-evo"
+          },
+          {
+            "domId": "step-run",
+            "targetPageId": "page-wizard-result"
+          },
+          {
+            "domId": "fields-prev",
+            "targetPageId": "page-wizard-time-v2"
+          },
+          {
+            "domId": "fields-next",
+            "targetPageId": "page-wizard-evo"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-evo-resource-modal",
+      "title": "资源确认弹窗",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790324677497,
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-ca54dfa7",
+          "measuredAt": 1790324746602
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/evo-resource-modal.html",
+        "stateGroupId": "mining-wizard-v2",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool-v2.html",
+        "interactions": [
+          {
+            "domId": "resource-confirm",
+            "targetPageId": "page-wizard-result"
+          },
+          {
+            "domId": "resource-cancel",
+            "targetPageId": "page-wizard-evo"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-wizard-result",
+      "title": "Step5 挖掘结果",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790324677497,
+      "canvasData": {
+        "x": 480,
+        "y": 0,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 1748,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-b64534ca",
+          "measuredAt": 1790331454726
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/wizard-result.html",
+        "stateGroupId": "mining-wizard-v2",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool-v2.html",
+        "interactions": [
+          {
+            "domId": "tab-wizard",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-runs",
+            "targetPageId": "page-runs"
+          },
+          {
+            "domId": "tab-experience",
+            "targetPageId": "page-experience"
+          },
+          {
+            "domId": "tab-templates",
+            "targetPageId": "page-templates"
+          },
+          {
+            "domId": "step-pool",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "step-time",
+            "targetPageId": "page-wizard-time-v2"
+          },
+          {
+            "domId": "step-fields",
+            "targetPageId": "page-wizard-fields-v2"
+          },
+          {
+            "domId": "step-evo",
+            "targetPageId": "page-wizard-evo"
+          },
+          {
+            "domId": "step-run",
+            "targetPageId": "page-wizard-result"
+          },
+          {
+            "domId": "result-view-evidence",
+            "targetPageId": "page-factor-evidence"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-factor-evidence",
+      "title": "因子详情证据抽屉",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790324677497,
+      "canvasData": {
+        "x": 948,
+        "y": 2784,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-factor-evidence",
+          "measuredAt": 1790324677497
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/factor-evidence.html",
+        "stateGroupId": "mining-wizard-v2",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-result.html",
+        "interactions": [
+          {
+            "domId": "evidence-close",
+            "targetPageId": "page-wizard-result"
+          },
+          {
+            "domId": "evidence-back",
+            "targetPageId": "page-wizard-result"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-data-mirror",
+      "title": "数据镜像管理",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1790324677497,
+      "canvasData": {
+        "x": 672,
+        "y": 4524,
+        "group": 1,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-data-mirror",
+          "measuredAt": 1790324677497
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/data-mirror.html",
+        "stateGroupId": "mining-wizard-v2",
+        "stateRole": "derived",
+        "derivedFromHtmlSrc": "pages/wizard-pool-v2.html",
+        "interactions": [
+          {
+            "domId": "tab-wizard",
+            "targetPageId": "page-wizard-pool-v2"
+          },
+          {
+            "domId": "tab-runs",
+            "targetPageId": "page-runs"
+          },
+          {
+            "domId": "tab-experience",
+            "targetPageId": "page-experience"
+          },
+          {
+            "domId": "tab-templates",
+            "targetPageId": "page-templates"
+          },
+          {
+            "domId": "mirror-back",
+            "targetPageId": "page-wizard-time-v2"
+          }
+        ]
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": false,
+    "deviceType": "desktop",
+    "projectName": "设置 → 因子挖掘 交互优化原型"
+  }
+}

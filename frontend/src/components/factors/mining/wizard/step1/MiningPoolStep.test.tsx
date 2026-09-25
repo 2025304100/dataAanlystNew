@@ -8,6 +8,13 @@ const modalConfirm = () =>
 const modalCancel = () =>
   document.querySelector<HTMLElement>(".ant-modal-footer .ant-btn:not(.ant-btn-primary)");
 
+/** DEF-4：生成按钮在预览定型前置灰 —— 点击前必须等 300ms 防抖预览落地。 */
+async function settlePreview() {
+  await waitFor(() => {
+    expect(document.querySelector("[data-pool-preview-stats]")).toBeTruthy();
+  });
+}
+
 /**
  * T28 Step1 候选池 UI 测试（向导 §3 / 需求 §3.5~§3.7 / 设计 §9.2）。
  *
@@ -221,6 +228,7 @@ describe("MiningPoolStep 生成物料与锁定", () => {
     render(<MiningPoolStep />);
     const btn = document.querySelector("[data-pool-generate]") as HTMLElement;
     expect(btn.textContent).toContain("生成挖掘物料");
+    await settlePreview();
     await act(async () => {
       fireEvent.click(btn);
     });
@@ -230,6 +238,7 @@ describe("MiningPoolStep 生成物料与锁定", () => {
 
   it("锁定态下筛选/导入/批量删除全部置灰", async () => {
     render(<MiningPoolStep />);
+    await settlePreview();
     await act(async () => {
       fireEvent.click(document.querySelector("[data-pool-generate]") as HTMLElement);
     });
@@ -246,6 +255,7 @@ describe("MiningPoolStep 生成物料与锁定", () => {
 
   it("按钮状态机：分析完成后变为『查看候选池看板』", async () => {
     render(<MiningPoolStep />);
+    await settlePreview();
     await act(async () => {
       fireEvent.click(document.querySelector("[data-pool-generate]") as HTMLElement);
     });
@@ -257,6 +267,7 @@ describe("MiningPoolStep 生成物料与锁定", () => {
 describe("MiningPoolStep 看板弹窗与重新选择", () => {
   it("看板弹窗只读且含重新选择/下一步", async () => {
     render(<MiningPoolStep />);
+    await settlePreview();
     await act(async () => {
       fireEvent.click(document.querySelector("[data-pool-generate]") as HTMLElement);
     });
@@ -272,6 +283,7 @@ describe("MiningPoolStep 看板弹窗与重新选择", () => {
 
   it("重新选择需二次确认，确认后解锁并清掉锁定条", async () => {
     render(<MiningPoolStep />);
+    await settlePreview();
     await act(async () => {
       fireEvent.click(document.querySelector("[data-pool-generate]") as HTMLElement);
     });
@@ -514,5 +526,79 @@ describe("MiningPoolStep 成员表列按真实契约呈现（2026-09-21）", () 
         "[data-pool-member-table] tbody input[type=checkbox]",
       ).length,
     ).toBe(2);
+  });
+});
+
+
+describe("DEF-4：预览三态与生成门控（VIS-2）", () => {
+  it("预览未定型 → 生成按钮置灰；定型后恢复可用", async () => {
+    let resolvePreview: (v: unknown) => void = () => undefined;
+    previewPool.mockImplementation(
+      () => new Promise((res) => { resolvePreview = res; }),
+    );
+    render(<MiningPoolStep />);
+    await waitFor(() => {
+      expect(document.querySelector("[data-pool-preview-loading]")).toBeTruthy();
+    });
+    expect(
+      (document.querySelector("[data-pool-generate]") as HTMLButtonElement)
+        .hasAttribute("disabled"),
+    ).toBe(true);
+
+    await act(async () => { resolvePreview(PREVIEW_OK); });
+    await waitFor(() => {
+      expect(
+        (document.querySelector("[data-pool-generate]") as HTMLButtonElement)
+          .hasAttribute("disabled"),
+      ).toBe(false);
+    });
+  });
+
+  it("预览失败 → 错误提示+重试；重试成功后按钮恢复", async () => {
+    previewPool.mockRejectedValueOnce(new Error("warehouse busy"));
+    render(<MiningPoolStep />);
+    await waitFor(() => {
+      expect(document.querySelector("[data-pool-preview-error]")).toBeTruthy();
+    });
+    expect(
+      (document.querySelector("[data-pool-generate]") as HTMLButtonElement)
+        .hasAttribute("disabled"),
+    ).toBe(true);
+
+    previewPool.mockResolvedValue(PREVIEW_OK);
+    fireEvent.click(document.querySelector("[data-pool-preview-retry]") as HTMLElement);
+    await waitFor(() => {
+      expect(document.querySelector("[data-pool-preview-stats]")).toBeTruthy();
+    });
+    expect(
+      (document.querySelector("[data-pool-generate]") as HTMLButtonElement)
+        .hasAttribute("disabled"),
+    ).toBe(false);
+  });
+});
+
+
+describe("DEF-7：筛选面板渲染告警（React key）", () => {
+  it("展开含布尔条件的分类 → 不产生「unique key」警告", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(<MiningPoolStep />);
+    // 等字段目录落地（risk 分类含 exclude_st 布尔条件）
+    await waitFor(() => {
+      expect(document.querySelectorAll(".ant-collapse-header").length).toBeGreaterThan(0);
+    });
+    const header = Array.from(
+      document.querySelectorAll(".ant-collapse-header"),
+    ).find((h) => (h.textContent ?? "").includes("风险标记"));
+    expect(header).toBeTruthy();
+    fireEvent.click(header as HTMLElement);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-filter-bool='exclude_st']")).toBeTruthy();
+    });
+    const keyWarnings = spy.mock.calls.filter((args) =>
+      String(args[0] ?? "").includes("unique key"),
+    );
+    spy.mockRestore();
+    expect(keyWarnings.length).toBe(0);
   });
 });

@@ -1,0 +1,2196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>因子挖掘向导 - 候选股票池 v2</title>
+<style>
+  /* ===== CSS Variables - Warm Cream + Dark Teal ===== */
+  :root {
+    /* Brand - Dark Teal */
+    --fm-brand-50: #f0fdfa;
+    --fm-brand-100: #ccfbf1;
+    --fm-brand-200: #99f6e4;
+    --fm-brand-300: #5eead4;
+    --fm-brand-400: #2dd4bf;
+    --fm-brand-500: #14b8a6;
+    --fm-brand-600: #0d9488;
+    --fm-brand-700: #0f766e;
+    --fm-brand-800: #115e59;
+    --fm-brand-900: #134e4a;
+
+    /* Warm Cream / Beige Palette */
+    --fm-cream-50: #fffaf0;  /* page background */
+    --fm-cream-100: #faf5e8;
+    --fm-cream-200: #f7f4ec;  /* accordion header, table header */
+    --fm-cream-300: #efe9d9;
+    --fm-cream-400: #e5dcc5;
+
+    /* Neutral */
+    --fm-neutral-0: #ffffff;
+    --fm-neutral-50: #fafaf9;
+    --fm-neutral-100: #f5f5f4;
+    --fm-neutral-200: #e7e5e4;
+    --fm-neutral-300: #d6d3d1;
+    --fm-neutral-400: #a8a29e;
+    --fm-neutral-500: #78716c;
+    --fm-neutral-600: #57534e;
+    --fm-neutral-700: #44403c;
+    --fm-neutral-800: #292524;
+    --fm-neutral-900: #1c1917;
+
+    /* Text */
+    --fm-text-primary: #1f2933;
+    --fm-text-secondary: #52606d;
+    --fm-text-tertiary: #7b8794;
+    --fm-text-quaternary: #9aa5b1;
+
+    /* Semantic */
+    --fm-success: #15803d;
+    --fm-success-soft: #dcfce7;
+    --fm-info: #1d6fd8;
+    --fm-info-soft: #dbeafe;
+    --fm-warn: #b45309;
+    --fm-warn-soft: #ffedd5;
+    --fm-danger: #b42318;
+    --fm-danger-soft: #fee2e2;
+
+    /* Tokens */
+    --fm-background: var(--fm-cream-50);
+    --fm-foreground: var(--fm-text-primary);
+    --fm-card: var(--fm-neutral-0);
+    --fm-card-foreground: var(--fm-text-primary);
+    --fm-primary: var(--fm-brand-700);
+    --fm-primary-foreground: var(--fm-neutral-0);
+    --fm-muted: var(--fm-cream-200);
+    --fm-muted-foreground: var(--fm-text-tertiary);
+    --fm-border: rgba(31, 41, 51, 0.08);
+    --fm-border-strong: rgba(31, 41, 51, 0.12);
+
+    /* Radius */
+    --fm-radius-sm: 6px;
+    --fm-radius-md: 10px;
+    --fm-radius-lg: 12px;
+    --fm-radius-xl: 16px;
+
+    /* Typography */
+    --fm-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --fm-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --fm-text-xs: 11px;
+    --fm-text-sm: 12px;
+    --fm-text-base: 13px;
+    --fm-text-lg: 14px;
+    --fm-text-xl: 16px;
+    --fm-text-2xl: 18px;
+    --fm-text-3xl: 22px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--fm-font-sans);
+    font-size: var(--fm-text-base);
+    color: var(--fm-foreground);
+    background: var(--fm-background);
+    width: 1440px;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ===== App Shell ===== */
+  .app-shell { display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 232px;
+    background: var(--fm-neutral-900);
+    color: var(--fm-neutral-0);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-logo {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: var(--fm-text-xl);
+    font-weight: 600;
+    gap: 10px;
+  }
+  .sidebar-logo-icon {
+    width: 28px; height: 28px;
+    background: var(--fm-brand-500);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .sidebar-nav { padding: 12px 0; flex: 1; }
+  .nav-section-title {
+    padding: 8px 20px;
+    font-size: var(--fm-text-xs);
+    color: var(--fm-neutral-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .nav-item {
+    padding: 9px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-300);
+    transition: background 0.15s;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.05); }
+  .nav-item.active {
+    background: var(--fm-brand-800);
+    color: var(--fm-brand-100);
+    border-left: 3px solid var(--fm-brand-400);
+    padding-left: 17px;
+  }
+  .nav-item .nav-icon { width: 18px; text-align: center; }
+  .nav-submenu { padding-left: 48px; }
+  .nav-submenu .nav-item {
+    padding: 7px 20px 7px 12px;
+    font-size: var(--fm-text-sm);
+  }
+  .nav-submenu .nav-item.active {
+    border-left: none;
+    padding-left: 12px;
+    color: var(--fm-brand-300);
+    background: transparent;
+    font-weight: 500;
+  }
+
+  /* Main Area */
+  .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  /* Topbar */
+  .topbar {
+    height: 56px;
+    background: var(--fm-card);
+    border-bottom: 1px solid var(--fm-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    flex-shrink: 0;
+  }
+  .breadcrumb {
+    display: flex; align-items: center; gap: 8px;
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-600);
+  }
+  .breadcrumb .current { color: var(--fm-foreground); font-weight: 500; }
+  .breadcrumb .sep { color: var(--fm-neutral-400); }
+  .topbar-right { display: flex; align-items: center; gap: 16px; }
+  .topbar-icon-btn {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: var(--fm-neutral-500);
+    position: relative;
+  }
+  .topbar-icon-btn:hover { background: var(--fm-neutral-100); }
+  .notification-dot {
+    position: absolute; top: 6px; right: 6px;
+    width: 6px; height: 6px;
+    background: var(--fm-danger);
+    border-radius: 50%;
+    border: 1.5px solid var(--fm-card);
+  }
+  .user-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--fm-brand-500), var(--fm-brand-700));
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: var(--fm-text-sm); font-weight: 500;
+    cursor: pointer;
+  }
+
+  /* Sub Tabs */
+  .sub-tabs {
+    height: 44px;
+    background: var(--fm-card);
+    border-bottom: 1px solid var(--fm-border);
+    display: flex;
+    align-items: flex-end;
+    padding: 0 24px;
+    gap: 24px;
+    flex-shrink: 0;
+  }
+  .sub-tab {
+    padding: 12px 0;
+    font-size: var(--fm-text-base);
+    color: var(--fm-neutral-500);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+  .sub-tab:hover { color: var(--fm-neutral-700); }
+  .sub-tab.active {
+    color: var(--fm-primary);
+    border-bottom-color: var(--fm-primary);
+    font-weight: 500;
+  }
+
+  /* ===== Stepper (Professional) ===== */
+  .stepper-wrapper {
+    background: var(--fm-card);
+    border-bottom: 1px solid var(--fm-border);
+    padding: 20px 24px;
+    flex-shrink: 0;
+  }
+  .stepper {
+    background: #fff;
+    border: 1px solid rgba(31, 41, 51, 0.08);
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    padding: 28px 32px;
+    display: flex;
+    justify-content: space-between;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    text-align: center;
+  }
+  /* Connector lines - at center of 32px circle (16px from top of highlight) */
+  .step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 24px;
+    left: calc(50% + 16px);
+    right: calc(-50% + 16px);
+    height: 2px;
+    background: #e7e5e4;
+    z-index: 0;
+  }
+  .step.done:not(:last-child)::after {
+    background: #0f766e;
+  }
+  .step.active:not(:last-child)::after {
+    background: linear-gradient(to right, #0f766e 0%, #0f766e 20%, #e7e5e4 20%, #e7e5e4 100%);
+  }
+  /* Step highlight wrapper - for active step background */
+  .step-highlight {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+    padding: 8px 16px;
+    border-radius: 12px;
+  }
+  .step.active .step-highlight {
+    background: rgba(13, 148, 136, 0.06);
+  }
+  /* Circle node - 32px */
+  .step-num {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 500;
+    background: #f0ede6;
+    color: #a8a29e;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  .step.done .step-num {
+    background: linear-gradient(135deg, #0d9488, #0f766e);
+    color: #fff;
+    box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.12);
+  }
+  .step.done .step-num svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 3;
+  }
+  .step.active .step-num {
+    background: #0f766e;
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.15), inset 0 1px 2px rgba(0,0,0,0.1);
+  }
+  /* Progress arc at bottom of active circle */
+  .step.active .step-num::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 2px;
+    background: #14b8a6;
+    border-radius: 2px;
+  }
+  /* Text section */
+  .step-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    white-space: nowrap;
+    margin-top: 12px;
+    text-align: center;
+  }
+  .step-label {
+    font-size: 13px;
+    color: #78716c;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+  }
+  .step.active .step-label,
+  .step.done .step-label {
+    color: #0f766e;
+  }
+  .step-sublabel {
+    font-size: 11px;
+    color: #a8a29e;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+  .step.done .step-sublabel {
+    color: #0d9488;
+  }
+  .step.active .step-sublabel {
+    color: #0f766e;
+  }
+
+  /* Content */
+  .content {
+    flex: 1;
+    padding: 20px 24px;
+    padding-bottom: 100px;
+    overflow-y: auto;
+  }
+
+  /* ===== Shared Components ===== */
+  .page-card {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-lg);
+    overflow: hidden;
+  }
+  .page-card + .page-card { margin-top: 16px; }
+
+  .btn {
+    padding: 7px 16px;
+    border-radius: 8px;
+    font-size: var(--fm-text-base);
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
+  }
+  .btn-primary {
+    background: var(--fm-primary);
+    color: var(--fm-primary-foreground);
+    border-color: var(--fm-primary);
+  }
+  .btn-primary:hover { background: var(--fm-brand-800); border-color: var(--fm-brand-800); }
+  .btn-secondary {
+    background: var(--fm-card);
+    color: var(--fm-text-primary);
+    border-color: var(--fm-border-strong);
+  }
+  .btn-secondary:hover { background: var(--fm-cream-200); }
+  .btn-ghost-danger {
+    background: transparent;
+    color: var(--fm-danger);
+    border-color: var(--fm-danger-soft);
+  }
+  .btn-ghost-danger:hover { background: var(--fm-danger-soft); }
+  .btn-sm { padding: 5px 12px; font-size: var(--fm-text-sm); }
+
+  /* ===== Top Dual Tabs ===== */
+  .top-tabs {
+    display: flex;
+    align-items: flex-end;
+    height: 48px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--fm-border);
+    background: var(--fm-card);
+  }
+  .top-tab {
+    padding: 12px 4px;
+    font-size: var(--fm-text-lg);
+    font-weight: 500;
+    color: var(--fm-text-tertiary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    margin-right: 24px;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .top-tab.active {
+    color: var(--fm-primary);
+    border-bottom-color: var(--fm-primary);
+  }
+  .top-tab:hover:not(.active) { color: var(--fm-text-secondary); }
+
+  /* ===== Tab Content ===== */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ===== Two Column Layout ===== */
+  .two-col { display: flex; }
+  .left-panel {
+    width: 220px;
+    flex-shrink: 0;
+    padding: 16px 14px;
+    border-right: 1px solid var(--fm-border);
+    background: var(--fm-card);
+  }
+  .right-panel { flex: 1; min-width: 0; }
+
+  /* ===== Preset Panel ===== */
+  .preset-section-title {
+    font-size: var(--fm-text-xs);
+    font-weight: 600;
+    color: var(--fm-text-tertiary);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .preset-group-title {
+    font-size: var(--fm-text-sm);
+    font-weight: 600;
+    color: var(--fm-text-secondary);
+    margin-bottom: 8px;
+    margin-top: 4px;
+  }
+  .preset-btn-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .preset-btn {
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border-strong);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 400;
+  }
+  .preset-btn:hover {
+    background: var(--fm-cream-200);
+    border-color: var(--fm-cream-400);
+    color: var(--fm-text-primary);
+  }
+  .preset-btn.active {
+    background: var(--fm-brand-50);
+    border-color: var(--fm-primary);
+    color: var(--fm-primary);
+    font-weight: 500;
+  }
+  .preset-btn.full-width {
+    grid-column: 1 / -1;
+    justify-self: start;
+    padding: 0 12px;
+    min-width: 70px;
+  }
+  .panel-divider {
+    height: 1px;
+    background: var(--fm-border);
+    margin: 12px 0;
+  }
+  .listing-time-section { margin-top: 4px; }
+  .listing-time-select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--fm-border-strong);
+    border-radius: 8px;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-foreground);
+    background: var(--fm-card);
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2378716c' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
+    font-family: inherit;
+  }
+  .listing-time-select:focus {
+    outline: none;
+    border-color: var(--fm-brand-500);
+    box-shadow: 0 0 0 3px rgba(20,184,166,0.1);
+  }
+
+  /* Tooltip */
+  .tooltip-wrapper {
+    position: relative;
+    display: inline-block;
+  }
+  .tooltip-wrapper .tooltip-bubble {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    background: #1f2933;
+    color: #fff;
+    font-size: var(--fm-text-xs);
+    padding: 8px 10px;
+    border-radius: 6px;
+    line-height: 1.5;
+    width: 220px;
+    z-index: 100;
+    transition: opacity 0.15s;
+    pointer-events: none;
+    font-weight: 400;
+  }
+  .tooltip-wrapper .tooltip-bubble::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 16px;
+    border: 5px solid transparent;
+    border-top-color: #1f2933;
+  }
+  .tooltip-wrapper:hover .tooltip-bubble {
+    visibility: visible;
+    opacity: 1;
+  }
+  .tooltip-wrapper .tooltip-bubble strong {
+    color: #fbbf24;
+    font-weight: 600;
+  }
+
+  /* ===== Accordion (Redesigned - Beige Headers) ===== */
+  .accordion-item {
+    border-bottom: 1px solid var(--fm-border);
+    background: var(--fm-card);
+  }
+  .accordion-item:last-child { border-bottom: none; }
+  .accordion-header {
+    height: 44px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    background: var(--fm-cream-200);
+    transition: background 0.15s;
+  }
+  .accordion-header:hover { background: var(--fm-cream-300); }
+  .accordion-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--fm-text-base);
+    font-weight: 600;
+    color: var(--fm-text-primary);
+  }
+  .accordion-chevron {
+    font-size: 10px;
+    color: var(--fm-text-tertiary);
+    transition: transform 0.2s;
+    width: 12px;
+    text-align: center;
+  }
+  .accordion-item.open .accordion-chevron { transform: rotate(180deg); }
+  .accordion-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .clear-category-btn {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    transition: color 0.15s;
+    font-weight: 400;
+  }
+  .clear-category-btn:hover { color: var(--fm-danger); }
+  .accordion-body {
+    padding: 4px 16px 16px;
+    display: none;
+    background: var(--fm-card);
+  }
+  .accordion-item.open .accordion-body { display: block; }
+
+  /* Condition Items */
+  .condition-item {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--fm-border);
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .condition-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .condition-item:first-child { padding-top: 8px; }
+  .condition-label {
+    font-size: var(--fm-text-sm);
+    font-weight: 500;
+    color: var(--fm-text-secondary);
+    min-width: 80px;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  .condition-control {
+    flex: 1;
+    min-width: 0;
+  }
+  .checkbox-group-h {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+  }
+  .checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    user-select: none;
+  }
+  .checkbox-item input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--fm-primary);
+    cursor: pointer;
+  }
+  .checkbox-item:hover { color: var(--fm-text-primary); }
+  .disabled-hint {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-danger);
+    line-height: 1.5;
+    padding-top: 2px;
+  }
+  .condition-item.disabled .condition-label {
+    color: var(--fm-text-quaternary);
+  }
+  .single-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Numeric Range Input */
+  .range-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .range-input-group .range-input {
+    width: 100px;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--fm-border-strong);
+    border-radius: 6px;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-primary);
+    background: var(--fm-card);
+    font-family: var(--fm-font-mono);
+    text-align: right;
+  }
+  .range-input-group .range-input:focus {
+    outline: none;
+    border-color: var(--fm-brand-500);
+    box-shadow: 0 0 0 3px rgba(20,184,166,0.1);
+  }
+  .range-input-group .range-input:disabled {
+    background: var(--fm-cream-100);
+    color: var(--fm-text-quaternary);
+    cursor: not-allowed;
+    border-color: var(--fm-border);
+  }
+  .range-separator {
+    color: var(--fm-text-tertiary);
+    font-size: var(--fm-text-sm);
+  }
+  .range-select {
+    height: 30px;
+    padding: 0 28px 0 10px;
+    border: 1px solid var(--fm-border-strong);
+    border-radius: 6px;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    background: var(--fm-card);
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2378716c' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    font-family: inherit;
+    margin-left: 8px;
+  }
+  .range-select:disabled {
+    background-color: var(--fm-cream-100);
+    color: var(--fm-text-quaternary);
+    cursor: not-allowed;
+    border-color: var(--fm-border);
+  }
+  .range-select:focus {
+    outline: none;
+    border-color: var(--fm-brand-500);
+    box-shadow: 0 0 0 3px rgba(20,184,166,0.1);
+  }
+
+  /* ===== Preview Stats Card ===== */
+  .preview-stats-card {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-lg);
+    padding: 16px 20px;
+    margin-top: 16px;
+  }
+  .preview-stats-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .preview-stats-title {
+    font-size: var(--fm-text-lg);
+    font-weight: 600;
+    color: var(--fm-foreground);
+  }
+  .preview-stats-date {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-tertiary);
+  }
+
+  /* Stats Chips Row */
+  .stats-chip-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .stat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: var(--fm-text-sm);
+    font-weight: 500;
+  }
+  .stat-chip .chip-num { font-weight: 700; font-size: var(--fm-text-base); }
+  .stat-chip-gray {
+    background: var(--fm-cream-200);
+    color: var(--fm-text-secondary);
+  }
+  .stat-chip-teal {
+    background: var(--fm-brand-50);
+    color: var(--fm-brand-700);
+  }
+  .stat-chip-teal .chip-num { color: var(--fm-brand-700); }
+  .stat-chip-orange {
+    background: var(--fm-warn-soft);
+    color: var(--fm-warn);
+  }
+
+  /* Hit Rate Progress Row */
+  .hit-rate-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    background: var(--fm-cream-100);
+    border-radius: 8px;
+  }
+  .hit-rate-label {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  .hit-rate-bar-wrap {
+    flex: 1;
+    position: relative;
+  }
+  .hit-rate-bar {
+    height: 8px;
+    background: var(--fm-cream-300);
+    border-radius: 4px;
+    overflow: visible;
+    position: relative;
+  }
+  .hit-rate-bar-fill {
+    height: 100%;
+    background: var(--fm-success);
+    border-radius: 4px;
+    width: 57%;
+  }
+  .hit-rate-bar-info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: var(--fm-text-xs);
+  }
+  .hit-rate-left { color: var(--fm-text-secondary); }
+  .hit-rate-right { color: var(--fm-success); font-weight: 600; }
+
+  /* Exclude Category Chips */
+  .exclude-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .exclude-row-label {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-tertiary);
+    margin-right: 4px;
+  }
+  .exclude-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: var(--fm-text-xs);
+    background: var(--fm-cream-200);
+    color: var(--fm-text-secondary);
+  }
+  .exclude-chip .chip-num {
+    font-weight: 600;
+    color: var(--fm-text-primary);
+  }
+
+  /* Field Coverage Chips */
+  .coverage-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .coverage-row-label {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-tertiary);
+    margin-right: 4px;
+  }
+  .coverage-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: var(--fm-text-xs);
+    background: var(--fm-success-soft);
+    color: var(--fm-success);
+    font-family: var(--fm-font-mono);
+  }
+  .coverage-chip.low {
+    background: var(--fm-danger-soft);
+    color: var(--fm-danger);
+  }
+  .coverage-chip .cov-check { font-weight: 700; }
+
+  /* ===== Member List Card ===== */
+  .member-list-card {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-lg);
+    margin-top: 16px;
+    overflow: hidden;
+  }
+  .member-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--fm-border);
+  }
+  .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .member-title {
+    font-size: var(--fm-text-lg);
+    font-weight: 600;
+    color: var(--fm-foreground);
+  }
+  .member-title .count {
+    color: var(--fm-primary);
+    font-weight: 700;
+  }
+  .search-box {
+    position: relative;
+  }
+  .search-box input {
+    width: 200px;
+    height: 32px;
+    padding: 0 12px 0 32px;
+    border: 1px solid var(--fm-border-strong);
+    border-radius: 8px;
+    font-size: var(--fm-text-sm);
+    background: var(--fm-card);
+    color: var(--fm-foreground);
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .search-box input:focus {
+    outline: none;
+    border-color: var(--fm-brand-500);
+    box-shadow: 0 0 0 3px rgba(20,184,166,0.1);
+  }
+  .search-box input::placeholder { color: var(--fm-text-quaternary); }
+  .search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    color: var(--fm-text-tertiary);
+    font-size: 12px;
+  }
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .select-inline {
+    height: 32px;
+    padding: 0 28px 0 10px;
+    border: 1px solid var(--fm-border-strong);
+    border-radius: 8px;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-foreground);
+    background: var(--fm-card);
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2378716c' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    font-family: inherit;
+  }
+  .select-inline:focus {
+    outline: none;
+    border-color: var(--fm-brand-500);
+    box-shadow: 0 0 0 3px rgba(20,184,166,0.1);
+  }
+
+  /* Member Table */
+  .member-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fm-text-base);
+  }
+  .member-table thead {
+    background: var(--fm-cream-200);
+  }
+  .member-table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    border-bottom: 1px solid var(--fm-border);
+    white-space: nowrap;
+  }
+  .member-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--fm-border);
+    color: var(--fm-text-primary);
+    vertical-align: middle;
+  }
+  .member-table tbody tr:hover { background: var(--fm-cream-50); }
+  .member-table tbody tr:last-child td { border-bottom: none; }
+
+  .col-check { width: 36px; text-align: center; }
+  .col-idx { width: 48px; color: var(--fm-text-tertiary); font-size: var(--fm-text-sm); }
+  .col-code { font-family: var(--fm-font-mono); font-weight: 500; }
+  .col-name { font-weight: 500; }
+
+  /* Risk Markers */
+  .risk-normal {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-success);
+  }
+  .risk-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .risk-dot.green { background: var(--fm-success); }
+  .risk-st {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-danger);
+    font-weight: 500;
+  }
+  .risk-dot.red { background: var(--fm-danger); }
+  .risk-st-star {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--fm-danger);
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  /* Mini Progress Bar */
+  .mini-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mini-progress-bar {
+    width: 60px;
+    height: 6px;
+    background: var(--fm-cream-300);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .mini-progress-fill {
+    height: 100%;
+    background: var(--fm-brand-500);
+    border-radius: 3px;
+  }
+  .mini-progress-fill.low { background: var(--fm-warn); }
+  .mini-progress-text {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    font-variant-numeric: tabular-nums;
+    min-width: 42px;
+  }
+
+  /* Reason Chip */
+  .reason-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--fm-brand-50);
+    color: var(--fm-brand-700);
+    font-weight: 500;
+  }
+  .reason-chip.import {
+    background: var(--fm-cream-200);
+    color: var(--fm-text-secondary);
+  }
+
+  /* Checkbox */
+  .chk-cell input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--fm-primary);
+    cursor: pointer;
+  }
+
+  /* Pagination */
+  .pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-top: 1px solid var(--fm-border);
+    background: var(--fm-cream-100);
+    font-size: var(--fm-text-sm);
+  }
+  .pagination-info {
+    color: var(--fm-text-tertiary);
+  }
+  .pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .page-btn {
+    padding: 5px 12px;
+    border: 1px solid var(--fm-border-strong);
+    border-radius: 6px;
+    background: var(--fm-card);
+    color: var(--fm-text-secondary);
+    font-size: var(--fm-text-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .page-btn:hover { background: var(--fm-cream-200); }
+  .page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .page-size-select {
+    height: 28px;
+    padding: 0 24px 0 8px;
+    border: 1px solid var(--fm-border-strong);
+    border-radius: 6px;
+    font-size: var(--fm-text-sm);
+    background: var(--fm-card);
+    color: var(--fm-text-secondary);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2378716c' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  /* ===== Bottom Fixed Action Bar ===== */
+  .bottom-action-bar {
+    position: fixed;
+    bottom: 0;
+    left: 232px;
+    right: 0;
+    background: var(--fm-card);
+    border-top: 1px solid var(--fm-border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 10;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
+  }
+  .action-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: var(--fm-text-base);
+    color: var(--fm-text-secondary);
+  }
+  .action-left .selected-count {
+    font-weight: 600;
+    color: var(--fm-foreground);
+  }
+  .action-link {
+    color: var(--fm-primary);
+    cursor: pointer;
+    font-weight: 500;
+    font-size: var(--fm-text-sm);
+  }
+  .action-link:hover { text-decoration: underline; }
+  .action-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* ===== Import Stock Pool Tab ===== */
+  .import-section {
+    padding: 20px;
+  }
+  .import-action-card {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-lg);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .btn-outline {
+    background: var(--fm-card);
+    color: var(--fm-text-primary);
+    border: 1px solid var(--fm-border-strong);
+  }
+  .btn-outline:hover {
+    background: var(--fm-cream-200);
+  }
+  .btn-dashed {
+    background: var(--fm-card);
+    color: var(--fm-text-tertiary);
+    border: 1px dashed var(--fm-cream-400);
+  }
+  .btn-dashed:hover {
+    border-color: var(--fm-primary);
+    color: var(--fm-primary);
+    background: var(--fm-brand-50);
+  }
+  .import-hint {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-tertiary);
+    margin-left: 8px;
+  }
+
+  .import-table-card {
+    background: var(--fm-card);
+    border: 1px solid var(--fm-border);
+    border-radius: var(--fm-radius-lg);
+    overflow: hidden;
+  }
+  .import-table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--fm-border);
+  }
+  .import-table-title {
+    font-size: var(--fm-text-lg);
+    font-weight: 600;
+    color: var(--fm-foreground);
+  }
+  .import-table-count {
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-tertiary);
+  }
+  .import-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fm-text-base);
+  }
+  .import-table thead {
+    background: var(--fm-cream-200);
+  }
+  .import-table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: var(--fm-text-sm);
+    color: var(--fm-text-secondary);
+    border-bottom: 1px solid var(--fm-border);
+    white-space: nowrap;
+  }
+  .import-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--fm-border);
+    color: var(--fm-text-primary);
+    vertical-align: middle;
+  }
+  .import-table tbody tr:last-child td { border-bottom: none; }
+
+  .empty-state {
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--fm-text-tertiary);
+    font-size: var(--fm-text-base);
+  }
+
+  /* Import bottom bar */
+  .import-bottom-bar {
+    display: flex;
+    justify-content: flex-end;
+    padding: 16px 20px;
+    border-top: 1px solid var(--fm-border);
+    background: var(--fm-card);
+  }
+</style>
+</head>
+<body>
+<div class="app-shell" id="page-wizard-pool-v2">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">F</div>
+      <span>FactorLab</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">工作台</div>
+      <div class="nav-item"><span class="nav-icon">◱</span> 概览</div>
+      <div class="nav-item"><span class="nav-icon">◈</span> 因子库</div>
+      <div class="nav-item"><span class="nav-icon">◉</span> 因子模型</div>
+      <div class="nav-item"><span class="nav-icon">◔</span> 回测分析</div>
+
+      <div class="nav-section-title" style="margin-top:8px;">研究</div>
+      <div class="nav-item"><span class="nav-icon">⚡</span> 因子挖掘</div>
+      <div class="nav-item"><span class="nav-icon">⚙</span> 批量回测</div>
+
+      <div class="nav-section-title" style="margin-top:8px;">设置</div>
+      <div class="nav-item active"><span class="nav-icon">⚙</span> 因子挖掘</div>
+      <div class="nav-submenu">
+        <div class="nav-item active">向导</div>
+        <div class="nav-item">批次列表</div>
+        <div class="nav-item">经验库</div>
+        <div class="nav-item">模板配置</div>
+      </div>
+      <div class="nav-item"><span class="nav-icon">◐</span> 数据源</div>
+      <div class="nav-item"><span class="nav-icon">◯</span> 系统设置</div>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-area">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="breadcrumb">
+        <span>设置</span>
+        <span class="sep">/</span>
+        <span class="current">因子挖掘</span>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon-btn">
+          <span>🔍</span>
+        </div>
+        <div class="topbar-icon-btn">
+          <span>🔔</span>
+          <div class="notification-dot"></div>
+        </div>
+        <div class="user-avatar">ZH</div>
+      </div>
+    </header>
+
+    <!-- Sub Tabs -->
+    <div class="sub-tabs">
+      <div class="sub-tab active">向导</div>
+      <div class="sub-tab">批次列表</div>
+      <div class="sub-tab">经验库</div>
+      <div class="sub-tab">模板配置</div>
+    </div>
+
+    <!-- Stepper -->
+    <div class="stepper-wrapper">
+      <div class="stepper">
+        <div class="step active">
+          <div class="step-highlight">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              <span class="step-label">候选股票池</span>
+              <span class="step-sublabel">进行中</span>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-highlight">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              <span class="step-label">时间与目标</span>
+              <span class="step-sublabel">待配置</span>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-highlight">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              <span class="step-label">字段与校验</span>
+              <span class="step-sublabel">待配置</span>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-highlight">
+            <div class="step-num">4</div>
+            <div class="step-text">
+              <span class="step-label">进化参数</span>
+              <span class="step-sublabel">待配置</span>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-highlight">
+            <div class="step-num">5</div>
+            <div class="step-text">
+              <span class="step-label">进化执行与结果</span>
+              <span class="step-sublabel">待配置</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <main class="content">
+      <!-- Upper Card: Dual Tabs + Left Presets + Right Accordion -->
+      <div class="page-card">
+        <!-- Top Dual Tabs -->
+        <div class="top-tabs">
+          <div class="top-tab active" onclick="switchTab('filter')">条件筛选</div>
+          <div class="top-tab" onclick="switchTab('import')">导入股票池</div>
+        </div>
+
+        <!-- Tab 1: Condition Filter -->
+        <div class="tab-content active" id="tab-filter">
+          <div class="two-col">
+            <!-- Left Panel - Presets -->
+            <div class="left-panel">
+              <div class="preset-section-title">筛选条件</div>
+
+              <!-- Market Cap Presets -->
+              <div class="preset-group-title">市值预设</div>
+              <div class="preset-btn-grid">
+                <div class="tooltip-wrapper">
+                  <div class="preset-btn active">全市场</div>
+                  <div class="tooltip-bubble">
+                    总市值：按数据截止日可见快照取值，阈值 = 当日目标市场<strong>正值</strong>样本的分位数（非硬编码金额）
+                  </div>
+                </div>
+                <div class="tooltip-wrapper">
+                  <div class="preset-btn">微盘</div>
+                  <div class="tooltip-bubble">
+                    总市值：按数据截止日可见快照取值，阈值 = 当日目标市场<strong>正值</strong>样本的分位数（非硬编码金额）
+                  </div>
+                </div>
+                <div class="tooltip-wrapper">
+                  <div class="preset-btn">小盘</div>
+                  <div class="tooltip-bubble">
+                    总市值：按数据截止日可见快照取值，阈值 = 当日目标市场<strong>正值</strong>样本的分位数（非硬编码金额）
+                  </div>
+                </div>
+                <div class="tooltip-wrapper">
+                  <div class="preset-btn">中盘</div>
+                  <div class="tooltip-bubble">
+                    总市值：按数据截止日可见快照取值，阈值 = 当日目标市场<strong>正值</strong>样本的分位数（非硬编码金额）
+                  </div>
+                </div>
+                <div class="tooltip-wrapper">
+                  <div class="preset-btn full-width">大盘</div>
+                  <div class="tooltip-bubble">
+                    总市值：按数据截止日可见快照取值，阈值 = 当日目标市场<strong>正值</strong>样本的分位数（非硬编码金额）
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel-divider"></div>
+
+              <!-- Valuation Presets -->
+              <div class="preset-group-title">估值预设</div>
+              <div class="preset-btn-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+                <div class="preset-btn">低估值</div>
+                <div class="preset-btn">中估值</div>
+                <div class="preset-btn">高估值</div>
+              </div>
+
+              <div class="panel-divider"></div>
+
+              <!-- Liquidity Presets -->
+              <div class="preset-group-title">流动性预设</div>
+              <div class="preset-btn-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+                <div class="preset-btn">高流动</div>
+                <div class="preset-btn">中流动</div>
+                <div class="preset-btn">低流动</div>
+              </div>
+
+              <div class="panel-divider"></div>
+
+              <!-- Listing Time -->
+              <div class="preset-group-title">上市时间</div>
+              <div class="listing-time-section">
+                <select class="listing-time-select">
+                  <option>满 120 个交易日</option>
+                  <option>满 60 个交易日</option>
+                  <option>满 250 个交易日</option>
+                  <option>满 500 个交易日</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Right Panel - Accordion -->
+            <div class="right-panel">
+              <!-- Category 1: Market & Trading Status (expanded) -->
+              <div class="accordion-item open">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                  <div class="accordion-title">
+                    <span class="accordion-chevron">∨</span>
+                    市场与交易状态
+                  </div>
+                  <div class="accordion-right">
+                    <span class="clear-category-btn">清除本分类</span>
+                  </div>
+                </div>
+                <div class="accordion-body">
+                  <!-- 市场 -->
+                  <div class="condition-item">
+                    <div class="condition-label">市场</div>
+                    <div class="condition-control">
+                      <div class="checkbox-group-h">
+                        <label class="checkbox-item">
+                          <input type="checkbox" checked> 上证
+                        </label>
+                        <label class="checkbox-item">
+                          <input type="checkbox" checked> 深证
+                        </label>
+                        <label class="checkbox-item">
+                          <input type="checkbox"> 北交所
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 板块 -->
+                  <div class="condition-item">
+                    <div class="condition-label">板块</div>
+                    <div class="condition-control">
+                      <div class="checkbox-group-h">
+                        <label class="checkbox-item">
+                          <input type="checkbox" checked> 上证主板
+                        </label>
+                        <label class="checkbox-item">
+                          <input type="checkbox" checked> 深证主板
+                        </label>
+                        <label class="checkbox-item">
+                          <input type="checkbox" checked> 创业板
+                        </label>
+                        <label class="checkbox-item">
+                          <input type="checkbox" checked> 科创板
+                        </label>
+                        <label class="checkbox-item">
+                          <input type="checkbox"> 北交所
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 排除退市整理/已退市 -->
+                  <div class="condition-item">
+                    <div class="condition-label"></div>
+                    <div class="condition-control">
+                      <div class="single-checkbox-row">
+                        <label class="checkbox-item">
+                          <input type="checkbox" checked> 排除退市整理/已退市
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 排除停牌 - 禁用 -->
+                  <div class="condition-item disabled">
+                    <div class="condition-label">排除停牌</div>
+                    <div class="condition-control">
+                      <div class="disabled-hint">
+                        停牌状态暂无可用数据源，暂不可用。需先接入交易日状态数据后开放。
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 指数成分 - 禁用 -->
+                  <div class="condition-item disabled">
+                    <div class="condition-label">指数成分</div>
+                    <div class="condition-control">
+                      <div class="disabled-hint">
+                        指数成分数据尚未建设，暂不能用它筛选。需先建成指数成分表后开放。
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Category 2: 风险标记 (expanded) -->
+              <div class="accordion-item open">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                  <div class="accordion-title">
+                    <span class="accordion-chevron">∨</span>
+                    风险标记
+                  </div>
+                  <div class="accordion-right">
+                    <span class="clear-category-btn">清除本分类</span>
+                  </div>
+                </div>
+                <div class="accordion-body">
+                  <div class="condition-item">
+                    <div class="condition-label"></div>
+                    <div class="condition-control">
+                      <div class="single-checkbox-row">
+                        <label class="checkbox-item">
+                          <input type="checkbox" checked> 排除 ST/*ST
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Category 3: 估值与市值 (expanded) -->
+              <div class="accordion-item open">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                  <div class="accordion-title">
+                    <span class="accordion-chevron">∨</span>
+                    估值与市值
+                  </div>
+                  <div class="accordion-right">
+                    <span class="clear-category-btn">清除本分类</span>
+                  </div>
+                </div>
+                <div class="accordion-body">
+                  <!-- 流通市值 -->
+                  <div class="condition-item">
+                    <div class="condition-label">流通市值</div>
+                    <div class="condition-control">
+                      <div class="range-input-group">
+                        <input type="text" class="range-input" placeholder="最小值">
+                        <span class="range-separator">~</span>
+                        <input type="text" class="range-input" placeholder="最大值">
+                        <select class="range-select">
+                          <option>缺失排除</option>
+                          <option>缺失保留</option>
+                          <option>缺失设为0</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 总市值 -->
+                  <div class="condition-item">
+                    <div class="condition-label">总市值</div>
+                    <div class="condition-control">
+                      <div class="range-input-group">
+                        <input type="text" class="range-input" placeholder="最小值">
+                        <span class="range-separator">~</span>
+                        <input type="text" class="range-input" placeholder="最大值">
+                        <select class="range-select">
+                          <option>缺失排除</option>
+                          <option>缺失保留</option>
+                          <option>缺失设为0</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 股息率 - 禁用 -->
+                  <div class="condition-item disabled">
+                    <div class="condition-label">股息率</div>
+                    <div class="condition-control">
+                      <div class="range-input-group">
+                        <input type="text" class="range-input" placeholder="最小值" disabled>
+                        <span class="range-separator">~</span>
+                        <input type="text" class="range-input" placeholder="最大值" disabled>
+                        <select class="range-select" disabled>
+                          <option>缺失排除</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- PE_TTM -->
+                  <div class="condition-item">
+                    <div class="condition-label">PE_TTM</div>
+                    <div class="condition-control">
+                      <div class="range-input-group">
+                        <input type="text" class="range-input" placeholder="最小值">
+                        <span class="range-separator">~</span>
+                        <input type="text" class="range-input" placeholder="最大值">
+                        <select class="range-select">
+                          <option>缺失排除</option>
+                          <option>缺失保留</option>
+                          <option>缺失设为0</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- PB -->
+                  <div class="condition-item">
+                    <div class="condition-label">PB</div>
+                    <div class="condition-control">
+                      <div class="range-input-group">
+                        <input type="text" class="range-input" placeholder="最小值">
+                        <span class="range-separator">~</span>
+                        <input type="text" class="range-input" placeholder="最大值">
+                        <select class="range-select">
+                          <option>缺失排除</option>
+                          <option>缺失保留</option>
+                          <option>缺失设为0</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Category 4: 盈利质量 (collapsed) -->
+              <div class="accordion-item">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                  <div class="accordion-title">
+                    <span class="accordion-chevron">∨</span>
+                    盈利质量
+                  </div>
+                  <div class="accordion-right">
+                    <span class="clear-category-btn">清除本分类</span>
+                  </div>
+                </div>
+                <div class="accordion-body">
+                </div>
+              </div>
+
+              <!-- Category 5: 流动性 (collapsed) -->
+              <div class="accordion-item">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                  <div class="accordion-title">
+                    <span class="accordion-chevron">∨</span>
+                    流动性
+                  </div>
+                  <div class="accordion-right">
+                    <span class="clear-category-btn">清除本分类</span>
+                  </div>
+                </div>
+                <div class="accordion-body">
+                </div>
+              </div>
+
+              <!-- Category 6: 上市时间 (collapsed) -->
+              <div class="accordion-item">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                  <div class="accordion-title">
+                    <span class="accordion-chevron">∨</span>
+                    上市时间
+                  </div>
+                  <div class="accordion-right">
+                    <span class="clear-category-btn">清除本分类</span>
+                  </div>
+                </div>
+                <div class="accordion-body">
+                </div>
+              </div>
+
+              <!-- Category 7: 行业 (collapsed) -->
+              <div class="accordion-item">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                  <div class="accordion-title">
+                    <span class="accordion-chevron">∨</span>
+                    行业
+                  </div>
+                  <div class="accordion-right">
+                    <span class="clear-category-btn">清除本分类</span>
+                  </div>
+                </div>
+                <div class="accordion-body">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Import Stock Pool -->
+        <div class="tab-content" id="tab-import">
+          <div class="import-section">
+            <!-- Action Card -->
+            <div class="import-action-card">
+              <button class="btn btn-outline">
+                <span>⬇</span> 下载导入模板
+              </button>
+              <button class="btn btn-dashed">
+                <span>📁</span> 选择文件
+              </button>
+              <span class="import-hint">支持 .xlsx / .csv 格式，单次最多导入 5000 条</span>
+            </div>
+
+            <!-- Table Card -->
+            <div class="import-table-card">
+              <div class="import-table-header">
+                <div class="import-table-title">股票代码</div>
+                <div class="import-table-count">已选 0 项</div>
+              </div>
+              <table class="import-table">
+                <thead>
+                  <tr>
+                    <th class="col-check chk-cell"><input type="checkbox"></th>
+                    <th class="col-idx">序号</th>
+                    <th>股票代码</th>
+                    <th>名称</th>
+                    <th>风险标记</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td colspan="5">
+                      <div class="empty-state">暂无候选成员</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="import-bottom-bar">
+                <button class="btn btn-primary">生成挖掘物料</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Preview Stats Card (only shown in filter tab) -->
+      <div id="filter-preview-section">
+        <!-- A. Preview Stats Card -->
+        <div class="preview-stats-card">
+          <div class="preview-stats-header">
+            <div class="preview-stats-title">预览结果</div>
+            <div class="preview-stats-date">数据截止日：2026-09-20</div>
+          </div>
+
+          <!-- Row 1: Stats Chips -->
+          <div class="stats-chip-row">
+            <div class="stat-chip stat-chip-gray">
+              <span>总池</span>
+              <span class="chip-num">5,284 只</span>
+            </div>
+            <div class="stat-chip stat-chip-teal">
+              <span>命中</span>
+              <span class="chip-num">287 只</span>
+            </div>
+            <div class="stat-chip stat-chip-orange">
+              <span>排除</span>
+              <span class="chip-num">12 只</span>
+            </div>
+            <div class="stat-chip stat-chip-gray">
+              <span>硬下限</span>
+              <span class="chip-num">50 只</span>
+            </div>
+          </div>
+
+          <!-- Row 2: Hit Rate Progress -->
+          <div class="hit-rate-row">
+            <div class="hit-rate-label">命中进度</div>
+            <div class="hit-rate-bar-wrap">
+              <div class="hit-rate-bar">
+                <div class="hit-rate-bar-fill" style="width: 57.4%"></div>
+              </div>
+              <div class="hit-rate-bar-info">
+                <span class="hit-rate-left">287 只命中</span>
+                <span class="hit-rate-right">硬下限 50 只 ✓</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 3: Exclude Categories -->
+          <div class="exclude-row">
+            <span class="exclude-row-label">排除分类：</span>
+            <div class="exclude-chip">
+              <span>停牌</span>
+              <span class="chip-num">3 只</span>
+            </div>
+            <div class="exclude-chip">
+              <span>ST/*ST</span>
+              <span class="chip-num">5 只</span>
+            </div>
+            <div class="exclude-chip">
+              <span>数据不足</span>
+              <span class="chip-num">4 只</span>
+            </div>
+            <div class="exclude-chip">
+              <span>退市</span>
+              <span class="chip-num">0 只</span>
+            </div>
+          </div>
+
+          <!-- Row 4: Field Coverage -->
+          <div class="coverage-row">
+            <span class="coverage-row-label">字段覆盖率：</span>
+            <div class="coverage-chip">
+              <span>close</span>
+              <span>99.7%</span>
+              <span class="cov-check">✓</span>
+            </div>
+            <div class="coverage-chip">
+              <span>volume</span>
+              <span>99.5%</span>
+              <span class="cov-check">✓</span>
+            </div>
+            <div class="coverage-chip">
+              <span>pe_ttm</span>
+              <span>92.1%</span>
+              <span class="cov-check">✓</span>
+            </div>
+            <div class="coverage-chip">
+              <span>roe_ttm</span>
+              <span>85.3%</span>
+              <span class="cov-check">✓</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- B. Member List Card -->
+        <div class="member-list-card">
+          <!-- Toolbar -->
+          <div class="member-toolbar">
+            <div class="toolbar-left">
+              <div class="member-title">候选池成员 · <span class="count">285</span> 只</div>
+              <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" placeholder="搜索代码/名称">
+              </div>
+            </div>
+            <div class="toolbar-right">
+              <select class="select-inline">
+                <option>全部</option>
+                <option>正常</option>
+                <option>ST</option>
+                <option>停牌</option>
+              </select>
+              <select class="select-inline">
+                <option>代码升序</option>
+                <option>代码降序</option>
+                <option>市值降序</option>
+                <option>市值升序</option>
+              </select>
+              <button class="btn btn-ghost-danger btn-sm">
+                <span>🗑</span> 批量删除
+              </button>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <table class="member-table">
+            <thead>
+              <tr>
+                <th class="col-check chk-cell"><input type="checkbox"></th>
+                <th class="col-idx">#</th>
+                <th>代码</th>
+                <th>名称</th>
+                <th>板块</th>
+                <th>风险标记</th>
+                <th>上市日期</th>
+                <th style="text-align:right;">总市值(亿)</th>
+                <th style="text-align:right;">PE_TTM</th>
+                <th style="text-align:right;">ROE_TTM</th>
+                <th>数据完整度</th>
+                <th>纳入原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="chk-cell"><input type="checkbox"></td>
+                <td class="col-idx">1</td>
+                <td class="col-code">000001</td>
+                <td class="col-name">平安银行</td>
+                <td>深证主板</td>
+                <td><span class="risk-normal"><span class="risk-dot green"></span>正常</span></td>
+                <td>1991-04-03</td>
+                <td style="text-align:right;">2,156</td>
+                <td style="text-align:right;">5.2</td>
+                <td style="text-align:right;">12.3%</td>
+                <td>
+                  <div class="mini-progress">
+                    <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:98.7%"></div></div>
+                    <span class="mini-progress-text">98.7%</span>
+                  </div>
+                </td>
+                <td><span class="reason-chip">过滤规则</span></td>
+              </tr>
+              <tr>
+                <td class="chk-cell"><input type="checkbox"></td>
+                <td class="col-idx">2</td>
+                <td class="col-code">000002</td>
+                <td class="col-name">万科A</td>
+                <td>深证主板</td>
+                <td><span class="risk-normal"><span class="risk-dot green"></span>正常</span></td>
+                <td>1991-01-29</td>
+                <td style="text-align:right;">1,823</td>
+                <td style="text-align:right;">8.7</td>
+                <td style="text-align:right;">9.8%</td>
+                <td>
+                  <div class="mini-progress">
+                    <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:99.1%"></div></div>
+                    <span class="mini-progress-text">99.1%</span>
+                  </div>
+                </td>
+                <td><span class="reason-chip">过滤规则</span></td>
+              </tr>
+              <tr>
+                <td class="chk-cell"><input type="checkbox"></td>
+                <td class="col-idx">3</td>
+                <td class="col-code">300750</td>
+                <td class="col-name">宁德时代</td>
+                <td>创业板</td>
+                <td><span class="risk-normal"><span class="risk-dot green"></span>正常</span></td>
+                <td>2018-06-11</td>
+                <td style="text-align:right;">8,920</td>
+                <td style="text-align:right;">32.5</td>
+                <td style="text-align:right;">18.2%</td>
+                <td>
+                  <div class="mini-progress">
+                    <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:96.2%"></div></div>
+                    <span class="mini-progress-text">96.2%</span>
+                  </div>
+                </td>
+                <td><span class="reason-chip">过滤规则</span></td>
+              </tr>
+              <tr>
+                <td class="chk-cell"><input type="checkbox"></td>
+                <td class="col-idx">4</td>
+                <td class="col-code">688981</td>
+                <td class="col-name">中芯国际</td>
+                <td>科创板</td>
+                <td><span class="risk-normal"><span class="risk-dot green"></span>正常</span></td>
+                <td>2020-07-16</td>
+                <td style="text-align:right;">5,230</td>
+                <td style="text-align:right;">45.8</td>
+                <td style="text-align:right;">6.5%</td>
+                <td>
+                  <div class="mini-progress">
+                    <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:92.8%"></div></div>
+                    <span class="mini-progress-text">92.8%</span>
+                  </div>
+                </td>
+                <td><span class="reason-chip">过滤规则</span></td>
+              </tr>
+              <tr>
+                <td class="chk-cell"><input type="checkbox"></td>
+                <td class="col-idx">5</td>
+                <td class="col-code">000003</td>
+                <td class="col-name">ST中安</td>
+                <td>深证主板</td>
+                <td><span class="risk-st"><span class="risk-dot red"></span>ST</span></td>
+                <td>1997-10-30</td>
+                <td style="text-align:right;">28</td>
+                <td style="text-align:right;">-</td>
+                <td style="text-align:right; color: var(--fm-danger);">-2.3%</td>
+                <td>
+                  <div class="mini-progress">
+                    <div class="mini-progress-bar"><div class="mini-progress-fill low" style="width:85.1%"></div></div>
+                    <span class="mini-progress-text">85.1%</span>
+                  </div>
+                </td>
+                <td><span class="reason-chip">过滤规则</span></td>
+              </tr>
+              <tr>
+                <td class="chk-cell"><input type="checkbox"></td>
+                <td class="col-idx">6</td>
+                <td class="col-code">600519</td>
+                <td class="col-name">贵州茅台</td>
+                <td>上证主板</td>
+                <td><span class="risk-normal"><span class="risk-dot green"></span>正常</span></td>
+                <td>2001-08-27</td>
+                <td style="text-align:right;">19,800</td>
+                <td style="text-align:right;">28.6</td>
+                <td style="text-align:right; color: var(--fm-success);">31.2%</td>
+                <td>
+                  <div class="mini-progress">
+                    <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:99.5%"></div></div>
+                    <span class="mini-progress-text">99.5%</span>
+                  </div>
+                </td>
+                <td><span class="reason-chip">过滤规则</span></td>
+              </tr>
+              <tr>
+                <td class="chk-cell"><input type="checkbox"></td>
+                <td class="col-idx">7</td>
+                <td class="col-code">000858</td>
+                <td class="col-name">五粮液</td>
+                <td>深证主板</td>
+                <td><span class="risk-normal"><span class="risk-dot green"></span>正常</span></td>
+                <td>1998-04-27</td>
+                <td style="text-align:right;">6,250</td>
+                <td style="text-align:right;">22.4</td>
+                <td style="text-align:right; color: var(--fm-success);">25.8%</td>
+                <td>
+                  <div class="mini-progress">
+                    <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:99.3%"></div></div>
+                    <span class="mini-progress-text">99.3%</span>
+                  </div>
+                </td>
+                <td><span class="reason-chip">过滤规则</span></td>
+              </tr>
+              <tr>
+                <td class="chk-cell"><input type="checkbox"></td>
+                <td class="col-idx">8</td>
+                <td class="col-code">601318</td>
+                <td class="col-name">中国平安</td>
+                <td>上证主板</td>
+                <td><span class="risk-normal"><span class="risk-dot green"></span>正常</span></td>
+                <td>2007-03-01</td>
+                <td style="text-align:right;">5,680</td>
+                <td style="text-align:right;">7.8</td>
+                <td style="text-align:right;">15.6%</td>
+                <td>
+                  <div class="mini-progress">
+                    <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:98.9%"></div></div>
+                    <span class="mini-progress-text">98.9%</span>
+                  </div>
+                </td>
+                <td><span class="reason-chip">过滤规则</span></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Pagination -->
+          <div class="pagination-bar">
+            <div class="pagination-info">共 285 条 · 第 1/29 页</div>
+            <div class="pagination-controls">
+              <select class="page-size-select">
+                <option>每页 10 条</option>
+                <option>每页 20 条</option>
+                <option>每页 50 条</option>
+              </select>
+              <button class="page-btn" disabled>上一页</button>
+              <button class="page-btn">下一页</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- C. Bottom Fixed Action Bar -->
+    <div class="bottom-action-bar">
+      <div class="action-left">
+        <span>已选 <span class="selected-count">0</span> 项</span>
+        <span class="action-link">全选</span>
+        <span class="action-link">取消全选</span>
+      </div>
+      <div class="action-right">
+        <button class="btn btn-secondary">预览股票池</button>
+        <button class="btn btn-primary">生成挖掘物料</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Tab switching
+  function switchTab(tab) {
+    // Update top tabs
+    const tabs = document.querySelectorAll('.top-tab');
+    tabs.forEach((t, i) => {
+      if ((tab === 'filter' && i === 0) || (tab === 'import' && i === 1)) {
+        t.classList.add('active');
+      } else {
+        t.classList.remove('active');
+      }
+    });
+
+    // Update tab content
+    const tabFilter = document.getElementById('tab-filter');
+    const tabImport = document.getElementById('tab-import');
+    const previewSection = document.getElementById('filter-preview-section');
+    const bottomBar = document.querySelector('.bottom-action-bar');
+
+    if (tab === 'filter') {
+      tabFilter.classList.add('active');
+      tabImport.classList.remove('active');
+      previewSection.style.display = 'block';
+      bottomBar.style.display = 'flex';
+    } else {
+      tabFilter.classList.remove('active');
+      tabImport.classList.add('active');
+      previewSection.style.display = 'none';
+      bottomBar.style.display = 'none';
+    }
+  }
+
+  // Accordion toggle
+  function toggleAccordion(header) {
+    const item = header.parentElement;
+    item.classList.toggle('open');
+  }
+</script>
+</body>
+</html>

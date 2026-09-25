@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { t } from "../../../../../i18n";
 import { DatePicker, InputNumber, Select } from "antd";
@@ -32,6 +32,16 @@ export interface MiningTimeTargetStepProps {
   mirroredFrom?: string | null;
   mirroredTo?: string | null;
   mirroredYears?: number;
+  /** DEF-10：草稿回填入口——此前本组件只有 onChange（单向写），
+   * 壳层 wizardConfig 更新（如载入草稿）无法反向同步到内部 state，
+   * Step2 日期/频率/比例永远显示默认值。传入引用变化时同步一次。 */
+  initial?: {
+    start_date?: string;
+    end_date?: string;
+    rebalance_frequency?: MiningFrequency;
+    target_horizon?: number;
+    ratios?: SplitRatios;
+  } | null;
   onChange?: (config: {
     start_date: string;
     end_date: string;
@@ -49,6 +59,7 @@ export default function MiningTimeTargetStep({
   mirroredFrom = null,
   mirroredTo = null,
   mirroredYears = 5,
+  initial = null,
   onChange,
   onGoMirror,
 }: MiningTimeTargetStepProps) {
@@ -58,6 +69,16 @@ export default function MiningTimeTargetStep({
   const [horizon, setHorizon] = useState(5);
   const [targetType, setTargetType] = useState<MiningTargetType>("simple");
   const [ratios, setRatios] = useState<SplitRatios>({ train: 60, val: 20, test: 20 });
+
+  // DEF-10：initial 引用变化（载入草稿）时同步内部受控态；同值回写无害。
+  useEffect(() => {
+    if (!initial) return;
+    if (initial.start_date !== undefined) setStartDate(initial.start_date);
+    if (initial.end_date !== undefined) setEndDate(initial.end_date);
+    if (initial.rebalance_frequency !== undefined) setFrequency(initial.rebalance_frequency);
+    if (initial.target_horizon !== undefined) setHorizon(initial.target_horizon);
+    if (initial.ratios !== undefined) setRatios(initial.ratios);
+  }, [initial]);
 
   const emit = (patch: Partial<{
     start_date: string; end_date: string; rebalance_frequency: MiningFrequency;

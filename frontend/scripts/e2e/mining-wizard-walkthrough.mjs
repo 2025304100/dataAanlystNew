@@ -140,11 +140,21 @@ async function main() {
     check("1.6 数值区间可输入", false, "未找到市值输入");
   }
 
-  // 预览出数或可读阻断（300ms 防抖 + 后端响应）
-  await page.waitForTimeout(1200);
+  // 预览出数或可读阻断（300ms 防抖 + 后端响应；轮询至多 30s——
+  // 固定 1.2s 等待在数仓冷缓存时会误报，2026-09-24 全面测试教训）
+  let previewSeen = false;
+  for (let waited = 0; waited < 30; waited += 1) {
+    await page.waitForTimeout(1000);
+    if ((await page.locator("[data-pool-preview-stats]").count()) > 0 ||
+        (await page.locator("[data-pool-blocked]").count()) > 0) {
+      previewSeen = true;
+      break;
+    }
+  }
   const hasStats = await page.locator("[data-pool-preview-stats]").count();
   const hasBlocked = await page.locator("[data-pool-blocked]").count();
-  check("1.7 预览统计已渲染（或可读阻断）", hasStats > 0 || hasBlocked > 0, hasBlocked > 0 ? "命中不足阻断" : "统计可见");
+  check("1.7 预览统计已渲染（或可读阻断）", previewSeen || hasStats > 0 || hasBlocked > 0,
+    hasBlocked > 0 ? "命中不足阻断" : hasStats > 0 ? "统计可见" : "30s 内未渲染");
   await shot(page, "01_step1_filter");
 
   // 生成挖掘物料（真实建池+快照；后端缺数据时按阻断记录）

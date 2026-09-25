@@ -152,7 +152,9 @@ describe("FactorMiningResult 列表字段", () => {
     expect(body).toContain("0.55");            // 校正后 ICIR
     expect(body).toContain("0.9");             // 衰减率
     expect(body).toMatch(/精英|elite/);         // 来源
-    expect(document.querySelector('[data-result-grade="c1"]')?.textContent).toBe("S");
+    // DEF-15 后等级单元格含「证据」入口按钮，文本为等级 + 按钮文案
+    expect(document.querySelector('[data-result-grade="c1"]')?.textContent).toContain("S");
+    expect(document.querySelector('[data-result-evidence="c1"]')).toBeTruthy();
   });
 });
 
