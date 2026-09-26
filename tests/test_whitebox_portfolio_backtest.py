@@ -568,7 +568,7 @@ class TestPortfolioBacktestEndpoint:
         app.dependency_overrides[get_db] = _override_get_db
         return TestClient(app)
 
-    def test_api_success(self, db_session, member_source_disabled):
+    def test_api_success(self, db_session, member_source_disabled, precheck_gate_pass):
         """API 正常调用返回 200。
 
         注：WP9.5 后默认来源为 member，本测试守护 legacy 来源行为，使用
@@ -597,7 +597,7 @@ class TestPortfolioBacktestEndpoint:
         assert data["initial_capital"] == 100000.0
 
     def test_api_summary_and_detail_do_not_embed_trade_ledger(
-        self, db_session, member_source_disabled
+        self, db_session, member_source_disabled, precheck_gate_pass
     ):
         """BT-UI-08: the only trade-ledger seam is the paginated endpoint.
 
@@ -807,7 +807,7 @@ class TestPortfolioBacktestEndpoint:
         )
         assert resp.status_code == 422
 
-    def test_api_custom_run_name(self, db_session, member_source_disabled):
+    def test_api_custom_run_name(self, db_session, member_source_disabled, precheck_gate_pass):
         """自定义 run_name 透传到响应。
 
         注：WP9.5 后默认来源为 member，本测试守护 legacy 来源行为，使用
@@ -921,6 +921,27 @@ def member_source_disabled():
         yield
     finally:
         settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED = original
+
+
+@pytest.fixture
+def precheck_gate_pass(monkeypatch):
+    """隔离回测预检 fail-closed 门（Task1），仅用于守护端点接线契约的测试。
+
+    背景：POST /backtest/portfolio/run 在真实执行前会跑 run_backtest_precheck（最低
+    300 交易日 + security_status_daily ≥70% 覆盖）。该预检依赖生产交易日历/证券
+    状态日度数据，在 SQLite 测试库无法真实提供（adapter 对裸 SQL 字符串日期 fail-closed）。
+
+    本组端点测试守护的是“状态码/响应形状/台账分页”等接线契约，与预检正交；
+    预检 fail-closed 行为应由其专属测试守护（参见体检报告覆盖盲区项）。
+    故这里把预检放行，避免环境依赖污染端点契约断言。
+    """
+    import app.services.bfg_precheck_service as _pre
+
+    class _PassPrecheck:
+        blocking_reasons: list = []
+
+    monkeypatch.setattr(_pre, "run_backtest_precheck", lambda db, req: _PassPrecheck())
+    yield
 
 
 class TestWP7BacktestMembership:

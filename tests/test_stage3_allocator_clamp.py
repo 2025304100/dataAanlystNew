@@ -67,7 +67,7 @@ def test_explicit_zero_stage_limit_blocks_new_buy_and_is_auditable(db_session):
     engine = DecisionEngine(
         snapshot_loader=lambda _db, _snapshot_id: snapshot,
         gate=lambda _db, _snapshot, _clock: (True, [], {"passed": True}),
-        universe_builder=lambda _db, _snapshot, _cutoff: UniverseAndEligibility(
+        universe_builder=lambda _db, _snapshot, _cutoff, _run_type="research_preflight": UniverseAndEligibility(
             universe=list(snapshot.members), universe_count=1, member_count=1,
         ),
         health=lambda _db, universe, _cutoff: universe,
@@ -161,7 +161,7 @@ def test_injected_cash_reserve_blocks_buy_before_lot_rounding(db_session):
     engine = DecisionEngine(
         snapshot_loader=lambda _db, _snapshot_id: snapshot,
         gate=lambda _db, _snapshot, _clock: (True, [], {"passed": True}),
-        universe_builder=lambda _db, _snapshot, _cutoff: UniverseAndEligibility(
+        universe_builder=lambda _db, _snapshot, _cutoff, _run_type="research_preflight": UniverseAndEligibility(
             universe=list(snapshot.members), universe_count=1, member_count=1,
         ),
         health=lambda _db, universe, _cutoff: universe,
@@ -265,7 +265,7 @@ def test_open_position_limit_blocks_a_new_buy_and_is_auditable(db_session):
     engine = DecisionEngine(
         snapshot_loader=lambda _db, _snapshot_id: snapshot,
         gate=lambda _db, _snapshot, _clock: (True, [], {"passed": True}),
-        universe_builder=lambda _db, _snapshot, _cutoff: UniverseAndEligibility(
+        universe_builder=lambda _db, _snapshot, _cutoff, _run_type="research_preflight": UniverseAndEligibility(
             universe=list(snapshot.members), universe_count=2, member_count=2,
         ),
         health=lambda _db, universe, _cutoff: universe,
@@ -377,7 +377,7 @@ def test_verified_stop_loss_distance_clamps_buy_to_trade_risk_budget(db_session)
     engine = DecisionEngine(
         snapshot_loader=lambda _db, _snapshot_id: snapshot,
         gate=lambda _db, _snapshot, _clock: (True, [], {"passed": True}),
-        universe_builder=lambda _db, _snapshot, _cutoff: UniverseAndEligibility(
+        universe_builder=lambda _db, _snapshot, _cutoff, _run_type="research_preflight": UniverseAndEligibility(
             universe=list(snapshot.members), universe_count=1, member_count=1,
         ),
         health=lambda _db, universe, _cutoff: universe,
@@ -480,7 +480,7 @@ def test_available_cash_cap_includes_buy_slippage_and_fees(db_session):
     engine = DecisionEngine(
         snapshot_loader=lambda _db, _snapshot_id: snapshot,
         gate=lambda _db, _snapshot, _clock: (True, [], {"passed": True}),
-        universe_builder=lambda _db, _snapshot, _cutoff: UniverseAndEligibility(
+        universe_builder=lambda _db, _snapshot, _cutoff, _run_type="research_preflight": UniverseAndEligibility(
             universe=list(snapshot.members), universe_count=1, member_count=1,
         ),
         health=lambda _db, universe, _cutoff: universe,
@@ -591,7 +591,7 @@ def test_volume_participation_cap_limits_plan_quantity_before_matching(db_sessio
     engine = DecisionEngine(
         snapshot_loader=lambda _db, _snapshot_id: snapshot,
         gate=lambda _db, _snapshot, _clock: (True, [], {"passed": True}),
-        universe_builder=lambda _db, _snapshot, _cutoff: UniverseAndEligibility(
+        universe_builder=lambda _db, _snapshot, _cutoff, _run_type="research_preflight": UniverseAndEligibility(
             universe=list(snapshot.members), universe_count=1, member_count=1,
         ),
         health=lambda _db, universe, _cutoff: universe,

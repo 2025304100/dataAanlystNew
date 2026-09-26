@@ -25,7 +25,7 @@ for _stub_mod in ("akshare", "sklearn", "sklearn.linear_model", "sklearn.metrics
 
 import pytest
 import requests
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
@@ -216,10 +216,40 @@ def tmp_sqlite_url() -> str:
     fd, path = tempfile.mkstemp(suffix=".db", prefix="qa_test_")
     os.close(fd)
     yield f"sqlite:///{path}"
-    try:
-        os.remove(path)
-    except OSError:
-        pass
+    for suffix in ("", "-wal", "-shm"):  # WAL 边文件随主文件一并回收
+        try:
+            os.remove(path + suffix)
+        except OSError:
+            pass
+
+
+def _enable_sqlite_wal(engine) -> None:
+    """把测试库的并发语义对齐到生产/dev 库（init_db.py 同一 PRAGMA）。
+
+    为什么需要：data_prep / 心跳类后台 worker 线程在测试函数之外仍会写
+    `async_tasks`（它们通过 `get_session_local()` 拿当前单例 engine）。SQLite
+    默认的 rollback-journal 模式下“读事务也挡写”，被挡一方会白等满
+    busy_timeout 后报 `database is locked`（历史型跨文件假失败，单文件跑就绿）；
+    而 `initialize_runtime_database()` 早就把真实库切到 WAL（init_db.py L1800），
+    即测试环境比生产环境更严苛。这里对齐 WAL + busy_timeout，只影响测试引擎，
+    不改 `DatabaseManager` 的生产默认（与 tests/integration/conftest.py 同一处置）。
+
+    PRAGMA 只能在 connect 监听里发：journal_mode 不能在已开启的事务里改；
+    监听时连接尚未 begin（manager.py 的 foreign_keys 也这么干），且
+    `journal_mode=WAL` 会持久化到库文件，后续连接重复设置是无害幂等。
+    """
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_test_concurrency(dbapi_conn, _connection_record):  # noqa: N802
+        cur = dbapi_conn.cursor()
+        try:
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA synchronous=NORMAL")
+            cur.execute("PRAGMA busy_timeout=30000")
+        except Exception:  # noqa: BLE001 - 并发调优不得影响用例本身结果
+            pass
+        finally:
+            cur.close()
 
 
 @pytest.fixture(scope="function")
@@ -233,6 +263,7 @@ def db_session(tmp_sqlite_url):
         pass
     mgr.initialize(tmp_sqlite_url, db_type="sqlite")
     engine = mgr.engine
+    _enable_sqlite_wal(engine)
     _auto_align_all_schema(engine)
     _auto_repair_basic_data_integrity(engine)
     SessionLocal = mgr.session_factory

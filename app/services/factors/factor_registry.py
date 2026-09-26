@@ -7,7 +7,7 @@
 - 创建草稿时强制 lifecycle_status='draft'、origin='user'、is_active=0（向后兼容 legacy status）
 - 创建版本时计算 content_hash 实现幂等（同内容直接返回既有版本）
 - 创建版本时检测上一最新版本是否被引用（不可变），不可变则阻止 is_latest 切换
-- 引用检测覆盖：EvaluationRun / FactorSetMember / FactorWeightSnapshot
+- 引用检测覆盖：EvaluationRun / FactorSetMember / FactorModelMember
 """
 from __future__ import annotations
 
@@ -499,7 +499,9 @@ def get_factor_references(
         ).scalar_one()
     )
 
-    # FactorWeightSnapshot 通过 factor_code + factor_version 引用
+    # 模型成员权重行（per-factor 物化表 factor_model_members）通过
+    # factor_code + factor_version 引用；该表旧名 FactorWeightSnapshot 已废弃，
+    # 现同名 FactorWeightSnapshot 指的是 per-model 聚合快照表，不存单因子列。
     model_run_count = int(
         db.execute(
             select(func.count())
@@ -529,7 +531,7 @@ def check_version_immutable(db: Session, version_id: int) -> bool:
     引用来源：
     - EvaluationRun.factor_version_id
     - FactorSetMember.factor_version_id
-    - FactorWeightSnapshot(factor_code, factor_version)
+    - FactorModelMember(factor_code, factor_version)
     """
     version = get_factor_version(db, version_id)
     if version is None:

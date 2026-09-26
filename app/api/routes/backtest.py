@@ -1159,6 +1159,56 @@ def create_portfolio_backtest_run(payload: PortfolioBacktestRequest, request: Re
     WP7.3：接受 only_auto 参数，仅在 member 来源生效时跳过 manual/confirm 成员。
     """
     correlation_id = uuid.uuid4().hex
+
+    # PT-DEF-4：基础请求校验前置于昂贵预检。
+    # 预检 fail-closed（Task1）会对任意 portfolio_id 先跑交易日历/交易日校验，
+    # 若组合不存在/非模拟/未开启自动交易，会被通用的 PRECHECK_BLOCKED 400 掩盖，
+    # 使前端拿不到特异的 404/409。这里先做轻量前置守卫，恢复错误特异度；
+    # run_portfolio_backtest 内部仍会再次校验（纵深防御，不改变最终语义）。
+    _pf_guard = db.get(Portfolio, payload.portfolio_id)
+    if _pf_guard is None:
+        raise HTTPException(
+            status_code=404,
+            detail=_build_structured_error(
+                error_code="BACKTEST_PORTFOLIO_NOT_FOUND",
+                title_zh="组合不存在",
+                detail_zh=f"Portfolio {payload.portfolio_id} not found",
+                correlation_id=correlation_id,
+                impact="本次回测请求被阻断，不创建 run；DB 自增 ID 不消耗",
+                fix_link="/docs/precheck-requirements#not-found",
+                retryable=False,
+            ),
+        )
+    if _pf_guard.account_type != "simulated":
+        raise HTTPException(
+            status_code=409,
+            detail=_build_structured_error(
+                error_code="BACKTEST_PORTFOLIO_NOT_SIMULATED",
+                title_zh="组合不是模拟账户，无法执行回测",
+                detail_zh=f"Portfolio {payload.portfolio_id} is not simulated",
+                correlation_id=correlation_id,
+                impact="本次回测请求被阻断，不创建 run；DB 自增 ID 不消耗",
+                fix_link="/docs/precheck-requirements#not-simulated",
+                retryable=False,
+            ),
+        )
+    if not _pf_guard.auto_trade_enabled:
+        raise HTTPException(
+            status_code=409,
+            detail=_build_structured_error(
+                error_code="BACKTEST_AUTO_TRADE_DISABLED",
+                title_zh="组合自动交易未开启",
+                detail_zh=(
+                    f"Portfolio {payload.portfolio_id} auto_trade_enabled is 0. "
+                    "Whole-portfolio backtest requires auto_trade_enabled=1."
+                ),
+                correlation_id=correlation_id,
+                impact="本次回测请求被阻断，不创建 run；DB 自增 ID 不消耗",
+                fix_link="/docs/precheck-requirements#auto-trade",
+                retryable=False,
+            ),
+        )
+
     # Task 12.1: 数据截止快照（预检/成功响应统一回显）
     data_cutoff, cutoff_mismatch, cutoff_warning_zh = _safe_compute_data_cutoff(db)
 

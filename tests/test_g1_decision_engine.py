@@ -92,7 +92,8 @@ def _set_active_model(db, model_run_id: str | None):
     from app.models.factor_runtime import FactorRuntimeState
     from app.models.factor import Factor
     from app.models.factor_evaluation import FactorSet, FactorSetMember
-    from app.models.factor_model import FactorModelRun, FactorVersion, FactorWeightSnapshot
+    from app.models.factor_governance import FactorModelMember
+    from app.models.factor_model import FactorModelRun, FactorVersion
 
     factor_set_id = f"fs-{model_run_id}" if model_run_id else None
     if model_run_id and db.get(FactorModelRun, model_run_id) is None:
@@ -149,7 +150,7 @@ def _set_active_model(db, model_run_id: str | None):
             hyperparameters_json=json.dumps({"factor_set_id": factor_set_id}),
             metrics_json="{}",
         )
-        model.weights.append(FactorWeightSnapshot(
+        model.weights.append(FactorModelMember(
             factor_code=factor.code,
             factor_version=1,
             coefficient=1.0,

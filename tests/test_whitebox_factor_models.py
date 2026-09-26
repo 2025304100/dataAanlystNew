@@ -5,10 +5,12 @@ from datetime import date, datetime
 import pytest
 
 from app.models.factor import Factor
+# per-factor 权重行的唯一名字是 FactorModelMember；旧 legacy 别名
+# `factor_model.FactorWeightSnapshot` 已于 2026-09-27 删除（体检报告 F 簇）。
+from app.models.factor_governance import FactorModelMember
 from app.models.factor_model import (
     FactorModelRun,
     FactorVersion,
-    FactorWeightSnapshot,
 )
 from app.models.score import Score
 from app.models.symbol import Symbol
@@ -52,7 +54,7 @@ def test_factor_model_metadata_and_score_defaults(db_session):
         status="validated",
     )
     model.weights.append(
-        FactorWeightSnapshot(
+        FactorModelMember(
             factor_code="ep_ttm",
             factor_version=1,
             coefficient=0.25,

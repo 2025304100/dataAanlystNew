@@ -24,7 +24,11 @@ router = APIRouter()
 def _get_portfolio_or_404(db: Session, portfolio_id: int) -> Portfolio:
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
+        raise HTTPException(status_code=404, detail={
+            "error_code": "NOT_FOUND",
+            "title_zh": "组合不存在",
+            "detail_zh": f"未找到组合 {portfolio_id}，请确认组合已被删除或 id 有误。",
+        })
     return portfolio
 
 
@@ -56,7 +60,11 @@ def create_sim_order(portfolio_id: int, payload: SimOrderCreate, db: Session = D
     portfolio = _get_portfolio_or_404(db, portfolio_id)
     symbol = db.get(Symbol, payload.symbol_id)
     if symbol is None:
-        raise HTTPException(status_code=404, detail="Symbol not found")
+        raise HTTPException(status_code=404, detail={
+            "error_code": "NOT_FOUND",
+            "title_zh": "标的不存在",
+            "detail_zh": f"未找到标的 {payload.symbol_id}，请从行情覆盖的标的中选择后再下单。",
+        })
 
     # 改造后默认启用真实手续费 + 市场规则（T+1/涨跌停）
     # payload 中的 enforce_rules/apply_fees/cost_config 为可选覆盖项

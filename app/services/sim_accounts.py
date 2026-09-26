@@ -229,7 +229,11 @@ def place_sim_order(
     raw_price = price if price and price > 0 else (latest_price or 0.0)
     base_price = float(raw_price) if execution_price_is_final else _round_money(raw_price)
     if base_price <= 0:
-        raise HTTPException(status_code=400, detail="No usable price for simulated fill")
+        raise HTTPException(status_code=400, detail={
+            "error_code": "SIM_NO_USABLE_PRICE",
+            "title_zh": "无可用价格",
+            "detail_zh": f"标的 {symbol.symbol} 当前无可用价格（行情未镜像或价格为空），无法模拟成交。",
+        })
 
     # 圆整到最小变动价位（A 股 0.01，ETF 0.001）
     if not execution_price_is_final:
@@ -266,7 +270,14 @@ def place_sim_order(
         )
 
     if side == "buy" and cash_balance(db, portfolio.id) < filled_amount + fee:
-        raise HTTPException(status_code=400, detail="Not enough simulated cash")
+        raise HTTPException(status_code=400, detail={
+            "error_code": "INSUFFICIENT_SIM_CASH",
+            "title_zh": "模拟现金不足",
+            "detail_zh": (
+                f"需要 {round(filled_amount + fee, 2)}（含费用），"
+                f"可用现金 {cash_balance(db, portfolio.id)}。"
+            ),
+        })
 
     order = SimOrder(
         portfolio_id=portfolio.id,
@@ -408,17 +419,29 @@ def apply_sim_order_fill(
     ensure_sim_account_seed(db, portfolio)
     normalized_quantity = normalize_order_quantity(symbol, quantity)
     if normalized_quantity <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Quantity must be at least one lot ({lot_size_for_symbol(symbol)}) for this market",
-        )
+        raise HTTPException(status_code=400, detail={
+            "error_code": "VALIDATION_ERROR",
+            "title_zh": "下单数量不足一手",
+            "detail_zh": f"该市场最少需下单 {lot_size_for_symbol(symbol)} 股（一手）。",
+        })
     fill_price = float(price)
     if fill_price <= 0:
-        raise HTTPException(status_code=400, detail="No usable price for simulated fill")
+        raise HTTPException(status_code=400, detail={
+            "error_code": "SIM_NO_USABLE_PRICE",
+            "title_zh": "无可用价格",
+            "detail_zh": f"标的 {symbol.symbol} 补交价格无效，无法重试成交。",
+        })
     fee = _round_money(float(fee_override))
     filled_amount = _round_money(normalized_quantity * fill_price)
     if side == "buy" and cash_balance(db, portfolio.id) < filled_amount + fee:
-        raise HTTPException(status_code=400, detail="Not enough simulated cash")
+        raise HTTPException(status_code=400, detail={
+            "error_code": "INSUFFICIENT_SIM_CASH",
+            "title_zh": "模拟现金不足",
+            "detail_zh": (
+                f"重试成交需要 {round(filled_amount + fee, 2)}（含费用），"
+                f"可用现金 {cash_balance(db, portfolio.id)}。"
+            ),
+        })
 
     _, realized_pnl = _upsert_position(
         db=db,

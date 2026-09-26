@@ -54,6 +54,44 @@ from app.services.sim_accounts import ensure_sim_account_seed
 pytestmark = pytest.mark.whitebox
 
 
+def _apply_member_snapshot(
+    db_session,
+    portfolio,
+    members: list[dict],
+    *,
+    factor_model_run_id: str = "safety-model",
+):
+    """为 execute_member_source（迁移后走 DecisionEngine）seed save_and_apply 快照。
+
+    迁移后入口 fail-closed 要求已应用快照（STRATEGY_SNAPSHOT_REQUIRED）。
+    DecisionEngine scorer 按 factor_model_run_id 过滤 Score，故对齐相关 score。
+    """
+    import hashlib
+    import json as _json
+
+    from app.models.decision_engine import StrategyExecutionSnapshot
+
+    sym_ids = [int(m["symbol_id"]) for m in members if m.get("symbol_id") is not None]
+    if sym_ids:
+        db_session.query(Score).filter(Score.symbol_id.in_(sym_ids)).update(
+            {"factor_model_run_id": factor_model_run_id}, synchronize_session=False,
+        )
+    snap_id = f"safety-snap-{portfolio.id}"
+    snap = StrategyExecutionSnapshot(
+        id=snap_id, snapshot_no=1, portfolio_id=portfolio.id,
+        factor_model_run_id=factor_model_run_id, decision_clock_json="{}",
+        member_snapshot_json=_json.dumps(members),
+        snapshot_type="save_and_apply",
+        snapshot_hash=hashlib.sha256(snap_id.encode()).hexdigest(),
+        gate_policy_version="production-v1.0.0",
+        versions_json=_json.dumps({"run_mode": "research", "pit_mode": "best_effort"}),
+        effective_from=datetime(2026, 1, 1),
+    )
+    db_session.add(snap)
+    db_session.commit()
+    return snap
+
+
 # ============================================================================
 # 测试辅助
 # ============================================================================
@@ -537,9 +575,19 @@ class TestVerifyOrderAttributionComplete:
     """守护订单归因完整时 verify_order_attribution 返回 (True, "")。"""
 
     def test_complete_attribution(self, db_session):
-        """【WP6.5】所有归因字段非空 → (True, "")。"""
+        """【WP6.5】所有归因字段非空 → (True, "")。
+
+        旧契约审计函数 verify_order_attribution（无生产调用的可选归因校验）与旧契约 order 自洽。
+        E 簇：member_id 有 FK→portfolio_members，需 seed 真实成员避免 FK（之前硬编码 999 无父行）。
+        """
         p = _make_portfolio(db_session, name="QA-Attr-Complete")
         sym = _make_symbol(db_session, symbol="800100")
+        member = _make_member(
+            db_session,
+            portfolio_id=p.id,
+            symbol_id=sym.id,
+            execution_mode=EXECUTION_AUTO,
+        )
 
         order = SimOrder(
             portfolio_id=p.id,
@@ -549,9 +597,9 @@ class TestVerifyOrderAttributionComplete:
             quantity=100,
             submitted_price=10.0,
             status="filled",
-            member_id=999,
+            member_id=member.id,
             source_type="member",
-            source_id=999,
+            source_id=member.id,
             signal_id=1,
             signal_snapshot_json='{"action":"open"}',
             rule_version_id=1,
@@ -745,6 +793,9 @@ class TestTaskCancelPropagation:
             symbol_id=sym.id,
             execution_mode=EXECUTION_AUTO,
         )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym.id, "execution_mode": EXECUTION_AUTO},
+        ])
 
         # 重置取消状态，然后取消任务
         reset_task_cancel()
@@ -752,7 +803,7 @@ class TestTaskCancelPropagation:
 
         before = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
         result = execute_member_source(
-            db_session, portfolio_id=p.id, dry_run=False
+            db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
         )
         after = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
 
@@ -777,6 +828,7 @@ class TestTaskCancelPropagation:
         p = _make_portfolio(db_session, name="QA-NoCancel-Normal")
         sym = _make_symbol(db_session, symbol="800310")
         _make_daily_bar(db_session, sym.id, close=10.0)  # 确保数据新鲜
+        _make_daily_bar(db_session, sym.id, trade_date=date(2026, 7, 18), close=10.1)
         _make_score(db_session, sym.id, action="open")
         _make_member(
             db_session,
@@ -784,10 +836,13 @@ class TestTaskCancelPropagation:
             symbol_id=sym.id,
             execution_mode=EXECUTION_AUTO,
         )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym.id, "execution_mode": EXECUTION_AUTO},
+        ])
 
         before = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
         result = execute_member_source(
-            db_session, portfolio_id=p.id, dry_run=False
+            db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
         )
         after = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
 

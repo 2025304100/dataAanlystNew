@@ -162,7 +162,7 @@ def _compute_weight_drift(
     """计算与当前 active 模型的权重 L1 漂移（WP7-04）。
 
     - 从 FactorRuntimeState 读取 active_model_run_id
-    - 加载该模型的 FactorWeightSnapshot.normalized_weight
+    - 加载该模型的 FactorModelMember.normalized_weight（per-factor 物化表）
     - 对共同特征计算 L1 距离（归一化到 [0, 2] 区间）
     - 无 active 模型或无共同特征时返回 None
     """

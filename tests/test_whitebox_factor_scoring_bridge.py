@@ -8,7 +8,8 @@ from sqlalchemy import func, select
 
 pytest.importorskip('duckdb')
 
-from app.models.factor_model import FactorModelRun, FactorWeightSnapshot
+from app.models.factor_governance import FactorModelMember
+from app.models.factor_model import FactorModelRun
 from app.models.scan import ScanResult
 from app.models.score import Score
 from app.models.symbol import Symbol
@@ -100,7 +101,7 @@ def _seed_bridge_inputs(db_session, warehouse: FactorWarehouse):
     for code in FEATURE_CODES:
         coefficient = _COEFFICIENTS[code]
         model.weights.append(
-            FactorWeightSnapshot(
+            FactorModelMember(
                 factor_code=code,
                 factor_version=1,
                 coefficient=coefficient,

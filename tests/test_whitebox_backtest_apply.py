@@ -143,7 +143,9 @@ class TestApplyErrors:
 
     def test_portfolio_not_found_raises(self, db_session):
         """组合不存在 → ValueError('not found')。"""
-        run = _make_backtest_run(db_session, portfolio_id=1)
+        # E 簇：run.portfolio_id 有 FK→portfolios，需真实父行；apply 目标 portfolio_id=99999 不存在才测 raise
+        p = _make_portfolio(db_session, name="QA-Err-3")
+        run = _make_backtest_run(db_session, portfolio_id=p.id)
         with pytest.raises(ValueError, match="not found"):
             apply_backtest_run_to_portfolio(db_session, run_id=run.id, portfolio_id=99999)
 
@@ -341,39 +343,40 @@ class TestClearExisting:
 class TestFailureIsolation:
     """守护单笔失败隔离。"""
 
-    def test_missing_symbol_skipped(self, db_session):
-        """symbol 不存在的 trade 被跳过，其他 trade 正常应用。"""
+    def test_missing_symbol_raises_fail_fast(self, db_session):
+        """【Q3·维持 fail-fast】apply 遇无效标的整体中止（不做单笔隔离跳过）。"""
         p = _make_portfolio(db_session, name="QA-Isolate", total_capital=100000.0)
         sym_ok = _make_symbol(db_session, symbol="600015", name="OK")
         run = _make_backtest_run(db_session, portfolio_id=p.id)
-
         # 一笔正常的 trade
         _add_trade(
             db_session, run.id, sym_ok.id,
-            entry_date=date(2026, 1, 5),
-            entry_price=10.0,
-            quantity=100,
-            entry_cost=5.0,
+            entry_date=date(2026, 1, 5), entry_price=10.0, quantity=100, entry_cost=5.0,
         )
-        # 一笔 symbol 不存在的 trade（手动改 symbol_id）
-        _add_trade(
-            db_session, run.id, 99999,  # 不存在
-            entry_date=date(2026, 1, 10),
-            entry_price=20.0,
-            quantity=100,
-            entry_cost=5.0,
-        )
+        # 一笔 symbol_id=99999（不存在）的孤儿 trade：backtest_trades.symbol_id 有
+        # FK→symbols，用 raw PRAGMA foreign_keys=OFF 绕过建孤儿行（模拟历史脏数据）。
+        raw = db_session.connection().connection
+        cur = raw.cursor()
+        try:
+            cur.execute("PRAGMA foreign_keys=OFF")
+            cur.execute(
+                "INSERT INTO backtest_trades (run_id, symbol_id, entry_date, entry_price, "
+                "quantity, entry_cost, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (run.id, 99999, "2026-01-10", 20.0, 100.0, 5.0,
+                 datetime.now().isoformat(sep=" ", timespec="microseconds")),
+            )
+            raw.commit()
+        finally:
+            cur.execute("PRAGMA foreign_keys=ON")
+            cur.close()
+        db_session.expire_all()
 
-        result = apply_backtest_run_to_portfolio(
-            db_session, run_id=run.id, portfolio_id=p.id, clear_existing=True
-        )
-
-        assert result["applied_trades"] == 1
-        assert result["skipped_trades"] == 1
-        assert len(result["errors"]) == 1
-        assert "99999" in result["errors"][0]
-        # 正常的 trade 仍被应用
-        assert db_session.query(SimOrder).filter_by(portfolio_id=p.id).count() == 1
+        # Q3 决策：apply 对无效标的 fail-fast（ensure_symbol_ids_in_scope 整体 raise），
+        # 不逐笔跳过。旧测试期望的"单笔隔离 skip"按决策不实现。
+        with pytest.raises(ValueError, match="标的不存在"):
+            apply_backtest_run_to_portfolio(
+                db_session, run_id=run.id, portfolio_id=p.id, clear_existing=True
+            )
 
 
 # ============================================================================

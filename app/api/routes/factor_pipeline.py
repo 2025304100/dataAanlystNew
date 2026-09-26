@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.schemas.async_task import AsyncTaskRead, FactorPipelineCreate
+from app.schemas.errors import FactorSevenError
 from app.services.async_tasks import (
     cancel_async_task,
     get_async_task,
@@ -33,6 +34,13 @@ def get_eta(
 def create_pipeline_task(payload: FactorPipelineCreate):
     try:
         return create_factor_pipeline_task(payload)
+    except FactorSevenError as exc:
+        # PT-DEF-8：FactorSevenError 是 ValueError 的子类，若不显式前置于
+        # `except ValueError`，训练门禁的 7 要素结构（error_code / fix_link /
+        # retryable / extras）会在路由层被降级成 `409 + str(exc)`，前端只剩
+        # 一句中文文案、无法按 code 定位修复入口。统一按参数/语义校验失败
+        # 返回 422 + 7 要素 dict（与本路由 FactorPipelineBindingError 分支一致）。
+        raise HTTPException(status_code=422, detail=exc.to_dict()) from exc
     except FactorPipelineBindingError as exc:
         raise HTTPException(status_code=422, detail=exc.to_dict()) from exc
     except ValueError as exc:

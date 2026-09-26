@@ -19,8 +19,11 @@ from app.models.factor_evaluation import FactorSet, FactorSetMember
 from app.models.factor_model import (
     FactorModelRun,
     FactorVersion,
-    FactorWeightSnapshot,
 )
+# F 簇：app.models.factor_model.FactorWeightSnapshot 是 legacy 别名（=FactorModelMember，
+# per-factor，字段 model_run_id）。本用例构造的是 per-model aggregate（PK=model_id），
+# 真类在 factor_weight_snapshot.py，需从该模块 import。
+from app.models.factor_weight_snapshot import FactorWeightSnapshot
 from app.services.factors.__facade__ import (
     UNBOUND_REASON_AC7,
     ModelRelationsDTO,

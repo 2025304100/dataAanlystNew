@@ -42,7 +42,7 @@ def _engine_with_observer(observed: dict):
     def gate(_db, _snap, _clock):
         return True, [], {"passed": True}
 
-    def build_universe(_db, _snap, _cutoff):
+    def build_universe(_db, _snap, _cutoff, _run_type="research_preflight"):
         return UniverseAndEligibility(universe=[{"symbol_id": 7}], universe_count=1, member_count=1)
 
     def health(_db, universe, _cutoff):

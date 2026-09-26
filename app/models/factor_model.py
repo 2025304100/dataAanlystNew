@@ -111,8 +111,12 @@ class FactorModelRun(Base):
     # 新 ORM 类在 app/models/factor_weight_snapshot.py 中定义，
     # 1:1 映射不再需要 1:many relationship。
 
-# Keep the old per-factor constructor name available to legacy callers. The
-# aggregate snapshot is imported directly from factor_weight_snapshot.py.
+# per-factor 权重行的唯一名字是 FactorModelMember（表 factor_model_members）；
+# per-model 聚合快照的唯一名字是 FactorWeightSnapshot（表 factor_weight_snapshots，
+# 定义在 app/models/factor_weight_snapshot.py）。
+# 历史别名 `factor_model.FactorWeightSnapshot = FactorModelMember` 已于 2026-09-27
+# 删除：两个名字同存使调用方按名字取表时实际拿到另一张表（体检报告 F 簇的
+# 错 import 即由此而来）。下方 import 保留，用于保证 weights relationship 的
+# mapper 在本模块加载时已注册进 Base.registry。
 from app.models.factor_governance import FactorModelMember  # noqa: E402,F401
-FactorWeightSnapshot = FactorModelMember
 

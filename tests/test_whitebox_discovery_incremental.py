@@ -52,6 +52,19 @@ def _naive_utc(dt: datetime) -> datetime:
     return dt
 
 
+# ── 时间锚点（与挂钟解耦）─────────────────────────────────────────────
+# 本文件多数用例的语义是「快照刚生成不久」。原写法把 snapshot_time 固定为
+# 绝对历史日期 2026-07-19，而 compute_dirty_symbols 的过期判定用的是真实
+# _now() 与 snapshot_max_age_days（默认 7 天）——随着日期推进，快照年龄最
+# 终必然超阈，每个标的额外叠加 SNAPSHOT_EXPIRED，把「只有 1 个标 dirty」
+# 这类精确计数断言打成 2/3 个（挂钟定时炸弹，与业务逻辑无关）。
+# 统一改用相对当前时刻的锚点，用例结论不再随日期漂移。
+_NOW_ANCHOR = datetime.now(timezone.utc).replace(tzinfo=None)
+SNAPSHOT_AT = _NOW_ANCHOR - timedelta(hours=2)      # 快照生成时刻
+AFTER_SNAPSHOT = _NOW_ANCHOR - timedelta(hours=1)   # 快照之后的数据更新
+BEFORE_SNAPSHOT = _NOW_ANCHOR - timedelta(days=1)   # 快照之前就存在的既有数据
+
+
 def _make_universe_symbol(
     db_session,
     *,
@@ -64,7 +77,7 @@ def _make_universe_symbol(
     created_at: datetime | None = None,
 ) -> UniverseSymbol:
     if created_at is None:
-        created_at = datetime(2026, 7, 1, 0, 0, 0)
+        created_at = BEFORE_SNAPSHOT
     us = UniverseSymbol(
         symbol=symbol,
         name=f"测试标的 {symbol}",
@@ -171,8 +184,8 @@ def _setup_universe_with_scores(
     所有数据 created_at 都早于 snapshot_time，确保首次计算 dirty 集合为空。
     """
     if snapshot_time is None:
-        snapshot_time = datetime(2026, 7, 19, 10, 0, 0)
-    before_snapshot = datetime(2026, 7, 18, 9, 0, 0)
+        snapshot_time = SNAPSHOT_AT
+    before_snapshot = BEFORE_SNAPSHOT
 
     symbols = []
     universe_symbols = []
@@ -281,9 +294,9 @@ def test_daily_bar_update_triggers_latest_bar_changed(db_session):
     """daily_bar 在快照后新增 → dirty (LATEST_BAR_CHANGED)。"""
     symbols, _, snap = _setup_universe_with_scores(
         db_session, symbol_codes=["000001", "000002"],
-        snapshot_time=datetime(2026, 7, 19, 10, 0, 0),
+        snapshot_time=SNAPSHOT_AT,
     )
-    after_snapshot = datetime(2026, 7, 19, 11, 0, 0)
+    after_snapshot = AFTER_SNAPSHOT
 
     # 给 symbols[0] 新增 daily_bar
     db_session.add(DailyBar(
@@ -305,9 +318,9 @@ def test_financial_report_update_triggers_financial_report_updated(db_session):
     """stock_valuation 在快照后新增 → dirty (FINANCIAL_REPORT_UPDATED)。"""
     symbols, _, snap = _setup_universe_with_scores(
         db_session, symbol_codes=["000010"],
-        snapshot_time=datetime(2026, 7, 19, 10, 0, 0),
+        snapshot_time=SNAPSHOT_AT,
     )
-    after_snapshot = datetime(2026, 7, 19, 11, 0, 0)
+    after_snapshot = AFTER_SNAPSHOT
 
     db_session.add(StockValuation(
         symbol_id=symbols[0].id,
@@ -326,9 +339,9 @@ def test_multiple_data_updates_aggregate_reasons(db_session):
     """同一标的多类数据更新 → dirty 包含多个 DirtyReason。"""
     symbols, _, snap = _setup_universe_with_scores(
         db_session, symbol_codes=["000020"],
-        snapshot_time=datetime(2026, 7, 19, 10, 0, 0),
+        snapshot_time=SNAPSHOT_AT,
     )
-    after_snapshot = datetime(2026, 7, 19, 11, 0, 0)
+    after_snapshot = AFTER_SNAPSHOT
 
     # 同时更新 4 类数据
     db_session.add(DailyBar(
@@ -374,9 +387,9 @@ def test_universe_resync_triggers_universe_resynced(db_session):
     """universe_symbols.last_synced_at 晚于快照 → UNIVERSE_RESYNCED。"""
     symbols, _, snap = _setup_universe_with_scores(
         db_session, symbol_codes=["000030"],
-        snapshot_time=datetime(2026, 7, 19, 10, 0, 0),
+        snapshot_time=SNAPSHOT_AT,
     )
-    after_snapshot = datetime(2026, 7, 19, 11, 0, 0)
+    after_snapshot = AFTER_SNAPSHOT
 
     # 更新 last_synced_at
     symbols[0].last_synced_at = None  # universe_symbols 不在 symbols 表
@@ -511,7 +524,7 @@ def test_full_rebuild_then_build_new_snapshot(db_session):
     """端到端：配置变更 → 全量重建 → 旧快照 superseded。"""
     symbols, _, snap_a = _setup_universe_with_scores(
         db_session, symbol_codes=["000050"],
-        snapshot_time=datetime(2026, 7, 19, 10, 0, 0),
+        snapshot_time=SNAPSHOT_AT,
     )
     snap_a_id = snap_a.id
 
@@ -636,9 +649,9 @@ def test_dirty_set_only_contains_changed_symbols(db_session):
     """混合场景：3 个标的中只有 1 个数据变化 → dirty 只包含 1 个。"""
     symbols, _, snap = _setup_universe_with_scores(
         db_session, symbol_codes=["000060", "000061", "000062"],
-        snapshot_time=datetime(2026, 7, 19, 10, 0, 0),
+        snapshot_time=SNAPSHOT_AT,
     )
-    after_snapshot = datetime(2026, 7, 19, 11, 0, 0)
+    after_snapshot = AFTER_SNAPSHOT
 
     # 只给 symbols[1] 新增 daily_bar
     db_session.add(DailyBar(
@@ -660,7 +673,7 @@ def test_dirty_set_empty_when_no_data_changed(db_session):
     """所有数据 updated_at 都早于快照 → dirty 集合为空。"""
     _setup_universe_with_scores(
         db_session, symbol_codes=["000070", "000071"],
-        snapshot_time=datetime(2026, 7, 19, 10, 0, 0),
+        snapshot_time=SNAPSHOT_AT,
     )
 
     # 无任何数据更新
@@ -673,9 +686,9 @@ def test_dirty_set_includes_new_symbol_added(db_session):
     """快照后 universe 新增标的 → dirty 包含 NEW_SYMBOL_ADDED。"""
     symbols, _, snap = _setup_universe_with_scores(
         db_session, symbol_codes=["000080", "000081"],
-        snapshot_time=datetime(2026, 7, 19, 10, 0, 0),
+        snapshot_time=SNAPSHOT_AT,
     )
-    after_snapshot = datetime(2026, 7, 19, 11, 0, 0)
+    after_snapshot = AFTER_SNAPSHOT
 
     # 新增一个标的（created_at 晚于快照）
     new_sym = _make_symbol(db_session, symbol="000082")
@@ -702,7 +715,7 @@ def test_dirty_set_bar_count_below_threshold(db_session):
     """
     symbols, _, snap = _setup_universe_with_scores(
         db_session, symbol_codes=["000090"],
-        snapshot_time=datetime(2026, 7, 19, 10, 0, 0),
+        snapshot_time=SNAPSHOT_AT,
         bar_count=3,  # < 5
     )
 
@@ -716,10 +729,10 @@ def test_dirty_set_then_incremental_rebuild(db_session):
     """端到端：dirty 集合 → 增量重建 → 新快照 ready → dirty 清空。"""
     symbols, _, snap_a = _setup_universe_with_scores(
         db_session, symbol_codes=["000100", "000101"],
-        snapshot_time=datetime(2026, 7, 19, 10, 0, 0),
+        snapshot_time=SNAPSHOT_AT,
     )
     snap_a_id = snap_a.id
-    after_snapshot = datetime(2026, 7, 19, 11, 0, 0)
+    after_snapshot = AFTER_SNAPSHOT
 
     # 给 symbols[0] 新增 daily_bar
     db_session.add(DailyBar(

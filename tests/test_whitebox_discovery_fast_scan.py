@@ -799,9 +799,29 @@ def test_no_http_request_during_scan_with_portfolio_filter(db_session, monkeypat
     _install_http_guards(monkeypatch)
     _setup_ready_snapshot_with_items(db_session, item_count=3)
 
+    # E 簇：scan_runs.portfolio_id/portfolio_rule_id 有 FK→portfolios/portfolio_rules，
+    # 原硬编码 1/1 无父行 → INSERT 撞 FK。seed 真实组合+规则并引用其 id。
+    from app.models.portfolio import Portfolio, PortfolioRule
+    p = Portfolio(
+        name="QA-Scan-Filter", account_type="simulated", total_capital=100000.0,
+        investable_ratio=0.9, cash_reserve_ratio=0.1, currency="CNY", is_default=0,
+    )
+    db_session.add(p)
+    db_session.commit()
+    db_session.refresh(p)
+    rule = PortfolioRule(
+        portfolio_id=p.id, rule_name="scan-filter-rule",
+        max_single_position_pct=30, max_sector_position_pct=50,
+        max_stock_position_pct=30, max_etf_position_pct=30,
+        max_loss_per_trade_pct=5, max_open_positions=10, stage_limits_json="{}",
+    )
+    db_session.add(rule)
+    db_session.commit()
+    db_session.refresh(rule)
+
     result = discovery_fast_scan.run_fast_scan(
         scope="cn_stock", min_score=55,
-        portfolio_id=1, portfolio_rule_id=1,
+        portfolio_id=p.id, portfolio_rule_id=rule.id,
         db=db_session,
     )
     # 不抛 AssertionError 即通过

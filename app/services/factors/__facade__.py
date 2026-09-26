@@ -1405,7 +1405,7 @@ def factor_model_with_relations(model_id: str) -> ModelRelationsDTO | None:
     (primary) → treat NULL / "" / missing key as **unbound** (AC-7).
 
     Weight source priority:
-      1. FactorWeightSnapshot rows for this model_run_id
+      1. FactorWeightSnapshot 的 weights_norm_json（per-model 聚合行，PK=model_id）
       2. FactorModelRun.feature_versions_json (legacy fallback)
 
     Data guarantees:

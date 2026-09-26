@@ -1101,6 +1101,20 @@ def _execute_snapshot_order_plans(
         "errors": [],
         "skipped_due_to_cancel": False,
     }
+
+    # WP6.5 / PT-DEF-7：任务取消传播（迁移到 DecisionEngine 路径后恢复）。
+    # check_task_cancelled 曾因迁移失去唯一调用点而成为死代码；此处恢复：
+    # 取消后跳过本组合、不做任何成交，避免取消信号在自动模拟交易中被忽略（资金安全）。
+    from app.services.auto_trade_safety import (
+        check_task_cancelled,
+        record_portfolio_processed,
+        record_portfolio_skipped,
+    )
+    if check_task_cancelled():
+        record_portfolio_skipped(portfolio_id)
+        result["skipped_due_to_cancel"] = True
+        return result
+
     state_context = _build_snapshot_decision_state_context(
         db,
         portfolio_id=portfolio_id,
@@ -1830,7 +1844,118 @@ def _execute_snapshot_order_plans(
             })
         except Exception as exc:  # noqa: BLE001
             db.rollback()
-            result["errors"].append({"order_plan_id": str(plan.order_plan_id), "error": str(exc)})
+            # 脱敏（对齐本模块 _get_latest_signal / execute_order_idempotent 惯例）：
+            # 原始异常只进日志（exc_info 便于排障），result 里只放固定错误码，
+            # 避免堆栈/内部信息泄漏到下游可读的订单/结果字段。
+            logger.warning(
+                "自动模拟下单失败 order_plan_id=%s", plan.order_plan_id, exc_info=True,
+            )
+            result["errors"].append({
+                "order_plan_id": str(plan.order_plan_id),
+                "error": "order_execution_failed",
+            })
+
+    # ── PT-DEF-6 层3（选项 X）：为快照中被 universe_builder 过滤的 manual/confirm
+    # 成员恢复文档不变量要求的用户可见输出：manual → 仅信号提示（不建单）；
+    # confirm → 落一张待确认占位单（status=pending_confirmation，quantity/price=0，
+    # 不产生现金流，供后续人工确认转真实下单；Q1 决策）。universe_builder 已保证
+    # 二者都不进 order_plan、不自动成交。复用 get_signal_candidates 口径：无持仓 +
+    # action ∈ _BUY_ACTIONS 才输出。confirm 用确定性 pending_key 幂等防同日重跑重建。
+    if db is not None:
+        _snap_row = db.get(StrategyExecutionSnapshot, strategy_snapshot_id)
+        try:
+            _snap_members = (
+                json.loads(_snap_row.member_snapshot_json or "[]") if _snap_row else []
+            )
+        except (TypeError, ValueError):
+            _snap_members = []
+        for _m in _snap_members:
+            if not isinstance(_m, dict):
+                continue
+            _mode = str(_m.get("execution_mode") or "").strip().lower()
+            if _mode not in (EXECUTION_MANUAL, EXECUTION_CONFIRM):
+                continue
+            _sym_id = _m.get("symbol_id")
+            if _sym_id is None:
+                continue
+            _sym_id = int(_sym_id)
+            # 已有持仓则不提示买入信号（与 get_signal_candidates 一致）
+            _has_pos, _ = has_position(db, portfolio_id=portfolio_id, symbol_id=_sym_id)
+            if _has_pos:
+                continue
+            _sig, _signal_id, _signal_snapshot = _get_latest_signal(db, _sym_id)
+            if _sig is None:
+                continue
+            _action = str(_sig.get("action", "hold"))
+            if _action not in _BUY_ACTIONS:
+                continue
+            _status = (
+                "pending_confirmation" if _mode == EXECUTION_CONFIRM else "signal_only"
+            )
+            result["signal_decisions"].append({
+                "symbol_id": _sym_id,
+                "action": _action,
+                "execution_mode": _mode,
+                "signal_id": _signal_id,
+                "score": _sig.get("score"),
+            })
+            _order_id = None
+            if not dry_run and _mode == EXECUTION_CONFIRM:
+                # Q1 决策：confirm 落一张待确认占位单（quantity/price=0，不产生现金流），
+                # 供后续人工确认转真实下单。confirm 不走 DecisionEngine order_plan，
+                # 故用确定性 pending_key 做幂等，防同日重跑重复建单。
+                _pending_key = f"confirm:{portfolio_id}:{_sym_id}:{trade_date.isoformat()}"
+                _existing_pending = db.execute(
+                    select(SimOrder).where(SimOrder.client_order_key == _pending_key)
+                ).scalars().first()
+                if _existing_pending is None:
+                    _sym_row = db.get(Symbol, _sym_id)
+                    _pending_order = SimOrder(
+                        portfolio_id=portfolio_id,
+                        symbol_id=_sym_id,
+                        side="buy",
+                        order_type="market",
+                        quantity=0,
+                        submitted_price=0,
+                        status="pending_confirmation",
+                        filled_quantity=0,
+                        filled_price=0,
+                        filled_amount=0,
+                        fee=0,
+                        note=(
+                            f"Confirm pending "
+                            f"{_sym_row.symbol if _sym_row is not None else _sym_id} "
+                            f"{trade_date.isoformat()}"
+                        ),
+                        source_type="decision_engine",
+                        client_order_key=_pending_key,
+                        execution_mode=EXECUTION_CONFIRM,
+                        decision_snapshot_json=json.dumps({
+                            "action": _action,
+                            "symbol_id": _sym_id,
+                            "execution_mode": EXECUTION_CONFIRM,
+                            "signal_id": _signal_id,
+                            "trade_date": trade_date.isoformat(),
+                        }, ensure_ascii=False),
+                    )
+                    db.add(_pending_order)
+                    db.commit()
+                    _order_id = _pending_order.id
+                else:
+                    _order_id = _existing_pending.id
+            if not dry_run:
+                _exec_item = {
+                    "symbol_id": _sym_id,
+                    "action": _action,
+                    "execution_mode": _mode,
+                    "status": _status,
+                }
+                if _order_id is not None:
+                    _exec_item["order_id"] = _order_id
+                result["executed_orders"].append(_exec_item)
+
+    # WP6.5：正常完成，记录已处理组合（与 cancel 跳过的 skipped_portfolios 对称）
+    record_portfolio_processed(portfolio_id)
     return result
 
 
@@ -1852,8 +1977,7 @@ def _resolve_snapshot_execution_context(
     if db is None:
         if not strategy_snapshot_id or trade_date is None:
             raise ValueError(
-                "STRATEGY_SNAPSHOT_REQUIRED: automatic simulation requires an "
-                "applied strategy snapshot and trade date"
+                "STRATEGY_SNAPSHOT_REQUIRED: 自动模拟交易需要已应用的策略执行快照与交易日"
             )
         return str(strategy_snapshot_id), trade_date
 
@@ -1867,8 +1991,8 @@ def _resolve_snapshot_execution_context(
     )
     if resolved_snapshot_id is None:
         raise ValueError(
-            "STRATEGY_SNAPSHOT_REQUIRED: automatic simulation requires an "
-            "applied save_and_apply strategy snapshot"
+            "STRATEGY_SNAPSHOT_REQUIRED: 自动模拟交易需要已应用的（save_and_apply）"
+            "策略执行快照，请先在策略规则页保存并应用"
         )
     if trade_date is None:
         from app.services.decision_clock import utc_naive_to_shanghai

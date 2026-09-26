@@ -377,6 +377,81 @@ ERROR_CODE_LIBRARY: dict[str, dict[str, Any]] = {
         "retryable": False,
         "fix_link": "/settings/factor-mining?step=1",
     },
+    # 组合交易/回测域（2026-09-26 战线A体检发现：backtest.py 抛
+    # PRECHECK_BLOCKED 未注册 → 全局回退 UNKNOWN_ERROR + retryable=true，
+    # 用户看到"服务暂时未知错误可重试"，掩盖了"预检阻断、重试无用"的真语义）
+    "PRECHECK_BLOCKED": {
+        "user_message": "回测预检未通过，本次回测被阻断",
+        "impact": "未创建回测任务；请按阻断原因调整策略规则、成员或数据范围后重新发起",
+        "retryable": False,
+        "fix_link": "/portfolios",
+    },
+    # 组合回测端点家族（2026-09-26 战线A体检 PT-DEF-5：backtest.py 通过
+    # _build_structured_error 抛 title_zh/detail_zh，但全局 handler 仅从 detail 提取
+    # user_message/message 作主文案，title_zh 落入 extras；未注册的码主文案会
+    # 回退 UNKNOWN_ERROR「服务暂时不可用可重试」，与 404/409/400 真语义不符。
+    # 故按 PRECHECK_BLOCKED 同型逐一注册，使信封文案/retryable 与状态码一致。）
+    "BACKTEST_PORTFOLIO_NOT_FOUND": {
+        "user_message": "回测目标组合不存在",
+        "impact": "未创建回测任务；请确认组合 ID 或从组合列表重新进入",
+        "retryable": False,
+        "fix_link": "/portfolios",
+    },
+    "BACKTEST_PORTFOLIO_NOT_SIMULATED": {
+        "user_message": "该组合不是模拟账户，无法执行回测",
+        "impact": "未创建回测任务；请改用模拟账户类型的组合",
+        "retryable": False,
+        "fix_link": "/portfolios",
+    },
+    "BACKTEST_AUTO_TRADE_DISABLED": {
+        "user_message": "组合未开启自动交易，无法执行整体回测",
+        "impact": "未创建回测任务；请先在组合设置中开启自动交易后重试",
+        "retryable": False,
+        "fix_link": "/portfolios",
+    },
+    "BACKTEST_CAPITAL_INVALID": {
+        "user_message": "组合初始资金配置非法",
+        "impact": "未创建回测任务；请将初始资金设置为大于 0 的值",
+        "retryable": False,
+        "fix_link": "/portfolios",
+    },
+    "BACKTEST_CANNOT_START": {
+        "user_message": "组合回测前置条件不满足",
+        "impact": "未创建回测任务；请补充持仓或候选标的后重新发起",
+        "retryable": False,
+        "fix_link": "/portfolios",
+    },
+    "BACKTEST_MEMBER_MODE_CONFLICT": {
+        "user_message": "组合含 manual/confirm 成员，与自动回测冲突",
+        "impact": "未创建回测任务；请将成员模式切换为 auto 后重试",
+        "retryable": False,
+        "fix_link": "/portfolios",
+    },
+    "BACKTEST_INVALID_ARGUMENT": {
+        "user_message": "组合回测请求参数非法",
+        "impact": "未创建回测任务；请检查回测参数后重试",
+        "retryable": False,
+        "fix_link": "/portfolios",
+    },
+    "UNKNOWN_BACKTEST_ERROR": {
+        "user_message": "组合回测执行失败",
+        "impact": "本次回测未完成；若已创建 run 将标记为 failed 状态",
+        "retryable": True,
+        "fix_link": "/portfolios",
+    },
+    # 模拟交易下单域（2026-09-26 战线A：英文裸 detail → 结构化中文）
+    "INSUFFICIENT_SIM_CASH": {
+        "user_message": "模拟账户可用现金不足，本次下单被拒绝",
+        "impact": "未创建委托与成交记录，现金与持仓均未变动；请减小数量或先卖出回笼资金",
+        "retryable": False,
+        "fix_link": "/portfolios",
+    },
+    "SIM_NO_USABLE_PRICE": {
+        "user_message": "该标的当前无可用价格，无法模拟成交",
+        "impact": "未创建委托与成交记录；请确认已镜像该标的行情后重试，或改用限价单",
+        "retryable": True,
+        "fix_link": "/settings/data-center",
+    },
 }
 
 

@@ -195,6 +195,46 @@ def _make_member(
     return member
 
 
+def _apply_member_snapshot(
+    db_session,
+    portfolio,
+    members: list[dict],
+    *,
+    factor_model_run_id: str = "ms-model",
+):
+    """为 execute_member_source（迁移后走 DecisionEngine）seed 一个 save_and_apply 快照。
+
+    迁移后 execute_member_source 不再走 decide_trades，而是 fail-closed 要求已应用
+    快照（STRATEGY_SNAPSHOT_REQUIRED）。DecisionEngine scorer 按 factor_model_run_id
+    过滤 Score，故此处把相关 score 的 factor_model_run_id 对齐到快照，保证命中。
+    members: [{"symbol_id": int, "execution_mode": str, "entry_rule_version_id": int|None}]
+    """
+    import hashlib
+    import json as _json
+
+    from app.models.decision_engine import StrategyExecutionSnapshot
+
+    sym_ids = [int(m["symbol_id"]) for m in members if m.get("symbol_id") is not None]
+    if sym_ids:
+        db_session.query(Score).filter(Score.symbol_id.in_(sym_ids)).update(
+            {"factor_model_run_id": factor_model_run_id}, synchronize_session=False,
+        )
+    snap_id = f"ms-snap-{portfolio.id}"
+    snap = StrategyExecutionSnapshot(
+        id=snap_id, snapshot_no=1, portfolio_id=portfolio.id,
+        factor_model_run_id=factor_model_run_id, decision_clock_json="{}",
+        member_snapshot_json=_json.dumps(members),
+        snapshot_type="save_and_apply",
+        snapshot_hash=hashlib.sha256(snap_id.encode()).hexdigest(),
+        gate_policy_version="production-v1.0.0",
+        versions_json=_json.dumps({"run_mode": "research", "pit_mode": "best_effort"}),
+        effective_from=datetime(2026, 1, 1),
+    )
+    db_session.add(snap)
+    db_session.commit()
+    return snap
+
+
 # ============================================================================
 # 1. get_buy_candidates 基本流程
 # ============================================================================
@@ -600,6 +640,7 @@ class TestExecuteAutoMode:
         p = _make_portfolio(db_session, name="QA-Exec-Auto")
         sym = _make_symbol(db_session, symbol="600060")
         _make_daily_bar(db_session, sym.id, close=10.0)
+        _make_daily_bar(db_session, sym.id, trade_date=date(2026, 7, 18), close=10.1)
         _make_score(db_session, sym.id, action="open")
         _make_member(
             db_session,
@@ -608,9 +649,14 @@ class TestExecuteAutoMode:
             execution_mode=EXECUTION_AUTO,
             entry_rule_version_id=1001,
         )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym.id, "execution_mode": EXECUTION_AUTO, "entry_rule_version_id": 1001},
+        ])
 
         before = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
-        result = execute_member_source(db_session, portfolio_id=p.id, dry_run=False)
+        result = execute_member_source(
+            db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
+        )
         after = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
 
         assert after == before + 1
@@ -622,45 +668,51 @@ class TestExecuteAutoMode:
         assert result["executed_orders"][0]["order_id"] is not None
 
     def test_auto_mode_attribution_fields_populated(self, db_session):
-        """【WP6.2】auto 模式下单后，SimOrder 归因字段全部填充。"""
+        """【WP6.2/C 簇】auto 下单后 SimOrder 按新契约归因（追溯走 evidence/plan）。"""
         p = _make_portfolio(db_session, name="QA-Exec-AutoAttr")
         sym = _make_symbol(db_session, symbol="600061")
         _make_daily_bar(db_session, sym.id, close=10.0)
-        score = _make_score(db_session, sym.id, action="open")
-        member = _make_member(
+        _make_daily_bar(db_session, sym.id, trade_date=date(2026, 7, 18), close=10.1)
+        _make_score(db_session, sym.id, action="open")
+        _make_member(
             db_session,
             portfolio_id=p.id,
             symbol_id=sym.id,
             execution_mode=EXECUTION_AUTO,
             entry_rule_version_id=1002,
         )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym.id, "execution_mode": EXECUTION_AUTO, "entry_rule_version_id": 1002},
+        ])
 
-        execute_member_source(db_session, portfolio_id=p.id, dry_run=False)
+        execute_member_source(
+            db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
+        )
 
         order = (
             db_session.query(SimOrder)
             .filter_by(portfolio_id=p.id, symbol_id=sym.id)
             .one()
         )
-        # 归因字段非空
-        assert order.member_id == member.id
-        assert order.source_type == "member"
-        assert order.source_id == member.id
-        assert order.signal_id == score.id
-        assert order.signal_snapshot_json is not None
-        assert order.rule_version_id == 1002
-        assert order.execution_mode == EXECUTION_AUTO
+        # C 簇新契约：归因移至 DecisionEvidence/plan ledger，追溯走不可变标识
+        assert order.source_type == "decision_engine"
+        assert order.decision_evidence_id is not None
         assert order.client_order_key is not None
         assert order.client_order_key != ""
         assert order.decision_snapshot_json is not None
         assert "action" in order.decision_snapshot_json
+        # legacy 整型归因字段在新契约下不再填充（已移至 evidence）
+        assert order.source_id is None
+        assert order.member_id is None
+        assert order.signal_id is None
+        assert order.rule_version_id is None
 
     # ========================================================================
     # 12. confirm 模式只生成计划
     # ========================================================================
 
     def test_confirm_mode_no_order_only_pending(self, db_session):
-        """【WP6.2】confirm 模式 → 只生成待确认订单计划，不创建 SimOrder。"""
+        """【WP6.2/Q1】confirm 模式 → 落一张待确认占位单（pending_confirmation，不成交）。"""
         p = _make_portfolio(db_session, name="QA-Exec-Confirm")
         sym = _make_symbol(db_session, symbol="600070")
         _make_daily_bar(db_session, sym.id)
@@ -671,19 +723,29 @@ class TestExecuteAutoMode:
             symbol_id=sym.id,
             execution_mode=EXECUTION_CONFIRM,
         )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym.id, "execution_mode": EXECUTION_CONFIRM},
+        ])
 
         before = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
-        result = execute_member_source(db_session, portfolio_id=p.id, dry_run=False)
+        result = execute_member_source(
+            db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
+        )
         after = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
 
-        assert after == before  # 不创建 SimOrder
-        # signal_decisions 应有 1 条
+        # Q1 决策：confirm 落一张 pending_confirmation 占位单（quantity=0，不成交）
+        assert after == before + 1
         assert len(result["signal_decisions"]) == 1
         assert result["signal_decisions"][0]["execution_mode"] == EXECUTION_CONFIRM
-        # executed_orders 应有 1 条 status="pending_confirmation"
         assert len(result["executed_orders"]) == 1
         assert result["executed_orders"][0]["status"] == "pending_confirmation"
-        assert "order_id" not in result["executed_orders"][0]
+        assert result["executed_orders"][0]["order_id"] is not None
+        pending = db_session.query(SimOrder).filter_by(
+            portfolio_id=p.id, status="pending_confirmation").all()
+        assert len(pending) == 1 and pending[0].symbol_id == sym.id
+        # 待确认单不产生成交（filled 仍 0）
+        assert db_session.query(SimOrder).filter_by(
+            portfolio_id=p.id, status="filled").count() == 0
 
     # ========================================================================
     # 13. manual 模式只提示信号
@@ -701,9 +763,14 @@ class TestExecuteAutoMode:
             symbol_id=sym.id,
             execution_mode=EXECUTION_MANUAL,
         )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym.id, "execution_mode": EXECUTION_MANUAL},
+        ])
 
         before = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
-        result = execute_member_source(db_session, portfolio_id=p.id, dry_run=False)
+        result = execute_member_source(
+            db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
+        )
         after = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
 
         assert after == before  # 不创建 SimOrder
@@ -724,6 +791,7 @@ class TestExecuteAutoMode:
         p = _make_portfolio(db_session, name="QA-Exec-DryRun")
         sym = _make_symbol(db_session, symbol="600090")
         _make_daily_bar(db_session, sym.id)
+        _make_daily_bar(db_session, sym.id, trade_date=date(2026, 7, 18), close=10.1)
         _make_score(db_session, sym.id, action="open")
         _make_member(
             db_session,
@@ -731,9 +799,14 @@ class TestExecuteAutoMode:
             symbol_id=sym.id,
             execution_mode=EXECUTION_AUTO,
         )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym.id, "execution_mode": EXECUTION_AUTO},
+        ])
 
         before = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
-        result = execute_member_source(db_session, portfolio_id=p.id, dry_run=True)
+        result = execute_member_source(
+            db_session, portfolio_id=p.id, dry_run=True, trade_date=date(2026, 7, 17),
+        )
         after = db_session.query(SimOrder).filter_by(portfolio_id=p.id).count()
 
         assert after == before  # dry_run 不下单
@@ -758,6 +831,7 @@ class TestThreeModesDontInterfere:
         # auto 成员 → 实际下单
         sym_auto = _make_symbol(db_session, symbol="600100")
         _make_daily_bar(db_session, sym_auto.id, close=10.0)
+        _make_daily_bar(db_session, sym_auto.id, trade_date=date(2026, 7, 18), close=10.1)
         _make_score(db_session, sym_auto.id, action="open")
         _make_member(
             db_session,
@@ -787,8 +861,15 @@ class TestThreeModesDontInterfere:
             symbol_id=sym_manual.id,
             execution_mode=EXECUTION_MANUAL,
         )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym_auto.id, "execution_mode": EXECUTION_AUTO},
+            {"symbol_id": sym_confirm.id, "execution_mode": EXECUTION_CONFIRM},
+            {"symbol_id": sym_manual.id, "execution_mode": EXECUTION_MANUAL},
+        ])
 
-        result = execute_member_source(db_session, portfolio_id=p.id, dry_run=False)
+        result = execute_member_source(
+            db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
+        )
 
         # auto 实际下单（创建 SimOrder）
         auto_orders = [
@@ -799,16 +880,16 @@ class TestThreeModesDontInterfere:
         assert auto_orders[0]["status"] == "filled"
         assert "order_id" in auto_orders[0]
 
-        # confirm 待确认
+        # confirm 待确认 → Q1：落一张 pending 单，有 order_id
         confirm_orders = [
             o for o in result["executed_orders"]
             if o["symbol_id"] == sym_confirm.id
         ]
         assert len(confirm_orders) == 1
         assert confirm_orders[0]["status"] == "pending_confirmation"
-        assert "order_id" not in confirm_orders[0]
+        assert "order_id" in confirm_orders[0]
 
-        # manual 只提示
+        # manual 只提示（Q1 决策：manual 不建单）→ 无 order_id
         manual_orders = [
             o for o in result["executed_orders"]
             if o["symbol_id"] == sym_manual.id
@@ -817,15 +898,17 @@ class TestThreeModesDontInterfere:
         assert manual_orders[0]["status"] == "signal_only"
         assert "order_id" not in manual_orders[0]
 
-        # 验证 SimOrder 只创建了 1 条（auto）
-        sim_orders = (
-            db_session.query(SimOrder)
-            .filter_by(portfolio_id=p.id)
-            .all()
-        )
-        assert len(sim_orders) == 1
-        assert sim_orders[0].symbol_id == sym_auto.id
-        assert sim_orders[0].execution_mode == EXECUTION_AUTO
+        # Q1：SimOrder = auto 成交单 + confirm 待确认单（manual 不建单）
+        by_status: dict = {}
+        for o in db_session.query(SimOrder).filter_by(portfolio_id=p.id).all():
+            by_status.setdefault(o.status, []).append(o)
+        assert [o.symbol_id for o in by_status.get("filled", [])] == [sym_auto.id]
+        assert [o.symbol_id for o in by_status.get("pending_confirmation", [])] == [sym_confirm.id]
+        assert sym_manual.id not in {o.symbol_id for o in db_session.query(SimOrder).filter_by(portfolio_id=p.id).all()}
+        # C 簇：auto 成交单通过 source_type=decision_engine + decision_evidence_id 追溯
+        auto_sim = by_status["filled"][0]
+        assert auto_sim.source_type == "decision_engine"
+        assert auto_sim.decision_evidence_id is not None
 
 
 # ============================================================================
@@ -892,20 +975,26 @@ class TestAttributionFields:
     """守护归因字段全部填充（WP6.1 字段在 WP6.2 被使用）。"""
 
     def test_all_attribution_fields_non_null(self, db_session):
-        """【WP6.2】auto 模式下单后所有归因字段非空。"""
+        """【WP6.2/C 簇】auto 下单后 SimOrder 新契约归因字段（追溯走 evidence/plan）。"""
         p = _make_portfolio(db_session, name="QA-Attr-AllFields")
         sym = _make_symbol(db_session, symbol="600200")
         _make_daily_bar(db_session, sym.id, close=10.0)
-        score = _make_score(db_session, sym.id, action="open")
-        member = _make_member(
+        _make_daily_bar(db_session, sym.id, trade_date=date(2026, 7, 18), close=10.1)
+        _make_score(db_session, sym.id, action="open")
+        _make_member(
             db_session,
             portfolio_id=p.id,
             symbol_id=sym.id,
             execution_mode=EXECUTION_AUTO,
             entry_rule_version_id=2001,
         )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym.id, "execution_mode": EXECUTION_AUTO, "entry_rule_version_id": 2001},
+        ])
 
-        execute_member_source(db_session, portfolio_id=p.id, dry_run=False)
+        execute_member_source(
+            db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
+        )
 
         order = (
             db_session.query(SimOrder)
@@ -913,22 +1002,16 @@ class TestAttributionFields:
             .one()
         )
 
-        # 所有归因字段非空
-        assert order.member_id is not None
-        assert order.member_id == member.id
-        assert order.source_type is not None
-        assert order.source_type == "member"
-        assert order.source_id is not None
-        assert order.source_id == member.id
-        assert order.signal_id is not None
-        assert order.signal_id == score.id
-        assert order.signal_snapshot_json is not None
-        assert order.rule_version_id is not None
-        assert order.rule_version_id == 2001
-        assert order.execution_mode is not None
-        assert order.execution_mode == EXECUTION_AUTO
+        # C 簇新契约：不可变归因标识非空（追溯走 evidence/plan ledger）
+        assert order.source_type == "decision_engine"
+        assert order.decision_evidence_id is not None
         assert order.client_order_key is not None
         assert order.decision_snapshot_json is not None
+        # legacy 整型归因字段在新契约下不再填充（已移至 evidence）
+        assert order.member_id is None
+        assert order.source_id is None
+        assert order.signal_id is None
+        assert order.rule_version_id is None
 
     def test_client_order_key_unique_per_decision(self, db_session):
         """【WP6.2】不同决策生成不同 client_order_key。"""
@@ -971,10 +1054,11 @@ class TestRejectionDecisions:
     """守护拒绝决策被记录到 rejected_decisions。"""
 
     def test_rejection_recorded_in_result(self, db_session):
-        """【WP6.2】数据健康不通过 → execute_member_source 返回 rejected_decisions。"""
+        """【新契约】组合处于阻断状态 → BUY plan 进 rejected_decisions（治理留痕）。"""
         p = _make_portfolio(db_session, name="QA-Reject-Result")
         sym = _make_symbol(db_session, symbol="600300")
         _make_daily_bar(db_session, sym.id)
+        _make_daily_bar(db_session, sym.id, trade_date=date(2026, 7, 18), close=10.1)
         _make_score(db_session, sym.id, action="open")
         _make_member(
             db_session,
@@ -982,81 +1066,66 @@ class TestRejectionDecisions:
             symbol_id=sym.id,
             execution_mode=EXECUTION_AUTO,
         )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym.id, "execution_mode": EXECUTION_AUTO},
+        ])
 
+        # 新路径 rejection：portfolio 处于阻断态（ADMIN_PAUSED）→ 新买入被治理门禁拦截
         with patch(
-            "app.services.auto_trade_member_source._check_data_health",
-            return_value=(False, "K线数据过期"),
+            "app.services.portfolio_state_machine._get_status",
+            return_value="ADMIN_PAUSED",
         ):
             result = execute_member_source(
-                db_session, portfolio_id=p.id, dry_run=False
+                db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
             )
 
-        # 拒绝决策进入 rejected_decisions
+        # 拒绝决策进入 rejected_decisions（新契约 rejection_code）
         assert len(result["rejected_decisions"]) == 1
         rejected = result["rejected_decisions"][0]
-        assert rejected["rejection_code"] == "BLOCKED"
-        assert rejected["rejection_detail"] is not None
-        assert "K线数据过期" in rejected["rejection_detail"]
-
-        # 不应进入 buy_decisions
-        assert len(result["buy_decisions"]) == 0
-
-        # 不应创建 SimOrder
+        assert rejected["rejection_code"] == "PORTFOLIO_STATE_NEW_BUY_BLOCKED"
+        assert "ADMIN_PAUSED" in (rejected["rejection_detail"] or "")
+        # 不计入成交列表
         assert len(result["executed_orders"]) == 0
-
-        # 数据库无 SimOrder
-        order_count = (
+        # 新契约：治理拒绝会建 status=rejected 的留痕订单（不再是“零 SimOrder”）
+        rej_orders = (
             db_session.query(SimOrder)
-            .filter_by(portfolio_id=p.id, symbol_id=sym.id)
-            .count()
+            .filter_by(portfolio_id=p.id, symbol_id=sym.id).all()
         )
-        assert order_count == 0
+        assert len(rej_orders) == 1
+        assert rej_orders[0].status == "rejected"
 
-    def test_rejection_does_not_block_other_decisions(self, db_session):
-        """【WP6.2】被拒绝的决策不阻断其他正常决策的执行。"""
-        p = _make_portfolio(db_session, name="QA-Reject-NotBlock")
-
-        # 标的 1：会被拒绝（mock data_health=False）
+    def test_portfolio_level_block_rejects_all_buys(self, db_session):
+        """【Q2·组合级熔断】组合暂停时名下所有新买入一起拒（不做 per-标的 部分放行）。"""
+        p = _make_portfolio(db_session, name="QA-Reject-PortfolioLevel")
         sym1 = _make_symbol(db_session, symbol="600310")
-        _make_daily_bar(db_session, sym1.id)
-        _make_score(db_session, sym1.id, action="open")
-        _make_member(
-            db_session,
-            portfolio_id=p.id,
-            symbol_id=sym1.id,
-            execution_mode=EXECUTION_AUTO,
-        )
-
-        # 标的 2：正常执行（mock data_health 仅对 sym1 返回 False）
         sym2 = _make_symbol(db_session, symbol="600311")
-        _make_daily_bar(db_session, sym2.id, close=10.0)
-        _make_score(db_session, sym2.id, action="open")
-        _make_member(
-            db_session,
-            portfolio_id=p.id,
-            symbol_id=sym2.id,
-            execution_mode=EXECUTION_AUTO,
-        )
+        for _s in (sym1, sym2):
+            _make_daily_bar(db_session, _s.id)
+            _make_daily_bar(db_session, _s.id, trade_date=date(2026, 7, 18), close=10.1)
+            _make_score(db_session, _s.id, action="open")
+            _make_member(
+                db_session, portfolio_id=p.id, symbol_id=_s.id,
+                execution_mode=EXECUTION_AUTO,
+            )
+        _apply_member_snapshot(db_session, p, [
+            {"symbol_id": sym1.id, "execution_mode": EXECUTION_AUTO},
+            {"symbol_id": sym2.id, "execution_mode": EXECUTION_AUTO},
+        ])
 
-        def mock_check(db, symbol_id, rule_version_id=None):
-            if symbol_id == sym1.id:
-                return (False, "K线数据过期")
-            return (True, "")
-
+        # 组合处于阻断态 → 新买入按组合级全拒（Q2 决策：无 per-标的 部分放行）
         with patch(
-            "app.services.auto_trade_member_source._check_data_health",
-            side_effect=mock_check,
+            "app.services.portfolio_state_machine._get_status",
+            return_value="ADMIN_PAUSED",
         ):
             result = execute_member_source(
-                db_session, portfolio_id=p.id, dry_run=False
+                db_session, portfolio_id=p.id, dry_run=False, trade_date=date(2026, 7, 17),
             )
 
-        # 标的 1 被拒绝
-        assert len(result["rejected_decisions"]) == 1
-        assert result["rejected_decisions"][0]["symbol_id"] == sym1.id
-
-        # 标的 2 正常执行
-        assert len(result["buy_decisions"]) == 1
-        assert result["buy_decisions"][0]["symbol_id"] == sym2.id
-        assert len(result["executed_orders"]) == 1
-        assert result["executed_orders"][0]["symbol_id"] == sym2.id
+        rejected_syms = {r["symbol_id"] for r in result["rejected_decisions"]}
+        assert rejected_syms == {sym1.id, sym2.id}
+        assert all(
+            r["rejection_code"] == "PORTFOLIO_STATE_NEW_BUY_BLOCKED"
+            for r in result["rejected_decisions"]
+        )
+        # 组合级熔断：没有任何成交
+        assert len(result["executed_orders"]) == 0

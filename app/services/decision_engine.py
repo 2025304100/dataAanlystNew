@@ -425,7 +425,8 @@ class GateChecker(Protocol):
 
 class UniverseBuilder(Protocol):
     def __call__(
-        self, db: Session, snap: LoadedSnapshot, cutoff_utc: datetime, /,
+        self, db: Session, snap: LoadedSnapshot, cutoff_utc: datetime,
+        run_type: str = "research_preflight", /,
     ) -> UniverseAndEligibility: ...
 
 
@@ -477,7 +478,7 @@ class DecisionEngine:
     ) -> None:
         self.load_snapshot = snapshot_loader or _stub_snapshot_loader
         self.gate = gate or _stub_gate
-        self.build_universe = universe_builder or _stub_universe_builder
+        self.build_universe = universe_builder or _real_universe_builder
         self.check_health = health or _stub_health_check
         # WP0-4：默认使用真实 Score 查询 + 信号映射 + Q10 顺序 clamp（不再是 stub）
         self.score = scorer or _real_scorer
@@ -774,7 +775,9 @@ class DecisionEngine:
                     })
 
         # Step 4-5: Universe + Health
-        universe = self.build_universe(db, snap, clock.data_cutoff_at)
+        # PT-DEF-6 / WP0-3b：透传 run_type，供 universe_builder 做 execution_mode
+        # 资格隔离（实盘 auto_simulation 过滤 manual/confirm；回测 backtest 全量）。
+        universe = self.build_universe(db, snap, clock.data_cutoff_at, run_type)
         universe = self.check_health(db, universe, clock.data_cutoff_at)
 
         # Step 6: Score (门禁失败时也跑至少一次覆盖率计数，保证 evidence 里能标 missing)
@@ -1265,13 +1268,86 @@ def _stub_gate(
 
 def _stub_universe_builder(
     db: Session, snap: LoadedSnapshot, cutoff_utc: datetime,
+    run_type: str = "research_preflight",
 ) -> UniverseAndEligibility:
+    """全量 universe（不做 execution_mode 过滤）。
+
+    保留供 G2 等直接引用 stub 的测试使用；生产默认已切换为
+    _real_universe_builder（见 DecisionEngine.__init__）。
+    """
     members = snap.members or []
     return UniverseAndEligibility(
         universe=list(members),
         universe_count=len(members),
         member_count=len(members),
         ineligible=[],
+        health_issues=[],
+    )
+
+
+def _real_universe_builder(
+    db: Session, snap: LoadedSnapshot, cutoff_utc: datetime,
+    run_type: str = "research_preflight",
+) -> UniverseAndEligibility:
+    """WP0-3b：真实 universe 构建 + execution_mode 资格筛选（修复 PT-DEF-6）。
+
+    资金安全不变量（多份设计文档）：manual 只提示信号、confirm 只生成待确认
+    计划、仅 execution_mode=auto 成员可被自动下单。原 _stub_universe_builder
+    吞入快照全部成员（含 manual/confirm），导致这些成员在实盘自动模拟交易
+    中被自动成交。此处在 universe/eligibility 阶段按 execution_mode 过滤，
+    manual/confirm 记入 ineligible：
+      - 不进入 _real_scorer 覆盖率分母（universe 只含 auto）；
+      - build_evidence 遍历 universe.universe（见 _default_build_evidence），
+        故 manual/confirm 不生成 evidence → 不生成 order_plan → 不会被成交。
+
+    run_type 隔离（default_engine 为全局单例，实盘/双跑/回测/API 四入口共用）：
+      - "auto_simulation"（实盘自动交易，唯一真实成交 SimOrder 的路径
+        _execute_snapshot_order_plans → place_sim_order）：仅纳入 auto 成员，
+        manual/confirm 记入 ineligible → 不生成 evidence/order_plan → 不成交。
+      - 其他（回测 backtest / 研究 research_preflight / dry_run）：保持全量。
+        回测走 C-03 的 PortfolioCandidate.auto_authorized_flag 白名单；研究/预检
+        为 dry_run 不成交，evidence 仅作信号提示，符合"manual 只提示、confirm
+        待确认"语义，且避免误伤流水线/回测覆盖率口径。
+
+    向后兼容：member dict 缺失/空 execution_mode 键（仅见于测试 seed 与迁移前
+    历史快照；生产快照由 _build_member_snapshot._to_row 生成，列 NOT NULL
+    default manual，必含该字段）时视为 eligible，避免误伤既有数据；明确的
+    manual/confirm 及未知脏值则 fail-safe 记入 ineligible。
+    """
+    from app.models.portfolio_member import EXECUTION_AUTO
+
+    members = snap.members or []
+    # 仅实盘自动交易（auto_simulation）按 execution_mode 过滤：它是唯一会真实
+    # 成交 SimOrder 的路径。回测/研究/预检保持全量（详见 docstring run_type 隔离）。
+    if str(run_type) != "auto_simulation":
+        return UniverseAndEligibility(
+            universe=list(members),
+            universe_count=len(members),
+            member_count=len(members),
+            ineligible=[],
+            health_issues=[],
+        )
+
+    eligible: list[dict[str, Any]] = []
+    ineligible: list[dict[str, Any]] = []
+    for member in members:
+        row = member if isinstance(member, dict) else {}
+        mode = str(row.get("execution_mode") or "").strip().lower()
+        # auto 或缺失/空（向后兼容）→ 纳入；manual/confirm/脏值 → 排除
+        if mode == EXECUTION_AUTO or mode == "":
+            eligible.append(member)
+        else:
+            excluded = dict(row)
+            excluded["ineligible_reason"] = (
+                f"execution_mode={mode!r} 非 auto，不参与自动交易"
+                "（manual 只提示、confirm 待确认）"
+            )
+            ineligible.append(excluded)
+    return UniverseAndEligibility(
+        universe=eligible,
+        universe_count=len(eligible),
+        member_count=len(members),
+        ineligible=ineligible,
         health_issues=[],
     )
 

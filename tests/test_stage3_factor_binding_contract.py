@@ -17,7 +17,8 @@ from app.models.decision_engine import PortfolioFactorUsage, StrategyExecutionSn
 from app.models.async_task import AsyncTaskRecord
 from app.models.factor import Factor
 from app.models.factor_evaluation import FactorSet, FactorSetMember
-from app.models.factor_model import FactorModelRun, FactorVersion, FactorWeightSnapshot
+from app.models.factor_governance import FactorModelMember
+from app.models.factor_model import FactorModelRun, FactorVersion
 from app.models.factor_runtime import FactorRuntimeState, FactorSystemConfig
 from app.models.portfolio import Portfolio
 from app.models.score import Score
@@ -96,7 +97,7 @@ def _ready_model(db_session, *, set_id: str, model_id: str) -> FactorModelRun:
         hyperparameters_json=json.dumps({"factor_set_id": set_id}),
         metrics_json="{}",
     )
-    model.weights.append(FactorWeightSnapshot(
+    model.weights.append(FactorModelMember(
         factor_code=factor.code,
         factor_version=1,
         coefficient=1.0,
@@ -574,21 +575,32 @@ def test_model_train_api_rejects_non_frozen_factor_set_in_every_mode(db_session)
                 factor_set_id="fs-stage3-draft-train",
                 mode="offline_minimal",
             ),
+            # 路由第二个位参是 `request: Request`（_actor_from_context 只读
+            # request.headers，对 None 安全）；原写法把 Session 递给了 request，
+            # 导致 AttributeError: 'Session' object has no attribute 'headers'。
+            None,
             db_session,
         )
 
     assert error.value.status_code == 400
-    assert "frozen" in str(error.value.detail)
+    # 训练路由的稳契约是 7 要素 dict 里的 error_code；detail_zh 是中文“未冻结”，
+    # 原断言用大小写敏感的英文子串匹配会误判。
+    assert error.value.detail["error_code"] == "FACTOR_SET_NOT_FROZEN"
+    assert "未冻结" in error.value.detail["detail_zh"]
+    assert "frozen" in str(error.value.detail).lower()
 
 
 @pytest.mark.parametrize(
     ("factor_set_id", "setup", "expected_code"),
     [
-        (None, None, "FACTOR_SET_REQUIRED"),
-        ("", None, "FACTOR_SET_REQUIRED"),
-        ("fs-stage3-pipeline-missing", None, "FACTOR_SET_NOT_FOUND"),
-        ("fs-stage3-pipeline-draft", "draft", "FACTOR_SET_NOT_FROZEN"),
-        ("fs-stage3-pipeline-no-hash", "no_hash", "FACTOR_SET_NO_CONTENT_HASH"),
+        # PT-DEF-8 后路由统一返回 422 + 7 要素 dict；expected_code 用产品在
+        # errors.py registry 注册、并在 test_factor_pipeline_gates_task9.py 服务层
+        # 已锁死的 PIPELINE_* 码（旧的 FACTOR_SET_* 字面量从未在生产里出现过）。
+        (None, None, "PIPELINE_NO_FACTOR_SET"),
+        ("", None, "PIPELINE_NO_FACTOR_SET"),
+        ("fs-stage3-pipeline-missing", None, "PIPELINE_FACTOR_SET_NOT_FOUND"),
+        ("fs-stage3-pipeline-draft", "draft", "PIPELINE_FACTOR_SET_NOT_FROZEN"),
+        ("fs-stage3-pipeline-no-hash", "no_hash", "PIPELINE_FACTOR_SET_NOT_READY"),
     ],
 )
 def test_async_training_task_rejects_unready_factor_set_before_queueing(
@@ -624,6 +636,10 @@ def test_async_training_task_rejects_unready_factor_set_before_queueing(
             ))
 
     assert error.value.status_code == 422
+    assert isinstance(error.value.detail, dict), (
+        "PT-DEF-8 守护：7 要素结构化错误必须原样送到 HTTP 层，"
+        "不得被 except ValueError 抢走退化为裸字符串 detail"
+    )
     assert error.value.detail["error_code"] == expected_code
     assert db_session.scalar(
         select(func.count()).select_from(AsyncTaskRecord)

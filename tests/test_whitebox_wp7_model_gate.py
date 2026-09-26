@@ -22,7 +22,8 @@ pytest.importorskip("sklearn")
 
 from app.models.factor import Factor
 from app.models.factor_evaluation import FactorSet, FactorSetMember, ShadowObservation
-from app.models.factor_model import FactorModelRun, FactorVersion, FactorWeightSnapshot
+from app.models.factor_governance import FactorModelMember
+from app.models.factor_model import FactorModelRun, FactorVersion
 from app.models.factor_runtime import FactorRuntimeState
 from app.services.factors.ridge_model import (
     ModelGate,
@@ -400,7 +401,7 @@ def _seed_factor_model_run(
     db_session.flush()
     for code, weight in weights.items():
         db_session.add(
-            FactorWeightSnapshot(
+            FactorModelMember(
                 model_run_id=run_id,
                 factor_code=code,
                 factor_version=1,

@@ -5,7 +5,10 @@ FactorSet + 成员元数据 + 权重 JSON。即使后续集合废弃/成员修�
 模型详情也能从 snapshot 稳定还原权重→版本→集合的全链血缘。
 
 表名与 factor_model.py 中已被移除的旧 FactorWeightSnapshot（per-factor rows，
-rev 006 创建）相同，rev 049 中做了 DROP+CREATE 重建。
+rev 006 创建）相同，rev 049 中做了 DROP+CREATE 重建。per-factor 权重行现在
+只有一个名字：FactorModelMember（app/models/factor_governance.py）；
+`factor_model.FactorWeightSnapshot = FactorModelMember` 那个过渡别名已于
+2026-09-27 删除，所以下方类名在全库唯一。
 """
 from __future__ import annotations
 

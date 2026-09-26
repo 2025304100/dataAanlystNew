@@ -400,14 +400,34 @@ def test_run_fast_scan_cache_key_format(db_session):
     """cache_key 应包含 snapshot_id / scope / min_score / filter_hash 等要素。"""
     snap = _setup_ready_snapshot_with_items(db_session, item_count=3)
 
+    # E 簇：scan_runs.portfolio_id/portfolio_rule_id 有 FK→portfolios/portfolio_rules，
+    # 原硬编码 42/7 无父行 → INSERT 撞 FK。seed 真实组合+规则并引用其 id。
+    from app.models.portfolio import Portfolio, PortfolioRule
+    p = Portfolio(
+        name="QA-CacheKey", account_type="simulated", total_capital=100000.0,
+        investable_ratio=0.9, cash_reserve_ratio=0.1, currency="CNY", is_default=0,
+    )
+    db_session.add(p)
+    db_session.commit()
+    db_session.refresh(p)
+    rule = PortfolioRule(
+        portfolio_id=p.id, rule_name="cache-key-rule",
+        max_single_position_pct=30, max_sector_position_pct=50,
+        max_stock_position_pct=30, max_etf_position_pct=30,
+        max_loss_per_trade_pct=5, max_open_positions=10, stage_limits_json="{}",
+    )
+    db_session.add(rule)
+    db_session.commit()
+    db_session.refresh(rule)
+
     result = discovery_fast_scan.run_fast_scan(
         scope="cn-stock",
         min_score=60,
         asset_types=["stock"],
         stages=["accumulate"],
         actions=["buy"],
-        portfolio_id=42,
-        portfolio_rule_id=7,
+        portfolio_id=p.id,
+        portfolio_rule_id=rule.id,
         limit=100,
         db=db_session,
     )
@@ -416,10 +436,10 @@ def test_run_fast_scan_cache_key_format(db_session):
     assert cache_key is not None
     assert str(snap.id) in cache_key
     assert "cn_stock" in cache_key  # 归一化为下划线
-    assert "60" in cache_key  # min_score
-    assert "42" in cache_key  # portfolio_id
-    assert "7" in cache_key  # portfolio_rule_id
-    assert "100" in cache_key  # limit
+    assert "_min_60_" in cache_key  # min_score
+    assert f"_pf_{p.id}_" in cache_key  # portfolio_id 段
+    assert f"_pr_{rule.id}_" in cache_key  # portfolio_rule_id 段
+    assert cache_key.endswith("_limit_100")
 
 
 def test_run_fast_scan_cache_key_stable_for_same_params(db_session):

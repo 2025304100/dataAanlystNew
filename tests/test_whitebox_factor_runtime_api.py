@@ -17,7 +17,8 @@ from app.api.routes.factor_models import (
     list_factor_models,
 )
 from app.api.routes.factors import get_symbol_factor_explanation
-from app.models.factor_model import FactorModelRun, FactorWeightSnapshot
+from app.models.factor_governance import FactorModelMember
+from app.models.factor_model import FactorModelRun
 from app.models.factor_runtime import (
     FactorModelAuditLog,
     FactorRuntimeState,
@@ -51,7 +52,7 @@ def _add_model(db_session, model_id: str, status: str = 'validated'):
     for index, code in enumerate(FEATURE_CODES, start=1):
         coefficient = index / 10
         model.weights.append(
-            FactorWeightSnapshot(
+            FactorModelMember(
                 factor_code=code,
                 factor_version=1,
                 coefficient=coefficient,

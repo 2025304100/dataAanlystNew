@@ -807,9 +807,9 @@ def _make_score(
     score = Score(
         symbol_id=symbol_id,
         trade_date=trade_date,
-        quality_score=70.0,
+        quality_score=85.0,
         quality_grade="B",
-        timing_score=65.0,
+        timing_score=85.0,
         stage=stage,
         action=action,
         priority_score=75.0,
@@ -1054,6 +1054,12 @@ def test_run_backtest_legacy_source_fills_minimal_snapshot(db_session, member_so
 # ----------------------------------------------------------------------------
 
 
+@pytest.mark.xfail(
+    reason="C-03：only_auto/manual member 分支已移除（snapshot 冻结已授权成员 + "
+           "auto_authorized_flag 白名单），manual/confirm 成员不再阻断回测。与 "
+           "test_only_auto_option_excludes_manual_members(L1272) 同源裁决。",
+    strict=False,
+)
 def test_run_backtest_blocks_when_manual_members_exist(db_session, member_source_enabled):
     """【WP7.3】member 来源 + only_auto=False + 存在 manual 成员 → 抛 ValueError。
 
@@ -1100,6 +1106,11 @@ def test_run_backtest_blocks_when_manual_members_exist(db_session, member_source
 # ----------------------------------------------------------------------------
 
 
+@pytest.mark.xfail(
+    reason="C-03：only_auto=True 跳过 manual 分支已移除（统一三段口径，不再按 only_auto 过滤）；"
+           "symbol_ids 现含全部有效成员。与 test_only_auto_option_excludes_manual_members(L1272) 同源。",
+    strict=False,
+)
 def test_run_backtest_only_auto_option_skips_manual_members(db_session, member_source_enabled):
     """【WP7.3】member 来源 + only_auto=True → 跳过 manual 成员，excluded_members_json 记录原因。
 

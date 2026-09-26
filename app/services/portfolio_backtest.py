@@ -826,8 +826,10 @@ def run_portfolio_backtest(
         try:
             run_obj.stage = stage_override or s
             run_obj.progress_pct = float(pct)
-            from datetime import datetime, timezone as _tz
-            run_obj.updated_at = datetime.now(_tz.utc)
+            # T-C1.1 时钟规范：核心服务禁止裸 datetime.now/utcnow，
+            # DB 写入统一 decision_clock.utcnow_naive()（naive UTC 风格）
+            from app.services.decision_clock import utcnow_naive
+            run_obj.updated_at = utcnow_naive()
             db.flush()
         except Exception:
             # 进度更新是非关键路径，失败不阻断主链路

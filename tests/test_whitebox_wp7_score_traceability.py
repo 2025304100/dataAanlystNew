@@ -17,7 +17,8 @@ from sqlalchemy import select
 
 pytest.importorskip('duckdb')
 
-from app.models.factor_model import FactorModelRun, FactorWeightSnapshot
+from app.models.factor_governance import FactorModelMember
+from app.models.factor_model import FactorModelRun
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.services.factors.ridge_model import FEATURE_CODES
@@ -107,7 +108,7 @@ def _seed_traceability_inputs(
     for code in FEATURE_CODES:
         coefficient = _COEFFICIENTS[code]
         model.weights.append(
-            FactorWeightSnapshot(
+            FactorModelMember(
                 factor_code=code,
                 factor_version=1,
                 coefficient=coefficient,
