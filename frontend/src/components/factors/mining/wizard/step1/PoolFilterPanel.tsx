@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { t } from "../../../../../i18n";
-import { Badge, Button, Checkbox, Collapse, InputNumber, Select, Tabs, Tag, Tooltip } from "antd";
+import { Badge, Button, Checkbox, Collapse, InputNumber, Select, Tag, Tooltip } from "antd";
 import { fetchFilterFields, fetchFilterPresets } from "./poolApi";
 import type { FilterField, FilterPreset } from "./poolApi";
 
@@ -54,9 +54,11 @@ const MARKET_OPTIONS = [
 ];
 
 const BOARD_OPTIONS = [
-  { code: "main_sh", labelKey: "miningPoolBoardMainSh" },
-  { code: "main_sz", labelKey: "miningPoolBoardMainSz" },
-  { code: "chinext", labelKey: "miningPoolBoardChinext" },
+  // 代码必须与挖掘后端 candidate-pools 白名单一致：
+  // ['sh_main','sz_main','gem','star','bj']（曾误用 main_sh/main_sz/chinext → 预览 400）
+  { code: "sh_main", labelKey: "miningPoolBoardMainSh" },
+  { code: "sz_main", labelKey: "miningPoolBoardMainSz" },
+  { code: "gem", labelKey: "miningPoolBoardChinext" },
   { code: "star", labelKey: "miningPoolBoardStar" },
   { code: "bj", labelKey: "miningPoolBoardBj" },
 ];
@@ -70,7 +72,6 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
   const [groups, setGroups] = useState<Array<{ group: string; label_zh: string }>>([]);
   const [fields, setFields] = useState<FilterField[]>([]);
   const [categories, setCategories] = useState<Array<{ category: string; label_zh: string }>>([]);
-  const [activeGroup, setActiveGroup] = useState("market_cap");
   // B4：已有条件的分类自动展开（受控 Collapse；新分类/条件变化时并入）
   const [openKeys, setOpenKeys] = useState<string[]>([DEFAULT_OPEN_CATEGORY]);
   // B2：预设「自定义」标记 —— 应用后记录 preset_code；用户手工修改对应字段后
@@ -101,7 +102,6 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
           setPresetsState("ready");
           setPresets(Array.isArray(p.value.presets) ? p.value.presets : []);
           setGroups(Array.isArray(p.value.groups) && p.value.groups.length > 0 ? p.value.groups : []);
-          if (p.value.groups?.[0]?.group) setActiveGroup(p.value.groups[0].group);
         }
       } else {
         setPresetsState("failed");
@@ -201,9 +201,8 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
     return Array.from(open);
   }, [categories, categoryCount, openKeys]);
 
-  // ── 左栏 ────────────────────────────────────────────────────────
-  const tabs = groups.length > 0 ? groups : [{ group: "market_cap", label_zh: "市值" }];
-  const activePresets = presets.filter((p) => p.group === activeGroup);
+  // ── 左栏：预设按分组平铺（原型：市值/估值/流动性/上市时间纵向堆叠）──
+  const presetGroups = groups.length > 0 ? groups : [{ group: "market_cap", label_zh: "市值" }];
 
   // ── 右栏控件渲染 ────────────────────────────────────────────────
   const rangeControl = (f: FilterField) => {
@@ -395,93 +394,95 @@ export default function PoolFilterPanel({ locked, value, onChange }: PoolFilterP
         {/* 左栏：常用区间预设 */}
         <aside className="mining-pool-filter-left" data-filter-left>
           <div className="mining-filter-left-title">{t("miningPoolFilterTitle")}</div>
-          <Tabs
-            tabPosition="left"
-            size="small"
-            activeKey={activeGroup}
-            onChange={setActiveGroup}
-            items={tabs.map((g) => ({
-              key: g.group,
-              label: g.label_zh,
-              children: (
-                <div className="mining-filter-preset-list">
-                  {activePresets.map((p) => {
-                    const blocked = p.applyable === false || p.availability === "blocked";
-                    // B2：预设态 —— applied=已应用（primary 高亮 + 已应用 Tag），
-                    // customized=自定义（默认按钮 + 自定义 Tag，不得再显示为已应用）
-                    const fieldName: string | null = p.field;
-                    const applied =
-                      fieldName != null && appliedPreset[fieldName] === p.preset_code;
-                    const customized = Boolean(
-                      fieldName != null &&
-                        appliedPreset[fieldName] &&
-                        customizedPreset[fieldName],
-                    );
-                    const presetBtn = (
-                      <Button
-                        size="small"
-                        type={applied && !customized ? "primary" : "default"}
-                        data-filter-preset={p.preset_code}
-                        data-filter-preset-state={customized ? "custom" : applied && !customized ? "applied" : undefined}
-                        disabled={locked || blocked}
-                        onClick={() => applyPreset(p)}
-                      >
-                        {p.label_zh}
-                        {applied && (
-                          <Tag
-                            color={customized ? "orange" : "green"}
-                            style={{ marginInlineStart: 6 }}
-                            data-filter-preset-tag={customized ? "custom" : "applied"}
+          {presetsState === "loading" && (
+            <div className="mining-filter-state" data-filter-presets-loading role="status">
+              {t("miningPoolPresetsLoading")}
+            </div>
+          )}
+          {presetsState === "failed" && (
+            <div className="mining-filter-state mining-filter-state--error" data-filter-presets-error role="alert">
+              <span>{presetsErrorZh ?? t("miningPoolPresetsFailed")}</span>
+              <button
+                type="button"
+                className="mining-pool-btn"
+                data-filter-presets-retry
+                onClick={loadPresetsAndFields}
+              >
+                {t("miningPoolPresetsRetry")}
+              </button>
+            </div>
+          )}
+          {presetsState === "ready" && (
+            <div className="mining-filter-preset-groups">
+              {presetGroups.map((g, gi) => {
+                const groupPresets = presets.filter((p) => p.group === g.group);
+                if (groupPresets.length === 0) return null;
+                return (
+                  <Fragment key={g.group}>
+                    {gi > 0 && <div className="mining-filter-preset-divider" aria-hidden="true" />}
+                    <div className="mining-filter-preset-group-title">{g.label_zh}</div>
+                    <div className="mining-filter-preset-list">
+                      {groupPresets.map((p) => {
+                        const blocked = p.applyable === false || p.availability === "blocked";
+                        // B2：预设态 —— applied=已应用（primary 高亮 + 已应用 Tag），
+                        // customized=自定义（默认按钮 + 自定义 Tag，不得再显示为已应用）
+                        const fieldName: string | null = p.field;
+                        const applied =
+                          fieldName != null && appliedPreset[fieldName] === p.preset_code;
+                        const customized = Boolean(
+                          fieldName != null &&
+                            appliedPreset[fieldName] &&
+                            customizedPreset[fieldName],
+                        );
+                        const presetBtn = (
+                          <Button
+                            size="small"
+                            type={applied && !customized ? "primary" : "default"}
+                            data-filter-preset={p.preset_code}
+                            data-filter-preset-state={customized ? "custom" : applied && !customized ? "applied" : undefined}
+                            disabled={locked || blocked}
+                            onClick={() => applyPreset(p)}
                           >
-                            {customized ? t("miningPoolPresetCustom") : t("miningPoolPresetApplied")}
-                          </Tag>
-                        )}
-                      </Button>
-                    );
-                    return (
-                      <Tooltip
-                        key={p.preset_code}
-                        // 禁用必须给原因（验收报告 P1-2「沉默的失败」）：
-                        // 后端未给 blocked_reason_zh 时兜底说明，避免悬浮为空
-                        title={
-                          blocked
-                            ? (p.blocked_reason_zh ?? p.basis_zh ?? t("miningPoolPresetUnavailable"))
-                            : customized
-                              ? t("miningPoolPresetCustomTip")
-                              : p.basis_zh
-                        }
-                      >
-                        {presetBtn}
-                      </Tooltip>
-                    );
-                  })}
-                  {presetsState === "loading" && (
-                    <div className="mining-filter-state" data-filter-presets-loading role="status">
-                      {t("miningPoolPresetsLoading")}
+                            {p.label_zh}
+                            {applied && (
+                              <Tag
+                                color={customized ? "orange" : "green"}
+                                style={{ marginInlineStart: 6 }}
+                                data-filter-preset-tag={customized ? "custom" : "applied"}
+                              >
+                                {customized ? t("miningPoolPresetCustom") : t("miningPoolPresetApplied")}
+                              </Tag>
+                            )}
+                          </Button>
+                        );
+                        return (
+                          <Tooltip
+                            key={p.preset_code}
+                            // 禁用必须给原因（验收报告 P1-2「沉默的失败」）：
+                            // 后端未给 blocked_reason_zh 时兜底说明，避免悬浮为空
+                            title={
+                              blocked
+                                ? (p.blocked_reason_zh ?? p.basis_zh ?? t("miningPoolPresetUnavailable"))
+                                : customized
+                                  ? t("miningPoolPresetCustomTip")
+                                  : p.basis_zh
+                            }
+                          >
+                            {presetBtn}
+                          </Tooltip>
+                        );
+                      })}
                     </div>
-                  )}
-                  {presetsState === "failed" && (
-                    <div className="mining-filter-state mining-filter-state--error" data-filter-presets-error role="alert">
-                      <span>{presetsErrorZh ?? t("miningPoolPresetsFailed")}</span>
-                      <button
-                        type="button"
-                        className="mining-pool-btn"
-                        data-filter-presets-retry
-                        onClick={loadPresetsAndFields}
-                      >
-                        {t("miningPoolPresetsRetry")}
-                      </button>
-                    </div>
-                  )}
-                  {presetsState === "ready" && activePresets.length === 0 && (
-                    <p className="mining-filter-empty" data-filter-no-preset>
-                      {t("miningPoolPresetEmpty")}
-                    </p>
-                  )}
-                </div>
-              ),
-            }))}
-          />
+                  </Fragment>
+                );
+              })}
+              {presets.length === 0 && (
+                <p className="mining-filter-empty" data-filter-no-preset>
+                  {t("miningPoolPresetEmpty")}
+                </p>
+              )}
+            </div>
+          )}
         </aside>
 
         {/* 右栏：分类条件 Accordion */}

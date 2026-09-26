@@ -89,7 +89,12 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
 
   return (
     <div className="mining-exp-page" data-tpl-page>
-      <p className="mining-exp-desc">{t("factorTplDesc")}</p>
+      <div className="mining-page-head">
+        <div className="mining-page-head-text">
+          <span className="mining-page-title">{t("factorTplPageTitle")}</span>
+          <span className="mining-page-sub">{t("factorTplDesc")}</span>
+        </div>
+      </div>
 
       {loading && <p data-tpl-loading>{t("factorTplLoading")}</p>}
       {!loading && failed && <p data-tpl-error>{t("factorTplError")}</p>}

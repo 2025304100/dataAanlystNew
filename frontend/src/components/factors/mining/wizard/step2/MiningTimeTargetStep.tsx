@@ -108,6 +108,9 @@ export default function MiningTimeTargetStep({
   return (
     <div className="mining-time-target-step" data-time-target-step>
       <div className="mining-time-grid">
+        <div className="mining-time-grid-head">
+          <span className="mining-card-title">{t("miningTimeCardTitle")}</span>
+        </div>
         <label>
           <span>{t("miningTimeStart")}</span>
           <DatePicker

@@ -101,7 +101,12 @@ export default function DataMirrorPage() {
 
   return (
     <div className="mining-exp-page" data-mirror-page>
-      <p className="mining-exp-desc">{t("dataMirrorDesc")}</p>
+      <div className="mining-page-head">
+        <div className="mining-page-head-text">
+          <span className="mining-page-title">{t("dataMirrorPageTitle")}</span>
+          <span className="mining-page-sub">{t("dataMirrorDesc")}</span>
+        </div>
+      </div>
 
       {loading && <p data-mirror-loading>{t("dataMirrorLoading")}</p>}
       {!loading && failed && <p data-mirror-error>{t("dataMirrorError")}</p>}

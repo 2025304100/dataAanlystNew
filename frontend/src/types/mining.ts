@@ -73,6 +73,18 @@ export interface MiningRun {
   message?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  // ── 历史任务详情回显（GET /runs/{id} 的 include_config 才返回；列表项不含）──
+  /** 进化参数（含 simple_mode/strength/偏好/高级折叠区等） */
+  evolution_params?: Record<string, unknown> | null;
+  /** 候选池筛选配置（含 selected_fields） */
+  filter_config?: Record<string, unknown> | null;
+  /** 切分配置（train/validation 比例等） */
+  split_config?: Record<string, unknown> | null;
+  /** 字段步选中的字段代码 */
+  selected_fields?: string[] | null;
+  /** 随机种子 / 切分方式（回显用） */
+  random_seed?: number | null;
+  split_method?: string | null;
 }
 
 /** 后端 `Page`（GET /factor-mining/runs） */

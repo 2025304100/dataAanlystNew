@@ -695,8 +695,19 @@ def batch_review_candidates(
 # ══════════════════════════════════════════════════════════
 
 
-def _run_to_dict(run: Any) -> dict[str, Any]:
-    return {
+def _load_json_obj(raw: Any) -> dict[str, Any]:
+    """安全反序列化 Text 列里的 JSON 对象；非法/空 → {}（不抛）。"""
+    if not raw:
+        return {}
+    try:
+        val = _json.loads(raw)
+    except Exception:  # noqa: BLE001 - 脏数据降级为空对象，不阻断详情
+        return {}
+    return val if isinstance(val, dict) else {}
+
+
+def _run_to_dict(run: Any, *, include_config: bool = False) -> dict[str, Any]:
+    data: dict[str, Any] = {
         "id": run.id,
         "status": run.status,
         "current_generation": int(run.current_generation or 0),
@@ -715,6 +726,20 @@ def _run_to_dict(run: Any) -> dict[str, Any]:
         # 可直接断言代内推进（此前只能靠「不被看门狗误杀」间接证明）。
         "updated_at": str(run.updated_at) if run.updated_at else None,
     }
+    if include_config:
+        # 历史任务详情回显：反序列化已存的配置列（草稿/只读抽屉 step1-4 用）。
+        filter_config = _load_json_obj(run.filter_config_json)
+        data.update({
+            "target_horizon": int(run.target_horizon) if run.target_horizon is not None else None,
+            "random_seed": run.random_seed,
+            "split_method": run.split_method,
+            "evolution_params": _load_json_obj(run.evolution_params_json),
+            "filter_config": filter_config,
+            "split_config": _load_json_obj(run.split_config_json),
+            "selected_fields": list(filter_config.get("selected_fields") or []),
+        })
+    return data
+
 
 
 def list_runs(db: Any, *, page: int = 1, page_size: int = 20,
@@ -739,7 +764,7 @@ def get_run_detail(db: Any, run_id: str) -> dict[str, Any] | None:
     run = load_run(db, run_id)
     if run is None:
         return None
-    return _run_to_dict(run)
+    return _run_to_dict(run, include_config=True)
 
 
 def list_generations(db: Any, run_id: str) -> list[dict[str, Any]]:

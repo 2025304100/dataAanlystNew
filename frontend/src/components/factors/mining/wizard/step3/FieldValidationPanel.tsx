@@ -58,6 +58,9 @@ export default function FieldValidationPanel({
 
   return (
     <div className="mining-field-validation">
+      <div className="mining-card-head">
+        <span className="mining-card-title">{t("miningValidationCardTitle")}</span>
+      </div>
       {status.progress ? (
         <div className="mining-field-progress" data-field-progress>
           <span>

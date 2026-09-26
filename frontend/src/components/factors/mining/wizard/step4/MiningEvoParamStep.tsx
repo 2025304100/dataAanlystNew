@@ -177,7 +177,8 @@ export default function MiningEvoParamStep({
       {!simpleMode && (
         <div className="mining-evo-advanced" data-evo-advanced-sections>
           <p className="mining-hint">{t("miningEvoAdvancedHint")}</p>
-          <div className="mining-evo-section">
+          <details className="mining-evo-section" data-evo-section="basic" open>
+            <summary>{t("miningEvoBasicTitle")}</summary>
             <div className="mining-evo-row">
               <span className="mining-evo-field-label">{t("miningEvoPopulation")}</span>
               <InputNumber
@@ -210,7 +211,7 @@ export default function MiningEvoParamStep({
               <span className="mining-evo-field-label">{t("miningEvoQuickTrial")}</span>
               <Switch data-evo-quick-trial onChange={applyQuickTrial} />
             </div>
-          </div>
+          </details>
 
           <ClassicalBaseConfig onChange={(p) => emitConfig({}, p)} />
           <ExplorationConfig

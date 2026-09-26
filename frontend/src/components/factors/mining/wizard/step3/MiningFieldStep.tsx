@@ -190,6 +190,7 @@ export default function MiningFieldStep({
   return (
     <div className="mining-field-step" data-field-step>
       <div className="mining-field-head">
+        <span className="mining-card-title">{t("miningFieldCardTitle")}</span>
         <span>{t("miningFieldSelected")}</span>
         <span data-field-selected-count>{current.length}</span>
         <span className="mining-card-sub">

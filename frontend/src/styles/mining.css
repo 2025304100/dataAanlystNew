@@ -774,39 +774,39 @@
   display: flex;
 }
 
-/* 连接线：从上一个步骤的圆点连到本步骤 */
+/* 连接线：连接相邻步骤的圆点（圆点水平居中，故按中心对齐；top 对齐圆心） */
 .mining-step + .mining-step::before {
   content: "";
   position: absolute;
-  top: 13px;
+  top: 22px;
   right: 50%;
   left: -50%;
   height: 2px;
-  margin: 0 20px;
+  margin: 0 26px;
   background: var(--m-border);
   z-index: 0;
 }
 
 .mining-step.done + .mining-step::before {
   background: var(--m-brand);
-  opacity: 0.45;
+  opacity: 0.5;
 }
 
+/* 居中竖向步骤：圆点在上，标签 + 状态在下（对齐原型 stepper） */
 .mining-step-btn {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: auto auto;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
   align-items: center;
-  column-gap: var(--m-s3);
-  row-gap: 2px;
+  row-gap: var(--m-s1);
   width: 100%;
   padding: var(--m-s2) var(--m-s4);
   border: 1px solid transparent;
-  border-radius: var(--m-r-sm);
+  border-radius: var(--m-r);
   background: transparent;
-  text-align: left;
+  text-align: center;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -816,24 +816,24 @@
 }
 
 .mining-step-index {
-  grid-row: 1 / span 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--m-border-strong);
   border-radius: 50%;
   background: var(--m-surface);
   color: var(--m-text-3);
-  font-size: var(--m-fs-sm);
+  font-size: var(--m-fs);
   font-weight: 700;
+  transition: box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .mining-step-label {
-  grid-column: 2;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -843,11 +843,11 @@
 }
 
 .mining-step-state {
-  grid-column: 2;
   display: inline-flex;
   align-items: center;
   gap: var(--m-s1);
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -859,8 +859,9 @@
 /* 已完成 */
 .mining-step.done .mining-step-index {
   border-color: var(--m-brand);
-  background: var(--m-brand);
+  background: linear-gradient(135deg, var(--m-brand-hover), var(--m-brand));
   color: #fff;
+  box-shadow: 0 0 0 4px var(--m-brand-softer);
 }
 
 .mining-step.done .mining-step-label {
@@ -881,6 +882,7 @@
   border-color: var(--m-brand);
   background: var(--m-brand);
   color: #fff;
+  box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.15);
 }
 
 .mining-step.current .mining-step-label {
@@ -892,7 +894,7 @@
 }
 
 .mining-step-progress {
-  grid-column: 2;
+  width: 100%;
   height: 3px;
   margin-top: 2px;
   border-radius: 2px;
@@ -975,6 +977,56 @@
 .mining-wizard-nav > button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* 向导大抽屉（新建/编辑/查看统一入口，替代旧「向导」页签） */
+.mining-wizard-drawer .ant-drawer-body {
+  padding: 0;
+  background: var(--m-surface-warm);
+}
+
+.mining-wizard-drawer-inner {
+  display: grid;
+  gap: var(--m-s5);
+  padding: var(--m-s5);
+}
+
+.mining-drawer-title {
+  display: flex;
+  align-items: center;
+  gap: var(--m-s3);
+}
+
+/* 只读态：配置步骤禁用交互（步骤条/上一步下一步仍可浏览） */
+.mining-wizard-body[data-mining-wizard-readonly="true"] {
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.94;
+}
+
+/* 窄屏：抽屉近全宽，步骤条文字收紧避免挤压 */
+@media (max-width: 900px) {
+  .mining-wizard-drawer .ant-drawer-content-wrapper {
+    width: 100vw !important;
+    max-width: 100vw;
+  }
+
+  .mining-wizard-drawer-inner {
+    padding: var(--m-s4);
+  }
+
+  .mining-step-bar {
+    padding: var(--m-s3) var(--m-s2);
+  }
+
+  .mining-step-label,
+  .mining-step-state {
+    font-size: var(--m-fs-xs);
+  }
+
+  .mining-step + .mining-step::before {
+    margin: 0 14px;
+  }
 }
 
 /* 提交提示区 */
@@ -1137,74 +1189,24 @@
   letter-spacing: 0.02em;
 }
 
-/* 左栏 antd Tabs：改为「分组 chip 行 + 预设按钮网格」的纵向堆叠
-   （antd tabPosition="left" 默认 nav 与 content 并排，在窄栏里会挤成一团） */
-.mining-pool-filter-left .ant-tabs-left {
-  flex-direction: column;
+/* 左栏预设：按分组纵向平铺（原型：市值/估值/流动性/上市时间，各自按钮网格 + 分隔线） */
+.mining-filter-preset-groups {
+  display: grid;
+  gap: var(--m-s3);
 }
 
-.mining-pool-filter-left .ant-tabs-left > .ant-tabs-nav {
-  width: 100%;
-  margin: 0 0 var(--m-s3) 0;
-}
-
-.mining-pool-filter-left .ant-tabs-left > .ant-tabs-nav .ant-tabs-nav-wrap {
-  overflow: visible;
-}
-
-.mining-pool-filter-left .ant-tabs-left > .ant-tabs-nav .ant-tabs-nav-list {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: var(--m-s1);
-}
-
-.mining-pool-filter-left .ant-tabs-left > .ant-tabs-nav::before {
-  display: none;
-}
-
-.mining-pool-filter-left .ant-tabs-tab {
-  margin: 0 !important;
-  padding: var(--m-s2) var(--m-s3) !important;
-  border: 1px solid transparent;
-  border-radius: var(--m-r-sm);
-  font-size: var(--m-fs-sm);
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.mining-pool-filter-left .ant-tabs-tab:hover {
-  background: var(--m-brand-softer);
-}
-
-.mining-pool-filter-left .ant-tabs-tab-active {
-  border-color: var(--m-border-brand);
-  background: var(--m-brand-soft);
-}
-
-.mining-pool-filter-left .ant-tabs-tab-active .ant-tabs-tab-btn {
-  color: var(--m-brand) !important;
+.mining-filter-preset-group-title {
+  font-size: var(--m-fs-xs);
   font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--m-text-3);
+  text-transform: none;
 }
 
-.mining-pool-filter-left .ant-tabs-ink-bar {
-  display: none;
-}
-
-.mining-pool-filter-left .ant-tabs-content-holder {
-  width: 100%;
-}
-
-.mining-filter-preset-list .ant-btn {
-  width: 100%;
-  min-height: 32px;
-  border-radius: var(--m-r-sm);
-  font-size: var(--m-fs-sm);
-  text-align: left;
-  justify-content: flex-start;
-}
-
-.mining-filter-preset-list .ant-tag {
-  margin: 0;
-  transform: scale(0.92);
+.mining-filter-preset-divider {
+  height: 1px;
+  background: var(--m-border);
+  margin: var(--m-s1) 0;
 }
 
 .mining-filter-preset-list {
@@ -1212,6 +1214,39 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--m-s2);
 }
+
+.mining-filter-preset-list .ant-btn {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--m-border-strong);
+  border-radius: var(--m-r-sm);
+  background: var(--m-surface);
+  color: var(--m-text);
+  font-size: var(--m-fs-sm);
+  font-weight: 500;
+  text-align: left;
+  justify-content: flex-start;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.mining-filter-preset-list .ant-btn:hover:not(:disabled) {
+  border-color: var(--m-border-brand);
+  background: var(--m-brand-softer);
+  color: var(--m-brand);
+}
+
+.mining-filter-preset-list .ant-btn-primary,
+.mining-filter-preset-list .ant-btn-primary:hover:not(:disabled) {
+  border-color: var(--m-brand);
+  background: var(--m-brand);
+  color: #fff;
+}
+
+.mining-filter-preset-list .ant-tag {
+  margin: 0;
+  transform: scale(0.92);
+}
+
 
 .mining-filter-empty {
   margin: 0;
@@ -1374,6 +1409,69 @@
   border-radius: var(--m-r);
   background: var(--m-surface);
   box-shadow: var(--m-shadow-1);
+}
+
+/* 预览结果卡头部（跨整行）：标题 + 数据截止日 */
+.mining-pool-preview-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--m-s3);
+  padding-bottom: var(--m-s2);
+  border-bottom: 1px solid var(--m-border);
+}
+
+.mining-pool-preview-title {
+  font-size: var(--m-fs-md);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-pool-preview-date {
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 命中进度条（跨整行）：纯展示既有命中/全市场统计 */
+.mining-pool-preview-progress {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--m-s2);
+}
+
+.mining-pool-progress-track {
+  height: 8px;
+  border-radius: var(--m-r-pill);
+  background: var(--m-surface-sunken);
+  overflow: hidden;
+}
+
+.mining-pool-progress-fill {
+  height: 100%;
+  border-radius: var(--m-r-pill);
+  background: linear-gradient(90deg, var(--m-brand-hover), var(--m-brand));
+  transition: width 0.3s ease;
+}
+
+.mining-pool-progress-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-s3);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+}
+
+.mining-pool-progress-left {
+  font-weight: 600;
+  color: var(--m-brand);
+}
+
+.mining-pool-progress-right {
+  color: var(--m-text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 .mining-pool-preview-item {
@@ -1981,6 +2079,15 @@
   box-shadow: var(--m-shadow-1);
 }
 
+.mining-time-grid-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  padding-bottom: var(--m-s3);
+  margin-bottom: var(--m-s1);
+  border-bottom: 1px solid var(--m-border);
+}
+
 .mining-time-grid label {
   display: grid;
   gap: var(--m-s2);
@@ -2355,6 +2462,18 @@
   color: var(--m-text);
 }
 
+/* 分组标题前加品牌竖条，与设计系统卡片标题一致（原型「字段选择」分区） */
+.mining-field-group-title > span:first-child::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  margin-right: var(--m-s3);
+  border-radius: 2px;
+  background: var(--m-brand);
+  vertical-align: -2px;
+}
+
 /* 字段行 → 带元数据的字段卡 */
 .mining-field-row {
   display: grid;
@@ -2691,13 +2810,27 @@
 }
 
 .mining-evo-section > summary::before {
+  content: "⚙";
+  width: 20px;
+  text-align: center;
+  font-size: var(--m-fs-md);
+  color: var(--m-brand);
+}
+
+.mining-evo-section[data-evo-section="classical"] > summary::before { content: "📚"; }
+.mining-evo-section[data-evo-section="exploration"] > summary::before { content: "🧬"; }
+.mining-evo-section[data-evo-section="selection"] > summary::before { content: "🏆"; }
+.mining-evo-section[data-evo-section="reproduction"] > summary::before { content: "🔄"; }
+
+.mining-evo-section > summary::after {
   content: "▸";
+  margin-left: auto;
   color: var(--m-text-3);
   font-size: var(--m-fs-sm);
   transition: transform 0.15s ease;
 }
 
-.mining-evo-section[open] > summary::before {
+.mining-evo-section[open] > summary::after {
   transform: rotate(90deg);
 }
 
@@ -4295,6 +4428,38 @@ tr.mining-run-top-new {
 }
 
 /* ── 11. 子页（经验库 / 模板 / 镜像）+ 批次列表 ───────────── */
+
+/* 页面头部卡（原型 page-header-card：标题 + 副标题） */
+.mining-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--m-s4);
+  padding: var(--m-s4) var(--m-s5);
+  border: 1px solid var(--m-border);
+  border-left: 3px solid var(--m-brand);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  box-shadow: var(--m-shadow-1);
+}
+
+.mining-page-head-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mining-page-title {
+  font-size: var(--m-fs-lg);
+  font-weight: 700;
+  color: var(--m-text);
+}
+
+.mining-page-sub {
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-3);
+  line-height: 1.5;
+}
 
 .mining-exp-page {
   display: grid;

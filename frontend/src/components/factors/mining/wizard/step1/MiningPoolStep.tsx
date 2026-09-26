@@ -392,10 +392,44 @@ export default function MiningPoolStep({
               {t("miningPoolPreviewStale")}
             </div>
           )}
+          {/* 原型：预览结果卡头部（标题 + 数据截止日）*/}
+          <div className="mining-pool-preview-head">
+            <span className="mining-pool-preview-title">{t("miningPoolPreviewTitle")}</span>
+            {preview.as_of_date ? (
+              <span className="mining-pool-preview-date">
+                {t("miningPoolStatsAsOf")} {preview.as_of_date}
+              </span>
+            ) : null}
+          </div>
+
+          {/* 原型：命中进度条（命中数 / 全市场，纯展示既有统计，不改口径）*/}
+          {preview.universe_size > 0 ? (
+            <div className="mining-pool-preview-progress" data-pool-preview-progress>
+              <div className="mining-pool-progress-track">
+                <div
+                  className="mining-pool-progress-fill"
+                  style={{
+                    width: `${Math.min(100, (preview.hits / preview.universe_size) * 100).toFixed(1)}%`,
+                  }}
+                />
+              </div>
+              <div className="mining-pool-progress-info">
+                <span className="mining-pool-progress-left">
+                  {t("miningPoolHitProgress")} · {preview.hits}
+                </span>
+                <span className="mining-pool-progress-right">
+                  {t("miningPoolStatsHitRate")}{" "}
+                  {((preview.hits / preview.universe_size) * 100).toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          ) : null}
+
           <div className="mining-pool-preview-item">
             <span className="mining-pool-preview-label">
               {t("miningPoolPreviewTotal")}
             </span>
+
             <span className="mining-pool-preview-value">{preview.universe_size}</span>
           </div>
           <div className="mining-pool-preview-item mining-pool-preview-item--hit">
@@ -437,17 +471,6 @@ export default function MiningPoolStep({
               )}
             </span>
           </div>
-          {preview.as_of_date ? (
-            <div className="mining-pool-preview-item">
-              <span className="mining-pool-preview-label">
-                {t("miningPoolStatsAsOf")}
-              </span>
-              <span className="mining-pool-preview-value mining-pool-preview-value--sm">
-                {preview.as_of_date}
-              </span>
-            </div>
-          ) : null}
-
           <div className="mining-pool-preview-detail">
             <span className="mining-pool-preview-detail-title">
               {t("miningPoolStatsCategory")}

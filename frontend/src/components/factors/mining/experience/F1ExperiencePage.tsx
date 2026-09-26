@@ -64,7 +64,12 @@ export default function F1ExperiencePage({ active = true }: F1ExperiencePageProp
 
   return (
     <div className="mining-exp-page" data-f1-exp-page>
-      <p className="mining-exp-desc">{t("miningExpDesc")}</p>
+      <div className="mining-page-head">
+        <div className="mining-page-head-text">
+          <span className="mining-page-title">{t("miningExpPageTitle")}</span>
+          <span className="mining-page-sub">{t("miningExpDesc")}</span>
+        </div>
+      </div>
 
       {!loading && !failed && items.length > 0 && (
         <div className="mining-tiles">

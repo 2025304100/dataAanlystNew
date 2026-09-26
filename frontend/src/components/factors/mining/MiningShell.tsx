@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Drawer } from "antd";
 import { t } from "../../../i18n";
 import { factorMiningApi } from "../../../api/factorMining";
 import { dataMirrorApi } from "../../../api/dataMirror";
@@ -57,6 +58,16 @@ const STEP_LABEL_KEYS: Record<MiningStepKey, string> = {
 };
 
 type ShellTab = "wizard" | "runs" | "experience" | "templates";
+
+/** 统一任务视图条目：草稿（可编辑）或已提交 run（只读）。 */
+type MiningTask =
+  | { kind: "draft"; id: string; draft: DraftSummary; run?: undefined; created_at: string | null }
+  | { kind: "run"; id: string; run: MiningRun; draft?: undefined; created_at: string | null };
+
+/** run 是否终态（终态只读、不提供中断/停止/放弃，避免对已结束任务操作拿 500）。 */
+const TERMINAL_RUN_STATUSES = new Set([
+  "succeeded", "converged", "failed", "cancelled", "discarded",
+]);
 
 /** DEF-10：草稿列表条目（后端 `GET /factor-mining/drafts` 的视图字段）。
  * ⚠️ 列表视图用 `id`、详情视图用 `draft_id`（后端两接口字段名不一致），
@@ -237,11 +248,16 @@ export default function MiningShell({
   runProgress = null,
   onSubmitted,
 }: MiningShellProps) {
-  const [tab, setTab] = useState<ShellTab>("wizard");
+  const [tab, setTab] = useState<ShellTab>("runs");
   const [currentStep, setCurrentStep] = useState(0);
   const [runs, setRuns] = useState<MiningRun[]>([]);
+  // 统一任务列表：草稿（可编辑）与已提交 run 合并展示
+  const [taskDrafts, setTaskDrafts] = useState<DraftSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  // 向导改右侧大抽屉：open + 模式（edit 可编辑 / view 只读锁定回显）
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<"edit" | "view">("edit");
 
   // A4：向导配置上提 + 提交后运行状态
   const [wizardConfig, setWizardConfig] = useState<WizardConfig>({});
@@ -327,11 +343,23 @@ export default function MiningShell({
     }
   }, []);
 
-  useEffect(() => {
-    if (tab === "runs") void loadRuns();
-  }, [tab, loadRuns]);
+  const loadTaskDrafts = useCallback(async () => {
+    try {
+      const res = await factorMiningApi.listDrafts({ limit: 50 });
+      setTaskDrafts(Array.isArray(res) ? (res as DraftSummary[]) : []);
+    } catch {
+      setTaskDrafts([]);
+    }
+  }, []);
 
-  /** 批次列表 → Step5：把该批次载入进化跟踪（否则列表里的批次点不开） */
+  useEffect(() => {
+    if (tab === "runs") {
+      void loadRuns();
+      void loadTaskDrafts();
+    }
+  }, [tab, loadRuns, loadTaskDrafts]);
+
+  /** 载入某批次到向导（不自动弹抽屉；由列表「查看」显式打开）。 */
   const viewRun = useCallback((run: MiningRun) => {
     setRunState({
       run_id: run.id,
@@ -346,14 +374,107 @@ export default function MiningShell({
       eta_seconds: null,
     });
     setCurrentStep(4);
-    setTab("wizard");
-    // 显式「查看」不提示恢复（提示条仅 localStorage 自动恢复时展示）
-    setRestoredNotice(false);
     // 记住「最近活跃会话」：提交/查看后刷新或重进页面可自动恢复该 run 视图
     try {
       window.localStorage.setItem(LAST_RUN_KEY, run.id);
     } catch { /* 隐私/存储不可用则跳过，不影响功能 */ }
   }, []);
+
+  /** 列表「查看」：以只读模式打开抽屉（锁定，仅回显配置 + 运行/结果）。 */
+  const openViewRun = useCallback((run: MiningRun) => {
+    viewRun(run);
+    setDrawerMode("view");
+    setRestoredNotice(false);
+    setWizardOpen(true);
+    // 回显当初配置：拉完整 detail（列表项不含 evolution_params/filter_config）
+    void (async () => {
+      try {
+        const detail = await factorMiningApi.getRun(run.id);
+        patchConfig({
+          candidate_pool_snapshot_id: detail.candidate_pool_snapshot_id ?? null,
+          data_cutoff_at: detail.data_cutoff_at ?? null,
+          start_date: detail.start_date ?? undefined,
+          end_date: detail.end_date ?? undefined,
+          rebalance_frequency: detail.rebalance_frequency ?? undefined,
+          target_horizon: detail.target_horizon ?? undefined,
+          selected_fields: detail.selected_fields ?? undefined,
+          evolution_params: detail.evolution_params ?? undefined,
+        });
+      } catch {
+        /* 回显失败不影响查看运行/结果 */
+      }
+    })();
+  }, [viewRun, patchConfig]);
+
+  /** 「新建挖掘」：清空向导态，编辑模式打开抽屉。 */
+  const openNewWizard = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setWizardConfig({});
+    setPoolId("");
+    setRunState(null);
+    setResultCandidates(null);
+    setSubmitError(null);
+    setRunOpError(null);
+    setDraftId(null);
+    setDraftNote(null);
+    setCurrentStep(0);
+    setDrawerMode("edit");
+    setRestoredNotice(false);
+    setWizardOpen(true);
+  }, []);
+
+  /** 「复制为草稿」：以某任务已存配置为模板，开一个全新可编辑草稿（不共享原 run）。 */
+  const openCopyAsDraft = useCallback((run: MiningRun) => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setWizardConfig({});
+    setPoolId("");
+    setRunState(null);
+    setResultCandidates(null);
+    setSubmitError(null);
+    setRunOpError(null);
+    setDraftId(null);
+    setDraftNote(null);
+    setCurrentStep(0);
+    setDrawerMode("edit");
+    setRestoredNotice(false);
+    setWizardOpen(true);
+    void (async () => {
+      try {
+        const detail = await factorMiningApi.getRun(run.id);
+        patchConfig({
+          candidate_pool_snapshot_id: detail.candidate_pool_snapshot_id ?? null,
+          data_cutoff_at: detail.data_cutoff_at ?? null,
+          start_date: detail.start_date ?? undefined,
+          end_date: detail.end_date ?? undefined,
+          rebalance_frequency: detail.rebalance_frequency ?? undefined,
+          target_horizon: detail.target_horizon ?? undefined,
+          selected_fields: detail.selected_fields ?? undefined,
+          evolution_params: detail.evolution_params ?? undefined,
+        });
+        setDraftNote({ ok: true, text: t("miningTaskCopiedDraft") });
+      } catch {
+        /* 拉取失败：仍打开空白编辑抽屉，用户可从头配置 */
+      }
+    })();
+  }, [patchConfig]);
+
+  /** 关闭抽屉：停轮询，回到批次列表。 */
+  const closeWizard = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setWizardOpen(false);
+    setRestoredNotice(false);
+    setTab("runs");
+  }, []);
+
 
   /** 批次列表行内「放弃」：调 discard 后刷新列表（失败不崩，列表保留原状） */
   const discardRunRow = useCallback(
@@ -836,12 +957,20 @@ export default function MiningShell({
     try {
       await factorMiningApi.deleteDraft(draftId_);
       setDrafts((prev) => prev.filter((d) => draftKey(d) !== draftId_));
+      setTaskDrafts((prev) => prev.filter((d) => draftKey(d) !== draftId_));
       if (draftId === draftId_) setDraftId(null);
       setDraftNote({ ok: true, text: t("miningDraftDeleted") });
     } catch {
       setDraftNote({ ok: false, text: t("miningDraftDeleteFailed") });
     }
   }, [draftId]);
+
+  /** 列表「继续编辑」：回填草稿到向导 + 编辑模式打开抽屉。 */
+  const openEditDraft = useCallback((draft: DraftSummary) => {
+    handleRestoreDraft(draft);
+    setDrawerMode("edit");
+    setWizardOpen(true);
+  }, [handleRestoreDraft]);
 
   const handleSubmit = async () => {
     const cfg = wizardConfig;
@@ -912,17 +1041,33 @@ export default function MiningShell({
     setCurrentStep(0);
   }, []);
 
+  /** 抽屉只读态：查看历史任务时 step1-4 配置回显且禁用。 */
+  const wizardReadOnly = drawerMode === "view";
+
+  /** 统一任务列表：草稿 + 已提交 run，按创建时间倒序。 */
+  const tasks = useMemo<MiningTask[]>(() => {
+    const draftTasks: MiningTask[] = taskDrafts.map((d) => ({
+      kind: "draft",
+      id: draftKey(d),
+      draft: d,
+      created_at: d.updated_at ?? null,
+    }));
+    const runTasks: MiningTask[] = runs.map((r) => ({
+      kind: "run",
+      id: r.id,
+      run: r,
+      created_at: r.created_at ?? null,
+    }));
+    return [...draftTasks, ...runTasks].sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+  }, [taskDrafts, runs]);
+
   return (
     <div data-mining-shell className="settings-indicator-stack mining-shell">
       <div className="sub-tabs" aria-label={t("factorMiningTabTitle")}>
-        <button
-          type="button"
-          className={`sub-tab ${tab === "wizard" ? "active" : ""}`}
-          aria-current={tab === "wizard" ? "page" : undefined}
-          onClick={() => setTab("wizard")}
-        >
-          {t("miningTabWizard")}
-        </button>
         <button
           type="button"
           className={`sub-tab ${tab === "runs" ? "active" : ""}`}
@@ -949,7 +1094,28 @@ export default function MiningShell({
         </button>
       </div>
 
-      <div className="sub-tab-container" hidden={tab !== "wizard"}>
+      <Drawer
+        className="mining-wizard-drawer"
+        placement="right"
+        width="min(1080px, 92vw)"
+        open={wizardOpen}
+        onClose={closeWizard}
+        destroyOnClose={false}
+        forceRender
+        title={
+          <div className="mining-drawer-title">
+            <span>
+              {drawerMode === "view" ? t("miningDrawerViewTitle") : t("miningDrawerNewTitle")}
+            </span>
+            {drawerMode === "view" && (
+              <span className="mining-chip mining-chip--muted" data-mining-drawer-locked>
+                {t("miningDrawerLocked")}
+              </span>
+            )}
+          </div>
+        }
+      >
+      <div className="mining-wizard-drawer-inner" data-mining-wizard-host>
         <ol className="mining-step-bar" data-mining-step-bar>
           {MINING_STEPS.map((key, idx) => {
             const visual = stepBlocked[idx]
@@ -1003,7 +1169,11 @@ export default function MiningShell({
         </ol>
 
         {/* G5+A4：5 步内容接线（step1~step5，配置上提 wizardConfig） */}
-        <div className="mining-wizard-body" data-mining-wizard-body>
+        <div
+          className="mining-wizard-body"
+          data-mining-wizard-body
+          data-mining-wizard-readonly={wizardReadOnly && currentStep < 4 ? "true" : undefined}
+        >
           {currentStep === 0 && (
             <div data-mining-step-panel="pool">
               <MiningPoolStep
@@ -1121,7 +1291,7 @@ export default function MiningShell({
                   progress={activeProgress}
                   topCandidates={topCandidates}
                   onPause={
-                    activeProgress.run_id
+                    activeProgress.run_id && !TERMINAL_RUN_STATUSES.has(String(activeProgress.status))
                       ? () => runRemote(factorMiningApi.pauseRun)
                       : undefined
                   }
@@ -1131,12 +1301,12 @@ export default function MiningShell({
                       : undefined
                   }
                   onStop={
-                    activeProgress.run_id
+                    activeProgress.run_id && !TERMINAL_RUN_STATUSES.has(String(activeProgress.status))
                       ? () => runRemote(factorMiningApi.stopRun)
                       : undefined
                   }
                   onDiscard={
-                    activeProgress.run_id
+                    activeProgress.run_id && !TERMINAL_RUN_STATUSES.has(String(activeProgress.status))
                       ? () => runRemote(factorMiningApi.discardRun)
                       : undefined
                   }
@@ -1215,15 +1385,28 @@ export default function MiningShell({
           >
             {t("miningWizardPrev")}
           </button>
-          {/* DEF-10：草稿此前只写不读 —— 这里给「读入」入口 */}
-          <button
-            type="button"
-            className="mining-pool-btn"
-            data-mining-draft-open
-            onClick={() => void loadDrafts()}
-          >
-            {t("miningDraftLoad")}
-          </button>
+          {/* DEF-10：草稿此前只写不读 —— 这里给「读入」入口（只读态隐藏） */}
+          {!wizardReadOnly && (
+            <button
+              type="button"
+              className="mining-pool-btn"
+              data-mining-draft-open
+              onClick={() => void loadDrafts()}
+            >
+              {t("miningDraftLoad")}
+            </button>
+          )}
+          {/* 只读态：从当前任务复制为新草稿再编辑 */}
+          {wizardReadOnly && runState?.run_id && (
+            <button
+              type="button"
+              className="mining-pool-btn primary"
+              data-mining-drawer-copy
+              onClick={() => openCopyAsDraft({ id: runState.run_id } as MiningRun)}
+            >
+              {t("miningRunsActionCopy")}
+            </button>
+          )}
           <button
             type="button"
             data-mining-next
@@ -1332,14 +1515,29 @@ export default function MiningShell({
           </div>
         )}
       </div>
+      </Drawer>
 
       <div className="sub-tab-container" hidden={tab !== "runs"}>
+        <div className="mining-page-head">
+          <div className="mining-page-head-text">
+            <span className="mining-page-title">{t("miningRunsPageTitle")}</span>
+            <span className="mining-page-sub">{t("miningRunsPageSub")}</span>
+          </div>
+          <button
+            type="button"
+            className="mining-pool-btn primary"
+            data-mining-new-task
+            onClick={openNewWizard}
+          >
+            {t("miningNewTask")}
+          </button>
+        </div>
         {loading && <p data-mining-runs-loading>{t("miningRunsLoading")}</p>}
         {!loading && failed && <p data-mining-runs-error>{t("miningRunsError")}</p>}
-        {!loading && !failed && runs.length === 0 && (
+        {!loading && !failed && tasks.length === 0 && (
           <p data-mining-runs-empty>{t("miningRunsEmpty")}</p>
         )}
-        {!loading && !failed && runs.length > 0 && (
+        {!loading && !failed && tasks.length > 0 && (
           <div className="mining-table-wrap">
             <table className="mining-runs-table" data-mining-runs-table>
               <thead>
@@ -1352,12 +1550,60 @@ export default function MiningShell({
                 </tr>
               </thead>
               <tbody>
-                {runs.map((run) => {
+                {tasks.map((task) => {
+                  if (task.kind === "draft") {
+                    const d = task.draft;
+                    return (
+                      <tr key={`draft-${task.id}`} data-mining-task="draft" data-mining-task-id={task.id}>
+                        <td>
+                          <div style={{ display: "grid", gap: 2 }}>
+                            <span className="mining-cell-formula" title={task.id}>
+                              {d.name || shortRunId(task.id)}
+                            </span>
+                            <span className="mining-card-sub">{fmtDateTime(d.updated_at)}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="mining-chip mining-chip--brand" data-mining-task-status="draft">
+                            {t("miningTaskStatusDraft")}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="mining-card-sub">
+                            {t("miningDraftItemStep").replace("{step}", String(d.current_step ?? 1))}
+                          </span>
+                        </td>
+                        <td><span className="mining-cell-muted">-</span></td>
+                        <td>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              className="mining-pool-btn primary"
+                              data-mining-task-edit={task.id}
+                              onClick={() => openEditDraft(d)}
+                            >
+                              {t("miningRunsActionEdit")}
+                            </button>
+                            <button
+                              type="button"
+                              className="mining-pool-btn danger"
+                              data-mining-task-delete={task.id}
+                              onClick={() => void handleDeleteDraft(task.id)}
+                            >
+                              {t("miningRunsActionDelete")}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const run = task.run;
                   const gen = run.current_generation ?? 0;
                   const total = totalGenerationsOf(run);
                   const percent = total > 0 ? Math.min(100, Math.round((gen / total) * 100)) : 0;
+                  const terminal = TERMINAL_RUN_STATUSES.has(String(run.status));
                   return (
-                    <tr key={run.id}>
+                    <tr key={`run-${run.id}`} data-mining-task="run" data-mining-task-id={run.id}>
                       <td>
                         <div style={{ display: "grid", gap: 2 }}>
                           <span className="mining-cell-formula" title={run.id}>
@@ -1406,19 +1652,28 @@ export default function MiningShell({
                             type="button"
                             className="mining-pool-btn"
                             data-mining-run-view={run.id}
-                            onClick={() => viewRun(run)}
+                            onClick={() => openViewRun(run)}
                           >
-                            {t("miningRunsActionView")}
+                            {terminal ? t("miningRunsActionViewResult") : t("miningRunsActionViewProgress")}
                           </button>
                           <button
                             type="button"
-                            className="mining-pool-btn danger"
-                            data-mining-run-discard={run.id}
-                            disabled={String(run.status) === "cancelled" || String(run.status) === "succeeded"}
-                            onClick={() => void discardRunRow(run)}
+                            className="mining-pool-btn"
+                            data-mining-run-copy={run.id}
+                            onClick={() => openCopyAsDraft(run)}
                           >
-                            {t("miningRunsActionDiscard")}
+                            {t("miningRunsActionCopy")}
                           </button>
+                          {!terminal && (
+                            <button
+                              type="button"
+                              className="mining-pool-btn danger"
+                              data-mining-run-discard={run.id}
+                              onClick={() => void discardRunRow(run)}
+                            >
+                              {t("miningRunsActionDiscard")}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
