@@ -20,6 +20,28 @@ from app.db.manager import DatabaseManager
 import pytest
 
 pytestmark = pytest.mark.whitebox
+
+
+@pytest.fixture(autouse=True)
+def _isolate_control_plane_cache():
+    """控制面缓存是模块级全局，必须逐用例隔离。
+
+    先跑的用例（实测是 `tests/services/factors/mining/test_m1_closure.py` 的真实
+    GA 链路）已经为它自己的 tmp 库建过 cp engine/factory，不失效的话本文件第 1 例
+    里的 `get_control_session_local()` 会直接返回那条陈厂子（绑到别人的
+    qa_test_*.db）——在全量跑里就是这么假失败的（体检报告 §十二.4）。
+    这里只存快照 + 置空，不调 `reset_control_plane_cache()`：它会 dispose 属于
+    其它用例的 engine。
+    """
+    saved = (db_session._cp_engine, db_session._cp_factory)
+    db_session._cp_engine = None
+    db_session._cp_factory = None
+    try:
+        yield
+    finally:
+        db_session._cp_engine, db_session._cp_factory = saved
+
+
 def _tmp_url(path) -> str:
     return f"sqlite:///{path.as_posix()}"
 

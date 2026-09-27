@@ -407,3 +407,21 @@ def _bfg_p04_anti_corruption_ast(pytestconfig):  # noqa: N802
     _register_in_pytest(pytestconfig)
     yield
 
+
+# ── 全局可变状态的逐用例隔离（体检报告 §十二.5）──
+# WORKER_STOP_EVENT 是 app.services.async_tasks 的模块级 threading.Event：生产里
+# 只有 lifespan 关停会 set 它（进程随即退出，无需清），但测试进程里
+# `with TestClient(app)` 走一次关停就会把它永久留在 set 状态 —— 之后同一会话内
+# 任何真实 worker 一启动就自撤。实测受害：mining 真实 GA 用例在全量跑里被
+# “cancelled before stages” 卡到 420 秒超时（单独跑 36 秒就过）。
+@pytest.fixture(autouse=True)
+def _isolate_worker_stop_event():
+    from app.services import async_tasks as _at
+
+    _at.WORKER_STOP_EVENT.clear()
+    try:
+        yield
+    finally:
+        # 退出也清：用例内为了验证优雅停机而 set 的标志不应泄到下一个用例
+        _at.WORKER_STOP_EVENT.clear()
+

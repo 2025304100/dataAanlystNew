@@ -56,7 +56,28 @@ def test_probe_executor_max_workers_is_8():
 # 2. probe_api 日志输出
 # ============================================================================
 
-def test_probe_logs_start_and_done(monkeypatch, caplog):
+
+@pytest.fixture
+def private_probe_executor(monkeypatch):
+    """给日志契约用例一个干净的私有线程池。
+
+    产品侧 `_PROBE_EXECUTOR` 只有 8 个 worker（这本身就是 P0 修复的限定泄漏数），
+    全量跑里前面的用例会拿真实 akshare 调用把它占住几十秒，新任务排队超过
+    `_PROBE_TIMEOUT_SECONDS`（默认 50s）后 probe_api 只能记 TIMEOUT、永远等不到
+    done —— 于是“日志契约”用例变成“共享线程池是否空闲”的受害者。
+    “默认池 max_workers=8”仍由上面的守卫用例把门，这里不放宽。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="probe-test")
+    monkeypatch.setattr(akshare_apis, "_PROBE_EXECUTOR", pool)
+    try:
+        yield pool
+    finally:
+        pool.shutdown(wait=False)
+
+
+def test_probe_logs_start_and_done(monkeypatch, caplog, private_probe_executor):
     """【P0 稳定性回归】probe_api 应记录 start 和 done INFO 日志。
 
     历史问题：原实现无任何日志，探测卡住时无法诊断。
@@ -87,7 +108,7 @@ def test_probe_logs_start_and_done(monkeypatch, caplog):
         "应有 'probe test_api done' INFO 日志"
 
 
-def test_probe_logs_timeout(monkeypatch, caplog):
+def test_probe_logs_timeout(monkeypatch, caplog, private_probe_executor):
     """【P0 稳定性回归】probe_api 超时应记录 WARNING 日志。
 
     历史问题：原实现超时只写到 DB，无日志，运维无法从日志发现超时事件。

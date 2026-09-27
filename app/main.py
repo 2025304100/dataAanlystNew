@@ -45,6 +45,7 @@ from app.schemas.external_data import (
 )
 from app.services.discovery_cleanup import cleanup_expired_discovery_results
 from app.services.async_tasks import (
+    WORKER_STOP_EVENT,
     interrupt_orphaned_async_tasks,
     mark_graceful_shutdown_tasks,
     request_all_workers_stop,
@@ -110,6 +111,11 @@ def initialize_runtime_database() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # 启动即“接受工作”：清掉可能残留的全局停工位。WORKER_STOP_EVENT 是
+    # async_tasks 的模块级 threading.Event，只在关停时 set；生产里进程随即退出
+    # 所以没人清，但同进程内重启（或测试进程里再跑一轮 lifespan）后不恢复的话，
+    # 所有真实 worker 一启动就自撤（实测把 mining 真实 GA 用例卡到 420s 超时）。
+    WORKER_STOP_EVENT.clear()
     initialize_runtime_database()
     mgr = DatabaseManager.get()
 
