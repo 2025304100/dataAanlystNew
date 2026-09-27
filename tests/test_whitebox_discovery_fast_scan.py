@@ -280,7 +280,11 @@ def test_full_flow_with_http_guard(db_session, monkeypatch):
         scope="cn_stock", min_score=55, db=db_session,
     )
     assert result["degraded_reason"] is None
-    assert result["coarse_match_count"] == 3
+    assert result["coarse_match_count"] == 3, (
+        "端到端扫描应命中 3 个粗筛结果；实际为 0 时通常是被前面用例的模块级状态"
+        "污染（快照/粗筛依赖的共享缓存未隔离）。完整返回体供定位："
+        f"{ {k: v for k, v in result.items() if k != 'results'} }"
+    )
 
 
 # ============================================================================
