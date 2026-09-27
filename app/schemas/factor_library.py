@@ -366,10 +366,14 @@ class CustomIndicatorPromoteResponse(BaseModel):
     """数值指标提升响应（WP4-01）。"""
 
     success: bool = True
-    factor_id: int
+    # 草案化（P2-G / P0 ACL）后 promote 只产出待审批草案，此刻并不存在
+    # Factor / FactorVersion：用 null 表示“尚未创建”，不再回 0 —— 0 是一个
+    # 并不存在的因子主键，调用方拿它去跳转/查询就是坏链接。真实 id 在审批
+    # 通过后由 factor_drafts.promoted_factor_id / promoted_factor_version 提供。
+    factor_id: int | None = None
     factor_code: str
-    factor_version_id: int
-    factor_version: int
+    factor_version_id: int | None = None
+    factor_version: int | None = None
     lifecycle_status: LifecycleStatus = "draft"
     origin: FactorOrigin = "user"
     source_mapping: dict[str, Any] = Field(default_factory=dict)

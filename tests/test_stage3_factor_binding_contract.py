@@ -24,6 +24,10 @@ from app.models.portfolio import Portfolio
 from app.models.score import Score
 from app.models.symbol import Symbol
 
+# 本文件以前无 marker → `pytest -m whitebox`（= CI 的 backend-whitebox job）会
+# 静默 deselect 它，那 6 例契约红因“不在任何闸门里”藏了两个月（体检报告 §七.5）。
+pytestmark = pytest.mark.whitebox
+
 
 def _portfolio(db_session) -> Portfolio:
     portfolio = Portfolio(

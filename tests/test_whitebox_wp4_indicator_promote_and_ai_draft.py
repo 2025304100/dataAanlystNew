@@ -330,10 +330,10 @@ def test_api_promote_number_returns_201(db_session):
     """API：number 指标提升 → 201 + 草案化响应（P0 ACL 后走因子域 Facade）。
 
     WP4-01 原契约“直接建 Factor”已被 P2-G 草案流程取代：端点现在只
-    `submit_factor_draft_from_external`，返回待审批草案；因子代码由 Facade 按
-    `from-<source_module>-<ref>` 派生（不再沿用 indicator.key），而
-    factor_id / factor_version_id 依旧返 0 —— 那是 custom_indicators.py 里
-    “P1 TODO：让 Facade 扩展返回结构化 id”的已知缺口。
+    `submit_factor_draft_from_external`，返回待审批草案；因子代码沿用指标 key
+    （以前只认 `factor_code` 键，而路由传的是 `code`/`indicator_key`，导致
+    用户手输代码被丢弃、草案名退化为 from-custom_indicators-<id>）；
+    草案阶段尚无 Factor/FactorVersion，所以三个 id 返 null 而不是假的 0。
     """
     ind = _make_indicator(db_session, key="api_number", formula="close")
     client = _make_test_client(db_session)
@@ -352,9 +352,12 @@ def test_api_promote_number_returns_201(db_session):
     # 草案溯源键与审计入口必须可用（前端跳转依赖它）
     assert body["source_mapping"]["facade_draft_id"]
     assert body["source_mapping"]["audit_url"].startswith("/factor-center/drafts/")
-    # 代码由 Facade 派生，不等于 indicator.key（行为已变，用例跟上新契约）
-    assert body["factor_code"] == f"from-custom_indicators-{ind.id}"
-    assert "factor_version_id" in body
+    # 代码沿用指标 key（用户不填 code 时的合理默认）
+    assert body["factor_code"] == "api_number"
+    # 草案阶段无 Factor/FactorVersion：必须是 null，不能是假的 0
+    assert body["factor_id"] is None
+    assert body["factor_version_id"] is None
+    assert body["factor_version"] is None
 
 
 def test_api_promote_boolean_returns_422(db_session):
@@ -388,9 +391,9 @@ def test_api_promote_idempotent_no_duplicate(db_session):
     """API：重复调用得到同一因子代码，且不会绕过审批直接建 Factor。
 
     旧断言“库里恰好 1 个 code=api_idem 的因子”属于 WP4-01 旧契约（promote 直接
-    入库）；P2-G 后 promote 只落草案，所以现在校的是：两次提交同码、无 Factor
-    副作用、factor_id 仍是 P1 TODO 占位 0。“同码不应堆积多条草案”单独跟踪
-    （见下一条 xfail）。
+    入库）；P2-G 后 promote 只落待审批草案，所以现在校的是：两次提交同一因子代码、
+    无直接入库副作用、三个 id 为 null。草案本身的幂等（不堆积同码草案）
+    由 test_api_promote_twice_reuses_same_draft 把门。
     """
     ind = _make_indicator(db_session, key="api_idem", formula="close")
     client = _make_test_client(db_session)
@@ -406,9 +409,9 @@ def test_api_promote_idempotent_no_duplicate(db_session):
     assert resp2.status_code == 201
 
     b1, b2 = resp1.json(), resp2.json()
-    assert b1["factor_code"] == b2["factor_code"] == f"from-custom_indicators-{ind.id}"
-    # P1 TODO：Facade 尚未回传真实 id，两次都是占位 0
-    assert b1["factor_id"] == b2["factor_id"] == 0
+    assert b1["factor_code"] == b2["factor_code"] == "api_idem"
+    # 草案阶段无 Factor/FactorVersion：三个 id 统一为 null
+    assert b1["factor_id"] is None and b2["factor_id"] is None
 
     db_session.expire_all()
     # 草案化后不应产生直接入库副作用
@@ -417,14 +420,15 @@ def test_api_promote_idempotent_no_duplicate(db_session):
     ).scalar() == 0
 
 
-@pytest.mark.xfail(
-    reason="PT-DEF-14（待拍板）：同一指标重复 promote 应幂等到同一条草案，"
-           "实测每次提交都生成新 draft_no（fd-*）→ 同码草案会不断堆积；"
-           "端点里的 factor_code_conflict→409 分支因此永远不会命中。",
-    strict=False,
-)
 def test_api_promote_twice_reuses_same_draft(db_session):
-    """缺陷警报线：两次提交应命中同一条草案。"""
+    """PT-DEF-14 守护：同一指标重复 promote 必须幂等复用于那条未审草案。
+
+    以前每点一次“提升为因子”就新增一条 submitted 草案（fd-*），同码草案会不断
+    堆积；而端点里的 factor_code_conflict→409 只查 factors 表，永远拦不到。
+    （source_module + source_ref_id 上本来就为此建了 ix_factor_drafts_source 索引。）
+    """
+    from app.models.factor_governance import FactorDraft
+
     ind = _make_indicator(db_session, key="api_idem_reuse", formula="close")
     client = _make_test_client(db_session)
 
@@ -434,8 +438,19 @@ def test_api_promote_twice_reuses_same_draft(db_session):
     r2 = client.post(
         f"/api/v1/settings/custom-indicators/{ind.id}/promote-to-factor", json={}
     )
+    assert r1.status_code == 201 and r2.status_code == 201
     assert r1.json()["source_mapping"]["facade_draft_id"] == \
         r2.json()["source_mapping"]["facade_draft_id"]
+
+    db_session.expire_all()
+    open_drafts = db_session.execute(
+        select(FactorDraft).where(
+            FactorDraft.source_module == "custom_indicators",
+            FactorDraft.source_ref_id == str(ind.id),
+            FactorDraft.review_status == "submitted",
+        )
+    ).scalars().all()
+    assert len(open_drafts) == 1, [d.draft_no for d in open_drafts]
 
 
 # ══════════════════════════════════════════════════════════

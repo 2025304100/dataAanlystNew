@@ -10001,12 +10001,6 @@ blackbox-output.log
 .venv/Scripts/tabulate.exe
 .venv/Scripts/tqdm.exe
 .venv/Scripts/uvicorn.exe
-alembic/env.py
-alembic/versions/2026_08_31_0045_wps_0023_043_security_status_daily.py
-alembic/versions/2026_08_31_0046_wps_0023_044_backtest_filter_events.py
-alembic/versions/2026_08_31_0047_wps_0023_045_bfg_extend_run_fields.py
-alembic/versions/2026_09_02_0048_wps_0023_046_fix_idempotency_status_index_rollback.py
-alembic/versions/2026_09_02_0049_wps_0023_047_bfg_run_stage_and_progress.py
 .venv/Lib/site-packages/playwright/__init__.py
 .venv/Lib/site-packages/playwright/__main__.py
 .venv/Lib/site-packages/playwright/_repo_version.py

@@ -754,8 +754,17 @@ def submit_factor_draft_from_external(
             return "{}"
 
     # ── P2-G：构造 factor_drafts 草稿对象（无论路径都落地，保持可追溯） ──
-    _suggested_code = str(payload.get("factor_code") or "") or (
-        f"from-{source_module}-{source_ref_id}"
+    # 代码优先级：调用方显式指定（factor_code / code）→ 上游业务键（indicator_key）
+    # → 兜底派生名。以前只认 `factor_code`，而 custom_indicators 路由传的是
+    # `code` / `indicator_key`，结果草案一律叫 from-custom_indicators-<id>，
+    # 丢掉了 WP4-01“因子代码沿用指标 key”的语义（审批队列里认不出是哪个指标）。
+    _explicit_code = str(
+        payload.get("factor_code") or payload.get("code") or ""
+    ).strip()
+    _suggested_code = (
+        _explicit_code
+        or str(payload.get("indicator_key") or "").strip()
+        or f"from-{source_module}-{source_ref_id}"
     )
     _draft_no = "fd-" + uuid.uuid4().hex[:12]
     _payload_for_store: dict[str, Any] = dict(payload) if payload else {}
@@ -835,6 +844,28 @@ def submit_factor_draft_from_external(
                     _reject_reason = f"factor_code_conflict:{_suggested_code}"
                     _reject_label = "rejected_draft"
             if _reject_reason is None:
+                # PT-DEF-14：同一上游对象重复提审，必须幂等复用于“还在审批队列里”的
+                # 草案（submitted）。`source_module + source_ref_id` 本来就是为此建的
+                # 索引（ix_factor_drafts_source），但当时只写不读 → 每点一次“提升为
+                # 因子”就堆一条同 suggested_code 的 submitted 草案，而下面的
+                # factor_code 冲突检查只查 factors 表，永远拦不住。
+                _open_draft_no = db.execute(
+                    select(_FactorDraft.draft_no).where(
+                        _FactorDraft.source_module == source_module,
+                        _FactorDraft.source_ref_id == _source_ref_id_str,
+                        _FactorDraft.review_status == "submitted",
+                    ).order_by(_FactorDraft.id.desc()).limit(1)
+                ).scalar_one_or_none()
+                if _open_draft_no is not None:
+                    return ExternalFactorDraftSubmission(
+                        draft_id=_open_draft_no,
+                        factor_code=_suggested_code,
+                        review_status="submitted",
+                        audit_url=f"/factor-center/drafts/{_open_draft_no}",
+                        message=(
+                            "draft_replayed;open_draft_reused_for_same_source"
+                        ),
+                    )
                 # 校验通过 → 草稿写 submitted，回写 indicator approval_status
                 _draft_obj.review_status = "submitted"
                 _draft_obj.payload_json = _json_safe(_payload_for_store)

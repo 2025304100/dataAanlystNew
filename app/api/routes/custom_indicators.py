@@ -566,7 +566,8 @@ def promote_indicator_to_factor(
 
     # P0 ACL：禁止从 custom_indicators（非因子域模块）直接 import 因子 ORM。
     # 这里仅返回 Facade 已知的字段 + 幂等溯源键。
-    # P1 TODO：让 Facade 扩展返回结构化的 factor_id / factor_version_id / version。
+    # 草案阶段尚无 Factor/FactorVersion（审批通过后才 promote），所以三个 id
+    # 返 null 而不是假的 0；后续可让 Facade 在 applied 时回传真实 id。
     factor_code = submission.factor_code or ""
     source_mapping: dict = {
         "indicator_id": indicator_id,
@@ -579,10 +580,10 @@ def promote_indicator_to_factor(
 
     return CustomIndicatorPromoteResponse(
         success=True,
-        factor_id=0,
+        factor_id=None,
         factor_code=factor_code,
-        factor_version_id=0,
-        factor_version=1,
+        factor_version_id=None,
+        factor_version=None,
         lifecycle_status="draft",
         origin="user",
         source_mapping=source_mapping,

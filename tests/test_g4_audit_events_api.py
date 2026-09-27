@@ -30,6 +30,11 @@ os.environ.setdefault("ALEMBIC_DATABASE_URL", "")
 os.environ.setdefault("STRICT_AUTH", "0")
 os.environ.setdefault("AUDITOR_ALLOW_LOCAL_DEV", "0")
 
+# 以前本文件无任何 marker → `pytest -m whitebox`（CI backend-whitebox job）
+# 静默 deselect 它，test_g4_aud_02_filters 的挂钟定时炸弹因此无人看见（
+# 体检报告 §七.5 / §十）。现已修复该用例并纳入 CI 可见范围。
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture(scope="function")
 def tmp_alembic_db():
@@ -210,9 +215,11 @@ def test_g4_aud_02_filters(tmp_alembic_db):
     assert r.total == 3
     assert all(it.operator_id == "u_jerry" for it in r.items)
 
-    # occurred_from = 远未来（比今天 8 月 17 日 大） → total=0
+    # occurred_from 取“比全部种子事件都晚”的时刻 → total=0
+    # 以前写死 datetime(2026, 9, 1)：而上方的 scd2/auto_simulation 审计默认
+    # occurred_at=now，挂钟一旦过了 9-01 这些行就落进区间 → 挂钟定时炸弹。
     r = _call_route_portfolio(db, pid, "u_viewer",
-                              occurred_from=datetime(2026, 9, 1, tzinfo=timezone.utc),
+                              occurred_from=datetime.now(timezone.utc) + timedelta(days=1),
                               page_size=100)
     assert r.total == 0
 

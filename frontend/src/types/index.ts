@@ -1199,10 +1199,12 @@ export interface CustomIndicator {
 /** WP4-01: 数值指标提升为因子草稿的响应。 */
 export interface CustomIndicatorPromoteResponse {
   success: boolean;
-  factor_id: number;
+  // 草案阶段尚无 Factor/FactorVersion（审批通过后才 promote），后端返 null
+  // 而不是假的 0；真实 id 在草案 applied 后可由 factor_drafts 查到。
+  factor_id: number | null;
   factor_code: string;
-  factor_version_id: number;
-  factor_version: number;
+  factor_version_id: number | null;
+  factor_version: number | null;
   lifecycle_status: string;
   origin: string;
   source_mapping: {
