@@ -26,6 +26,9 @@ from app.services.portfolio_state_machine import _get_status
 TRADE_DATE = date(2026, 8, 20)
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _seed_partial_auto_execution(db_session):
     portfolio = Portfolio(
         name="stage5-reconciliation-execution",

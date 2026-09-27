@@ -18,6 +18,7 @@ import pytest
 os.environ.setdefault("ALEMBIC_DATABASE_URL", "")
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture(scope="function")
 def tmp_alembic_db():
     fd, path = tempfile.mkstemp(suffix=".db", prefix="qa_g1_legacy_")

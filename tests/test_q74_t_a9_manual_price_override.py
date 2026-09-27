@@ -12,6 +12,7 @@ from datetime import date
 from typing import Any
 
 
+pytestmark = pytest.mark.whitebox
 class _FakeClock:
     def __init__(self):
         from datetime import datetime

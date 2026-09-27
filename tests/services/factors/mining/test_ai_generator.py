@@ -29,6 +29,7 @@ from app.services.factors.mining import ai_generator as AG
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 class _FakeResult:
     def __init__(self, *, success: bool = True, raw_response: str = "",
                  total_tokens: int = 100, error_type: str | None = None,

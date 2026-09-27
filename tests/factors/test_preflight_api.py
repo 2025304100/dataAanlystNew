@@ -18,6 +18,7 @@ from app.models.factor import Factor
 from app.models.factor_model import FactorVersion
 
 
+pytestmark = pytest.mark.whitebox
 def _seed_factor(db_session, factor_code="pf_valid_001", formula="close", postprocess=None):
     factor = Factor(
         code=factor_code,

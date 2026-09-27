@@ -25,6 +25,7 @@ from app.services.score_query_service import (
 )
 
 
+pytestmark = pytest.mark.whitebox
 def _make_s(db: "Session", sym: Symbol) -> Symbol:
     db.add(sym)
     db.commit()

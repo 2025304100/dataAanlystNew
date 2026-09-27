@@ -45,6 +45,7 @@ S_METRICS = {
 }
 
 
+pytestmark = pytest.mark.whitebox
 def m(**over):
     base = dict(S_METRICS)
     base.update(over)

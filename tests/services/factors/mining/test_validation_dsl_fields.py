@@ -24,6 +24,7 @@ import pytest
 from app.services.factors.mining import validation_service as VS
 
 
+pytestmark = pytest.mark.whitebox
 class _FakeConn:
     def __init__(self, row):
         self._row = row

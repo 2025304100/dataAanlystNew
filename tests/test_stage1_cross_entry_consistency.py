@@ -28,6 +28,7 @@ from app.services.decision_engine import DecisionStateContext, default_engine
 from app.services.sim_accounts import cash_balance
 
 
+pytestmark = pytest.mark.whitebox
 def _canonical_plan(plan):
     return {
         "symbol_id": int(plan.symbol_id),

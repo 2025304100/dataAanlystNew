@@ -19,6 +19,9 @@ from app.services.decision_engine import DecisionStateContext, default_engine
 from app.services import market_data
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _seed_strict_snapshot(db_session, *, snapshot_id: str):
     portfolio = Portfolio(
         name=f"daily-bar-pit-{snapshot_id}",

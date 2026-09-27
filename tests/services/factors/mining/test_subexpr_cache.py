@@ -27,6 +27,7 @@ from app.services.factors.mining import dedup as DD
 from app.services.factors.mining import subexpr_cache as SC
 
 
+pytestmark = pytest.mark.whitebox
 def _cache(scope: str = SC.SCOPE_PRESCREEN, snapshot: str = "snap-1",
            **kw) -> SC.SubexpressionCache:
     return SC.SubexpressionCache(scope=scope, data_snapshot_version=snapshot, **kw)

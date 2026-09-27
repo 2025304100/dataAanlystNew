@@ -29,6 +29,7 @@ from app.services.factors.mining import service as SVC
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture
 def run_row(db_session):
     row = FactorMiningRun(

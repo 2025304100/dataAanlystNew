@@ -49,6 +49,7 @@ from app.services.factors.pipeline_task import (
 
 
 # ── 私有夹具 helper ──────────────────────────────────────────────────
+pytestmark = pytest.mark.whitebox
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 

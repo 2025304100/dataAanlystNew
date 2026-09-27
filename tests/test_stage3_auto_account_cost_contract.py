@@ -7,6 +7,9 @@ from app.models.symbol import Symbol
 from app.services.sim_accounts import cash_balance, ensure_sim_account_seed, place_sim_order
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_precomputed_match_fee_is_not_recalculated_by_account_adapter(db_session):
     portfolio = Portfolio(
         name="stage3-account-cost",

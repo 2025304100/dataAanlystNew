@@ -28,6 +28,7 @@ from app.services.factors.store import FactorWarehouse
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture
 def valid_execution_plan() -> ExecutionPlan:
     """构造含有 data_dependencies 的合法 ExecutionPlan。"""

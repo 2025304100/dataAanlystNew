@@ -11,6 +11,9 @@ from app.services.g5_dual_run_audit import persist_g5_summary
 from tests.test_g6_rollout_actions import _passing_g5
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _portfolio(db, name: str, *, account_type: str = "simulated") -> Portfolio:
     row = Portfolio(
         name=name,

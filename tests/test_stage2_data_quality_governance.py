@@ -11,6 +11,9 @@ from datetime import date
 from sqlalchemy import select
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_quality_levels_use_theoretical_denominator_and_critical_rules():
     from app.services.data_quality import assess_data_integrity
 

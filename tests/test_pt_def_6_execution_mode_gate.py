@@ -20,6 +20,9 @@ from app.models.symbol import Symbol
 from app.services.decision_engine import default_engine
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _seed_three_mode_portfolio(db):
     """auto/manual/confirm 三成员组合 + 可成交快照（各自 score=BUY、行情齐备）。"""
     portfolio = Portfolio(

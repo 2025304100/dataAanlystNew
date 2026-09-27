@@ -10,6 +10,7 @@ import pytest
 from app.services.factors.experience import fingerprint as fp
 
 
+pytestmark = pytest.mark.whitebox
 def _mean_call(field: str, window: int) -> dict:
     return {
         "type": "Expression",

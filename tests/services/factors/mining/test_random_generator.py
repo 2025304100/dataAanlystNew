@@ -25,6 +25,7 @@ from app.services.factors.mining import random_generator as RG
 # ── 假编译器：让大多数用例不依赖真编译（确定性 + 快）──
 
 
+pytestmark = pytest.mark.whitebox
 class _Plan:
     def __init__(self, formula: str) -> None:
         self.formula = formula

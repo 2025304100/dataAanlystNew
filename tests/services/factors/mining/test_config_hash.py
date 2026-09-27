@@ -20,6 +20,7 @@ from app.services.factors.mining import config_hash as CH
 from app.services.factors.mining import draft_service as DS
 
 
+pytestmark = pytest.mark.whitebox
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 

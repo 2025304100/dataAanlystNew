@@ -71,6 +71,7 @@ DEFAULT_CFG = BacktestFilterConfig()
 # =====================================================================
 # 辅助工厂
 # =====================================================================
+pytestmark = pytest.mark.whitebox
 def _mk(
     sid: int,
     status: str = "LISTED",

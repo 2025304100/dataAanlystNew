@@ -9,6 +9,9 @@ from app.models.symbol import Symbol
 from app.services.auto_trade_member_source import execute_member_source
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_snapshot_auto_simulation_uses_decision_order_plans(monkeypatch):
     observed = {}
 

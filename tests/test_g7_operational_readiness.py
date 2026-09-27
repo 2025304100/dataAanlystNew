@@ -11,6 +11,9 @@ from app.services.g5_dual_run_audit import persist_g5_summary
 from app.services.portfolio_state_machine import _set_status
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _portfolio(db_session, name: str) -> Portfolio:
     row = Portfolio(
         name=name,

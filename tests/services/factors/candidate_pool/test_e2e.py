@@ -36,6 +36,7 @@ N_MEMBERS = 60
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 def _panel(seed: int = 7) -> A.AnalysisPanel:
     rng = np.random.default_rng(seed)
     symbols = [f"M{i:04d}" for i in range(N_MARKET)]

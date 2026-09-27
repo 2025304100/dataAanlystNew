@@ -10,6 +10,7 @@ import pytest
 from app.services.factors.experience import generalization as gen
 
 
+pytestmark = pytest.mark.whitebox
 def _doc_ast(window1: int = 20, window2: int = 60) -> dict:
     """开发文档 §3.12 示例公式的序列化 AST。"""
     return {

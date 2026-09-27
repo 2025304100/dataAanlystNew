@@ -16,6 +16,9 @@ from app.models.symbol import Symbol
 from app.services.backtest import run_backtest
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_partial_buy_retry_accumulates_the_original_plan_on_one_trade(db_session):
     """A volume-limited BUY retry must retain its plan/evidence identity.
 

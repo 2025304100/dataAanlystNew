@@ -57,6 +57,7 @@ from app.services.factors.mining.reproduction.scheduler import (
 # C1 自适应调度器（唯一调参者）
 # ══════════════════════════════════════════════════════════
 
+pytestmark = pytest.mark.whitebox
 class TestSchedulerGuards:
     def test_rates_within_guard_and_sum_one(self):
         sch = AdaptiveScheduler()

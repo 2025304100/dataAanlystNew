@@ -15,6 +15,9 @@ from app.services.decision_engine import (
 )
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _engine_with_observer(observed: dict):
     snapshot = SimpleNamespace(
         id="snapshot-plan-seam",

@@ -15,6 +15,7 @@ from app.api.routes import factor_experience as route_mod
 from app.db.session import get_db
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture()
 def client(db_session):
     app = FastAPI()

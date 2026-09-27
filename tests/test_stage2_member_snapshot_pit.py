@@ -13,6 +13,9 @@ from app.models.portfolio_member import (
 from app.services.factor_usage_service import _build_member_snapshot
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _member(
     db_session,
     *,

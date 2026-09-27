@@ -38,6 +38,7 @@ from app.services.factors.mining.statistical_tests import (
 # Bonferroni / FDR（自研，唯一实现路径）
 # ══════════════════════════════════════════════════════════
 
+pytestmark = pytest.mark.whitebox
 class TestBonferroni:
     def test_basic_scaling(self):
         out = bonferroni_adjust([0.01, 0.2], total_trials=10)

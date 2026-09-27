@@ -38,6 +38,7 @@ from app.services.factors.mining.dedup import ELIM_REASON_SIMILAR
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 def _panel(n_dates: int = 40, n_symbols: int = 100, *, seed: int = 0,
            scale: float = 1.0) -> pd.DataFrame:
     rng = np.random.default_rng(seed)

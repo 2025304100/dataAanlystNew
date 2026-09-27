@@ -12,6 +12,9 @@ from app.models.symbol import Symbol
 from app.services.decision_engine import default_engine
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _seed_persistable_decision(db):
     portfolio = Portfolio(
         name="order-plan-ledger", account_type="simulated", asset_scope="mixed",

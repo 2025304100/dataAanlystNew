@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 
 
+pytestmark = pytest.mark.whitebox
 class TestIdempotencyFingerprint:
     """compute_payload_fingerprint 幂等性验证。"""
 

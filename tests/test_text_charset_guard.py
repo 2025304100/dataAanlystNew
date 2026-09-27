@@ -21,6 +21,7 @@ from app.core.text_charset import (
 )
 
 
+pytestmark = pytest.mark.whitebox
 class TestFind4ByteChars:
     def test_bmp_text_passes(self):
         assert find_4byte_chars("") == ""

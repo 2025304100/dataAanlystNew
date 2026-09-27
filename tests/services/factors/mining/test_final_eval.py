@@ -37,6 +37,7 @@ from app.services.factors.mining import service as SVC
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 def _all_dates(n: int = 560) -> list[date]:
     start = date(2026, 1, 5)
     return [start + timedelta(days=i) for i in range(n)]

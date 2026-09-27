@@ -25,6 +25,7 @@ from app.services.factors.mining import validation_service as VS
 _TERMINAL = {"done", "failed", "cancelled"}
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture
 def val_env(db_session, monkeypatch):
     import app.db.session as session_mod

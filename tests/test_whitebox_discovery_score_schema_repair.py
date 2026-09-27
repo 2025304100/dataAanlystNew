@@ -6,6 +6,9 @@ from app.db.init_db import _ensure_sqlite_score_columns
 from app.models.score import Score
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_legacy_scores_table_repairs_traceability_columns(db_session):
     """A legacy scores table must remain queryable by the current Score ORM."""
     engine = db_session.get_bind()

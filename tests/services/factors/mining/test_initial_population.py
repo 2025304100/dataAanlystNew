@@ -25,6 +25,7 @@ from app.services.factors.mining import initial_population as IP
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 class _FakePlan:
     def __init__(self, formula: str, params: dict) -> None:
         self.formula = formula

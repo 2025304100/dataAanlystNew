@@ -11,6 +11,7 @@ import pytest
 from app.services.backtest import _apply_order_plan_evidence
 
 
+pytestmark = pytest.mark.whitebox
 def _trade(symbol_id: int = 11):
     return SimpleNamespace(
         symbol_id=symbol_id,

@@ -4,6 +4,9 @@ from app.schemas.macro import MacroUpdateRequest
 from app.services import macro, macro_update_task
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_update_macro_data_reports_progress(monkeypatch, db_session):
     specs = [
         macro.MacroSpec("cn", "growth", "cn_demo_growth", "CN Demo Growth", "demo_growth", 1, "%", "monthly", "higher", neutral=1.0, scale=2.0),

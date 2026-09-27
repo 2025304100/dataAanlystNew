@@ -19,6 +19,7 @@ from app.models.factor_experience import (
 from app.services.factors.experience import service as svc
 
 
+pytestmark = pytest.mark.whitebox
 def _ast(field: str = "close", window: int = 20) -> dict:
     return {
         "type": "Expression",

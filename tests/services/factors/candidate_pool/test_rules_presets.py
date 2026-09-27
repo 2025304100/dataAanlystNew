@@ -34,6 +34,7 @@ from app.services.factors.candidate_pool import rules as R
 N_STOCKS = 60
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture
 def small_panel() -> R.ScreeningPanel:
     """60 只沪市主板标的；10 只市值 ≥ 1e9，其余 3e8。"""

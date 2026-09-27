@@ -7,6 +7,9 @@ from app.services.reconciliation_conservation import evaluate_five_vector_conser
 from scripts.backtest_conservation_report import _conservation_price, _is_actionable_side, build_report
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_legacy_run_is_explicitly_excluded_from_modern_daily_report():
     run = SimpleNamespace(
         id=7,

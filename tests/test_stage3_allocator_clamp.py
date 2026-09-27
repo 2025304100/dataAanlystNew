@@ -16,6 +16,9 @@ from app.services.decision_engine import (
 )
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_explicit_zero_stage_limit_blocks_new_buy_and_is_auditable(db_session):
     """A configured zero stage limit must never be treated as an unset limit."""
     portfolio = Portfolio(

@@ -26,6 +26,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # ============================================================================
 # 1. PortfolioFactorUsage Schema 契约
 # ============================================================================
+pytestmark = pytest.mark.whitebox
 class TestWP02PortfolioFactorUsageSchema:
     @staticmethod
     def _model():

@@ -30,6 +30,7 @@ from app.services.factors.mining import performance_probe as PP
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 class TestColumnsMatchModel:
     def test_six_stages(self):
         assert PP.STAGES == ("data_load", "ast_eval", "subexpr_compute",

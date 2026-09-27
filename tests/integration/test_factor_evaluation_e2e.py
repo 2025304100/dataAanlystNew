@@ -18,6 +18,7 @@ from tests.integration.conftest import wait_for_task_status
 BASE = "/api/v1/factor-evaluation"
 
 
+pytestmark = pytest.mark.whitebox
 def _base_payload(overrides: dict | None = None, *, factor_version_id: int | None = None) -> dict:
     payload = {
         "factor_code": "close",

@@ -24,6 +24,7 @@ from app.services.factors import factor_set_service as FSS
 from app.services.factors.mining import service as SVC
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture
 def run_row(db_session):
     import uuid as _uuid

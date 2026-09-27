@@ -42,6 +42,7 @@ S_METRICS = {
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 def _alembic_cfg():
     from alembic.config import Config
 

@@ -25,6 +25,7 @@ from app.services.factors.mining import dedup as DD
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 class TestCanonicalizeCommutative:
     @pytest.mark.parametrize("a,b", [
         ("close+volume", "volume+close"),

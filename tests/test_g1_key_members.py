@@ -13,6 +13,7 @@ from datetime import date, datetime
 import pytest
 
 
+pytestmark = pytest.mark.whitebox
 def _make_symbol(db, sym_code: str, name: str = "测试股") -> int:
     from app.models.symbol import Symbol
     s = Symbol(symbol=sym_code, name=name, market="SH", asset_type="stock")

@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PRE_0038_REVISION = "wps_0023_035_data_quality_quarantines"
 
 
+pytestmark = pytest.mark.whitebox
 def _alembic_config(db_path: Path, monkeypatch: pytest.MonkeyPatch) -> Config:
     db_url = f"sqlite:///{db_path.as_posix()}"
     monkeypatch.setenv("ALEMBIC_DATABASE_URL", db_url)

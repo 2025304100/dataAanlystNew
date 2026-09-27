@@ -24,6 +24,7 @@ from app.services.factors.mining import service as SVC
 from app.services.factors.mining import template_service as TPL
 
 
+pytestmark = pytest.mark.whitebox
 def _client(db_session):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

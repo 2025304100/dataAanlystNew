@@ -19,6 +19,7 @@ import pytest
 os.environ.setdefault("ALEMBIC_DATABASE_URL", "")
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture(scope="function")
 def tmp_alembic_db():
     """与 G1 系列一致：迁移空 SQLite（T-B1 本身是纯函数，不依赖 DB；保持 fixture 约定以便扩展集成测）。"""

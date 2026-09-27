@@ -45,6 +45,7 @@ from app.services.factors.mining import service as SVC
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 def _make_factor_and_version(db):
     f = Factor(code="B2F", name="B2 factor", category="trend",
                direction="positive", status="active")

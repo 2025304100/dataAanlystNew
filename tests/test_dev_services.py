@@ -5,6 +5,7 @@ import pytest
 from scripts import dev_services
 
 
+pytestmark = pytest.mark.whitebox
 def test_admin_wrapper_cleans_every_supported_service_mode():
     script = (dev_services.ROOT / "scripts" / "dev_services_admin.ps1").read_text(encoding="utf-8")
 

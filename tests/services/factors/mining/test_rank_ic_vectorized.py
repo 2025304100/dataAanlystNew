@@ -27,6 +27,7 @@ import pytest
 from app.services.factors.factor_evaluator import compute_rank_ic
 
 
+pytestmark = pytest.mark.whitebox
 def _reference_rank_ic_series(
     features: pd.DataFrame, targets: pd.DataFrame
 ) -> list[float]:

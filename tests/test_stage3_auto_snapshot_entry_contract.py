@@ -8,6 +8,9 @@ from app.models.decision_engine import StrategyExecutionSnapshot
 from app.models.portfolio import Portfolio
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _portfolio(db_session) -> Portfolio:
     portfolio = Portfolio(
         name="stage3-auto-snapshot-entry",

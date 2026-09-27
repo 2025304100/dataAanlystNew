@@ -47,6 +47,7 @@ SERVICES_DIR = REPO_ROOT / "app" / "services"
 # T-C1 + T-C2
 # ═══════════════════════════════════════════════════════════════════════════════
 
+pytestmark = pytest.mark.whitebox
 class TestTCAndTC2Clock:
     """T-C1.2 三字段精确 UTC 值 + T-C2.1 资产类统一时点。"""
 

@@ -6,6 +6,9 @@ from app.services.g5_dual_run_audit import latest_g5_summary, persist_g5_summary
 from app.models.portfolio import Portfolio
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _summary(portfolio_id: int, *, eligible: bool = True) -> dict:
     return {
         "portfolio_id": portfolio_id,

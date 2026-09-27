@@ -31,6 +31,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # ============================================================================
 # C. PortfolioCandidate SCD2 5 铁律 —— 服务层契约（纯函数/服务存在性检查 + 规则断言）
 # ============================================================================
+pytestmark = pytest.mark.whitebox
 class TestWP02CandidatePoolGate:
     """规则 1/2/3：候选池 BUY 门禁。"""
 

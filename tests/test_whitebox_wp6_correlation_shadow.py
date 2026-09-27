@@ -71,6 +71,7 @@ from app.services.factors.factor_shadow import (
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 def _make_factor_and_version(
     db_session,
     factor_code="test_factor_wp6_001",

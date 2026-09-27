@@ -36,6 +36,7 @@ from app.services import decision_clock
 # HASH / IDEMPOTENCY (Q28)
 # ============================================================================
 
+pytestmark = pytest.mark.whitebox
 class TestHashDeterminism:
     def test_canonical_json_sorts_keys_and_drops_none(self):
         a = {"z": 1, "a": None, "b": {"y": 2, "x": None}}

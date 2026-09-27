@@ -51,6 +51,7 @@ DEFAULT_CFG = BacktestFilterConfig()  # 全量开启 + production_fidelity=True
 # =====================================================================
 # 辅助：快速构造 SecurityStatusDTO
 # =====================================================================
+pytestmark = pytest.mark.whitebox
 def _mk_status(
     symbol_id: int,
     status: str = "LISTED",

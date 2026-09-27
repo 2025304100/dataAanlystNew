@@ -31,6 +31,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # ============================================================================
 # A. T4a Canonical Hash + FactorUsage 原子事务
 # ============================================================================
+pytestmark = pytest.mark.whitebox
 class TestWP02T4aCanonicalHash:
     """T4a 精度规则：Decimal 10 位去尾零 / 无 NaN-Inf / 键排序 / 无空格无换行 / UTF-8"""
 

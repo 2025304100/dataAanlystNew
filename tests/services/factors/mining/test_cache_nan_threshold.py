@@ -30,6 +30,9 @@ import numpy as np
 from app.services.factors.mining import subexpr_cache as SC
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _cache(**kw):
     return SC.SubexpressionCache(scope=SC.SCOPE_PRESCREEN,
                                  data_snapshot_version="s-1", **kw)

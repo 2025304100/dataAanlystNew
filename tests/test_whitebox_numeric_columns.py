@@ -44,6 +44,7 @@ EXPECTED_TARGETS: dict[str, list[str]] = {
 _EXPECTED_CASES = [(t, c) for t, cols in sorted(EXPECTED_TARGETS.items()) for c in cols]
 
 
+pytestmark = pytest.mark.whitebox
 def _load_migration_targets() -> dict[str, list[str]]:
     """从迁移文件加载 _TARGETS（文件名非合法标识符，用 importlib 按路径加载）。"""
     assert MIGRATION_0057.exists(), f"迁移文件缺失：{MIGRATION_0057}"

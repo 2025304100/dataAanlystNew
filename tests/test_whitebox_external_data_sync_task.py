@@ -16,6 +16,7 @@ from app.services import external_data_sync_task as service
 from app.services import capital_flow_data
 
 
+pytestmark = pytest.mark.whitebox
 class _DeferredThread:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -118,7 +119,8 @@ def test_serializes_same_dataset_but_allows_independent_external_syncs(db_sessio
     independent = service.start_external_data_sync("financial", {"source": "watchlist"})
     assert independent.task_type == "external_sync_financial"
 
-    with pytest.raises(RuntimeError, match="already running"):
+    # 错误文案已本地化为中文（面向用户的拦截提示），这里改校稳定的中文子串
+    with pytest.raises(RuntimeError, match="同类型外部数据同步任务在运行"):
         service.start_external_data_sync("hot_rank", {"source": "watchlist"})
 
 
@@ -136,7 +138,8 @@ def test_market_data_task_has_priority_over_new_external_task(db_session, monkey
     db_session.commit()
     monkeypatch.setattr(service.threading, "Thread", lambda **kwargs: _DeferredThread(**kwargs))
 
-    with pytest.raises(RuntimeError, match="Market-data synchronization has priority"):
+    # 同上：行情同步优先拦截提示已中文化（【行情同步优先级】…）
+    with pytest.raises(RuntimeError, match="行情同步优先级"):
         service.start_external_data_sync("hot_rank", {"source": "watchlist"})
 
 

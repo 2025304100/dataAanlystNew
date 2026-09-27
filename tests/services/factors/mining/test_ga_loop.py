@@ -33,6 +33,7 @@ from app.services.factors.mining import service as SVC
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 def _population(n: int, *, prefix: str = "f") -> list[dict]:
     """构造初始种群（朴素公式，参数可被变异/交叉操作）。"""
     return [{"formula": f"mean(close,{10 + i*10})-{i}",

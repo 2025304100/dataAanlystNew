@@ -6,6 +6,9 @@ from datetime import date
 from scripts.g5_dual_run_report import load_input
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_g5_report_loader_preserves_both_chain_snapshots(tmp_path):
     source = tmp_path / "g5.json"
     source.write_text(json.dumps({

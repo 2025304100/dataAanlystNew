@@ -12,6 +12,7 @@ import pytest
 # TR-1.1: TestClient + 路由挂载验证
 # ══════════════════════════════════════════════════════════════════════════════
 
+pytestmark = pytest.mark.whitebox
 def test_TR_1_1_test_client_and_routes(client, app):
     """验证 TestClient 可用，factor-evaluation 两个核心端点返回 200。"""
     resp_runs = client.get("/factor-evaluation/runs")

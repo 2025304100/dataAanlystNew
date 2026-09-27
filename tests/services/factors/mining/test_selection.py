@@ -48,6 +48,7 @@ from app.services.factors.mining.selection.tournament import (
 # B1 多目标 NSGA-II
 # ══════════════════════════════════════════════════════════
 
+pytestmark = pytest.mark.whitebox
 class TestObjectiveSpecs:
     def test_default_specs_directions(self):
         specs = resolve_specs(DEFAULT_ENABLED_OBJECTIVES)

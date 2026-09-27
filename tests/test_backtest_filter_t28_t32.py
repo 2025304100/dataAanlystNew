@@ -36,6 +36,7 @@ from app.services.backtest_filters.bridge import (
 # Task 28.5 — 2 条 pytest
 # ========================================================================
 
+pytestmark = pytest.mark.whitebox
 def test_register_rules_count():
     rules = register_filter_governance_alerts()
     assert set(rules) == {

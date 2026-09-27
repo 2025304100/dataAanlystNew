@@ -41,6 +41,7 @@ _FORMULAS = [
 ]
 
 
+pytestmark = pytest.mark.whitebox
 def _population(n: int) -> list[dict]:
     """构造跨类别初始种群（每类都有代表，保证 A1 赛道配额可分）。"""
     out: list[dict] = []

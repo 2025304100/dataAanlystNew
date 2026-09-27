@@ -38,6 +38,7 @@ _INTERNAL_PATTERNS = [
 ]
 
 
+pytestmark = pytest.mark.whitebox
 def _blocked_bindings():
     return [b for b in FIELD_BINDINGS.values() if b.blocked]
 

@@ -35,6 +35,7 @@ FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "backtest_filter_3
 # =====================================================================
 # Fixture loader
 # =====================================================================
+pytestmark = pytest.mark.whitebox
 def _load_baseline():
     raw = FIXTURE_PATH.read_text(encoding="utf-8")
     return json.loads(raw)

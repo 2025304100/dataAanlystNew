@@ -33,6 +33,7 @@ VERSIONS_DIR = ROOT / "alembic" / "versions"
 # ============================================================================
 
 
+pytestmark = pytest.mark.whitebox
 def _load_revision_modules() -> dict:
     """加载 alembic/versions/ 下所有 revision 模块，返回 {revision_id: module}。
 

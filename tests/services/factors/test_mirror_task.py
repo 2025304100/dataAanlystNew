@@ -25,6 +25,7 @@ from app.services.factors.mining import task_lock as TL
 _TERMINAL = {"done", "failed", "cancelled"}
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture
 def mirror_env(db_session, monkeypatch):
     import app.db.session as session_mod

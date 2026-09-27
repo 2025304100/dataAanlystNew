@@ -42,6 +42,7 @@ D2_DIM_VALUE_SUBSET = (
 )
 
 
+pytestmark = pytest.mark.whitebox
 def _expected_composite_from_raw_max(s1: PortfolioStatus, s2: PortfolioStatus,
                                      s3: PortfolioStatus, s4: PortfolioStatus
                                      ) -> PortfolioStatus:

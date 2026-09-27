@@ -9,6 +9,9 @@ from app.schemas.scheduled_task import ScheduledTaskCreate, ScheduledTaskUpdate
 from app.services import scheduled_tasks
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_calculate_next_daily_and_weekly_run_in_configured_timezone():
     after = datetime(2026, 7, 13, 9, 0)  # 17:00 Asia/Shanghai
     daily = scheduled_tasks.calculate_next_run(

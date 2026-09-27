@@ -13,6 +13,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SEED_SCRIPT = REPOSITORY_ROOT / "scripts" / "seed_ui_acceptance.py"
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_seed_ui_acceptance_provides_the_g3_matrix_data_shape(tmp_path: Path) -> None:
     """The fixture exposes enough real persisted data for every matrix path."""
     database_path = tmp_path / "ui_acceptance.db"

@@ -16,6 +16,9 @@ from app.models.symbol import Symbol
 from app.services.market_data_sources.chain import SourceChain
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _source(name: str, *, unavailable: bool = False) -> MagicMock:
     source = MagicMock()
     source.name = name

@@ -29,6 +29,7 @@ from datetime import date
 import pytest
 
 
+pytestmark = pytest.mark.whitebox
 @dataclass
 class CandidateScd2Fx:
     portfolio_id: int

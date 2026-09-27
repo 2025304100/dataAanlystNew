@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, sessionmaker
 os.environ.setdefault("ALEMBIC_DATABASE_URL", "")
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture(scope="function")
 def tmp_alembic_db():
     """与 test_simulation_matching_engine 一致：function 级全新 SQLite + alembic head。"""

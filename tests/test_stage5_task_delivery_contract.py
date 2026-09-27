@@ -10,6 +10,9 @@ from app.services import async_tasks
 from app.services import task_state_machine as tsm
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _task(db_session, *, status="interrupted", payload=None):
     row = AsyncTaskRecord(
         id="stage5-resume-contract",

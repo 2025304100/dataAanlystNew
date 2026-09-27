@@ -31,6 +31,7 @@ for _stub_mod in ("akshare", "sklearn", "sklearn.linear_model", "sklearn.metrics
         sys.modules[_stub_mod] = MagicMock(name=f"{_stub_mod}_stub")
 
 
+pytestmark = pytest.mark.whitebox
 def _make_synthetic_factor_panel(n_symbols: int = 12, n_dates: int = 12) -> pd.DataFrame:
     """构造 synthetic 因子面板（至少 10 symbols × 10 dates）。"""
     symbols = [f"SYM{i:04d}" for i in range(1, n_symbols + 1)]

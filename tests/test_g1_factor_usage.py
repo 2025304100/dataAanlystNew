@@ -25,6 +25,7 @@ from sqlalchemy import and_, select
 os.environ.setdefault("ALEMBIC_DATABASE_URL", "")
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture(scope="function")
 def tmp_alembic_db():
     """每个函数独立 SQLite 文件，显式跑 alembic upgrade head（与 G0 契约一致）。"""

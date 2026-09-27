@@ -41,6 +41,7 @@ SEED: dict[str, tuple[str, str, str, int]] = {
 }
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture
 def seeded(db_session):
     for code, (name, market, asset_type, is_active) in SEED.items():

@@ -17,6 +17,9 @@ import app.db.session as db_session
 from app.db.manager import DatabaseManager
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _tmp_url(path) -> str:
     return f"sqlite:///{path.as_posix()}"
 

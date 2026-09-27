@@ -7,6 +7,9 @@ from app.services.g5_dual_run_audit import persist_g5_summary
 from app.services.g6_graduated_rollout import evaluate_g6_readiness
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _portfolio(db_session, name: str) -> Portfolio:
     row = Portfolio(
         name=name,

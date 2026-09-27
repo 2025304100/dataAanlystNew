@@ -43,6 +43,7 @@ from app.services.decision_schedule_gate import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+pytestmark = pytest.mark.whitebox
 def _seed_portfolio(db: Session, *, name: str = "qa-g123",
                     state: str = "READY",
                     last_decision: date | None = None,

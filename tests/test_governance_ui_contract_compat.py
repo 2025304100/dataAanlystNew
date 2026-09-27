@@ -7,6 +7,9 @@ from app.api.routes.portfolio_governance import (
 )
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_ui_payload_aliases_are_accepted():
     assert ReconcileRequest(as_of_trade_date="2026-08-21").as_of_trade_date.isoformat() == "2026-08-21"
     transition = TransitionStateRequest(target_state="READY", trigger_reason="initial review")

@@ -47,6 +47,7 @@ import pytest
 
 # ── 本地构造输入数据的 fixture helper（不依赖 seam 存在与否）───────────────────────
 
+pytestmark = pytest.mark.whitebox
 @dataclass
 class DecisionLegFx:
     symbol_id: int; action: Literal["BUY","SELL","HOLD"]; target_qty: float; price_ref: float

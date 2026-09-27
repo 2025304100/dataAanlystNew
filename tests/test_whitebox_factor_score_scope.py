@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.api.routes.dashboard import _latest_score_map
 from app.services.backtest import _build_score_map
+from app.models.factor_governance import FactorModelMember
 from app.models.factor_model import FactorModelRun
 from app.models.score import Score
 from app.models.symbol import Symbol
@@ -17,6 +18,9 @@ from app.services.factors.score_scope import apply_active_score_scope
 from app.services.trade_plans import get_latest_score
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _score(symbol_id: int, *, mode: str, priority: float, model: str | None):
     return Score(
         symbol_id=symbol_id,
@@ -56,6 +60,22 @@ def test_all_decision_queries_follow_runtime_mode_and_model(db_session):
         target_code='target_5d_return',
     )
     db_session.add_all([symbol, model, other])
+    db_session.flush()
+    # 激活前置（fail-closed）：`activate_factor_model` 要求 validated 模型有非空且
+    # 有限的因子系数（查 factor_model_members），否则直接拒绝激活。
+    # 本用例只激活 `model`，所以只给它补权重行。
+    db_session.add_all([
+        FactorModelMember(
+            model_run_id=model.id, factor_code="ep_ttm",
+            factor_version=1, coefficient=0.6, normalized_weight=0.6,
+            train_ic=0.05, validation_ic=0.05, side="long",
+        ),
+        FactorModelMember(
+            model_run_id=model.id, factor_code="turnover_z20",
+            factor_version=1, coefficient=-0.4, normalized_weight=-0.4,
+            train_ic=0.03, validation_ic=0.03, side="long",
+        ),
+    ])
     db_session.flush()
     manual = _score(
         symbol.id, mode='manual', priority=40, model=None

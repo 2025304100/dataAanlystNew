@@ -24,6 +24,7 @@ from app.models.factor_evaluation import EvaluationRun
 from app.models.factor_model import FactorVersion
 
 
+pytestmark = pytest.mark.whitebox
 def _seed_factor(db_session, factor_code="sm_base", direction="higher_better"):
     factor = Factor(
         code=factor_code,

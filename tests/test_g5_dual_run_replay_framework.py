@@ -35,6 +35,7 @@ from app.services.g5_dual_run_replay import (
 # ============================================================================
 # Helpers
 # ============================================================================
+pytestmark = pytest.mark.whitebox
 def _weekday_range(d_list: list[date]) -> list[int]:
     return [d.weekday() for d in d_list]
 

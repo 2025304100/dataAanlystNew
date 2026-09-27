@@ -67,6 +67,7 @@ from app.services.factors.factor_stress import (
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 def _make_factor_and_version(db_session, factor_code="test_factor_001"):
     """创建测试因子和版本。"""
     factor = Factor(
@@ -345,7 +346,10 @@ class TestTimeSplit:
 
     def test_build_time_split_basic(self):
         """基本时间切分。"""
-        dates = [date(2026, 1, 1) + timedelta(days=i) for i in range(100)]
+        # 时间切分有数据量下限：derived_min_total=300（min_val_days=50 / val_ratio=0.2
+        # + purge 5 + embargo 5），且 usable 还要再扣掉 target_horizon 的尾巴。
+        # 以前只用 100 天 → 新版 build_time_split 直接报 insufficient_dates。
+        dates = [date(2026, 1, 1) + timedelta(days=i) for i in range(400)]
         split = build_time_split(all_dates=dates, target_horizon=5)
 
         assert split.train_start == date(2026, 1, 1)
@@ -356,7 +360,8 @@ class TestTimeSplit:
 
     def test_build_time_split_has_purge_gap(self):
         """训练-验证之间有 purge 间隔。"""
-        dates = [date(2026, 1, 1) + timedelta(days=i) for i in range(100)]
+        # 同上：需满足 derived_min_total=300 的数据量下限
+        dates = [date(2026, 1, 1) + timedelta(days=i) for i in range(400)]
         split = build_time_split(all_dates=dates, purge_days=5)
 
         # validation_start 应该至少比 train_end 晚 5 天
@@ -365,7 +370,8 @@ class TestTimeSplit:
 
     def test_build_time_split_has_embargo_gap(self):
         """验证-测试之间有 embargo 间隔。"""
-        dates = [date(2026, 1, 1) + timedelta(days=i) for i in range(100)]
+        # 同上：需满足 derived_min_total=300 的数据量下限
+        dates = [date(2026, 1, 1) + timedelta(days=i) for i in range(400)]
         split = build_time_split(all_dates=dates, embargo_days=5)
 
         if split.test_start:
@@ -857,7 +863,11 @@ class TestRunEvaluation:
         _, version = _make_factor_and_version(db_session)
         db_session.commit()
 
-        fv = _make_factor_values_df(n_days=80, n_symbols=20, seed=10)
+        # start_date 往前推到 2025-07-01：面板只会取 data_cutoff_at（2026-07-24）
+        # 之前的日期，而切分要求可用天数 ≥ 300（含 target_horizon 尾巴扣除）。
+        fv = _make_factor_values_df(
+            n_days=360, n_symbols=20, start_date=date(2025, 7, 1), seed=10
+        )
         fr = _make_forward_returns_df(fv, seed=10)
 
         config = EvaluationConfig(
@@ -893,7 +903,10 @@ class TestRunEvaluation:
         _, version = _make_factor_and_version(db_session)
         db_session.commit()
 
-        fv = _make_factor_values_df(n_days=80, n_symbols=20, seed=11)
+        # 同 test_run_evaluation_creates_run_with_metrics：需 ≥300 个落在 cutoff 前的日期
+        fv = _make_factor_values_df(
+            n_days=360, n_symbols=20, start_date=date(2025, 7, 1), seed=11
+        )
         fr = _make_forward_returns_df(fv, seed=11)
 
         config = EvaluationConfig(factor_kind="continuous")
@@ -943,7 +956,10 @@ class TestRunEvaluation:
         )
         db_session.commit()
 
-        factor_values = _make_factor_values_df(n_days=80, n_symbols=20, seed=12)
+        # 同前：时间切分要求 ≥300 个 cutoff 之前的可用日期
+        factor_values = _make_factor_values_df(
+            n_days=360, n_symbols=20, start_date=date(2025, 7, 1), seed=12
+        )
         forward_returns = _make_forward_returns_df(factor_values, seed=12)
         outcome = run_evaluation(
             db_session,

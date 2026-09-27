@@ -42,6 +42,7 @@ from app.services.factors.__facade__ import (
 
 
 # ── 私有夹具：FactorSet / Factor / FactorVersion ─────────────────────
+pytestmark = pytest.mark.whitebox
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 

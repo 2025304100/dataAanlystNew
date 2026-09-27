@@ -31,6 +31,7 @@ from tests.integration.conftest import wait_for_task_status as _wait_for_task_st
 # Synthetic Mock 基类：FactorWarehouse + trade_calendar + FactorExecutor monkeypatch
 # ══════════════════════════════════════════════════════════════════════════════
 
+pytestmark = pytest.mark.whitebox
 class SyntheticMockBase:
     """合成 mock 基类：所有 WP5 依赖均通过 monkeypatch 替换，无真实数据也能跑通。"""
 

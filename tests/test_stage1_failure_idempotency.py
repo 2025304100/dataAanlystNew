@@ -17,6 +17,7 @@ from app.services.backtest import run_backtest
 from app.services.decision_engine import default_engine
 
 
+pytestmark = pytest.mark.whitebox
 def _seed_snapshot_case(db_session):
     portfolio = Portfolio(
         name="stage1-idempotency",

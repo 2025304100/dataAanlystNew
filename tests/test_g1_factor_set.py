@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from app.models.factor import Factor
 from app.models.factor_model import FactorVersion
 from app.services.factor_set_service import (
+    FactorSetStatusError,
     add_member,
     copy_factor_set_to_new_id,
     create_factor_set,
@@ -32,6 +33,7 @@ from app.services.factor_set_service import (
 )
 
 
+pytestmark = pytest.mark.whitebox
 def _make_factor(db: "Session", code: str, v: int = 1) -> tuple[Factor, FactorVersion]:
     f = Factor(code=code, name=f"因子{code}", category="value",
                direction="higher_better", status="active",
@@ -133,8 +135,11 @@ class TestFactorSetLifecycle:
     # ──────────────────────────────────────────────────────────────────
     def test_t_fs_05_freeze_empty_rejected(self, db_session):
         create_factor_set(db_session, factor_set_id="fs_05_empty", name="Empty")
-        with pytest.raises(RuntimeError, match="空成员"):
+        # 冻结失败已改为抛结构化错误（带 code，供 7 要素信封映射），不再是裸 RuntimeError；
+        # 它仍是 ValueError 的子类，所以旧的“可被 except ValueError 接住”语义保持。
+        with pytest.raises(FactorSetStatusError, match="为空集合") as ei:
             freeze_factor_set(db_session, "fs_05_empty")
+        assert ei.value.code == "FACTOR_SET_EMPTY"
 
     # ──────────────────────────────────────────────────────────────────
     def test_t_fs_06_readiness_checks(self, db_session):
@@ -175,6 +180,7 @@ class TestFactorSetLifecycle:
         # 幂等
         d2 = deprecate_factor_set(db_session, "fs_07")
         assert d2.status == "deprecated" and d2.id == d.id
-        # deprecated 无法冻结
-        with pytest.raises(RuntimeError, match="deprecated"):
+        # deprecated 无法冻结（结构化错误 FACTOR_SET_DEPRECATED）
+        with pytest.raises(FactorSetStatusError, match="deprecated") as ei:
             freeze_factor_set(db_session, "fs_07")
+        assert ei.value.code == "FACTOR_SET_DEPRECATED"

@@ -4,6 +4,9 @@ from types import SimpleNamespace
 from app.services.backtest import _latest_score_on_or_before
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _score(score_id, trade_date, published_at):
     return SimpleNamespace(id=score_id, trade_date=trade_date, published_at=published_at)
 

@@ -24,6 +24,7 @@ from app.models.daily_bar import DailyBar
 from app.models.index_price import IndexPrice
 
 
+pytestmark = pytest.mark.whitebox
 def _seed_symbol(db: "Session", symbol: str, name: str, market: str = "SH") -> Symbol:
     s = Symbol(symbol=symbol, name=name, market=market, asset_type="stock")
     db.add(s); db.commit(); db.refresh(s)

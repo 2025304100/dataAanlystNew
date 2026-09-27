@@ -20,6 +20,7 @@ from app.services.backtest_filters.rules import (
 TRADE_DATE = date(2024, 6, 1)
 
 
+pytestmark = pytest.mark.whitebox
 def _freeze_info(sid: int, qty: float = 100.0) -> FrozenPositionInfo:
     return FrozenPositionInfo(
         symbol_id=sid,

@@ -3,6 +3,9 @@ from datetime import date, datetime, timedelta
 from app.services.factors.store import FactorWarehouse
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _factor_row(batch_id: str, created_at: datetime):
     return {
         "symbol": "600000",

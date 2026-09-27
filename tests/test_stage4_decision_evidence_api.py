@@ -16,6 +16,7 @@ from app.models.portfolio import Portfolio
 from app.models.symbol import Symbol
 
 
+pytestmark = pytest.mark.whitebox
 def _seed_evidence_detail(db_session):
     timestamp = datetime(2026, 8, 20, 20, 30)
     portfolio = Portfolio(

@@ -28,6 +28,7 @@ from app.core import db_numeric as DN
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 class TestConstants:
     def test_float_max_matches_mysql_single_precision(self):
         # MySQL FLOAT 上限 3.402823466e38

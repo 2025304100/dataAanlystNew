@@ -20,6 +20,7 @@ import pytest
 from app.services.factors.mining import task_lock as TL
 
 
+pytestmark = pytest.mark.whitebox
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 

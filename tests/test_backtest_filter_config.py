@@ -9,6 +9,7 @@ from app.services.backtest_filters.config import (
 )
 
 
+pytestmark = pytest.mark.whitebox
 def test_default_values():
     cfg = BacktestFilterConfig()
     assert cfg.filter_new_listing is True

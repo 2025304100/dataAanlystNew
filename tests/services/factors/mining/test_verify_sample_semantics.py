@@ -29,6 +29,7 @@ import pytest
 from app.services.factors.mining import subexpr_cache as SC
 
 
+pytestmark = pytest.mark.whitebox
 def _pool(sample_ok: bool):
     """构造一个最小 pd 面板（列 symbol 级别由调用方无关紧要，只比数值）。"""
 

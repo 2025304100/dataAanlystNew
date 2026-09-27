@@ -30,6 +30,7 @@ _TERMINAL = {"done", "failed", "cancelled"}
 # ══════════════════════════════════════════════════════════
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture
 def mining_env(db_session, monkeypatch):
     """重置 control-plane 缓存 + 保证收工时 worker 全停。"""

@@ -28,6 +28,7 @@ from app.services.factors import factor_registry as FR
 from app.services.factors.mining import service as SVC
 
 
+pytestmark = pytest.mark.whitebox
 def _make_compiled_version(db, *, code: str = "B3F") -> FactorVersion:
     """经 factor_registry 创建已被**真实编译**的版本（formula_ast_json 有值）。"""
     factor = FR.create_factor_draft(db, draft=FactorDraftCreate(

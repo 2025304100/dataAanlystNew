@@ -25,6 +25,9 @@ TRADE_DATE = date(2026, 2, 3)
 EXECUTION_DATE = date(2026, 2, 4)
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def _seed_snapshot_plan(db_session, *, total_capital: float, volume_limit_pct: float | None):
     portfolio = Portfolio(
         name=f"stage3-auto-state-{total_capital}-{volume_limit_pct}",

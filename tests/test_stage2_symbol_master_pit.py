@@ -14,6 +14,9 @@ from app.services.decision_engine import (
 )
 
 
+import pytest
+
+pytestmark = pytest.mark.whitebox
 def test_symbol_not_listed_on_decision_date_is_annotated(db_session):
     symbol = Symbol(
         symbol="600901",

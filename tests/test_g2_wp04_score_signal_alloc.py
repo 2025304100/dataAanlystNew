@@ -25,6 +25,7 @@ import pytest
 os.environ.setdefault("ALEMBIC_DATABASE_URL", "")
 
 
+pytestmark = pytest.mark.whitebox
 @pytest.fixture(scope="function")
 def tmp_alembic_db():
     """与 test_g1_decision_engine 完全一致的 SQLite+alembic head fixture。"""

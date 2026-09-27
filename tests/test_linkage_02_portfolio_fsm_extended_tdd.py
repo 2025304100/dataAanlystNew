@@ -39,6 +39,7 @@ from datetime import date
 import pytest
 
 
+pytestmark = pytest.mark.whitebox
 class TestLinkage2ExtendedStateLiteralEnum:
     """N1~N9：ExtendedPortfolioState 必须包含全部 10 种状态。"""
 

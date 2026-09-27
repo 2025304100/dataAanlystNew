@@ -16,6 +16,7 @@ from app.services.backtest import run_backtest
 from app.services.decision_engine import default_engine
 
 
+pytestmark = pytest.mark.whitebox
 def test_backtest_persists_unified_decision_chain_and_links_trades(db_session):
     portfolio = Portfolio(
         name="decision-chain-integration",

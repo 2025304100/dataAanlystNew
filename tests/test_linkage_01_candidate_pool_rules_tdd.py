@@ -35,6 +35,7 @@ import pytest
 
 # ──────────────────────────────────────────────────────────────────────
 # 与 PortfolioCandidate 字段同形（不依赖 ORM，纯数据类，seam 接受即可）
+pytestmark = pytest.mark.whitebox
 @dataclass
 class _CandidateRowFixture:
     portfolio_id: int

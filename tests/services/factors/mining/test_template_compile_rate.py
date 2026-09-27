@@ -46,6 +46,7 @@ from app.services.factors.factor_executor import FactorExecutor
 COMPILE_RATE_FLOOR = 0.90
 
 
+pytestmark = pytest.mark.whitebox
 @dataclass(frozen=True)
 class Template:
     key: str
