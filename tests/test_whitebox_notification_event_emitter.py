@@ -20,6 +20,7 @@ project_memory 硬约束：
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pytest
 from sqlalchemy import select
@@ -522,6 +523,10 @@ def test_alert_event_not_modified_by_emit(db_session):
         message="600000 评分 35.5 低于阈值 40",
         symbol_id=42,
         data_json=json.dumps(original_data, ensure_ascii=False),
+        # WP-MSG.1 去重三列均 NOT NULL 且无默认（生产由 alerts._fire_event 计算）
+        dedupe_key="test-emitter-alert-preserve",
+        window_start_at=datetime(2026, 1, 1, 0, 0, 0),
+        incident_no=1,
     )
     db_session.add(event)
     db_session.commit()

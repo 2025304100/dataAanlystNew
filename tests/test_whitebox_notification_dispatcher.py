@@ -687,24 +687,34 @@ def test_run_once_adapter_exception(db_session, monkeypatch):
 
 def test_run_once_handles_missing_channel(db_session, monkeypatch):
     """【WP-MSG.3】outbox.channel_id 指向不存在的 channel → error_code='channel_not_found'。"""
-    # 直接插入一条引用不存在 channel 的 outbox
-    outbox = NotificationOutbox(
-        event_key="evt-missing-channel",
-        source_type="alert",
-        source_id=1,
-        event_type="price_alert_triggered",
-        severity="warn",
-        payload_json='{"title":"t","body":"b"}',
-        channel_id=999999,  # 不存在的 channel_id
-        status="pending",
-        attempt_count=0,
-        max_attempts=5,
-        next_retry_at=_now_utc(),
-        created_at=_now_utc(),
-    )
-    db_session.add(outbox)
-    db_session.commit()
-    db_session.refresh(outbox)
+    # E 簇：notification_outbox.channel_id 有 FK→notification_channels，用 ORM 直插
+    # 引用不存在渠道的行会在插入阶段就撞 FK，根本达不到本用例要测的“渠道缺失”状态。
+    # 该状态在真实库里确实会出现（渠道被删时的存量 outbox），所以用 raw 连接临时关闭
+    # foreign_keys 造孤儿行（同 test_frp1_2/3 与 backtest_apply 的先例）。
+    now_iso = _now_utc().isoformat(sep=" ", timespec="microseconds")
+    raw = db_session.connection().connection
+    cur = raw.cursor()
+    try:
+        cur.execute("PRAGMA foreign_keys=OFF")
+        cur.execute(
+            "INSERT INTO notification_outbox (event_key, source_type, source_id,"
+            " event_type, severity, payload_json, channel_id, status,"
+            " attempt_count, max_attempts, next_retry_at, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "evt-missing-channel", "alert", 1, "price_alert_triggered",
+                "warn", '{"title":"t","body":"b"}', 999999, "pending", 0, 5,
+                now_iso, now_iso,
+            ),
+        )
+    finally:
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+    raw.commit()
+    db_session.expire_all()
+    outbox = db_session.query(NotificationOutbox).filter_by(
+        event_key="evt-missing-channel"
+    ).one()
 
     _patch_adapter(monkeypatch, _MockAdapter(success=True))
 

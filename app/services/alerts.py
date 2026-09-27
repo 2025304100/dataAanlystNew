@@ -1,6 +1,7 @@
 """告警评估引擎：根据规则检查当前数据状态，触发告警事件。"""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -59,6 +60,46 @@ def _load_config(rule: AlertRule) -> dict:
         return {}
 
 
+# ── WP-MSG.1 去重窗口（30 分钟）─────────────────────────────────────
+# models/alert.py 里 dedupe_key / window_start_at / incident_no 都是 NOT NULL
+# 且无默认值，但 _fire_event 从未写入它们：在 SQLite 上直接撞 NOT NULL，而在
+# MySQL（会话 sql_mode 被 manager.py 改成非严格）上则退化成 dedupe_key=''
+# + incident_no=0，去重机制完全失效（线上库 216 行全部同键）。
+# 更坑的是原来 session.flush() 被包在吞异常的 try 里，NOT NULL 失败只记
+# 一条 warning，session 进入 need-rollback 状态，反而把调用方（定时巡检）
+# 整个事务打翻。以下修复同时改掉这三件事。
+_ALERT_DEDUPE_WINDOW_MINUTES = 30
+
+
+def alert_window_start(at: datetime | None = None) -> datetime:
+    """返回 30 分钟去重窗口起点（UTC naive，与库内其它时间戳一致）。"""
+    now = at or _now()
+    bucket = (now.minute // _ALERT_DEDUPE_WINDOW_MINUTES) * _ALERT_DEDUPE_WINDOW_MINUTES
+    return now.replace(minute=bucket, second=0, microsecond=0)
+
+
+def build_dedupe_key(
+    *,
+    rule_id: int | None,
+    alert_type: str | None,
+    severity: str,
+    subject: str | None = None,
+    portfolio_id: int | None = None,
+    window_start: datetime | None = None,
+) -> str:
+    """按 `models/alert.py` 注释实现 dedupe_key = SHA256(portfolio_id:alert_code:severity:window_start)。
+
+    alert_code = `rule{id}:{alert_type}:{subject}`：subject 用 symbol_id / task_id
+    等事件主体，保证同一规则一轮评估里不同标的、不同任务的告警彼此独立
+    （否则 20 个标的的“评分跌破阈值”会被压成 1 条）。
+    """
+    window = window_start or alert_window_start()
+    subject_part = f":{subject}" if subject else ""
+    alert_code = f"rule{rule_id}:{alert_type}{subject_part}"
+    raw = f"{portfolio_id or 'none'}:{alert_code}:{severity}:{window.isoformat()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def _in_cooldown(rule: AlertRule) -> bool:
     if not rule.last_triggered_at:
         return False
@@ -68,6 +109,42 @@ def _in_cooldown(rule: AlertRule) -> bool:
 
 def _fire_event(session: Session, rule: AlertRule, title: str, message: str,
                 symbol_id: int | None = None, data: dict | None = None) -> AlertEvent:
+    """创建一个告警事件（同 30 分钟窗口内同一因子的未恢复告警只留一条）。
+
+    dedupe_key / window_start_at / incident_no 为 WP-MSG.1 去重三列（均 NOT NULL），
+    必须在此计算写入；否则整条告警链路写不进去（SQLite）或去重失效（MySQL）。
+    """
+    payload = data or {}
+    subject = str(payload.get("task_id") or (f"sym{symbol_id}" if symbol_id is not None else ""))
+    window_start = alert_window_start()
+    dedupe_key = build_dedupe_key(
+        rule_id=rule.id,
+        alert_type=rule.alert_type,
+        severity=rule.severity,
+        subject=subject or None,
+        portfolio_id=payload.get("portfolio_id"),
+        window_start=window_start,
+    )
+
+    # 同窗口同因子且未 resolved → 去重，返回已有事件（仅刷新规则冷却时间）
+    existing = session.execute(
+        select(AlertEvent).where(
+            AlertEvent.dedupe_key == dedupe_key,
+            AlertEvent.resolved_at.is_(None),
+        )
+    ).scalars().first()
+    if existing is not None:
+        rule.last_triggered_at = _now()
+        return existing
+
+    # 首次（或上一同键事件已恢复后再次发生）→ incident_no 递增，
+    # 避开 uq_alert_events_dedupe_incident(dedupe_key, incident_no) 唯一约束
+    last_incident = session.execute(
+        select(func.max(AlertEvent.incident_no)).where(
+            AlertEvent.dedupe_key == dedupe_key
+        )
+    ).scalar()
+
     event = AlertEvent(
         rule_id=rule.id,
         alert_type=rule.alert_type,
@@ -76,14 +153,19 @@ def _fire_event(session: Session, rule: AlertRule, title: str, message: str,
         message=message,
         symbol_id=symbol_id,
         data_json=json.dumps(data, ensure_ascii=False) if data else None,
+        dedupe_key=dedupe_key,
+        window_start_at=window_start,
+        incident_no=int(last_incident or 0) + 1,
     )
     session.add(event)
     rule.last_triggered_at = _now()
+    # 落库错误必须向上抛：以前 flush 被下面的吞异常 try 包住，NOT NULL 失败
+    # 只留下一条 warning，但 session 已进入 need-rollback，会把调用方（定时
+    # 巡检/路由）后续所有 DB 操作都打翻。现在只允许“通知发送失败”不阻断。
+    session.flush()
     # WP-MSG.7：将告警事件接入通知系统（AlertEvent 继续作为正式告警事实，
     # 不修改其 data_json；此处仅触发通知）
-    # session.flush() 确保 event.id 可用，emit_alert_event 失败不阻断主流程
     try:
-        session.flush()
         from app.services.notifications.event_emitter import emit_alert_event
         emit_alert_event(
             session,

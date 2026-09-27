@@ -20,6 +20,7 @@ import pytest
 from app.api.routes import ai_config
 from app.models.daily_bar import DailyBar
 from app.models.discovery import DiscoveryTaskRecord
+from app.models.factor_model import FactorModelRun
 from app.models.factor_runtime import FactorRuntimeState
 from app.models.portfolio import Portfolio, PortfolioRule, Position
 from app.models.scan import ScanResult, ScanRun
@@ -383,6 +384,9 @@ class TestFactorRidgeCapability:
             "app.services.factors.store.FactorWarehouse", FakeWarehouse
         )
         # 创建 FactorRuntimeState 单例并设置活动模型
+        # E 簇：factor_runtime_state.active_model_run_id 有 FK→factor_model_runs，
+        # 必须 seed 父行（能力探测只看“是否有活动模型 id”，不读其内容）。
+        db_session.add(FactorModelRun(id="run-2026-07-19-001", status="validated"))
         runtime = FactorRuntimeState(
             id=1, weight_mode="ridge",
             active_model_run_id="run-2026-07-19-001",
@@ -649,6 +653,8 @@ class TestAggregation:
         monkeypatch.setattr(
             "app.services.factors.store.FactorWarehouse", FakeWarehouse
         )
+        # E 簇：active_model_run_id 有 FK→factor_model_runs，先 seed 父行
+        db_session.add(FactorModelRun(id="r1", status="validated"))
         runtime = FactorRuntimeState(id=1, weight_mode="ridge", active_model_run_id="r1")
         db_session.add(runtime)
         # AI 配置：已配置且近期测试通过 → ready
@@ -700,6 +706,8 @@ class TestAggregation:
         monkeypatch.setattr(
             "app.services.factors.store.FactorWarehouse", FakeWarehouse
         )
+        # E 簇：active_model_run_id 有 FK→factor_model_runs，先 seed 父行
+        db_session.add(FactorModelRun(id="r1", status="validated"))
         runtime = FactorRuntimeState(id=1, weight_mode="ridge", active_model_run_id="r1")
         db_session.add(runtime)
         # discovery ready

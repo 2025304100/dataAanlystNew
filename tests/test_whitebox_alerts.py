@@ -37,6 +37,19 @@ from app.schemas.alert import AlertRuleCreate, AlertRuleUpdate
 pytestmark = pytest.mark.whitebox
 
 
+def _alert_event(**kw):
+    """直插 ORM 用的 AlertEvent helper：补齐 WP-MSG.1 的 NOT NULL 去重列。
+
+    生产路径由 `alerts._fire_event` 计算 dedupe_key / window_start_at / incident_no
+    （PT-DEF-9 已修）；本文件部分用例为了造历史数据而绕过 service 直接建 ORM
+    对象，就必须自己提供这些非空列。
+    """
+    kw.setdefault("dedupe_key", f"test-{kw.get('alert_type', 'x')}-{kw.get('title', '')}")
+    kw.setdefault("window_start_at", datetime(2026, 1, 1, 0, 0, 0))
+    kw.setdefault("incident_no", 1)
+    return AlertEvent(**kw)
+
+
 # ============================================================================
 # 1. GET /alerts/rules 列表
 # ============================================================================
@@ -197,7 +210,7 @@ def test_list_alert_events_returns_unacknowledged_count(db_session):
 
     防止前端 unacknowledged_count 字段缺失导致红点不显示。
     """
-    db_session.add(AlertEvent(
+    db_session.add(_alert_event(
         rule_id=1,
         alert_type="score_drop",
         severity="warn",
@@ -206,7 +219,7 @@ def test_list_alert_events_returns_unacknowledged_count(db_session):
         acknowledged=0,
         data_json='{"old": 80, "new": 50}',
     ))
-    db_session.add(AlertEvent(
+    db_session.add(_alert_event(
         rule_id=1,
         alert_type="score_drop",
         severity="error",
@@ -225,7 +238,7 @@ def test_list_alert_events_returns_unacknowledged_count(db_session):
 
 def test_list_alert_events_excludes_acknowledged_by_default(db_session):
     """【P1-3 API 测试】include_acknowledged=False（默认）应排除已确认事件。"""
-    db_session.add(AlertEvent(
+    db_session.add(_alert_event(
         rule_id=1,
         alert_type="data_stale",
         severity="warn",
@@ -233,7 +246,7 @@ def test_list_alert_events_excludes_acknowledged_by_default(db_session):
         message="...",
         acknowledged=0,
     ))
-    db_session.add(AlertEvent(
+    db_session.add(_alert_event(
         rule_id=1,
         alert_type="data_stale",
         severity="warn",
@@ -250,7 +263,7 @@ def test_list_alert_events_excludes_acknowledged_by_default(db_session):
 
 def test_list_alert_events_data_json_parse_failure_falls_back_empty(db_session):
     """【P1-3 API 测试】data_json 解析失败时应静默降级为 {}，不抛异常。"""
-    db_session.add(AlertEvent(
+    db_session.add(_alert_event(
         rule_id=1,
         alert_type="task_failed",
         severity="error",
@@ -379,7 +392,7 @@ def test_task_failed_alert_recovers_after_newer_success(db_session):
         created_at=failed_at + timedelta(minutes=5),
         updated_at=failed_at + timedelta(minutes=6),
     )
-    event = AlertEvent(
+    event = _alert_event(
         rule_id=1,
         alert_type="task_failed",
         severity="error",
@@ -403,3 +416,77 @@ def test_task_failed_alert_recovers_after_newer_success(db_session):
     assert "任务长时间没有进度" in event.message
     assert data["error_code"] == "TASK_HEARTBEAT_EXPIRED"
     assert "Task expired" in data["technical_details"]
+
+
+# ============================================================================
+# 9. PT-DEF-9 守护：告警事件必须写入 WP-MSG.1 去重三列
+# ============================================================================
+
+def test_fire_event_populates_dedupe_columns(db_session):
+    """回归守护：生产写路径必须填 dedupe_key / window_start_at / incident_no。
+
+    这三列在 models/alert.py 里都是 NOT NULL 且无默认值，但 _fire_event 曾从未
+    写入：SQLite 直接撞 NOT NULL、MySQL（会话非严格模式）退化成全空键，去重完全
+    失效（线上库 216 行 dedupe_key 全为空串）。同时 flush() 原先被包在吞异常的
+    try 里，失败后 session 进入 need-rollback 反而打翻调用方事务。
+    """
+    rule = AlertRule(
+        name="dedupe guard", alert_type="data_stale", enabled=1,
+        severity="warn", cooldown_minutes=60,
+    )
+    db_session.add(rule)
+    db_session.commit()
+    db_session.refresh(rule)
+
+    event = alert_service._fire_event(
+        db_session, rule, title="数据陈旧", message="bar", symbol_id=7, data={"k": 1},
+    )
+    db_session.commit()
+
+    assert event.id is not None
+    assert len(event.dedupe_key) == 64, "dedupe_key 应为 SHA256 hex"
+    assert event.window_start_at is not None
+    assert event.incident_no == 1
+    # 窗口起点必须是 30 分钟整点边界
+    assert event.window_start_at.minute in (0, 30)
+    assert event.window_start_at.second == 0
+
+
+def test_fire_event_dedups_same_subject_within_window(db_session):
+    """同一规则同一标的一轮窗口内重复触发 → 只留 1 条，不撞唯一约束。"""
+    rule = AlertRule(
+        name="dedupe window", alert_type="data_stale", enabled=1,
+        severity="warn", cooldown_minutes=0,
+    )
+    db_session.add(rule)
+    db_session.commit()
+
+    first = alert_service._fire_event(
+        db_session, rule, title="t1", message="m1", symbol_id=8, data={"k": 1},
+    )
+    db_session.commit()
+    second = alert_service._fire_event(
+        db_session, rule, title="t2", message="m2", symbol_id=8, data={"k": 2},
+    )
+    db_session.commit()
+
+    assert second.id == first.id, "同窗口同因子应去重返回已有事件"
+    assert db_session.query(AlertEvent).count() == 1
+
+
+def test_fire_event_keeps_distinct_symbols_separate(db_session):
+    """不同标的的同类告警不能被压成一条（去重必须按事件主体分键）。"""
+    rule = AlertRule(
+        name="dedupe scope", alert_type="score_drop", enabled=1,
+        severity="warn", cooldown_minutes=0,
+    )
+    db_session.add(rule)
+    db_session.commit()
+
+    a = alert_service._fire_event(db_session, rule, title="a", message="m", symbol_id=11)
+    b = alert_service._fire_event(db_session, rule, title="b", message="m", symbol_id=12)
+    db_session.commit()
+
+    assert a.id != b.id
+    assert a.dedupe_key != b.dedupe_key
+    assert db_session.query(AlertEvent).count() == 2

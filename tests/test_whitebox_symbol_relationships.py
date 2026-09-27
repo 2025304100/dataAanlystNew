@@ -20,6 +20,7 @@ GET /api/v1/symbols/{symbol_id}/relationships 端点。
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from itertools import count
 
 import pytest
 from fastapi import HTTPException
@@ -35,6 +36,9 @@ from app.models.watchlist import Watchlist, WatchlistItem
 from app.services.symbol_relationships import get_symbol_relationships
 
 pytestmark = pytest.mark.whitebox
+
+# 同一用例里造多行 AlertEvent 时的序号，保证 dedupe_key+incident_no 不撞唯一约束
+_ALERT_EVENT_SEQ = count(1)
 
 
 # ----------------------------------------------------------------------------
@@ -220,6 +224,15 @@ def _make_alert_event(
         symbol_id=symbol_id,
         acknowledged=acknowledged,
         created_at=created_at or datetime.now(timezone.utc).replace(tzinfo=None),
+        # WP-MSG.1 去重三列均 NOT NULL 且无默认（生产由 alerts._fire_event 计算，
+        # 本用例是绕过 service 直插造数据）；symbol_id 保证多标的场景不撞
+        # uq_alert_events_dedupe_incident(dedupe_key, incident_no)。
+        dedupe_key=(
+            f"test-symrel-{rule_id}-{symbol_id}-{severity}"
+            f"-{acknowledged}-{next(_ALERT_EVENT_SEQ)}"
+        ),
+        window_start_at=created_at or datetime.now(timezone.utc).replace(tzinfo=None),
+        incident_no=1,
     )
     db_session.add(ev)
     db_session.commit()

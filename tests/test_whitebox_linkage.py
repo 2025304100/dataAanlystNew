@@ -421,6 +421,10 @@ class TestAlertContextAPI:
             symbol_id=sym.id,
             data_json=json.dumps({"price": 9.3, "threshold": 9.5}),
             acknowledged=0,
+            # WP-MSG.1 去重三列均 NOT NULL 且无默认（生产由 alerts._fire_event 计算）
+            dedupe_key="test-linkage-alert-context",
+            window_start_at=datetime(2026, 1, 1, 0, 0, 0),
+            incident_no=1,
         )
         db_session.add(alert)
         db_session.commit()
@@ -457,6 +461,9 @@ class TestAlertContextAPI:
             symbol_id=sym.id,
             data_json=None,
             acknowledged=0,
+            dedupe_key="test-linkage-no-related-entities",
+            window_start_at=datetime(2026, 1, 1, 0, 0, 0),
+            incident_no=1,
         )
         db_session.add(alert)
         db_session.commit()
@@ -544,6 +551,9 @@ class TestTodayDecisionAPI:
             message="block",
             symbol_id=sym1.id,
             acknowledged=0,
+            dedupe_key="test-linkage-today-decision",
+            window_start_at=datetime(2026, 1, 1, 0, 0, 0),
+            incident_no=1,
         )
         db_session.add(alert)
         db_session.commit()
