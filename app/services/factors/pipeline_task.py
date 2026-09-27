@@ -537,7 +537,12 @@ def create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
     existing = list_async_tasks(task_type=TASK_TYPE, limit=1)
     if existing and existing[0].status in {'queued', 'running'}:
         return existing[0].model_dump()
-    task = create_async_task(TASK_TYPE, payload.model_dump())
+    # force_new：本入口是用户显式“启动流水线”动作，并发重复提交已由上面的
+    # 单飞（queued/running 回读）拦住；如果不传 force_new，AC-10 幂等回读会
+    # 把“上一轮已 done”的历史任务直接返回，前端看到一条旧任务而 worker 根本不
+    # 启动（第二次点击被静默吞掉）。同族的 mirror_task / mining validation /
+    # factor_evaluation 均已用 force_new=True 表达同一语义。
+    task = create_async_task(TASK_TYPE, payload.model_dump(), force_new=True)
     _start_worker(task.id, _run_factor_pipeline)
     return task.model_dump()
 

@@ -125,6 +125,23 @@ ERROR_CODE_LIBRARY: dict[str, dict[str, Any]] = {
             {"label": "去配置", "action_type": "redirect", "target": "/settings"}
         ],
     },
+    # PT-DEF-5 同族补登记：全局 HTTPException 处理器会把 401/403 映射成下面两个
+    # 码（portfolio_governance 等路由也会显式抛 AUTH_MISSING）；此前它们不在
+    # ERROR_CODE_LIBRARY 里，会回退成 UNKNOWN_ERROR「服务暂时不可用，请稍后重试」
+    # 且 retryable=True，与“鉴权失败重试无用”的语义正好相反。
+    "AUTH_MISSING": {
+        "user_message": "缺少访问身份（未传调用方标识）",
+        "impact": "本次请求被阻断；请在设置中配置调用方身份或登录后重试",
+        "retryable": False,
+        "next_actions": [
+            {"label": "去配置", "action_type": "redirect", "target": "/settings"}
+        ],
+    },
+    "FORBIDDEN": {
+        "user_message": "当前身份无权执行该操作",
+        "impact": "本次请求被拒绝；如需该权限请调整调用方角色配置",
+        "retryable": False,
+    },
     "NOT_FOUND": {
         "user_message": "请求的资源不存在",
         "impact": "请检查输入或返回列表查看",

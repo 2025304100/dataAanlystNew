@@ -35,6 +35,21 @@ from app.services.factors.store import FactorWarehouse
 pytestmark = pytest.mark.whitebox
 
 
+@pytest.fixture(autouse=True)
+def _isolate_p2g_pre_gates(monkeypatch):
+    """隔离 P2.3a 训练准入门禁：本文件测的是 WP7-03 动态特征接线（FactorSet 取
+    特征、版本、幂等与 legacy 回退），不是治理准入。
+
+    原因同 test_whitebox_ridge_model.py：门禁的覆盖率 fallback 读配置里的全局
+    因子仓库（非本用例传入的 tmp DuckDB）→ 5 个因子均判 no_coverage_data →
+    跳过拟合 → 一律 status=rejected，使用例假红。门禁自身另有覆盖。
+    """
+    monkeypatch.setattr(
+        "app.services.factors.ridge_model.run_training_eligibility_gates",
+        lambda **_kw: [],
+    )
+
+
 # ── 测试数据种子 ──────────────────────────────────────────
 
 

@@ -743,8 +743,23 @@ def _seed_factors_and_frozen_set(db_session) -> dict[str, tuple[int, int]]:
     return mapping
 
 
+@pytest.fixture
+def _isolate_p2g_pre_gates(monkeypatch):
+    """只给两个 train_rolling_ridge 集成用例使用的隔离夹具。
+
+    本文件其余部分正是在测 ModelGate / 准入门禁本身，不能全局隔离；而
+    `run_training_eligibility_gates` 的覆盖率 fallback 读的是配置里的全局因子
+    仓库（不是用例传入的 tmp DuckDB），不隔离则这两个用例会先被
+    `no_coverage_data` 拦住、根本不进入拟合与 WP7-04 增强指标阶段。
+    """
+    monkeypatch.setattr(
+        "app.services.factors.ridge_model.run_training_eligibility_gates",
+        lambda **_kw: [],
+    )
+
+
 def test_train_rolling_ridge_writes_enhanced_metrics_to_metrics_json(
-    db_session, tmp_path
+    db_session, tmp_path, _isolate_p2g_pre_gates
 ):
     """train_rolling_ridge 将 WP7-04 增强门禁指标写入 metrics_json。"""
     import json
@@ -792,9 +807,14 @@ def test_train_rolling_ridge_writes_enhanced_metrics_to_metrics_json(
 
 
 def test_train_rolling_ridge_enhanced_gate_rejects_on_high_cluster_exposure(
-    db_session, tmp_path
+    db_session, tmp_path, _isolate_p2g_pre_gates
 ):
-    """配置严格的簇暴露阈值时，单簇主导的模型被拒绝。"""
+    """配置严格的簇暴露阈值时，单簇主导的模型被拒绝。
+
+    注：断言形式上仍是“被拒则原因必须包含 cluster_exposure”；已隔离 P2.3a
+    前置门禁后，“因”才真的是簇暴露（否则任何模型都会先因覆盖率被拒，
+    本用例变成假绿）。另：簇占比依赖数据，阈值调紧时仍可能直进 validated。
+    """
     warehouse = FactorWarehouse(tmp_path / "factor_gate_reject.duckdb")
     _seed_training_data_for_gate(warehouse)
     _seed_factors_and_frozen_set(db_session)

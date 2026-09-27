@@ -32,6 +32,7 @@ from app.services.factors.pipeline_task import (
     create_factor_pipeline_task,
     recover_stale_pipeline_tasks,
 )
+from app.services.task_heartbeat_service import finalize_cancelled_self_exit
 from app.services.task_state_machine import cancel_task_with_cleanup
 
 pytestmark = pytest.mark.whitebox
@@ -217,20 +218,35 @@ def test_cancelled_terminal_state_not_overwritten_by_worker(db_session):
         assert refreshed.percent == 50.0
 
 
-def test_cancel_running_task_sets_cancelled_not_failed(db_session):
-    """取消 running 任务后应进入 cancelled（而非 failed）。"""
+def test_cancel_running_task_lands_on_cancelled_not_failed(db_session):
+    """取消 running 任务：先协作式置 cancel_requested，worker 自止后才进 cancelled。
+
+    契约依据 `async_tasks.cancel_async_task` 注释：queued（无 worker）直接置
+    cancelled + 终态锁；running 只置 cancel_requested + cancelled_timeout_at，
+    由 worker 自检后调 `finalize_cancelled_self_exit` 收尾。原断言“cancel 后立即
+    cancelled”与该设计不符（本用例里根本没有 worker），但两者要守的是同一
+    条不变量：取消必须落到 cancelled，不得被当成 failed。
+    """
     task = _create_task(
         db_session, task_id="cancel-running", status="running", stage="mirror"
     )
 
     cancel_async_task(task.id)
+    db_session.expire_all()
+    mid = db_session.get(AsyncTaskRecord, task.id)
+    assert mid.status == "running", "running 任务的取消是协作式的，请求方不得直写终态"
+    assert int(mid.cancel_requested or 0) == 1
+    assert mid.cancelled_timeout_at is not None
 
+    # 真实链路里由 worker 心跳自检调用；本用例手动走到同一收尾路径
+    finalize_cancelled_self_exit(db_session, task.id, message="worker self-exit")
     db_session.expire_all()
     refreshed = db_session.get(AsyncTaskRecord, task.id)
     assert refreshed.status == "cancelled"
     assert refreshed.status != "failed"
     assert refreshed.stage == "cancelled"
     assert refreshed.finished_at is not None
+    assert int(refreshed.is_terminal_locked or 0) == 1
 
 
 def test_cancel_request_flag_is_set(db_session):

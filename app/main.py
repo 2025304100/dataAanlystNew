@@ -626,7 +626,11 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     if exc.status_code == 404:
         error_code = "NOT_FOUND"
     elif exc.status_code == 401:
-        error_code = "AUTH_MISSING"
+        # PT-DEF-5 同族：统一用已登记的 UNAUTHORIZED（“AUTH_MISSING”旧值不在
+        # ERROR_CODE_LIBRARY 里，会回退成 UNKNOWN_ERROR 且 retryable=True）。
+        # 路由显式带 detail["error_code"]（如 portfolio_governance 的 AUTH_MISSING）时，
+        # 下方仍会优先采用路由级错误码，此处只是兜底映射。
+        error_code = "UNAUTHORIZED"
     elif exc.status_code == 403:
         error_code = "FORBIDDEN"
     elif exc.status_code == 422:

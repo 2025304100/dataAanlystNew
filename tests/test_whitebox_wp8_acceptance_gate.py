@@ -21,6 +21,7 @@ pytestmark = pytest.mark.whitebox
 
 from app.models.factor import Factor
 from app.models.factor_evaluation import FactorSet, FactorSetMember
+from app.models.factor_governance import FactorModelMember
 from app.models.factor_model import FactorModelRun, FactorVersion
 from app.models.factor_runtime import (
     FactorModelAuditLog,
@@ -683,6 +684,21 @@ class TestRollbackCapability:
             artifact_path=None,
         )
         db_session.add(model)
+        # 激活前置 fail-closed：validated 模型必须有非空且有限的因子系数
+        # （`runtime.activate_factor_model` 查 FactorModelMember），因此补上权重行；
+        # 否则本用例会停在“validated model has no factor coefficients”。
+        db_session.add_all([
+            FactorModelMember(
+                model_run_id="model-cycle-002", factor_code="ep_ttm",
+                factor_version=1, coefficient=0.6, normalized_weight=0.6,
+                train_ic=0.05, validation_ic=0.05, side="long",
+            ),
+            FactorModelMember(
+                model_run_id="model-cycle-002", factor_code="turnover_z20",
+                factor_version=1, coefficient=-0.4, normalized_weight=-0.4,
+                train_ic=0.03, validation_ic=0.03, side="short",
+            ),
+        ])
         db_session.flush()
 
         # 3. 重新激活

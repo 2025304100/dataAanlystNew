@@ -91,6 +91,13 @@ def test_task_to_read_accepts_object_recovery_metadata():
         stage="queued",
         percent=0.0,
         message="created",
+        # AsyncTaskRecord 的四个计数列是 NOT NULL + Python default=0，未 flush
+        # 的对象上是 None；_task_to_read 走 pydantic 严格校验会拒 None。
+        # 本用例只关心 batch_recovery 解析，按生产已落库形态补齐计数。
+        total=0,
+        processed=0,
+        ok_count=0,
+        failed_count=0,
         batch_recovery_json=json.dumps(recovery),
     )
 
@@ -153,7 +160,7 @@ def test_set_task_unknown_task_raises(db_session):
 # ---------- 错误追加 ----------
 
 def test_append_error_keeps_last_20(db_session):
-    """_append_error 应只保留最近 20 条错误。"""
+    """_append_error 应只保留最近 20 条（且保持时间顺序）。"""
     task = AsyncTaskRecord(
         id="qa-err",
         task_type="market_data_sync",
@@ -164,15 +171,23 @@ def test_append_error_keeps_last_20(db_session):
     db_session.add(task)
     db_session.commit()
 
+    # 注意：_append_error 会过 `normalize_error`（前端 6 字段契约），非标准键
+    # （如旧的 idx/msg）不会透传；自定义数据必须放 evidence 里才能存活。
     for i in range(25):
-        async_tasks._append_error(task, {"idx": i, "msg": f"err-{i}"})
+        async_tasks._append_error(task, {
+            "code": "eval.test.err",
+            "detail_zh": f"err-{i}",
+            "evidence": {"idx": i},
+        })
 
     import json
     errors = json.loads(task.errors_json)
     assert len(errors) == 20
     # 应保留最后 20 条（idx 5..24）
-    assert errors[0]["idx"] == 5
-    assert errors[-1]["idx"] == 24
+    assert errors[0]["evidence"]["idx"] == 5
+    assert errors[-1]["evidence"]["idx"] == 24
+    # 归一化后的 6 字段契约齐整（前端可直接渲染）
+    assert all({"code", "severity", "category", "title_zh", "detail_zh"} <= set(e) for e in errors)
 
 
 # ---------- 过期任务清理 ----------

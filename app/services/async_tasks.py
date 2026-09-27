@@ -127,6 +127,10 @@ def normalize_error(err_in: dict | None | list | str, *, fallback_cid: str | Non
     """兜底归一化：确保错误对象必含 6 字段（code/severity/category/title_zh/detail_zh/correlation_id）。
     - correlation_id 必须是 8 位 hex（已有有效则保留，否则生成新的）
     - 无论输入是 dict/list/str/None，都返回符合前端契约的 dict
+    - **不丢弃未识别的键**：它们全部并入 evidence。以前只保留 6 字段，导致
+      `auto_trade_task` / `discovery_data_prep` 等调用方传的
+      ``{"scope": ..., "error": str(exc)}`` 正文整体消失，任务列表里只剩
+      `eval.worker.unknown`（自动交易失败原因不可诊断）。
     """
     cid = fallback_cid or _gen_correlation_id()
 
@@ -173,7 +177,7 @@ def normalize_error(err_in: dict | None | list | str, *, fallback_cid: str | Non
     evidence = dict(evidence)
     evidence.setdefault("correlation_id", cid)
 
-    code = raw.get("code")
+    code = raw.get("code") or raw.get("error_code")
     if not isinstance(code, str) or not code.strip():
         code = "eval.worker.unknown"
     code = code.strip()
@@ -194,7 +198,11 @@ def normalize_error(err_in: dict | None | list | str, *, fallback_cid: str | Non
     if not isinstance(title_zh, str) or not title_zh.strip():
         title_zh = code
 
-    detail_zh = raw.get("detail_zh") or raw.get("detail") or raw.get("message") or raw.get("msg")
+    detail_zh = (
+        raw.get("detail_zh") or raw.get("detail") or raw.get("message") or raw.get("msg")
+        # 历史调用方的两种写法：`error`（异常正文）与 `user_message`（BFG 信封字段）
+        or raw.get("error") or raw.get("user_message")
+    )
     if not isinstance(detail_zh, str) or not detail_zh.strip():
         detail_zh = title_zh
 
@@ -210,6 +218,18 @@ def normalize_error(err_in: dict | None | list | str, *, fallback_cid: str | Non
     for optional_key in ("fix_link", "retryable", "id", "title", "detail", "source"):
         if optional_key in raw and raw[optional_key] is not None:
             out[optional_key] = raw[optional_key]
+    # 未识别的键全部入 evidence，保证“归一化”不丢信息（已有 evidence 字段优先）
+    _consumed = {
+        "code", "error_code", "severity", "level", "category", "title_zh", "title",
+        "name", "detail_zh", "detail", "message", "msg", "error", "user_message",
+        "correlation_id", "evidence", "fix_link", "retryable", "id", "source",
+    }
+    _leftover = {k: v for k, v in raw.items() if k not in _consumed}
+    if _leftover:
+        merged_evidence = dict(out["evidence"])
+        for k, v in _leftover.items():
+            merged_evidence.setdefault(k, v)
+        out["evidence"] = merged_evidence
     return out
 
 

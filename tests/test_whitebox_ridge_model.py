@@ -20,6 +20,25 @@ from app.services.factors.store import FactorWarehouse
 pytestmark = pytest.mark.whitebox
 
 
+@pytest.fixture(autouse=True)
+def _isolate_p2g_pre_gates(monkeypatch):
+    """隔离 P2.3a 训练准入门禁：本文件测的是 Ridge 拟合本身（时间切分、带符号
+    权重、幂等复用、cutoff 排除、样本不足不得发布），不是治理准入。
+
+    为何必须显式隔离：`run_training_eligibility_gates` 的覆盖率 fallback 读的是
+    **配置里的全局因子仓库**（`_collect_quality_from_warehouse` → cfg.warehouse_path），
+    而不是本用例传给 train_rolling_ridge 的 tmp DuckDB。两者不是同一
+    数据源时，5 个因子均判 `no_coverage_data` → has_hard_pre_fail → 跳过拟合
+    → 一律 status=rejected（样本数 0），使这些用例变成假红。生产链路里训练用的
+    就是配置仓库（pipeline_task 传同一个 warehouse），所以不存在该分歧。
+    门禁本身由 test_g1_fail_closed_coverage95 / test_whitebox_wp7_model_gate 覆盖。
+    """
+    monkeypatch.setattr(
+        "app.services.factors.ridge_model.run_training_eligibility_gates",
+        lambda **_kw: [],
+    )
+
+
 def _seed_training_data(
     warehouse: FactorWarehouse,
     *,
