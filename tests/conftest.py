@@ -408,20 +408,39 @@ def _bfg_p04_anti_corruption_ast(pytestconfig):  # noqa: N802
     yield
 
 
-# ── 全局可变状态的逐用例隔离（体检报告 §十二.5）──
-# WORKER_STOP_EVENT 是 app.services.async_tasks 的模块级 threading.Event：生产里
-# 只有 lifespan 关停会 set 它（进程随即退出，无需清），但测试进程里
-# `with TestClient(app)` 走一次关停就会把它永久留在 set 状态 —— 之后同一会话内
-# 任何真实 worker 一启动就自撤。实测受害：mining 真实 GA 用例在全量跑里被
-# “cancelled before stages” 卡到 420 秒超时（单独跑 36 秒就过）。
+# ── 全局可变状态的逐用例隔离（体检报告 §十二.5 / §十二.7、PT-DEF-15）──
+# 两件事：
+# 1) WORKER_STOP_EVENT 是 app.services.async_tasks 的模块级 threading.Event：生产里
+#    只有 lifespan 关停会 set 它（进程随即退出，无需清），但测试进程里
+#    `with TestClient(app)` 走一次关停就会把它永久留在 set 状态 —— 之后任何真实
+#    worker 一启动就自撤（实测把 mining 真实 GA 用例卡到 420s 超时）。
+# 2) 异步 worker 线程（`Thread-N (_run)`）是 daemon，用 get_session_local() 的
+#    **全局 session** 写库，会跨用例存活：实测在 discovery fast_scan 用例开始前
+#    它的 tmp 库里已凭空多出一条 ready 空快照 + 一条 scan_run，导致该用例
+#    cache_hit 到 0 条结果（PT-DEF-15）。
+# 停工位清理对全部用例都做（零成本、已证明必要）；**线程回收只对显式标了
+# `reap_workers` 的用例做**：实测无差别回收会给依赖异步任务的用例簇引入
+# 新的时序干扰（同一组合重复两次得到不同的 2-3 例红），故采用逐个文件 opt-in。
 @pytest.fixture(autouse=True)
-def _isolate_worker_stop_event():
+def _isolate_worker_stop_event(request):
     from app.services import async_tasks as _at
 
     _at.WORKER_STOP_EVENT.clear()
+    reap = request.node.get_closest_marker("reap_workers") is not None
     try:
         yield
     finally:
-        # 退出也清：用例内为了验证优雅停机而 set 的标志不应泄到下一个用例
-        _at.WORKER_STOP_EVENT.clear()
+        try:
+            if reap:
+                with _at._WORKER_THREADS_GUARD:
+                    live_workers = [
+                        t for t in _at._WORKER_THREADS.values() if t.is_alive()
+                    ]
+                if live_workers:
+                    # best-effort 回收：不能因某个 worker 卡在网络调用上就把整个套件拖慢
+                    _at.request_all_workers_stop()
+                    _at.wait_workers_stopped(timeout_seconds=5)
+        finally:
+            # 退出也清：用例内为了验证优雅停机而 set 的标志不应泄到下一个用例
+            _at.WORKER_STOP_EVENT.clear()
 

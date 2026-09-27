@@ -41,7 +41,12 @@ from app.services.discovery_stage_budget import (
     TOTAL_BUDGET_SECONDS,
 )
 
-pytestmark = pytest.mark.whitebox
+pytestmark = [
+    pytest.mark.whitebox,
+    # 本文件会触发“无 ready 快照 → fire-and-forget 数据准备任务”，需要用例间
+    # 回收残留 worker 线程（conftest._isolate_worker_stop_event，PT-DEF-15）。
+    pytest.mark.reap_workers,
+]
 
 
 # ============================================================================
@@ -175,6 +180,22 @@ def _setup_ready_snapshot_with_items(
 
 def _install_http_guards(monkeypatch):
     """安装 HTTP 守门：任何对 urllib / requests / httpx 的调用都抛 AssertionError。"""
+
+    # 同时桩掉“无 ready 快照时 fire-and-forget 启动的数据准备任务”：它不是本文件的
+    # 被测对象，却会真打 akshare 外网（实测报过 hot-rank 与龙虎榜两个端点），
+    # 并起一个跨用例存活的后台 worker 线程 —— 那个线程用 get_session_local() 的
+    # 全局 session 写库，会把“今天的空快照 + 一条 ScanRun”写进下一个用例的 tmp 库
+    # （PT-DEF-15，体检报告 §十二.7；用例间回收线程见 tests/conftest.py 的
+    # _isolate_worker_stop_event）。
+    class _StubTaskRead:
+        id = "stub-data-prep-task"
+
+    import app.services.discovery_data_prep as _dp
+
+    monkeypatch.setattr(
+        _dp, "start_data_prep_task", lambda **_kw: _StubTaskRead(), raising=True
+    )
+
     def _http_violation(*args, **kwargs):
         raise AssertionError(
             "fast_scan 不应发起任何第三方 HTTP 请求，"

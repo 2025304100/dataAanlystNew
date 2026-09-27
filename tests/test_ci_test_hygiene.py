@@ -29,7 +29,7 @@ pytestmark = pytest.mark.whitebox
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # 与 pytest.ini 中已注册的 marker 保持一致
-KNOWN_MARKERS = ("whitebox", "blackbox", "e2e", "slow")
+KNOWN_MARKERS = ("whitebox", "blackbox", "e2e", "slow", "reap_workers")
 _FILE_MARKER_RE = re.compile(
     r"^pytestmark\s*=|pytest\.mark\.(?:" + "|".join(KNOWN_MARKERS) + r")\b", re.M
 )
