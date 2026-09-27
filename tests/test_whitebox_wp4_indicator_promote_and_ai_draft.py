@@ -28,7 +28,7 @@ import json
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.router import api_router
 from app.db.session import get_db
@@ -327,7 +327,14 @@ def test_promote_does_not_auto_activate(db_session):
 
 
 def test_api_promote_number_returns_201(db_session):
-    """API：number 指标提升返回 201 + 结构化响应。"""
+    """API：number 指标提升 → 201 + 草案化响应（P0 ACL 后走因子域 Facade）。
+
+    WP4-01 原契约“直接建 Factor”已被 P2-G 草案流程取代：端点现在只
+    `submit_factor_draft_from_external`，返回待审批草案；因子代码由 Facade 按
+    `from-<source_module>-<ref>` 派生（不再沿用 indicator.key），而
+    factor_id / factor_version_id 依旧返 0 —— 那是 custom_indicators.py 里
+    “P1 TODO：让 Facade 扩展返回结构化 id”的已知缺口。
+    """
     ind = _make_indicator(db_session, key="api_number", formula="close")
     client = _make_test_client(db_session)
 
@@ -338,10 +345,15 @@ def test_api_promote_number_returns_201(db_session):
     assert resp.status_code == 201
     body = resp.json()
     assert body["success"] is True
-    assert body["factor_code"] == "api_number"
     assert body["lifecycle_status"] == "draft"
     assert body["origin"] == "user"
     assert body["source_mapping"]["indicator_id"] == ind.id
+    assert body["source_mapping"]["indicator_key"] == "api_number"
+    # 草案溯源键与审计入口必须可用（前端跳转依赖它）
+    assert body["source_mapping"]["facade_draft_id"]
+    assert body["source_mapping"]["audit_url"].startswith("/factor-center/drafts/")
+    # 代码由 Facade 派生，不等于 indicator.key（行为已变，用例跟上新契约）
+    assert body["factor_code"] == f"from-custom_indicators-{ind.id}"
     assert "factor_version_id" in body
 
 
@@ -373,7 +385,13 @@ def test_api_promote_not_found_returns_404(db_session):
 
 
 def test_api_promote_idempotent_no_duplicate(db_session):
-    """API：重复调用不创建重复因子。"""
+    """API：重复调用得到同一因子代码，且不会绕过审批直接建 Factor。
+
+    旧断言“库里恰好 1 个 code=api_idem 的因子”属于 WP4-01 旧契约（promote 直接
+    入库）；P2-G 后 promote 只落草案，所以现在校的是：两次提交同码、无 Factor
+    副作用、factor_id 仍是 P1 TODO 占位 0。“同码不应堆积多条草案”单独跟踪
+    （见下一条 xfail）。
+    """
     ind = _make_indicator(db_session, key="api_idem", formula="close")
     client = _make_test_client(db_session)
 
@@ -381,20 +399,43 @@ def test_api_promote_idempotent_no_duplicate(db_session):
         f"/api/v1/settings/custom-indicators/{ind.id}/promote-to-factor", json={}
     )
     assert resp1.status_code == 201
-    factor_id_1 = resp1.json()["factor_id"]
 
     resp2 = client.post(
         f"/api/v1/settings/custom-indicators/{ind.id}/promote-to-factor", json={}
     )
     assert resp2.status_code == 201
-    factor_id_2 = resp2.json()["factor_id"]
 
-    assert factor_id_1 == factor_id_2
-    # 数据库中只有一个因子
-    factors = db_session.execute(
-        select(Factor).where(Factor.code == "api_idem")
-    ).scalars().all()
-    assert len(factors) == 1
+    b1, b2 = resp1.json(), resp2.json()
+    assert b1["factor_code"] == b2["factor_code"] == f"from-custom_indicators-{ind.id}"
+    # P1 TODO：Facade 尚未回传真实 id，两次都是占位 0
+    assert b1["factor_id"] == b2["factor_id"] == 0
+
+    db_session.expire_all()
+    # 草案化后不应产生直接入库副作用
+    assert db_session.execute(
+        select(func.count()).select_from(Factor)
+    ).scalar() == 0
+
+
+@pytest.mark.xfail(
+    reason="PT-DEF-14（待拍板）：同一指标重复 promote 应幂等到同一条草案，"
+           "实测每次提交都生成新 draft_no（fd-*）→ 同码草案会不断堆积；"
+           "端点里的 factor_code_conflict→409 分支因此永远不会命中。",
+    strict=False,
+)
+def test_api_promote_twice_reuses_same_draft(db_session):
+    """缺陷警报线：两次提交应命中同一条草案。"""
+    ind = _make_indicator(db_session, key="api_idem_reuse", formula="close")
+    client = _make_test_client(db_session)
+
+    r1 = client.post(
+        f"/api/v1/settings/custom-indicators/{ind.id}/promote-to-factor", json={}
+    )
+    r2 = client.post(
+        f"/api/v1/settings/custom-indicators/{ind.id}/promote-to-factor", json={}
+    )
+    assert r1.json()["source_mapping"]["facade_draft_id"] == \
+        r2.json()["source_mapping"]["facade_draft_id"]
 
 
 # ══════════════════════════════════════════════════════════

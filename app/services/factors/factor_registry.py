@@ -6,7 +6,8 @@
 设计要点：
 - 创建草稿时强制 lifecycle_status='draft'、origin='user'、is_active=0（向后兼容 legacy status）
 - 创建版本时计算 content_hash 实现幂等（同内容直接返回既有版本）
-- 创建版本时检测上一最新版本是否被引用（不可变），不可变则阻止 is_latest 切换
+- 创建版本时只保证历史内容不可变（已引用版本的历史字段不被改写）；是否被引用
+  不再阻止创建新版本，is_latest 仅是路由指针（参见 create_factor_version 内注释）
 - 引用检测覆盖：EvaluationRun / FactorSetMember / FactorModelMember
 """
 from __future__ import annotations
@@ -206,7 +207,9 @@ def create_factor_version(
     1. 校验因子存在
     2. 编译公式（WP2-04：生成执行计划、content_hash、依赖收集）
     3. 幂等检查（同内容返回既有版本）
-    4. 检查上一最新版本是否被引用（不可变），若不可变则阻止切换 is_latest
+    4. 已引用版本仍保持内容不可变，但**允许**创建新版本（is_latest 只是路由
+       指针，切换它不改历史内容；早期把“被引用”当成“禁止创建”会让公式
+       编辑器无法迭代）
     5. 新建版本，version = max + 1，is_latest = 1
     6. 旧最新版本 is_latest 置 0
 

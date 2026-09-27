@@ -215,13 +215,19 @@ def test_factor_health_degrades_when_batch_or_core_coverage_is_missing(
 
 
 def test_factor_health_reports_uninitialized_warehouse(tmp_path):
-    report = get_factor_health(
-        FactorWarehouse(tmp_path / "missing.duckdb")
-    )
+    warehouse = FactorWarehouse(tmp_path / "missing.duckdb")
+    report = get_factor_health(warehouse)
 
     assert report.status == "failed"
     assert report.warehouse_available is False
-    assert report.reasons == ["warehouse_not_initialized"]
+    # 未初始化已细分为两种诊断（store.py L666-685）：文件不存在
+    # =warehouse_not_initialized；`FactorWarehouse` 构造时会登记共享连接（防并发
+    # DB_LOCK_TIMEOUT 的重构），文件已存在但无表则=schema_not_initialized。
+    # 本用例守的是“未就绪时 available=False 且带原因码”，不锁定具体哪一种。
+    assert report.reasons and all(
+        r in ("warehouse_not_initialized", "schema_not_initialized")
+        for r in report.reasons
+    ), report.reasons
 
 
 def test_factor_health_validates_thresholds(tmp_path):

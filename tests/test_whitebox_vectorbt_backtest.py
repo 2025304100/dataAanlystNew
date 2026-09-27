@@ -165,6 +165,12 @@ def test_score_trend_selects_daily_top_n_by_ranking_score():
     assert bool(entries.loc[index[5], "000001"])
 
 def test_vectorbt_engine_returns_portfolio_metrics_and_trades():
+    # 环内依赖：vectorbt 在 requirements.txt 里（CI 会装），但体量大且未入部分本地
+    # venv；`run_vectorbt_backtest` 是延迟 import，缺库时整条引擎路径不可用，
+    # 属于环境问题而非产品回归（同仓内 duckdb/sklearn 的 importorskip 做法）。
+    pytest.importorskip(
+        "vectorbt", reason="vectorbt 未安装（requirements.txt 可选重型依赖）"
+    )
     result = run_vectorbt_backtest(
         _frames([10, 10, 11, 12, 13, 12, 11, 10]),
         VectorBTConfig(
@@ -526,6 +532,9 @@ def test_simulation_prices_never_backfill_before_first_observation():
 
 
 def test_vectorbt_engine_handles_staggered_listing_without_backfill():
+    pytest.importorskip(
+        "vectorbt", reason="vectorbt 未安装（requirements.txt 可选重型依赖）"
+    )
     index = pd.date_range("2026-01-01", periods=6, freq="D")
     close = pd.DataFrame(
         {

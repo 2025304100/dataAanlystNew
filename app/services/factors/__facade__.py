@@ -1760,22 +1760,30 @@ def _write_draft_audit_best_effort(
     attributes: dict[str, Any] | None = None,
     note: str | None = None,
 ) -> None:
-    """Best-effort：草稿治理闭环写审计事件。失败仅 warning 不抛异常。"""
+    """Best-effort：草稿治理闭环写审计事件。失败仅 warning 不抛异常。
+
+    “best-effort” 必须用 SAVEPOINT 包住：以前 write_audit_event 内部 flush 一旦
+    报错（如 CHECK 违反），外层只抓到一条 warning，但 session 已进入
+    need-rollback，接着同一个事务里的其它操作全部报 PendingRollbackError，
+    最终把 promote-to-factor 等接口打成 500（实际数据丢不丢反倒次要）。
+    现在审计写失败只回滚到保存点，主事务可继续提交。
+    """
     try:
         from app.services.data_governance_audit import write_audit_event  # 延迟导入
-        write_audit_event(
-            db,
-            action,  # allowed set 在 data_governance_audit 中已扩展 FACTOR_DRAFT_*
-            business_key=str(draft_no),
-            operator_id=str(operator_id or "system"),
-            correlation_id=(
-                f"factor-draft:{draft_no}" if draft_no else None
-            ),
-            before=before,
-            after=after,
-            attributes=attributes,
-            note=note,
-        )
+        with db.begin_nested():
+            write_audit_event(
+                db,
+                action,  # allowed set 在 data_governance_audit 中已扩展 FACTOR_DRAFT_*
+                business_key=str(draft_no),
+                operator_id=str(operator_id or "system"),
+                correlation_id=(
+                    f"factor-draft:{draft_no}" if draft_no else None
+                ),
+                before=before,
+                after=after,
+                attributes=attributes,
+                note=note,
+            )
     except Exception as _audit_err:
         import logging as _log_a
         _log_a.getLogger(__name__).warning(

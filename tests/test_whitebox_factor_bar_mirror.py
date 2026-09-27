@@ -287,16 +287,30 @@ def test_mirror_cancel_stops_between_batches_and_releases_duckdb(
 
 def test_mirror_pre_cancel_does_not_open_warehouse(db_session, tmp_path):
     path = tmp_path / "cancelled.duckdb"
+    warehouse = FactorWarehouse(path)
 
     result = mirror_daily_bars(
         db_session,
-        warehouse=FactorWarehouse(path),
+        warehouse=warehouse,
         include_universe=False,
         should_cancel=lambda: True,
     )
 
     assert result.rows_written == 0
-    assert path.exists() is False
+    # 不断言“文件不存在”：`FactorWarehouse.__init__` 会登记共享连接（防并发
+    # DB_LOCK_TIMEOUT 的重构），本用例调用方自己构造仓库对象就会落文件。
+    # 真正要守的不变量是：取消发生在初始化之前 → 不建 schema、不写任何业务数据。
+    assert warehouse.health().available is False
+    with warehouse.connection(read_only=True) as conn:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'main'"
+            ).fetchall()
+        }
+    assert "warehouse_metadata" not in tables
+    assert "raw_daily_bars" not in tables
 
 
 def test_short_read_retries_dropped_connection_and_closes_sessions(

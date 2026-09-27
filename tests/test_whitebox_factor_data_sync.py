@@ -253,6 +253,9 @@ def test_mirror_factor_inputs_validates_arguments(db_session, tmp_path):
             include_fund_flows=False,
             include_sentiment=False,
             include_tail_proxy=False,
+            # 后来新增的输入源也必须显式关，否则 `any(...)` 仍为 True，
+            # “一个源都没开”的校验永远不会触发。
+            include_etf_indicators=False,
             include_macro=False,
         )
     with pytest.raises(ValueError, match="start_date"):

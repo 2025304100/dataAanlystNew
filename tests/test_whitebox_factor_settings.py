@@ -46,7 +46,13 @@ def test_factor_feature_can_be_enabled_and_warehouse_initialized(
 
     before = get_factors_overview(db_session)
     assert before['feature_enabled'] is False
-    assert before['warehouse_error'] == 'warehouse_not_initialized'
+    # 未初始化在 `store.WarehouseHealth` 里已细化为两种诊断：文件不存在
+    # =warehouse_not_initialized，文件存在但无 warehouse_metadata 表
+    # =schema_not_initialized（store.py L666-685）。本用例真正要守的是
+    # “未初始化时 available=False + 有原因码”，不必锁定具体是哪一种。
+    assert before['warehouse_error'] in (
+        'warehouse_not_initialized', 'schema_not_initialized'
+    )
     assert before['health']['warehouse_available'] is False
 
     with pytest.raises(HTTPException) as exc:

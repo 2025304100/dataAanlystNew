@@ -106,9 +106,13 @@ def test_probe_logs_timeout(monkeypatch, caplog):
     monkeypatch.setattr(akshare_apis.ak, "test_api", MagicMock(), raising=False)
 
     # mock _run_probe 永久阻塞，触发 asyncio.wait_for 超时
-    def _block_forever(func, probe_args):
+    def _block_forever(func, probe_args, api_key):
+        # 签名必须跟产品侧 `_run_probe(func, probe_args, api_key)` 一致；旧写法
+        # 只接 2 个参数 → TypeError 走 EXC 分支，永远命不到 TIMEOUT 分支。
         import time
-        time.sleep(100)
+        # 阻塞时长只要大于上面设的 0.3s 超时即可；不能用 sleep(100)，因为
+        # asyncio.run 收尾会等 default executor 里的线程跑完（白等 100 秒）。
+        time.sleep(1.0)
 
     monkeypatch.setattr(akshare_apis, "_run_probe", _block_forever)
 

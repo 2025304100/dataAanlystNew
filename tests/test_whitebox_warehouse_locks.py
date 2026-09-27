@@ -432,7 +432,11 @@ def test_safe_write_context_raises_when_locked(tmp_path):
         # Actually, since the lockfile PID == os.getpid() and _pid_exists
         # returns True for our own PID, acquire will return held_by_other.
         with pytest.raises(WarehouseLockUnavailable):
-            wh.safe_write_context(timeout_seconds=0)
+            # safe_write_context 是 @contextmanager：光调用只会生成 generator，
+            # 不加锁也不报错——必须进入 with（__enter__）才执行 acquire。
+            # 旧写法只写 `wh.safe_write_context(timeout_seconds=0)`，等于空断言。
+            with wh.safe_write_context(timeout_seconds=0):
+                pass
     finally:
         release_warehouse_lock(wh.path)
 

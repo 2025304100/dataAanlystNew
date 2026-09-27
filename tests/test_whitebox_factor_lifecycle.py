@@ -18,6 +18,7 @@ from sqlalchemy import select
 
 from app.models.factor import Factor
 from app.models.factor_evaluation import EvaluationRun, TransitionAudit
+from app.models.factor_model import FactorVersion
 from app.schemas.factor_library import (
     FactorDraftCreate,
     FactorTransitionRequest,
@@ -189,22 +190,44 @@ def test_create_factor_version_idempotent_same_content(db_session):
     assert len(versions) == 1
 
 
-def test_create_factor_version_rejects_immutable_previous(db_session):
-    """前一最新版本被 EvaluationRun 引用时，创建新版本应被拒绝。"""
+def test_create_factor_version_allows_iteration_but_keeps_history_immutable(db_session):
+    """上一版本被 EvaluationRun 引用时：允许建新版本，但旧版本内容不得被改写。
+
+    旧用例名 `..._rejects_immutable_previous` 对应的是已被推翻的设计：把“被引用”
+    当作“禁止创建新版本”会让公式编辑器无法迭代（见 factor_registry.create_factor_version
+    内注释）。现在 `check_version_immutable` 仍作为引用查询（删除/编辑保护）使用，
+    但不再阻断 `create_factor_version`；is_latest 只是路由指针。
+    """
     factor = _make_draft(db_session, code="imm_factor")
     db_session.flush()
 
     v1 = _make_version(db_session, factor.id, formula="close")
     db_session.flush()
 
-    # 创建 EvaluationRun 引用 v1，使 v1 不可变
+    # 创建 EvaluationRun 引用 v1（使 v1 处于“被引用”状态）
     db_session.add(EvaluationRun(id="eval-imm-1", factor_version_id=v1.id))
     db_session.flush()
 
     assert check_version_immutable(db_session, v1.id) is True
 
-    with pytest.raises(ValueError, match="version_immutable"):
-        _make_version(db_session, factor.id, formula="open")
+    v2 = _make_version(db_session, factor.id, formula="open")
+    db_session.flush()
+
+    # 新版本创建成功，指针迁移
+    assert v2.id != v1.id
+    assert v2.version == v1.version + 1
+    assert v2.is_latest == 1
+    # 旧版本：仅 is_latest 变 0，历史内容（公式）保持原样
+    db_session.expire_all()
+    v1_after = db_session.get(FactorVersion, v1.id)
+    assert v1_after.is_latest == 0
+    assert v1_after.formula_expr == "close"
+    assert v1_after.version == v1.version
+
+    # 同内容重复提交走幂等分支，不产生第三条版本
+    again = _make_version(db_session, factor.id, formula="open")
+    db_session.flush()
+    assert again.id == v2.id
 
 
 # ── 4. execute_transition（生命周期）──────────────────────

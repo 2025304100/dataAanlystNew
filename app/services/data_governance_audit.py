@@ -75,6 +75,11 @@ ALLOWED_AUDIT_ACTIONS: frozenset[str] = frozenset({
 class DataGovernanceAuditEvent(Base):
     __tablename__ = "data_governance_audit_events"
     __table_args__ = (
+        # ❗本清单必须与下方 `write_audit_event` 的 `allowed` 集合逐项同步。
+        # SQLite 会真的执行这条 CHECK（P2-G 当时只改了 Python 白名单，导致
+        # FACTOR_DRAFT_* 审计写入在 SQLite 上全部 IntegrityError；best-effort
+        # 包裹又会让事务进 need-rollback，反向把 promote-to-factor 等接口打成 500）。
+        # MySQL 5.7 则直接忽略 CHECK（只有代码白名单生效），两库行为差异就靠这条约束对齐。
         CheckConstraint(
             "action IN ("
             "'PORTFOLIO_CANDIDATE_SCD2_CHANGE',"
@@ -89,6 +94,11 @@ class DataGovernanceAuditEvent(Base):
             "'DATA_QUALITY_QUARANTINE',"
             "'G6_ROLLOUT_STARTED',"
             "'G6_ROLLOUT_ROLLED_BACK',"
+            # ── P2-G 因子治理闭环（与 write_audit_event.allowed 同步）──
+            "'FACTOR_DRAFT_SUBMITTED',"
+            "'FACTOR_DRAFT_APPROVED',"
+            "'FACTOR_DRAFT_REJECTED',"
+            "'FACTOR_VERSION_PROMOTED',"
             "'UNKNOWN_AUDIT_ACTION'"
             ")",
             name="ck_dg_audit_action_values",
