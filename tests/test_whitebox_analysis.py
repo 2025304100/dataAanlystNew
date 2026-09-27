@@ -79,10 +79,8 @@ def test_safe_date_handles_multiple_formats():
 
 # ---------- 评分主流程 ----------
 
-@pytest.mark.xfail(
-    reason="C-3 bug 已修复：analysis.py 已移除无条件 data_credibility=0.0 重置",
-    strict=False,
-)
+# C-3 回归（2026-09-27 摘掉 xfail 帽子）：该 bug 已修，用例实测通过；
+# 原标记的 reason 本身就写着“已修复”，留着只会在未来把真回归当成“预期内失败”。
 def test_calculate_score_with_insufficient_bars_returns_low_credibility(db_session):
     """[C-3 回归] K 线 < 5 根时，data_credibility 应为 0.2，而非被重置为 0.0。
 
@@ -100,17 +98,29 @@ def test_calculate_score_with_insufficient_bars_returns_low_credibility(db_sessi
         f"K 线不足 5 根时 data_credibility 应为 0.2，实际为 {score.data_credibility}。"
         "这表明 analysis.py 第 134 行的无条件重置 bug 仍然存在。"
     )
-    # 同时验证其他字段符合预期
+
+
+@pytest.mark.xfail(
+    reason="待拍板：只有 3 根 K 线时 quality_score 实测为 49.0，而旧用例期望 50.0。"
+           "这是评分权重口径漂移，需先判定“49.0 是新口径还是 bug”再定断言，"
+           "不能为了转绿直接改成实得值（体检报告 §十二.9）。",
+    strict=False,
+)
+def test_calculate_score_with_insufficient_bars_secondary_fields(db_session):
+    """[待拍板] 同上场景下其他评分字段应符合的预期值。"""
+    sym = _make_symbol(db_session)
+    _add_bars(db_session, sym.id, count=3)
+
+    score = analysis.calculate_symbol_score(db_session, sym, date.today())
+
     assert score.quality_score == 50.0
     assert score.timing_score == 45.0
     assert score.stage == "cooldown"
     assert score.action == "hold"
 
 
-@pytest.mark.xfail(
-    reason="C-3 bug 已修复：零 K 线时 data_credibility 保持 0.2",
-    strict=False,
-)
+# C-3（零 K 线时 data_credibility 应保留 0.2）已修复，2026-09-27 全量跑实测该用例
+# 已 XPASS → 摘掉 xfail 帽子，转为正式断言（留着会把将来的回归当成“预期内失败”）。
 def test_calculate_score_with_zero_bars(db_session):
     """[边界] 无任何 K 线时不应崩溃，且 data_credibility 应为 0.2。"""
     sym = _make_symbol(db_session)
