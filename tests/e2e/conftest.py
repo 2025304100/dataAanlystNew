@@ -84,15 +84,31 @@ def browser(live_backend, live_frontend):
         )
 
     with sync_playwright() as p:
+        # 默认用 Playwright 配套 build；如果本机没那个 build（常见：playwright 升版后
+        # ms-playwright 下仍是旧版本号），可以用已装浏览器跑：
+        #   E2E_BROWSER_CHANNEL=chrome|msedge|chrome-beta …
+        #   E2E_BROWSER_EXECUTABLE_PATH=D:/path/to/chrome.exe
+        launch_kwargs: dict = {"headless": True}
+        channel = os.getenv("E2E_BROWSER_CHANNEL", "").strip()
+        exe = os.getenv("E2E_BROWSER_EXECUTABLE_PATH", "").strip()
+        if channel:
+            launch_kwargs["channel"] = channel
+        if exe:
+            launch_kwargs["executable_path"] = exe
+
         try:
-            br = p.chromium.launch(headless=True)
+            br = p.chromium.launch(**launch_kwargs)
         except Exception as exc:  # pragma: no cover - Chromium sandbox/权限相关
             # A restricted CI/container commonly reports spawn EPERM.  This is
             # an environment limitation, not a failed UI assertion; make it a
             # visible skip so the acceptance report can distinguish the two.
-            pytest.skip(
-                "Chromium unavailable in this acceptance environment; rerun where browser processes are allowed "
-                f"({type(exc).__name__}: {str(exc).splitlines()[0]})"
+            # 但设了 REQUIRE_LIVE_BACKEND=1（CI）时不能 skip：否则“浏览器起不来 →
+            # e2e 全体 skip”又是一种零覆盖假绿（§十五.6 同族）。
+            from tests._live_backend_guard import skip_or_fail_no_live_backend
+
+            skip_or_fail_no_live_backend(
+                str(exc).splitlines()[0] if str(exc) else type(exc).__name__,
+                what="Playwright 浏览器",
             )
         yield br
         br.close()

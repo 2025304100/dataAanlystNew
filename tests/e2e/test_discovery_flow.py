@@ -14,7 +14,10 @@ import pytest
 pytestmark = pytest.mark.e2e
 
 # i18n 文本（zh-CN / en）。默认 locale 为 zh-CN，但兼容 en。
-DISCOVERY_TAB_LABELS = ("机会挖掘", "Opportunity Mining")
+# 「机会挖掘」已改名「机会中心」（tabOpportunity = 机会中心 / Opportunity Center），
+# 而本文件长期没跑所以一直没跟上；新旧标签都列出来（新名在前），一旦界面
+# 再改名，应同步这里而不是只靠旧名碰运气。
+DISCOVERY_TAB_LABELS = ("机会中心", "Opportunity Center", "机会挖掘", "Opportunity Mining")
 START_DISCOVERY_LABELS = ("开始挖掘", "Start Mining")
 ADD_WATCHLIST_LABELS = ("加入观察池", "Add to Watchlist")
 VIEW_ERROR_DETAILS_LABELS = ("查看错误详情", "View error details")
@@ -35,9 +38,9 @@ def _click_view_tab(page, labels):
 
 
 def test_discovery_tab_visible(page):
-    """【P2-2 E2E】切换到「机会挖掘」Tab 可见。"""
+    """【P2-2 E2E】切换到「机会中心」Tab 可见。"""
     tab = _click_view_tab(page, DISCOVERY_TAB_LABELS)
-    assert tab is not None, "未找到「机会挖掘」Tab 按钮"
+    assert tab is not None, "未找到机会中心 Tab 按钮（已试过：" + "、".join(DISCOVERY_TAB_LABELS) + "）"
 
     # 切换后 discovery 内容容器可见
     content = page.locator("[data-tab-content='discovery']").first
