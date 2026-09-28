@@ -18,7 +18,10 @@ def client():
             response = value.get('/health')
             response.raise_for_status()
         except Exception as exc:
-            pytest.skip(f'backend is not running: {exc}')
+            # 本地 skip；CI（REQUIRE_LIVE_BACKEND=1）下直接失败，不让零覆盖变成绿。
+            from tests._live_backend_guard import skip_or_fail_no_live_backend
+            
+            skip_or_fail_no_live_backend(exc)
         yield value
 
 

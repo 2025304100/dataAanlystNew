@@ -170,3 +170,29 @@ def test_no_source_files_are_untracked_and_ignored():
         "以下源码被 .gitignore 排除且未跟踪——新克隆/CI 里它们不存在"
         "（体检报告 §十一.7）：\n" + "\n".join(sorted(offenders)[:50])
     )
+
+
+# ══════════════════════════════════════════════════
+# 4. 闸门不得“零覆盖假绿”（§十五）
+# ══════════════════════════════════════════════════
+
+def test_live_backend_guard_fails_instead_of_skipping_when_required(monkeypatch):
+    """REQUIRE_LIVE_BACKEND=1 时，“活服务不在”必须是 failure 而不是 skip。
+
+    实测背景：后端挂掉时 `pytest -m blackbox` 跑出 79 skipped / 0 failed，
+    CI job 会当成通过——blackbox/e2e 完全没跑但显示“绿”。本用例钉住那个防线本身。
+    """
+    from tests._live_backend_guard import skip_or_fail_no_live_backend
+
+    monkeypatch.setenv("REQUIRE_LIVE_BACKEND", "1")
+    with pytest.raises(pytest.fail.Exception):
+        skip_or_fail_no_live_backend(RuntimeError("connection refused"))
+
+
+def test_live_backend_guard_still_skips_for_local_runs(monkeypatch):
+    """没设变量时仍走 skip，本地没起后端的开发不应被误红。"""
+    from tests._live_backend_guard import skip_or_fail_no_live_backend
+
+    monkeypatch.delenv("REQUIRE_LIVE_BACKEND", raising=False)
+    with pytest.raises(pytest.skip.Exception):
+        skip_or_fail_no_live_backend(RuntimeError("connection refused"))

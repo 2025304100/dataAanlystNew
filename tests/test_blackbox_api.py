@@ -31,7 +31,11 @@ def client():
             r = c.get("/health")
             assert r.status_code == 200, f"后端服务未运行: {r.status_code}"
         except Exception as e:
-            pytest.skip(f"后端服务未运行（{e}），跳过黑盒测试")
+            # 不在时：本地 skip，CI（REQUIRE_LIVE_BACKEND=1）直接失败——不能让
+            # “全体 skip 后 0 failed” 被当成 blackbox 通过。
+            from tests._live_backend_guard import skip_or_fail_no_live_backend
+
+            skip_or_fail_no_live_backend(e)
         yield c
 
 

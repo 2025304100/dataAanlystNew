@@ -30,26 +30,46 @@ FRONTEND_URL = os.getenv("E2E_FRONTEND_URL", "http://localhost:5173").rstrip("/"
 
 @pytest.fixture(scope="session")
 def live_backend() -> bool:
-    """检查后端是否在线，不在线则 skip 所有 E2E 测试。"""
+    """检查后端是否在线，不在线则 skip 所有 E2E 测试。
+
+    CI（REQUIRE_LIVE_BACKEND=1）下改为失败：否则“服务没起来→全体 skip→job 绿”
+    会让 e2e/blackbox 变成零覆盖的假通过。
+    """
+    from tests._live_backend_guard import skip_or_fail_no_live_backend
+
     try:
         r = httpx.get(f"{BACKEND_URL}/health", timeout=3.0, trust_env=False)
         if r.status_code == 200:
             return True
-    except Exception:
-        pass
-    pytest.skip("后端未运行（http://localhost:8000），跳过 E2E 测试")
+        skip_or_fail_no_live_backend(
+            f"GET {BACKEND_URL}/health 返回 {r.status_code}", what="后端服务"
+        )
+    except Exception as exc:  # 连不上、超时，或上面抛出 Skipped/Failed 本身
+        if isinstance(exc, (pytest.skip.Exception, pytest.fail.Exception)):
+            raise
+        skip_or_fail_no_live_backend(exc, what=f"后端服务（{BACKEND_URL}）")
 
 
 @pytest.fixture(scope="session")
 def live_frontend() -> bool:
-    """检查前端是否在线，不在线则 skip 所有 E2E 测试。"""
+    """检查前端是否在线，不在线则 skip 所有 E2E 测试。
+
+    与 live_backend 同一口径：REQUIRE_LIVE_BACKEND=1（CI）下服务不在就失败，
+    不拿“全体 skip”当“e2e 通过”。
+    """
+    from tests._live_backend_guard import skip_or_fail_no_live_backend
+
     try:
         r = httpx.get(FRONTEND_URL, timeout=3.0, trust_env=False)
         if r.status_code == 200:
             return True
-    except Exception:
-        pass
-    pytest.skip("前端未运行（http://localhost:5173），跳过 E2E 测试")
+        skip_or_fail_no_live_backend(
+            f"GET {FRONTEND_URL} 返回 {r.status_code}", what="前端服务"
+        )
+    except Exception as exc:
+        if isinstance(exc, (pytest.skip.Exception, pytest.fail.Exception)):
+            raise
+        skip_or_fail_no_live_backend(exc, what=f"前端服务（{FRONTEND_URL}）")
 
 
 @pytest.fixture(scope="module")

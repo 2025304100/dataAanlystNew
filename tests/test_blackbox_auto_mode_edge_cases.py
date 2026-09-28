@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +16,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.models.daily_bar import DailyBar
+from app.models.decision_engine import StrategyExecutionSnapshot
 from app.models.portfolio import Portfolio
 from app.models.portfolio_member import (
     EXECUTION_AUTO,
@@ -388,7 +390,12 @@ class TestAutoModeEdgeCases:
             )
 
         assert exc_info.value.status_code == 400
-        assert "cash" in exc_info.value.detail.lower()
+        # 错误信封已升级为结构化 dict（PT-DEF-5/8 系列），旧写法
+        # `exc_info.value.detail.lower()` 会直接 AttributeError：'dict' object
+        # has no attribute 'lower'。改校稳定错误码，不再依赖文案字串。
+        detail = exc_info.value.detail
+        assert isinstance(detail, dict), f"detail 应为 7 要素 dict，实得 {detail!r}"
+        assert detail.get("error_code") == "INSUFFICIENT_SIM_CASH"
 
     def test_partial_symbol_failure_isolated(self, db_session):
         """异常 9：部分标的失败 → 其他标的不受影响。
@@ -424,37 +431,44 @@ class TestAutoModeEdgeCases:
         )
         _make_member(db_session, portfolio_id=p.id, symbol_id=sym_b.id)
 
+        # 自动模拟交易有 fail-closed 前置（STRATEGY_SNAPSHOT_REQUIRED）：必须存在属于
+        # 该组合、类型为 save_and_apply 的已应用策略执行快照，否则整条链路会被
+        # fail-closed 拦下（抛 STRATEGY_SNAPSHOT_REQUIRED）。
+        # 本用例写于该前置上线之前，所以 blackbox 闸门里必红（体检报告 §十五）。
+        db_session.add(
+            StrategyExecutionSnapshot(
+                id="snapshot-qa-partial-port",
+                snapshot_no=1,
+                portfolio_id=p.id,
+                decision_clock_json="{}",
+                cost_config_json='{"slippage_buy_bps": 5, "min_lot_size": 100}',
+                member_snapshot_json=json.dumps(
+                    [{"symbol_id": sym_a.id}, {"symbol_id": sym_b.id}]
+                ),
+                snapshot_type="save_and_apply",
+                snapshot_hash="snapshot-qa-partial-port-hash",
+                effective_from=datetime(2025, 1, 1),
+            )
+        )
+        db_session.commit()
+
         # Act
         result = execute_member_source(
             db_session, portfolio_id=p.id, dry_run=True
         )
 
-        # Assert: 任务未被取消，无异常崩溃
+        # ── 断言口径已按新架构重划（体检报告 §十五）──
+        # 旧断言要“两个成员都出现在 buy/rejected 里，且数据缺失的那个被拒
+        # BLOCKED”，那是 member_source 还自己按 Score/Member 选标的时代的形状。
+        # 现在本入口只把 DecisionEngine 产出的 order plan 翻译成下单，而本用例
+        # 只 seed 了 Score+Member（没产 plan），那些断言在此已不可达。
+        # “一个成员失败不影响其他成员”的隔离覆盖已迁到正确接缝：
+        # tests/test_auto_simulation_decision_plan.py::test_one_failing_plan_does_not_abort_the_others
+        # 这里保留入口层可验证的部分：不崩、不误判取消、不把异常吞进 errors，
+        # 并且明确“入口不再自行造决策”（这两条空集就是新契约本身）。
         assert result["skipped_due_to_cancel"] is False
         assert len(result["errors"]) == 0
-
-        # 所有决策（含被拒绝的）都应该出现
-        all_decisions = (
-            result["buy_decisions"] + result["rejected_decisions"]
+        assert result["buy_decisions"] == [], (
+            "入口层不应自己选标的：无 order plan 时不应凭空产生买入决策"
         )
-        assert len(all_decisions) >= 2
-
-        # 标的 B（数据缺失）被拒绝
-        rejected = result["rejected_decisions"]
-        assert len(rejected) >= 1
-        rejected_symbols = {d["symbol_id"] for d in rejected}
-        assert sym_b.id in rejected_symbols
-        # 拒绝码为 BLOCKED
-        for d in rejected:
-            if d["symbol_id"] == sym_b.id:
-                assert d["rejection_code"] == "BLOCKED"
-
-        # 标的 A（数据健康）未被拒绝，进入 buy_decisions
-        healthy = result["buy_decisions"]
-        assert len(healthy) >= 1
-        healthy_symbols = {d["symbol_id"] for d in healthy}
-        assert sym_a.id in healthy_symbols
-        # 无拒绝码
-        for d in healthy:
-            if d["symbol_id"] == sym_a.id:
-                assert d["rejection_code"] is None
+        assert result["rejected_decisions"] == []

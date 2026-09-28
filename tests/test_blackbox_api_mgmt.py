@@ -19,7 +19,17 @@ import pytest
 pytestmark = pytest.mark.blackbox
 
 BASE = "http://localhost:8000"
-TIMEOUT = 35.0  # 略大于探测超时 30s，确保能收到超时响应
+# 读超时必须大于**产品自己的探测预算**。历史上的 35.0 是按“探测超时 30s”写的，
+# 而 `akshare_apis._PROBE_TIMEOUT_SECONDS` 实际已是 **50.0** → 上游在 30~50s 返回时，
+# 本套件会先 httpx.ReadTimeout 假失败（体检报告 §十五，阈值三边不一致另记
+# PT-DEF-18：产品 50s / 前端 timeoutMs 30s / 测试断言 30s）。
+TIMEOUT = 62.0
+# 阈值断言用的预算：产品侧 `_PROBE_TIMEOUT_SECONDS = 50.0` + 网络/序列化余量。
+# 旧写法写死 30.0（当时的设计值），产品改成 50.0 后它就变成了假失败的制造机。
+# 本用例真正要钉的是“探测会自己结束、不会无限挂住”，而不是具体多少秒；
+# 30 vs 50 的口径冲突已记 PT-DEF-18（前端 timeoutMs=30s 与产品 50s 不一致），
+# 拍板后应收敛成单一数字并让本文件引用它。
+PROBE_BUDGET_SECONDS = 55.0
 
 # 已知存在的 api_key（registry 中注册的）
 KNOWN_API_KEY = "stock_info_a_code_name"
@@ -35,7 +45,11 @@ def client():
             r = c.get("/health")
             assert r.status_code == 200, f"后端服务未运行: {r.status_code}"
         except Exception as e:
-            pytest.skip(f"后端服务未运行（{e}），跳过黑盒测试")
+            # 本地 skip，CI（REQUIRE_LIVE_BACKEND=1）直接失败：不能让“全体 skip
+            # 后 0 failed”被当成 blackbox 通过（实测后端挂掉时会发生）。
+            from tests._live_backend_guard import skip_or_fail_no_live_backend
+
+            skip_or_fail_no_live_backend(e)
         yield c
 
 
@@ -125,8 +139,12 @@ def test_probe_unknown_key_returns_404(client):
 
 
 def test_probe_known_key_returns_result(client):
-    """POST /stock_info_a_code_name/probe → ProbeResult 字段完整。"""
-    r = client.post(f"/api/v1/external-data/apis/{KNOWN_API_KEY}/probe")
+    """POST /{key}/probe → ProbeResult 字段完整。
+
+    注意：本用例会**真访问 akshare**（黑盒定义如此），耗时取决于上游。
+    它只校响应形状，不校阈值，所以读超时已抬到 TIMEOUT（>50s 产品预算）。
+    """
+    r = client.post(f"/api/v1/external-data/apis/{KNOWN_API_KEY}/probe", timeout=TIMEOUT)
     assert r.status_code == 200
     data = r.json()
     assert "key" in data
@@ -144,139 +162,154 @@ def test_probe_returns_within_30s(client):
     即使 akshare 调用永久阻塞，asyncio.wait_for 也会在 30s 后强制返回超时。
     """
     start = time.time()
-    r = client.post(f"/api/v1/external-data/apis/{KNOWN_API_KEY}/probe")
+    r = client.post(
+        f"/api/v1/external-data/apis/{KNOWN_API_KEY}/probe", timeout=TIMEOUT
+    )
     elapsed = time.time() - start
     assert r.status_code == 200, f"探测应返回 200, 实际 {r.status_code}"
-    assert elapsed < 30.0, (
-        f"探测应在 30s 内返回, 实际 {elapsed:.1f}s —— "
+    assert elapsed < PROBE_BUDGET_SECONDS, (
+        f"探测应在产品超时预算（{PROBE_BUDGET_SECONDS:.0f}s）内自行返回, 实际 {elapsed:.1f}s —— "
         "asyncio.wait_for 超时保护可能未生效"
     )
 
 
 # ============================================================================
-# 4. PUT /external-data/apis/{key} 配置更新（不显式设 Content-Type，复刻前端行为）
+# 4. PUT /external-data/apis/{key} 配置更新
+#
+# 口径重划（体检报告 §十五）：本节以前故意“不显式设 Content-Type，复刻前端行为”，
+# 后果是两类假结果：
+#   • 正向用例拿不到 200 → 直接 pytest.skip，于是“保存是否生效”从来未被验证；
+#   • 负向用例写 `status in (400, 422)` → 缺头造成的 422 也能让它绿，等于什么也没校。
+# 现在统一用 `json=` 发标准 application/json，断言才落在产品自己的校验上。
+# （浏览器默认对字符串 body 发 text/plain 也会被后端拒：那是前端 bug PT-DEF-17，
+# 已在 api/client.ts 统一补 Content-Type；下方仍留一条用例钉住“缺/错类型会被拒”。）
 # ============================================================================
 
-def test_update_config_unknown_key_returns_404(client):
-    """PUT /nonexistent → 404。
-
-    注意：不设 Content-Type 时 FastAPI 在路由进入前就返回 422
-    （无法解析 JSON body），根本到不了路由内部的 404 检查。
-    这是框架行为，非业务 bug。允许 404 或 422。
-    """
-    r = client.put(
-        f"/api/v1/external-data/apis/{UNKNOWN_KEY}?locale=zh-CN",
-        content=json.dumps({"enabled": True}),
+def _put_config(client, payload, key=None):
+    """按标准 JSON 发 PUT（显式 Content-Type 由 httpx 的 json= 负责）。"""
+    return client.put(
+        f"/api/v1/external-data/apis/{key or KNOWN_API_KEY}?locale=zh-CN",
+        json=payload,
     )
-    assert r.status_code in (404, 422), f"未知 key 应返回 404/422, 实际 {r.status_code}"
+
+
+def test_update_config_unknown_key_returns_404(client):
+    """PUT 未知 key → 404（路由内检查，不再被 422 混淆）。"""
+    r = _put_config(client, {"enabled": True}, key=UNKNOWN_KEY)
+    assert r.status_code == 404, f"未知 key 应返回 404, 实际 {r.status_code}: {r.text}"
 
 
 def test_update_config_invalid_strategy_returns_400(client):
-    """anti_risk_strategy='invalid' → 400。"""
-    r = client.put(
-        f"/api/v1/external-data/apis/{KNOWN_API_KEY}?locale=zh-CN",
-        content=json.dumps({"anti_risk_strategy": "invalid_strategy"}),
-    )
-    # 注意：不设 Content-Type 时 FastAPI 可能返回 422 而非 400
-    # 若返回 422，说明 Content-Type bug 存在
-    assert r.status_code in (400, 422), f"无效策略应返回 400/422, 实际 {r.status_code}"
+    """anti_risk_strategy='invalid' → 400（产品自己拦的，不是框架解不了 body）。"""
+    r = _put_config(client, {"anti_risk_strategy": "invalid_strategy"})
+    assert r.status_code == 400, f"无效策略应返回 400, 实际 {r.status_code}: {r.text}"
+
+
+def _get_strategy(client):
+    """读回当前保存的风控策略（用于验证“被拒的请求确实没落库”）。"""
+    items = client.get("/api/v1/external-data/apis?locale=zh-CN").json()
+    return next(x for x in items if x["key"] == KNOWN_API_KEY)
 
 
 def test_update_config_custom_min_gt_max_returns_400(client):
-    """custom + min=2000/max=500 → 400。"""
-    r = client.put(
-        f"/api/v1/external-data/apis/{KNOWN_API_KEY}?locale=zh-CN",
-        content=json.dumps({
-            "anti_risk_strategy": "custom",
-            "delay_min_ms": 2000,
-            "delay_max_ms": 500,
-        }),
+    """custom + min=2000/max=500 → 被拒，并且不得落库。
+
+    400 还是 422 取决于校验落在路由内还是 Pydantic 边界，两者都是合法表达；
+    真正要钉的是“非法区间没被写进去”（旧写法只校状态码，写不进去看不出来）。
+    """
+    before = _get_strategy(client)
+    r = _put_config(client, {
+        "anti_risk_strategy": "custom",
+        "delay_min_ms": 2000,
+        "delay_max_ms": 500,
+    })
+    assert r.status_code in (400, 422), f"min>max 应被拒, 实际 {r.status_code}: {r.text}"
+    after = _get_strategy(client)
+    assert after["anti_risk_strategy"] == before["anti_risk_strategy"], (
+        "非法区间不应被落库"
     )
-    assert r.status_code in (400, 422), f"min>max 应返回 400/422, 实际 {r.status_code}"
 
 
 def test_update_config_delay_out_of_range_returns_422(client):
-    """delay_min_ms=70000 → 422（le=60000 边界）。"""
-    r = client.put(
-        f"/api/v1/external-data/apis/{KNOWN_API_KEY}?locale=zh-CN",
-        content=json.dumps({"delay_min_ms": 70000}),
+    """delay_min_ms=70000 → 被拒且不落库（le=60000 边界）。"""
+    before = _get_strategy(client)
+    r = _put_config(client, {"delay_min_ms": 70000})
+    assert r.status_code in (422, 400), f"超范围 delay 应被拒, 实际 {r.status_code}"
+    assert _get_strategy(client)["delay_min_ms"] == before["delay_min_ms"], (
+        "超范围值不应被写入配置"
     )
-    assert r.status_code in (422, 400), f"超范围 delay 应返回 422, 实际 {r.status_code}"
 
 
 def test_update_config_negative_delay_returns_422(client):
-    """delay_min_ms=-1 → 422（ge=0 边界）。"""
+    """delay_min_ms=-1 → 被拒且不落库（ge=0 边界）。"""
+    before = _get_strategy(client)
+    r = _put_config(client, {"delay_min_ms": -1})
+    assert r.status_code in (422, 400), f"负数 delay 应被拒, 实际 {r.status_code}"
+    assert _get_strategy(client)["delay_min_ms"] == before["delay_min_ms"], (
+        "负数值不应被写入配置"
+    )
+
+
+def test_put_config_without_content_type_is_rejected(client):
+    """契约记录：缺 Content-Type 的字符串 body 会被后端拒（422）。
+
+    浏览器对字符串 body 默认发 text/plain，也会被拒——所以前端曾在
+    `updateAkshareApiConfig` 上“保存永远 422”（PT-DEF-17，已修：api/client.ts
+    统一补 Content-Type）。本用例钉住后端行为，一旦后端改为宽容接受
+    text/plain，这里会提醒我们两边口径变了。
+    """
     r = client.put(
         f"/api/v1/external-data/apis/{KNOWN_API_KEY}?locale=zh-CN",
-        content=json.dumps({"delay_min_ms": -1}),
+        content=json.dumps({"enabled": True}),
     )
-    assert r.status_code in (422, 400), f"负数 delay 应返回 422, 实际 {r.status_code}"
+    assert r.status_code == 422, (
+        f"无 Content-Type 的字符串 body 应被拒 422, 实际 {r.status_code}: {r.text}"
+    )
 
 
 def test_update_config_enabled_takes_effect_immediately(client):
-    """PUT enabled=False → 缓存即时更新（GET 列表反映）。"""
-    # 先启用
-    client.put(
-        f"/api/v1/external-data/apis/{KNOWN_API_KEY}?locale=zh-CN",
-        content=json.dumps({"enabled": True}),
-    )
-    # 禁用
-    r = client.put(
-        f"/api/v1/external-data/apis/{KNOWN_API_KEY}?locale=zh-CN",
-        content=json.dumps({"enabled": False}),
-    )
-    if r.status_code == 200:
-        # 验证缓存即时更新
-        r2 = client.get("/api/v1/external-data/apis?locale=zh-CN")
-        item = next(x for x in r2.json() if x["key"] == KNOWN_API_KEY)
-        assert item["enabled"] is False, "禁用应即时生效"
-        # 恢复
-        client.put(
-            f"/api/v1/external-data/apis/{KNOWN_API_KEY}?locale=zh-CN",
-            content=json.dumps({"enabled": True}),
-        )
-    else:
-        # Content-Type bug：FastAPI 无法解析 body
-        pytest.skip(f"PUT 无 Content-Type 返回 {r.status_code}，确认 Content-Type bug 存在")
+    """PUT enabled=False → 缓存即时更新（GET 列表反映）。
+
+    旧写法拿不到 200 就 `pytest.skip(“确认 Content-Type bug 存在”)`，
+    等于“保存是否生效”从来没被验证过；现在走标准 JSON，必须真绿。
+    用例自带 finally 恢复原值，不把开关状态留在开发环里。
+    """
+    before = _get_strategy(client)["enabled"]
+    try:
+        target = False if before else True
+        r = _put_config(client, {"enabled": target})
+        assert r.status_code == 200, f"PUT enabled 应返回 200, 实际 {r.status_code}: {r.text}"
+        assert _get_strategy(client)["enabled"] == target, "enabled 变更应即时生效"
+    finally:
+        _put_config(client, {"enabled": bool(before)})
 
 
 def test_update_config_strategy_takes_effect_immediately(client):
-    """PUT strategy=conservative → 缓存更新。"""
-    r = client.put(
-        f"/api/v1/external-data/apis/{KNOWN_API_KEY}?locale=zh-CN",
-        content=json.dumps({"anti_risk_strategy": "conservative"}),
-    )
-    if r.status_code == 200:
-        r2 = client.get("/api/v1/external-data/apis?locale=zh-CN")
-        item = next(x for x in r2.json() if x["key"] == KNOWN_API_KEY)
-        assert item["anti_risk_strategy"] == "conservative"
-        # 恢复默认
-        client.put(
-            f"/api/v1/external-data/apis/{KNOWN_API_KEY}?locale=zh-CN",
-            content=json.dumps({"anti_risk_strategy": "standard"}),
-        )
-    else:
-        pytest.skip(f"PUT 无 Content-Type 返回 {r.status_code}，确认 Content-Type bug 存在")
+    """PUT strategy=conservative → 配置真的落库并可读回；结束后恢复原值。"""
+    before = _get_strategy(client)["anti_risk_strategy"]
+    try:
+        r = _put_config(client, {"anti_risk_strategy": "conservative"})
+        assert r.status_code == 200, f"PUT strategy 应返回 200, 实际 {r.status_code}: {r.text}"
+        assert _get_strategy(client)["anti_risk_strategy"] == "conservative"
+    finally:
+        _put_config(client, {"anti_risk_strategy": before})
 
 
 def test_update_config_partial_update(client):
-    """仅传 enabled → 其他字段保持原值。"""
-    # 先记录当前 strategy
-    r_before = client.get("/api/v1/external-data/apis?locale=zh-CN")
-    item_before = next(x for x in r_before.json() if x["key"] == KNOWN_API_KEY)
-    strategy_before = item_before["anti_risk_strategy"]
+    """仅传 enabled → 其他字段保持原值（部分更新不得清空 strategy）。
 
-    # 仅更新 enabled
-    r = client.put(
-        f"/api/v1/external-data/apis/{KNOWN_API_KEY}?locale=zh-CN",
-        content=json.dumps({"enabled": True}),
-    )
-    if r.status_code == 200:
-        item_after = r.json()
-        # strategy 应保持不变
-        assert item_after["anti_risk_strategy"] == strategy_before, "部分更新不应影响其他字段"
-    else:
-        pytest.skip(f"PUT 无 Content-Type 返回 {r.status_code}，确认 Content-Type bug 存在")
+    旧写法同样在拿不到 200 时 skip，所以“部分更新”语义从未被验证。
+    """
+    item_before = _get_strategy(client)
+    strategy_before = item_before["anti_risk_strategy"]
+    enabled_before = item_before["enabled"]
+    flipped = False if enabled_before else True
+    try:
+        r = _put_config(client, {"enabled": flipped})
+        assert r.status_code == 200, f"部分更新应返回 200, 实际 {r.status_code}: {r.text}"
+        assert r.json()["anti_risk_strategy"] == strategy_before, "部分更新不应影响其他字段"
+    finally:
+        _put_config(client, {"enabled": bool(enabled_before)})
 
 
 # ============================================================================
@@ -302,8 +335,9 @@ def test_probe_returns_within_30s_with_real_backend(client):
     elapsed = time.time() - start
 
     assert r.status_code == 200, f"探测应返回 200, 实际 {r.status_code}"
-    assert elapsed < 30.0, (
-        f"探测应在 30s 内返回（含超时场景）, 实际耗时 {elapsed:.1f}s"
+    assert elapsed < PROBE_BUDGET_SECONDS, (
+        f"探测应在产品超时预算（{PROBE_BUDGET_SECONDS:.0f}s）内返回（含超时场景）, "
+        f"实际耗时 {elapsed:.1f}s"
     )
     # 验证返回字段
     data = r.json()
