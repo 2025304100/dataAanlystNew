@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import traceback
 from datetime import date, datetime, timezone
 from typing import Any
@@ -51,6 +52,18 @@ from app.services.task_state_machine import (
 logger = logging.getLogger(__name__)
 
 TASK_TYPE_DATA_PREP = "discovery_data_prep"
+
+# PT-DEF-15：“无 ready 快照 → 自动启动数据准备”的总开关（默认开，保持现有行为）。
+# 关掉后：快扫只回 degraded_reason="no_ready_snapshot"，不再隐式起后台任务，
+# 也不再真打第三方行情源；手动触发数据准备的接口不受影响。
+# 写法沿用本仓既有约定（参照 api/routes/factor_models.py 的
+# ENABLE_FACTOR_MODEL_WAREHOUSE_TRAIN）：暂无 settings 表，所以是运维级 env 开关。
+AUTO_DATA_PREP_ENV = "DISCOVERY_AUTO_DATA_PREP_ENABLED"
+
+
+def auto_data_prep_enabled() -> bool:
+    """发现中心是否允许“由快扫隐式启动数据准备任务”。默认允许。"""
+    return os.getenv(AUTO_DATA_PREP_ENV, "1").strip() not in {"0", "false", "False", "no"}
 
 # 阶段预算（秒）：用于 task_state_machine 判定 stalled
 _STAGE_BUDGET_SECONDS = {

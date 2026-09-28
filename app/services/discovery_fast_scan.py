@@ -995,9 +995,21 @@ def run_fast_scan(
             data_prep_task_id: str | None = None
             try:
                 # 延迟导入避免循环依赖（discovery_data_prep 可能反向导入 discovery_fast_scan）
-                from app.services.discovery_data_prep import start_data_prep_task, _is_data_prep_running
+                from app.services.discovery_data_prep import (
+                    _is_data_prep_running,
+                    auto_data_prep_enabled,
+                    start_data_prep_task,
+                )
+                # PT-DEF-15 可关开关：隐式回源拉外网 + 起跨请求存活的后台任务，
+                # 关掉后这里直接跳过，主响应仍是 no_ready_snapshot 提示。
+                if not auto_data_prep_enabled():
+                    logger.info(
+                        "auto data_prep skipped for scope=%s "
+                        "(DISCOVERY_AUTO_DATA_PREP_ENABLED=0)",
+                        normalized,
+                    )
                 # 并发保护：已有 data_prep 运行时不重复启动
-                if _is_data_prep_running(db, normalized) is None:
+                elif _is_data_prep_running(db, normalized) is None:
                     fast_scan_params = {
                         "scope": normalized,
                         "min_score": min_score,

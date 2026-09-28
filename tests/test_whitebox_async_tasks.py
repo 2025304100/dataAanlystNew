@@ -319,3 +319,52 @@ def test_expire_stale_tasks_skips_recent_running(db_session):
     async_tasks._expire_stale_tasks(db_session)
     db_session.refresh(task)
     assert task.status == "running"
+
+
+# ══════════════════════════════════════════════════════
+# PT-DEF-15：worker 线程的“库归属”守卫
+# ══════════════════════════════════════════════════════
+
+def test_worker_runs_when_db_url_unchanged(monkeypatch):
+    """DB 没被重新指向时，worker 必须正常执行业务逻辑（守卫不误伤）。"""
+    ran: list[str] = []
+    monkeypatch.setattr(async_tasks, "_current_db_url", lambda: "sqlite:///same.db")
+
+    async_tasks._start_worker("qa-guard-ok", lambda task_id: ran.append(task_id))
+    thread = async_tasks._WORKER_THREADS.get("qa-guard-ok")
+    if thread is not None:
+        thread.join(timeout=2)
+
+    assert ran == ["qa-guard-ok"]
+
+
+def test_worker_aborts_when_db_repointed_after_spawn(monkeypatch):
+    """PT-DEF-15：任务创建后进程 DB 被换掉 → worker 不得在“后来那张库”上跑业务。
+
+    背景：worker 是 daemon 线程、跨请求存活，内部用 `get_session_local()` 的全局
+    session。实测发现中心后台数据准备把“今天的空快照 + 一条 scan_run”写进了
+    下一个请求/用例的库（体检报告 §十二.7）。
+    """
+    ran: list[str] = []
+    urls = iter(["sqlite:///origin.db", "sqlite:///other.db"])
+    monkeypatch.setattr(async_tasks, "_current_db_url", lambda: next(urls))
+
+    async_tasks._start_worker("qa-guard-abort", lambda task_id: ran.append(task_id))
+    thread = async_tasks._WORKER_THREADS.get("qa-guard-abort")
+    if thread is not None:
+        thread.join(timeout=2)
+
+    assert ran == [], "DB 已被重新指向，worker 不应执行业务逻辑"
+
+
+def test_current_db_url_survives_broken_factory(monkeypatch):
+    """守卫不能因为“拿不到 URL”就把所有任务否掉：异常时返回 None → 不拦。
+
+    兜底设计：`origin_db_url` 或 `current_db_url` 为空时都不触发 abort（宁可多跑
+    不可错杀），避开因工厂未初始化就把整个异步链路卡死。
+    """
+    def _boom() -> str:
+        raise RuntimeError("factory not ready")
+
+    monkeypatch.setattr(async_tasks, "get_session_local", _boom)
+    assert async_tasks._current_db_url() is None

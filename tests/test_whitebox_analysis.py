@@ -100,23 +100,33 @@ def test_calculate_score_with_insufficient_bars_returns_low_credibility(db_sessi
     )
 
 
-@pytest.mark.xfail(
-    reason="待拍板：只有 3 根 K 线时 quality_score 实测为 49.0，而旧用例期望 50.0。"
-           "这是评分权重口径漂移，需先判定“49.0 是新口径还是 bug”再定断言，"
-           "不能为了转绿直接改成实得值（体检报告 §十二.9）。",
-    strict=False,
-)
 def test_calculate_score_with_insufficient_bars_secondary_fields(db_session):
-    """[待拍板] 同上场景下其他评分字段应符合的预期值。"""
+    """[PT-DEF-16 已拍板：A 口径] 数据不足（<5 根 K 线）时各字段应为“分项值按权重加权”的结果。
+
+    旧用例期望 quality=50.0 / timing=45.0，那是 `_legacy_calculate_symbol_score` 的
+    `<5` 分支里**写死**的近似值；现在走配置引擎，它拿同一组分项
+    （scoring_config_engine L416+：trend=50 / momentum=45 / volatility=50 /
+    liquidity=45 / breadth=55（本 symbol 带 theme）/ event=50）按预设权重加权：
+
+        quality = 50*0.25 + 45*0.20 + 50*0.15 + 45*0.15 + 55*0.15 + 50*0.10 = 49.0
+        timing  = 50*0.30 + 45*0.20 + 45*0.15 + 40*0.15 + 50*0.10 + 100*0.10 = 51.75
+
+    所以 49.0 / 51.75 可现算、不是“抄实得值”（拍板记录见体检报告 §十二.9）。
+
+    用户可见后果单独钉住：quality 49.0 经 `_grade()`（>=50 为 C）落到 **D 级**，
+    即“数据极少的标的分级更低”是新口径的一部分，不是回归。
+    """
     sym = _make_symbol(db_session)
     _add_bars(db_session, sym.id, count=3)
 
     score = analysis.calculate_symbol_score(db_session, sym, date.today())
 
-    assert score.quality_score == 50.0
-    assert score.timing_score == 45.0
+    assert score.quality_score == 49.0
+    assert score.quality_grade == "D"  # 49.0 < 50 → D（阈值边界，单独钉住）
+    assert score.timing_score == 51.75
     assert score.stage == "cooldown"
     assert score.action == "hold"
+    assert score.data_credibility == 0.2
 
 
 # C-3（零 K 线时 data_credibility 应保留 0.2）已修复，2026-09-27 全量跑实测该用例

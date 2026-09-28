@@ -505,6 +505,14 @@ def _append_error(task: AsyncTaskRecord, error: dict) -> None:
     task.errors_json = json.dumps(errors[-20:], ensure_ascii=False, default=str)
 
 
+def _current_db_url() -> str | None:
+    """当前进程主库的 DB URL（与 worker 真正开 session 用的是同一个工厂）。"""
+    try:
+        return str(get_session_local().kw["bind"].url)
+    except Exception:
+        return None
+
+
 def _start_worker(task_id: str, worker_func) -> None:
     """启动守护线程执行 worker 函数。
 
@@ -512,8 +520,28 @@ def _start_worker(task_id: str, worker_func) -> None:
     - 若 is_terminal_locked==1 则不覆盖（_set_task 内部已保证，这里前置加速退出）。
     - 把 correlation_id 写回 task.correlation_id 以便跨表查询。
     - 进入终态后 is_terminal_locked 自动置 1。
+
+    PT-DEF-15 库归属守卫：本函数在**调用线程**（通常是 API 请求线程）里记下当时的
+    DB URL，worker 线程真正开跑前再比一次。后台 worker 是 daemon，会活到“下一个
+    请求 / 下一次库重绑”之后；而 worker 内部用的是 `get_session_local()` 的进程
+    全局 session —— 一旦进程内 DB 被重新指向（测试逐用例重绑、运维热切换
+    DATABASE_URL、同进程重启），它就会把业务数据写进与任务无关的那张库。
+    实测受害：发现中心的后台数据准备把“今天的空快照 + 一条 scan_run”写到了
+    下一个用例的 tmp 库里（体检报告 §十二.7）。宁可让任务不跑（由
+    orphan 巡查兼顶），也不能写错库。
     """
+    origin_db_url = _current_db_url()
+
     def _run():
+        current_db_url = _current_db_url()
+        if origin_db_url and current_db_url and current_db_url != origin_db_url:
+            logger.warning(
+                "worker for task %s aborted: task was created against db=%s but the "
+                "process now points to db=%s; refusing to run business logic on a "
+                "different database (PT-DEF-15)",
+                task_id, origin_db_url, current_db_url,
+            )
+            return
         try:
             worker_func(task_id)
         except Exception as exc:

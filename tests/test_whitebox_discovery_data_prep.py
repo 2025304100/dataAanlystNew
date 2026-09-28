@@ -851,3 +851,50 @@ def test_snapshot_status_read_schema_serialization():
     assert dumped2["has_ready_snapshot"] is True
     assert dumped2["ready_snapshot_id"] == 42
     assert dumped2["ready_snapshot_symbol_count"] == 100
+
+
+# ══════════════════════════════════════════════════════
+# PT-DEF-15：“无 ready 快照 → 自动数据准备”可关开关
+# ══════════════════════════════════════════════════════
+
+def test_auto_data_prep_switch_defaults_on_and_honors_off(monkeypatch):
+    """开关默认开（保持现有行为），并且 0/false/no 都能关掉。"""
+    monkeypatch.delenv(discovery_data_prep.AUTO_DATA_PREP_ENV, raising=False)
+    assert discovery_data_prep.auto_data_prep_enabled() is True
+
+    for off in ("0", "false", "False", "no"):
+        monkeypatch.setenv(discovery_data_prep.AUTO_DATA_PREP_ENV, off)
+        assert discovery_data_prep.auto_data_prep_enabled() is False, off
+
+
+def _empty_db_fast_scan(db_session, monkeypatch, *, enabled: bool) -> list:
+    """跑一次空库快扫，返回 `start_data_prep_task` 被调用的 scope 列表。"""
+    started: list[str] = []
+    monkeypatch.setattr(
+        discovery_data_prep,
+        "start_data_prep_task",
+        lambda **kw: started.append(str(kw.get("scope") or "")),
+    )
+    monkeypatch.setattr(
+        discovery_data_prep, "auto_data_prep_enabled", lambda: enabled
+    )
+    # 本用例只关心“有没有隐式起后台任务”，HTTP 护栏交给同族的专门用例
+    monkeypatch.setattr(
+        discovery_fast_scan, "_assert_no_http_request", lambda: None
+    )
+
+    result = discovery_fast_scan.run_fast_scan(
+        scope="cn_stock", min_score=55, db=db_session,
+    )
+    assert result["degraded_reason"] == "no_ready_snapshot"
+    return started
+
+
+def test_fast_scan_skips_auto_data_prep_when_switch_off(db_session, monkeypatch):
+    """开关关闭：快扫不再隐式启动后台数据准备（也就不再真打第三方行情源）。"""
+    assert _empty_db_fast_scan(db_session, monkeypatch, enabled=False) == []
+
+
+def test_fast_scan_still_starts_auto_data_prep_when_switch_on(db_session, monkeypatch):
+    """对照：开关开着（默认）时行为不变，仍会隐式启动一次数据准备。"""
+    assert _empty_db_fast_scan(db_session, monkeypatch, enabled=True) == ["cn_stock"]
