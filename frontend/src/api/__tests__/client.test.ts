@@ -144,3 +144,49 @@ describe('T1 TR-1.2: _scoringFactorSetsToFactorSets DTO label↔name / n_members
     expect(result[0].n_members).toBe(3);
   });
 });
+
+describe('PT-DEF-17: 带字符串 body 的请求必须声明 Content-Type', () => {
+  const okResponse = { ok: true, json: async () => ({ ok: true }) } as Response;
+
+  it('补齐缺失的 Content-Type（否则浏览器发 text/plain，后端直接 422）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse);
+    vi.stubGlobal('fetch', fetchMock);
+
+    // 这个调用就是当时的现场：传 body 但没设 Content-Type
+    await api.updateAkshareApiConfig('stock_info_a_code_name', { enabled: true });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(typeof init.body).toBe('string');
+    expect(new Headers(init.headers).get('Content-Type')).toBe('application/json');
+    vi.unstubAllGlobals();
+  });
+
+  it('调用方显式传了头就不覆盖它', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await requestJson('/test', {
+      method: 'PUT',
+      body: JSON.stringify({ a: 1 }),
+      headers: { 'Content-Type': 'application/merge-patch+json' },
+    });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(new Headers(init.headers).get('Content-Type')).toBe(
+      'application/merge-patch+json',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('jsonBody 与显式 header 两条路径共用语义（GET 无 body 时不乱加头）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await requestJson('/test');
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.body).toBeUndefined();
+    expect(new Headers(init.headers).has('Content-Type')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+});

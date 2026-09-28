@@ -250,6 +250,19 @@ async function executeRequestJson<T>(url: string, options: RequestJsonOptions): 
       rawHeaders.set("Content-Type", "application/json");
     }
   }
+  // 只要带字符串请求体就必须声明 Content-Type，不能只靠调用方自觉。
+  // 浏览器对字符串 body 默认发 text/plain;charset=UTF-8，后端 JSON 体校验会因此
+  // 直接 422：实测 PUT /external-data/apis/{key}（updateAkshareApiConfig 传
+  // body: JSON.stringify 但未设头）→ 保存 akshare 接口配置一直失败（PT-DEF-17）。
+  // 历史上 110 处 body 调用里只有一部分显式写了 Content-Type，所以在唯一入口统一补齐；
+  // 显式传了头的调用不受影响（has 判断优先）。
+  if (
+    typeof requestOptions.body === "string" &&
+    !rawHeaders.has("Content-Type") &&
+    !rawHeaders.has("content-type")
+  ) {
+    rawHeaders.set("Content-Type", "application/json");
+  }
   try {
     const mergedOptions: RequestInit = {
       ...(requestOptions as RequestInit),
