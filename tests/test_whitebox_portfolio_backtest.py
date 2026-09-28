@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.backtest import BacktestRun, BacktestTrade
 from app.models.daily_bar import DailyBar
+from app.models.decision_engine import StrategyExecutionSnapshot
 from app.models.portfolio import Portfolio, PortfolioRule, Position
 from app.models.portfolio_member import PortfolioMember
 from app.models.scan import ScanResult, ScanRun
@@ -96,17 +97,25 @@ def _make_score(
     action: str = "open",
     stage: str = "start",
     trade_date: date = date(2026, 1, 5),
+    # 默认给“能过准入线”的分数：_filter_symbol_ids_by_rule 要求
+    # quality/timing >= 80 - tolerance，种子分低于它会被直接筛空
+    # （报“策略规则过滤后无可回测标的”），使用例因 fixture 而非产品原因失败。
+    # 确实需要“不及格”场景的用例请显式传小值。
+    quality_score: float = 90.0,
+    timing_score: float = 90.0,
+    factor_model_run_id: str | None = None,
 ) -> Score:
     score = Score(
         symbol_id=symbol_id,
         trade_date=trade_date,
-        quality_score=70.0,
+        quality_score=quality_score,
         quality_grade="B",
-        timing_score=65.0,
+        timing_score=timing_score,
         stage=stage,
         action=action,
         priority_score=75.0,
         weight_mode="manual",
+        factor_model_run_id=factor_model_run_id,
     )
     db_session.add(score)
     db_session.commit()
@@ -405,37 +414,59 @@ class TestRunPortfolioBacktestErrors:
 class TestRunPortfolioBacktestSuccess:
     """守护完整回测执行的正确性。"""
 
-    @pytest.mark.xfail(reason="deprecated: snapshot/PIT contract requires a bound DecisionEngine snapshot and valid Score", strict=False)
     def test_success_with_scan_candidate_produces_trade(self, db_session, member_source_disabled):
-        """完整场景：scan 候选 + Score.action=open + DailyBar → 产生 BacktestRun + BacktestTrade。
+        """入口级“能真的下出单”：run_portfolio_backtest → DecisionEngine plan → BacktestTrade。
 
-        信号链路：
-        - Score.action='open' ∈ {open, buy_dip} → 触发买入
-        - 后续 Score.action='exit' ∈ {exit, reduce} → 触发卖出
-
-        注：WP9.5 后默认来源为 member，本测试守护 legacy 来源行为，使用
-        member_source_disabled fixture 临时关闭成员来源开关。
+        架构已变：`run_backtest` 不再调用“Score.action=open 就买”的 legacy 信号函数
+       （见 backtest.py 里“legacy signal functions are deliberately not called on this
+        path”），交易只能由引擎根据已应用策略快照产出的 order plan 驱动。
+        所以本用例给引擎一份 save_and_apply 快照（research/best_effort）+ 带
+        factor_model_run_id 的 Score，而不是指望旧隐式路径。
+        这是入口层唯一一条“真的产生成交”的守护（其余链路在
+        test_backtest_decision_chain_integration.py 直接测 run_backtest）。
         """
         p = _make_portfolio(db_session, name="QA-Success", total_capital=100000.0)
         sym = _make_symbol(db_session, symbol="600010", name="测试")
         _make_active_rule(db_session, p.id)
 
-        # 造 5 天行情
-        for i, d in enumerate([date(2026, 1, 5), date(2026, 1, 6), date(2026, 1, 7),
-                                date(2026, 1, 8), date(2026, 1, 9)]):
-            _make_daily_bar(db_session, sym.id, d, close=10.0 + i * 0.5)
+        model_id = "model-qa-entry"
+        days = [date(2026, 1, 5), date(2026, 1, 6), date(2026, 1, 7),
+                date(2026, 1, 8), date(2026, 1, 9)]
+        for i, d in enumerate(days):
+            # 避开 10% 涨停边界，让引擎走到“执行”而不是“被风控拒掉”
+            _make_daily_bar(db_session, sym.id, d, close=10.0 + i * 0.2)
+            _make_score(
+                db_session, sym.id,
+                action="open" if i == 0 else "exit",
+                stage="start" if i == 0 else "overheat",
+                trade_date=d,
+                quality_score=90.0, timing_score=90.0,
+                factor_model_run_id=model_id,
+            )
 
-        # 第 1 天 Score.action=open 触发买入
-        _make_score(db_session, sym.id, action="open", stage="start", trade_date=date(2026, 1, 5))
-        # 第 3 天 Score.action=exit 触发卖出
-        _make_score(db_session, sym.id, action="exit", stage="overheat", trade_date=date(2026, 1, 7))
+        snapshot = StrategyExecutionSnapshot(
+            id="snapshot-qa-entry",
+            snapshot_no=1,
+            portfolio_id=p.id,
+            factor_model_run_id=model_id,
+            decision_clock_json="{}",
+            cost_config_json='{"slippage_buy_bps": 5, "min_lot_size": 100}',
+            member_snapshot_json=json.dumps([{"symbol_id": sym.id, "member_id": 1}]),
+            snapshot_type="save_and_apply",
+            snapshot_hash="snapshot-qa-entry-hash",
+            versions_json=json.dumps({"run_mode": "research", "pit_mode": "best_effort"}),
+            effective_from=datetime(2026, 1, 1),
+        )
+        db_session.add(snapshot)
+        db_session.commit()
 
-        # scan 候选
+        # scan 候选（标的来源）
         _make_scan_run_with_candidate(db_session, p.id, sym.id)
 
         result = run_portfolio_backtest(
             db_session, portfolio_id=p.id,
             start_date=date(2026, 1, 5), end_date=date(2026, 1, 9),
+            strategy_snapshot_id=snapshot.id,
         )
 
         # 验证返回结构
@@ -452,13 +483,18 @@ class TestRunPortfolioBacktestSuccess:
         assert run.status == "completed"
         assert run.portfolio_id == p.id
 
-        # 验证产生了 BacktestTrade（买入 + 卖出 = 1 笔完整 trade）
+        # 验证产生了 BacktestTrade（引擎真的出了单）
         trades = db_session.query(BacktestTrade).filter_by(run_id=run.id).all()
-        assert len(trades) >= 1
+        assert len(trades) >= 1, (
+            "入口级回测未产生任何成交：说明快照/Score 没能驱动出 order plan，"
+            "或入口与 DecisionEngine 又脱节了"
+        )
         trade = trades[0]
         assert trade.symbol_id == sym.id
-        assert trade.entry_date == date(2026, 1, 5)
-        assert trade.exit_date is not None  # 应该已平仓
+        # 默认 price_type=NEXT_OPEN：01-05 的信号在下一个开盘（01-06）成交，
+        # 不应该是信号当日。错写成 01-05 会把“延后一天成交”这个正确行为当成回归。
+        assert trade.entry_date == date(2026, 1, 6)
+        assert float(trade.entry_price or 0) > 0.0
 
     def test_success_with_positions_only(self, db_session, member_source_disabled):
         """有持仓、无 scan 候选 → 也能跑回测（symbol_ids 来自持仓）。
@@ -952,7 +988,6 @@ class TestWP7BacktestMembership:
 
     # ----- L258 历史快照可读 -----
 
-    @pytest.mark.xfail(reason="deprecated: historical run must be replayed from immutable strategy snapshot", strict=False)
     def test_historical_backtest_readable_after_member_change(
         self, db_session, member_source_enabled
     ):
@@ -1020,7 +1055,6 @@ class TestWP7BacktestMembership:
 
     # ----- L259 同一快照重复运行一致 -----
 
-    @pytest.mark.xfail(reason="deprecated: symbol-set consistency is now asserted through StrategyExecutionSnapshot", strict=False)
     def test_same_parameters_produce_consistent_symbol_set(
         self, db_session, member_source_enabled
     ):
@@ -1121,7 +1155,6 @@ class TestWP7BacktestMembership:
         assert sorted(result["symbol_ids"]) == sorted([sym_a.id, sym_b.id])
         assert sym_c.id not in result["symbol_ids"]
 
-    @pytest.mark.xfail(reason="deprecated: member source is now consumed by DecisionEngine snapshot, not an independent selector", strict=False)
     def test_member_source_uses_new_logic_when_enabled(
         self, db_session, member_source_enabled
     ):
@@ -1168,7 +1201,6 @@ class TestWP7BacktestMembership:
 
     # ----- L264 新旧引擎对比 -----
 
-    @pytest.mark.xfail(reason="deprecated: old/new dual-run comparison is replaced by tri-entry DecisionOrderPlan consistency", strict=False)
     def test_compare_new_old_engine_returns_complete_diff(
         self, db_session, member_source_disabled
     ):
@@ -1269,7 +1301,6 @@ class TestWP7BacktestMembership:
 
     # ----- L266 完整回测前提 -----
 
-    @pytest.mark.xfail(reason="deprecated: only_auto/manual member branching removed; snapshot freezes authorized members", strict=False)
     def test_full_backtest_requires_all_auto_members(
         self, db_session, member_source_enabled
     ):
@@ -1317,16 +1348,16 @@ class TestWP7BacktestMembership:
         assert sorted(result["symbol_ids"]) == sorted([sym_a.id, sym_b.id])
         assert result["excluded_member_count"] == 0
 
-    @pytest.mark.xfail(reason="deprecated: manual/confirm blocking is represented by DecisionEvidence rejection, not a preflight branch", strict=False)
-    def test_full_backtest_blocks_when_manual_present(
+    def test_full_backtest_allows_manual_members_without_blocking(
         self, db_session, member_source_enabled
     ):
-        """【L267】含 manual 成员且 only_auto=False 时抛 ValueError，不创建 BacktestRun。
+        """【C-03 新契约】manual 成员不再整批阻断回测；“单个成员不被自动下单”这层
+        约束由 DecisionEvidence 表达。
 
-        场景：
-        - 1 auto + 1 manual 成员
-        - only_auto=False
-        - 期望：抛 ValueError("manual/confirm 成员")，不创建任何 BacktestRun
+        旧断言“含 manual 成员且 only_auto=False → 抛 ValueError、不建任何 BacktestRun”
+        已被推翻（那个 preflight 分支已移除）。“manual 成员不会被当作 auto 自动下单”
+        这条安全底线现在由 run_backtest 层的用例把门（test_whitebox_portfolio_backtest_membership.py），
+        入口层只保证“不因成员类型而整批拒跑”。
         """
         # Arrange
         p = _make_portfolio(db_session, name="QA-WP7-BlockManual")
@@ -1350,38 +1381,37 @@ class TestWP7BacktestMembership:
             _make_daily_bar(db_session, sym_auto.id, d, close=10.0)
             _make_daily_bar(db_session, sym_manual.id, d, close=10.0)
 
-        # Act + Assert - 抛 ValueError
-        with pytest.raises(ValueError, match="manual/confirm 成员"):
-            run_portfolio_backtest(
-                db_session, portfolio_id=p.id,
-                start_date=date(2026, 1, 5), end_date=date(2026, 1, 6),
-                only_auto=False,
-            )
+        # Act —— 不再报 ValueError
+        result = run_portfolio_backtest(
+            db_session, portfolio_id=p.id,
+            start_date=date(2026, 1, 5), end_date=date(2026, 1, 6),
+            only_auto=False,
+        )
 
-        # 不应创建任何 BacktestRun
+        # Assert —— 整批跑完，两个成员标的都在
+        assert result["status"] == "completed"
+        assert result["symbol_source"] == "members"
+        assert sorted(result["symbol_ids"]) == sorted([sym_auto.id, sym_manual.id])
         runs = db_session.query(BacktestRun).filter_by(portfolio_id=p.id).all()
-        assert len(runs) == 0
+        assert len(runs) == 1, "新契约下应正常创建 BacktestRun（旧契约要求零条）"
 
     # ----- L267 manual/confirm 选项 -----
 
-    @pytest.mark.xfail(reason="deprecated: only_auto request field and UI control removed by C-03", strict=False)
-    def test_only_auto_option_excludes_manual_members(
+    def test_only_auto_option_no_longer_filters_members(
         self, db_session, member_source_enabled
     ):
-        """【L267】only_auto=True 跳过 manual 成员并记录到 excluded_members_json。
-
-        场景：
-        - 1 auto + 1 manual 成员
-        - only_auto=True
-        - 期望：回测完成，symbol_ids 仅含 auto 成员标的，
-          excluded_members_json 含 manual 成员及 reason
+        """【C-03 新契约】only_auto 字段与 UI 开关已移除，不再按成员类型筛标的。
+    
+        旧断言：only_auto=True 时 symbol_ids 仅含 auto 成员，并把 manual 成员记入
+        excluded_members_json。现在成员集合统一来自已冻结快照，不再按 only_auto 过滤；
+        `only_auto` 参数仍被兼容接受但不应改变标的集（避免旧参数静默改变行为）。
         """
         # Arrange
         p = _make_portfolio(db_session, name="QA-WP7-OnlyAutoSkip")
         sym_auto = _make_symbol(db_session, symbol="800080", name="Q")
         sym_manual = _make_symbol(db_session, symbol="800081", name="R")
         _make_active_rule(db_session, p.id)
-
+    
         trade_dt = datetime(2026, 1, 10, 12, 0, 0)
         m_auto = _make_portfolio_member(
             db_session, portfolio_id=p.id, symbol_id=sym_auto.id,
@@ -1393,37 +1423,70 @@ class TestWP7BacktestMembership:
             execution_mode="manual", entry_rule_version_id=1002,
             effective_from=trade_dt - timedelta(days=30),
         )
-
+    
         for i, d in enumerate([date(2026, 1, 5), date(2026, 1, 6)]):
             _make_daily_bar(db_session, sym_auto.id, d, close=10.0 + i * 0.2)
             _make_daily_bar(db_session, sym_manual.id, d, close=20.0 + i * 0.2)
         _make_score(db_session, sym_auto.id, action="open", trade_date=date(2026, 1, 5))
-
+    
         # Act
         result = run_portfolio_backtest(
             db_session, portfolio_id=p.id,
             start_date=date(2026, 1, 5), end_date=date(2026, 1, 6),
             only_auto=True,
         )
-
-        # Assert
+    
+        # Assert —— 两个成员标的均保留，没人被“筛掉”
         assert result["status"] == "completed"
-        assert result["symbol_ids"] == [sym_auto.id]
-        assert result["excluded_member_count"] == 1
-
+        assert sorted(result["symbol_ids"]) == sorted([sym_auto.id, sym_manual.id])
+        
         run = db_session.get(BacktestRun, result["run_id"])
-        excluded = json.loads(run.excluded_members_json)
-        assert len(excluded) == 1
-        assert excluded[0]["member_id"] == m_manual.id
-        assert excluded[0]["symbol_id"] == sym_manual.id
-        assert "execution_mode" in excluded[0]["reason"]
-        assert "manual" in excluded[0]["reason"]
-
-        # member_snapshot_json 应仅含 auto 成员
         snapshot = json.loads(run.member_snapshot_json)
-        assert len(snapshot) == 1
-        assert snapshot[0]["member_id"] == m_auto.id
-        assert snapshot[0]["execution_mode"] == "auto"
+        assert sorted(m["member_id"] for m in snapshot) == sorted([m_auto.id, m_manual.id])
+
+    @pytest.mark.xfail(
+        reason="PT-DEF-20：only_auto=True 时回测元数据与实际行为不一致——"
+               "excluded_member_count/excluded_members_json 已把 manual 成员记成“已排除”，"
+               "但 symbol_ids / member_snapshot_json 仍包含它（体检报告 §十七）。"
+               "修复方向：only_auto 字段既已由 C-03 从请求与 UI 移除，这里要么全部不再记账，"
+               "要么恢复成“记了就真排除”，不能一半生效一半只记账。",
+        strict=False,
+    )
+    def test_only_auto_exclusion_metadata_matches_symbol_set(
+        self, db_session, member_source_enabled
+    ):
+        """缺陷警报线：排除名单必须和标的集一致。"""
+        p = _make_portfolio(db_session, name="QA-WP7-MetadataConsistency")
+        sym_auto = _make_symbol(db_session, symbol="800082", name="S")
+        sym_manual = _make_symbol(db_session, symbol="800083", name="T")
+        _make_active_rule(db_session, p.id)
+
+        trade_dt = datetime(2026, 1, 10, 12, 0, 0)
+        for sid, mode, rid in (
+            (sym_auto.id, "auto", 1001), (sym_manual.id, "manual", 1002),
+        ):
+            _make_portfolio_member(
+                db_session, portfolio_id=p.id, symbol_id=sid,
+                execution_mode=mode, entry_rule_version_id=rid,
+                effective_from=trade_dt - timedelta(days=30),
+            )
+        for d in (date(2026, 1, 5), date(2026, 1, 6)):
+            _make_daily_bar(db_session, sym_auto.id, d, close=10.0)
+            _make_daily_bar(db_session, sym_manual.id, d, close=20.0)
+
+        result = run_portfolio_backtest(
+            db_session, portfolio_id=p.id,
+            start_date=date(2026, 1, 5), end_date=date(2026, 1, 6),
+            only_auto=True,
+        )
+        run = db_session.get(BacktestRun, result["run_id"])
+        excluded = json.loads(run.excluded_members_json or "[]")
+        excluded_ids = {int(e["symbol_id"]) for e in excluded}
+
+        # 要么“记了就真排除”，要么两者都为空——不能自相矛盾
+        assert excluded_ids.isdisjoint(result["symbol_ids"]), (
+            f"元数据说排除了 {excluded_ids}，但标的集仍是 {result['symbol_ids']}"
+        )
 
     # ----- L268 切换后历史可读 -----
 

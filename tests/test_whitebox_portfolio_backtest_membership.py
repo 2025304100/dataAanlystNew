@@ -1050,20 +1050,15 @@ def test_run_backtest_legacy_source_fills_minimal_snapshot(db_session, member_so
 
 
 # ----------------------------------------------------------------------------
-# 17. 存在 manual/confirm 成员时默认阻止完整回测
+# 17. C-03 后 manual/confirm 成员不再整批阻断回测
 # ----------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="C-03：only_auto/manual member 分支已移除（snapshot 冻结已授权成员 + "
-           "auto_authorized_flag 白名单），manual/confirm 成员不再阻断回测。与 "
-           "test_only_auto_option_excludes_manual_members(L1272) 同源裁决。",
-    strict=False,
-)
-def test_run_backtest_blocks_when_manual_members_exist(db_session, member_source_enabled):
-    """【WP7.3】member 来源 + only_auto=False + 存在 manual 成员 → 抛 ValueError。
+def test_run_backtest_does_not_block_when_manual_members_exist(db_session, member_source_enabled):
+    """C-03 后的新契约：manual 成员不阻断整批回测（单个成员的处置在逐单决策阶段表达）。
 
-    错误消息应明确提示用户选择 only_auto 或调整执行模式。
+    旧断言（抛 ValueError + 不建 BacktestRun）依赖的 preflight 分支已移除；
+    与 test_whitebox_portfolio_backtest.py 里同源的入口层用例保持同一裁决。
     """
     pf = _make_portfolio(db_session, name="QA-WP73-Block-Manual")
     sym_auto = _make_symbol(db_session, symbol="700030")
@@ -1089,36 +1084,32 @@ def test_run_backtest_blocks_when_manual_members_exist(db_session, member_source
         _make_daily_bar(db_session, sym_auto.id, d, close=10.0)
         _make_daily_bar(db_session, sym_manual.id, d, close=10.0)
 
-    # 默认 only_auto=False → 应阻止
-    with pytest.raises(ValueError, match="manual/confirm 成员"):
-        run_portfolio_backtest(
-            db_session, portfolio_id=pf.id,
-            start_date=date(2026, 1, 5), end_date=date(2026, 1, 6),
-        )
+    # 新契约：不报错，整批跑完
+    result = run_portfolio_backtest(
+        db_session, portfolio_id=pf.id,
+        start_date=date(2026, 1, 5), end_date=date(2026, 1, 6),
+    )
+    assert result["status"] == "completed"
+    assert result["symbol_source"] == "members"
+    assert sorted(result["symbol_ids"]) == sorted([sym_auto.id, sym_manual.id])
 
-    # 不应创建任何 BacktestRun
+    # 跑完就应有一条 BacktestRun（旧契约要求零条）
     runs = db_session.query(BacktestRun).filter_by(portfolio_id=pf.id).all()
-    assert len(runs) == 0
+    assert len(runs) == 1
 
 
 # ----------------------------------------------------------------------------
-# 18. only_auto=True 跳过 manual 成员并记录 excluded_members
+# 18. C-03 后 only_auto 不再过滤成员（元数据不一致另有警报线）
 # ----------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="C-03：only_auto=True 跳过 manual 分支已移除（统一三段口径，不再按 only_auto 过滤）；"
-           "symbol_ids 现含全部有效成员。与 test_only_auto_option_excludes_manual_members(L1272) 同源。",
-    strict=False,
-)
-def test_run_backtest_only_auto_option_skips_manual_members(db_session, member_source_enabled):
-    """【WP7.3】member 来源 + only_auto=True → 跳过 manual 成员，excluded_members_json 记录原因。
+def test_run_backtest_only_auto_option_no_longer_skips_members(db_session, member_source_enabled):
+    """C-03：only_auto 请求字段与 UI 开关已移除，不再据此筛掉 manual 成员。
 
-    场景：
-    - 1 个 auto 成员 + 1 个 manual 成员
-    - only_auto=True
-    - 期望：回测完成，symbol_ids 仅含 auto 成员标的，
-      excluded_members_json 含 manual 成员及 reason
+    旧断言“symbol_ids 仅含 auto 成员”已作废；现在统一取快照内的全部有效成员。
+    “排除了但还在标的集里”这一元数据与行为不一致的缺陷另有专门警报线把门：
+    test_whitebox_portfolio_backtest.py::TestWP7BacktestMembership
+    ::test_only_auto_exclusion_metadata_matches_symbol_set（PT-DEF-20）。
     """
     pf = _make_portfolio(db_session, name="QA-WP73-OnlyAuto-Skip")
     sym_auto = _make_symbol(db_session, symbol="700040")
@@ -1153,24 +1144,17 @@ def test_run_backtest_only_auto_option_skips_manual_members(db_session, member_s
 
     assert result["status"] == "completed"
     assert result["symbol_source"] == "members"
-    assert result["symbol_ids"] == [sym_auto.id]  # 仅 auto 成员标的
-    assert result["excluded_member_count"] == 1
+    # 新契约：不再按 only_auto 筛标的，两个成员标的均参与
+    assert sorted(result["symbol_ids"]) == sorted([sym_auto.id, sym_manual.id])
 
     run = db_session.get(BacktestRun, result["run_id"])
     assert run is not None
 
-    # excluded_members_json 应记录 manual 成员
-    excluded = json.loads(run.excluded_members_json)
-    assert len(excluded) == 1
-    assert excluded[0]["member_id"] == m_manual.id
-    assert excluded[0]["symbol_id"] == sym_manual.id
-    assert "execution_mode" in excluded[0]["reason"]
-
-    # member_snapshot_json 应仅含 auto 成员
+    # member_snapshot_json 含全部有效成员
     member_snapshot = json.loads(run.member_snapshot_json)
-    assert len(member_snapshot) == 1
-    assert member_snapshot[0]["member_id"] == m_auto.id
-    assert member_snapshot[0]["execution_mode"] == EXECUTION_AUTO
+    assert sorted(m["member_id"] for m in member_snapshot) == sorted(
+        [m_auto.id, m_manual.id]
+    )
 
 
 # ----------------------------------------------------------------------------
