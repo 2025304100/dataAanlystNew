@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.db_numeric import clean_json_tree
 from app.db.session import get_db
 from app.models.factor_evaluation import FactorSet, FactorSetMember
+from app.models.factor_governance import FactorModelMember
 from app.models.factor_model import FactorModelRun
 from app.models.factor_weight_snapshot import FactorWeightSnapshot
 from app.models.factor_runtime import FactorModelAuditLog, FactorAuditLog
@@ -409,6 +410,31 @@ def train_factor_model(
     )
     db.add(run)
 
+    # ── PT-DEF-23：权重行在此统一计算，下方训练快照与成员表都从这一份派生 ──
+    # 之前 per-factor 的 FactorModelMember 从未写入，导致
+    # runtime.activate_factor_model 会因此 fail-closed 拦下激活（“validated model has no
+    # factor coefficients”），且模型响应的 weights 恒为空。
+    _sorted_members = sorted(
+        feature_members,
+        key=lambda it: (it.display_order or 0, it.factor_code),
+    )
+    _weights_raw: dict[str, float] = {}
+    _weights_norm: list[dict] = []
+    for _idx, _m in enumerate(_sorted_members):
+        _raw = round(coef + (0.05 if _idx == 0 else 0.0), 6)
+        _weights_raw[str(_m.factor_code)] = _raw
+        _weights_norm.append({
+            "factor_code": str(_m.factor_code),
+            "factor_id": int(_m.factor_id),
+            "factor_version_id": int(_m.factor_version_id),
+            "factor_version": int(_m.factor_version),
+            "coef_raw": _raw,
+            "weight_norm": _raw,
+            "training_ic": round(0.04 + 0.001 * _idx, 4),
+            "validation_ic": round(0.03 + 0.0008 * _idx, 4),
+            "role": str(_m.role or "feature"),
+        })
+
     # ── Task 11 (FR-12): 写入 per-model 聚合不可变训练快照 ──
     # 幂等：同一 model_id 二次训练不抛异常；COUNT 不变（见 TR-11.3）。
     _snap_exists = db.execute(
@@ -417,11 +443,7 @@ def train_factor_model(
         )
     ).scalar_one_or_none()
     if _snap_exists is None:
-        _sorted_members = sorted(
-            feature_members,
-            key=lambda it: (it.display_order or 0, it.factor_code),
-        )
-        # 6 JSON + weights 数组
+        # 6 JSON + weights 数组（权重行已在上方统一算好）
         _factor_ids: list[int] = [int(m.factor_id) for m in _sorted_members]
         _factor_version_ids: list[int] = [
             int(m.factor_version_id) for m in _sorted_members
@@ -434,26 +456,6 @@ def train_factor_model(
             str(getattr(m, "missing_policy", "exclude") or "exclude")
             for m in _sorted_members
         ]
-        _weights_norm: list[dict] = []
-        _weights_raw: dict[str, float] = {}
-        for idx, m in enumerate(_sorted_members):
-            bump = 0.05 if idx == 0 else 0.0
-            raw = round(coef + bump, 6)
-            norm = raw
-            t_ic = round(0.04 + 0.001 * idx, 4)
-            v_ic = round(0.03 + 0.0008 * idx, 4)
-            _weights_raw[str(m.factor_code)] = raw
-            _weights_norm.append({
-                "factor_code": str(m.factor_code),
-                "factor_id": int(m.factor_id),
-                "factor_version_id": int(m.factor_version_id),
-                "factor_version": int(m.factor_version),
-                "coef_raw": raw,
-                "weight_norm": norm,
-                "training_ic": t_ic,
-                "validation_ic": v_ic,
-                "role": str(m.role or "feature"),
-            })
         db.add(FactorWeightSnapshot(
             model_id=str(model_run_id),
             factor_set_id=str(payload.factor_set_id),
@@ -475,6 +477,34 @@ def train_factor_model(
             train_mode=str(payload.mode or "offline_minimal"),
             created_at=datetime.now(timezone.utc).replace(tzinfo=None),
         ))
+
+    # ── PT-DEF-23：per-factor 成员表 ──
+    # activate 会 fail-closed 校验模型自带系数，模型详情的 weights 也按这张表渲染。
+    # normalized_weight 按列口径归一（Σ|w|=1），而不是直接用 coef_raw。
+    # 幂等：同 (model_run_id, factor_code) 已存在则跳过，不撞 unique 约束。
+    _existing_member_codes = set(db.execute(
+        select(FactorModelMember.factor_code).where(
+            FactorModelMember.model_run_id == model_run_id
+        )
+    ).scalars().all())
+    _abs_sum = sum(abs(v) for v in _weights_raw.values()) or 1.0
+    for _row in _weights_norm:
+        _code = str(_row["factor_code"])
+        if _code in _existing_member_codes:
+            continue
+        _coef_raw = float(_row["coef_raw"])
+        db.add(FactorModelMember(
+            model_run_id=str(model_run_id),
+            factor_code=_code,
+            factor_version=int(_row["factor_version"]),
+            coefficient=_coef_raw,
+            normalized_weight=round(abs(_coef_raw) / _abs_sum, 6),
+            train_ic=float(_row["training_ic"]),
+            validation_ic=float(_row["validation_ic"]),
+            coverage=None,
+            side="long" if _coef_raw > 0 else ("short" if _coef_raw < 0 else "neutral"),
+        ))
+        _existing_member_codes.add(_code)
 
     # 历史审计（FactorModelAuditLog）保留
     db.add(FactorModelAuditLog(

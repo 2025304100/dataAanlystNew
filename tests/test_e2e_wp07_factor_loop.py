@@ -78,6 +78,10 @@ def _make_factor(db, code: str, category: str = "value") -> tuple[Factor, int]:
         validation_status="valid",
     )
     db.add(fv); db.flush()
+    # 必须 commit：SQLite 下单连接写锁会阻挡后续 HTTP 用例的内部第二连接，
+    # 只 flush 不提交会让紧接的 POST /factor-sets 拖到 30s 后报 503 DB_LOCK_TIMEOUT。
+    # （本文件其他 _make_* 都是 commit 口径，这里保持一致）
+    db.commit()
     db.refresh(f); db.refresh(fv)
     return f, fv.id, fv.version
 
@@ -146,37 +150,6 @@ def _seed_quality_daily(db, codes: list[str], *, days: int = 35) -> None:
     db.commit()
 
 
-def _seed_model_members(db, model_run_id: str, entries: list[tuple[str, int]]) -> None:
-    """给“激活”补前置：FactorModelMember 系数行。
-
-    `activate_factor_model` 会 fail-closed 校验模型必须有自己的 FactorModelMember
-    （runtime.py L107-111：没系数就 400 “no factor coefficients”），
-    而 `POST /factor-models/train`（offline_minimal）全程不写这张表 —— 因此
-    “训练 → 激活”经 HTTP 根本走不通，这是产品缺口 PT-DEF-23（由
-    test_wp07_e2e_04 把门）。本文件约定“内部 ORM 提前补齐前置”，所以这里
-    直接落成员，让闭环后半段（激活/策略/打分/回测）仍可被真实验证。
-    """
-    from app.models.factor_governance import FactorModelMember
-
-    n = max(1, len(entries))
-    rows = [
-        FactorModelMember(
-            model_run_id=model_run_id,
-            factor_code=code,
-            factor_version=version,
-            coefficient=1.0 / n,
-            normalized_weight=1.0 / n,
-            train_ic=0.04,
-            validation_ic=0.03,
-            coverage=0.95,
-            side="long",
-        )
-        for code, version in entries
-    ]
-    db.add_all(rows)
-    db.commit()
-
-
 def _install_calendar_utils(monkeypatch) -> None:
     """注册产品明文支持的第二个日历扩展点 `calendar_utils.get_trading_days`。
 
@@ -222,9 +195,8 @@ def test_wp07_e2e_01_full_factor_loop_traceable(client, db_session, monkeypatch)
     f_3, fv3_id, fv3_ver = _make_factor(db_session, "WP07_E2E_RSI_14", "quality")
     sym = _make_symbol(db_session, "600007", asset_type="stock")
     pf = _make_portfolio(db_session)
-    # 造贯穿回测窗口的行情，并填交易日历（预检要求窗口内≥ 300 个交易日）
-    # 回测窗口必须满足预检的 minimum_trade_days=300（路由硬编码），
-    # 所以这里拉高到 ≈1 年 2.5 个月，并用工作日填 trade_calendar。
+    # 回测预检要求窗口内 ≥ 300 个交易日（路由硬编码 minimum_trade_days），
+    # 所以窗口拉到 ≈1 年 2.5 个月，行情铺满整个窗口，并注册日历扩展点。
     end_date = date(2026, 8, 19)
     start_date = date(2025, 6, 2)
     total_days = (end_date - start_date).days + 60
@@ -294,9 +266,7 @@ def test_wp07_e2e_01_full_factor_loop_traceable(client, db_session, monkeypatch)
     # WP0-7 断言 1：FactorModelRun.feature_versions 内必须带 factor_set_id 溯源
     fv = model["feature_versions"]
     assert isinstance(fv, dict) and fv.get("__factor_set_id__") == fs_id
-    # WP0-7 断言 2：3 个成员的精确版本必须落到 feature_versions
-    # （响应里另有 weights 列表，但 train 路径全程不写 FactorModelMember：它恒为空，
-    #  而且激活会被 fail-closed 拦住——该缺口见 PT-DEF-23 / test_wp07_e2e_04）
+    # WP0-7 断言 2：3 个成员的精确版本必须同时落到 feature_versions 与 weights
     fv_codes = {k for k in fv if not str(k).startswith("__")}
     assert {f_1.code, f_2.code, f_3.code}.issubset(fv_codes), (
         f"feature_versions 缺成员版本：{sorted(fv_codes)}"
@@ -306,12 +276,12 @@ def test_wp07_e2e_01_full_factor_loop_traceable(client, db_session, monkeypatch)
         assert entry.get("factor_version_id"), (
             f"{code} 的 feature_versions 条目没带 factor_version_id：{entry}"
         )
-
-    # ── 5.5 补齐激活前置：训练不写 FactorModelMember（PT-DEF-23），用 ORM 落成员，
-    #       否则后面的 activate / 打分 / 回测全部走不到，闭环后半段就没人验证了。
-    _seed_model_members(db_session, model_run_id, [
-        (f_1.code, fv1_ver), (f_2.code, fv2_ver), (f_3.code, fv3_ver),
-    ])
+    # 训练必须同时写出 per-factor 系数（PT-DEF-23 修复后的契约）；
+    # 旧版本里这里靠 ORM 手动补 FactorModelMember 才跑得过 activate。
+    weight_codes = {w["factor_code"] for w in model["weights"]}
+    assert {f_1.code, f_2.code, f_3.code}.issubset(weight_codes), (
+        f"train 响应的 weights 缺成员：{sorted(weight_codes)}"
+    )
 
     # ── 6. POST /factor-models/{id}/activate（mode=ridge，正式激活） ──
     resp = client.post(
@@ -528,24 +498,19 @@ def test_wp07_e2e_03_train_missing_factor_set_rejected(client, db_session):
         assert field in body, f"错误信封缺字段 {field}：{body}"
 
 
-@pytest.mark.xfail(
-    reason=(
-        "PT-DEF-23：POST /factor-models/train 返回体的 weights 恒为空。"
-        "_model_view 是按 model.weights（关系目标 FactorModelMember）渲染权重表，"
-        "但 factor_models.py 全文没写过 FactorModelMember——离线最小闭环只落"
-        "feature_versions 与聚合快照。后果：模型详情/前端的因子权重表看不到任何成员，"
-        "溯源只能去 feature_versions 里查。修复方向：训练成功后按成员落"
-        "FactorModelMember（系数可用离线占位值），或让 _model_view 的 weights 改从"
-        "feature_versions / 聚合快照生成。"
-    ),
-    strict=False,
-)
 def test_wp07_e2e_04_train_response_weights_not_empty(client, db_session):
-    """缺陷警报线：训练响应里的 weights 权重表不应为空。"""
+    """训练响应里的 weights 权重表必须非空（PT-DEF-23 已修，本用例当回归守护）。
+
+    这个链路之前是断的：`factor_models.py` 不写 `FactorModelMember`，而
+    `runtime.activate_factor_model` 又 fail-closed 要求模型自带系数，
+    所以“训练后激活”经 HTTP 根本走不通。现在两侧对齐了，本用例钉住：
+    1. train 响应里每个成员都有权重行；
+    2. 响应里的版本与因子集成员一致（不漂版本）。
+    """
     f_1, fv1_id, fv1_ver = _make_factor(db_session, "WP07_E2E_W_GT_01", "value")
     resp = client.post(
         f"{API_PREFIX}/factor-sets",
-        json={"factor_set_id": "fs-wp07-e2e-04", "name": "WP07 E2E 权重表验证",
+        json={"factor_set_id": "fs-wp07-e2e-04", "name": "WP07 E2E Weights Guard",
               "created_by": "wp07"},
     )
     assert resp.status_code == 200, (resp.status_code, resp.text)
@@ -573,3 +538,9 @@ def test_wp07_e2e_04_train_response_weights_not_empty(client, db_session):
     assert len(weights) >= 1, (
         f"训练成功但 weights 为空：成员 {f_1.code} 没进权重表"
     )
+    entry = next((w for w in weights if w["factor_code"] == f_1.code), None)
+    assert entry is not None, f"weights 里没有 {f_1.code}：{weights}"
+    assert int(entry["factor_version"]) == fv1_ver, (
+        f"权重行版本漂移：{entry['factor_version']} vs 集成员 {fv1_ver}"
+    )
+    assert float(entry["coefficient"]) != 0.0, f"系数为 0 会让打分结果失真：{entry}"

@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import importlib
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
@@ -24,10 +24,39 @@ class TradeCalendarUnavailableError(Exception):
     """交易日历服务不可用（fail-closed）：禁止用 5/7 自然日粗估兜底。"""
 
 
+def _coerce_calendar_value(val: object) -> date | None:
+    """把 `trade_calendar.date` 列的返回值归一成 `date`；读不懂就返回 None。
+
+    不同驱动会给出不一样类型：MySQL/pymysql 对 DATE 列直接返回 `date`（或
+    `datetime`），而 SQLite 下裸 SQL（`text()`）结果不做类型转换，DATE 列会以
+    字符串回来。旧实现只认 `date` / 带 `.date()` 的对象，字符串直接落入
+    “未知类型 → 放弃该 fallback” 分支，导致**任何 SQLite 环境（含全部本地
+    测试库）的回测预检永远 fail-closed**（PT-DEF-24）。
+    注意 `datetime` 是 `date` 的子类，必须先判 datetime。
+    """
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+    if isinstance(val, (str, bytes)):
+        raw = (val.decode() if isinstance(val, bytes) else val).strip()
+        if not raw:
+            return None
+        # 兼容 'YYYY-MM-DD' / 'YYYY-MM-DDTHH:MM:SS' / 'YYYY-MM-DD HH:MM:SS[.ffffff]'
+        head = raw.replace("T", " ").split(" ")[0]
+        try:
+            return date.fromisoformat(head)
+        except ValueError:
+            return None
+    return None
+
+
 def _query_trade_calendar_table(session: "Session", start: date, end: date) -> list[date] | None:
     """Priority 1: 查询 trade_calendar 表（通过 raw SQL 动态探测，不依赖 ORM 模型）。
 
     返回 list[date] 表示成功；返回 None 表示表不存在或查询失败，继续下一 fallback。
+    空表是合法结果（返回 []），调用方会据此报 INSUFFICIENT_TRADE_DAYS 而不是
+    “日历不可用”——两种语义不能混。
     """
     try:
         # 探测表是否存在（MySQL 方言）；兼容 SQLite 用另一套语法会在捕获异常时返回 None。
@@ -39,17 +68,14 @@ def _query_trade_calendar_table(session: "Session", start: date, end: date) -> l
         )
         params = {"s": start.isoformat(), "e": end.isoformat()}
         rows = session.execute(stmt, params).fetchall()
-        # 兼容返回格式：date 列可能是 date 或 datetime
+        # 兼容各驱动返回格式：date / datetime / ISO 字符串（SQLite 裸 SQL）
         result: list[date] = []
         for row in rows:
-            val = row[0]
-            if isinstance(val, date):
-                result.append(val)
-            elif hasattr(val, "date"):
-                result.append(val.date())
-            else:
-                # 未知类型 -> 放弃该 fallback
+            coerced = _coerce_calendar_value(row[0])
+            if coerced is None:
+                # 只要有一个读不懂的值就整体放弃该数据源，维持 fail-closed
                 return None
+            result.append(coerced)
         return result
     except SQLAlchemyError:
         return None
