@@ -251,6 +251,50 @@ class TestExcludedMembersSnapshot:
         """空排除列表应返回空快照列表。"""
         assert build_excluded_members_snapshot([]) == []
 
+    def test_excluded_members_snapshot_accepts_structured_reason(self, db_session):
+        """PT-DEF-20（口径 A）：原因可以是 dict，结构化字段一并落盘。
+
+        旧写法（传字符串）必须继续可用，而且没有结构化信息时不得编造
+        reason_code / reason_zh。
+        """
+        p = _make_portfolio(db_session, name="QA-Snap-Excluded-Struct")
+        sym_a = _make_symbol(db_session, symbol="600004", name="E-struct")
+        sym_b = _make_symbol(db_session, symbol="600005", name="F-plain")
+        m1 = _make_member(db_session, p.id, sym_a.id)
+        m2 = _make_member(db_session, p.id, sym_b.id)
+
+        snapshot = build_excluded_members_snapshot([
+            (m1, {
+                "reason": "execution_mode is 'manual', expected 'auto'",
+                "reason_code": "execution_mode_not_auto",
+                "reason_zh": "执行模式为 manual，不具备自动下单资格（仍参与本次回测）",
+            }),
+            (m2, "plain_string_reason"),
+        ])
+
+        assert len(snapshot) == 2
+        assert snapshot[0]["reason_code"] == "execution_mode_not_auto"
+        assert "仍参与" in snapshot[0]["reason_zh"]
+        assert snapshot[0]["reason"] == "execution_mode is 'manual', expected 'auto'"
+        assert snapshot[1] == {
+            "member_id": m2.id,
+            "symbol_id": sym_b.id,
+            "reason": "plain_string_reason",
+        }
+        json.dumps(snapshot)
+
+    def test_excluded_members_snapshot_never_emits_empty_reason(self, db_session):
+        """dict 里没给 reason 时给兼容值，不能把空值交给界面。"""
+        p = _make_portfolio(db_session, name="QA-Snap-Excluded-NoReason")
+        sym = _make_symbol(db_session, symbol="600006", name="G-nr")
+        m = _make_member(db_session, p.id, sym.id)
+
+        snapshot = build_excluded_members_snapshot([
+            (m, {"reason_code": "execution_mode_not_auto"}),
+        ])
+
+        assert snapshot[0]["reason"] == "unknown"
+
 
 # ============================================================================
 # 4. 成本配置快照

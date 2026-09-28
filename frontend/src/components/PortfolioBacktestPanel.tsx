@@ -191,7 +191,9 @@ export default function PortfolioBacktestPanel() {
         : "default";
 
   // ----------------------------------------------------------------------------
-  // WP7.4 分区 2：成员资格校验（excluded_members_json 解析）
+  // WP7.4 分区 2：自动下单资格审计（excluded_members_json 解析）
+  // 语义注记（PT-DEF-20）：这栏里的成员仍参与本次回测，只是不会被自动执行；
+  // 字段名 excluded_* 是历史遗留，文案不得再写“已排除/被排除”。
   // ----------------------------------------------------------------------------
   const excludedMembers = useMemo(() => {
     if (!detail?.excluded_members_json) return [];
@@ -203,9 +205,11 @@ export default function PortfolioBacktestPanel() {
     }
   }, [detail?.excluded_members_json]);
 
-  // 排除原因中包含 manual/confirm 时触发警告
+  // 不具备自动下单资格的成员（优先看 reason_code，兼容旧快照的英文 reason）
   const hasManualConfirmMembers = excludedMembers.some(
-    (m: any) => typeof m?.reason === "string" && /manual|confirm/.test(m.reason),
+    (m: any) =>
+      m?.reason_code === "execution_mode_not_auto"
+      || (typeof m?.reason === "string" && /manual|confirm/.test(m.reason)),
   );
 
   // ----------------------------------------------------------------------------
@@ -416,7 +420,14 @@ export default function PortfolioBacktestPanel() {
               columns={[
                 { title: "member_id", dataIndex: "member_id", key: "member_id" },
                 { title: "symbol_id", dataIndex: "symbol_id", key: "symbol_id" },
-                { title: t("portfolioBacktest.excludedMembers"), dataIndex: "reason", key: "reason" },
+                {
+                  title: t("portfolioBacktest.excludedMembers"),
+                  dataIndex: "reason",
+                  key: "reason",
+                  // 新版快照带中文口径，旧快照只有英文诊断串：取能用的那个
+                  render: (_value: string, record: any) =>
+                    record?.reason_zh || record?.reason || "-",
+                },
               ]}
               pagination={false}
             />

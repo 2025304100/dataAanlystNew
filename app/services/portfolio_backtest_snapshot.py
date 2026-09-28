@@ -53,27 +53,37 @@ def build_member_snapshot(members: list[PortfolioMember]) -> list[dict]:
 
 
 def build_excluded_members_snapshot(
-    excluded: list[tuple[PortfolioMember, str]],
+    excluded: list[tuple[PortfolioMember, "str | dict"]],
 ) -> list[dict]:
-    """构建排除成员快照。
+    """构建“不具备自动下单资格成员”审计快照。
 
-    记录运行时被排除的成员及其原因（如成员已归档、规则版本缺失、
-    数据不足等），便于回测结果审计与复现。
+    语义提醒（PT-DEF-20）：这里记的成员**仍然参与本次回测**（回测标的集统一
+    取快照内全部有效成员），只是不会被当作自动成员执行。字段名 `excluded_*`
+    是历史遗留命名，含义以本注释为准。
 
     Args:
-        excluded: (成员, 排除原因) 元组列表
+        excluded: (成员, 原因) 元组列表。原因可以是字符串（旧写法，存为 `reason`），
+            也可以是 dict（带 `reason` / `reason_code` / `reason_zh`，新写法）。
 
     Returns:
-        排除成员快照 dict 列表
+        审计快照 dict 列表；`member_id` / `symbol_id` / `reason` 始终存在，
+        `reason_code` / `reason_zh` 仅在能拿到时写入（不编造）。
     """
-    return [
-        {
+    rows: list[dict] = []
+    for m, reason in excluded:
+        item = dict(reason) if isinstance(reason, dict) else {}
+        raw_reason = item.get("reason") if isinstance(reason, dict) else reason
+        row: dict = {
             "member_id": m.id,
             "symbol_id": m.symbol_id,
-            "reason": reason,
+            "reason": raw_reason or "unknown",
         }
-        for m, reason in excluded
-    ]
+        if item.get("reason_code"):
+            row["reason_code"] = str(item["reason_code"])
+        if item.get("reason_zh"):
+            row["reason_zh"] = str(item["reason_zh"])
+        rows.append(row)
+    return rows
 
 
 def build_cost_config_snapshot(portfolio: Portfolio) -> dict:

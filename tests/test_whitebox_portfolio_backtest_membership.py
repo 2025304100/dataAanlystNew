@@ -616,8 +616,12 @@ def test_validate_member_eligibility_with_manual(db_session):
     assert len(excluded) == 1
     assert excluded[0]["member_id"] == m_manual.id
     assert excluded[0]["symbol_id"] == sym_manual.id
+    # 向后兼容：reason 仍是英文诊断串（历史快照与现有消费者依赖它）
     assert "execution_mode" in excluded[0]["reason"]
     assert EXECUTION_MANUAL in excluded[0]["reason"]
+    # PT-DEF-20（口径 A）：额外携带机器码与中文口径，而且必须说清“仍参与回测”
+    assert excluded[0]["reason_code"] == "execution_mode_not_auto"
+    assert "仍参与" in excluded[0]["reason_zh"]
 
 
 # ----------------------------------------------------------------------------
@@ -1107,9 +1111,10 @@ def test_run_backtest_only_auto_option_no_longer_skips_members(db_session, membe
     """C-03：only_auto 请求字段与 UI 开关已移除，不再据此筛掉 manual 成员。
 
     旧断言“symbol_ids 仅含 auto 成员”已作废；现在统一取快照内的全部有效成员。
-    “排除了但还在标的集里”这一元数据与行为不一致的缺陷另有专门警报线把门：
+    “排除了但还在标的集里”这一疑点已按口径 A 定案（只改口径不改行为）：该字段是
+    自动下单资格审计，不是过滤清单。守门用例：
     test_whitebox_portfolio_backtest.py::TestWP7BacktestMembership
-    ::test_only_auto_exclusion_metadata_matches_symbol_set（PT-DEF-20）。
+    ::test_eligibility_audit_metadata_is_self_describing（PT-DEF-20）。
     """
     pf = _make_portfolio(db_session, name="QA-WP73-OnlyAuto-Skip")
     sym_auto = _make_symbol(db_session, symbol="700040")

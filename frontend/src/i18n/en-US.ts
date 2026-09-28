@@ -1020,17 +1020,18 @@ const enUS: Record<string, string> = {
     "portfolioBacktest.dataCutoffAt": "Data Cutoff",
     "portfolioBacktest.engineInfo": "Engine",
     "portfolioBacktest.memberEligibility": "Member Eligibility",
-    "portfolioBacktest.excludedMembers": "Excluded Members",
-    "portfolioBacktest.onlyAuto": "Auto Members Only",
-    "portfolioBacktest.onlyAutoHint": "Skip manual/confirm members",
-    "portfolioBacktest.manualMembersWarning": "Manual/confirm members exist, consider enabling 'Auto Members Only'",
+    // PT-DEF-20: these members still take part in the backtest; they merely lack
+    // auto-order eligibility. The old "Excluded Members" wording (and the hint to
+    // enable a switch that C-03 removed) was misleading.
+    "portfolioBacktest.excludedMembers": "Members without auto-order eligibility",
+    "portfolioBacktest.manualMembersWarning": "Manual/confirm members present: they still participate in this backtest but will not be auto-executed",
     "portfolioBacktest.snapshot": "Backtest Snapshot",
     "portfolioBacktest.compareEngines": "Compare Engines",
     "portfolioBacktest.compareResult": "Comparison Result",
     "portfolioBacktest.symbolsOnlyInLegacy": "Legacy Only",
     "portfolioBacktest.symbolsOnlyInMember": "Member Only",
     "portfolioBacktest.metricsDiff": "Metrics Diff",
-    "portfolioBacktest.excludedMembersSummary": "{count} members excluded in this backtest",
+    "portfolioBacktest.excludedMembersSummary": "{count} member(s) lack auto-order eligibility (still included in this backtest)",
     "portfolioBacktest.symbolList": "Symbol List",
     "portfolioBacktest.memberSnapshotTable": "Member Snapshot",
     "portfolioBacktest.scoreMode": "Score Mode",

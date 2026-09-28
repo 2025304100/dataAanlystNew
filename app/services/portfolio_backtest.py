@@ -272,11 +272,17 @@ def validate_member_eligibility(
 
     规则有效指 entry_rule_version_id 不为空。
 
+    语义注意（PT-DEF-20）：本函数返回的是【自动下单资格审计】清单，不是
+    “被从本次回测剔除”的清单——C-03 后回测标的集统一取快照内全部有效成员，
+    manual/confirm 成员仍会参与回测，只是不会被当作自动成员执行。
+    字段保留 `reason`（英文诊断串，向后兼容）并新增 `reason_code` / `reason_zh`，
+    供界面给出人话口径。
+
     Returns:
-        (is_valid, excluded_members_with_reason)
+        (is_valid, members_lacking_auto_eligibility)
         - is_valid: 全部通过时为 True
-        - excluded_members_with_reason: 不通过成员的列表，每项形如
-          ``{"member_id": int, "symbol_id": int, "reason": str}``
+        - 列表每项形如 ``{"member_id": int, "symbol_id": int,
+          "reason": str, "reason_code": str, "reason_zh": str}``
     """
     excluded: list[dict[str, Any]] = []
     for m in members:
@@ -285,6 +291,11 @@ def validate_member_eligibility(
                 "member_id": m.id,
                 "symbol_id": m.symbol_id,
                 "reason": f"execution_mode is {m.execution_mode!r}, expected 'auto'",
+                "reason_code": "execution_mode_not_auto",
+                "reason_zh": (
+                    f"执行模式为 {m.execution_mode}，不具备自动下单资格"
+                    "（仍参与本次回测）"
+                ),
             })
             continue
         if m.entry_rule_version_id is None:
@@ -292,6 +303,8 @@ def validate_member_eligibility(
                 "member_id": m.id,
                 "symbol_id": m.symbol_id,
                 "reason": "entry_rule_version_id is None",
+                "reason_code": "entry_rule_missing",
+                "reason_zh": "未绑定入场规则版本，不具备自动下单资格（仍参与本次回测）",
             })
     return (len(excluded) == 0, excluded)
 
@@ -1027,7 +1040,7 @@ def run_portfolio_backtest(
     # - excluded_member_ids / excluded_pairs：保留用于快照审计（manual/confirm 执行模式的成员仍被标记），
     #   但不再仅根据 only_auto 开关过滤（C-03：统一按 auto_authorized_flag 与 execution_mode 双口径）
     excluded_member_ids: list[int] = []
-    excluded_pairs: list[tuple[PortfolioMember, str]] = []
+    excluded_pairs: list[tuple[PortfolioMember, dict]] = []
     # 仍读取 member 表用于审计（不用于候选过滤）
     if settings.PORTFOLIO_BACKTEST_MEMBER_SOURCE_ENABLED:
         all_members = _get_effective_members_for_window(
@@ -1039,7 +1052,8 @@ def run_portfolio_backtest(
         for item in excluded_list:
             member = next((m for m in all_members if int(m.id) == int(item["member_id"])), None)
             if member is not None:
-                excluded_pairs.append((member, item.get("reason") or "unknown"))
+                # 连同 reason_code / reason_zh 一起落盘，供界面说人话（PT-DEF-20）
+                excluded_pairs.append((member, item))
                 excluded_member_ids.append(int(member.id))
 
     # 推导标的列表（统一三段口径，不再带 only_auto/current_universe 特殊分支）

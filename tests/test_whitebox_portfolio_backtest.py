@@ -1444,32 +1444,34 @@ class TestWP7BacktestMembership:
         snapshot = json.loads(run.member_snapshot_json)
         assert sorted(m["member_id"] for m in snapshot) == sorted([m_auto.id, m_manual.id])
 
-    @pytest.mark.xfail(
-        reason="PT-DEF-20：only_auto=True 时回测元数据与实际行为不一致——"
-               "excluded_member_count/excluded_members_json 已把 manual 成员记成“已排除”，"
-               "但 symbol_ids / member_snapshot_json 仍包含它（体检报告 §十七）。"
-               "修复方向：only_auto 字段既已由 C-03 从请求与 UI 移除，这里要么全部不再记账，"
-               "要么恢复成“记了就真排除”，不能一半生效一半只记账。",
-        strict=False,
-    )
-    def test_only_auto_exclusion_metadata_matches_symbol_set(
+    def test_eligibility_audit_metadata_is_self_describing(
         self, db_session, member_source_enabled
     ):
-        """缺陷警报线：排除名单必须和标的集一致。"""
+        """PT-DEF-20（口径 A）：审计字段必须自我说明，不得被读成“已从回测剔除”。
+
+        产品事实：excluded_members_json 记的是“不具备自动下单资格”的成员（审计），
+        这些成员仍在 symbol_ids / member_snapshot_json 里参与回测。拍板前曾按
+        “记了就真排除”断言一致性；A 方案（只改口径不改行为）下改钉三件事：
+        1. 每条审计项都带 reason_code 与 reason_zh（否则界面只能亮英文诊断串）；
+        2. reason_zh 必须写明“仍参与”，防止文案回退成误导口径；
+        3. 被审计的成员确实仍在标的集与成员快照里（口径 A 的行为基线）。
+        """
         p = _make_portfolio(db_session, name="QA-WP7-MetadataConsistency")
         sym_auto = _make_symbol(db_session, symbol="800082", name="S")
         sym_manual = _make_symbol(db_session, symbol="800083", name="T")
         _make_active_rule(db_session, p.id)
 
         trade_dt = datetime(2026, 1, 10, 12, 0, 0)
-        for sid, mode, rid in (
-            (sym_auto.id, "auto", 1001), (sym_manual.id, "manual", 1002),
-        ):
-            _make_portfolio_member(
-                db_session, portfolio_id=p.id, symbol_id=sid,
-                execution_mode=mode, entry_rule_version_id=rid,
-                effective_from=trade_dt - timedelta(days=30),
-            )
+        m_manual = _make_portfolio_member(
+            db_session, portfolio_id=p.id, symbol_id=sym_manual.id,
+            execution_mode="manual", entry_rule_version_id=1002,
+            effective_from=trade_dt - timedelta(days=30),
+        )
+        _make_portfolio_member(
+            db_session, portfolio_id=p.id, symbol_id=sym_auto.id,
+            execution_mode="auto", entry_rule_version_id=1001,
+            effective_from=trade_dt - timedelta(days=30),
+        )
         for d in (date(2026, 1, 5), date(2026, 1, 6)):
             _make_daily_bar(db_session, sym_auto.id, d, close=10.0)
             _make_daily_bar(db_session, sym_manual.id, d, close=20.0)
@@ -1481,11 +1483,33 @@ class TestWP7BacktestMembership:
         )
         run = db_session.get(BacktestRun, result["run_id"])
         excluded = json.loads(run.excluded_members_json or "[]")
-        excluded_ids = {int(e["symbol_id"]) for e in excluded}
+        assert excluded, "审计清单为空，本用例失去意义（应至少含 manual 成员）"
 
-        # 要么“记了就真排除”，要么两者都为空——不能自相矛盾
-        assert excluded_ids.isdisjoint(result["symbol_ids"]), (
-            f"元数据说排除了 {excluded_ids}，但标的集仍是 {result['symbol_ids']}"
+        for item in excluded:
+            assert item.get("reason_code"), f"审计项缺 reason_code：{item}"
+            reason_zh = item.get("reason_zh") or ""
+            assert reason_zh, f"审计项缺中文口径 reason_zh：{item}"
+            assert "仍参与" in reason_zh, (
+                f"中文口径没说明“仍参与回测”，会被读成已剔除：{item}"
+            )
+
+        audited_member_ids = {int(e["member_id"]) for e in excluded}
+        audited_symbol_ids = {int(e["symbol_id"]) for e in excluded}
+        assert m_manual.id in audited_member_ids, (
+            f"manual 成员未被记入审计：{excluded}"
+        )
+        assert sym_manual.id in audited_symbol_ids, (
+            f"审计项的 symbol_id 与成员不一致：{excluded}"
+        )
+        assert sym_manual.id in result["symbol_ids"], (
+            "口径 A 的基线：被审计的成员仍应参与回测，实际标的集 "
+            f"{result['symbol_ids']}"
+        )
+        snapshot_ids = {
+            int(m["member_id"]) for m in json.loads(run.member_snapshot_json)
+        }
+        assert audited_member_ids.issubset(snapshot_ids), (
+            f"审计成员没出现在成员快照里：{audited_member_ids} vs {snapshot_ids}"
         )
 
     # ----- L268 切换后历史可读 -----
