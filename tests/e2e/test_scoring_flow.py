@@ -9,6 +9,8 @@ E2E 测试需要前后端同时运行：
 """
 from __future__ import annotations
 
+import re
+
 import pytest
 
 pytestmark = pytest.mark.e2e
@@ -16,6 +18,10 @@ pytestmark = pytest.mark.e2e
 # i18n 文本（zh-CN / en）。
 SETTINGS_TAB_LABELS = ("设置", "Settings")
 SCORING_NAV_LABELS = ("评分配置", "Scoring Config")
+# antd Button 会在两个中文字符间插入真实空格（DOM 文本是「股 票」而不是「股票」），
+# 字面 has-text 因此永远匹配不上 —— 用容忍空白的正则定位。
+STOCK_TAB_PATTERN = re.compile(r"股\s*票")
+ETF_TAB_PATTERN = re.compile(r"ETF", re.IGNORECASE)
 STOCK_TAB_LABELS = ("股票", "Stock")
 ETF_TAB_LABELS = ("ETF",)
 REFRESH_LABELS = ("刷新", "Refresh")
@@ -69,27 +75,22 @@ def test_stock_etf_tab_switchable(page):
     """【P2-2 E2E】股票/ETF Tab 可切换。"""
     _goto_scoring(page)
 
-    # 股票 Tab 按钮
-    stock_btn = None
-    for label in STOCK_TAB_LABELS:
+    # 资产类型切换按钮由 antd Button 渲染，中文双字会被拆开，所以走 role + 正则
+    def _find_type_button(pattern):
         candidate = page.locator(
-            f".scoring-config-section button:has-text('{label}')"
-        ).first
-        if candidate.is_visible():
-            stock_btn = candidate
-            break
-    assert stock_btn is not None, "未找到「股票」Tab 按钮"
+            ".scoring-config-section button"
+        ).filter(has_text=pattern).first
+        if candidate.count() > 0 and candidate.is_visible():
+            return candidate
+        return None
 
-    # ETF Tab 按钮
-    etf_btn = None
-    for label in ETF_TAB_LABELS:
-        candidate = page.locator(
-            f".scoring-config-section button:has-text('{label}')"
-        ).first
-        if candidate.is_visible():
-            etf_btn = candidate
-            break
-    assert etf_btn is not None, "未找到「ETF」Tab 按钮"
+    stock_btn = _find_type_button(STOCK_TAB_PATTERN)
+    assert stock_btn is not None, (
+        "未找到「股票」资产类型切换按钮（已容忍 antd 的双字空格）"
+    )
+
+    etf_btn = _find_type_button(ETF_TAB_PATTERN)
+    assert etf_btn is not None, "未找到「ETF」资产类型切换按钮"
 
     # 切换到 ETF
     etf_btn.click()

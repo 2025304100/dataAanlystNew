@@ -8,11 +8,13 @@ import pytest
 
 pytestmark = pytest.mark.e2e
 
+# 当前主视图（实测 6 个）：旧列表里的「投资中心」「目前观察池」「机会挖掘」
+# 已重排/改名（分别→组合交易 / 组合交易 / 机会中心），保留旧名会让
+# 参数化用例直接判“Tab 不可见”而失败——这是选择器腐烂，不是产品问题。
 TABS = [
     ("今日决策", "decision"),
-    ("投资中心", "investment"),
-    ("目前观察池", "portfolio"),
-    ("机会挖掘", "discovery"),
+    ("组合交易", "portfolio"),
+    ("机会中心", "opportunity"),
     ("宏观数据", "macro"),
     ("行情消息", "news"),
     ("设置", "settings"),
@@ -77,19 +79,29 @@ def test_tab_clickable_and_no_console_error(smoke_page, label, key):
 
 
 def test_portfolio_subtabs_visible(smoke_page):
-    """【P2-1 E2E】目前观察池 Tab 含「工作台」和「模拟交易」子 Tab。"""
+    """【P2-1 E2E】组合交易视图（旧称「目前观察池」）含完整子导航。
+
+    旧断言查的是「工作台 / 模拟交易」两个 sub-tab，该结构已被组合交易改造推翻；
+    现子导航实测为：总览 / 持仓成员 / 策略规则 / 回测中心 / 治理。
+    """
     pg, _, _ = smoke_page
 
-    # 切换到目前观察池
-    portfolio_tab = pg.locator("button.view-tab:has-text('目前观察池')").first
-    if portfolio_tab.is_visible():
-        portfolio_tab.click()
-        pg.wait_for_timeout(1000)
+    portfolio_tab = pg.locator("button.view-tab:has-text('组合交易')").first
+    assert portfolio_tab.is_visible(), "主视图「组合交易」不可见"
+    portfolio_tab.click()
+    pg.wait_for_timeout(2000)
+    pg.wait_for_load_state("networkidle")
 
-    # 验证子 Tab
-    workbench_tab = pg.locator("button.sub-tab:has-text('工作台')").first
-    trading_tab = pg.locator("button.sub-tab:has-text('模拟交易')").first
+    # 验证子导航
+    expected = ("总览", "持仓成员", "策略规则", "回测中心", "治理")
+    found = []
+    for label in expected:
+        item = pg.locator(
+            f"button:has-text('{label}'), [role='tab']:has-text('{label}')"
+        ).first
+        if item.count() > 0 and item.is_visible():
+            found.append(label)
 
-    assert workbench_tab.is_visible() or trading_tab.is_visible(), (
-        "目前观察池下未找到子 Tab（工作台/模拟交易）"
+    assert len(found) >= 3, (
+        f"组合交易子导航不足：期望含 {list(expected)} 中至少 3 项，实际 {found}"
     )
