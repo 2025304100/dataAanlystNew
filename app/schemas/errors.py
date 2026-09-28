@@ -137,6 +137,18 @@ ERROR_CODE_LIBRARY: dict[str, dict[str, Any]] = {
             {"label": "去配置", "action_type": "redirect", "target": "/settings"}
         ],
     },
+    # 应用设置（/settings/app）两个参数类错误码：不登记就会被全局处理器
+    # 回退成 UNKNOWN_ERROR（“服务暂时不可用，可重试”），与“参数不对、重试无用”相悖。
+    "UNKNOWN_SETTING_KEY": {
+        "user_message": "要修改的设置项不存在（未登记该设置键）",
+        "impact": "本次设置未保存；请从设置页列出的项目中选择，不要自造设置键",
+        "retryable": False,
+    },
+    "SETTING_VALUE_INVALID": {
+        "user_message": "设置值类型不对，无法保存",
+        "impact": "本次设置未保存；开关请传 true/false",
+        "retryable": False,
+    },
     "FORBIDDEN": {
         "user_message": "当前身份无权执行该操作",
         "impact": "本次请求被拒绝；如需该权限请调整调用方角色配置",

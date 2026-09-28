@@ -1,5 +1,5 @@
 ﻿import { t } from "../i18n";
-import type { AIDraftDetail, AIDraftExecuteResult, AIDraftPreviewResult, AsyncTaskCancelRequest, AsyncTaskCancelResponse, AsyncTaskRead, AutoSimulationPreflightRequest, AutoSimulationPreflightResponse, BacktestPosition, BacktestRun, BacktestTrade, CapabilitiesResponse, CustomIndicatorPreviewRead, CustomIndicatorPromoteResponse, PortfolioBacktestResult, PortfolioResumeExecuteRequest, PortfolioResumeExecuteResponse, PortfolioResumePlanRequest, PortfolioResumePlanResponse, SignalRule, SignalRulePreviewResult, SnapshotStatusRead } from "../types";
+import type { AIDraftDetail, AIDraftExecuteResult, AIDraftPreviewResult, AsyncTaskCancelRequest, AsyncTaskCancelResponse, AsyncTaskRead, AutoSimulationPreflightRequest, AutoSimulationPreflightResponse, AppSettingRead, BacktestPosition, BacktestRun, BacktestTrade, CapabilitiesResponse, CustomIndicatorPreviewRead, CustomIndicatorPromoteResponse, PortfolioBacktestResult, PortfolioResumeExecuteRequest, PortfolioResumeExecuteResponse, PortfolioResumePlanRequest, PortfolioResumePlanResponse, SignalRule, SignalRulePreviewResult, SnapshotStatusRead } from "../types";
 import type { AttributionReport, Review } from "../types";
 import type { SymbolRelationships } from "../types/symbolRelationships";
 import type {
@@ -2240,6 +2240,19 @@ export const api = {
     requestJson<any[]>(`${API}/settings/custom-indicators/${id}/versions`),
   rollbackIndicator: (id: number, version: number) =>
     requestJson<any>(`${API}/settings/custom-indicators/${id}/rollback/${version}`, { method: "POST", headers: { "Content-Type": "application/json" } }),
+
+  // 通用应用设置（app_settings 表）：开关清单由后端登记表下发，前端不写死
+  getAppSettings: () =>
+    requestJson<AppSettingRead[]>(`${API}/settings/app`),
+  putAppSetting: (key: string, value: unknown) =>
+    requestJson<{ key: string; value: unknown; source: string; updated_by?: string | null }>(
+      `${API}/settings/app/${encodeURIComponent(key)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      },
+    ),
   promoteIndicatorToFactor: (id: number, payload: {
     code?: string; name?: string; category?: string;
     direction?: "higher_better" | "lower_better" | "nonlinear";

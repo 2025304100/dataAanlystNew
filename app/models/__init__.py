@@ -17,6 +17,8 @@ from typing import List
 # ── 显式 import（保留，便于追溯各模块引入背景） ─────────────────────────
 from app.models import async_task, backtest, market_event
 from app.models import custom_indicator, discovery_plan
+# 通用应用设置（用户级持久化开关；跨域共用，不属于任何单一域）
+from app.models import app_setting  # noqa: F401
 from app.models import scoring_config
 from app.models import factor, factor_model, factor_runtime, scheduled_task
 from app.models import factor_evaluation  # noqa: F401

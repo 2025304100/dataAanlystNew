@@ -858,7 +858,10 @@ def test_snapshot_status_read_schema_serialization():
 # ══════════════════════════════════════════════════════
 
 def test_auto_data_prep_switch_defaults_on_and_honors_off(monkeypatch):
-    """开关默认开（保持现有行为），并且 0/false/no 都能关掉。"""
+    """表里没行时，env 仍然有效：默认开，0/false/False/no 都算关。
+
+    （表优先于 env 的行为单独在 tests/test_whitebox_app_settings.py 把门。）
+    """
     monkeypatch.delenv(discovery_data_prep.AUTO_DATA_PREP_ENV, raising=False)
     assert discovery_data_prep.auto_data_prep_enabled() is True
 
@@ -876,7 +879,9 @@ def _empty_db_fast_scan(db_session, monkeypatch, *, enabled: bool) -> list:
         lambda **kw: started.append(str(kw.get("scope") or "")),
     )
     monkeypatch.setattr(
-        discovery_data_prep, "auto_data_prep_enabled", lambda: enabled
+        discovery_data_prep,
+        "auto_data_prep_enabled",
+        lambda *_a, **_kw: enabled,
     )
     # 本用例只关心“有没有隐式起后台任务”，HTTP 护栏交给同族的专门用例
     monkeypatch.setattr(

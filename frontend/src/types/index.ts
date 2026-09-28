@@ -1223,6 +1223,28 @@ export type CustomIndicatorPayload = Omit<CustomIndicator, "id" | "version" | "c
   change_note?: string;
 };
 
+/**
+ * 通用应用设置项（GET /settings/app）。
+ *
+ * 键名/文案/类型/默认值全部由后端 app_settings 登记表下发，前端不再维护一份
+ * 开关清单（避免“同一事实两处记录”，体检报告 PT-DEF-13 同族）。
+ */
+export interface AppSettingRead {
+  key: string;
+  /** 登记类型：目前仅 bool 会渲染为开关，其余先占位 */
+  type: string;
+  section?: string | null;
+  value: unknown;
+  /** 生效值来源：table（页面改的）/ env（环境变量）/ default */
+  source: "table" | "env" | "default" | string;
+  default?: unknown;
+  env_var?: string | null;
+  label_zh?: string | null;
+  description_zh?: string | null;
+  updated_by?: string | null;
+  updated_at?: string | null;
+}
+
 export interface CustomIndicatorVersion {
   id: number;
   indicator_id: number;

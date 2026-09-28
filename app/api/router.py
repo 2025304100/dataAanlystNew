@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import alerts, auto_trade, backtest, custom_indicators, dashboard, db_config, data_mirror, decision_engine, discovery, discovery_plans, external_data, akshare_apis, factor_evaluation, factor_experience, factor_mining, factor_mining_wizard, factor_models, factor_pipeline, factor_sets, factor_shadow, factors, g5_dual_run, investment_themes, journals, linkage, macro, market_data, market_events, mining_candidate_pool, news, notifications, portfolios, portfolio_factor_usage, portfolio_governance, scheduled_tasks, scans, scoring_configs, scores, scoring_facade, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_drafts, ai_profiles, ai_sessions
+from app.api.routes import alerts, app_settings, auto_trade, backtest, custom_indicators, dashboard, db_config, data_mirror, decision_engine, discovery, discovery_plans, external_data, akshare_apis, factor_evaluation, factor_experience, factor_mining, factor_mining_wizard, factor_models, factor_pipeline, factor_sets, factor_shadow, factors, g5_dual_run, investment_themes, journals, linkage, macro, market_data, market_events, mining_candidate_pool, news, notifications, portfolios, portfolio_factor_usage, portfolio_governance, scheduled_tasks, scans, scoring_configs, scores, scoring_facade, signal_rules, sim_accounts, symbols, system, trade_setups, watchlists, universe, ai_config, ai_drafts, ai_profiles, ai_sessions
 from app.core.config import settings
 
 
@@ -83,3 +83,5 @@ api_router.include_router(g5_dual_run.router)
 api_router.include_router(scoring_facade.router, tags=["scoring-facade"])
 # M14/T26：F1 历史经验库（存回 / 抽取 / related；mining 只经 HTTP 调用，红线 C5）
 api_router.include_router(factor_experience.router, tags=["factor-experience"])
+# 通用应用设置（用户级持久化，app_settings 表）：GET/PUT /settings/app
+api_router.include_router(app_settings.router, tags=["app-settings"])

@@ -1000,9 +1000,10 @@ def run_fast_scan(
                     auto_data_prep_enabled,
                     start_data_prep_task,
                 )
-                # PT-DEF-15 可关开关：隐式回源拉外网 + 起跨请求存活的后台任务，
+                # PT-DEF-15 可关开关：隐式回源拉外网 + 起跨请求存活的后台任务。
                 # 关掉后这里直接跳过，主响应仍是 no_ready_snapshot 提示。
-                if not auto_data_prep_enabled():
+                # 传 db：读的是本次请求那张库的设置（表 > env > 默认）。
+                if not auto_data_prep_enabled(db):
                     logger.info(
                         "auto data_prep skipped for scope=%s "
                         "(DISCOVERY_AUTO_DATA_PREP_ENABLED=0)",

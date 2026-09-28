@@ -22,7 +22,8 @@ import { t } from "../../i18n";
 export type SettingsSection =
   | "rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules"
   | "alerts" | "scoring" | "factor-model" | "factor-center" | "data-center"
-  | "api-mgmt" | "db" | "ai" | "factor-mining" | "notifications" | "factor-basic";
+  | "api-mgmt" | "db" | "ai" | "factor-mining" | "notifications" | "factor-basic"
+  | "app-settings";
 
 interface NavItem {
   key: SettingsSection;
@@ -46,6 +47,8 @@ const NAV_ITEMS: NavItem[] = [
   { key: "factor-mining", icon: <ExperimentOutlined />, labelKey: "factorMiningTabTitle" },
   { key: "factor-basic", icon: <SettingOutlined />, labelKey: "factorBasicTabTitle" },
   { key: "data-center", icon: <DatabaseOutlined />, label: "数据中心" },
+  // 通用应用设置（app_settings 登记表驱动，后端加键前端零改动）
+  { key: "app-settings", icon: <AppstoreOutlined />, labelKey: "appSettingsTabTitle" },
   { key: "api-mgmt", icon: <ApiOutlined />, labelKey: "apiMgmtTabTitle" },
   { key: "db", icon: <DatabaseOutlined />, labelKey: "dbTabTitle" },
   { key: "ai", icon: <RobotOutlined />, labelKey: "aiConfigTabTitle" },

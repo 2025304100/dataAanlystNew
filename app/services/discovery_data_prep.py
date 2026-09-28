@@ -53,17 +53,37 @@ logger = logging.getLogger(__name__)
 
 TASK_TYPE_DATA_PREP = "discovery_data_prep"
 
-# PT-DEF-15：“无 ready 快照 → 自动启动数据准备”的总开关（默认开，保持现有行为）。
+# PT-DEF-15：“无 ready 快照 → 自动启动数据准备”的开关（默认开，保持现有行为）。
 # 关掉后：快扫只回 degraded_reason="no_ready_snapshot"，不再隐式起后台任务，
 # 也不再真打第三方行情源；手动触发数据准备的接口不受影响。
-# 写法沿用本仓既有约定（参照 api/routes/factor_models.py 的
-# ENABLE_FACTOR_MODEL_WAREHOUSE_TRAIN）：暂无 settings 表，所以是运维级 env 开关。
-AUTO_DATA_PREP_ENV = "DISCOVERY_AUTO_DATA_PREP_ENABLED"
+# 优先级：**app_settings 表（用户在设置页改的）> 环境变量 > 默认开**。
+# 保留 env 通道是为了运维级强制关闭（整环境禁外网、CI 里不碰行情源），
+# 且表未迁移时能自然回退（读不到就不拦）。
+# env 名不在本模块另写一份：由 app_settings 的登记表持有（单一真相），
+# 本处只是保留旧导入路径的别名，供既有调用与用例引用。
+from app.services.app_settings import DISCOVERY_AUTO_DATA_PREP_ENV
+
+AUTO_DATA_PREP_ENV = DISCOVERY_AUTO_DATA_PREP_ENV
 
 
-def auto_data_prep_enabled() -> bool:
-    """发现中心是否允许“由快扫隐式启动数据准备任务”。默认允许。"""
-    return os.getenv(AUTO_DATA_PREP_ENV, "1").strip() not in {"0", "false", "False", "no"}
+def auto_data_prep_enabled(db: Session | None = None) -> bool:
+    """发现中心是否允许“由快扫隐式启动数据准备任务”。
+
+    调用方手里有 Session 时请传进来：读到的是“这张库”的设置。
+    不传时 `resolve_bool_setting` 会自开一个短会话，并在读失败时退回 env/默认值
+    （读一个开关不得把主链路打翻）。
+    """
+    from app.services.app_settings import (
+        DISCOVERY_AUTO_DATA_PREP_KEY,
+        resolve_bool_setting,
+    )
+
+    return resolve_bool_setting(
+        DISCOVERY_AUTO_DATA_PREP_KEY,
+        default=True,
+        env_var=AUTO_DATA_PREP_ENV,
+        db=db,
+    )
 
 # 阶段预算（秒）：用于 task_state_machine 判定 stalled
 _STAGE_BUDGET_SECONDS = {
