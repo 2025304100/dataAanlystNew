@@ -1965,7 +1965,7 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
               <PlayCircle size={14} /> {launching ? "…" : t("g5.launch")}
             </button>
             <button type="button" className="pt-btn-ghost" onClick={doFetchResult} disabled={loadingSummary || !replayId}>
-              <RefreshCw size={14} /> {loadingSummary ? "…" : "Query Result"}
+              <RefreshCw size={14} /> {loadingSummary ? "…" : t("g5.queryResult")}
             </button>
             {!daysOk && (
               <span style={{ fontSize: 12, color: "#dc2626", fontWeight: 600 }}>

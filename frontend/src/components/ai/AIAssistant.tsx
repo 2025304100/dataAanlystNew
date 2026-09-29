@@ -425,7 +425,7 @@ export default function AIAssistant({ activeTab, onGoToSettings }: AIAssistantPr
             {messagesLoading ? (
               <div style={{ textAlign: "center", padding: 24 }}><Spin /></div>
             ) : messages.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("aiAssistant.noSessions")} />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("aiAssistant.noMessages")} />
             ) : (
               messages.map((msg) => {
                 if (msg.role === "user") {

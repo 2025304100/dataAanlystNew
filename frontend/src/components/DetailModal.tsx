@@ -422,8 +422,11 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     if (sampleLimitInput === "") return;
     if (sampleTimer.current) clearTimeout(sampleTimer.current);
     sampleTimer.current = setTimeout(() => {
-      const value = Number(sampleLimitInput);
-      if (value > 0 && value !== ctx.signalSampleLimit) {
+      const raw = Number(sampleLimitInput);
+      // min/max 属性拦不住手输（粘贴尤其如此），越界值一律夹回后端允许区间
+      if (!Number.isFinite(raw)) return;
+      const value = Math.min(240, Math.max(5, Math.trunc(raw)));
+      if (value !== ctx.signalSampleLimit) {
         ctx.setSignalSampleLimit(value);
         if (ctx.activeSymbolId) {
           ctx.loadSymbolDetail(ctx.activeSymbolId, { force: true }).catch(() => {});
@@ -1426,7 +1429,11 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                         <input
                           className="sample-limit-input"
                           type="number"
-                          min={1}
+                          /* VIZ-0929-16：后端 query 约束是 ge=5/le=240，此前只写 min={1}，
+                             填 1 或 9999 都会让详情请求吃到 422（表现为"改了没反应"） */
+                          min={5}
+                          max={240}
+                          step={5}
                           value={sampleLimitInput}
                           onChange={(e) => setSampleLimitInput(e.target.value)}
                           placeholder={t("sampleLimitTip")}

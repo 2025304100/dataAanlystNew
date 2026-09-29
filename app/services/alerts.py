@@ -415,10 +415,17 @@ def _eval_data_stale(session: Session, rule: AlertRule) -> list[AlertEvent]:
         if parsed is None or parsed.date() < cutoff:
             age = (_now().date() - (parsed.date() if parsed else _now().date())).days
             label = f"{symbol_code} {name}"
+            # 没有任何 K 线（或日期不可解析）时，age 恒为 0，旧文案会输出"K线已 0 天未更新"
+            # 这种自相矛盾的话；这里按"缺数据"单独措辞。
+            detail = (
+                f"{label} 尚无任何 K 线记录"
+                if parsed is None
+                else f"{label} K线已 {age} 天未更新（最后: {parsed.date()}）"
+            )
             events.append(_fire_event(
                 session, rule,
                 title=f"数据过期: {label}",
-                message=f"{label} K线已 {age} 天未更新（最后: {parsed.date() if parsed else '无记录'}）",
+                message=detail,
                 symbol_id=symbol_id,
                 data={"stale_days": age, "latest_date": str(parsed.date()) if parsed else None},
             ))

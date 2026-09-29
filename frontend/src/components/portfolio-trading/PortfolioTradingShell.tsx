@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Briefcase, ChevronDown, Zap, Trophy, Plus, AlertTriangle, Lock, Activity, Database, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { Tooltip } from "antd";
 import { useApp } from "../../context/AppContext";
@@ -302,7 +302,13 @@ const PortfolioTradingShell: React.FC = () => {
     () => portfolios.find((p) => p.id === portfolioId) ?? portfolios[0] ?? null,
     [portfolios, portfolioId],
   );
-  const currentPortfolioName = currentPortfolio?.name ?? t("portfolioTrading.header.noPortfolio");
+  // VIZ-0929-16：首屏 portfolios 还没到货时，头部会闪一下"暂无组合"（其实是有组合、只是没加载完）。
+  // 只在"曾经拿到过列表但为空"时才使用该空态文案。
+  const portfoliosArrivedRef = useRef(false);
+  if (portfolios.length > 0) portfoliosArrivedRef.current = true;
+  const currentPortfolioName =
+    currentPortfolio?.name
+    ?? (portfoliosArrivedRef.current ? t("portfolioTrading.header.noPortfolio") : t("loading"));
   const currentAccountTypeLabel = accountTypeLabel(currentPortfolio?.account_type);
   const currentAssetScopeLabel =
     currentPortfolio?.asset_scope === "stock"
