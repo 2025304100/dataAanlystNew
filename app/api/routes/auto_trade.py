@@ -108,6 +108,8 @@ def _parse_env_list(name: str) -> list[int]:
 @router.get(
     "/portfolios/{portfolio_id}/auto-trade/dry-run-diff",
     tags=["auto-trade"],
+    deprecated=True,  # WP6.6 双跑迁移工具；唯一 UI 已下线，双跑结论由 DecisionOrderPlan
+                      # 三入口一致性 + DecisionEvidence 拒绝记录承接（报告 §二十七）
 )
 def get_dry_run_diff(
     portfolio_id: int,
@@ -160,6 +162,8 @@ def get_dry_run_diff(
 @router.get(
     "/portfolios/{portfolio_id}/auto-trade/switch-readiness",
     tags=["auto-trade"],
+    deprecated=True,  # 迁移期切换就绪度（当前恒报 can_switch=false）；UI 从未接入，
+                      # 启停判据以 /auto-trade/readiness 与 g6 流程为准（报告 §二十七）
 )
 def get_member_source_switch_readiness(
     portfolio_id: int,
@@ -344,6 +348,8 @@ def get_auto_trade_readiness_route(
 @router.get(
     "/portfolios/{portfolio_id}/auto-trade/member-source-status",
     tags=["auto-trade"],
+    deprecated=True,  # WP7.3 双跑迁移期观测面；旧 AutoTradePanel 已下线，运维改用
+                      # g6 灰度启停（治理页）+ 环境变量紧急熔断（报告 §二十七）
 )
 def get_member_source_status(
     portfolio_id: int,
@@ -382,6 +388,8 @@ def get_member_source_status(
 @router.post(
     "/portfolios/{portfolio_id}/auto-trade/rollback-to-old-source",
     tags=["auto-trade"],
+    deprecated=True,  # 已被 g6-rollback 取代（同一持久化回滚路径，带 operator/reason/审计）；
+                      # 保留路由供既有脚本与回归用例使用，新代码请用 g6-rollback（报告 §二十七）
 )
 def rollback_to_old_source_route(
     portfolio_id: int,

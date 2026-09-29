@@ -1511,6 +1511,9 @@ def get_portfolio_backtest_source_status(
     "/portfolios/{portfolio_id}/backtest/compare",
     response_model=PortfolioBacktestCompareResult,
     tags=["backtest"],
+    deprecated=True,  # WP7.4 新旧引擎双跑对比；唯一 UI（旧 PortfolioBacktestPanel）已下线，
+                      # 一致性由 StrategyExecutionSnapshot + DecisionOrderPlan 三入口一致契约
+                      # 与 G5 重放保证（报告 §十七 / §二十七）。路由与契约测试保留。
 )
 def compare_portfolio_backtest_engines(
     portfolio_id: int,
