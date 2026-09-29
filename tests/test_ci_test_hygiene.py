@@ -249,3 +249,23 @@ def test_e2e_minimum_gate_is_wired_into_ci():
     conftest = (root / "tests" / "conftest.py").read_text(encoding="utf-8")
     assert "def pytest_sessionfinish" in conftest
     assert "_e2e_coverage_guard" in conftest
+
+
+def test_factor_warehouse_is_isolated_from_developer_machine_state():
+    """PT-DEF-21：测试会话必须用**专属**因子仓库，不能与本机后端共用同一个文件。
+
+    实测代价（两次独立复现）：
+    1. 后端在跑时全量出现 7 例红，真因是共享 `tmp/factor_warehouse.duckdb` 被另一个
+       进程持有（"另一个程序正在使用此文件"），但错误表现成 `assert 0 == 2` /
+       `assert False is True`，完全看不出根因；
+    2. 共享仓库里的残留数据让用例随执行顺序飘移（体检报告 §十九.2：单跑绿、全量红）。
+    本用例钉住 conftest 里那个 env 默认值仍然生效（它必须在 import app 之前设置）。
+    """
+    from app.core.config import Settings
+
+    path = Settings().factor_warehouse_path
+    assert path.name.startswith("qa_factor_warehouse_"), (
+        f"测试会话正在用与开发机共享的仓库 {path}；"
+        "tests/conftest.py 里 FACTOR_WAREHOUSE_PATH 的默认值失效了，"
+        "本机只要跑着后端，全量就会出现无法归因的红灯"
+    )

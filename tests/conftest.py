@@ -14,6 +14,24 @@ from unittest.mock import MagicMock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+# PT-DEF-21：测试会话使用**专属**因子仓库文件，绝不与开发中的后端进程共用
+# 同一个 `tmp/factor_warehouse.duckdb`。
+#
+# 必须在导入任何 `app.*` 之前设置：`Settings` 在构造时就把 FACTOR_WAREHOUSE_PATH
+# 解析进 `factor_warehouse_path`（app/core/config.py L41-43），晚一步就不生效。
+#
+# 实测踩过的两类问题：
+# 1) 本地跑着后端时全量 7 例红，根因是
+#    `_duckdb.IOException: Cannot open file "…/factor_warehouse.duckdb": 另一个程序
+#    正在使用此文件`，但上层表现成 `assert 0 == 2` 之类，完全看不出真因；
+# 2) 依赖仓库内容的用例会随执行顺序飘移（共享文件里"恰好有/没有该 symbol 的数据"），
+#    表现为"单跑绿、全量红"（体检报告 §十九.2 同一机制）。
+# 外部显式设过该变量时尊重它（便于专门跑真实数据的场景）。
+os.environ.setdefault(
+    "FACTOR_WAREHOUSE_PATH",
+    str(Path(tempfile.gettempdir()) / f"qa_factor_warehouse_{os.getpid()}.duckdb"),
+)
+
 # WP9 验证环境兼容：若 akshare/sklearn 未安装（如 CI 沙箱），注入 stub 以允许
 # `import app.main`（transitively imports app.services.discovery_tasks /
 # app.services.factors.ridge_model）。真正调用这些库的测试应显式 import 并标记 slow/联网。
@@ -482,7 +500,16 @@ def pytest_runtest_logreport(report) -> None:
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:
-    """CI（E2E_REQUIRE_MINIMUM=1）下真跑数不足即判失败。"""
+    """会话收尾：清测试专属因子仓库文件；CI 下再判 e2e 最低真跑数。"""
+    # 本次会话用的 DuckDB 文件用完即弃（含 WAL 边文件），不在临时目录留垃圾
+    wh = os.environ.get("FACTOR_WAREHOUSE_PATH", "")
+    if wh and "qa_factor_warehouse_" in Path(wh).name:
+        for suffix in ("", ".wal", ".shm"):
+            try:
+                Path(wh + suffix).unlink(missing_ok=True)
+            except OSError:
+                pass
+
     from tests._e2e_coverage_guard import e2e_minimum_required, evaluate_coverage
 
     message = evaluate_coverage(
