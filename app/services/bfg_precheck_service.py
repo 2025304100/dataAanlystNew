@@ -455,7 +455,27 @@ def run_backtest_precheck(
         )
 
     # ---------------- 3. symbol_ids 过少 → warning（保留） ----------------
-    if len(effective_sids) < 5:
+    # VIZ-0929-02：0 只标的时 run 阶段必然 400（_filter_symbol_ids_by_rule 后为空），
+    # 预检必须同步阻断，避免"预检放行 → 执行被拒"的不一致；1~4 只仍为 warning。
+    if len(effective_sids) == 0:
+        blockers.append(
+            _blocker(
+                code="NO_BACKTEST_SYMBOLS",
+                severity="error",
+                category="universe",
+                title_zh="无可回测标的（阻断）",
+                detail_zh=(
+                    "当前范围内没有任何可回测标的（候选池为空或全部被数据新鲜度/规则过滤），"
+                    "回测无法产生有效结果。请先同步行情与评分数据，或调整选股池/策略规则。"
+                ),
+                evidence={"symbol_count": 0},
+                fix_link={
+                    "tab": "settings-data-center",
+                    "label_zh": "去同步基础数据",
+                },
+            )
+        )
+    elif len(effective_sids) < 5:
         warnings.append(
             _blocker(
                 code="SYMBOL_POOL_TOO_SMALL",

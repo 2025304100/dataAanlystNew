@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useMemo, useState } from "react";
-import { Alert, Button, Card, Col, Empty, Modal, Progress, Row, Space, Tag, Tooltip, Typography } from "antd";
+import { Alert, Button, Card, Col, Empty, Modal, Popconfirm, Progress, Row, Space, Tag, Tooltip, Typography } from "antd";
 import {
   AlertOutlined,
   ArrowRightOutlined,
@@ -397,7 +397,9 @@ export default function TodayDecision() {
   }, [workbench, ctx.newsSnapshot]);
 
   const riskEvents = useMemo(() => events.filter((item) => item.importance_level >= 4 || item.sentiment === "negative").slice(0, 5), [events]);
-  const investedPct = workbench?.account_summary?.invested_pct ?? workbench?.overview?.total_position_pct ?? 0;
+  // 后端 invested_pct / total_position_pct 均为 0-1 比率（sim_accounts.py:593），
+  // 这里统一换算成 0-100 百分数，供 pct() 展示与 >=75 高仓阈值使用（VIZ-0929-01）。
+  const investedPct = (workbench?.account_summary?.invested_pct ?? workbench?.overview?.total_position_pct ?? 0) * 100;
   const positionStatus = investedPct >= 75 ? t("tdHigh") : t("tdSafe");
   const actions = useMemo(() => {
     return [...(workbench?.candidates ?? [])]
@@ -893,9 +895,20 @@ export default function TodayDecision() {
               </Space>
               <Space>
                 {!!health?.discovery.expired_results && (
-                  <Button size="small" icon={<ClearOutlined />} loading={discoveryCleanupLoading} onClick={cleanupExpiredResults}>
-                    {t("tdCleanupExpiredResults")} ({health.discovery.expired_results})
-                  </Button>
+                  // VIZ-0929-11：破坏性操作补二次确认；计数是"已过期"估算，
+                  // 分层保留会豁免受保护标的/保留 run，实际删除可能少于显示值。
+                  <Popconfirm
+                    title={t("tdCleanupConfirmTitle")}
+                    description={t("tdCleanupConfirmDesc")}
+                    okText={t("tdCleanupExpiredResults")}
+                    cancelText={t("cancel")}
+                    okButtonProps={{ danger: true }}
+                    onConfirm={cleanupExpiredResults}
+                  >
+                    <Button size="small" icon={<ClearOutlined />} loading={discoveryCleanupLoading}>
+                      {t("tdCleanupExpiredResults")} ({health.discovery.expired_results})
+                    </Button>
+                  </Popconfirm>
                 )}
                 {["failed", "expired"].includes(health?.discovery.latest_task?.status ?? "") && (
                   <Button type="primary" size="small" icon={<PlayCircleOutlined />} loading={discoveryRescanLoading} onClick={rescanDiscovery}>

@@ -160,6 +160,10 @@ export default function ScheduledTaskManager() {
   };
 
   const save = async () => {
+    if (!draft.name.trim()) {
+      setError(t("scheduleNameRequired"));
+      return;
+    }
     let payload: Record<string, unknown>;
     try {
       const parsed = JSON.parse(draft.payloadText || "{}");

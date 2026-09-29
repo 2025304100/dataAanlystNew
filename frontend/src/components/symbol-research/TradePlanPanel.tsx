@@ -210,7 +210,7 @@ export default function TradePlanPanel(props: TradePlanPanelProps) {
           {joinParts([
             `${t("plannedOrder")}: ${quantity}`,
             `${t("referencePrice")}: ${score(entryPrice)}${chartEntryPrice ? ` (${t("chartEntry")})` : ""}`,
-            `${t("estimateConfidence")}: ${percent(scenarios.confidence_pct)}`,
+            `${t("estimateConfidence")}: ${Number(scenarios.confidence_pct ?? 0).toFixed(1)}%`,
             `${t("estimateHorizon")}: ${scenarios.horizon_days}${t("daysUnit")}`,
           ])}
         </span>

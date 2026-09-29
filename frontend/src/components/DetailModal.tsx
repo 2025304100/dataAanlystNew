@@ -868,6 +868,10 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
     const topFactor = sorted[0];
     const bottomFactor = sorted[sorted.length - 1];
 
+    // VIZ-0929-05：贡献恒为正会把弱项也标成"+9.3 扣分"，改用相对中性 50 的差值，
+    // 低于中性即显示负号，语义与"主要扣分"一致。
+    const deltaOf = (f: { displayScore: number; weight: number }) => (f.displayScore - 50) * f.weight;
+
     // 总分验证（quality_score 应等于贡献之和）
     const totalContribution = withContribution.reduce((sum, f) => sum + f.contribution, 0);
 
@@ -875,6 +879,8 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
       factors: withContribution,
       topFactor,
       bottomFactor,
+      topDelta: deltaOf(topFactor),
+      bottomDelta: deltaOf(bottomFactor),
       totalContribution: Math.round(totalContribution * 100) / 100,
       qualityScore: s.quality_score,
       // P1：附加配置快照信息（用于在 UI 上展示当前预设和版本）
@@ -1502,6 +1508,11 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                   <div className="breakdown-panel">
                     <div className="breakdown-header">
                       <span className="breakdown-title">{t("scoreBreakdownTitle")}</span>
+                      {!scoreBreakdown.hasConfigSnapshot && (
+                        <Tooltip title={t("breakdownNoSnapshotTip")}>
+                          <Tag color="orange" style={{ margin: "0 8px" }}>{t("breakdownNoSnapshotBadge")}</Tag>
+                        </Tooltip>
+                      )}
                       <span className="breakdown-total">
                         {t("totalScore")}: {score(scoreBreakdown.qualityScore ?? 0)}
                       </span>
@@ -1546,10 +1557,10 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                     </div>
                     <div className="breakdown-summary">
                       <span className="breakdown-highlight-green">
-                        {t("topStrength")}: {scoreBreakdown.topFactor.label} (+{scoreBreakdown.topFactor.contribution.toFixed(1)})
+                        {t("topStrength")}: {scoreBreakdown.topFactor.label} ({scoreBreakdown.topDelta >= 0 ? "+" : ""}{scoreBreakdown.topDelta.toFixed(1)})
                       </span>
                       <span className="breakdown-highlight-red">
-                        {t("mainRisk")}: {scoreBreakdown.bottomFactor.label} (+{scoreBreakdown.bottomFactor.contribution.toFixed(1)})
+                        {t("mainRisk")}: {scoreBreakdown.bottomFactor.label} ({scoreBreakdown.bottomDelta >= 0 ? "+" : ""}{scoreBreakdown.bottomDelta.toFixed(1)})
                       </span>
                     </div>
                   </div>
@@ -1693,7 +1704,7 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                         {joinParts([
                           `${t("plannedOrder")}: ${quantity}`,
                           `${t("referencePrice")}: ${score(entryPrice)}`,
-                          `${t("estimateConfidence")}: ${percent(scenarios.confidence_pct)}`,
+                          `${t("estimateConfidence")}: ${Number(scenarios.confidence_pct ?? 0).toFixed(1)}%`,
                           `${t("estimateHorizon")}: ${scenarios.horizon_days}${t("daysUnit")}`,
                         ])}
                       </span>

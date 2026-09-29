@@ -193,6 +193,23 @@ def add_portfolio_candidate(
     return _candidate_read(candidate, symbol)
 
 
+@router.delete("/portfolios/{portfolio_id}/candidates/{symbol_id}")
+def delete_portfolio_candidate(portfolio_id: int, symbol_id: int, db: Session = Depends(get_db)):
+    # VIZ-0929-07：候选此前只增无删，误加即永久残留。补删除端点（仅移除候选记录，
+    # 不影响已晋升的持仓/成员）。
+    row = db.execute(
+        select(PortfolioCandidate).where(
+            PortfolioCandidate.portfolio_id == portfolio_id,
+            PortfolioCandidate.symbol_id == symbol_id,
+        )
+    ).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    db.delete(row)
+    db.commit()
+    return {"deleted": True}
+
+
 @router.get("/portfolios", response_model=list[PortfolioRead])
 def list_portfolios(
     include_test: bool = False,

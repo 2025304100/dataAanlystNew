@@ -28,14 +28,25 @@ export function FirstScanWizard({ open, onClose }: FirstScanWizardProps) {
       list.push({
         title: t("capability.firstScanStep1"),
         description: ctx.getCapability("market_data")?.user_message ?? "",
-        action: () => ctx.setActiveTab("macro"),
+        // VIZ-0929-10：原跳 "macro"（宏观数据页）是错的——行情同步入口在
+        // 设置→数据中心→行情底座。先写 localStorage 兜底（Settings 未挂载时
+        // 初始化读取），再派发 settings:navigate（已挂载时即时切换）。
+        action: () => {
+          try { window.localStorage.setItem("settings_active_section", "data-center"); } catch { /* noop */ }
+          window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "data-center" }));
+          ctx.setActiveTab("settings");
+        },
       });
     }
     if (scoringBlocked) {
       list.push({
         title: t("capability.firstScanStep2"),
         description: ctx.getCapability("scoring")?.user_message ?? "",
-        action: () => ctx.setActiveTab("settings"),
+        action: () => {
+          try { window.localStorage.setItem("settings_active_section", "scoring"); } catch { /* noop */ }
+          window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "scoring" }));
+          ctx.setActiveTab("settings");
+        },
       });
     }
     if (discoveryBlocked && !marketDataBlocked && !scoringBlocked) {

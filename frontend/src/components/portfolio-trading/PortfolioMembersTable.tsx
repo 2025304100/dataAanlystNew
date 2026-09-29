@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { App as AntdApp } from "antd";
 import { Download, RefreshCw, Search, AlertTriangle, ShieldAlert } from "lucide-react";
 import { api, requestJson } from "../../api/client";
 import { useApp } from "../../context/AppContext";
@@ -30,6 +31,8 @@ interface PortfolioMembersTableProps {
   // FR-P1-8a HG1 治理字段
   portfolioStatus?: PortfolioStatusResponse | null;
   perm?: PortfolioStatePermissions;
+  // VIZ-0929-08：研究页"模拟下单"深链定位的成员行 symbol_id
+  focusSymbolId?: number | null;
 }
 
 // 扩展 Position：target_weight_pct / deviation_pct 可能由后端附加（前端兼容处理）
@@ -119,8 +122,26 @@ const factorTone = (tag: string): { bg: string; color: string } =>
 /* 主组件                                                              */
 /* ------------------------------------------------------------------ */
 
-const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolioId, onNavigate, portfolioStatus, perm }) => {
+const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolioId, onNavigate, portfolioStatus, perm, focusSymbolId }) => {
   const { showToast } = useApp();
+  // VIZ-0929-13：破坏性操作二次确认改用 antd 上下文 Modal，
+  // 原生 window.confirm 在嵌入式 webview 中被拦截、表现为点击无响应。
+  const { modal: antdModal } = AntdApp.useApp();
+  const confirmDialog = useCallback(
+    (title: string, content: string) =>
+      new Promise<boolean>((resolve) => {
+        antdModal.confirm({
+          title,
+          content: <div style={{ whiteSpace: "pre-line" }}>{content}</div>,
+          okText: "确认",
+          cancelText: "取消",
+          okButtonProps: { danger: true },
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      }),
+    [antdModal],
+  );
   // FR-P1-8a HG1 权限：fail-closed，未传时默认全部禁止
   const allowNewBuys = perm?.allow_new_buys ?? false;
   const allowRiskExits = perm?.allow_risk_exits ?? false;
@@ -144,6 +165,24 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
   const [diagSymbolId, setDiagSymbolId] = useState<number | null>(null);
   // FIX: 候选池不再移除已加入的标的，改为用这个集合判重并置灰按钮/整行
   const [alreadyMemberSymIds, setAlreadyMemberSymIds] = useState<Set<number>>(new Set());
+  // VIZ-0929-07：候选删除（两步内联确认，避免原生 confirm）
+  const [pendingDeleteCandidate, setPendingDeleteCandidate] = useState<number | null>(null);
+  const [deletingCandidate, setDeletingCandidate] = useState(false);
+
+  // VIZ-0929-08：研究页"模拟下单"深链定位——成员行渲染完成后滚动到目标行并短暂高亮
+  useEffect(() => {
+    if (focusSymbolId == null || loading) return;
+    const el = document.querySelector<HTMLElement>(`tr[data-symbol-id="${focusSymbolId}"]`);
+    if (el) {
+      el.scrollIntoView({ block: "center" });
+      el.style.outline = "2px solid var(--pt-primary, #0f766e)";
+      window.setTimeout(() => { el.style.outline = ""; }, 5000);
+      showToast("info", t("portfolioTrading.members.researchLanded"));
+    } else {
+      showToast("info", t("portfolioTrading.members.researchNotMember"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSymbolId, loading]);
 
   const load = useCallback(async () => {
     if (!portfolioId) {
@@ -329,8 +368,9 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
       showToast("error", "HG1 门禁：当前组合状态禁止再平衡（缺少 NEW_BUY 或 RISK_EXIT 权限）");
       return;
     }
-    const confirmed = window.confirm(
-      "确认对当前组合执行【手动再平衡】？\n\n这将触发自动交易执行（dry_run=false），根据策略规则实时生成买卖单并以模拟价直接撮合成交。\n\n请确认资金、持仓偏离度与风控阈值均符合预期，确认后不可撤销。",
+    const confirmed = await confirmDialog(
+      "确认对当前组合执行【手动再平衡】",
+      "这将触发自动交易执行（dry_run=false），根据策略规则实时生成买卖单并以模拟价直接撮合成交。\n\n请确认资金、持仓偏离度与风控阈值均符合预期，确认后不可撤销。",
     );
     if (!confirmed) return;
     setRebalancing(true);
@@ -344,7 +384,7 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
     } finally {
       setRebalancing(false);
     }
-  }, [portfolioId, showToast, load, rebalanceDisabled]);
+  }, [portfolioId, showToast, load, rebalanceDisabled, confirmDialog]);
 
   // 行内「清仓 / 一键清仓」：提交模拟卖单卖出全部持仓量，成功后删除持仓并刷新
   // P1-FIX: 增加二次确认（全卖单只可能造成踏空/止盈/止损，必须用户确认）
@@ -364,8 +404,9 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
       const codePart = p.symbol ? p.symbol : `未解析#${p.symbol_id}`;
       const namePart = p.name ? p.name : "(名称待同步)";
       const codeName = `${codePart} ${namePart}`.trim();
-      const confirmed = window.confirm(
-        `确认对【${codeName}】执行清仓？\n\n将以市价卖出全部 ${fmtNum(qty, 0)} 股，当前市值约 ${fmtNum(p.market_value)} 元。\n卖出后该标的将从持仓列表移除，但仍保留为组合成员（可在成员页查看）。\n\n请再次确认此操作，成交后不可撤销。`,
+      const confirmed = await confirmDialog(
+        `确认对【${codeName}】执行清仓`,
+        `将以市价卖出全部 ${fmtNum(qty, 0)} 股，当前市值约 ${fmtNum(p.market_value)} 元。\n卖出后该标的将从持仓列表移除，但仍保留为组合成员（可在成员页查看）。\n\n请再次确认此操作，成交后不可撤销。`,
       );
       if (!confirmed) return;
       setRowActionSymbolId(p.symbol_id);
@@ -386,7 +427,7 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
         setRowActionSymbolId(null);
       }
     },
-    [portfolioId, showToast, load, allowRiskExits],
+    [portfolioId, showToast, load, allowRiskExits, confirmDialog],
   );
 
   // 行内「调仓」：按 target_weight_pct 计算目标股数并提交模拟买/卖单向目标靠拢
@@ -471,6 +512,24 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
 
   // 加入组合：POST /portfolios/{id}/members
   // FR-P1-8a：HG1 门禁，加入组合（从候选池→正式成员）= NEW_BUY
+  const handleDeleteCandidate = useCallback(
+    async (symbolId: number) => {
+      if (!portfolioId) return;
+      setDeletingCandidate(true);
+      try {
+        await api.deletePortfolioCandidate(portfolioId, symbolId);
+        showToast("success", t("portfolioTrading.members.candidateDeleted"));
+        setPendingDeleteCandidate(null);
+        await load();
+      } catch (err: any) {
+        showToast("error", t("portfolioTrading.members.candidateDeleteFailed") + ": " + (err?.message || String(err)));
+      } finally {
+        setDeletingCandidate(false);
+      }
+    },
+    [portfolioId, showToast, load],
+  );
+
   const handleAddMember = useCallback(
     async (candidate: WorkbenchCandidate) => {
       if (!allowNewBuys) {
@@ -671,7 +730,7 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
                   const isPendingExit = p.target_weight_pct != null && Number(p.target_weight_pct) === 0;
                   const weightPct = Math.max(0, Math.min(100, (Number(p.position_pct) || 0) * 100));
                   return (
-                    <tr key={p.symbol_id} className={isPendingExit ? "pt-row-warn" : ""}>
+                    <tr key={p.symbol_id} data-symbol-id={p.symbol_id} className={isPendingExit ? "pt-row-warn" : ""}>
                       {/* 1. 标的代码 */}
                       <td className="pt-mono" style={{ fontWeight: 500 }}>
                         {p.symbol ? (
@@ -988,6 +1047,36 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
                             ? "✓ 已加入持仓"
                             : `${!allowNewBuys ? "🔒 " : ""}${t("portfolioTrading.members.candidateActionAdd")}`}
                         </button>
+                        {pendingDeleteCandidate === Number(c.symbol_id) ? (
+                          <span style={{ marginLeft: 6, whiteSpace: "nowrap" }}>
+                            <button
+                              type="button"
+                              className="pt-btn pt-btn-sm"
+                              style={{ color: "#dc2626" }}
+                              disabled={deletingCandidate}
+                              onClick={() => void handleDeleteCandidate(Number(c.symbol_id))}
+                            >
+                              {t("portfolioTrading.members.candidateDeleteConfirm")}
+                            </button>
+                            <button
+                              type="button"
+                              className="pt-btn pt-btn-ghost pt-btn-sm"
+                              onClick={() => setPendingDeleteCandidate(null)}
+                            >
+                              {t("portfolioTrading.members.candidateDeleteCancel")}
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="pt-btn pt-btn-ghost pt-btn-sm"
+                            style={{ marginLeft: 6, color: "var(--pt-muted-foreground)" }}
+                            title={t("portfolioTrading.members.candidateDeleteHint")}
+                            onClick={() => setPendingDeleteCandidate(Number(c.symbol_id))}
+                          >
+                            {t("portfolioTrading.members.candidateDelete")}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

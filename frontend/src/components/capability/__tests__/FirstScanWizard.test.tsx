@@ -130,7 +130,8 @@ describe("FirstScanWizard WP-S-FIX.5 组件测试", () => {
     expect(actionButton).toBeTruthy();
     fireEvent.click(actionButton!);
     expect(mockContext.loadCapabilities).toHaveBeenCalled();
-    expect(mockContext.setActiveTab).toHaveBeenCalledWith("macro");
+    // VIZ-0929-10：行情数据受阻应跳 设置(数据中心)，而非旧断言的宏观页 "macro"
+    expect(mockContext.setActiveTab).toHaveBeenCalledWith("settings");
   });
 
   // 4. 全部 ready 后自动关闭

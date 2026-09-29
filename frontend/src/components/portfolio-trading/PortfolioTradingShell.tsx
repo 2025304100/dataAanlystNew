@@ -285,6 +285,18 @@ const PortfolioTradingShell: React.FC = () => {
   // 子 Tab 状态：与 AppContext.activeSubTab 同步
   const [localSubTab, setLocalSubTab] = useState<SubTabKey>(() => resolveSubTab(activeSubTab));
 
+  // VIZ-0929-08：消费研究页"模拟下单"深链（?symbol_id=&source=research）——
+  // 切到持仓成员子页并定位该标的行，替代此前无人读取、落在总览页的死链接。
+  const [focusMemberSymbolId, setFocusMemberSymbolId] = useState<number | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sid = Number(params.get("symbol_id"));
+    if (params.get("source") === "research" && Number.isFinite(sid) && sid > 0) {
+      setLocalSubTab("members");
+      setFocusMemberSymbolId(sid);
+    }
+  }, []);
+
   // 当前组合（从 portfolios 派生）
   const currentPortfolio = useMemo(
     () => portfolios.find((p) => p.id === portfolioId) ?? portfolios[0] ?? null,
@@ -491,6 +503,7 @@ const PortfolioTradingShell: React.FC = () => {
         membersRevision={membersRevision}
         portfolioStatus={portfolioStatus}
         perm={perm}
+        focusSymbolId={focusMemberSymbolId}
       />
 
       {/* ========== 浮层 ========== */}
@@ -1079,14 +1092,15 @@ interface SubTabContentProps {
   membersRevision: number;
   portfolioStatus: PortfolioStatusResponse | null;
   perm: PortfolioStatePermissions;
+  focusSymbolId?: number | null;
 }
 
-const SubTabContent: React.FC<SubTabContentProps> = ({ active, portfolioId, onNavigate, autoTradeEnabled, membersRevision, portfolioStatus, perm }) => {
+const SubTabContent: React.FC<SubTabContentProps> = ({ active, portfolioId, onNavigate, autoTradeEnabled, membersRevision, portfolioStatus, perm, focusSymbolId }) => {
   switch (active) {
     case "overview":
       return <PortfolioOverview portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} />;
     case "members":
-      return <PortfolioMembersTable key={`${portfolioId}-${membersRevision}`} portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} />;
+      return <PortfolioMembersTable key={`${portfolioId}-${membersRevision}`} portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} focusSymbolId={focusSymbolId} />;
     case "strategy":
       return <PortfolioStrategyRules portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} />;
     case "backtest":

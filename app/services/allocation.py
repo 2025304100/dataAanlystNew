@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 from math import floor
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import Portfolio, PortfolioRule, Position
+from app.models.sim_account import CashLedger
 from app.models.symbol import Symbol
 
 
@@ -50,6 +51,24 @@ def compute_allocation(db: Session, portfolio_id: int) -> dict:
     etf_position_pct = etf_amount / total_capital if total_capital else 0.0
     total_position_pct = used_amount / total_capital if total_capital else 0.0
 
+    # VIZ-0929-06：现金优先取账本最新 balance_after（与 sim-account / 净值快照同一真值），
+    # 避免"本金-市值"推导现金吞掉已实现盈亏与手续费，导致 现金+市值 恒等于本金、
+    # 与累计盈亏不自洽（守恒差缺陷）。无账本时回退旧推导。
+    # 注意：total_position_pct / investable_* 仍按 total_capital 口径（风控上限语义不变）。
+    ledger_cash = db.execute(
+        select(CashLedger.balance_after)
+        .where(CashLedger.portfolio_id == portfolio_id)
+        .order_by(desc(CashLedger.id))
+        .limit(1)
+    ).scalar_one_or_none()
+    if ledger_cash is not None:
+        cash_amount = round(float(ledger_cash), 2)
+        equity_amount = round(cash_amount + used_amount, 2)
+        cash_pct = round(cash_amount / equity_amount, 4) if equity_amount > 0 else 0.0
+    else:
+        cash_amount = round(max(0.0, total_capital - used_amount), 2)
+        cash_pct = round(max(0.0, 1 - total_position_pct), 4)
+
     sector_exposure: dict[str, float] = {}
     sector_amount: dict[str, float] = {}
     for position in positions:
@@ -61,12 +80,12 @@ def compute_allocation(db: Session, portfolio_id: int) -> dict:
         "total_capital": total_capital,
         "investable_capital": investable_capital,
         "used_amount": used_amount,
-        "cash_amount": round(max(0.0, total_capital - used_amount), 2),
+        "cash_amount": cash_amount,
         "investable_remaining_amount": round(max(0.0, investable_capital - used_amount), 2),
         "total_position_pct": round(total_position_pct, 4),
         "stock_position_pct": round(stock_position_pct, 4),
         "etf_position_pct": round(etf_position_pct, 4),
-        "cash_pct": round(max(0.0, 1 - total_position_pct), 4),
+        "cash_pct": cash_pct,
         "investable_remaining_pct": round(max(0.0, float(portfolio.investable_ratio or 0) - total_position_pct), 4),
         "position_count": len(positions),
         "sector_exposure": {key: round(value, 4) for key, value in sector_exposure.items()},

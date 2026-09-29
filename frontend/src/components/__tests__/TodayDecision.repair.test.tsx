@@ -385,14 +385,19 @@ describe("TodayDecision 待修复样本交互测试", () => {
     expect(screen.getByText("tdRescanDiscovery")).toBeInTheDocument();
   });
 
-  it("点击清理过期结果调用 cleanupDiscoveryResults 并刷新", async () => {
+  it("点击清理过期结果先弹二次确认，确认后才调用 cleanupDiscoveryResults 并刷新", async () => {
     mockApi.getDataHealth.mockResolvedValue(makeDataHealth(0, { expired_results: 5 }));
     mockApi.cleanupDiscoveryResults.mockResolvedValue({ deleted: 5 });
     render(<TodayDecision />);
     await waitFor(() => {
       expect(screen.getByText(/tdCleanupExpiredResults/)).toBeInTheDocument();
     });
+    // VIZ-0929-11：按钮点击只打开 Popconfirm，不直接执行破坏性清理
     fireEvent.click(screen.getByText(/tdCleanupExpiredResults/));
+    expect(mockApi.cleanupDiscoveryResults).not.toHaveBeenCalled();
+    const okBtn = document.querySelector<HTMLElement>(".ant-popconfirm .ant-btn-primary");
+    expect(okBtn).toBeTruthy();
+    fireEvent.click(okBtn!);
     await waitFor(() => {
       expect(mockApi.cleanupDiscoveryResults).toHaveBeenCalledTimes(1);
     });

@@ -1700,6 +1700,8 @@ export const api = {
     requestJson<any[]>(`${API}/portfolios/${portfolioId}/candidates`),
   addPortfolioCandidate: (portfolioId: number, payload: unknown) =>
     requestJson<any>(`${API}/portfolios/${portfolioId}/candidates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+  deletePortfolioCandidate: (portfolioId: number, symbolId: number) =>
+    requestJson<{ deleted: boolean }>(`${API}/portfolios/${portfolioId}/candidates/${symbolId}`, { method: "DELETE" }),
   addPortfolioMember: (portfolioId: number, payload: unknown) =>
     requestJson<any>(`${API}/portfolios/${portfolioId}/members`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
   updatePortfolioMember: (portfolioId: number, memberId: number, payload: unknown) =>

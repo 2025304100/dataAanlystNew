@@ -468,10 +468,42 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
     raise ValueError(f"Unsupported scheduled task type: {task_type}")
 
 
+def _assert_no_duplicate_schedule(
+    db: Session,
+    payload: ScheduledTaskCreate,
+    *,
+    exclude_schedule_id: int | None = None,
+) -> None:
+    # VIZ-0929-04：同一 task_type + 完全相同调度时间 + 同时区的启用计划只允许一份，
+    # 否则同名任务每日重复执行（如两条"行情增量同步 每天18:00"）。
+    if not payload.enabled:
+        return
+    schedule_key = (
+        payload.frequency,
+        payload.time_of_day,
+        json.dumps(sorted(payload.weekdays)),
+        payload.interval_minutes,
+    )
+    query = select(ScheduledTask).where(
+        ScheduledTask.task_type == payload.task_type,
+        ScheduledTask.timezone == payload.timezone,
+        ScheduledTask.enabled == 1,
+    )
+    for row in db.execute(query).scalars().all():
+        if exclude_schedule_id is not None and row.id == exclude_schedule_id:
+            continue
+        row_key = (row.frequency, row.time_of_day, row.weekdays_json, row.interval_minutes)
+        if row_key == schedule_key:
+            raise ValueError(
+                f"已存在相同任务类型与调度时间的启用计划（{payload.task_type}），请勿重复创建"
+            )
+
+
 def create_schedule(db: Session, payload: ScheduledTaskCreate) -> ScheduledTask:
     validate_definition(payload.task_type)
     _zone(payload.timezone)
     task_payload = validate_task_payload(payload.task_type, payload.payload)
+    _assert_no_duplicate_schedule(db, payload)
     item = ScheduledTask(
         name=payload.name,
         task_type=payload.task_type,
@@ -514,6 +546,7 @@ def update_schedule(
     validated = ScheduledTaskCreate.model_validate(current)
     validate_definition(validated.task_type)
     _zone(validated.timezone)
+    _assert_no_duplicate_schedule(db, validated, exclude_schedule_id=schedule_id)
     task_payload = validate_task_payload(
         validated.task_type,
         validated.payload,
