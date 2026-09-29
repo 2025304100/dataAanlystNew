@@ -262,3 +262,25 @@ def test_unparsable_result_json_does_not_hide_task_state(monkeypatch):
     st = m.get_probe_status(accepted.task_id)
     assert st.status == "done"       # 任务状态不被坏 JSON 拖垮
     assert st.result is None         # 结果缺失要说"缺失"，不能编造一个成功
+
+
+def test_probe_still_works_after_app_shutdown_closed_the_executor(monkeypatch):
+    """PT-DEF-27：应用关停关掉模块级探测线程池后，同进程内后续探测必须还能跑。
+
+    不是凭空担心：这个红灯就是在组合跑里真实出现的 —— 先有 TestClient 走完一次
+    lifespan（main.py 关停时 shutdown 线程池），之后探测 worker 再也提不进任务，
+    报 cannot schedule new futures after shutdown，任务被记成 failed 而不是 done。
+    uvicorn --reload 属于同一机制（同进程再过一次 lifespan）。
+    """
+    _fake_run_probe(monkeypatch, value=pd.DataFrame([{"close": 1.0}]))
+
+    m.shutdown_probe_executor()
+    assert getattr(m._PROBE_EXECUTOR, "_shutdown", False) is True, "前置：池应已被关停"
+
+    accepted = m.submit_probe(API_KEY)
+    st = m.get_probe_status(accepted.task_id)
+
+    assert st.status == "done", f"线程池被关过就没法再探测：{st.model_dump()}"
+    assert st.result is not None and st.result.success is True
+    # 重建后的新池要留给后续用例，不能又是个已关闭的对象
+    assert getattr(m._PROBE_EXECUTOR, "_shutdown", False) is False

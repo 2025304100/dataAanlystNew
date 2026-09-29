@@ -234,6 +234,38 @@ def _as_naive_utc(value: datetime | None) -> datetime | None:
 # 导致其他异步路由的 asyncio.to_thread 调用排队无响应。
 # 独立池限制最大泄漏数为 8，且不阻塞其他异步路由。
 _PROBE_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="akshare-probe")
+_PROBE_EXECUTOR_LOCK = threading.Lock()
+
+
+def _probe_executor() -> ThreadPoolExecutor:
+    """取探测线程池；已被 shutdown 过就重建（PT-DEF-27）。
+
+    为什么需要：main.py 的应用关停会把模块级 `_PROBE_EXECUTOR` 永久关掉，
+    而同一进程里 lifespan 可能再走一轮：uvicorn --reload、测试里 TestClient 起停
+    都是这种情形。不重建的话，之后每次探测都会 `cannot schedule new futures after
+    shutdown`，表现为探测永远失败（实测就是在组合跑里撞上的）。
+    """
+    global _PROBE_EXECUTOR
+    with _PROBE_EXECUTOR_LOCK:
+        if getattr(_PROBE_EXECUTOR, "_shutdown", False):
+            _PROBE_EXECUTOR = ThreadPoolExecutor(
+                max_workers=8, thread_name_prefix="akshare-probe",
+            )
+        return _PROBE_EXECUTOR
+
+
+def shutdown_probe_executor() -> None:
+    """应用关停时关掉**当前**线程池。
+
+    给 main.py 调的是这个函数，不是 `from ... import _PROBE_EXECUTOR`：后者拿到的是
+    import 当时那个对象，池被重建后就再也关不到新的，会漏下真需要回收的线程。
+    """
+    global _PROBE_EXECUTOR
+    with _PROBE_EXECUTOR_LOCK:
+        try:
+            _PROBE_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
 
 # 探测重试退避（秒）：首次失败后等待此时间再重试，给 WAF 冷却窗口
 _PROBE_RETRY_BACKOFF_SECONDS = 3.0
@@ -347,7 +379,8 @@ def _probe_akshare_api(task_id: str, api_key: str) -> None:
             heartbeat_at=_probe_now(),
         )
 
-        future = _PROBE_EXECUTOR.submit(_run_probe, func, probe_args, api_key)
+        executor = _probe_executor()
+        future = executor.submit(_run_probe, func, probe_args, api_key)
         while True:
             if is_worker_stop_requested(task_id):
                 # 优雅停机：宁可留一条 cancelled，也不要静默消失让界面永远转圈

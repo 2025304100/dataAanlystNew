@@ -262,6 +262,30 @@ def _test_mysql_connectable(url: str) -> bool:
             pass
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _sweep_itdb_tmp_files():
+    """会话结束时清掉本轮在 %TEMP%/qa_itdb 产生的临时库。
+
+    函数级 finalizer 已经覆盖了绝大部分（包括 setup 中途退出）；这里只作最后一层保障，
+    应对连 finalizer 都跑不到的场景（进程级崩溃、KeyboardInterrupt）。
+    只动本轮时新创建的文件，不碰别人并行跑出来的库。
+    """
+    itdb = Path(tempfile.gettempdir()) / "qa_itdb"
+    started_at = time.time()
+    yield
+    try:
+        if not itdb.exists():
+            return
+        for f in itdb.iterdir():
+            try:
+                if f.stat().st_mtime >= started_at - 1:
+                    f.unlink(missing_ok=True)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 @pytest.fixture(scope="function")
 def isolated_db_session(request) -> Session:
     """隔离数据库会话：每个函数独立事务 → rollback。
@@ -302,6 +326,21 @@ def isolated_db_session(request) -> Session:
         )
         os.close(fd)
         tmp_db = Path(tmp_path)
+
+        # 清理必须登记在“文件刚建好”这一刻，不能只靠 yield 后面的 teardown 块。
+        # 实测组合跑（tests/integration + mining 白盒同场）留下 19 个 **0 字节**残留：
+        # 都是 mkstemp 刚成功、engine 还没建就中断的路径，此时函数级 teardown 根本没执行过
+        # （而 unlink 失败日志一行没多，说明不是 PermissionError，而是根本没去删）。
+        # finalizer 由 pytest 保证调用，跟 setup 有没有走完无关。
+        def _drop_tmp_db() -> None:
+            for _attempt in range(3):
+                try:
+                    tmp_db.unlink(missing_ok=True)
+                    return
+                except OSError:
+                    time.sleep(0.2)
+
+        request.addfinalizer(_drop_tmp_db)
         db_url = f"sqlite:///{tmp_db.as_posix()}"
         db_type = "sqlite"
         use_fallback_sqlite = True

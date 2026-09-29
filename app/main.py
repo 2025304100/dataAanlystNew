@@ -223,10 +223,14 @@ async def lifespan(_: FastAPI):
     except Exception:
         logger.exception("notification_dispatcher_task shutdown failed")
 
-    # 风控加固：关闭探测线程池，避免 uvicorn reload 时线程泄漏
+    # 风控加固：关闭探测线程池，避免 uvicorn reload 时线程泄漏。
+    # PT-DEF-27：这里只负责关，不再直接抓模块变量 —— akshare_apis 侧会在下一次
+    # 提交时重建线程池，所以 reload / 测试里 TestClient 起停之后探测仍然可用。
+    # 旧写法（import 模块变量再 shutdown）会让同进程内后续探测永远报
+    # "cannot schedule new futures after shutdown"。
     try:
-        from app.api.routes.akshare_apis import _PROBE_EXECUTOR
-        _PROBE_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+        from app.api.routes.akshare_apis import shutdown_probe_executor
+        shutdown_probe_executor()
         logger.info("Probe executor shutdown complete")
     except Exception:
         logger.exception("Probe executor shutdown failed")
