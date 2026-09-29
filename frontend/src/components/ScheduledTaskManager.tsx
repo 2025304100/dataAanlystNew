@@ -359,6 +359,8 @@ export default function ScheduledTaskManager() {
         onOk={save} onCancel={() => setModalOpen(false)} width={680}
       >
         <div className="schedule-form">
+          {/* VIZ-0929-17：弹窗盖在页面顶部 Alert 之上，保存类错误必须就地可见 */}
+          {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
           <label><span>{t("scheduleName")}</span><Input value={draft.name} onChange={(event) => setDraft((value) => ({ ...value, name: event.target.value }))} /></label>
           <label>
             <span>{t("scheduleTaskType")}</span>

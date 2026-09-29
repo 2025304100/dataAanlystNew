@@ -275,11 +275,16 @@ async function executeRequestJson<T>(url: string, options: RequestJsonOptions): 
       // 优先识别 WP-S.6 统一错误协议
       if (isUnifiedErrorPayload(payload)) {
         const techMsg = payload.technical_details?.error_message?.trim();
-        // 把 technical_details 里的字段级校验错误详情拼到最终消息里，用户能知道具体是哪个字段出问题
-        const finalMessage = techMsg
+        // VIZ-0929-18：技术详情与用户文案同源时（如 ValueError 直接透传），拼进括号会同一句话出现两遍，
+        // 只在两者内容不同、且用户文案尚未包含它时才追加。
+        const shouldAppendTech =
+          !!techMsg &&
+          techMsg !== payload.user_message &&
+          !(payload.user_message || "").includes(techMsg);
+        const message = techMsg && shouldAppendTech
           ? `${payload.user_message || payload.error_code}（${techMsg}）`
           : (payload.user_message || payload.error_code);
-        throw new ApiError(finalMessage, {
+        throw new ApiError(message, {
           status_code: response.status,
           error_code: payload.error_code,
           user_message: payload.user_message,

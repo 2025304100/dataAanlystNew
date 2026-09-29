@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App as AntdApp } from "antd";
 import { Download, RefreshCw, Search, AlertTriangle, ShieldAlert } from "lucide-react";
 import { api, requestJson } from "../../api/client";
@@ -170,19 +170,27 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
   const [deletingCandidate, setDeletingCandidate] = useState(false);
 
   // VIZ-0929-08：研究页"模拟下单"深链定位——成员行渲染完成后滚动到目标行并短暂高亮
+  // 回归修正：是否"成员"以 positions 数据为准，DOM 行只用于滚动/高亮（偏离筛选会把行过滤掉）；
+  // 且同一 symbol 只提示一次——load() 会多次翻转 loading，此前两条互斥 toast 会同时弹出。
+  const focusHandledRef = useRef<number | null>(null);
   useEffect(() => {
-    if (focusSymbolId == null || loading) return;
+    if (focusSymbolId == null || loading || !portfolioId) return;
+    if (focusHandledRef.current === focusSymbolId) return;
+    const isMember = positions.some((p) => Number(p.symbol_id) === Number(focusSymbolId));
+    focusHandledRef.current = focusSymbolId;
+    if (!isMember) {
+      showToast("info", t("portfolioTrading.members.researchNotMember"));
+      return;
+    }
     const el = document.querySelector<HTMLElement>(`tr[data-symbol-id="${focusSymbolId}"]`);
     if (el) {
       el.scrollIntoView({ block: "center" });
       el.style.outline = "2px solid var(--pt-primary, #0f766e)";
       window.setTimeout(() => { el.style.outline = ""; }, 5000);
-      showToast("info", t("portfolioTrading.members.researchLanded"));
-    } else {
-      showToast("info", t("portfolioTrading.members.researchNotMember"));
     }
+    showToast("info", t("portfolioTrading.members.researchLanded"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusSymbolId, loading]);
+  }, [focusSymbolId, loading, positions]);
 
   const load = useCallback(async () => {
     if (!portfolioId) {
