@@ -328,12 +328,14 @@ def test_discovery_latest_candidates_endpoint(client):
     assert r.status_code == 200
     data = r.json()
     assert isinstance(data, list)
-    # 如果有候选，验证字段完整性
-    if data:
-        candidate = data[0]
-        for key in ("symbol_id", "symbol", "name", "quality_score", "timing_score",
-                     "priority_score", "stage", "action", "is_frozen"):
-            assert key in candidate, f"latest-candidates 缺少字段 {key}"
+    if not data:
+        # 旧写法是 `if data:` 才校验字段 —— 库里没候选时这条用例会**静默通过**，
+        # 等于没测（PT-DEF-19 的契约分裂就是这样藏下来的）。没数据要明说。
+        pytest.skip("latest-candidates 当前无数据，字段完整性未校验")
+    candidate = data[0]
+    for key in ("symbol_id", "symbol", "name", "quality_score", "timing_score",
+                 "priority_score", "stage", "action", "is_frozen"):
+        assert key in candidate, f"latest-candidates 缺少字段 {key}"
 
 
 def test_discovery_latest_candidates_min_score_filter(client):

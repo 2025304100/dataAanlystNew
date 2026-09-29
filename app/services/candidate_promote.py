@@ -703,6 +703,10 @@ def _fallback_legacy_candidates(
             "reason_tags": _parse_json_list(scan_result.reason_tags),
             "warning_days": scan_result.warning_days,
             "valid_days": scan_result.valid_days,
+            # PT-DEF-19：这个 dict 之前也没 `is_frozen` —— 也就是说 latest-candidates
+            # 两条分支都不返回该字段（黑盒那条断言因 `if data:` 空库而从未真红过）。
+            # 旧表本来就有这一列，直接给真值；前端冻结排序不再靠 undefined 当 falsy 蒙。  # noqa: E501
+            "is_frozen": bool(scan_result.is_frozen),
             "is_promoted": None,  # 历史数据无晋升状态
             "is_legacy": True,
             "created_at": scan_result.created_at.isoformat() if scan_result.created_at else None,
@@ -778,6 +782,13 @@ def _candidate_to_dict(
         "reason_tags": _parse_json_list(c.reason_tags),
         "warning_days": c.warning_days,
         "valid_days": c.valid_days,
+        # PT-DEF-19：`discovery_candidates` 表没有“冻结”这一列（冻结在旧表里的含义是
+        # 豁免过期 + 列表置顶，P1 新表目前没有等价物）。但本端点有两条分支（新表 / 回退查
+        # ScanResult），不补这个键就会“同一个接口两种形状”：前端排序/新鲜度样式读
+        # item.is_frozen，缺键时只能靠 undefined 当 falsy 兼容。这里显式返回 False：
+        # 新表候选就是“从未被冻结”，与事实一致，不是编造字段。
+        # 真正要冻结能力得另议（需新表加列 + 写入口按 candidate_id 迁移）。
+        "is_frozen": False,
         "is_promoted": c.is_promoted,
         "promoted_at": c.promoted_at.isoformat() if c.promoted_at else None,
         "is_legacy": False,
