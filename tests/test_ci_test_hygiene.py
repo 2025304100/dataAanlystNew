@@ -459,7 +459,39 @@ def test_repo_root_has_no_new_junk_committed():
 
 
 # ══════════════════════════════════════════════
-# 14. 测试不得把临时数据库建在仓库根
+# 14. 测试与应用源码必须能被编译（语法坏了收集阶段就撞墙）
+# ══════════════════════════════════════════════
+
+def test_python_sources_have_no_syntax_errors():
+    """tests/ 与 app/ 下不得有语法错误的 .py。
+
+    真实发生过的类型：一份黑盒测试文件首行模块 docstring 被误加了两个空格
+    （编辑器手滑），`IndentationError: unexpected indent (line 1)` 让整档无法
+    收集——不是某个用例红，而是整个黑盒闸门的这一档直接挂。那种问题
+    靠肉眼下轮才找得到，所以交给机器。
+
+    实现细节：用内置 `compile()` 而不是 `py_compile.compile(cfile=os.devnull)` ——
+    后者在 Windows 上对**每一个**文件都报“nul is a non-regular file...”，
+    守护会变成永远红的噪声（实测 799/799 全报“语法错”），反而把真问题埋掉。
+    """
+    broken: list[str] = []
+    for base in ("tests", "app"):
+        for path in sorted((REPO_ROOT / base).rglob("*.py")):
+            src = path.read_text(encoding="utf-8-sig", errors="replace")
+            try:
+                compile(src, str(path), "exec")
+            except SyntaxError as exc:
+                broken.append(
+                    f"{path.relative_to(REPO_ROOT).as_posix()}:{exc.lineno} "
+                    f"{type(exc).__name__}: {exc.msg}"
+                )
+    assert not broken, (
+        "以下源码有语法错误，pytest 到收集阶段就会直接挂：\n" + "\n".join(broken)
+    )
+
+
+# ══════════════════════════════════════════════
+# 15. 测试不得把临时数据库建在仓库根
 # ══════════════════════════════════════════════
 
 def test_tests_do_not_create_temp_databases_at_repo_root():
