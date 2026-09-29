@@ -87,8 +87,8 @@ export default function TaskCenter() {
   const [batchDetail, setBatchDetail] = useState<any | null>(null);
   const [batchLoadingId, setBatchLoadingId] = useState<string | null>(null);
 
-  const loadTasks = useCallback(async () => {
-    setLoading(true);
+  const loadTasks = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [data, observation] = await Promise.all([
         api.getTaskHistory(undefined, 50),
@@ -101,13 +101,22 @@ export default function TaskCenter() {
       const msg = error instanceof Error ? error.message : "";
       showToast("error", msg || t("loadFailed"));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [showToast]);
 
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  // VIZ-0929-15：列表里还有 running/queued 时静默轮询，否则"执行中"会一直停在页面上
+  // 需要用户手动刷新才变终态。没有活动任务时不轮询，避免持续打后端。
+  const hasActiveTasks = tasks.some((task) => ["running", "queued"].includes(task.status));
+  useEffect(() => {
+    if (!hasActiveTasks) return undefined;
+    const timer = window.setInterval(() => { loadTasks(true); }, 10000);
+    return () => window.clearInterval(timer);
+  }, [hasActiveTasks, loadTasks]);
 
   // 判断任务是否可中止:运行中/排队中/已暂停(discovery)均可中止，但若 is_terminal_locked=true 一律禁止（FR-P1-2 终态锁）
   const canAbort = useCallback((task: UnifiedTask): boolean => {
@@ -416,7 +425,8 @@ export default function TaskCenter() {
               { value: "external", label: "外部数据同步" },
             ]}
           />
-          <Button icon={<ReloadOutlined />} onClick={loadTasks} loading={loading}>
+          {/* 必须包一层：直接 onClick={loadTasks} 会把 MouseEvent 当成 silent 参数（永远 truthy），手动刷新就不再显示 loading */}
+          <Button icon={<ReloadOutlined />} onClick={() => loadTasks()} loading={loading}>
             {t("refresh")}
           </Button>
         </Space>

@@ -307,3 +307,58 @@ def test_list_unified_tasks_invalid_json_falls_back_empty(db_session):
     assert item["payload"] == {}
     assert item["result"] == {}
     assert item["errors"] == []
+
+
+# ============================================================================
+# VIZ-0929-15：/system/tasks 视图必须就地过期僵尸 running
+# ============================================================================
+
+
+def test_list_unified_tasks_expires_stale_running_task(db_session):
+    """僵尸 running 任务：worker 运行期死掉（非进程重启）时，读列表就要把它置为 failed。
+
+    此前 30 分钟超时兜底只挂在 create_async_task/get_async_task/list_async_tasks 上，
+    这个聚合视图绕过了它们，前端任务中心会永远显示"执行中"。
+    """
+    from datetime import timedelta
+
+    stale = _now() - timedelta(minutes=45)
+    db_session.add(AsyncTaskRecord(
+        id="qa-async-zombie",
+        task_type="market_data_sync",
+        status="running",
+        stage="sync",
+        percent=30.0,
+        total=10,
+        processed=3,
+        created_at=stale,
+        updated_at=stale,
+    ))
+    db_session.commit()
+
+    result = list_unified_tasks(task_type=None, limit=30, db=db_session)
+    item = next(x for x in result["tasks"] if x["id"] == "qa-async-zombie")
+    assert item["status"] == "failed"
+    assert "expired" in (item.get("message") or "").lower()
+
+    row = db_session.get(AsyncTaskRecord, "qa-async-zombie")
+    assert row.status == "failed"
+    assert row.is_terminal_locked == 1
+
+
+def test_list_unified_tasks_keeps_fresh_running_task(db_session):
+    """未超时的 running 不得被误杀（否则任务中心会把在跑的任务显示成失败）。"""
+    db_session.add(AsyncTaskRecord(
+        id="qa-async-alive",
+        task_type="market_data_sync",
+        status="running",
+        stage="sync",
+        percent=10.0,
+        created_at=_now(),
+        updated_at=_now(),
+    ))
+    db_session.commit()
+
+    result = list_unified_tasks(task_type=None, limit=30, db=db_session)
+    item = next(x for x in result["tasks"] if x["id"] == "qa-async-alive")
+    assert item["status"] == "running"
