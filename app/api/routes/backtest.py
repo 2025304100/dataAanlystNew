@@ -79,10 +79,15 @@ def _build_structured_error(
     fix_link: str = "/docs/precheck-requirements",
     retryable: bool = False,
     blocking_reasons: Any = None,
+    next_actions: Any = None,
 ) -> dict[str, Any]:
     """构造 7 要素结构化错误响应体（HTTPException.detail 使用）。
 
     T1 兼容：PRECHECK_BLOCKED 保留 blocking_reasons 原字段，便于前端已有分支识别。
+
+    PT-DEF-25c：调用方没显式传 next_actions 时，从 `blocking_reasons[].fix_link`
+    自动派生。旧行为是 next_actions 恒为空 —— 用户只看到"被阻断"，却拿不到任何
+    下一步指引，而每条阻断项其实都带着 fix_link（如"调整回测区间参数"）。
     """
     payload: dict[str, Any] = {
         "error_code": error_code,
@@ -95,6 +100,30 @@ def _build_structured_error(
     }
     if blocking_reasons is not None:
         payload["blocking_reasons"] = blocking_reasons
+
+    actions: list[dict[str, Any]] = [
+        a for a in (next_actions or []) if isinstance(a, dict)
+    ]
+    if not actions and isinstance(blocking_reasons, list):
+        for reason in blocking_reasons:
+            if not isinstance(reason, dict):
+                continue
+            link = reason.get("fix_link")
+            if not isinstance(link, dict):
+                continue
+            label = str(link.get("label_zh") or "").strip()
+            if not label:
+                continue
+            actions.append({
+                "label": label,
+                "action_type": "configure",
+                "target": str(link.get("tab") or "") or None,
+                "reason": str(
+                    reason.get("detail_zh") or reason.get("title_zh") or ""
+                )[:200] or None,
+            })
+    if actions:
+        payload["next_actions"] = actions
     return payload
 
 
@@ -1222,7 +1251,9 @@ def create_portfolio_backtest_run(payload: PortfolioBacktestRequest, request: Re
             start_date=payload.start_date,
             end_date=payload.end_date,
             filter_config=None,
-            minimum_trade_days=300,
+            # 不在此硬编码阈值：统一取 BacktestPrecheckRequest 的默认值
+            # （DEFAULT_BACKTEST_MINIMUM_TRADE_DAYS），避免路由/前端/schema 三处各写一份
+            # 而漂移（PT-DEF-25）。
         )
         precheck_resp = run_backtest_precheck(db, pre_req)
     except Exception as exc:

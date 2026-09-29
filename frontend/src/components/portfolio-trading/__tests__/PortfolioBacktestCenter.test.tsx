@@ -686,6 +686,40 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     expect(mockApi.runPortfolioBacktest).not.toHaveBeenCalled();
   });
 
+  it("预检 200 + 阻断项不是错误信封 - 不亮 UNKNOWN_ERROR/裸 JSON，并摊开下一步指引", async () => {
+    // PT-DEF-25a/c：预检正常返回 200 带 blocking_reasons 时，过去会被塞进
+    // normalizeBackendError → 回退成 UNKNOWN_ERROR 并把整个响应体当正文打成 JSON。
+    // 现在只渲染阻断项列表，且每条要给出自带的修复指引。
+    mockApi.postBacktestPrecheck.mockResolvedValueOnce({
+      requested_trade_days: 261,
+      usable_trade_days: 261,
+      minimum_trade_days: 240,
+      excluded_symbol_days: {},
+      warnings: [],
+      blocking_reasons: [{
+        code: "INSUFFICIENT_TRADE_DAYS",
+        severity: "error",
+        title_zh: "回测区间交易日不足（阻断）",
+        detail_zh: "当前可用交易日 261 天，低于最低要求 300 天。",
+        evidence: { actual_usable: 261, minimum_required: 300, gap_days: 39 },
+        fix_link: { tab: "portfolio-backtest", label_zh: "调整回测区间参数" },
+      }],
+      filter_config_hash: "cfg-hash-25a",
+      production_fidelity: true,
+    });
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    await waitFor(() => { expect(mockApi.postBacktestPrecheck).toHaveBeenCalledTimes(1); });
+
+    // 注意：本文件的 antd Modal mock 把 data-testid 固定成 "antd-modal"，
+    // 所以这里按内容断言，而不是查 blocking-error-modal。
+    expect(await screen.findByTestId("antd-modal")).toBeInTheDocument();
+    expect(screen.queryByTestId("structured-error-7-fields")).not.toBeInTheDocument();
+    expect(screen.queryByText(/UNKNOWN_ERROR/)).not.toBeInTheDocument();
+    // 响应体字段名不能被当成正文糊出来（那就是"裸 JSON"的症状）
+    expect(screen.queryByText(/usable_trade_days/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/调整回测区间参数/)).toBeInTheDocument();
+  });
+
   it("预检通过点击提交成功 - POST 调用 + run_id 2031 + 日期保留", async () => {
     mockApi.postBacktestPrecheck.mockResolvedValueOnce({ ...passingPrecheck });
     const run2031 = { ...currentSummary, run_id: 2031, run_name: "run-2031-success" };

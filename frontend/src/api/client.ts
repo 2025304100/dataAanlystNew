@@ -4579,7 +4579,7 @@ export interface BacktestPrecheckRequest {
   start_date: string; // ISO date
   end_date: string;
   filter_config?: BacktestFilterConfig;
-  minimum_trade_days?: number; // default 300
+  minimum_trade_days?: number; // 省略即由服务端默认值决定（单一来源，当前 240）
 }
 
 export interface BacktestPrecheckResponse {

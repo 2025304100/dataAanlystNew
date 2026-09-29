@@ -12,6 +12,15 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.backtest import BacktestFilterConfigDTO
 
 
+# ── 组合整体回测预检：最低交易日阈值（**单一来源**，PT-DEF-25）──────────────
+# 取 240 个交易日 ≈ 1 个自然年（A 股每年约 240-250 个交易日）。
+# 旧值 300 ≈ 1.2 个自然年，而「回测中心」自己的快捷区间里就有「近1年」——
+# 实测近 1 年只有 261 个交易日，缺口 39 天，等于给了一个必然被阻断的区间预设。
+# 该常量同时作为 BacktestPrecheckRequest 的默认值；路由侧不得再硬编码数字，
+# 前端也不再自带阈值（不传该字段，由服务端默认值决定），避免三处漂移。
+DEFAULT_BACKTEST_MINIMUM_TRADE_DAYS = 240
+
+
 # ----------------- Task 12.1: 数据截止日期信息 -----------------
 class DataCutoffInfo(BaseModel):
     """回测/预检响应返回的数据截止信息（5+1 要素）。
@@ -81,7 +90,7 @@ class BacktestPrecheckRequest(BaseModel):
     start_date: date
     end_date: date
     filter_config: BacktestFilterConfigDTO | None = Field(default=None)
-    minimum_trade_days: int = Field(default=300, ge=1, le=10000)
+    minimum_trade_days: int = Field(default=DEFAULT_BACKTEST_MINIMUM_TRADE_DAYS, ge=1, le=10000)
 
 
 class BacktestPrecheckResponse(BaseModel):
@@ -130,6 +139,9 @@ class FactorEvaluationPrecheckRequest(BaseModel):
         default=5, ge=1, le=252, description="前瞻收益天数"
     )
     filter_config: BacktestFilterConfigDTO | None = Field(default=None)
+    # 注意：这是**因子评估**预检的窗口显著性阈值，与上面组合回测预检的
+    # DEFAULT_BACKTEST_MINIMUM_TRADE_DAYS 是两个不同的门禁，不是"漏改的重复值"，
+    # 因此不随 PT-DEF-25 的 240 调整联动（体检报告 §二十三）。
     minimum_trade_days: int = Field(default=300, ge=1, le=10000)
 
 

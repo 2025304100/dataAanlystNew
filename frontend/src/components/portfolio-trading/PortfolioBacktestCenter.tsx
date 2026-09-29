@@ -477,7 +477,11 @@ function contractText(value: unknown): string {
   return displayGateValue(value);
 }
 
-const BACKTEST_PRECHECK_MINIMUM_TRADE_DAYS = 300;
+// 预检阈值以**服务端为单一来源**（BacktestPrecheckRequest 默认 240 个交易日），
+// 因此本文件不再把阈值随请求发出（见下方 precheck 调用），只在"预检接口自身
+// 挂了"时用它构造一份占位响应。旧值 300 ≈ 1.2 自然年，会让本页自带的
+// 「近1年」区间必然被阻断（PT-DEF-25）。
+const BACKTEST_PRECHECK_MINIMUM_TRADE_DAYS = 240;
 const PortfolioBacktestCenter: React.FC<PortfolioBacktestCenterProps> = ({ portfolioId, autoTradeEnabled }) => {
   const { showToast, setActiveTab } = useApp();
 
@@ -723,7 +727,7 @@ const cutoffMismatchToastFiredRef = useRef(false);
       setPrecheckLoading(true);
       void (async () => {
         try {
-          const resp = await api.postBacktestPrecheck({ portfolio_id: portfolioId, symbol_ids: [], start_date: portStart, end_date: portEnd, minimum_trade_days: BACKTEST_PRECHECK_MINIMUM_TRADE_DAYS }, ctrl.signal);
+          const resp = await api.postBacktestPrecheck({ portfolio_id: portfolioId, symbol_ids: [], start_date: portStart, end_date: portEnd }, ctrl.signal);
           setPrecheckResp(resp);
           if ((resp?.blocking_reasons?.length ?? 0) > 0) { try { setBlockingOpen(true); } catch { /* noop */ } }
         } catch (err: any) {
@@ -789,7 +793,7 @@ const cutoffMismatchToastFiredRef = useRef(false);
     // 点击二次预检（fail-closed）
     setPrecheckLoading(true);
     try {
-      const resp = await api.postBacktestPrecheck({ portfolio_id: portfolioId, symbol_ids: [], start_date: portStart, end_date: portEnd, minimum_trade_days: BACKTEST_PRECHECK_MINIMUM_TRADE_DAYS });
+      const resp = await api.postBacktestPrecheck({ portfolio_id: portfolioId, symbol_ids: [], start_date: portStart, end_date: portEnd });
       setPrecheckResp(resp);
       if (resp.blocking_reasons?.length) { setBlockingOpen(true); try { showToast("info", `\u26a0 预检未通过：存在 ${resp.blocking_reasons.length} 项阻断原因，请查看弹窗。`); } catch { /* noop */ } return; }
     } catch (err: any) {
@@ -1450,10 +1454,21 @@ const cutoffMismatchToastFiredRef = useRef(false);
         data-testid="blocking-error-modal"
       >
         {(() => {
+          // PT-DEF-25a：只有"真的是后端错误信封"才交给 normalizeBackendError。
+          // 预检正常返回 200 + blocking_reasons 并不是错误，硬喂给归一化器会拿不到
+          // error_code → 回退成 UNKNOWN_ERROR，并把整个响应体当 detail 打成 JSON 糊在
+          // 弹窗上；而下面的 blockers 列表本来就已经逐项讲清了标题/原因/缺口。
+          const rawPayload = precheckResp as any;
+          const isErrorEnvelope = !!(
+            rawPayload
+            && (rawPayload._error_detail
+              || rawPayload.error_code
+              || rawPayload.user_message)
+          );
           const normalized = (() => {
+            if (!isErrorEnvelope) return null;
             try {
-              const candidate = (precheckResp && (precheckResp as any)._error_detail) || precheckResp;
-              return normalizeBackendError(candidate);
+              return normalizeBackendError(rawPayload._error_detail || rawPayload);
             } catch {
               return null;
             }
@@ -1536,6 +1551,13 @@ const cutoffMismatchToastFiredRef = useRef(false);
                         {renderReasonToString(b?.detail_zh, 300) ?? ""}
                       </div>
                       {gap && <div style={{ marginTop: 6, fontSize: 13 }} data-testid="precheck-blocker-gap">{gap}</div>}
+                      {/* PT-DEF-25c：每条阻断项把自己的修复指引摊开，不再只说"被阻断" */}
+                      {b?.fix_link?.label_zh && (
+                        <div style={{ marginTop: 6, fontSize: 12 }} data-testid="precheck-blocker-fix">
+                          下一步：{b.fix_link.label_zh}
+                          {b.fix_link.tab ? <span style={{ color: "var(--pt-muted-foreground)" }}>（{b.fix_link.tab}）</span> : null}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

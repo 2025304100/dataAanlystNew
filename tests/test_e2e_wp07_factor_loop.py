@@ -162,7 +162,7 @@ def _install_calendar_utils(monkeypatch) -> None:
     字符串，进入“未知类型 → 放弃该 fallback”分支（MySQL/pymysql 下才返回
     date 对象）。已实测：建表 + 插表后 adapter 仍返回 None（PT-DEF-24）。
     因此这里按产品自身的扩展点约定注册一个内存模块，用 monkeypatch 自动回收，
-    不会泄漏给其它用例。窗口仍须≥ 路由硬编码的 minimum_trade_days=300 交易日。
+    不会泄漏给其它用例。窗口仍须 ≥ 预检阈值（DEFAULT_BACKTEST_MINIMUM_TRADE_DAYS=240）个交易日。
     """
     import sys
     import types

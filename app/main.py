@@ -692,13 +692,26 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         if detail.strip().lower() not in _framework_default_messages:
             override_user_message = detail.strip()
 
+    if isinstance(exc.detail, dict):
+        # PT-DEF-25b：detail 已经是 7 要素字典时，不把整个 dict 的 repr 塞进技术细节。
+        # 旧写法 str(detail) 会把 blocking_reasons / 内部 correlation_id 等一并打进
+        # error_message（长度不可控，且被截成半截 JSON），违反错误信息脱敏口径。
+        tech_message = " ".join(
+            part for part in (
+                str(exc.detail.get("error_code") or ""),
+                str(exc.detail.get("title_zh") or exc.detail.get("detail_zh") or ""),
+            ) if part
+        )
+    else:
+        tech_message = str(exc.detail)
+
     user_error = build_user_error(
         error_code,
         correlation_id=correlation_id,
         technical_details=TechnicalDetails(
             exception_type="HTTPException",
             status_code=exc.status_code,
-            error_message=sanitize_message(str(exc.detail))[:500],
+            error_message=sanitize_message(tech_message)[:500],
         ),
         override_user_message=override_user_message,
         override_impact=override_impact,
