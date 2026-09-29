@@ -873,18 +873,25 @@ class TestSourceChainIntegration:
     """网关复用 SourceChain 的 source 透传测试。"""
 
     def test_source_detail_preserved_from_l4(self, db_session):
-        """L4 返回的 source_detail 应透传到 GatewayResponse。"""
+        """L4 返回的 source_detail 应透传到 GatewayResponse。
+
+        必须屏蔽 L3：`_l3_lookup` 只按 params["symbol"] 匹配（interface_key 不参与），
+        读的是进程级共享仓库 tmp/factor_warehouse.duckdb。只要全量里任何前序用例
+        写过该 symbol 的 raw_daily_bars，本用例就会命中 L3 而到不了 L4，
+        表现为"单跑绿、全量红"的顺序依赖（与本文件 L901 那条用例同一处置）。
+        """
         def fake_l4(params):
             return pd.DataFrame([{"close": 1.0}]), "sina_stock"
 
         gw.register_l4_fetcher("test.source_passthrough", fake_l4)
 
-        resp = asyncio.run(gw.fetch(
-            interface_key="test.source_passthrough",
-            request_params={"symbol": "000001"},
-            freshness_requirement=timedelta(hours=24),
-            allow_stale=True,
-        ))
+        with patch.object(gw, "_l3_lookup", return_value=(None, None)):
+            resp = asyncio.run(gw.fetch(
+                interface_key="test.source_passthrough",
+                request_params={"symbol": "000001"},
+                freshness_requirement=timedelta(hours=24),
+                allow_stale=True,
+            ))
 
         assert resp.source == SOURCE_L4_REMOTE
         assert resp.source_detail == "sina_stock"

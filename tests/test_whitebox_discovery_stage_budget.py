@@ -420,8 +420,21 @@ def test_run_fast_scan_normal_returns_timings_ok(db_session):
     assert result["timings"]["cancel_token_checked"] is True
 
 
-def test_run_fast_scan_no_snapshot_returns_timings_ok(db_session):
-    """无快照时也返回 timings / status="ok"。"""
+def test_run_fast_scan_no_snapshot_returns_timings_ok(db_session, monkeypatch):
+    """无快照时也返回 timings / status="ok"。
+
+    白盒用例不真起后台 data_prep 线程：这条分支会 fire-and-forget 调
+    `start_data_prep_task`（discovery_fast_scan L989-1002），线程会活过本用例，
+    在下一条用例换新临时库后继续用全局 session 往里写，把后者的 ready 快照搞掉
+    （PT-DEF-15 同族的跨用例污染；实测表现为下一条 timeout 用例拿到 status="ok"，
+    因为它走了"无 ready 快照"的提前 return）。
+    "任务确实被创建 / 并发保护"的语义由 test_whitebox_discovery_data_prep.py
+    专属覆盖（与 test_discovery_5500_sla.py 的既有桩做法一致）。
+    """
+    from app.services import discovery_data_prep as _prep
+
+    monkeypatch.setattr(_prep, "start_data_prep_task", lambda *a, **kw: None)
+
     result = discovery_fast_scan.run_fast_scan(
         scope="cn_stock",
         min_score=55,
