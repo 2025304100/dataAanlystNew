@@ -2444,6 +2444,8 @@ const zhCN: Record<string, string> = {
     apiNeverCalled: "未调用",
     apiProbeSuccess: "探测成功，延迟 {ms} ms",
     apiProbeFailed: "探测失败：{error}",
+    apiProbeWaiting: "探测中 {sec}s",
+    apiProbeStale: "探测任务已无心跳（后台可能已中断），请重新探测",
     apiUpdateSuccess: "配置已更新",
     apiUpdateFailed: "更新失败：{error}",
     apiEnabledToggle: "启用",

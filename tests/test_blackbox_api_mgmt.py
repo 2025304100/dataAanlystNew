@@ -19,17 +19,12 @@ import pytest
 pytestmark = pytest.mark.blackbox
 
 BASE = "http://localhost:8000"
-# 读超时必须大于**产品自己的探测预算**。历史上的 35.0 是按“探测超时 30s”写的，
-# 而 `akshare_apis._PROBE_TIMEOUT_SECONDS` 实际已是 **50.0** → 上游在 30~50s 返回时，
-# 本套件会先 httpx.ReadTimeout 假失败（体检报告 §十五，阈值三边不一致另记
-# PT-DEF-18：产品 50s / 前端 timeoutMs 30s / 测试断言 30s）。
-TIMEOUT = 62.0
-# 阈值断言用的预算：产品侧 `_PROBE_TIMEOUT_SECONDS = 50.0` + 网络/序列化余量。
-# 旧写法写死 30.0（当时的设计值），产品改成 50.0 后它就变成了假失败的制造机。
-# 本用例真正要钉的是“探测会自己结束、不会无限挂住”，而不是具体多少秒；
-# 30 vs 50 的口径冲突已记 PT-DEF-18（前端 timeoutMs=30s 与产品 50s 不一致），
-# 拍板后应收敛成单一数字并让本文件引用它。
-PROBE_BUDGET_SECONDS = 55.0
+# PT-DEF-18 已收口：探测不再由 HTTP 请求等上游（改成提交任务 + 心跳轮询），
+# 所以这里不存在"读超时必须大于产品探测预算"这件事了 —— 历史上的
+# 30 / 50 / 55 三边不一致正是从这里消失的。TIMEOUT 现在只是一个普通的
+# 网络保护值；若哪天有人再把 probe 改回同步等上游，
+# test_probe_submit_is_instant_even_with_slow_upstream 会第一时间红。
+TIMEOUT = 30.0
 
 # 已知存在的 api_key（registry 中注册的）
 KNOWN_API_KEY = "stock_info_a_code_name"
@@ -138,39 +133,55 @@ def test_probe_unknown_key_returns_404(client):
     assert r.status_code == 404
 
 
-def test_probe_known_key_returns_result(client):
-    """POST /{key}/probe → ProbeResult 字段完整。
-
-    注意：本用例会**真访问 akshare**（黑盒定义如此），耗时取决于上游。
-    它只校响应形状，不校阈值，所以读超时已抬到 TIMEOUT（>50s 产品预算）。
-    """
+def test_probe_known_key_returns_task_receipt(client):
+    """POST /{key}/probe → 202 任务回执（PT-DEF-18：不再同步等上游）。"""
     r = client.post(f"/api/v1/external-data/apis/{KNOWN_API_KEY}/probe", timeout=TIMEOUT)
-    assert r.status_code == 200
+    assert r.status_code == 202, f"提交探测应 202, 实际 {r.status_code}: {r.text[:200]}"
     data = r.json()
-    assert "key" in data
-    assert "success" in data
-    assert "latency_ms" in data
-    assert "error" in data
-    assert data["key"] == KNOWN_API_KEY
+    assert data.get("task_id"), f"回执必须带 task_id, 实际 {data}"
+    assert data.get("api_key") == KNOWN_API_KEY
+    assert data.get("status") in ("queued", "running"), f"初始状态异常: {data}"
+    assert isinstance(data.get("reused"), bool)
 
 
-@pytest.mark.xfail_dev_hardware
-def test_probe_returns_within_30s(client):
-    """【P0 稳定性核心】探测端点 30s 内必返回（即使数据源卡死）。
+def _poll_probe_until_rest(client, task_id: str, *, max_wait: float = 120.0) -> dict:
+    """轮询到"界面能给出结论"为止：终态，或心跳已断（可疑）。
 
-    验证修复：probe_api 改为 async def + asyncio.wait_for(timeout=30)。
-    即使 akshare 调用永久阻塞，asyncio.wait_for 也会在 30s 后强制返回超时。
+    这里的 max_wait 是**测试自己收束**的上限，不是对产品时长做任何断言 ——
+    这正是本次改造的意义：产品侧不再有"必须在 N 秒内返回"的赌注。
     """
-    start = time.time()
-    r = client.post(
-        f"/api/v1/external-data/apis/{KNOWN_API_KEY}/probe", timeout=TIMEOUT
+    deadline = time.time() + max_wait
+    last: dict = {}
+    while time.time() < deadline:
+        r = client.get(f"/api/v1/external-data/apis/probe/{task_id}", timeout=TIMEOUT)
+        assert r.status_code == 200, f"轮询任务应 200, 实际 {r.status_code}: {r.text[:200]}"
+        last = r.json()
+        if last.get("status") in ("done", "failed", "cancelled", "interrupted"):
+            return last
+        if last.get("heartbeat_stale"):
+            return last
+        time.sleep(1.0)
+    pytest.fail(
+        f"探测任务 {task_id} 在测试上限 {max_wait:.0f}s 内既没终态也没报心跳异常，"
+        f"最后一次状态：{last}"
     )
-    elapsed = time.time() - start
-    assert r.status_code == 200, f"探测应返回 200, 实际 {r.status_code}"
-    assert elapsed < PROBE_BUDGET_SECONDS, (
-        f"探测应在产品超时预算（{PROBE_BUDGET_SECONDS:.0f}s）内自行返回, 实际 {elapsed:.1f}s —— "
-        "asyncio.wait_for 超时保护可能未生效"
+
+
+def test_probe_task_reaches_conclusion_with_heartbeat(client):
+    """提交后轮询：必须走到终态或明确报"心跳可疑"，绝不能停在无结论的 running。"""
+    r = client.post(f"/api/v1/external-data/apis/{KNOWN_API_KEY}/probe", timeout=TIMEOUT)
+    task_id = r.json()["task_id"]
+
+    final = _poll_probe_until_rest(client, task_id)
+
+    assert final.get("heartbeat_at"), f"任务应至少有一次心跳: {final}"
+    assert final.get("status") != "running" or final.get("heartbeat_stale"), (
+        f"停在 running 却不报心跳异常，界面会无限转圈: {final}"
     )
+    if final.get("status") == "done":
+        result = final.get("result")
+        assert isinstance(result, dict), f"done 却没带可展示的结果: {final}"
+        assert "success" in result and "latency_ms" in result and "error" in result
 
 
 # ============================================================================
@@ -313,84 +324,78 @@ def test_update_config_partial_update(client):
 
 
 # ============================================================================
-# 6. P0 稳定性回归：探测不卡死 + 线程池不耗尽
+# 6. P0 稳定性回归（PT-DEF-18 之后）：提交快 + 不饿死别的接口
+#
+# 旧这一节靠"探测必须在 30s 内返回"来证线程池没耗尽，前提已随同步接口一起消失。
+# 现在真正要守住的是两件事：① 提交必须即时（它不再等上游）；② 探测在后台跑的时候，
+# 别的接口不能被饿死。两条都不需要赌上游快慢，因此摘掉了 xfail_dev_hardware
+# —— 那顶帽子过去只会让这条守护在 CI 上永远"预期失败"，等于没测。
 # ============================================================================
 
-@pytest.mark.xfail_dev_hardware
-def test_probe_returns_within_30s_with_real_backend(client):
-    """【P0 稳定性回归】真实后端探测应在 30s 内返回（含超时场景）。
-
-    验证 probe_api 的 asyncio.wait_for(timeout=30) 修复生效。
-    即使 akshare 内部永久阻塞，后端也应在 30s 内返回超时响应。
-    """
+def test_probe_submit_is_instant_even_with_slow_upstream(client):
+    """【P0】提交探测应即时返回，不等上游：这是"前端不再猜超时"的前提。"""
     r = client.get("/api/v1/external-data/apis?locale=zh-CN")
     apis = r.json()
     if not apis:
         pytest.skip("无可用接口")
 
-    # 取第一个接口探测
     api_key = apis[0]["key"]
     start = time.time()
-    r = client.post(f"/api/v1/external-data/apis/{api_key}/probe")
+    r = client.post(f"/api/v1/external-data/apis/{api_key}/probe", timeout=TIMEOUT)
     elapsed = time.time() - start
 
-    assert r.status_code == 200, f"探测应返回 200, 实际 {r.status_code}"
-    assert elapsed < PROBE_BUDGET_SECONDS, (
-        f"探测应在产品超时预算（{PROBE_BUDGET_SECONDS:.0f}s）内返回（含超时场景）, "
-        f"实际耗时 {elapsed:.1f}s"
+    assert r.status_code == 202, f"提交应 202, 实际 {r.status_code}: {r.text[:200]}"
+    assert elapsed < 2.0, (
+        f"提交接口应在 2s 内回执（它不该等上游），实际 {elapsed:.1f}s —— "
+        "说明 POST 又退化成同步探测了"
     )
-    # 验证返回字段
-    data = r.json()
-    assert "success" in data
-    assert "latency_ms" in data
-    assert "error" in data
 
 
-@pytest.mark.xfail_dev_hardware
-def test_probe_all_17_apis_complete_within_180s(client):
-    """【P0 稳定性回归】17 个接口串行探测应在 180s 内完成。
-
-    每个接口最多 30s，17 个串行最坏 510s。
-    但实际多数接口 < 5s，超时的接口由 30s timeout 兜底。
-    验证探测端点不会因线程池耗尽而卡死。
-    """
+def test_probes_in_flight_do_not_starve_sibling_endpoints(client):
+    """【P0】一批探测正在后台跑时，其它接口必须照常响应（原来会排队卡死）。"""
     r = client.get("/api/v1/external-data/apis?locale=zh-CN")
     apis = r.json()
     if len(apis) < 5:
-        pytest.skip("接口数不足 5 个，跳过批量探测验证")
+        pytest.skip("接口数不足 5 个，跳过并发探测验证")
 
-    start = time.time()
-    success_count = 0
-    timeout_count = 0
-    for api in apis:
-        api_key = api["key"]
-        try:
-            r = client.post(f"/api/v1/external-data/apis/{api_key}/probe")
-            if r.status_code == 200:
-                data = r.json()
-                if data.get("success"):
-                    success_count += 1
-                else:
-                    timeout_count += 1
-        except Exception:
-            timeout_count += 1
+    submitted = []
+    for api in apis[:6]:
+        resp = client.post(f"/api/v1/external-data/apis/{api['key']}/probe", timeout=TIMEOUT)
+        if resp.status_code == 202:
+            submitted.append(resp.json()["task_id"])
+    assert submitted, "至少应成功提交一个探测任务"
 
-    elapsed = time.time() - start
-    # 17 接口，每个最多 30s，但多数 < 5s，总耗时应 < 180s
-    # 若线程池耗尽，会卡在某个探测上，总耗时远超 180s
-    assert elapsed < 180.0, (
-        f"17 接口探测应在 180s 内完成（线程池未耗尽）, 实际耗时 {elapsed:.1f}s, "
-        f"success={success_count}, timeout={timeout_count}"
-    )
+    try:
+        start = time.time()
+        tasks = client.get("/api/v1/discovery/tasks?limit=10", timeout=TIMEOUT)
+        elapsed = time.time() - start
+        assert tasks.status_code == 200, f"任务列表应 200, 实际 {tasks.status_code}"
+        assert elapsed < 5.0, (
+            f"探测在后台执行期间，任务列表应在 5s 内返回（后端未被拖死），实际 {elapsed:.1f}s"
+        )
+
+        # 每个已提交的任务都必须查得到，且状态可解释
+        for task_id in submitted:
+            st = client.get(f"/api/v1/external-data/apis/probe/{task_id}", timeout=TIMEOUT)
+            assert st.status_code == 200, f"已提交的任务不应 404: {task_id}"
+            body = st.json()
+            assert body.get("status") in (
+                "queued", "running", "done", "failed", "cancelled", "interrupted",
+            ), f"任务状态不可识别: {body}"
+    finally:
+        # 不把一堆未收束的探测留给下一条用例（它们会继续打上游）
+        for task_id in submitted:
+            try:
+                client.get(f"/api/v1/external-data/apis/probe/{task_id}", timeout=5.0)
+            except Exception:
+                pass
 
 
-@pytest.mark.xfail_dev_hardware
-def test_consecutive_probes_do_not_degrade_response_time(client):
-    """【P0 稳定性回归】连续 5 次探测同一接口，响应时间不应显著退化。
+def test_repeated_probe_submits_stay_fast(client):
+    """【P0】连续提交同一接口 5 次：每次都即时返回，不出现排队恶化。
 
-    验证探测端点独立线程池修复生效。
-    若用 asyncio.to_thread 共享默认池，连续探测后泄漏线程累积，
-    响应时间会显著增加（线程池排队）。
+    旧实现连续探测会累积泄漏线程导致响应变慢；现在探测在 worker/线程池里跑，
+    提交路径只是一次 INSERT + 起线程，因此可以直接守住"不恶化"。
     """
     r = client.get("/api/v1/external-data/apis?locale=zh-CN")
     apis = r.json()
@@ -398,26 +403,16 @@ def test_consecutive_probes_do_not_degrade_response_time(client):
         pytest.skip("无可用接口")
 
     api_key = apis[0]["key"]
-    latencies = []
+    elapsed_list = []
     for _ in range(5):
         start = time.time()
-        try:
-            r = client.post(f"/api/v1/external-data/apis/{api_key}/probe")
-            elapsed = time.time() - start
-            latencies.append(elapsed)
-        except Exception:
-            latencies.append(30.0)  # 超时记为 30s
+        resp = client.post(f"/api/v1/external-data/apis/{api_key}/probe", timeout=TIMEOUT)
+        elapsed_list.append(time.time() - start)
+        assert resp.status_code == 202
 
-    # 最后一次响应时间不应超过第一次的 3 倍（允许波动，但不允许显著退化）
-    # 且所有响应都应 < 30s（timeout 兜底）
-    assert all(l < 30.0 for l in latencies), (
-        f"所有探测应 < 30s, 实际 {latencies}"
+    assert max(elapsed_list) < 3.0, (
+        f"连续提交的单次耗时应保持在秒级内，实际 {['%.2f' % e for e in elapsed_list]}"
     )
-    if latencies[0] < 5.0:  # 第一次快速返回时才比较退化
-        assert latencies[-1] < latencies[0] * 3 + 5.0, (
-            f"连续探测响应时间显著退化: 首次 {latencies[0]:.1f}s, "
-            f"末次 {latencies[-1]:.1f}s，可能线程池泄漏"
-        )
 
 
 def test_discovery_tasks_list_returns_quickly(client):

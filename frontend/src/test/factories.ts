@@ -98,7 +98,22 @@ export function makeMockStrategies(): AkshareStrategyInfo[] {
 export function makeMockApi(overrides: Record<string, ReturnType<typeof vi.fn>> = {}) {
   const listAkshareApis = vi.fn(async () => makeMockAkshareApis());
   const listAkshareStrategies = vi.fn(async () => makeMockStrategies());
-  const probeAkshareApi = vi.fn(async () => ({ key: "stock_info_sz_name_code", success: true, latency_ms: 150, error: null }));
+  // PT-DEF-18：探测已改为"提交任务 + 心跳轮询"。默认桩一次轮询即返回终态，
+  // 让老用例的行为与之前等价（不引入等待循环，也不会因 setTimeout 拖慢测试）。
+  const submitApiProbe = vi.fn(async (key: string) => ({ task_id: `task-${key}`, api_key: key, status: "queued", reused: false }));
+  const getApiProbeTask = vi.fn(async (taskId: string) => ({
+    task_id: taskId,
+    api_key: taskId.replace(/^task-/, ""),
+    status: "done",
+    stage: "done",
+    percent: 100,
+    message: "done",
+    heartbeat_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    seconds_since_heartbeat: 0,
+    heartbeat_stale: false,
+    result: { key: taskId.replace(/^task-/, ""), success: true, latency_ms: 150, error: null },
+  }));
   const updateAkshareApiConfig = vi.fn(async (_key: string, payload: any) => payload);
 
   const syncFundamental = vi.fn(async () => ({ total: 5, success: 4, skipped: 1, failed: 0, errors: [] }));
@@ -144,7 +159,8 @@ export function makeMockApi(overrides: Record<string, ReturnType<typeof vi.fn>> 
   return {
     listAkshareApis,
     listAkshareStrategies,
-    probeAkshareApi,
+    submitApiProbe,
+    getApiProbeTask,
     updateAkshareApiConfig,
     syncFundamental,
     syncFinancialReports,

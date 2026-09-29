@@ -28,6 +28,8 @@ export default function AkshareApiManager() {
   const [loading, setLoading] = useState(false);
   const [probingKeys, setProbingKeys] = useState<Set<string>>(new Set());
   const [probingAll, setProbingAll] = useState(false);
+  // 探测进行中的可读进度：{ apiKey: "已等待 12s" }（PT-DEF-18 心跳轮询的行内反馈）
+  const [probeHints, setProbeHints] = useState<Record<string, string>>({});
   // 本地编辑态：{ [apiKey]: { strategy, delay_min, delay_max, enabled } }
   const [edits, setEdits] = useState<Record<string, AkshareApiConfigUpdate>>({});
 
@@ -54,17 +56,45 @@ export default function AkshareApiManager() {
     loadAll();
   }, [loadAll]);
 
-  // 纯逻辑：调用 API + 更新行数据，返回结果（无 UI 副作用，供单个/批量复用）
+  // 纯逻辑：提交探测任务 → 轮询心跳直到终态（无 UI 副作用，供单个/批量复用）。
+  // PT-DEF-18：以前这里靠一个 30s 的 HTTP 超时去赌上游快慢，慢而成功的接口会被
+  // 误判成失败；现在只判断"任务到终态了没 / 心跳还在不在走"，不再猜总时长。
   const probeOne = async (apiKey: string): Promise<{ success: boolean; latency_ms: number | null; error: string | null }> => {
-    const result = await api.probeAkshareApi(apiKey);
-    setApis((prev) => prev.map((a) => (a.key === apiKey ? {
-      ...a,
-      last_probe_at: new Date().toISOString(),
-      last_probe_success: result.success,
-      last_probe_latency_ms: result.latency_ms,
-      last_probe_error: result.error,
-    } : a)));
-    return result;
+    const accepted = await api.submitApiProbe(apiKey);
+    const beganAt = Date.now();
+    let intervalMs = 800;
+    for (;;) {
+      const st = await api.getApiProbeTask(accepted.task_id);
+      const waitedSec = Math.floor((Date.now() - beganAt) / 1000);
+      if (st.status === "done" || st.status === "failed" || st.status === "cancelled") {
+        const result = st.result ?? {
+          key: apiKey,
+          success: false,
+          latency_ms: null,
+          error: st.message || `probe ${st.status}`,
+        };
+        setApis((prev) => prev.map((a) => (a.key === apiKey ? {
+          ...a,
+          last_probe_at: new Date().toISOString(),
+          last_probe_success: result.success,
+          last_probe_latency_ms: result.latency_ms,
+          last_probe_error: result.error,
+        } : a)));
+        return result;
+      }
+      if (st.heartbeat_stale) {
+        // 心跳断了就明确报错交用户重试，绝不无声地一直转圈
+        setProbeHints((prev) => {
+          const next = { ...prev };
+          delete next[apiKey];
+          return next;
+        });
+        throw new Error(t("apiProbeStale"));
+      }
+      setProbeHints((prev) => ({ ...prev, [apiKey]: template("apiProbeWaiting", { sec: waitedSec }) }));
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      intervalMs = Math.min(intervalMs + 400, 3000);
+    }
   };
 
   // 单个接口探测（带 UI 反馈）
@@ -83,6 +113,11 @@ export default function AkshareApiManager() {
       setProbingKeys((prev) => {
         const next = new Set(prev);
         next.delete(apiKey);
+        return next;
+      });
+      setProbeHints((prev) => {
+        const next = { ...prev };
+        delete next[apiKey];
         return next;
       });
     }
@@ -115,6 +150,7 @@ export default function AkshareApiManager() {
     } finally {
       setProbingAll(false);
       setProbingKeys(new Set());
+      setProbeHints({});
     }
   };
 
@@ -334,7 +370,7 @@ export default function AkshareApiManager() {
             disabled={probingAll || probingKeys.has(r.key)}
             onClick={() => handleProbe(r.key)}
           >
-            {t("apiMgmtProbe")}
+            {probeHints[r.key] || t("apiMgmtProbe")}
           </Button>
         </Space>
       ),

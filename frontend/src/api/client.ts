@@ -2506,11 +2506,27 @@ export const api = {
     requestJson<AkshareApiStatus[]>(`${API}/external-data/apis?locale=${locale}`),
   listAkshareStrategies: (locale: string = "zh-CN") =>
     requestJson<AkshareStrategyInfo[]>(`${API}/external-data/apis/strategies?locale=${locale}`),
-  probeAkshareApi: (apiKey: string) =>
-    requestJson<{ key: string; success: boolean; latency_ms: number | null; error: string | null }>(
+  // PT-DEF-18：探测改成"提交任务 + 心跳轮询"。这两个调用本身都是**快接口**，
+  // 所以 15s 超时只是网络异常保护，不再代表"允许上游慢多久"——那个语义已经死了。
+  submitApiProbe: (apiKey: string) =>
+    requestJson<{ task_id: string; api_key: string; status: string; reused: boolean }>(
       `${API}/external-data/apis/${encodeURIComponent(apiKey)}/probe`,
-      { method: "POST", timeoutMs: 30000 },
+      { method: "POST", timeoutMs: 15000 },
     ),
+  getApiProbeTask: (taskId: string) =>
+    requestJson<{
+      task_id: string;
+      api_key: string;
+      status: string;              // queued | running | done | failed | cancelled | interrupted
+      stage: string | null;
+      percent: number;
+      message: string | null;
+      heartbeat_at: string | null;
+      updated_at: string | null;
+      seconds_since_heartbeat: number | null;
+      heartbeat_stale: boolean;
+      result: { key: string; success: boolean; latency_ms: number | null; error: string | null } | null;
+    }>(`${API}/external-data/apis/probe/${encodeURIComponent(taskId)}`, { timeoutMs: 15000 }),
   updateAkshareApiConfig: (apiKey: string, payload: Partial<AkshareApiConfigUpdate>, locale: string = "zh-CN") =>
     requestJson<AkshareApiStatus>(
       `${API}/external-data/apis/${encodeURIComponent(apiKey)}?locale=${locale}`,

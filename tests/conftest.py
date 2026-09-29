@@ -279,6 +279,16 @@ def db_session(tmp_sqlite_url):
         mgr.dispose()
     except Exception:
         pass
+    # 「控制平面」引擎（NullPool，供 async_tasks 的提交/心跳/状态轮询用）是按
+    # 当时的 dm.engine.url 建的模块级缓存。逐用例改绑主库而不清它，控制平面就会
+    # 继续连着上一个用例的 tmp 文件——那个文件已被删掉，表现是随机的
+    # "no such table: async_tasks"（体检报告 §二十一 A1 那一族"只在组合跑才红"）。
+    # 走公开失效接口 reset_control_plane_cache()，与 tests/integration/conftest.py 对齐。
+    try:
+        import app.db.session as _app_db_session
+        _app_db_session.reset_control_plane_cache()
+    except Exception:
+        pass
     mgr.initialize(tmp_sqlite_url, db_type="sqlite")
     engine = mgr.engine
     _enable_sqlite_wal(engine)
@@ -292,6 +302,13 @@ def db_session(tmp_sqlite_url):
         session.close()
         try:
             mgr.dispose()
+        except Exception:
+            pass
+        # 收尾也要失效：控制平面可能已为本用例的 URL 建过 engine，Windows 上
+        # 残留句柄会让上一个 tmp 文件删不掉，下一个用例就撞上"死库"。
+        try:
+            import app.db.session as _app_db_session
+            _app_db_session.reset_control_plane_cache()
         except Exception:
             pass
 

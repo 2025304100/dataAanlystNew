@@ -2443,6 +2443,8 @@ const enUS: Record<string, string> = {
     apiNeverCalled: "Never called",
     apiProbeSuccess: "Probe succeeded, latency {ms} ms",
     apiProbeFailed: "Probe failed: {error}",
+    apiProbeWaiting: "Probing {sec}s",
+    apiProbeStale: "Probe task stopped reporting heartbeats (worker may be gone); probe again",
     apiUpdateSuccess: "Config updated",
     apiUpdateFailed: "Update failed: {error}",
     apiEnabledToggle: "Enabled",

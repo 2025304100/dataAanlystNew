@@ -79,7 +79,20 @@ const { mockApi } = vi.hoisted(() => ({
       { key: "extreme", name: "极保守", delay_min_ms: 3000, delay_max_ms: 5000, max_retries: 5, desc: "极保守档位" },
       { key: "custom", name: "自定义", delay_min_ms: null, delay_max_ms: null, max_retries: 3, desc: "自定义档位" },
     ]),
-    probeAkshareApi: vi.fn(async () => ({ key: "stock_info_sz_name_code", success: true, latency_ms: 150, error: null })),
+    submitApiProbe: vi.fn(async (key: string) => ({ task_id: `task-${key}`, api_key: key, status: "queued", reused: false })),
+    getApiProbeTask: vi.fn(async (taskId: string) => ({
+      task_id: taskId,
+      api_key: String(taskId).replace(/^task-/, ""),
+      status: "done",
+      stage: "done",
+      percent: 100,
+      message: "done",
+      heartbeat_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      seconds_since_heartbeat: 0,
+      heartbeat_stale: false,
+      result: { key: String(taskId).replace(/^task-/, ""), success: true, latency_ms: 150, error: null },
+    })),
     updateAkshareApiConfig: vi.fn(async (_k: string, p: unknown) => p),
   },
 }));
@@ -223,7 +236,7 @@ describe("AkshareApiManager 组件渲染测试", () => {
     const probeAllBtn = screen.getByText("apiMgmtProbeAll");
     fireEvent.click(probeAllBtn);
     await waitFor(() => {
-      expect(mockApi.probeAkshareApi).toHaveBeenCalledTimes(3);
+      expect(mockApi.submitApiProbe).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -246,12 +259,17 @@ describe("AkshareApiManager 组件渲染测试", () => {
 describe("AkshareApiManager 交互测试", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // 重置 probeAkshareApi 为默认实现（防止前一个测试的 deferred 实现残留）
-    mockApi.probeAkshareApi.mockImplementation(async () => ({
-      key: "stock_info_sz_name_code",
-      success: true,
-      latency_ms: 150,
-      error: null,
+    // 重置探测桩为默认实现（防止前一个测试的 deferred 实现残留）
+    mockApi.submitApiProbe.mockImplementation(async (key: string) => ({
+      task_id: `task-${key}`, api_key: key, status: "queued", reused: false,
+    }));
+    mockApi.getApiProbeTask.mockImplementation(async (taskId: string) => ({
+      task_id: taskId,
+      api_key: String(taskId).replace(/^task-/, ""),
+      status: "done", stage: "done", percent: 100, message: "done",
+      heartbeat_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      seconds_since_heartbeat: 0, heartbeat_stale: false,
+      result: { key: String(taskId).replace(/^task-/, ""), success: true, latency_ms: 150, error: null },
     }));
     // 覆盖 updateAkshareApiConfig 以返回完整行 + patch，避免行数据被破坏
     mockApi.updateAkshareApiConfig.mockImplementation(async (key: string, payload: any) => {
@@ -381,7 +399,7 @@ describe("AkshareApiManager 交互测试", () => {
     const probeButtons = screen.getAllByText("apiMgmtProbe");
     await user.click(probeButtons[0]);
     await waitFor(() => {
-      expect(mockApi.probeAkshareApi).toHaveBeenCalledWith("stock_info_sz_name_code");
+      expect(mockApi.submitApiProbe).toHaveBeenCalledWith("stock_info_sz_name_code");
     });
   });
 
@@ -391,7 +409,8 @@ describe("AkshareApiManager 交互测试", () => {
     const pending = new Promise<any>((resolve) => {
       resolveProbe = resolve;
     });
-    mockApi.probeAkshareApi.mockImplementation(async () => pending);
+    // 让"轮询"停在半路，模拟探测仍在进行（提交本身是即时回执，不会再挂）
+    mockApi.getApiProbeTask.mockImplementation(async () => pending);
     render(<AkshareApiManager />);
     await waitFor(() => {
       expect(screen.getByText("深交所股票列表")).toBeInTheDocument();
@@ -405,10 +424,17 @@ describe("AkshareApiManager 交互测试", () => {
         .map((el) => el.closest("button"));
       probeBtns.forEach((btn) => expect(btn).toBeDisabled());
     });
-    // 释放以结束测试（返回有效结果避免 result.success 报错）
-    resolveProbe({ key: "stock_info_sz_name_code", success: true, latency_ms: 150, error: null });
+    // 释放以结束测试（返回终态任务，避免 result.success 报错）
+    resolveProbe({
+      task_id: "task-stock_info_sz_name_code",
+      api_key: "stock_info_sz_name_code",
+      status: "done", stage: "done", percent: 100, message: "done",
+      heartbeat_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      seconds_since_heartbeat: 0, heartbeat_stale: false,
+      result: { key: "stock_info_sz_name_code", success: true, latency_ms: 150, error: null },
+    });
     await waitFor(() => {
-      expect(mockApi.probeAkshareApi).toHaveBeenCalledTimes(3);
+      expect(mockApi.submitApiProbe).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -422,7 +448,7 @@ describe("AkshareApiManager 交互测试", () => {
     await user.click(probeAllBtn);
     // 等待批量探测完成（probingAll=false, probingKeys 清空）
     await waitFor(() => {
-      expect(mockApi.probeAkshareApi).toHaveBeenCalledTimes(3);
+      expect(mockApi.submitApiProbe).toHaveBeenCalledTimes(3);
     });
     // 完成后单按钮应恢复可用（等待 loading 状态清除）
     await waitFor(() => {

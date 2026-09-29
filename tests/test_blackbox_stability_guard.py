@@ -255,17 +255,20 @@ def test_universe_refresh_does_not_return_excel_error(client):
 
 
 # ============================================================================
-# 4. 批量探测 180s 内完成
+# 4. 批量探测：提交即时 + 所有任务都能收束
 # ============================================================================
 
 @pytest.mark.slow
-@pytest.mark.xfail_dev_hardware
-def test_batch_probe_completes_within_180s(client):
-    """【P3-2 稳定性守护】批量探测所有接口应在 180s 内完成。
+def test_batch_probe_submits_fast_and_all_tasks_converge(client):
+    """【P3-2 稳定性守护】批量探测不得拖死后端：提交即时，任务全部收束。
 
-    验证探测端点独立线程池修复生效，不会因线程池耗尽而卡死。
-    每个接口最多 30s，多数 < 5s，总耗时应 < 180s。
-    若线程池耗尽，会卡在某个探测上，总耗时远超 180s。
+    旧断言"批量 180s 内完成"的前提是每个探测都占着一个 HTTP 请求；PT-DEF-18
+    之后探测跑在后台任务里，真正该守的两件事变成：
+      ① 提交阶段必须快（不被上游拖住）；
+      ② 每个任务最终都能走到可解释的结论（终态或心跳可疑）—— 线程池若耗尽，
+         这里会看到一堆永远 running 的任务。
+    顺带摘掉 xfail_dev_hardware：那顶帽子只会让这条守护在 CI 里永远"预期失败"，
+    等于从来没测（体检报告 §十五）。
     """
     r = client.get("/api/v1/external-data/apis?locale=zh-CN")
     assert r.status_code == 200
@@ -273,44 +276,65 @@ def test_batch_probe_completes_within_180s(client):
     if len(apis) < 5:
         pytest.skip("接口数不足 5 个，跳过批量探测验证")
 
-    # 用独立的长超时 client，避免被 module fixture 的 15s 超时打断
-    success_count = 0
-    timeout_count = 0
+    submit_elapsed: list[float] = []
+    task_ids: list[str] = []
     start = time.time()
-    with httpx.Client(base_url=BASE, timeout=PROBE_BATCH_TIMEOUT, trust_env=False) as probe_client:
-        for api in apis:
-            api_key = api["key"]
-            try:
-                pr = probe_client.post(f"/api/v1/external-data/apis/{api_key}/probe")
-                if pr.status_code == 200:
-                    data = pr.json()
-                    if data.get("success"):
-                        success_count += 1
-                    else:
-                        timeout_count += 1
-                else:
-                    timeout_count += 1
-            except Exception:
-                timeout_count += 1
+    for api in apis:
+        one = time.time()
+        pr = client.post(
+            f"/api/v1/external-data/apis/{api['key']}/probe", timeout=PROBE_BATCH_TIMEOUT
+        )
+        submit_elapsed.append(time.time() - one)
+        assert pr.status_code == 202, (
+            f"提交 {api['key']} 应 202, 实际 {pr.status_code}: {pr.text[:150]}"
+        )
+        task_ids.append(pr.json()["task_id"])
+    batch_submit = time.time() - start
 
-    elapsed = time.time() - start
-    assert elapsed < 180.0, (
-        f"批量探测应在 180s 内完成（线程池未耗尽）, 实际耗时 {elapsed:.1f}s, "
-        f"success={success_count}, timeout={timeout_count}"
+    assert max(submit_elapsed) < 3.0, (
+        f"有单次提交耗时异常（提交不该等上游）：最慢 {max(submit_elapsed):.1f}s"
+    )
+    assert batch_submit < 20.0, f"全部提交应在 20s 内发完，实际 {batch_submit:.1f}s"
+
+    # 轮询收束。下面的上限是"测试自己收束"用的，不是对产品时长的承诺
+    deadline = time.time() + 240.0
+    pending = set(task_ids)
+    while pending and time.time() < deadline:
+        for task_id in list(pending):
+            st = client.get(
+                f"/api/v1/external-data/apis/probe/{task_id}", timeout=PROBE_BATCH_TIMEOUT
+            )
+            assert st.status_code == 200, f"已提交的任务不应 404: {task_id}"
+            body = st.json()
+            concluded = body.get("status") in (
+                "done", "failed", "cancelled", "interrupted",
+            ) or bool(body.get("heartbeat_stale"))
+            if concluded:
+                pending.discard(task_id)
+        if pending:
+            time.sleep(2.0)
+
+    unresolved = []
+    for task_id in pending:
+        st = client.get(
+            f"/api/v1/external-data/apis/probe/{task_id}", timeout=PROBE_BATCH_TIMEOUT
+        )
+        unresolved.append((task_id, st.json()))
+    assert not unresolved, (
+        f"{len(unresolved)} 个探测任务在测试上限内既无终态也无心跳异常"
+        f"（探测线程池可能被耗尽或 worker 静默死亡）：{unresolved[:3]}"
     )
 
 
 # ============================================================================
-# 5. 连续 3 次探测同一接口响应时间不退化
+# 5. 连续提交同一接口不退化
 # ============================================================================
 
-def test_consecutive_probes_do_not_degrade(client):
-    """【P3-2 稳定性守护】连续 3 次探测同一接口，响应时间不应显著退化。
+def test_consecutive_probe_submits_do_not_degrade(client):
+    """【P3-2 稳定性守护】连续 3 次提交探测，提交路径不应退化。
 
-    验证探测端点独立线程池修复生效。
-    若用 asyncio.to_thread 共享默认池，连续探测后泄漏线程累积，
-    响应时间会显著增加（线程池排队）。
-    断言：第 3 次响应时间 < 第 1 次 * 3。
+    守的仍是同一个风险（探测线程池泄漏会拖慢后续请求），但测的是提交路径：
+    它不依赖上游快慢，因此不再需要"所有探测 < 30s"这种押注。
     """
     r = client.get("/api/v1/external-data/apis?locale=zh-CN")
     assert r.status_code == 200
@@ -320,29 +344,21 @@ def test_consecutive_probes_do_not_degrade(client):
 
     api_key = apis[0]["key"]
     latencies: list[float] = []
-    # 用稍长超时 client，避免单次探测超时被 module fixture 15s 打断
-    with httpx.Client(base_url=BASE, timeout=35.0, trust_env=False) as probe_client:
-        for _ in range(3):
-            start = time.time()
-            try:
-                pr = probe_client.post(f"/api/v1/external-data/apis/{api_key}/probe")
-                elapsed = time.time() - start
-                assert pr.status_code == 200, f"探测应返回 200, 实际 {pr.status_code}"
-                latencies.append(elapsed)
-            except Exception:
-                latencies.append(30.0)
+    for _ in range(3):
+        start = time.time()
+        pr = client.post(f"/api/v1/external-data/apis/{api_key}/probe", timeout=35.0)
+        elapsed = time.time() - start
+        assert pr.status_code == 202, f"提交应返回 202, 实际 {pr.status_code}"
+        latencies.append(elapsed)
 
-    assert len(latencies) == 3, f"应收集 3 次延迟, 实际 {len(latencies)}"
-    # 所有探测都应 < 30s（timeout 兜底）
-    assert all(l < 30.0 for l in latencies), (
-        f"所有探测应 < 30s, 实际 {latencies}"
+    assert len(latencies) == 3, f"应收集 3 次耗时, 实际 {len(latencies)}"
+    assert all(l < 3.0 for l in latencies), (
+        f"提交探测都应秒级回执（它们不等上游）, 实际 {['%.2f' % l for l in latencies]}"
     )
-    # 第 3 次不应显著退化（< 第 1 次 * 3，允许波动）
-    first = latencies[0]
-    third = latencies[2]
-    assert third < first * 3 + 5.0, (
-        f"连续探测响应时间显著退化: 首次 {first:.2f}s, 第 3 次 {third:.2f}s, "
-        "可能线程池泄漏"
+    first, third = latencies[0], latencies[2]
+    assert third < first * 3 + 1.0, (
+        f"连续提交明显退化: 首次 {first:.2f}s, 第 3 次 {third:.2f}s，"
+        "可能探测线程池排队/泄漏"
     )
 
 
