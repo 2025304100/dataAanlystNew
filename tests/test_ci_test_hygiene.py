@@ -281,19 +281,12 @@ _IMPORT_RE = re.compile(r"""(?:from|import)\s*\(?\s*['"]([^'"]+)['"]""")
 _ENTRY_SUFFIXES = ("", ".tsx", ".ts", ".jsx", ".js", "/index.tsx", "/index.ts")
 
 # 已知孤儿基线（相对 frontend/src 的 posix 路径）：只允许变短，不允许变长。
-# 处置结论见报告 §二十五：Trading / PortfolioWorkbench / PortfolioMembersPanel 是
-# 大改造后「刻意保留但不再渲染」的旧页面（App.tsx 有注释说明）；AutoTradePanel、
-# PortfolioBacktestPanel、PortfolioPerformancePanel 只被旧 Trading.tsx 引用而整簇
-# 不可达，但它们承载的后端路由仍在线，需产品判定「废弃 or 补回现役 UI」才能删。
-KNOWN_ORPHAN_COMPONENTS = {
-    "components/AutoTradePanel.tsx",
-    "components/PortfolioBacktestPanel.tsx",
-    "components/PortfolioMembersPanel.tsx",
-    "components/PortfolioPerformancePanel.tsx",
-    "components/PortfolioWorkbench.tsx",
-    "components/Trading.tsx",
-    "components/factors/mining/config/MiningExperiencePage.tsx",
-}
+# 2026-09-29 已清空：报告 §二十六/§二十七 里那 7 个从应用入口不可达的旧组件
+# （Trading / PortfolioWorkbench / PortfolioMembersPanel / AutoTradePanel /
+#  PortfolioBacktestPanel / PortfolioPerformancePanel / MiningExperiencePage）
+# 连同各自测试一并删除，复盘能力改由 PortfolioReviewDrawer 承接。
+# 基线为空意味着：今后任何新增的"没人渲染"组件都会直接被判红。
+KNOWN_ORPHAN_COMPONENTS: set[str] = set()
 
 
 def _frontend_entries() -> list[Path]:

@@ -1481,37 +1481,10 @@ export const api = {
       { timeoutMs: 30000 },
     );
   },
-  // WP6.6：自动交易双跑与成员级状态
-  getAutoTradeDryRunDiff: (portfolioId: number) =>
-    requestJson<{
-      portfolio_id: number;
-      old_set: { buys: any[]; sells: any[]; rejected: any[] };
-      new_set: { buys: any[]; sells: any[]; rejected: any[] };
-      diffs: Array<{
-        symbol_id: number;
-        side: string;
-        old_action: string | null;
-        new_action: string | null;
-        reason: string;
-        detail: string;
-      }>;
-    }>(`${API}/portfolios/${portfolioId}/auto-trade/dry-run-diff`, { timeoutMs: 60000 }),
-  getAutoTradeMemberSourceStatus: (portfolioId: number) =>
-    requestJson<{
-      portfolio_id: number;
-      enabled: boolean;
-      env_var_name: string;
-      env_flag: string;
-      whitelist_match: boolean;
-      blacklist_match: boolean;
-      whitelist: number[];
-      blacklist: number[];
-    }>(`${API}/portfolios/${portfolioId}/auto-trade/member-source-status`),
-  rollbackAutoTradeToOldSource: (portfolioId: number) =>
-    requestJson<{ ok: boolean; portfolio_id: number; message: string }>(
-      `${API}/portfolios/${portfolioId}/auto-trade/rollback-to-old-source`,
-      { method: "POST" },
-    ),
+  // WP6.6 双跑观测面（dry-run-diff / member-source-status / rollback-to-old-source）
+  // 已随旧 AutoTradePanel 一起下线：回滚走 g6-rollback（见下方 rollbackG6Rollout），
+  // 双跑对比由 snapshot / DecisionOrderPlan 三入口一致性 + DecisionEvidence 拒绝记录承接。
+  // 对应后端端点仅标记 deprecated，未删路由（运维脚本与回归用例仍在），见报告 §二十七。
   getAutoTradeMemberStatus: (portfolioId: number) =>
     requestJson<{
       portfolio_id: number;
@@ -2185,7 +2158,12 @@ export const api = {
     requestJson<{ enabled: boolean; env_flag: string; source_label: string }>(
       `${API}/portfolios/${portfolioId}/backtest/source-status`,
     ),
-  // WP7.4: 新旧引擎对比（同区间跑两次回测并对比标的集/指标差异）
+  /**
+   * @deprecated WP7.4 新旧引擎对比。唯一调用方（旧 PortfolioBacktestPanel）已随组合交易
+   * 大改造下线，双跑结论改由 snapshot / DecisionOrderPlan 三入口一致性 + DecisionEvidence
+   * 拒绝记录承接；后端 `POST /portfolios/{id}/backtest/compare` 仅标记 deprecated，未删路由。
+   * 保留此封装以免误删仍在跑的契约测试；新代码请勿再调用。
+   */
   comparePortfolioBacktestEngines: (
     portfolioId: number,
     payload: { start_date: string; end_date: string; initial_capital?: number; run_name_prefix?: string },

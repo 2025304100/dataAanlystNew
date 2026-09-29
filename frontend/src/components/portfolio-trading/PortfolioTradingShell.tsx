@@ -13,6 +13,7 @@ import PortfolioGovernanceTab from "./PortfolioGovernanceTab";
 import CreatePortfolioModal from "./CreatePortfolioModal";
 import AddCandidateModal from "./AddCandidateModal";
 import PortfolioRankingDrawer from "./PortfolioRankingDrawer";
+import PortfolioReviewDrawer from "./PortfolioReviewDrawer";
 import PortfolioSelectorDropdown from "./PortfolioSelectorDropdown";
 
 /**
@@ -276,6 +277,8 @@ const PortfolioTradingShell: React.FC = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [addCandidateModalOpen, setAddCandidateModalOpen] = useState(false);
   const [rankingDrawerOpen, setRankingDrawerOpen] = useState(false);
+  // 复盘抽屉：按需打开（创建复盘会触发后端实时算归因，不放首屏）
+  const [reviewsOpen, setReviewsOpen] = useState(false);
   const [selectorDropdownOpen, setSelectorDropdownOpen] = useState(false);
   const [membersRevision, setMembersRevision] = useState(0);
 
@@ -458,6 +461,7 @@ const PortfolioTradingShell: React.FC = () => {
         onRefreshReadiness={loadReadiness}
         onOpenSelector={() => setSelectorDropdownOpen((v) => !v)}
         onOpenRanking={() => setRankingDrawerOpen(true)}
+        onOpenReviews={() => setReviewsOpen(true)}
         onOpenAddCandidate={() => setAddCandidateModalOpen(true)}
         selectorOpen={selectorDropdownOpen}
         portfolioStatusRaw={portfolioStatusRaw}
@@ -509,6 +513,11 @@ const PortfolioTradingShell: React.FC = () => {
         onClose={() => setRankingDrawerOpen(false)}
         onSelectPortfolio={handleRankingSelect}
       />
+      <PortfolioReviewDrawer
+        open={reviewsOpen}
+        onClose={() => setReviewsOpen(false)}
+        portfolioId={effectivePortfolioId}
+      />
     </div>
   );
 };
@@ -530,6 +539,7 @@ interface PortfolioHeaderProps {
   selectorOpen: boolean;
   onOpenSelector: () => void;
   onOpenRanking: () => void;
+  onOpenReviews: () => void;
   onOpenAddCandidate: () => void;
   /** 组合选择下拉面板（在触发按钮的 relative 容器内渲染，保证 position:absolute 浮在按钮正下方） */
   selectorDropdown?: React.ReactNode;
@@ -553,6 +563,7 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
   selectorOpen,
   onOpenSelector,
   onOpenRanking,
+  onOpenReviews,
   onOpenAddCandidate,
   selectorDropdown,
   portfolioStatusRaw,
@@ -982,6 +993,15 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
         >
           <Trophy size={16} style={{ color: "var(--pt-state-warning)" }} />
           <span>{t("portfolioTrading.header.ranking")}</span>
+        </button>
+        {/* 复盘记录抽屉（承接原孤儿面板的 reviews 能力，报告 §二十七） */}
+        <button
+          type="button"
+          className="pt-btn pt-btn-secondary"
+          onClick={onOpenReviews}
+          data-testid="open-review-drawer"
+        >
+          <span>{t("portfolioTrading.header.reviews")}</span>
         </button>
         {/* FR-P1-8a：添加候选标的入口（NEW_BUY 入口），allow_new_buys=false 时禁用并给出明确原因 */}
         {(() => {

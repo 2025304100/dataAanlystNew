@@ -220,12 +220,7 @@ vi.mock("../symbol-research/SymbolChartPanel", () => ({
 }));
 
 // ─── Mock App.tsx 子组件（WP9.1 测试需要渲染 App）─────────
-// 注意：不 mock PortfolioWorkbench —— WP9.4 测试需要渲染真实组件。
-// App 测试中 activeTab 为 "decision"/"investment"，不会渲染 PortfolioWorkbench。
-vi.mock("../Trading", () => ({
-  __esModule: true,
-  default: () => <div data-testid="trading-mock">trading</div>,
-}));
+// 注意：旧 PortfolioWorkbench / Trading 已下线（报告 §二十六），不再 mock 也不需要。
 vi.mock("../InvestmentCenter", () => ({
   __esModule: true,
   default: () => <div data-testid="investment-center-mock">investment</div>,
@@ -290,7 +285,6 @@ import {
 } from "../../utils/tabCompatibility";
 import SymbolResearchShell from "../symbol-research/SymbolResearchShell";
 import SymbolAlertSummary from "../symbol-research/SymbolAlertSummary";
-import PortfolioWorkbench from "../PortfolioWorkbench";
 
 // ─── 辅助：构造完整 workbench 数据 ───────────────────────
 function makeWorkbench() {
@@ -555,43 +549,5 @@ describe("WP9.3 即时提醒未持久化标注", () => {
   });
 });
 
-// ═════════════════════════════════════════════════════════
-// WP9.4：组合工作台改为指向机会中心的链接卡片
-// ═════════════════════════════════════════════════════════
-describe("WP9.4 组合工作台链接机会中心", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockContext.workbench = makeWorkbench() as any;
-    mockContext.activeSymbolId = null;
-    mockContext.candidateSearch = "";
-    mockApi.getPositions.mockResolvedValue([]);
-    mockApi.getAllocation.mockResolvedValue(null);
-  });
-
-  it("test_portfolio_workbench_links_to_opportunity_center - 链接卡片渲染且点击跳转", async () => {
-    render(<PortfolioWorkbench openMetricModal={vi.fn()} />);
-
-    // 等待链接卡片渲染
-    await waitFor(() => {
-      expect(screen.getByTestId("goto-opportunity-center")).toBeInTheDocument();
-    });
-
-    // WP9.4：链接卡片容器存在
-    const linkCard = document.querySelector(
-      '[data-testid="opportunity-center-link-card"]',
-    );
-    expect(linkCard).not.toBeNull();
-
-    // 按钮文案为 wp9.viewOpportunityCenter
-    expect(screen.getByText("wp9.viewOpportunityCenter")).toBeInTheDocument();
-
-    // 不再重复呈现机会/观察/消息三列
-    expect(screen.queryByText("todayExecutable")).not.toBeInTheDocument();
-    expect(screen.queryByText("todayWatch")).not.toBeInTheDocument();
-    expect(screen.queryByText("todayMessages")).not.toBeInTheDocument();
-
-    // 点击按钮应调用 ctx.setActiveTab("opportunity")
-    fireEvent.click(screen.getByTestId("goto-opportunity-center"));
-    expect(mockContext.setActiveTab).toHaveBeenCalledWith("opportunity");
-  });
-});
+// WP9.4「组合工作台链接机会中心」一组已随 PortfolioWorkbench 一起下线
+// （该组件从组合交易大改造起就未挂载，见体检报告 §二十六/§二十七）。

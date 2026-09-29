@@ -4873,6 +4873,20 @@ const zhCN: Record<string, string> = {
 
     // 顶部头部
     "portfolioTrading.header.ranking": "组合排名",
+    "portfolioTrading.header.reviews": "复盘记录",
+    "portfolioTrading.reviews.title": "复盘记录",
+    "portfolioTrading.reviews.close": "关闭",
+    "portfolioTrading.reviews.startDate": "开始",
+    "portfolioTrading.reviews.endDate": "结束",
+    "portfolioTrading.reviews.notePlaceholder": "写下这段时间的复盘结论（必填）",
+    "portfolioTrading.reviews.autoAttributionHint": "保存时后端会按所选区间实时计算归因快照，可能需要几秒",
+    "portfolioTrading.reviews.submit": "保存复盘",
+    "portfolioTrading.reviews.submitting": "保存中…",
+    "portfolioTrading.reviews.created": "复盘已保存",
+    "portfolioTrading.reviews.loading": "正在加载复盘记录…",
+    "portfolioTrading.reviews.failed": "加载或保存失败",
+    "portfolioTrading.reviews.empty": "暂无复盘记录",
+    "portfolioTrading.reviews.invalidRange": "结束日期不能早于开始日期",
     "portfolioTrading.header.addCandidate": "添加候选标的",
     "portfolioTrading.header.noPortfolio": "暂无组合",
 

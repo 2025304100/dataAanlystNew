@@ -4872,6 +4872,20 @@ const enUS: Record<string, string> = {
 
     // Top header
     "portfolioTrading.header.ranking": "Portfolio Ranking",
+    "portfolioTrading.header.reviews": "Reviews",
+    "portfolioTrading.reviews.title": "Portfolio reviews",
+    "portfolioTrading.reviews.close": "Close",
+    "portfolioTrading.reviews.startDate": "Start",
+    "portfolioTrading.reviews.endDate": "End",
+    "portfolioTrading.reviews.notePlaceholder": "Write down the review conclusion for this period (required)",
+    "portfolioTrading.reviews.autoAttributionHint": "On save the backend computes the attribution snapshot for this range; it may take a few seconds",
+    "portfolioTrading.reviews.submit": "Save review",
+    "portfolioTrading.reviews.submitting": "Saving…",
+    "portfolioTrading.reviews.created": "Review saved",
+    "portfolioTrading.reviews.loading": "Loading reviews…",
+    "portfolioTrading.reviews.failed": "Failed to load or save",
+    "portfolioTrading.reviews.empty": "No reviews yet",
+    "portfolioTrading.reviews.invalidRange": "End date must not be earlier than start date",
     "portfolioTrading.header.addCandidate": "Add Candidate",
     "portfolioTrading.header.noPortfolio": "No Portfolio",
 
