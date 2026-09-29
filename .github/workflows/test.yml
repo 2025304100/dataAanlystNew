@@ -7,9 +7,19 @@ on:
     branches: [main, master]
 
 jobs:
-  # ── 后端白盒测试（无需后端运行）──────────────────────────
+  # ── 后端白盒测试（无需后端运行）4 片并行 ────────────────────
+  # 为什么分片：单 job 跑全量 whitebox 要 47~56 分钟，是整个流水线的长板。
+  # 为什么不手写路径清单：清单会过期，新目录没被任何一条覆盖就是**静默漏测**
+  # （本项目发生过 141 个文件永远不进闸门的同族事故）。现在改成先收集、
+  # 再按收集结果分片（scripts/ci_shard.py），覆盖由收集决定。
   backend-whitebox:
     runs-on: ubuntu-latest
+    strategy:
+      # 不要 fail-fast：一片红就取消其余片，会遮蔽同时存在的其他红因
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    name: backend-whitebox shard ${{ matrix.shard }}/4
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -20,8 +30,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run whitebox tests
-        run: pytest -m whitebox --tb=short -q
+      - name: Shard coverage self-check
+        # 断言 4 片并起来 == 全量收集（丢文件 / 重文件直接失败），防静默漏测
+        run: python scripts/ci_shard.py --marker whitebox --groups 4 --plan
+      - name: Run whitebox tests (this shard)
+        run: python scripts/ci_shard.py --marker whitebox --groups 4 --group ${{ matrix.shard }}
 
   # ── 前端测试 ──────────────────────────────────────────────
   frontend:
