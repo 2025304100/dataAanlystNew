@@ -34,6 +34,9 @@ FILE_PATTERNS = (
     "bb*_*.json", "*-result.txt", "result.txt", "test_results_*.txt",
     "qa_blockers_*", "api_bb*_report.json", "integration_*.sqlite3",
     "tmp_*.sqlite3", "*.db", "zhcn_head.tmp.ts", "1.2",
+    # 补上的形状：都是诊断期一次性脚本（上一版只收了 _前缀，没收到这类名字）
+    "check_*.py", "clean*.py", "find_*.py", "fix_*.py", "scan_*.py",
+    "debug_*.py", "verify_fix.py", "verify_*.py",
     # 故意不收 *.md：报告类文字可能有人还要看（如 professional-test-report-*.md），
     # 需要清它时请手动移进 docs/ 或自行删除，实到实非可再生产物。
 )
@@ -72,6 +75,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="清理仓库根的本地过程性产物")
     parser.add_argument("--apply", action="store_true", help="真正删除（默认只列清单）")
     parser.add_argument("--dirs", action="store_true", help="连同根下临时目录一起清理")
+    parser.add_argument("--list", action="store_true", help="分组列出**全部**候选，便于逐项审阅")
     args = parser.parse_args()
 
     tracked = {p.strip() for p in git(["ls-files"]).splitlines()}
@@ -104,10 +108,41 @@ def main() -> int:
 
     total = sum(p.stat().st_size for p in targets)
     print(f"候选删除文件: {len(targets)} 个，合计 {human(total)}")
-    for p in targets[:25]:
-        print(f"   {human(p.stat().st_size):>8}  {p.name}")
-    if len(targets) > 25:
-        print(f"   ... 另有 {len(targets) - 25} 个")
+
+    # 按用途分组，先给概览再看明细：同后缀在不同形状下意义不同
+    def bucket(p: Path) -> str:
+        name = p.name.lower()
+        ext = p.suffix.lower()
+        if ext in (".sqlite3", ".sqlite", ".db", ".db-journal"):
+            return "临时数据库（pytest/诊断跑出来的库，可重建）"
+        if ext == ".log":
+            return "运行与测试日志"
+        if ext in (".png", ".jpg"):
+            return "调试/测试截图"
+        if ext == ".py":
+            return "一次性诊断脚本（_tmp_/_dbg_/_diag_/_bb* 等形状）"
+        if ext in (".xml", ".txt", ".json", ".js", ".ts"):
+            return "测试结果与报告转储"
+        return "其他（无扩展名/未归类）"
+
+    grouped: dict[str, list[Path]] = {}
+    for p in targets:
+        grouped.setdefault(bucket(p), []).append(p)
+    print()
+    for label, items in sorted(grouped.items(), key=lambda kv: -sum(q.stat().st_size for q in kv[1])):
+        size = sum(q.stat().st_size for q in items)
+        print(f"  {len(items):>4} 个  {human(size):>8}  {label}")
+
+    if args.list:
+        for label, items in sorted(grouped.items()):
+            print(f"\n--- {label} ---")
+            for p in sorted(items, key=lambda q: q.name):
+                print(f"  {human(p.stat().st_size):>8}  {p.name}")
+    else:
+        for p in targets[:25]:
+            print(f"   {human(p.stat().st_size):>8}  {p.name}")
+        if len(targets) > 25:
+            print(f"   ... 另有 {len(targets) - 25} 个（加 --list 全部列出）")
 
     dirs: list[Path] = []
     if args.dirs:

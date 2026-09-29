@@ -457,3 +457,44 @@ def test_repo_root_has_no_new_junk_committed():
         "新文件请放进对应目录（scripts/、docs/），不要堆在根上。"
     )
 
+
+# ══════════════════════════════════════════════
+# 14. 测试不得把临时数据库建在仓库根
+# ══════════════════════════════════════════════
+
+def test_tests_do_not_create_temp_databases_at_repo_root():
+    """用例的临时库必须放系统临时目录 / tmp_path，不能建在仓库根。
+
+    实测伤害（§三十）：integration 的 conftest 曾经 `mkstemp(dir=str(ROOT))`，
+    而收尾的 unlink 在 Windows 上会撞 `PermissionError(13)`（已留下 58 条失败记录），
+    删不掉就直接在项目根堆出 **344 个 integration_*.sqlite3（257MB）**。
+    只要建在根上，一次崩溃/一次索引锁定就会弄脏工作树，所以这条当硬规则定住。
+    """
+    offenders: list[str] = []
+    import ast
+
+    for f in (REPO_ROOT / "tests").rglob("*.py"):
+        try:
+            tree = ast.parse(f.read_text(encoding="utf-8", errors="ignore"))
+        except SyntaxError:
+            continue
+        # 用 AST 只抓真实代码里的 mkstemp(...) 调用：第一版用正则扫文本，
+        # 结果被本用例自己的注释（里面写了 mkstemp(dir=str(ROOT))）误报。
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if getattr(node.func, "id", "") != "mkstemp" and getattr(
+                node.func, "attr", ""
+            ) != "mkstemp":
+                continue
+            for kw in node.keywords:
+                if kw.arg == "dir" and "ROOT" in ast.unparse(kw.value):
+                    offenders.append(
+                        f"{f.relative_to(REPO_ROOT).as_posix()}:{node.lineno} "
+                        f"mkstemp(dir={ast.unparse(kw.value)})"
+                    )
+    assert not offenders, (
+        "以下用例代码把临时文件建在了仓库根（应该用 tempfile.gettempdir() 子目录"
+        "或 pytest 的 tmp_path）：\n" + "\n".join(offenders)
+    )
+

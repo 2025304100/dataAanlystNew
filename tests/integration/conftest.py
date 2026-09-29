@@ -288,8 +288,17 @@ def isolated_db_session(request) -> Session:
     else:
         # Real MySQL integration is explicit via DATABASE_URL_TEST only.
         # Generic test runs must never touch the developer's configured DB.
+        #
+        # 临时库放系统临时目录，不放仓库根（体检报告 §三十）：以前用 dir=str(ROOT)，
+        # 而收尾的 unlink 在 Windows 上会撞上 PermissionError(13) —— 实测已留下 58 条
+        # 失败记录，全部来自 factor_evaluation 那批用例泄漏的**已检出连接**
+        # （dispose() 只关池内连接，关不掉被借走的）。一旦删不掉，垃圾就直接落在
+        # 项目根上，越攒越多（实际积了 344 个 integration_*.sqlite3）。
+        # 改放临时目录后，即便清理失败也只是 OS 临时目录变大，不会再污染工作树与 CI。
+        itdb_dir = Path(tempfile.gettempdir()) / "qa_itdb"
+        itdb_dir.mkdir(exist_ok=True)
         fd, tmp_path = tempfile.mkstemp(
-            suffix=".sqlite3", prefix="integration_", dir=str(ROOT)
+            suffix=".sqlite3", prefix="integration_", dir=str(itdb_dir)
         )
         os.close(fd)
         tmp_db = Path(tmp_path)
