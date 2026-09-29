@@ -427,7 +427,7 @@ def test_gitignore_is_rule_based_and_hides_nothing_tracked():
 # ══════════════════════════════════════════════
 
 # 只统计**已入库**的根文件：这样在 CI 的新克隆上也成立，不依赖某台机器的残留产物。
-_ROOT_TRACKED_FILE_BASELINE = 48
+_ROOT_TRACKED_FILE_BASELINE = 47
 
 # 这些形状属于"诊断期用完即弃"，不该出现在仓库里（正式测试进 tests/，工具进 scripts/）
 _ROOT_FORBIDDEN_PREFIXES = (

@@ -98,13 +98,31 @@ playwright-report/
 /_tr*
 /_http_verify_*
 /check_*.py
-/clean_*.py
+/clean*.py
 /find_*.py
 /fix_*.py
 /scan_*.py
+/debug_*.py
 /qa_blockers_*
 /professional-test-report-*.md
 zhcn_head.tmp.ts
+
+# 测试输出转储（根目录的 xml/log/txt/json 产物，不锚定会误伤 junit 等正式位置）
+/blackbox-*.xml
+/blackbox-*.txt
+/whitebox-*.xml
+/whitebox-*.txt
+/factor-*.xml
+/factor-*.log
+/frontend-*.log
+/backend-*.log
+/bb-backend-*.log
+/*-result.txt
+/result.txt
+/.tmp-*
+/_pt_*
+/pt_*
+/api_mgmt_*.json
 
 # ── 临时目录统一进 tmp/（仓库根不再散落）────────────────────────────
 .tmp*/
