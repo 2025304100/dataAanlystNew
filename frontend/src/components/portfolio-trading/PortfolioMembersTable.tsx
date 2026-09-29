@@ -134,6 +134,14 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
   const [search, setSearch] = useState("");
   const [rebalancing, setRebalancing] = useState(false);
   const [rowActionSymbolId, setRowActionSymbolId] = useState<number | null>(null);
+  // 成员执行诊断（GET /auto-trade/member-status）：现役表格只有 member_status 一个
+  // 字符串，看不到"这个成员今天为什么没动"。这里补回一手诊断信息：
+  // 拒绝码/拒绝详情、数据健康（K线与评分新鲜度）、风控阻断、数据过期、归档成员。
+  // 纯只读接口，因此不受 HG1 买卖权限门禁影响（锁着也应该能查）。
+  const [diagMap, setDiagMap] = useState<Record<number, any> | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [diagError, setDiagError] = useState<string | null>(null);
+  const [diagSymbolId, setDiagSymbolId] = useState<number | null>(null);
   // FIX: 候选池不再移除已加入的标的，改为用这个集合判重并置灰按钮/整行
   const [alreadyMemberSymIds, setAlreadyMemberSymIds] = useState<Set<number>>(new Set());
 
@@ -435,6 +443,30 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
       }
     },
     [portfolioId, showToast, load, allowNewBuys, allowRiskExits],
+  );
+
+  // 打开某行的执行诊断：首次点击时整体拉一次 member-status 并按 symbol_id 建索引
+  // （接口是组合级、不是标的级，所以只做一次请求，后续行复用缓存）。
+  const openDiagnostics = useCallback(
+    async (symbolId: number) => {
+      setDiagSymbolId(symbolId);
+      if (diagMap || diagLoading || !portfolioId) return;
+      setDiagLoading(true);
+      setDiagError(null);
+      try {
+        const data = await api.getAutoTradeMemberStatus(portfolioId);
+        const next: Record<number, any> = {};
+        for (const item of (data as any)?.members ?? []) {
+          if (item && item.symbol_id != null) next[Number(item.symbol_id)] = item;
+        }
+        setDiagMap(next);
+      } catch (err: any) {
+        setDiagError(String(err?.message ?? err));
+      } finally {
+        setDiagLoading(false);
+      }
+    },
+    [diagMap, diagLoading, portfolioId],
   );
 
   // 加入组合：POST /portfolios/{id}/members
@@ -746,6 +778,17 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
                           </button>
                         ) : (
                           <>
+                            {/* 执行诊断：只读，不受 HG1 买卖权限门禁限制 */}
+                            <button
+                              type="button"
+                              className="pt-btn pt-btn-ghost pt-btn-sm"
+                              style={{ color: "var(--pt-muted-foreground)" }}
+                              onClick={() => void openDiagnostics(p.symbol_id)}
+                              title={t("portfolioTrading.members.diagnosticsHint")}
+                              data-testid="member-diagnostics-button"
+                            >
+                              {t("portfolioTrading.members.actionDiagnostics")}
+                            </button>
                             {/* 调仓：diff>0 需要 NEW_BUY，diff<0 需要 RISK_EXIT；简化判断：当两者任一允许时启用，由 handleRebalanceRow 再细分 */}
                             {(() => {
                               const rowRebalanceDisabled = !allowNewBuys && !allowRiskExits;
@@ -954,6 +997,94 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
           </table>
         </div>
       </div>
+      {/* ============ 成员执行诊断（只读；补回旧 AutoTradePanel 的 member-status 能力）=========== */}
+      {diagSymbolId != null && (() => {
+        const entry = diagMap?.[diagSymbolId] ?? null;
+        const order = entry?.latest_order ?? null;
+        const health = entry?.data_health ?? null;
+        const rowLabel = `${entry?.symbol ?? ""} ${entry?.name ?? ""}`.trim()
+          || positions.find((p) => p.symbol_id === diagSymbolId)?.symbol
+          || `#${diagSymbolId}`;
+        return (
+          <div
+            role="dialog"
+            aria-label={t("portfolioTrading.members.diagnosticsTitle")}
+            data-testid="member-diagnostics-panel"
+            style={{
+              marginTop: 12, padding: 14, borderRadius: 10,
+              border: "1px solid var(--pt-border, #e2e8f0)",
+              background: "var(--pt-card-bg, #fff)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+              <strong>{t("portfolioTrading.members.diagnosticsTitle")}：{rowLabel}</strong>
+              <button
+                type="button"
+                className="pt-btn pt-btn-ghost pt-btn-sm"
+                onClick={() => setDiagSymbolId(null)}
+                data-testid="member-diagnostics-close"
+              >
+                {t("portfolioTrading.members.diagnosticsClose")}
+              </button>
+            </div>
+
+            {diagLoading && <div data-testid="member-diagnostics-loading">{t("portfolioTrading.members.diagnosticsLoading")}</div>}
+            {diagError && (
+              <div data-testid="member-diagnostics-error" style={{ color: "var(--pt-state-error)" }}>
+                {t("portfolioTrading.members.diagnosticsFailed")}: {diagError}
+              </div>
+            )}
+            {!diagLoading && !diagError && !entry && (
+              <div data-testid="member-diagnostics-empty" style={{ color: "var(--pt-muted-foreground)" }}>
+                {t("portfolioTrading.members.diagnosticsEmpty")}
+              </div>
+            )}
+            {!diagLoading && entry && (
+              <>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                  <span data-testid="diag-tag-execution-mode">{t("portfolioTrading.members.diagExecutionMode")}: {String(entry.execution_mode ?? "-")}</span>
+                  {entry.status && entry.status !== "active" && (
+                    <span data-testid="diag-tag-archived">{t("portfolioTrading.members.diagArchived")}</span>
+                  )}
+                  {entry.manual_lock && (
+                    <span data-testid="diag-tag-manual-lock">{t("portfolioTrading.members.diagManualLock")}</span>
+                  )}
+                  {entry.risk_blocked && (
+                    <span data-testid="diag-tag-risk-blocked" style={{ color: "var(--pt-state-error)" }}>{t("portfolioTrading.members.diagRiskBlocked")}</span>
+                  )}
+                  {entry.data_expired && (
+                    <span data-testid="diag-tag-data-expired" style={{ color: "var(--pt-state-warning)" }}>{t("portfolioTrading.members.diagDataExpired")}</span>
+                  )}
+                </div>
+                <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "4px 12px", margin: 0, fontSize: 13 }}>
+                  <dt>{t("portfolioTrading.members.diagLatestOrder")}</dt>
+                  <dd data-testid="diag-latest-order">
+                    {order
+                      ? `${String(order.side ?? "-")} / ${String(order.status ?? "-")} / ${String(order.source_type ?? "-")}`
+                      : t("portfolioTrading.members.diagNone")}
+                  </dd>
+                  <dt>{t("portfolioTrading.members.diagRejection")}</dt>
+                  <dd data-testid="diag-rejection">
+                    {order?.rejection_code
+                      ? `${String(order.rejection_code)}${order.rejection_detail ? ` — ${String(order.rejection_detail)}` : ""}`
+                      : t("portfolioTrading.members.diagNone")}
+                  </dd>
+                  <dt>{t("portfolioTrading.members.diagDataHealth")}</dt>
+                  <dd data-testid="diag-data-health">
+                    {health
+                      ? `${String(health.healthy ? "OK" : "NG")}${health.reason ? ` — ${String(health.reason)}` : ""}`
+                      : t("portfolioTrading.members.diagNone")}
+                  </dd>
+                  <dt>{t("portfolioTrading.members.diagPosition")}</dt>
+                  <dd data-testid="diag-position">
+                    {entry.has_position ? String(entry.position_quantity ?? 0) : t("portfolioTrading.members.diagNone")}
+                  </dd>
+                </dl>
+              </>
+            )}
+          </div>
+        );
+      })()}
     </section>
   );
 };

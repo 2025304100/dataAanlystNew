@@ -243,11 +243,16 @@ describe("PortfolioPerformancePanel 绩效归因测试", () => {
     await waitFor(() => {
       expect(mockApi.createReview).toHaveBeenCalledTimes(1);
     });
-    // 提交 payload 含 note 与 attribution_snapshot
+    // 提交 payload 必须对齐后端 ReviewCreate：note + 必填时间范围 + report_snapshot(dict)
     const callArgs = mockApi.createReview.mock.calls[0];
     expect(callArgs[0]).toBe(1); // portfolioId
     expect(callArgs[1].note).toBe("本次归因复盘");
-    expect(typeof callArgs[1].attribution_snapshot).toBe("string");
+    expect(typeof callArgs[1].start_date).toBe("string");
+    expect(typeof callArgs[1].end_date).toBe("string");
+    // PT-DEF-26：后端没有 attribution_snapshot 这个字段，旧写法会必然 422；
+    // 正确的快照字段是 dict 形的 report_snapshot。
+    expect(callArgs[1].attribution_snapshot).toBeUndefined();
+    expect(typeof callArgs[1].report_snapshot).toBe("object");
   });
 
   // 6. 复盘历史：历史复盘记录列表渲染

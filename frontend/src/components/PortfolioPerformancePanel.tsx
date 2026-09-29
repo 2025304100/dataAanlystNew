@@ -140,8 +140,15 @@ export default function PortfolioPerformancePanel() {
     if (!portfolioId || !reviewNote.trim()) return;
     setReviewSubmitting(true);
     try {
-      const snapshot = attribution ? JSON.stringify(attribution) : undefined;
-      await api.createReview(portfolioId, { note: reviewNote.trim(), attribution_snapshot: snapshot });
+      // PT-DEF-26：后端 ReviewCreate 必填 start_date/end_date，快照字段是
+      // report_snapshot（dict，不是 JSON 字符串）。旧写法只发 {note, attribution_snapshot}
+      // → 必然 422，复盘从没被创建成功过。本文件当前未挂载（孤儿），但仍须类型正确。
+      await api.createReview(portfolioId, {
+        start_date: dateRange[0].format("YYYY-MM-DD"),
+        end_date: dateRange[1].format("YYYY-MM-DD"),
+        note: reviewNote.trim(),
+        report_snapshot: (attribution ?? undefined) as Record<string, unknown> | undefined,
+      });
       setReviewNote("");
       setReviewFormOpen(false);
       await loadReviews();
@@ -151,7 +158,7 @@ export default function PortfolioPerformancePanel() {
     } finally {
       setReviewSubmitting(false);
     }
-  }, [portfolioId, reviewNote, attribution, loadReviews]);
+  }, [portfolioId, reviewNote, attribution, dateRange, loadReviews]);
 
   // 刷新全部（绩效 + 归因 + 复盘）
   const refreshAll = useCallback(() => {

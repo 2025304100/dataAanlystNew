@@ -1442,8 +1442,22 @@ export const api = {
   // WP8.3：复盘记录列表
   getReviews: (portfolioId: number) =>
     requestJson<Review[]>(`${API}/portfolios/${portfolioId}/reviews`),
-  // WP8.3：创建复盘记录（备注 + 自动附归因快照）
-  createReview: (portfolioId: number, payload: { note: string; attribution_snapshot?: string }) =>
+  // WP8.3：创建复盘记录。字段必须对齐后端 ReviewCreate：
+  // - `start_date` / `end_date` 是**必填**（缺了直接 422）；
+  // - 不传 `report_snapshot` 时，服务端按该时间范围实时计算归因报告再存快照；
+  // PT-DEF-26：旧签名只发 {note, attribution_snapshot}，既缺必填字段、字段名也与
+  // 后端不一致（后端叫 report_snapshot），所以复盘创建从来没能成功过。
+  createReview: (
+    portfolioId: number,
+    payload: {
+      start_date: string;
+      end_date: string;
+      note?: string;
+      title?: string;
+      report_snapshot?: Record<string, unknown>;
+      backtest_run_id?: number;
+    },
+  ) =>
     requestJson<Review>(`${API}/portfolios/${portfolioId}/reviews`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
