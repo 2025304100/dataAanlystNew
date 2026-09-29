@@ -444,3 +444,53 @@ def _isolate_worker_stop_event(request):
             # 退出也清：用例内为了验证优雅停机而 set 的标志不应泄到下一个用例
             _at.WORKER_STOP_EVENT.clear()
 
+
+# ===========================================================================
+# e2e 闸门的「至少真跑 N 例」最低覆盖断言
+# ===========================================================================
+# 必须挂在根 conftest 而不是 tests/e2e/conftest.py：如果哪天 `-m e2e` 的选择集
+# 被整体删空（marker 改名/误删），e2e 目录的 conftest 根本不会被加载，闸门就
+# 形同虚设；根 conftest 在任何收集方式下都会加载。
+# 详见 tests/_e2e_coverage_guard.py 的说明。
+
+_e2e_executed = 0
+_e2e_skipped = 0
+
+
+def pytest_runtest_logreport(report) -> None:
+    """统计 tests/e2e 下真跑过的用例数；skip 不能算执行。"""
+    global _e2e_executed, _e2e_skipped
+
+    # 只用 nodeid 判定归属：它是 pytest 保证存在且恒为正斜杠路径
+    # （形如 tests/e2e/test_x.py::test_y）。早期版本依赖 report.fspath，
+    # 在 pytest 8 上取不到属性会让所有记账被静默丢弃 —— 那会使闸门在 CI 上
+    # 永远报"0 条真跑"造成假红（实测踩过，故此处不再回退到 fspath）。
+    nodeid = str(getattr(report, "nodeid", "") or "").replace("\\", "/")
+    if not nodeid.startswith("tests/e2e/"):
+        return
+    if report.when == "setup":
+        # fixture 阶段就 skip 的用例进不了 call，只能在这里记账
+        if report.skipped:
+            _e2e_skipped += 1
+        return
+    if report.when != "call":
+        return
+    if report.skipped:
+        _e2e_skipped += 1
+    elif report.passed or report.failed:
+        _e2e_executed += 1
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    """CI（E2E_REQUIRE_MINIMUM=1）下真跑数不足即判失败。"""
+    from tests._e2e_coverage_guard import e2e_minimum_required, evaluate_coverage
+
+    message = evaluate_coverage(
+        _e2e_executed, _e2e_skipped, required=e2e_minimum_required()
+    )
+    if message is None:
+        return
+    print(f"\n[E2E 最低覆盖闸门] {message}")
+    # 即使所有用例都没跑（收集为 0），pytest 原本会以 0 退出 —— 这里强制变红
+    session.exitstatus = 1
+

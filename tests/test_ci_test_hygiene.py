@@ -196,3 +196,56 @@ def test_live_backend_guard_still_skips_for_local_runs(monkeypatch):
     monkeypatch.delenv("REQUIRE_LIVE_BACKEND", raising=False)
     with pytest.raises(pytest.skip.Exception):
         skip_or_fail_no_live_backend(RuntimeError("connection refused"))
+
+
+def test_e2e_coverage_guard_rejects_skip_only_runs(monkeypatch):
+    """e2e 全跳光（0 条真跑）在 CI 下必须判失败 —— skip 不能凑数。
+
+    背景（报告 §十六.2 待办第 2 条）：`_live_backend_guard` 只回答"服务在不在"；
+    浏览器 channel 配错、选择器大面积退化成 skip、甚至 `-m e2e` 选择集被删空，
+    都会留下"0 failed 但几乎没跑"的绿灯。本用例钉住那道最低真跑数闸门本身。
+    """
+    from tests._e2e_coverage_guard import evaluate_coverage
+
+    monkeypatch.delenv("E2E_MIN_EXECUTED", raising=False)
+    message = evaluate_coverage(0, 39, required=True)
+    assert message is not None, "0 条真跑 + 39 条 skip 必须判失败"
+    assert "几乎没跑" in message
+
+    # skip 再多也不能替真跑数达标
+    assert evaluate_coverage(5, 200, required=True, minimum=20) is not None
+    # 本地未开启时不判定
+    assert evaluate_coverage(0, 39, required=False) is None
+
+
+def test_e2e_coverage_guard_threshold_falls_back_instead_of_crashing(monkeypatch):
+    """阈值来自环境变量；坏值必须回退默认而不是把闸门自己弄崩。"""
+    from tests import _e2e_coverage_guard as guard
+
+    monkeypatch.delenv("E2E_MIN_EXECUTED", raising=False)
+    assert guard.min_executed_threshold() == guard.DEFAULT_MIN_EXECUTED
+
+    monkeypatch.setenv("E2E_MIN_EXECUTED", "not-a-number")
+    assert guard.min_executed_threshold() == guard.DEFAULT_MIN_EXECUTED
+
+    monkeypatch.setenv("E2E_MIN_EXECUTED", "10")
+    assert guard.min_executed_threshold() == 10
+    assert guard.evaluate_coverage(12, 0, required=True) is None
+
+
+def test_e2e_minimum_gate_is_wired_into_ci():
+    """只写代码不接线等于没有：CI 步骤必须真的打开这道闸。"""
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "test.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "E2E_REQUIRE_MINIMUM" in workflow
+
+    # 而且必须挂在跑 e2e 的那一步，不是别的 job
+    e2e_step = workflow.split("Run E2E tests", 1)[1].split("- name:", 1)[0]
+    assert "E2E_REQUIRE_MINIMUM" in e2e_step, "e2e 步骤没打开最低真跑数闸门"
+
+    # 钩子必须装在根 conftest：选择集被删空时 tests/e2e/conftest.py 不会被加载
+    conftest = (root / "tests" / "conftest.py").read_text(encoding="utf-8")
+    assert "def pytest_sessionfinish" in conftest
+    assert "_e2e_coverage_guard" in conftest

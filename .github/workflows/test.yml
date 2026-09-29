@@ -126,4 +126,9 @@ jobs:
       - name: Run E2E tests
         env:
           REQUIRE_LIVE_BACKEND: "1"
+          # 服务连通但用例几乎没执行（浏览器不可用 / 选择器大面积退化成 skip /
+          # marker 被删空导致收集为 0）同样等于零覆盖，必须判红。
+          # 断言实现在 tests/conftest.py 的 pytest_sessionfinish，
+          # 阈值与说明见 tests/_e2e_coverage_guard.py。
+          E2E_REQUIRE_MINIMUM: "1"
         run: pytest tests/e2e/ -m e2e --tb=short -q
