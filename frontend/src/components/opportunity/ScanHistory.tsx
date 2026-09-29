@@ -331,7 +331,10 @@ export default function ScanHistory({ className }: ScanHistoryProps) {
     if (loading && items.length === 0) {
       return (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <Spin tip={t("scanHistoryError")} />
+          {/* 同 ExcludedPool：独立 Spin 的 tip 不渲染，且加载态不该用错误文案。 */}
+          <Spin spinning tip={t("loading")}>
+            <div style={{ padding: 48 }} />
+          </Spin>
         </div>
       );
     }

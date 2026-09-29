@@ -261,7 +261,12 @@ export default function ExcludedPool({ className }: ExcludedPoolProps) {
     if (loading && items.length === 0) {
       return (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <Spin tip={t("excludedPoolError")} />
+          {/* 拟真走查发现的两个真问题：
+              1) antd 独立模式下 Spin 的 tip 不渲染且会告警 → 改用嵌套模式；
+              2) 这是加载态，原先却拿错误文案 excludedPoolError 当提示语。 */}
+          <Spin spinning tip={t("loading")}>
+            <div style={{ padding: 48 }} />
+          </Spin>
         </div>
       );
     }

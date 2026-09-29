@@ -303,7 +303,9 @@ def get_data_health(db: Session = Depends(get_db)):
             "stale_symbols": stale_symbols,
             "stale_pct": stale_pct,
             "stale_cutoff": stale_bar_cutoff,
-            "repair_hint": "优先补拉 missing_samples 和 stale_samples 中的标的，再重新运行机会扫描。",
+            # 用户可见文案不得出现 API 字段名（拟真走查发现这里把 missing_samples /
+            # stale_samples 直接印给了用户，见体检报告 §三十七）。
+            "repair_hint": "优先补拉「缺失K线」与「过期K线」清单里的标的，再重新运行机会扫描。",
             "missing_samples": [_format_bar_issue_row(row) for row in missing_samples],
             "stale_samples": [_format_bar_issue_row(row) for row in stale_samples],
         },
