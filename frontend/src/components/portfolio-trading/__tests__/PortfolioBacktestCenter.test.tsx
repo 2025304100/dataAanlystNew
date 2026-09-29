@@ -41,6 +41,9 @@ vi.mock("antd", () => ({
     }),
   },
   Modal: Object.assign(function AntModalMock({ open, title, children, onCancel }: any) { return open ? (<div data-testid="antd-modal" data-title={title ?? ""}>{children}</div>) : null; }, { confirm: vi.fn(), warning: vi.fn() }),
+  Input: ({ value, onChange, placeholder }: { value?: string; onChange?: (e: { target: { value: string } }) => void; placeholder?: string }) => (
+    <input value={value ?? ""} placeholder={placeholder} onChange={(e) => onChange?.({ target: { value: e.target.value } })} />
+  ),
   Space: ({ children }: { children?: React.ReactNode; size?: unknown; direction?: unknown; wrap?: boolean; style?: React.CSSProperties }) => (
     <>{children}</>
   ),
@@ -718,6 +721,46 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     // 响应体字段名不能被当成正文糊出来（那就是"裸 JSON"的症状）
     expect(screen.queryByText(/usable_trade_days/)).not.toBeInTheDocument();
     expect(await screen.findByText(/调整回测区间参数/)).toBeInTheDocument();
+  });
+
+  it("预检阻断项不把后端 tab 常量泄到界面（报告 §三十四）", async () => {
+    // 已登记的去处→显中文名；未登记的→宁可不显示。两种情况下都不能出现常量本身。
+    mockApi.postBacktestPrecheck.mockResolvedValueOnce({
+      requested_trade_days: 261,
+      usable_trade_days: 261,
+      minimum_trade_days: 240,
+      excluded_symbol_days: {},
+      warnings: [],
+      blocking_reasons: [
+        {
+          code: "NO_BACKTEST_SYMBOLS", severity: "error", category: "universe",
+          title_zh: "无可回测标的（阻断）", detail_zh: "当前范围内没有任何可回测标的。",
+          evidence: { symbol_count: 0 },
+          fix_link: { tab: "settings-data-center", label_zh: "去同步基础数据" },
+        },
+        {
+          code: "UNMAPPED_FIX_TAB_SAMPLE", severity: "error", category: "data",
+          title_zh: "未登记去处（回归用）", detail_zh: "tab 是后端新加的常量。",
+          evidence: {},
+          fix_link: { tab: "brand_new_internal_tab", label_zh: "去看运行日志" },
+        },
+      ],
+      filter_config_hash: "cfg-tab-leak",
+      production_fidelity: true,
+    });
+    render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
+    await waitFor(() => { expect(mockApi.postBacktestPrecheck).toHaveBeenCalledTimes(1); });
+
+    const fixes = await screen.findAllByTestId("precheck-blocker-fix");
+    expect(fixes.length).toBe(2);
+    // 本文件把 t mock 成返回 key，所以能确认“走了映射”而不是透传常量
+    expect(fixes[0].textContent).toContain("precheckFixTab.dataCenter");
+    // 两条都不能把后端常量留在界面上
+    expect(fixes[0].textContent).not.toContain("settings-data-center");
+    expect(fixes[1].textContent).not.toContain("brand_new_internal_tab");
+    // 未登记的去处：指引文字保留，括号里的去处宁可不显示
+    expect(fixes[1].textContent).toContain("去看运行日志");
+    expect(fixes[1].querySelector("[data-field='fix_tab_label']")).toBeNull();
   });
 
   it("预检通过点击提交成功 - POST 调用 + run_id 2031 + 日期保留", async () => {

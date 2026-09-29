@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownAZ, ArrowUpAZ, History, Play, RotateCcw, X, Calendar, CheckCircle2, Search, FileText, Loader2, AlertTriangle } from "lucide-react";
-import { DatePicker, App as AntApp, Modal, Progress, Space, Tag } from "antd";
+import { DatePicker, App as AntApp, Input, Modal, Progress, Space, Tag } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import localeData from "dayjs/plugin/localeData";
 import weekday from "dayjs/plugin/weekday";
@@ -17,6 +17,8 @@ import { renderReasonToString, normalizeBackendError } from "../../utils/errorRe
 import type { BacktestPosition, BacktestRun, BacktestTrade } from "../../types";
 // WP1-1: 证据与归因抽屉
 import DecisionEvidenceDrawer from "./DecisionEvidenceDrawer";
+// 预检阻断项去处文案（不把后端 tab 常量泄给用户，报告 §三十四）
+import { describeFixTab } from "../../utils/precheckFixLink";
 
 // Ant Design's Day.js date adapter calls weekday() and localeData() when its calendar opens.
 dayjs.extend(localeData);
@@ -573,6 +575,9 @@ const cutoffMismatchToastFiredRef = useRef(false);
   const { message } = AntApp.useApp();
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [evidenceRunId, setEvidenceRunId] = useState<string | null>(null);
+  // VIZ-0929-13：decision_run_id 输入用应用内 Modal，替代嵌入式浏览器会被拦截的 window.prompt
+  const [evidenceIdModalOpen, setEvidenceIdModalOpen] = useState(false);
+  const [evidenceIdInput, setEvidenceIdInput] = useState("");
   const [evidenceId, setEvidenceId] = useState<string | null>(null);
   const [evidenceRun, setEvidenceRun] = useState<DecisionRunRead | null>(null);
   const [evidencePreview, setEvidencePreview] = useState<DecisionEvidenceRead[]>([]);
@@ -1340,11 +1345,7 @@ const cutoffMismatchToastFiredRef = useRef(false);
                     setEvidenceOpen(true);
                     return;
                   }
-                  const id = window.prompt(
-                    "请输入要查看的 decision_run_id（可从 GET /portfolios/{pid}/decision-runs 列表获取）",
-                    "",
-                  );
-                  if (id && id.trim()) openEvidenceByRunId(id.trim());
+                  setEvidenceIdModalOpen(true);
                 }}
                 disabled={!portfolioId}
                 title="查看指定 decision_run_id 的完整证据抽屉"
@@ -1435,6 +1436,36 @@ const cutoffMismatchToastFiredRef = useRef(false);
         onSelect={loadHistoryItem}
       />
 
+      {/* VIZ-0929-13：decision_run_id 应用内输入弹窗 */}
+      <Modal
+        open={evidenceIdModalOpen}
+        title="查看指定决策证据"
+        okText="打开"
+        cancelText="取消"
+        okButtonProps={{ disabled: !evidenceIdInput.trim() }}
+        onOk={() => {
+          const v = evidenceIdInput.trim();
+          setEvidenceIdModalOpen(false);
+          if (v) openEvidenceByRunId(v);
+        }}
+        onCancel={() => setEvidenceIdModalOpen(false)}
+      >
+        <Input
+          autoFocus
+          placeholder="粘贴 decision_run_id"
+          value={evidenceIdInput}
+          onChange={(e) => setEvidenceIdInput(e.target.value)}
+          onPressEnter={() => {
+            const v = evidenceIdInput.trim();
+            setEvidenceIdModalOpen(false);
+            if (v) openEvidenceByRunId(v);
+          }}
+        />
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--pt-muted-foreground)" }}>
+          点击「生成决策证据」会自动创建并打开；也可从历史决策记录中复制 ID。
+        </div>
+      </Modal>
+
 ﻿      {/* ========== 预检阻断弹窗（T12.3 7 字段结构化渲染） ========== */}
       <Modal
         open={blockingOpen}
@@ -1512,9 +1543,20 @@ const cutoffMismatchToastFiredRef = useRef(false);
                     </span>
                   </div>
                   {normalized.detail_zh && (
-                    <div data-field="detail_zh" style={{ fontSize: 13 }}>
-                      {normalized.detail_zh}
-                    </div>
+                    // VIZ-0929-09：UNKNOWN_ERROR 的 detail_zh 常是整段原始响应 JSON，
+                    // 直糊在弹窗上对用户既是噪音又可能溢出；折叠 + 截断，保留调试能力。
+                    normalized.error_code === "UNKNOWN_ERROR" ? (
+                      <details style={{ fontSize: 12 }}>
+                        <summary style={{ cursor: "pointer", color: "var(--pt-muted-foreground)" }}>原始响应（调试用）</summary>
+                        <pre style={{ margin: "8px 0 0", maxHeight: 160, overflow: "auto", whiteSpace: "pre-wrap", fontSize: 11 }}>
+                          {String(normalized.detail_zh).slice(0, 2000)}
+                        </pre>
+                      </details>
+                    ) : (
+                      <div data-field="detail_zh" style={{ fontSize: 13 }}>
+                        {normalized.detail_zh}
+                      </div>
+                    )
                   )}
                   {normalized.impact && (
                     <div data-field="impact" style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>
@@ -1552,12 +1594,18 @@ const cutoffMismatchToastFiredRef = useRef(false);
                       </div>
                       {gap && <div style={{ marginTop: 6, fontSize: 13 }} data-testid="precheck-blocker-gap">{gap}</div>}
                       {/* PT-DEF-25c：每条阻断项把自己的修复指引摊开，不再只说"被阻断" */}
-                      {b?.fix_link?.label_zh && (
-                        <div style={{ marginTop: 6, fontSize: 12 }} data-testid="precheck-blocker-fix">
-                          下一步：{b.fix_link.label_zh}
-                          {b.fix_link.tab ? <span style={{ color: "var(--pt-muted-foreground)" }}>（{b.fix_link.tab}）</span> : null}
-                        </div>
-                      )}
+                      {b?.fix_link?.label_zh && (() => {
+                        // 去处只显中文页签名；tab 是后端常量，未知时宁可不显示（报告 §三十四）
+                        const fixWhere = describeFixTab(b.fix_link.tab);
+                        return (
+                          <div style={{ marginTop: 6, fontSize: 12 }} data-testid="precheck-blocker-fix">
+                            下一步：{b.fix_link.label_zh}
+                            {fixWhere ? (
+                              <span data-field="fix_tab_label" style={{ color: "var(--pt-muted-foreground)" }}>（{fixWhere}）</span>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}

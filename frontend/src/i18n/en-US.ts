@@ -4888,6 +4888,11 @@ const enUS: Record<string, string> = {
     "portfolioTrading.reviews.failed": "Failed to load or save",
     "portfolioTrading.reviews.empty": "No reviews yet",
     "portfolioTrading.reviews.invalidRange": "End date must not be earlier than start date",
+    // Where a precheck blocker's fix_link points; never show the raw backend constant.
+    "precheckFixTab.portfolioBacktest": "Portfolio backtest",
+    "precheckFixTab.dataCenter": "Settings · Data center",
+    "precheckFixTab.factors": "Factor center",
+    "precheckFixTab.settings": "Settings",
     "portfolioTrading.header.addCandidate": "Add Candidate",
     "portfolioTrading.header.noPortfolio": "No Portfolio",
 

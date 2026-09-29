@@ -4889,6 +4889,11 @@ const zhCN: Record<string, string> = {
     "portfolioTrading.reviews.failed": "加载或保存失败",
     "portfolioTrading.reviews.empty": "暂无复盘记录",
     "portfolioTrading.reviews.invalidRange": "结束日期不能早于开始日期",
+    // 预检阻断项的修复去处（按 fix_link.tab 映射，不得把后端常量直接给用户看）
+    "precheckFixTab.portfolioBacktest": "组合回测",
+    "precheckFixTab.dataCenter": "设置 · 数据中心",
+    "precheckFixTab.factors": "因子中心",
+    "precheckFixTab.settings": "设置",
     "portfolioTrading.header.addCandidate": "添加候选标的",
     "portfolioTrading.header.noPortfolio": "暂无组合",
 
