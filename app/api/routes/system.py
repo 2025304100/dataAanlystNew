@@ -304,7 +304,7 @@ def get_data_health(db: Session = Depends(get_db)):
             "stale_pct": stale_pct,
             "stale_cutoff": stale_bar_cutoff,
             # 用户可见文案不得出现 API 字段名（拟真走查发现这里把 missing_samples /
-            # stale_samples 直接印给了用户，见体检报告 §三十七）。
+            # stale_samples 直接印给了用户，见 docs/拟真走查与全量验证-2026-09-30.md）。
             "repair_hint": "优先补拉「缺失K线」与「过期K线」清单里的标的，再重新运行机会扫描。",
             "missing_samples": [_format_bar_issue_row(row) for row in missing_samples],
             "stale_samples": [_format_bar_issue_row(row) for row in stale_samples],
@@ -477,6 +477,13 @@ def list_unified_tasks(
     """统一任务历史：聚合 async_tasks 和 discovery_tasks，按时间倒序。"""
     import json as _json
 
+    # VIZ-0929-15：30 分钟超时兜底此前只挂在 create/get/list 三个服务层入口，
+    # 这个聚合视图绕过了它们，运行期死掉的 worker 就永久停在 running（前端一直转圈）。
+    # 读列表时就地过期，和 /system/tasks/{id} 的懒检查保持同一口径。
+    from app.services.async_tasks import _expire_stale_tasks
+
+    _expire_stale_tasks(db)
+
     items: list[dict] = []
 
     # --- async_tasks (market_data_sync / history_initialization) ---
@@ -637,6 +644,10 @@ def list_unified_tasks(
 @router.get("/system/task-observability")
 def get_task_observability(db: Session = Depends(get_db)):
     """Expose cross-domain slots, waiting reasons and live throughput."""
+    from app.services.async_tasks import _expire_stale_tasks
+
+    # VIZ-0929-15：僵尸 running 同样会把可观测面板的活跃数虚高，先过期再统计。
+    _expire_stale_tasks(db)
     active = db.execute(
         select(AsyncTaskRecord)
         .where(AsyncTaskRecord.status.in_(("queued", "running")))

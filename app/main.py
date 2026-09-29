@@ -697,15 +697,26 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             override_user_message = detail.strip()
 
     if isinstance(exc.detail, dict):
-        # PT-DEF-25b：detail 已经是 7 要素字典时，不把整个 dict 的 repr 塞进技术细节。
-        # 旧写法 str(detail) 会把 blocking_reasons / 内部 correlation_id 等一并打进
-        # error_message（长度不可控，且被截成半截 JSON），违反错误信息脱敏口径。
-        tech_message = " ".join(
-            part for part in (
-                str(exc.detail.get("error_code") or ""),
-                str(exc.detail.get("title_zh") or exc.detail.get("detail_zh") or ""),
-            ) if part
-        )
+        # PT-DEF-25b：detail 已是结构化 dict 时，不把整个 dict 的 repr 塞进技术细节。
+        # 旧写法 str(detail) 会把 blocking_reasons / 内部 correlation_id 一并打进
+        # error_message（长度不可控、被截成半截 JSON），违反错误信息脱敏口径。
+        #
+        # 但 25b 不能只认 7 要素字段：实测回归——MemberHasPositionError 用的是
+        # error / message，当时被拼成空串，运维在 technical_details 里什么都看不到。
+        # 保留“不打 repr”的前提，按候选键依次取人可读字段。
+        detail_dict = exc.detail
+        tech_parts = [
+            str(detail_dict.get("error_code") or detail_dict.get("error") or ""),
+            str(
+                detail_dict.get("title_zh")
+                or detail_dict.get("detail_zh")
+                or detail_dict.get("message")
+                or detail_dict.get("detail")
+                or ""
+            ),
+            str(detail_dict.get("suggestion") or ""),
+        ]
+        tech_message = " | ".join(part for part in tech_parts if part)
     else:
         tech_message = str(exc.detail)
 

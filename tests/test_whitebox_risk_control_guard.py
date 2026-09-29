@@ -492,11 +492,18 @@ class TestProbeExecutorShutdown:
     """守护 main lifespan 退出阶段会 shutdown 探测线程池。"""
 
     def test_lifespan_shutdown_probe_executor(self):
-        """lifespan 函数源码应包含 _PROBE_EXECUTOR.shutdown 调用。"""
+        """lifespan 退出阶段应关停探测线程池（通过函数，而不是抓模块变量）。
+
+        PT-DEF-27 后改成 `shutdown_probe_executor()`：旧写法 `import _PROBE_EXECUTOR`
+        只能关到“当时那个”对象，线程池一旦重建就再也关不到。
+        这里同时守住两件事：关停动作仍在，且不再依赖那个模块变量名。
+        """
         import inspect
         from app.main import lifespan
         source = inspect.getsource(lifespan)
-        assert "_PROBE_EXECUTOR" in source
+        assert "shutdown_probe_executor" in source, (
+            "lifespan 不再关停探测线程池了（会泄漏线程）"
+        )
         assert "shutdown" in source
 
     def test_lifespan_no_silent_exception_swallow(self):

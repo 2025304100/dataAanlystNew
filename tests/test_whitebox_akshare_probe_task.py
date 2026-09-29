@@ -284,3 +284,51 @@ def test_probe_still_works_after_app_shutdown_closed_the_executor(monkeypatch):
     assert st.result is not None and st.result.success is True
     # 重建后的新池要留给后续用例，不能又是个已关闭的对象
     assert getattr(m._PROBE_EXECUTOR, "_shutdown", False) is False
+
+
+def test_probe_success_is_visible_in_logs(db_session, monkeypatch, caplog):
+    """【P0 运维可观测】探测完成必须进 INFO 日志（旧同步时代的规定动作，不能随重构丢）。
+
+    移植自 test_whitebox_probe_thread_pool.py：那两条是针对旧 `probe_api()` 写的，
+    探测任务化后入口已不存在（它们直接报 AttributeError），所以这里按新入口重建。
+    """
+    import logging
+
+    _fake_run_probe(monkeypatch, value=pd.DataFrame([{"close": 1.0}]))
+    with caplog.at_level(logging.INFO, logger="app.api.routes.akshare_apis"):
+        accepted = m.submit_probe(API_KEY)
+    st = m.get_probe_status(accepted.task_id)
+    assert st.status == "done"
+    infos = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+    assert any(f"probe {API_KEY} done" in msg for msg in infos), (
+        f"探测完成没进 INFO 日志，运维无法从日志定位：{infos[:6]}"
+    )
+
+
+def test_probe_hard_limit_is_visible_in_warning_logs(monkeypatch, caplog):
+    """【P0 运维可观测】超硬上限必须进 WARNING 日志（历史问题：超时只写库不留痕）。"""
+    import logging
+
+    monkeypatch.setattr(m, "_PROBE_HEARTBEAT_SECONDS", 0.05)
+    monkeypatch.setattr(m, "_PROBE_HARD_LIMIT_SECONDS", 0.2)
+
+    class _Stuck:
+        def submit(self, fn, *a, **kw):
+            return self
+
+        def result(self, timeout=None):
+            time.sleep(timeout or 0.05)
+            raise FutureTimeout
+
+        def cancel(self):
+            pass
+
+    monkeypatch.setattr(m, "_PROBE_EXECUTOR", _Stuck())
+    with caplog.at_level(logging.WARNING, logger="app.api.routes.akshare_apis"):
+        accepted = m.submit_probe(API_KEY)
+    st = m.get_probe_status(accepted.task_id)
+    assert st.stage == "timeout"
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any(API_KEY in msg and "HARD LIMIT" in msg for msg in warnings), (
+        f"超硬上限没留 WARNING 日志，超时事件会隐形：{warnings[:6]}"
+    )
