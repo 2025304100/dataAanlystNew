@@ -13,8 +13,8 @@ import type { Portfolio, PortfolioStatus } from "../../types";
  * + 组合列表（选中项左侧 3px 青色竖条 + 浅青背景 + 收益率红绿 + 实盘/模拟标签 + check 图标）
  * + 底部「新建组合」按钮。
  *
- * 数据派生：AppContext.portfolios（account_type/created_at 取真值；returnPct/symbolCount 按 id
- * 取模分配稳定的 mock 值，与 PortfolioRankingDrawer 一致 —— 无专用 performance/标的数 API）。
+ * 数据派生：AppContext.portfolios（account_type/created_at 取真值；returnPct/symbolCount 走
+ * getPortfolioPerformance + getPositions 真实接口，取不到显示 "--"）。
  *
  * 仅渲染面板内容（不含触发按钮）。面板 position:absolute/top:100%/left:0，由父组件的 relative
  * 容器决定落点；open=false 返回 null。
@@ -44,10 +44,6 @@ interface PortfolioItem {
   status: PortfolioStatus | string | null;
 }
 
-/* 真实组合无 performance/标的数时的 mock 池（按 id 取模分配，保证稳定；与 PortfolioRankingDrawer 一致） */
-const MOCK_PERF_RETURNS = [35.2, 28.7, 22.1, 18.5, 12.3, 8.9, 3.2, -2.1];
-const MOCK_SYMBOL_COUNTS = [8, 12, 6, 10, 15, 7, 9, 11];
-
 /** 9 状态色板（与 PortfolioGovernanceTab 一致，未识别值降级为灰色） */
 const STATUS_STYLES: Partial<Record<PortfolioStatus | string, { bg: string; fg: string; border: string; dot: string }>> = {
   PENDING_INITIAL_REVIEW: { bg: "#fef3c7", fg: "#7c2d12", border: "#f59e0b", dot: "#f59e0b" },
@@ -63,7 +59,7 @@ const STATUS_STYLES: Partial<Record<PortfolioStatus | string, { bg: string; fg: 
 };
 const STATUS_FALLBACK = { bg: "#f3f4f6", fg: "#374151", border: "#9ca3af", dot: "#9ca3af" };
 
-/** 将真实 Portfolio 派生为下拉项（returnPct/symbolCount 用 mock 池稳定分配）。 */
+/** 将真实 Portfolio 派生为下拉项；绩效/标的数留给异步真实值覆盖。 */
 function deriveItem(p: Portfolio): PortfolioItem {
   const isLive = p.account_type === "manual";
   // 成立天数：从 created_at 计算，解析失败回退 90 天
@@ -76,7 +72,8 @@ function deriveItem(p: Portfolio): PortfolioItem {
   } catch {
     /* ignore */
   }
-  const seed = Math.abs(p.id) % MOCK_PERF_RETURNS.length;
+  // VIZ-0929-16：这里曾经按 id 取模分配 mock 收益率/标的数，绩效接口到货之前（以及接口失败的
+  // 组合）会把伪造数字摊在切换器上。真实值稍后由 perfOverride 覆盖，取不到就渲染 "--"。
   return {
     id: p.id,
     name: p.name,
@@ -84,14 +81,17 @@ function deriveItem(p: Portfolio): PortfolioItem {
     isLive,
     isDefault: Number(p.is_default) === 1,
     establishedDays,
-    symbolCount: MOCK_SYMBOL_COUNTS[seed],
-    returnPct: MOCK_PERF_RETURNS[seed],
+    symbolCount: NaN,
+    returnPct: NaN,
     status: p.portfolio_status ?? null,
   };
 }
 
-/** 收益率格式化：正绿负红，正值带 + 号。 */
+/** 收益率格式化：正绿负红，正值带 + 号；无真实数据（NaN）显示 "--" 而不是 0.0%。 */
 function formatReturn(value: number): { text: string; color: string } {
+  if (!Number.isFinite(value)) {
+    return { text: "--", color: "var(--pt-muted-foreground)" };
+  }
   const sign = value > 0 ? "+" : "";
   return {
     text: `${sign}${value.toFixed(1)}%`,
@@ -113,7 +113,7 @@ const PortfolioSelectorDropdown: React.FC<PortfolioSelectorDropdownProps> = ({
   // 真实指标覆盖：id → { returnPct?, symbolCount? }，异步加载后填充
   const [perfOverride, setPerfOverride] = useState<Record<number, { returnPct?: number; symbolCount?: number }>>({});
 
-  // 派生组合项（从 AppContext.portfolios，returnPct/symbolCount 优先用真实覆盖值，回退 mock）
+  // 派生组合项（真实绩效到货前为 NaN，渲染成 "--"）
   const items = useMemo<PortfolioItem[]>(() => {
     return (portfolios ?? []).map((p) => {
       const base = deriveItem(p);
@@ -130,7 +130,7 @@ const PortfolioSelectorDropdown: React.FC<PortfolioSelectorDropdownProps> = ({
   }, [portfolios, perfOverride]);
 
   // 异步加载真实 returnPct（getPortfolioPerformance）+ symbolCount（getPositions）
-  // Promise.allSettled 容错，单组合失败保留 mock 兜底，不阻塞 UI
+  // Promise.allSettled 容错，单组合失败保持 "--"，不阻塞 UI
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -425,7 +425,9 @@ const PortfolioSelectorDropdown: React.FC<PortfolioSelectorDropdownProps> = ({
                   >
                     {template("portfolioTrading.selector.established", { days: item.establishedDays })}
                     {" · "}
-                    {template("portfolioTrading.selector.symbols", { count: item.symbolCount })}
+                    {template("portfolioTrading.selector.symbols", {
+                      count: Number.isFinite(item.symbolCount) ? item.symbolCount : "--",
+                    })}
                     {item.status && (
                       <>
                         {" · "}

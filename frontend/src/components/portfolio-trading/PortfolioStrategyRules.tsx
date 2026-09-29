@@ -1190,6 +1190,13 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
 
         {/* ---------- 右侧：2. 条件模型与风控 ---------- */}
         <div className="pt-card" style={{ overflow: "hidden" }}>
+          {/* VIZ-0929-16：这些控件在加载期是 disabled 的，但原生 disabled 元素不触发 hover，
+              Tooltip 挂了也看不见，所以用一行就地说明交代"为什么现在改不了"。 */}
+          {loading && (
+            <div style={{ padding: "8px 16px", fontSize: 12, color: "var(--pt-muted-foreground, #6b7280)" }}>
+              {t("portfolioTrading.strategy.fieldsLoadingHint")}
+            </div>
+          )}
           <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--pt-border)" }}>
             <h3 style={sectionTitleStyle}>{t("portfolioTrading.strategy.conditionTitle")}</h3>
             <p style={sectionSubStyle}>{t("portfolioTrading.strategy.conditionSub")}</p>

@@ -10,6 +10,11 @@ import { t, template } from "../i18n";
 
 const { Paragraph, Text } = Typography;
 
+// VIZ-0929-16：分维度换算系数必须与后端总分同源（app/services/macro.py 的
+// `50 + weighted * 2.25`）。此前前端脉搏/雷达用 ×2.5，同一原始值会出现
+// "脉搏 68 / 总分口径 66" 两套数，用户无从判断哪个是真的。
+const MACRO_DIM_SCALE = 2.25;
+
 function indicatorName(row: MacroIndicator) {
   const key = "macro_indicator_" + row.indicator_key;
   const translated = t(key);
@@ -358,7 +363,7 @@ export default function MacroData() {
   }, [snapshot]);
 
   const radarOption = useMemo(() => {
-    const values = dimensionRows.map((row) => Math.max(0, Math.min(100, 50 + row.value * 2.5)));
+    const values = dimensionRows.map((row) => Math.max(0, Math.min(100, 50 + row.value * MACRO_DIM_SCALE)));
     return {
       tooltip: {},
       radar: {
@@ -613,7 +618,7 @@ export default function MacroData() {
                   growth: "\ud83d\udcca", inflation: "\ud83d\udd25", liquidity: "\ud83d\udcb0",
                   credit: "\ud83d\udcc8", risk: "\u26a0\ufe0f",
                 };
-                const val = Math.max(0, Math.min(100, 50 + dim.value * 2.5));
+                const val = Math.max(0, Math.min(100, 50 + dim.value * MACRO_DIM_SCALE));
                 const level = val >= 68 ? "good" : val <= 42 ? "bad" : "neutral";
                 return (
                   <div key={dim.key} className={`macro__pulse-item macro__pulse--${level}`}>

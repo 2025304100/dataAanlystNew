@@ -823,3 +823,52 @@ def test_symbol_detail_works_when_bars_present(db_session):
     assert result.latest_trade_setup is not None
     assert len(result.bars) == 30
 
+def test_symbol_detail_score_history_dedupes_same_trade_date(db_session):
+    """VIZ-0929-16：同一 (symbol, trade_date) 有两个批次时，评分历史只给一条（最新那条）。
+
+    历史成因：老硬编码写入 manual-* 批次，之后预设引擎以 sc-* 批次回填同一天；
+    唯一键 uq_score_symbol_date_batch 含 calc_batch_id，拦不住这种跨路径重复。
+    生效分本来就取最大 id，但历史列表若不去重，用户会看到同一天两个不同的分。
+    """
+    from datetime import date
+
+    from app.api.routes.dashboard import get_symbol_detail_panel
+    from app.models.portfolio import Portfolio
+    from app.models.score import Score
+    from app.models.symbol import Symbol
+
+    db = db_session
+    portfolio = Portfolio(
+        name="PF Dedupe", account_type="stock", total_capital=100000.0,
+        investable_ratio=0.8, cash_reserve_ratio=0.2, currency="CNY",
+    )
+    db.add(portfolio)
+    db.flush()
+    symbol = Symbol(symbol="588999", name="去重测试ETF", asset_type="etf", market="sh", is_active=1)
+    db.add(symbol)
+    db.flush()
+
+    def make(batch: str, quality: float) -> Score:
+        row = Score(
+            symbol_id=symbol.id, trade_date=date.today(), quality_score=quality,
+            quality_grade="B", timing_score=60.0, stage="start", action="open",
+            priority_score=quality, calc_batch_id=batch,
+        )
+        db.add(row)
+        db.flush()
+        return row
+
+    old = make("manual-2026-07-03", 53.0)
+    new = make("sc-1-v1-2026-07-03", 57.0)
+    db.commit()
+
+    result = get_symbol_detail_panel(
+        symbol_id=symbol.id, portfolio_id=portfolio.id, db=db,
+        sample_limit=None, bar_limit=60,
+    )
+    dates = [row["trade_date"] for row in result.score_history]
+    assert len(dates) == len(set(dates)), f"评分历史出现同一交易日多条：{dates}"
+    assert len(result.score_history) == 1
+    assert result.score_history[0]["quality_score"] == 57.0  # 保留的是最新批次
+    assert int(result.score_history[0]["id"]) == new.id
+    assert old.id != new.id

@@ -579,9 +579,22 @@ def get_symbol_detail_panel(
         .where(TradeSetup.symbol_id == symbol_id, TradeSetup.portfolio_id == portfolio_id)
         .order_by(desc(TradeSetup.created_at), desc(TradeSetup.id))
     ).scalars().first()
-    score_rows = db.execute(
-        score_stmt.order_by(desc(Score.trade_date), desc(Score.id)).limit(20)
+    # VIZ-0929-16：同一 (symbol, trade_date) 可能并存多行（历史遗留：老硬编码写 manual-* 批次，
+    # 之后预设引擎以 sc-* 批次回填同日，唯一键含 calc_batch_id 拦不住）。生效分取的是最大 id，
+    # 历史列表若不去重就会把同一天两条不同值的记录一起摊给用户看。
+    # 多版本（factor 流水线 ridge 批次）是有意保留的，因此只在读侧按日挑最新，不动唯一约束。
+    raw_score_rows = db.execute(
+        score_stmt.order_by(desc(Score.trade_date), desc(Score.id)).limit(60)
     ).scalars().all()
+    score_rows = []
+    seen_dates: set = set()
+    for row in raw_score_rows:
+        if row.trade_date in seen_dates:
+            continue
+        seen_dates.add(row.trade_date)
+        score_rows.append(row)
+        if len(score_rows) >= 20:
+            break
     if not score_rows and latest_score is not None:
         score_rows = [latest_score]
     journal_rows = db.execute(

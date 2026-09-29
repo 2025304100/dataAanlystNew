@@ -2,7 +2,6 @@ import React, { useMemo, useState, useCallback, useEffect } from "react";
 import { X, Calendar, Layers, ChevronRight, Loader2 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { t, template } from "../../i18n";
-import type { Portfolio } from "../../types";
 import { api } from "../../api/client";
 
 /**
@@ -11,9 +10,8 @@ import { api } from "../../api/client";
  * 一比一还原原型图「组合排名抽屉.html」：480px 右侧抽屉，3 子 Tab（收益率/最大回撤/夏普比率）
  * + 排名列表（排名徽章 + 组合名 + 实盘/模拟标签 + 成立天数 + 标的数 + 指标值 + 查看按钮）+ 底部操作栏。
  *
- * 数据派生：优先使用 AppContext.portfolios（真实组合，account_type/created_at 取真值，
- * performance 无专用 API → 按 id 取模分配稳定的 mock 指标值）；若 portfolios 为空，回退到
- * 对齐原型图的 8 个 mock 组合。
+ * 数据派生：只用 AppContext.portfolios（真实组合）+ 真实绩效接口；
+ * 绩效拿不到就渲染 "--"，没有组合就走空态——不再用 mock 组合/mock 指标冒充业绩（VIZ-0929-16）。
  *
  * i18n key 前缀：portfolioTrading.ranking.* 与 portfolioTrading.tag.*（由 Task 13 补全，
  * 缺失时 t()/template() 返回 key 字符串，不阻塞编译）。
@@ -38,49 +36,6 @@ interface RankingItem {
   sharpe: number; // 夏普比率
 }
 
-/* ---------- mock 数据（对齐原型图 8 个组合，portfolios 为空时回退使用） ---------- */
-const MOCK_RANKING: RankingItem[] = [
-  { id: 9001, name: "稳健增强组合", isLive: true, establishedDays: 186, symbolCount: 8, returnPct: 35.2, maxDrawdownPct: -5.8, sharpe: 2.84 },
-  { id: 9002, name: "成长优选组合", isLive: true, establishedDays: 142, symbolCount: 12, returnPct: 28.7, maxDrawdownPct: -8.2, sharpe: 2.15 },
-  { id: 9003, name: "低波红利组合", isLive: false, establishedDays: 96, symbolCount: 6, returnPct: 22.1, maxDrawdownPct: -3.5, sharpe: 3.02 },
-  { id: 9004, name: "科技龙头组合", isLive: true, establishedDays: 210, symbolCount: 10, returnPct: 18.5, maxDrawdownPct: -12.1, sharpe: 1.68 },
-  { id: 9005, name: "医药创新组合", isLive: false, establishedDays: 78, symbolCount: 15, returnPct: 12.3, maxDrawdownPct: -15.6, sharpe: 1.24 },
-  { id: 9006, name: "消费白马组合", isLive: true, establishedDays: 165, symbolCount: 7, returnPct: 8.9, maxDrawdownPct: -6.4, sharpe: 1.93 },
-  { id: 9007, name: "周期轮动组合", isLive: false, establishedDays: 54, symbolCount: 9, returnPct: 3.2, maxDrawdownPct: -22.3, sharpe: 0.56 },
-  { id: 9008, name: "量化对冲组合", isLive: true, establishedDays: 120, symbolCount: 11, returnPct: -2.1, maxDrawdownPct: -4.2, sharpe: 0.89 },
-];
-
-/* 真实组合无 performance 时的 mock 指标池（按 id 取模分配，保证稳定） */
-const MOCK_PERF_RETURNS = [35.2, 28.7, 22.1, 18.5, 12.3, 8.9, 3.2, -2.1];
-const MOCK_PERF_DRAWDOWNS = [-5.8, -8.2, -3.5, -12.1, -15.6, -6.4, -22.3, -4.2];
-const MOCK_PERF_SHARPES = [2.84, 2.15, 3.02, 1.68, 1.24, 1.93, 0.56, 0.89];
-const MOCK_SYMBOL_COUNTS = [8, 12, 6, 10, 15, 7, 9, 11];
-
-/** 将真实 Portfolio 派生为 RankingItem（performance/标的数用 mock 池稳定分配）。 */
-function deriveFromPortfolio(p: Portfolio): RankingItem {
-  const isLive = p.account_type === "manual";
-  // 成立天数：从 created_at 计算，解析失败回退 90 天
-  let establishedDays = 90;
-  try {
-    const created = new Date(p.created_at);
-    if (!isNaN(created.getTime())) {
-      establishedDays = Math.max(1, Math.floor((Date.now() - created.getTime()) / 86400000));
-    }
-  } catch {
-    /* ignore */
-  }
-  const seed = Math.abs(p.id) % MOCK_PERF_RETURNS.length;
-  return {
-    id: p.id,
-    name: p.name,
-    isLive,
-    establishedDays,
-    symbolCount: MOCK_SYMBOL_COUNTS[seed],
-    returnPct: MOCK_PERF_RETURNS[seed],
-    maxDrawdownPct: MOCK_PERF_DRAWDOWNS[seed],
-    sharpe: MOCK_PERF_SHARPES[seed],
-  };
-}
 
 /** 排名徽章样式：1 金 / 2 银 / 3 铜 / 其余默认。圆形 28x28，font-weight 700。 */
 function rankBadgeStyle(rank: number): React.CSSProperties {
@@ -194,7 +149,9 @@ const PortfolioRankingDrawer: React.FC<PortfolioRankingDrawerProps> = ({
     return () => { cancelled = true; };
   }, [open, portfolios]);
 
-  // 派生排名数据：优先用真实组合 + 真实绩效；无组合则用原型图 mock；绩效 NaN 显示为 --
+  // 派生排名数据：只用真实组合 + 真实绩效；绩效取不到就是 NaN（渲染成 "--"）。
+  // VIZ-0929-16：此前没有组合时会铺 8 条原型图 mock 组合，用户看到的是伪造的收益率/夏普，
+  // 现在改为空列表走空态——宁可显示"无数据"，也不给一套看起来像真业绩的数字。
   const items = useMemo<RankingItem[]>(() => {
     const baseList: RankingItem[] = [];
     if (portfolios && portfolios.length > 0) {
@@ -220,8 +177,6 @@ const PortfolioRankingDrawer: React.FC<PortfolioRankingDrawerProps> = ({
           sharpe: real?.sharpe ?? NaN,
         });
       }
-    } else {
-      baseList.push(...MOCK_RANKING);
     }
     return baseList;
   }, [portfolios, perfMap]);

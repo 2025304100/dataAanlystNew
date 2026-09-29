@@ -92,6 +92,20 @@ interface ScanRunItem {
   snapshot_record?: Record<string, unknown> | null;
 }
 
+/**
+ * VIZ-0929-16：详情弹窗原先把后端返回的 null 原样打印成字面量 "null"，
+ * 满屏 null 看起来像接口坏了，实际是任务式扫描本来就不产生评分快照。
+ * 统一渲染成 "-"，与列表列的 `?? "-"` 风格一致。
+ */
+function presentable(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(obj).map(([key, value]) => [
+      key,
+      value === null || value === undefined || value === "" ? "-" : value,
+    ]),
+  );
+}
+
 const SCOPE_OPTIONS = [
   { value: "cn-stock", label: "cn-stock" },
   { value: "cn-etf", label: "cn-etf" },
@@ -403,9 +417,14 @@ export default function ScanHistory({ className }: ScanHistoryProps) {
         )}
         <div style={{ marginBottom: 8 }}>
           <strong>{t("scanHistoryDetailSnapshot")}:</strong>
+          {item.snapshot_id == null && (
+            <span style={{ fontSize: 12, color: "var(--pt-muted-foreground, #6b7280)", marginLeft: 8 }}>
+              {t("scanHistoryNoSnapshotHint")}
+            </span>
+          )}
           <pre style={{ margin: "4px 0", padding: 8, background: "#f5f5f5", maxHeight: 200, overflow: "auto", fontSize: 12 }}>
             {JSON.stringify(
-              {
+              presentable({
                 snapshot_id: item.snapshot_id,
                 scope: item.snapshot_scope ?? item.scope,
                 trade_date: item.snapshot_trade_date,
@@ -420,17 +439,18 @@ export default function ScanHistory({ className }: ScanHistoryProps) {
                 weight_mode: item.weight_mode,
                 factor_model_run_id: item.factor_model_run_id,
                 data_cutoff_at: item.snapshot_data_cutoff_at,
-              },
+                }),
               null,
               2,
-            )}
+              )}
           </pre>
         </div>
         <div style={{ marginBottom: 8 }}>
           <strong>{t("scanHistoryDetailTask")}:</strong>
           <pre style={{ margin: "4px 0", padding: 8, background: "#f5f5f5", maxHeight: 200, overflow: "auto", fontSize: 12 }}>
             {JSON.stringify(
-              {
+                presentable({
+
                 task_id: item.task_id,
                 scope: item.scope,
                 min_score: item.min_score,
@@ -441,17 +461,18 @@ export default function ScanHistory({ className }: ScanHistoryProps) {
                 portfolio_id: item.portfolio_id,
                 portfolio_rule_id: item.portfolio_rule_id,
                 degraded_reason: item.degraded_reason ?? item.task_degraded_reason,
-              },
+                }),
               null,
               2,
-            )}
+              )}
           </pre>
         </div>
         <div style={{ marginBottom: 8 }}>
           <strong>{t("scanHistoryDetailParams")}:</strong>
           <pre style={{ margin: "4px 0", padding: 8, background: "#f5f5f5", maxHeight: 200, overflow: "auto", fontSize: 12 }}>
             {JSON.stringify(
-              {
+                presentable({
+
                 cache_key: item.cache_key,
                 cache_hit: item.cache_hit,
                 snapshot_hit: item.snapshot_hit,
@@ -460,10 +481,10 @@ export default function ScanHistory({ className }: ScanHistoryProps) {
                 advanced_match_count: item.advanced_match_count,
                 result_rows_written: item.result_rows_written,
                 filters_snapshot: item.filters_snapshot,
-              },
+                }),
               null,
               2,
-            )}
+              )}
           </pre>
         </div>
         <div style={{ marginBottom: 8 }}>
