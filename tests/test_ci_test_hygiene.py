@@ -269,3 +269,119 @@ def test_factor_warehouse_is_isolated_from_developer_machine_state():
         "tests/conftest.py 里 FACTOR_WAREHOUSE_PATH 的默认值失效了，"
         "本机只要跑着后端，全量就会出现无法归因的红灯"
     )
+
+
+# ══════════════════════════════════════════════════
+# 5. 前端孤儿组件棘轮（体检报告 §二十五）
+# ══════════════════════════════════════════════════
+
+_FRONTEND_SRC = Path(__file__).resolve().parents[1] / "frontend" / "src"
+_FRONTEND_ROOT = Path(__file__).resolve().parents[1] / "frontend"
+_IMPORT_RE = re.compile(r"""(?:from|import)\s*\(?\s*['"]([^'"]+)['"]""")
+_ENTRY_SUFFIXES = ("", ".tsx", ".ts", ".jsx", ".js", "/index.tsx", "/index.ts")
+
+# 已知孤儿基线（相对 frontend/src 的 posix 路径）：只允许变短，不允许变长。
+# 处置结论见报告 §二十五：Trading / PortfolioWorkbench / PortfolioMembersPanel 是
+# 大改造后「刻意保留但不再渲染」的旧页面（App.tsx 有注释说明）；AutoTradePanel、
+# PortfolioBacktestPanel、PortfolioPerformancePanel 只被旧 Trading.tsx 引用而整簇
+# 不可达，但它们承载的后端路由仍在线，需产品判定「废弃 or 补回现役 UI」才能删。
+KNOWN_ORPHAN_COMPONENTS = {
+    "components/AutoTradePanel.tsx",
+    "components/PortfolioBacktestPanel.tsx",
+    "components/PortfolioMembersPanel.tsx",
+    "components/PortfolioPerformancePanel.tsx",
+    "components/PortfolioWorkbench.tsx",
+    "components/Trading.tsx",
+    "components/factors/mining/config/MiningExperiencePage.tsx",
+}
+
+
+def _frontend_entries() -> list[Path]:
+    """应用入口：main.tsx / standalone 入口 + 各 html 的 <script src>。"""
+    found: list[Path] = []
+    for name in ("main.tsx", "universe-standalone.tsx"):
+        candidate = _FRONTEND_SRC / name
+        if candidate.is_file():
+            found.append(candidate)
+    if _FRONTEND_ROOT.exists():
+        for html in _FRONTEND_ROOT.glob("*.html"):
+            text = html.read_text(encoding="utf-8", errors="ignore")
+            for match in re.finditer(r'<script[^>]+src="([^"]+)"', text):
+                raw = match.group(1).lstrip("/")
+                for candidate in (
+                    _FRONTEND_ROOT / raw,
+                    _FRONTEND_SRC / raw.removeprefix("src/"),
+                ):
+                    if candidate.is_file():
+                        found.append(candidate)
+    return sorted(set(found))
+
+
+def _resolve_module(spec: str, from_file: Path) -> Path | None:
+    if not spec.startswith("."):
+        return None  # 裸包名（react / antd / …）不是本地模块
+    base = (from_file.parent / spec).resolve()
+    for suffix in _ENTRY_SUFFIXES:
+        candidate = Path(str(base) + suffix)
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _reachable_from_entries() -> set[Path]:
+    seen: set[Path] = set()
+    stack = _frontend_entries()
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        try:
+            text = current.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for match in _IMPORT_RE.finditer(text):
+            target = _resolve_module(match.group(1), current)
+            if target is not None:
+                stack.append(target)
+    return seen
+
+
+def _orphan_components() -> set[str]:
+    components_dir = _FRONTEND_SRC / "components"
+    if not components_dir.is_dir():  # pragma: no cover - 仓库结构坏了由其它守护兜底
+        pytest.fail(f"前端组件目录不存在：{components_dir}")
+    entries = _frontend_entries()
+    assert entries, "找不到任何前端入口（main.tsx / html），可达性分析无法进行"
+    reachable = _reachable_from_entries()
+    orphans: set[str] = set()
+    for path in components_dir.rglob("*.tsx"):
+        rel = path.relative_to(_FRONTEND_SRC).as_posix()
+        if "__tests__" in rel or rel.endswith((".test.tsx", ".spec.tsx")):
+            continue
+        if path.resolve() not in reachable:
+            orphans.add(rel)
+    return orphans
+
+
+def test_frontend_has_no_new_orphan_components():
+    """禁止再新增「用户看不到、只有自己的测试在跑」的前端组件。
+
+    为什么值得守：孤儿组件的测试会一直绿，却保护着永远不渲染的界面。本项目里
+    真实发生过的伤害是——我按旧孤儿组件里的 id 判定「手动交易入口缺失」，
+    误立 PT-DEF-22（现役其实把它换成了持仓成员行内动作）。
+    """
+    orphans = _orphan_components()
+    introduced = sorted(orphans - KNOWN_ORPHAN_COMPONENTS)
+    assert not introduced, (
+        f"新增了无人渲染的前端组件：{introduced}。它自己的测试会一直绿但用户永远看不到。"
+        "请二选一：① 从入口/路由真正挂载；② 连同它自己的测试一起删除。"
+        "确属必要的中间产物，才加进 KNOWN_ORPHAN_COMPONENTS 并在报告里写明理由。"
+    )
+    # 债务必须单调递减（修好了就从基线里删）
+    assert len(orphans) <= len(KNOWN_ORPHAN_COMPONENTS), (
+        f"孤儿组件数量增长：{sorted(orphans)}"
+    )
+    fixed = sorted(KNOWN_ORPHAN_COMPONENTS - orphans)
+    if fixed:
+        print(f"[孤儿棘轮] 这些历史孤儿已不再孤立，请从基线移除：{fixed}")
