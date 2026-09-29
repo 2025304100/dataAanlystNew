@@ -378,3 +378,82 @@ def test_frontend_has_no_new_orphan_components():
     fixed = sorted(KNOWN_ORPHAN_COMPONENTS - orphans)
     if fixed:
         print(f"[孤儿棘轮] 这些历史孤儿已不再孤立，请从基线移除：{fixed}")
+
+
+# ══════════════════════════════════════════════
+# 12. .gitignore 必须保持"规则化"，且不得吞掉任何已跟踪文件
+# ══════════════════════════════════════════════
+
+_GITIGNORE_MAX_ENTRIES = 140
+
+
+def test_gitignore_is_rule_based_and_hides_nothing_tracked():
+    """.gitignore 只允许目录/后缀/形状规则，禁止逐文件黑名单。
+
+    真实伤害（§十一.7）：仓库重建时这里灌进 10,237 行逐文件条目（其中 10,077 行
+    是 .venv/ 下的一个个文件），6 行误伤 alembic/env.py 与 0045..0049 五个迁移；
+    本机一切正常，新克隆与 CI 上 `alembic upgrade head` 直接断链。
+    本轮（§二十九）又发现同类新问题：未锚定的 `scan_*.py`/`check_*.py` 会连带
+    吞掉 scripts/ 下的正式工具 —— 所以这里不仅查条目数，还直接问 git。
+    """
+    text = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8", errors="ignore")
+    entries = [
+        ln.strip() for ln in text.splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+
+    assert len(entries) <= _GITIGNORE_MAX_ENTRIES, (
+        f".gitignore 有效条目 {len(entries)} 条，超过上限 {_GITIGNORE_MAX_ENTRIES}："
+        "十有八九是又有人把未跟踪清单逐行贴进来。请改成目录/后缀规则。"
+    )
+    # 注意：".venv/" 本身是正当的整目录规则，只有它下面的具体文件路径才是黑名单
+    per_file_venv = [e for e in entries if e.startswith(".venv/") and e.rstrip("/") != ".venv"]
+    assert not per_file_venv, (
+        f".gitignore 里出现了 .venv 下的逐文件条目（{len(per_file_venv)} 条）。"
+        "虚拟环境必须整目录忽略；逐文件列举既会长到上万行，也挡不住新装包。"
+    )
+    assert any(e.rstrip("/") in {".venv", ".venv*"} for e in entries), "必须整目录忽略 .venv/"
+
+    swallowed = _git("ls-files", "-i", "-c", "--exclude-standard").splitlines()
+    assert not swallowed, (
+        "以下**已跟踪**文件正被 .gitignore 匹配（tracked ∩ ignored 必须为空）：\n"
+        + "\n".join(s.strip() for s in swallowed[:30])
+        + "\n要么这些文件本就该出库（git rm），要么规则写得太宽（用 / 锚定到仓库根）。"
+    )
+
+
+# ══════════════════════════════════════════════
+# 13. 仓库根不得再堆积一次性脚本与结果转储
+# ══════════════════════════════════════════════
+
+# 只统计**已入库**的根文件：这样在 CI 的新克隆上也成立，不依赖某台机器的残留产物。
+_ROOT_TRACKED_FILE_BASELINE = 48
+
+# 这些形状属于"诊断期用完即弃"，不该出现在仓库里（正式测试进 tests/，工具进 scripts/）
+_ROOT_FORBIDDEN_PREFIXES = (
+    "_bb", "_diag_", "_dbg_", "_tmp_", "_debug_", "_dd_", "_patch_", "_verify_",
+    "_http_verify_", "_tr", "check_", "clean_", "find_", "fix_", "scan_",
+    "qa_blockers_", "perf_report", "openapi_schema",
+)
+_ROOT_FORBIDDEN_SUFFIXES = ("-result.txt", "result.txt", ".tmp.ts")
+
+
+def test_repo_root_has_no_new_junk_committed():
+    """仓库根只该放工程入口，不该放过程性产物。"""
+    root_files = sorted(p.strip() for p in _git("ls-files").splitlines() if "/" not in p.strip())
+
+    junk = [
+        f for f in root_files
+        if f.lower().startswith(_ROOT_FORBIDDEN_PREFIXES)
+        or f.endswith(_ROOT_FORBIDDEN_SUFFIXES)
+    ]
+    assert not junk, (
+        f"仓库根混入了过程性产物：{junk[:20]}。"
+        "一次性脚本放进 tmp/（已忽略）或直接删；正式用例进 tests/ 并带 marker。"
+    )
+    assert len(root_files) <= _ROOT_TRACKED_FILE_BASELINE, (
+        f"根目录已跟踪文件从 {len(root_files)} 增长趋势超出基线 "
+        f"{_ROOT_TRACKED_FILE_BASELINE}：{root_files}。"
+        "新文件请放进对应目录（scripts/、docs/），不要堆在根上。"
+    )
+
