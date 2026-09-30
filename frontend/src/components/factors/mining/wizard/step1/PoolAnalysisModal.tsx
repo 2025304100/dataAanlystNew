@@ -88,11 +88,22 @@ function horizontalBarOption(
   };
 }
 
-/** 风格暴露雷达（0~1 分位；不可用维度不画） */
-function radarOption(dims: Array<{ label: string; score: number }>): EChartsOption {
+/**
+ * 风格暴露雷达（0~1 分位；不可用维度不画）。
+ * 导出只为可测：空 dims 必须不递 series（否则 echarts 在空 indicator 上崩）。
+ */
+export function radarOption(dims: Array<{ label: string; score: number }>): EChartsOption {
+  const base = miningBaseOption();
+  // 没有任何可用风格维度时不能给 echarts 递“空 indicator + 有数据”的组合：
+  // 实测会在 echarts 内部 SeriesData.each 里抛 TypeError: reading 'push'，
+  // 看板直接拿不到内容（数仓未初始化 / 风格维度全不可用时就会命中）。
+  // 这里按 MiningChart 已有的空态约定返回无 series，让 emptyText 占位接管，不臆造数据。
+  if (!dims.length) {
+    return { ...base, series: undefined };
+  }
   return {
-    ...miningBaseOption(),
-    tooltip: { ...miningBaseOption().tooltip, trigger: "item" },
+    ...base,
+    tooltip: { ...base.tooltip, trigger: "item" },
     radar: {
       indicator: dims.map((d) => ({ name: d.label, max: 1 })),
       radius: "66%",
