@@ -86,9 +86,10 @@ jobs:
           fi
       - name: Run blackbox tests
         # REQUIRE_LIVE_BACKEND=1：后端不在时用例直接失败，不拿零覆盖当通过
+        # -rX：把 xpassed（被放宽但其实能过的用例）列进日志，不然它们会默默消失在统计里
         env:
           REQUIRE_LIVE_BACKEND: "1"
-        run: pytest -m blackbox --tb=short -q
+        run: pytest -m blackbox --tb=short -q -rX
 
   # ── E2E 测试（需前后端 + 浏览器）─────────────────────────
   e2e:
@@ -144,4 +145,4 @@ jobs:
           # 断言实现在 tests/conftest.py 的 pytest_sessionfinish，
           # 阈值与说明见 tests/_e2e_coverage_guard.py。
           E2E_REQUIRE_MINIMUM: "1"
-        run: pytest tests/e2e/ -m e2e --tb=short -q
+        run: pytest tests/e2e/ -m e2e --tb=short -q -rX

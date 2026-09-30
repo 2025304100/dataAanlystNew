@@ -193,12 +193,19 @@ def _is_dev_hardware(config) -> bool:
     return False
 
 
+# dev 硬件判定会给这份名单里的用例挂 xfail(strict=False)。
+#
+# 重要约束：这里**只能放“性能/硬件慢”导致的放宽**，不得放正确性契约用例。
+# 原因是 CI 上没有 2GB DuckDB、universe 也是空的（查询失败直接算 dev），
+# 而且 CI 从不传 --hardware-capability=prod —— 也就是说：**进了这份名单
+# 就等于在 CI 上永久不计入结果**，该用例再坏也不会红。
+# 实测发生过：两个观察池契约用例（list_observations_status_filter 0.05s、
+# observation_endpoints_404 0.02s）被当作“慢用例”挂在名单里，其实它们跟硬件无关。
+# 现在有第 17 道守护断言“名单只能包含下列性能放宽项”，再往里塞东西就会红。
 _SLOW_FUNCTION_NAMES = {
-    # T4 (FR-4.1) dashboard 15s 慢查询保护：概览/工作台双端点
+    # T4 (FR-4.1) dashboard 15s 慢查询保护：概览/工作台双端点（实测 workbench 14.21s）
     "test_dashboard_overview",
     "test_dashboard_workbench",
-    "test_list_observations_status_filter",
-    "test_observation_endpoints_404",
     # 注：原先还列着一批探测用例名（test_probe_returns_within_30s /
     # test_probe_all_17_apis_complete_within_180s / test_consecutive_probes_* /
     # test_batch_probe_completes_within_180s 等），它们已随“探测改提交任务 +

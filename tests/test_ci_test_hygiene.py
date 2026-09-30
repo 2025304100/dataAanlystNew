@@ -562,3 +562,44 @@ def test_dev_hardware_xfail_names_still_exist():
         "用例已重构/删除就要同步清掉，否则名单会给人「这些守护还在」的错觉。"
     )
 
+
+# 只允许这些“性能/硬件慢”用例被 dev 判定放宽。新增必须连理由一起加进来评审。
+PERF_RELAXATION_ALLOWED = {
+    "test_dashboard_overview",     # T4 FR-4.1：dashboard 15s 慢查询保护
+    "test_dashboard_workbench",    # 同上，实测 14.21s 贴着超时线
+}
+
+_DEV_MARKER_RE = re.compile(
+    r"@pytest\.mark\.xfail_dev_hardware\s*\n\s*def (test_[A-Za-z0-9_]+)\(", re.M
+)
+
+
+def test_dev_hardware_relaxation_is_performance_only():
+    """dev 放宽只能给慢查询用，不得用它关掉正确性契约门禁。
+
+    为什么要定这条：CI 上没有 2GB DuckDB、universe 也是空的（查询失败直接算 dev），
+    而且 CI 从不传 --hardware-capability=prod —— **进了 dev 放宽名单就等于在 CI 上
+    永久不计入结果**，该契约再坏也不会红。
+    实测发生过：两个观察池契约用例（0.05s / 0.02s，跟硬件无关）被挂在名单里，
+    直到全量黑盒跑出 3 个 xpassed 才暴露（报告 §“3 个 xpassed”）。
+    """
+    import tests.conftest as root_conftest
+
+    names = set(getattr(root_conftest, "_SLOW_FUNCTION_NAMES", set()))
+    off_policy = sorted(names - PERF_RELAXATION_ALLOWED)
+    assert not off_policy, (
+        f"dev 放宽名单里出现了非性能类用例：{off_policy}。"
+        "把它们挂上来就等于在 CI 上默默取消这几条门禁；正确性契约不该被放宽。"
+    )
+
+    # 另一条通道：直接挂装饰器的也要管住（装饰器与名单是两套挂口）
+    decorated: set[str] = set()
+    for f in (REPO_ROOT / "tests").rglob("test_*.py"):
+        decorated.update(
+            _DEV_MARKER_RE.findall(f.read_text(encoding="utf-8", errors="ignore"))
+        )
+    bad_decorated = sorted(decorated - PERF_RELAXATION_ALLOWED)
+    assert not bad_decorated, (
+        f"以下用例挂了 @pytest.mark.xfail_dev_hardware 但不是性能类用例：{bad_decorated}"
+    )
+

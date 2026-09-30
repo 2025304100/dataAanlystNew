@@ -142,7 +142,9 @@ def main() -> int:
     if not bucket:
         parser.error(f"group {args.group} 分不到任何文件（groups 比文件数还多？）")
 
-    cmd = [sys.executable, "-m", "pytest", "-m", args.marker, "--tb=short", "-q", *bucket]
+    # -rX：让 xpassed（被 dev 放宽但其实能过的用例）出现在 CI 日志里，
+    # 不然它只会藏在那一行统计数字里，没人回头看。
+    cmd = [sys.executable, "-m", "pytest", "-m", args.marker, "--tb=short", "-q", "-rX", *bucket]
     return subprocess.call(cmd)
 
 

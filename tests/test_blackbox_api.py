@@ -661,7 +661,10 @@ def test_list_observations_endpoint(client):
     assert isinstance(item["degraded"], bool)
 
 
-@pytest.mark.xfail_dev_hardware
+# 注：这里原先挂着 @pytest.mark.xfail_dev_hardware。该标记是给“dev 机器跑不动的
+# 慢查询”放宽用的，而本用例实测只跑 0.05s，且校的是**正确性契约**（archived 过滤）。
+# 挂在 dev 名单里 = 它在 CI 上永远不计入结果（CI 永远是“dev”），等于没测。
+# 见体检报告与拟真走查报告 §“3 个 xpassed”。
 def test_list_observations_status_filter(client):
     """GET /api/v1/watchlists/{id}/observations?status=archived 应返回归档项。"""
     r = client.get("/api/v1/watchlists")
@@ -686,7 +689,7 @@ def test_list_observations_status_filter(client):
         assert item["status"] == "archived"
 
 
-@pytest.mark.xfail_dev_hardware
+# 同上：0.02s 的 404 + UserError 契约检查，不属于“硬件慢”放宽范围。
 def test_observation_endpoints_404(client):
     """WP2.3 观察池端点对不存在的 observation_id 应返回 404 + UserError。"""
     r = client.get("/api/v1/watchlists")
