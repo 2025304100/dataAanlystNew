@@ -769,19 +769,34 @@ def test_alert_titles_do_not_interpolate_raw_task_type():
     )
 
 
-# 只钉两种可干净执行的真反模式（口径宁窄勿宽，否则就是天天误报的噪声守护）：
-# ① 把治理状态变量直接插进「」给用户；
-# ② JSX 元素文本里写死动作枚举原值（如今日决策卡片那个 <Tag>🚫 NEW_BUY</Tag>）。
-# 故意不管的合法形式：对象字典键（RECONCILIATION_BLOCKED: { bg: … }、NEW_BUY: false）、
-# 代码注释与 {/* … */} JSX 注释（给开发看的内部术语）。
+# 本守护钉住三种可干净执行的真反模式：
+# ① 治理状态变量直接插进「」给用户；
+# ② JSX 元素文本里写死动作枚举原值（如今日决策卡片那个 <Tag>🚫 NEW_BUY</Tag>）；
+# ③ 中文文案里夹带枚举原值（详下方正则注释）。
+# 故意不管的合法形式：对象字典键、代码注释与 {/* … */} JSX 注释、
+# 以及 actionLabel()/govStatusLabel() 这类“枚举仅当查表键”的正确写法。
+# 另有 _OPS_PAGE_ALLOWLIST 显式豁免运维治理页（理由写在该变量注释里）。
+# ③ 中文文案里夹带枚举原值（“禁止 NEW_BUY”、“…（ADMIN_PAUSED）：”）。
+# 形状定为“中文在前、枚举在后，中间不跨引号”：
+#   - 字典键写法 `RECONCILIATION_BLOCKED: "中文…"` 枚举在引号前，不会被误报；
+#   - `case "READY":` / `x !== "ADMIN_PAUSED"` 这类逻辑比较在引号里且枚举前无中文，也不会被误报；
+#   - 但值文案里括号带原值会被抓住（曾以为“字典键行是误报”，实读发现那行的 hint 文案
+#     真写着「禁止 NEW_BUY」—— 差点把真命中当噪声排掉）。
+_UI_COPY_ENUMS = (
+    "NEW_BUY", "RISK_EXIT", "AUTO_RECOVERY", "ADMIN_PAUSED", "HEAVY",
+    "RECONCILIATION_BLOCKED", "DATA_INCOMPLETE_PAUSED", "MODEL_INACTIVE",
+    "SCORE_STALE", "PENDING_INITIAL_REVIEW", "requires_manual_ack", "auto-simulation",
+)
+_CJK_THEN_ENUM_RE = re.compile(
+    r"[\u4e00-\u9fff][^\"'`]{0,40}?\b(" + "|".join(_UI_COPY_ENUMS) + r")\b"
+)
+# 显式豁免：治理子页是运维页，其内嵌使用说明与 9x4 状态矩阵以“中文主 + 状态机节点名括注”
+# 形式存在（如「从 管理员强制暂停 (ADMIN_PAUSED) 转出」），目的是让运维能对上接口返回值。
+# 这属于待定性的设计选择，不是遗漏 —— 若将来定为“也要全中文”，清掉这个名单即可。
+_OPS_PAGE_ALLOWLIST = {"PortfolioGovernanceTab.tsx"}
 _RAW_ENUM_IN_UI_TEXT_RE = re.compile(
     r"「\{\s*currentState\s*\}」|>\s*[^<\n]*(?:NEW_BUY|RISK_EXIT)"
 )
-# 尚未纳入本守护的形状（已实测拓出约 12 处，但性质不一，需先逐处判读才定口径）：
-#   a) `case "ADMIN_PAUSED": return "…（ADMIN_PAUSED）：需管理员…"` 类提示文案；
-#   b) 治理页使用说明段落里的状态原值（运维页是否故意给原值 —— 待产品定性）；
-#   c) 对象字典键行（如 DATA_INCOMPLETE_PAUSED: { … }）——必须排除，否则就是误报。
-# 直接把“中文+枚举”一律报红会把 (b)(c) 一起抓住，造成天天误报。
 # actionLabel("NEW_BUY") 是正确写法（枚举只当查表键，不直接呈现）
 _LABEL_HELPER_RE = re.compile(r"actionLabel\(|govStatusLabel\(|enumLabel\(")
 
@@ -803,6 +818,8 @@ def test_portfolio_ui_copy_does_not_print_raw_enums():
     for f in sorted(comp_dir.rglob("*.tsx")):
         if "__tests__" in f.parts or ".test." in f.name:
             continue
+        if f.name in _OPS_PAGE_ALLOWLIST:
+            continue
         src = f.read_text(encoding="utf-8", errors="ignore")
         for lineno, line in enumerate(src.splitlines(), 1):
             stripped = line.strip()
@@ -816,7 +833,7 @@ def test_portfolio_ui_copy_does_not_print_raw_enums():
                 or stripped.endswith("*/")
             ):
                 continue
-            if not _RAW_ENUM_IN_UI_TEXT_RE.search(line):
+            if not (_RAW_ENUM_IN_UI_TEXT_RE.search(line) or _CJK_THEN_ENUM_RE.search(line)):
                 continue
             if _LABEL_HELPER_RE.search(line):
                 continue

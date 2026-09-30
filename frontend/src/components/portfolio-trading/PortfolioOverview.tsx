@@ -118,12 +118,12 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
   const softWarningAutoOn = currentState !== "READY";
   const hardBlockHint = (() => {
     switch (currentState) {
-      case "ADMIN_PAUSED": return "管理员紧急刹车已触发（ADMIN_PAUSED）：需管理员在治理 Tab 解除后才可开启自动交易";
-      case "RECONCILIATION_BLOCKED": return "对账存在非零差异（RECONCILIATION_BLOCKED）：需在治理 Tab 单人确认差异后才可开启自动交易";
-      case "PENDING_INITIAL_REVIEW": return "新建组合尚未通过管理员合规审查（PENDING_INITIAL_REVIEW）：需管理员在治理 Tab 确认后才可开启自动交易";
-      case "MODEL_INACTIVE": return "绑定因子模型已退役/未激活（MODEL_INACTIVE）：请在策略设置中更换/激活模型，或在治理 Tab 修复";
+      case "ADMIN_PAUSED": return "管理员紧急刹车已触发：需管理员在治理 Tab 解除后才可开启自动交易";
+      case "RECONCILIATION_BLOCKED": return "对账存在非零差异：需在治理 Tab 单人确认差异后才可开启自动交易";
+      case "PENDING_INITIAL_REVIEW": return "新建组合尚未通过管理员合规审查：需管理员在治理 Tab 确认后才可开启自动交易";
+      case "MODEL_INACTIVE": return "绑定因子模型已退役/未激活：请在策略设置中更换/激活模型，或在治理 Tab 修复";
       default:
-        return requiresManualAck ? "当前组合状态需要人工确认/解除（requires_manual_ack=true），请在治理 Tab 处理后再开启自动交易" : "";
+        return requiresManualAck ? "当前组合状态需要人工确认/解除，请在治理 Tab 处理后再开启自动交易" : "";
     }
   })();
 

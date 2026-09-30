@@ -336,14 +336,14 @@ export default function TodayDecision() {
   const HG1_HARDCODED_ZH: Record<string, { title: string; desc: string }> = {
     PENDING_INITIAL_REVIEW: { title: "🔎 组合待初始审查", desc: "新建组合尚未通过管理员合规审查，所有交易动作已暂停。请联系审核人员在「治理」Tab 中完成初始审查后再操作。" },
     READY: { title: "✅ 生产就绪 · HG1 通过", desc: "Score 覆盖率/新鲜度、基准数据、对账连续性、模型状态全部通过门禁校验。可执行新买单与风险退出。" },
-    RUNNING_AUTO_SIMULATION: { title: "⚙ 20:30 自动推演进行中", desc: "自动推演（auto-simulation）任务正在执行，状态与买单能力与 READY 一致。最终决策以当日 20:30 完成的推演结果为准。" },
+    RUNNING_AUTO_SIMULATION: { title: "⚙ 20:30 自动推演进行中", desc: "自动推演任务正在执行，状态与买单能力与就绪态一致。最终决策以当日 20:30 完成的推演结果为准。" },
     RUNNING_BACKTEST: { title: "📊 后台回测运行中", desc: "组合绑定的回测任务正在后台运行，不影响前台交易动作。若同时存在自动推演，请优先关注自动推演任务状态。" },
-    DATA_INCOMPLETE_PAUSED: { title: "⚠ 数据缺失 · 已暂停新买单", desc: "行情/因子/Score 数据缺口(HEAVY)触发风控软暂停：❌ 禁止 NEW_BUY 新增买单；✅ 允许 RISK_EXIT 风险退出强制止损/清仓。数据补齐后恢复扫描器会自动转 READY。" },
-    RECONCILIATION_BLOCKED: { title: "🛑 对账差异 · 人工介入", desc: "昨日实盘-撮合-仓位-现金10项守恒校验存在非零差异，已被 RECONCILIATION_BLOCKED 保护。需管理员在「治理」Tab 中单人确认差异清零后再转 READY。禁止新买单。" },
+    DATA_INCOMPLETE_PAUSED: { title: "⚠ 数据缺失 · 已暂停新买单", desc: "行情/因子/评分数据缺口较大，触发风控软暂停：❌ 禁止新增买单；✅ 允许风险退出（强制止损/清仓）。数据补齐后恢复扫描器会自动转回就绪。" },
+    RECONCILIATION_BLOCKED: { title: "🛑 对账差异 · 人工介入", desc: "昨日实盘-撮合-仓位-现金 10 项守恒校验存在非零差异，已被治理保护。需管理员在「治理」Tab 中单人确认差异清零后才可恢复。禁止新买单。" },
     MODEL_INACTIVE: { title: "⚡ 绑定因子模型已退役/未激活", desc: "当前组合绑定的 factor_model 不在 active 状态，评分流水线拒绝产出 Score。请管理员在模型设置中激活绑定的模型版本，或在「治理」Tab 切换模型。" },
     SCORE_STALE: { title: "⚠ Score 新鲜度/覆盖率未通过门禁", desc: "今日 Score 覆盖率 < 95%（生产阈值）或距离上一交易日评分产出 > 18h。数据补齐/重新跑分后会自动降级解除。禁止新买单。" },
     INTERRUPTED: { title: "💥 任务心跳超时 · 异常中断", desc: "自动推演/回测 Worker 心跳超时或异常退出被恢复扫描器检测到。恢复扫描器如能自动接续将转回 READY；否则需要人工在「治理」Tab 诊断。" },
-    ADMIN_PAUSED: { title: "🔒 管理员一键刹车（紧急暂停）", desc: "管理员已触发 ADMIN_PAUSED 紧急暂停：❌ 禁止 NEW_BUY 新买单 / ❌ 禁止 RISK_EXIT 风险退出 / ❌ 禁止自动恢复。所有操作需管理员在「治理」Tab 中解除刹车回到 READY 后再执行。" },
+    ADMIN_PAUSED: { title: "🔒 管理员一键刹车（紧急暂停）", desc: "管理员已触发紧急暂停：❌ 禁止新买单 / ❌ 禁止风险退出 / ❌ 禁止自动恢复。所有操作需管理员在「治理」Tab 中解除刹车、回到就绪态后再执行。" },
     UNKNOWN: { title: "❓ 状态未知", desc: "无法从治理 API 读取当前组合状态（可能后端版本过旧/网络异常）。已按 fail-closed 原则禁用新买单。请点击「前往治理」确认状态。" },
   };
 
@@ -967,7 +967,7 @@ export default function TodayDecision() {
                       title={
                         perm.allow_new_buys
                           ? undefined
-                          : `当前组合状态 ${currentState} 禁止 NEW_BUY 新买单。${perm.requires_manual_ack ? "需人工在治理 Tab 确认或解除限制。" : "数据补齐/自动恢复后解除。"}`
+                          : `当前组合状态「${govStatusLabel(currentState)}」禁止${actionLabel("NEW_BUY")}。${perm.requires_manual_ack ? "需人工在治理 Tab 确认或解除限制。" : "数据补齐/自动恢复后解除。"}`
                       }
                       placement="topLeft"
                     >

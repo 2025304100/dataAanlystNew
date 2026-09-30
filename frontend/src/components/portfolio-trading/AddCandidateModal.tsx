@@ -268,8 +268,8 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, po
   const STATE_HINT: Record<string, string> = {
     PENDING_INITIAL_REVIEW: "新建组合尚未通过管理员合规审查，暂不允许添加候选/建仓。",
     RECONCILIATION_BLOCKED: "昨日对账存在非零差异，已被治理保护；需管理员在治理 Tab 单人确认后恢复。",
-    ADMIN_PAUSED: "管理员已触发紧急暂停（ADMIN_PAUSED）：禁止新买单/风险退出/自动恢复。",
-    DATA_INCOMPLETE_PAUSED: "行情/因子/Score 数据缺口(HEAVY)，禁止新增买单；数据补齐后将自动恢复。",
+    ADMIN_PAUSED: "管理员已触发紧急暂停：禁止新买单/风险退出/自动恢复。",
+    DATA_INCOMPLETE_PAUSED: "行情/因子/评分数据缺口较大，禁止新增买单；数据补齐后将自动恢复。",
     MODEL_INACTIVE: "绑定的因子模型不在 active 状态，禁止新增买单；请在模型设置或治理 Tab 激活/切换模型。",
     SCORE_STALE: "今日 Score 覆盖率<95% 或新鲜度>18h，禁止新增买单；数据补齐/重新跑分后自动解除。",
     INTERRUPTED: "自动推演/回测 Worker 心跳超时（异常中断），禁止新增买单；恢复扫描器或人工介入后解除。",

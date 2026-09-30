@@ -226,9 +226,9 @@ const PORTFOLIO_STATUS_STYLES: Partial<Record<PortfolioStatus | string, {
 }>> = {
   PENDING_INITIAL_REVIEW: { bg: "#fef3c7", fg: "#7c2d12", border: "#f59e0b", dot: "#f59e0b", title: "待初始审查", hint: "新建组合尚未通过管理员合规审查，禁止所有交易动作。" },
   READY:                    { bg: "#ecfdf5", fg: "#065f46", border: "#10b981", dot: "#10b981", title: "生产就绪", hint: "HG1 门禁全项通过，可正常交易。" },
-  RUNNING_AUTO_SIMULATION:  { bg: "#eff6ff", fg: "#1e3a8a", border: "#3b82f6", dot: "#3b82f6", title: "自动推演中", hint: "20:30 自动推演（auto-simulation）运行中，买单能力同 READY。" },
+  RUNNING_AUTO_SIMULATION:  { bg: "#eff6ff", fg: "#1e3a8a", border: "#3b82f6", dot: "#3b82f6", title: "自动推演中", hint: "20:30 自动推演运行中，买单能力同就绪态。" },
   RUNNING_BACKTEST:         { bg: "#eef2ff", fg: "#3730a3", border: "#6366f1", dot: "#6366f1", title: "回测中", hint: "后台回测运行中，不影响前台交易。" },
-  DATA_INCOMPLETE_PAUSED:   { bg: "#fef9c3", fg: "#713f12", border: "#eab308", dot: "#eab308", title: "数据缺失暂停", hint: "数据缺口触发软暂停：禁止 NEW_BUY，允许 RISK_EXIT。" },
+  DATA_INCOMPLETE_PAUSED:   { bg: "#fef9c3", fg: "#713f12", border: "#eab308", dot: "#eab308", title: "数据缺失暂停", hint: "数据缺口触发软暂停：禁止新买单，允许风险退出。" },
   RECONCILIATION_BLOCKED:   { bg: "#fee2e2", fg: "#7f1d1d", border: "#ef4444", dot: "#ef4444", title: "对账差异阻塞", hint: "对账差异非零，禁止新买单，需治理 Tab 单人确认。" },
   MODEL_INACTIVE:           { bg: "#f3f4f6", fg: "#1f2937", border: "#6b7280", dot: "#6b7280", title: "模型未激活", hint: "绑定模型已退役/未激活，禁止新买单。" },
   SCORE_STALE:              { bg: "#fff7ed", fg: "#7c2d12", border: "#f97316", dot: "#f97316", title: "Score 不新鲜", hint: "Score 覆盖率/新鲜度未通过门禁，禁止新买单。" },
@@ -1029,7 +1029,7 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
             : PORTFOLIO_STATUS_FALLBACK;
           const reason = allowNewBuys
             ? undefined
-            : `当前组合 HG1 状态「${meta.title}」禁止 NEW_BUY（新增候选/买单）。\n${meta.hint}`;
+            : `当前组合 HG1 状态「${meta.title}」禁止新增候选/买单。\n${meta.hint}`;
           const btn = (
             <button
               type="button"
