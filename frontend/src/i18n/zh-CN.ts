@@ -1728,6 +1728,8 @@ const zhCN: Record<string, string> = {
     factorStatShadowDriftWarning: "{count} 个存在漂移警告",
     factorStatActive: "已上线",
     factorStatGatePassRate: "最近门禁通过率 {rate}%",
+    factorStatNoDriftSource: "漂移检测暂无聚合数据源",
+    factorStatNoGateSource: "门禁通过率暂无聚合数据源",
     factorColCode: "代码",
     factorColName: "名称",
     factorColCategory: "分类",

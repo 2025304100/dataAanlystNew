@@ -62,8 +62,10 @@ type FactorStats = {
   shadow: number;
   active: number;
   updatedThisWeek: number;
-  shadowDriftWarning: number;
-  shadowGatePassRate: number;
+  /** null = 无真实来源。此前被写成 shadowCount*0.25 的估算值，属伪造（VIZ-0930-22） */
+  shadowDriftWarning: number | null;
+  /** null = 无真实来源。此前硬编码 91%（VIZ-0930-22） */
+  shadowGatePassRate: number | null;
 };
 
 const INITIAL_STATS: FactorStats = {
@@ -72,8 +74,8 @@ const INITIAL_STATS: FactorStats = {
   shadow: 0,
   active: 0,
   updatedThisWeek: 0,
-  shadowDriftWarning: 0,
-  shadowGatePassRate: 0,
+  shadowDriftWarning: null,
+  shadowGatePassRate: null,
 };
 
 export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor }: FactorLibraryProps) {
@@ -234,8 +236,10 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
         shadow: shadowCount,
         active: activeCount,
         updatedThisWeek,
-        shadowDriftWarning: Math.floor(shadowCount * 0.25), // 模拟值，实际需要漂移检测接口
-        shadowGatePassRate: 91, // 模拟值，实际需要统计接口
+        // 漂移警告数与门禁通过率都没有聚合统计来源（真实要靠逐因子的
+        // /factor-shadow/health/{factor_version_id}），不再用估算值冒充监控指标。
+        shadowDriftWarning: null,
+        shadowGatePassRate: null,
       });
     } catch {
       // 静默失败，不影响主列表
@@ -316,12 +320,14 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
     return `${month}-${day} ${hours}:${minutes}`;
   };
 
-  // 模拟数据覆盖率（实际应从因子评估接口获取）
-  const getDataCoverage = (_record: FactorDefinition): string => {
-    // 这里可以后续接入真实的覆盖率数据
-    const mockRates = ["98.7%", "93.2%", "76.4%", "99.1%", "88.0%", "95.6%", "82.3%", "91.8%"];
-    const hash = _record.code.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    return mockRates[hash % mockRates.length];
+  // 数据覆盖率：取自因子用量统计的 30 日覆盖率（coverage_30d）。
+  // VIZ-0930-25：此前这里是 `mockRates[代码字符哈希 % 8]` —— 一列看起来很像真实监控的
+  // 百分比完全是伪造的，且与同卡展开块的「覆盖率」（读同一个 coverage_30d）互相矛盾。
+  // 取不到就显示占位，不再编数。
+  const getDataCoverage = (record: FactorDefinition): string => {
+    const cov = peekUsage(record.code)?.coverage_30d;
+    if (cov == null || !Number.isFinite(cov)) return "—";
+    return `${(cov * 100).toFixed(1)}%`;
   };
 
   // 模拟评价结论
@@ -1128,7 +1134,9 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                       <div className="stat-label">{t("factorStatInShadow")}</div>
                       <div className="stat-value">{stats.shadow}</div>
                       <div className="stat-sub warning">
-                        {template("factorStatShadowDriftWarning", { count: stats.shadowDriftWarning })}
+                        {stats.shadowDriftWarning == null
+                          ? t("factorStatNoDriftSource")
+                          : template("factorStatShadowDriftWarning", { count: stats.shadowDriftWarning })}
                       </div>
                     </Card>
                   </Col>
@@ -1137,7 +1145,9 @@ export default function FactorLibrary({ onViewDetail, onEditFactor, onNewFactor 
                       <div className="stat-label">{t("factorStatActive")}</div>
                       <div className="stat-value">{stats.active}</div>
                       <div className="stat-sub">
-                        {template("factorStatGatePassRate", { rate: stats.shadowGatePassRate })}
+                        {stats.shadowGatePassRate == null
+                          ? t("factorStatNoGateSource")
+                          : template("factorStatGatePassRate", { rate: stats.shadowGatePassRate })}
                       </div>
                     </Card>
                   </Col>

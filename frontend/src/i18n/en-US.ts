@@ -1742,6 +1742,8 @@ const enUS: Record<string, string> = {
     factorStatShadowDriftWarning: "{count} with drift warning",
     factorStatActive: "In Production",
     factorStatGatePassRate: "Recent gate pass rate {rate}%",
+    factorStatNoDriftSource: "No aggregated drift-detection source",
+    factorStatNoGateSource: "No aggregated gate pass-rate source",
     factorColCode: "Code",
     factorColName: "Name",
     factorColCategory: "Category",

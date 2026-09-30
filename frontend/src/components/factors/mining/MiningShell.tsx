@@ -1600,7 +1600,11 @@ export default function MiningShell({
                   const run = task.run;
                   const gen = run.current_generation ?? 0;
                   const total = totalGenerationsOf(run);
-                  const percent = total > 0 ? Math.min(100, Math.round((gen / total) * 100)) : 0;
+                  // VIZ-0930-24：`current_generation` 是"当前所在代的 0 基下标"，跑完最后一代
+                  // 也不会 +1（max_generation=1 的成功批次永远停在 0），列表于是显示
+                  // "已完成 · 0 / 1 · 0%"，看着像没干活。终态成功的批次按跑满呈现。
+                  const shownGen = String(run.status) === "succeeded" && total > 0 ? total : gen;
+                  const percent = total > 0 ? Math.min(100, Math.round((shownGen / total) * 100)) : 0;
                   const terminal = TERMINAL_RUN_STATUSES.has(String(run.status));
                   return (
                     <tr key={`run-${run.id}`} data-mining-task="run" data-mining-task-id={run.id}>
@@ -1632,7 +1636,7 @@ export default function MiningShell({
                             />
                           </span>
                           <span className="mining-card-sub">
-                            {total > 0 ? `${gen} / ${total} · ${percent}%` : `${gen}`}
+                            {total > 0 ? `${shownGen} / ${total} · ${percent}%` : `${shownGen}`}
                           </span>
                         </div>
                       </td>
