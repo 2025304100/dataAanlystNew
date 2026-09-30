@@ -1239,12 +1239,27 @@ def _resolve_as_of_date(conn, requested: date | None, *,
     实测本规则会跳过 9 月的稀疏日、落到 2026-08-21，这个落差必须由证据说话。
     """
     cutoff = requested
-    rows = conn.execute(
-        "SELECT trade_date, COUNT(DISTINCT symbol) AS n FROM raw_valuation_snapshots "
-        "WHERE (? IS NULL OR trade_date <= ?) "
-        "GROUP BY trade_date ORDER BY trade_date DESC LIMIT ?",
-        [cutoff, cutoff, int(baseline_days)],
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            "SELECT trade_date, COUNT(DISTINCT symbol) AS n FROM raw_valuation_snapshots "
+            "WHERE (? IS NULL OR trade_date <= ?) "
+            "GROUP BY trade_date ORDER BY trade_date DESC LIMIT ?",
+            [cutoff, cutoff, int(baseline_days)],
+        ).fetchall()
+    except Exception as exc:
+        # “表不存在”≠“数据不足”：数仓还没 initialize 时（只有
+        # POST /factors/warehouse/initialize 与各 job 会建表，读路径不惰性建表），
+        # 这里会撞 CatalogException。按“解析不出 as_of”返回，让调用方走它本来
+        # 就写好的分支（analysis.py：“用今天，让分析自己报告无数据，而不是在这里崩”）。
+        # 其他异常继续往上抛，不在这里抹掉真正的错误。
+        if "does not exist" not in str(exc):
+            raise
+        return None, False, {
+            "candidate_ratios": {},
+            "median_baseline": 0,
+            "completeness_threshold": completeness,
+            "warehouse_uninitialized": True,
+        }
     if not rows:
         return None, False, {"candidate_ratios": {}, "median_baseline": 0,
                              "completeness_threshold": completeness}
