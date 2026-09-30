@@ -542,7 +542,7 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
   const handleAddMember = useCallback(
     async (candidate: WorkbenchCandidate) => {
       if (!allowNewBuys) {
-        showToast("error", "HG1 门禁：当前组合禁止新增候选/建仓（需 NEW_BUY 权限）");
+        showToast("error", "HG1 门禁：当前组合禁止新增候选/建仓");
         return;
       }
       const symId = Number(candidate.symbol_id);
@@ -967,7 +967,7 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
                   const addBtnTitle = alreadyInPortfolio
                     ? "该标的已在当前组合持仓中，无需重复添加"
                     : !allowNewBuys
-                      ? "HG1 门禁：当前组合禁止新增候选/建仓（需 NEW_BUY 权限）"
+                      ? "HG1 门禁：当前组合禁止新增候选/建仓"
                       : undefined;
                   return (
                     <tr

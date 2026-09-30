@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Bot, Plus, AlertTriangle, Save, RotateCcw, FileText, Info, ShieldAlert, Snowflake } from "lucide-react";
 import { api } from "../../api/client";
 import type { ScoringModelBrief, ScoringFactorSetBrief } from "../../api/client";
-import { t } from "../../i18n";
+import { actionLabel, t } from "../../i18n";
 import { govStatusCodeForTooltip, govStatusLabel } from "../../utils/govStatusLabel";
 import { useApp } from "../../context/AppContext";
 import type { PortfolioStatePermissions, PortfolioStatusResponse, SignalRule } from "../../types";
@@ -645,9 +645,9 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
     }
     if (softWarningAutoOn) {
       return window.confirm(
-        `⚠️ HG1 提示：当前组合状态为「${currentState}」，并非生产就绪态（READY）。\n\n` +
-        `即将保存并开启自动交易，将受到治理权限约束：NEW_BUY=${perm?.allow_new_buys ? "允许" : "禁止"} / RISK_EXIT=${perm?.allow_risk_exits ? "允许" : "禁止"}。\n\n` +
-        `若在运行中触发 ADMIN_PAUSED / RECONCILIATION_BLOCKED，系统将自动强制关闭自动交易。\n\n确认仍要保存并开启？`,
+        `⚠️ HG1 提示：当前组合状态为「${govStatusLabel(currentState)}」，尚未就绪。\n\n` +
+        `即将保存并开启自动交易，将受到治理权限约束：${actionLabel("NEW_BUY")}=${perm?.allow_new_buys ? "允许" : "禁止"} / ${actionLabel("RISK_EXIT")}=${perm?.allow_risk_exits ? "允许" : "禁止"}。\n\n` +
+        `若在运行中触发管理员紧急暂停或对账差异阻断，系统将自动强制关闭自动交易。\n\n确认仍要保存并开启？`,
       );
     }
     return true;

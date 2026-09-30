@@ -777,6 +777,11 @@ def test_alert_titles_do_not_interpolate_raw_task_type():
 _RAW_ENUM_IN_UI_TEXT_RE = re.compile(
     r"「\{\s*currentState\s*\}」|>\s*[^<\n]*(?:NEW_BUY|RISK_EXIT)"
 )
+# 尚未纳入本守护的形状（已实测拓出约 12 处，但性质不一，需先逐处判读才定口径）：
+#   a) `case "ADMIN_PAUSED": return "…（ADMIN_PAUSED）：需管理员…"` 类提示文案；
+#   b) 治理页使用说明段落里的状态原值（运维页是否故意给原值 —— 待产品定性）；
+#   c) 对象字典键行（如 DATA_INCOMPLETE_PAUSED: { … }）——必须排除，否则就是误报。
+# 直接把“中文+枚举”一律报红会把 (b)(c) 一起抓住，造成天天误报。
 # actionLabel("NEW_BUY") 是正确写法（枚举只当查表键，不直接呈现）
 _LABEL_HELPER_RE = re.compile(r"actionLabel\(|govStatusLabel\(|enumLabel\(")
 

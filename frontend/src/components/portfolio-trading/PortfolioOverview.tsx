@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Shield, ShieldCheck, Activity, LineChart, Settings2, AlertTriangle, ShieldAlert, type LucideIcon } from "lucide-react";
 import { message } from "antd";
 import { api } from "../../api/client";
-import { t } from "../../i18n";
+import { actionLabel, t } from "../../i18n";
 import { money, percent } from "../../utils/format";
 import { govStatusCodeForTooltip, govStatusLabel } from "../../utils/govStatusLabel";
 import type { AllocationSnapshot, PortfolioStatePermissions, PortfolioStatusResponse, Position, SignalRule } from "../../types";
@@ -274,12 +274,12 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
       }
       if (softWarningAutoOn) {
         const ok = window.confirm(
-          `⚠️ HG1 提示：当前组合状态为「${currentState}」，并非生产就绪态（READY）。\n\n` +
+          `⚠️ HG1 提示：当前组合状态为「${govStatusLabel(currentState)}」，尚未就绪。\n\n` +
           `在该状态下开启自动交易，将受到如下治理权限约束：\n` +
-          `  · 允许新买单(NEW_BUY)：${perm?.allow_new_buys ? "是" : "否"}\n` +
-          `  · 允许风险退出(RISK_EXIT)：${perm?.allow_risk_exits ? "是" : "否"}\n` +
-          `  · 允许自动恢复(AUTO_RECOVERY)：${allowAutoRecovery ? "是" : "否"}\n\n` +
-          `如果在开启后触发了 ADMIN_PAUSED / RECONCILIATION_BLOCKED，系统将自动强制关闭自动交易并发送告警。\n\n确认仍要开启？`,
+          `  · ${actionLabel("NEW_BUY")}：${perm?.allow_new_buys ? "允许" : "禁止"}\n` +
+          `  · ${actionLabel("RISK_EXIT")}：${perm?.allow_risk_exits ? "允许" : "禁止"}\n` +
+          `  · 自动恢复：${allowAutoRecovery ? "允许" : "禁止"}\n\n` +
+          `如果在开启后触发管理员紧急暂停或对账差异阻断，系统将自动强制关闭自动交易并发送告警。\n\n确认仍要开启？`,
         );
         if (!ok) return;
       }
