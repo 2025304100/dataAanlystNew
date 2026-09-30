@@ -79,3 +79,54 @@ console.error = (...args: unknown[]) => {
   if (suppressedErrorPatterns.some((p) => msg.includes(p))) return;
   originalConsoleError(...(args as Parameters<typeof console.error>));
 };
+
+// ── 防止“api mock 抄漏方法 → 被组件 catch 吞掉 → 测试仍绿”的假绿 ──────────
+//
+// 背景（拟真走查实测）：前端测试绝大多数自己手写局部 api mock，要用几个写几个。
+// 某测试挂的通知链路调 `api.getInboxNotifications`，而那份 mock 未声明该方法；
+// 运行时就是 `... is not a function`，但组件用 try/catch 把它降级成了一行日志，
+// 于是测试实际跑的是“取数失败时的降级路径”，却照样通过（851 全绿里看不出来）。
+//
+// 规则：把这类消息收集起来，afterEach 直接判失败 —— mock 缺方法必须让测试变红。
+// 确实在测“接口不可用”分支的用例，调 __allowMissingApiMethod() 显式声明，
+// 把隐式绕过变成显式选择。
+const missingApiMethodMessages: string[] = [];
+// 只抓“函数不存在”这一类；不抓普通断言错误与 React 告警，避免造噪声守卫
+const MISSING_API_FN_RE = /\bis not a function\b/;
+let allowMissingApiMethodOnce = false;
+
+(globalThis as any).__allowMissingApiMethod = () => {
+  allowMissingApiMethodOnce = true;
+};
+
+function recordMissingApiMethod(args: unknown[]): void {
+  const text = args.map((a) => (typeof a === "string" ? a : String(a))).join(" ");
+  if (MISSING_API_FN_RE.test(text) && !missingApiMethodMessages.includes(text)) {
+    missingApiMethodMessages.push(text.slice(0, 300));
+  }
+}
+
+const guardedConsoleError = console.error;
+console.error = (...args: unknown[]) => {
+  recordMissingApiMethod(args);
+  return guardedConsoleError(...args);
+};
+const guardedConsoleWarn = console.warn;
+console.warn = (...args: unknown[]) => {
+  recordMissingApiMethod(args);
+  return guardedConsoleWarn(...args);
+};
+
+afterEach(() => {
+  const collected = missingApiMethodMessages.splice(0);
+  const allowed = allowMissingApiMethodOnce;
+  allowMissingApiMethodOnce = false;
+  if (collected.length === 0 || allowed) return;
+  throw new Error(
+    "测试中出现 “xxx is not a function”：通常是本用例的 api mock 没声明该方法，\n"
+    + "而组件把它当成普通错误记了一行日志 —— 于是测试验证的是“取数失败时的降级”，不是真实行为。\n"
+    + "修法：在 mock 里补上这个方法（及返回值）；若确实在测异常分支，\n"
+    + "调 (globalThis as any).__allowMissingApiMethod() 显式声明。\n"
+    + "捕获到的消息：\n  - " + collected.join("\n  - ")
+  );
+});

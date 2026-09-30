@@ -4,6 +4,11 @@ import type {
   AkshareApiStatus,
   AkshareStrategyInfo,
 } from "../api/client";
+// 只取类型（type-only import 不会把真 api 拉进测试运行时）：
+// 下面用 Partial<typeof realApi> 约束 overrides，这样把方法名拼错
+// （getPosistions 之类）会直接编译报错，而不是运行时 undefined 然
+// 后静默落到组件的 catch 分支里去。
+import type * as ApiClient from "../api/client";
 
 /**
  * Mock 工厂：6 个组件测试共享的工厂函数。
@@ -94,8 +99,10 @@ export function makeMockStrategies(): AkshareStrategyInfo[] {
   ];
 }
 
-/** 创建 api 对象的 mock。overrides 可覆盖指定方法。 */
-export function makeMockApi(overrides: Record<string, ReturnType<typeof vi.fn>> = {}) {
+/** 创建 api 对象的 mock。overrides 可覆盖指定方法（方法名必须是真 api 上有的）。 */
+export function makeMockApi(
+  overrides: Partial<typeof ApiClient.api> = {},
+) {
   const listAkshareApis = vi.fn(async () => makeMockAkshareApis());
   const listAkshareStrategies = vi.fn(async () => makeMockStrategies());
   // PT-DEF-18：探测已改为"提交任务 + 心跳轮询"。默认桩一次轮询即返回终态，

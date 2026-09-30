@@ -72,6 +72,15 @@ const { mockContext, mockApi, mockRequestJson } = vi.hoisted(() => {
       createAlertRule: vi.fn(async (_payload: unknown) => ({ id: 999 }) as any),
       getPositions: vi.fn(async () => [] as any[]),
       getAllocation: vi.fn(async () => null as any),
+      // 壳组件里挂着 NotificationDropdown，它会拉通知 inbox。之前这份 mock 没声明
+      // 该方法，调用报 `is not a function` 后被组件的 catch 当成“接口挂了”记一行日志，
+      // 于是本测试实际跑的是降级分支却照样通过（setup.ts 新增的照妖镜把它抱了出来）。
+      getInboxNotifications: vi.fn(async () => ({
+        items: [] as any[],
+        total: 0,
+        page: 1,
+        page_size: 50,
+      })),
     },
     mockRequestJson: vi.fn(async () => [] as any[]),
   };
