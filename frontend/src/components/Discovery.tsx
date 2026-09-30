@@ -1150,12 +1150,20 @@ export default function Discovery({
                 items: [
                   { key: "backtest", label: t("discoveryRunBacktest") },
                   { key: "journal", label: t("discoveryCreateJournal") },
-                  { type: "divider" as const },
-                  {
-                    key: "freeze",
-                    label: item.is_frozen ? t("unfreeze") : t("freeze"),
-                    disabled: !resultId || !!rowActionLoading[item.symbol_id]?.freeze,
-                  },
+                  // PT-DEF-19 定性为“能力下线”（决策 C）：后端 latest-candidates
+                  // 两条分支都不暴露可用句柄（无 scan_result_id、回退分支 id=None），
+                  // 导致这一项永远渲染成一个点不动的 disabled 菜单。无句柄就不该出现；
+                  // 将来确实恢复该能力时（透出句柄或给新表加写入口）会自动回到菜单里。
+                  ...(resultId
+                    ? [
+                        { type: "divider" as const },
+                        {
+                          key: "freeze",
+                          label: item.is_frozen ? t("unfreeze") : t("freeze"),
+                          disabled: !!rowActionLoading[item.symbol_id]?.freeze,
+                        },
+                      ]
+                    : []),
                 ],
                 onClick: ({ key }: { key: string }) => {
                   if (key === "backtest") handleRunBacktest(item.symbol_id, item.candidate_id ?? null);

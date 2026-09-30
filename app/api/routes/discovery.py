@@ -185,7 +185,13 @@ def retry_task(task_id: str):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.patch("/discovery/results/{scan_result_id}")
+# PT-DEF-19 定性：候选冻结能力不再作为主线使用（决策 C）。
+# 行为完全不变、不删端点（防止打到存量调用方），但标 deprecated：
+# 前端 latest-candidates 不暴露可用句柄（scan_result_id），而旧扫描列表又拿不到
+# candidate_id，“能拿到 id 才能冻结”在现役链路上不成立。若将来确定恢复，
+# 走 docs/PT-DEF-19-候选冻结能力决策材料-2026-09-30.md 的方案 B（新表加列+新写入口），
+# 而不是只把 id 透出来造成“同一按钮两种行为”。
+@router.patch("/discovery/results/{scan_result_id}", deprecated=True)
 def patch_result(scan_result_id: int, payload: DiscoveryResultUpdate, db: Session = Depends(get_db)):
     result = update_discovery_result(db, scan_result_id, payload)
     if result is None:
