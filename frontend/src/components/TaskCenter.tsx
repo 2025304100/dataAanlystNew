@@ -16,8 +16,12 @@ import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { enumLabel, t } from "../i18n";
 import type { UnifiedTask } from "../types";
-// WPD-05：任务错误消息显示工具（优先 error_code → i18n，兜底乱码检测）
+// WPD-05：任务错误消息显示工具（优先 error_code → i18n，失败时检测乱码）
 import { getTaskErrorMessage } from "../utils/taskErrorDisplay";
+// 任务类型标签：原先内联在本文件只映 6 种，后端实际有 20+ 种 task_type，
+// 没命中的直接显示内部 code（拟真走查在任务中心看到 external_api_probe），
+// 而 external_sync_ 分支还会把内部后缀拼进文案 —— 抽出后永不返回 code。
+import { taskTypeCodeForTooltip, taskTypeLabel } from "../utils/taskTypeLabel";
 // WP-AI.7：让 AI 解释按钮
 import ExplainButton from "./ai/ExplainButton";
 
@@ -39,15 +43,6 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
   running: <LoadingOutlined />,
   queued: <ClockCircleOutlined />,
   paused: <PauseCircleOutlined />,
-};
-
-const TASK_TYPE_LABELS: Record<string, string> = {
-  market_data_sync: "taskTypeSync",
-  history_initialization: "taskTypeHistory",
-  discovery_mining: "taskTypeDiscovery",
-  universe_incremental_sync: "taskTypeUniverseIncremental",
-  macro_update: "taskTypeMacro",
-  factor_pipeline: "taskTypeFactorPipeline",
 };
 
 function isExternalSyncTask(taskType: string): boolean {
@@ -200,11 +195,8 @@ export default function TaskCenter() {
 
   const activeCount = tasks.filter((task) => ["running", "queued"].includes(task.status)).length;
 
-  const taskTypeLabel = (taskType: string): string => {
-    if (isExternalSyncTask(taskType)) return `外部数据 · ${taskType.slice("external_sync_".length)}`;
-    const key = TASK_TYPE_LABELS[taskType];
-    return key ? t(key) : taskType;
-  };
+  // 名字不再在本文件里拼：统一走 utils/taskTypeLabel（永不返回内部 code）。
+  // isExternalSyncTask 仍保留，但它只用于筛选，不再参与文案。
 
   const statusTag = (status: string) => {
     const color = STATUS_COLORS[status] || "#94a3b8";
@@ -464,7 +456,9 @@ export default function TaskCenter() {
                           {t("taskTerminalLocked")}
                         </Tag>
                       )}
-                      <Tag>{taskTypeLabel(task.task_type)}</Tag>
+                      <Tag title={taskTypeCodeForTooltip(task.task_type) ?? undefined}>
+                        {taskTypeLabel(task.task_type)}
+                      </Tag>
                       <span className="task-list-item-stage">{enumLabel("taskStage", task.stage)}</span>
                     </div>
                     <div className="task-list-item-meta">

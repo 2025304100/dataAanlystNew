@@ -79,7 +79,7 @@ function makeItem(overrides: Partial<Record<string, unknown>> = {}): any {
     result_rows_written: 50,
     degraded_reason: null,
     task_id: "task-abc-123",
-    scope: "cn-stock",
+    scope: "cn_stock",
     min_score: 55,
     stage_durations: [
       { stage: "snapshot_precheck", duration_ms: 1200 },
@@ -126,8 +126,12 @@ describe("ScanHistory 组件测试", () => {
     });
     // 运行名应显示
     expect(screen.getByText("fast-scan-cn-stock-20260715")).toBeInTheDocument();
-    // 范围应显示（cn-stock）
-    expect(screen.getByText("cn-stock")).toBeInTheDocument();
+    // 覆盖范围不得把 discovery_score_snapshot.scope 的内部值直接给用户。
+    // （夹具原先用 cn-stock 连字符写法，与生产实际值 cn_stock 不一致，等于没钉住真实形态）
+    // 本文件把 t() mock 成返回键名，所以这里只钉“不露 code”；
+    // “确实有中文文案”由 utils/__tests__/internalCodeLabels.test.ts（不 mock i18n）负责。
+    expect(screen.queryByText(/^cn[_-]stock$/)).not.toBeInTheDocument();
+    expect(screen.getByText("scanScopeCnStock")).toBeInTheDocument();
     // 交易日期应显示（截取前 10 位）
     expect(screen.getByText("2026-07-15")).toBeInTheDocument();
     // 状态应为 done tag

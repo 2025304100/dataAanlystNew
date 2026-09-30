@@ -40,6 +40,7 @@ import {
 import { type Dayjs } from "dayjs";
 import { api } from "../../api/client";
 import { t } from "../../i18n";
+import { describeScanScope } from "../../utils/scanScopeLabel";
 
 // 扫描记录项（对齐后端 list_scan_runs 返回字段）
 interface ScanRunItem {
@@ -242,7 +243,10 @@ export default function ScanHistory({ className }: ScanHistoryProps) {
         title: t("scanHistoryColumnScope"),
         key: "scope",
         width: 100,
-        render: (_v: unknown, row: ScanRunItem) => row.scope ?? row.snapshot_scope ?? "-",
+        // 拟真走查发现这里直接印 discovery_score_snapshot.scope 的原值（cn_stock）；
+        // 改成中文标签，未收录的取值显示 “-” 而不回退成内部 code。
+        render: (_v: unknown, row: ScanRunItem) =>
+          describeScanScope(row.scope ?? row.snapshot_scope) ?? "-",
       },
       {
         title: t("scanHistoryColumnTradeDate"),

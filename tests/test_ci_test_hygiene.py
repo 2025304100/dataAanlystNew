@@ -603,3 +603,83 @@ def test_dev_hardware_relaxation_is_performance_only():
         f"以下用例挂了 @pytest.mark.xfail_dev_hardware 但不是性能类用例：{bad_decorated}"
     )
 
+
+# ══════════════════════════════════════════
+# 18/19. 内部 code 的中文标签不得漏配（后端↔前端跨语校验）
+# ══════════════════════════════════════════
+
+_TASK_TYPE_ASSIGN_RE = re.compile(r'task_type\s*=\s*"([a-z][a-z0-9_]*)"')
+_CREATE_TASK_RE = re.compile(r'create_async_task\(\s*"([a-z][a-z0-9_]*)"')
+# 实测口径教训：只扫 `task_type="..."` 仅能挑到 4 个值，而后端真实有 28 种 ——
+# 因为主要写法是常量赋值（`XXX_TASK_TYPE = "factor_mining"`）和默认值。
+# 扫窄了会交出一根“看着绿、几乎不覆盖”的守护，比没守护更危险。
+_TASK_TYPE_CONST_RE = re.compile(
+    r'^\s*_?[A-Z0-9_]*TASK_TYPE[A-Z0-9_]*\s*=\s*"([a-z][a-z0-9_]*)"', re.M
+)
+_TASK_TYPE_DEFAULT_RE = re.compile(r'task_type"?\s*:\s*"([a-z][a-z0-9_]*)"')
+_TASK_TYPE_PAYLOAD_RE = re.compile(r'"task_type":\s*"([a-z][a-z0-9_]*)"')
+_LABEL_MAP_ENTRY_RE = re.compile(r'^\s{2}([a-z][a-z0-9_]*):\s*"(taskType[A-Za-z0-9]*)"', re.M)
+
+
+def _backend_task_types() -> set[str]:
+    found: set[str] = set()
+    for path in (REPO_ROOT / "app").rglob("*.py"):
+        src = path.read_text(encoding="utf-8", errors="ignore")
+        for rx in (
+            _TASK_TYPE_ASSIGN_RE,
+            _CREATE_TASK_RE,
+            _TASK_TYPE_CONST_RE,
+            _TASK_TYPE_DEFAULT_RE,
+            _TASK_TYPE_PAYLOAD_RE,
+        ):
+            found.update(rx.findall(src))
+    # external_sync_<dataset> 是运行时拼前缀，不属于固定取值
+    return {t for t in found if not t.startswith("external_sync_")}
+
+
+def _frontend_task_type_map() -> dict[str, str]:
+    src = (REPO_ROOT / "frontend" / "src" / "utils" / "taskTypeLabel.ts").read_text(
+        encoding="utf-8", errors="ignore"
+    )
+    return {code: key for code, key in _LABEL_MAP_ENTRY_RE.findall(src)}
+
+
+def test_backend_task_types_have_frontend_labels():
+    """后端每一种 task_type 都必须在前端标签表里有对应中文。
+
+    拟真走查实测：任务中心的标签表只映了 6 种，而后端实际会产生 20+ 种，
+    没命中的直接 `return taskType` —— 于是用户看到 `external_api_probe` 这种内部 code。
+    这类缺口跳语言、跳仓库，单侧测试发现不了：新增 task_type 时只改后端，前端依旧静默露原值。
+    """
+    backend = _backend_task_types()
+    assert len(backend) >= 20, (
+        f"只从 app/ 扫到 {len(backend)} 个 task_type，低于历史基准 20；"
+        "说明扫描口径退化（后端改了新写法），本守护已接近空转，必须先修口径。"
+    )
+
+    labels = _frontend_task_type_map()
+    assert labels, "前端 taskTypeLabel.ts 的映射表为空或格式变了"
+
+    missing = sorted(backend - set(labels))
+    assert not missing, (
+        f"以下 task_type 在前端没有中文标签，会直接露内部 code：{missing}。"
+        "修法：在 frontend/src/utils/taskTypeLabel.ts 加映射，并在 i18n zh/en 补文案。"
+    )
+
+
+def test_task_type_label_keys_exist_in_both_dictionaries():
+    """标签表引用的 i18n 键，必须在 zh/en 两边字典里都有真文案。
+
+    否则界面会把键名（taskTypeApiProbe）当文案显示 —— 同样是泄露，而且只 mock t()
+    的单测永远看不出来。
+    """
+    labels = _frontend_task_type_map()
+    wanted = set(labels.values()) | {"taskTypeOther", "taskTypeExternalSync"}
+
+    for locale_file in ("zh-CN.ts", "en-US.ts"):
+        src = (REPO_ROOT / "frontend" / "src" / "i18n" / locale_file).read_text(
+            encoding="utf-8", errors="ignore"
+        )
+        absent = sorted(k for k in wanted if not re.search(rf'^\s*{k}:', src, re.M))
+        assert not absent, f"{locale_file} 缺少这些任务类型文案键：{absent}"
+
