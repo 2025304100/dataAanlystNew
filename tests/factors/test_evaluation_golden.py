@@ -16,9 +16,10 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -582,14 +583,21 @@ class TestCaseEReproducibility:
 
 
 def test_write_golden_output_json(golden_results: dict[str, Any]):
+    # 不写 `generated_at_utc`：这个文件是被跟踪的**金标准基准**，而时间戳每次跑测必变，
+    # 会把工作区弄脏（曾因此手工 `git checkout` 多次）。基准内容只存确定性字段；
+    # 运行时间属于测试报告该说的事，不该被当成基准的一部分。
     golden_results["_meta"] = {
-        "generated_at_utc": datetime.utcnow().isoformat() + "Z",
         "data_mode": DATA_MODE.get("mode", "UNKNOWN"),
         "evaluator_note": (
             "pure_evaluation_flow: align → apply_direction_alignment → "
             "rank_ic → quantile → turnover → cost → gate. No DB writes."
         ),
     }
+    # 自检：防止以后有人又把时间戳塞回基准文件（同类默认不稳定的字段一律拦下）。
+    volatile = [k for k in golden_results["_meta"] if re.search(r"(utc|timestamp|_at)$", k, re.I)]
+    assert not volatile, (
+        f"金标准基准文件不得包易变字段（每次跑测都会重写工作区）：{volatile}"
+    )
     output_path = ROOT / "tests" / "factors" / "_golden_output.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
