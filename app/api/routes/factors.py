@@ -362,6 +362,80 @@ def get_batch_detail(
     return entry.to_dict()
 
 
+@router.get('/factors/label-coverage')
+def get_label_coverage(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    batch_id: str | None = None,
+    target_code: str = 'target_5d_return',
+    adjust: str = 'qfq',
+    as_of_exit_date: date | None = None,
+    db: Session = Depends(get_db),
+):
+    """只读判定某个目标标签批次能否支撑 [start_date, end_date]。
+
+    共享标签批次不再用批次 ID 隐含窗口，"这次要的窗口有没有标签"必须由显式
+    断言回答。期望交易日取自镜像 K 线日历，并扣掉 horizon（最近 5 个交易日的
+    标签需要未来 K 线才能定值）。不满足时返回真实缺口区间，不猜、不补默认值。
+
+    `as_of_exit_date` 是 PIT 边界：给了它，判定窗口就按"该时点已定值的最晚信号日"
+    截，与挖掘/评估用的是同一个口径——否则接口按全库最新 bars 判、跑批按各自
+    cutoff 判，同一窗口会出两种结论，UI 上表现为"永远缺最后 5 天"。
+    """
+    from app.services.factors.label_batch import usable_end
+    from app.services.factors.label_coverage import evaluate_label_coverage
+
+    config = get_factor_system_config(db)
+    warehouse = FactorWarehouse(config.warehouse_path)
+    health = warehouse.health()
+    if not health.available:
+        return {
+            'warehouse_available': False,
+            'warehouse_path': str(warehouse.path),
+            'batch_id': None,
+            'batch_id_explicit': batch_id is not None,
+            'report': None,
+            'error': health.error or 'warehouse_unavailable',
+        }
+    resolved_batch = batch_id or warehouse.get_latest_target_batch_id(target_code)
+    if not resolved_batch:
+        return {
+            'warehouse_available': True,
+            'warehouse_path': str(warehouse.path),
+            'batch_id': None,
+            'batch_id_explicit': batch_id is not None,
+            'report': None,
+            'error': 'no_target_batch',
+        }
+    judged_end = (
+        usable_end(
+            warehouse, end_date=end_date, as_of_exit_date=as_of_exit_date,
+            target_code=target_code, adjust=adjust,
+        ) if end_date is not None else None
+    )
+    report = evaluate_label_coverage(
+        warehouse,
+        batch_id=resolved_batch,
+        target_code=target_code,
+        adjust=adjust,
+        start_date=start_date,
+        end_date=judged_end,
+    )
+    return {
+        'warehouse_available': True,
+        'warehouse_path': str(warehouse.path),
+        'batch_id': resolved_batch,
+        'batch_id_explicit': batch_id is not None,
+        'requested_end_date': str(end_date) if end_date else None,
+        'as_of_exit_date': str(as_of_exit_date) if as_of_exit_date else None,
+        'judged_end_date': str(judged_end) if judged_end else None,
+        'coverage_summary': warehouse.get_label_coverage(
+            resolved_batch, target_code, adjust=adjust
+        ),
+        'report': report.to_dict(),
+    }
+
+
 # ---------------------------------------------------------------------------
 # WPD-07: Data source roadmap endpoint
 # ---------------------------------------------------------------------------

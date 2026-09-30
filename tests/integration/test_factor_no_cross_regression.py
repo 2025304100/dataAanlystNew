@@ -167,7 +167,23 @@ def test_target_engine_calculate_targets_struct_ok(monkeypatch, tmp_path):
             self._targets_df = df.copy()
             return len(df)
 
-    def _mock_load_target_panel(warehouse, *, adjust: str):
+        def refresh_label_coverage(self, calc_batch_id, target_code, adjust="qfq"):
+            # 真实实现把覆盖摘要写进 warehouse_label_coverage；桩只返回同形摘要
+            frame = self._targets_df
+            return {
+                "batch_id": calc_batch_id,
+                "target_code": target_code,
+                "adjust": adjust,
+                "signal_days": int(frame["signal_date"].nunique())
+                if not frame.empty else 0,
+                "symbol_count": int(frame["symbol"].nunique())
+                if not frame.empty else 0,
+                "rows_total": int(len(frame)),
+            }
+
+    def _mock_load_target_panel(warehouse, *, adjust: str, **_window):
+        # 桩不实现 SQL 日期下推，返回全量合成面板；calculate_targets 里
+        # 保留的 pandas 过滤负责窗口裁剪，因此本用例仍按原口径断言。
         return synthetic_panel.copy()
 
     try:

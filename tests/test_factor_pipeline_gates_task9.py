@@ -474,9 +474,18 @@ class TestTR9_4_Stage4FailureIsolation:
         monkeypatch.setattr(pt_file, "calculate_stock_factors", lambda *a, **kw: FakeFactors(), raising=False)
         monkeypatch.setattr(pt_file, "calculate_targets", lambda *a, **kw: FakeTargets(), raising=False)
 
-        # (e) batch_context：空上下文管理器
+        # (e) batch_context：空上下文管理器，但要交出真实接口形状的 handle
         from contextlib import nullcontext
-        monkeypatch.setattr(pt_file, "batch_context", lambda *a, **kw: nullcontext(), raising=False)
+
+        from app.services.factors.batch_audit import BatchAuditHandle
+        monkeypatch.setattr(
+            pt_file,
+            "batch_context",
+            lambda *a, batch_id="", **kw: nullcontext(
+                BatchAuditHandle(batch_id=batch_id)
+            ),
+            raising=False,
+        )
 
         # (f) get_factor_runtime_snapshot：跳过 score 阶段
         class FakeRuntime:

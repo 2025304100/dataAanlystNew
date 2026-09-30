@@ -3,15 +3,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from typing import Any
 from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 
-from app.services.factors.store import FactorWarehouse
+from app.services.factors.store import DEFAULT_TARGET_CODE, FactorWarehouse
 
 
-TARGET_CODE = "target_5d_return"
+#: 唯一产出的标签口径；别名到 store 侧常量，避免"指针优先常驻批次"与
+#: 实际写入的 target_code 两处定义漂移。
+TARGET_CODE = DEFAULT_TARGET_CODE
 
 
 @dataclass(frozen=True)
@@ -29,9 +32,28 @@ def _utcnow_naive() -> datetime:
 
 
 def _load_target_panel(
-    warehouse: FactorWarehouse, *, adjust: str
+    warehouse: FactorWarehouse,
+    *,
+    adjust: str,
+    signal_from: date | None = None,
+    signal_to: date | None = None,
 ) -> pd.DataFrame:
-    sql = """
+    """按交易日历自连接出 entry=T+1 / exit=T+5 的标签面板。
+
+    信号日窗口下推进 SQL（`signals` CTE），但 `bars`/`calendar` 保持全量：
+    末端信号的出场 K 线在窗口之外，若把 bars 一起截短，新尾部会被误判成
+    insufficient_future_calendar。
+    """
+    signal_filter = ""
+    params: list[Any] = [adjust]
+    if signal_from is not None:
+        signal_filter += " AND b.trade_date >= ?"
+        params.append(signal_from)
+    if signal_to is not None:
+        signal_filter += " AND b.trade_date <= ?"
+        params.append(signal_to)
+
+    sql = f"""
         WITH bars AS (
             SELECT
                 symbol, trade_date, open, high, low, close, volume, amount
@@ -48,6 +70,7 @@ def _load_target_panel(
             SELECT b.*, c.trade_index
             FROM bars b
             JOIN calendar c USING (trade_date)
+            WHERE TRUE {signal_filter}
         )
         SELECT
             s.symbol,
@@ -85,7 +108,7 @@ def _load_target_panel(
         ORDER BY s.trade_date, s.symbol
     """
     with warehouse.connection(read_only=True) as conn:
-        return conn.execute(sql, [adjust]).fetchdf()
+        return conn.execute(sql, params).fetchdf()
 
 
 def _invalid_reason(row: dict, *, limit_threshold: float) -> str | None:
@@ -163,7 +186,14 @@ def calculate_targets(
     if not 0 < limit_threshold < 1:
         raise ValueError("limit_threshold must be between 0 and 1")
     warehouse.initialize()
-    panel = _load_target_panel(warehouse, adjust=adjust)
+    # 窗口下推进 SQL 是为了"只重算尾部几天"真的省钱；下面的 pandas 过滤仍保留，
+    # 因为 panel 也可能来自调用方注入的桩，正确性不能只靠 SQL 那一层。
+    panel = _load_target_panel(
+        warehouse,
+        adjust=adjust,
+        signal_from=start_date,
+        signal_to=end_date,
+    )
     if not panel.empty:
         for column in ("signal_date", "entry_date", "exit_date"):
             panel[column] = pd.to_datetime(
@@ -208,6 +238,9 @@ def calculate_targets(
     rows_written = warehouse.upsert_frame(
         "factor_targets", pd.DataFrame.from_records(records)
     )
+    # 写完就刷新覆盖表：覆盖 gate 的依据必须是这次写入后的真实状态，
+    # 而不是调用方再去扫一遍全量标签行。
+    warehouse.refresh_label_coverage(batch_id, TARGET_CODE, adjust=adjust)
     return TargetCalculationResult(
         calc_batch_id=batch_id,
         rows_written=rows_written,

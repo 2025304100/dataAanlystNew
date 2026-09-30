@@ -340,25 +340,32 @@ def _expire_stale_tasks(db: Session) -> None:
     - 写入 status 之后立即把 is_terminal_locked 置 1。
     """
     cutoff = _now() - STALE_RUNNING_DEADLINE
-    rows = (
-        db.execute(
-            select(AsyncTaskRecord).where(
-                AsyncTaskRecord.status.in_(("queued", "running")),
-                AsyncTaskRecord.updated_at < cutoff,
-                (AsyncTaskRecord.is_terminal_locked == 0) | (AsyncTaskRecord.is_terminal_locked.is_(None)),
+    try:
+        rows = (
+            db.execute(
+                select(AsyncTaskRecord).where(
+                    AsyncTaskRecord.status.in_(("queued", "running")),
+                    AsyncTaskRecord.updated_at < cutoff,
+                    (AsyncTaskRecord.is_terminal_locked == 0) | (AsyncTaskRecord.is_terminal_locked.is_(None)),
+                )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
-    for task in rows:
-        task.status = "failed"
-        task.stage = "failed"
-        task.message = "Task expired (no update for 30 minutes)"
-        task.finished_at = _now()
-        task.is_terminal_locked = 1
-    if rows:
-        db.commit()
+        for task in rows:
+            task.status = "failed"
+            task.stage = "failed"
+            task.message = "Task expired (no update for 30 minutes)"
+            task.finished_at = _now()
+            task.is_terminal_locked = 1
+        if rows:
+            db.commit()
+    except Exception:
+        # 读路径也调它：housekeeping 写失败只能算"这轮没清僵尸"，不能把一次
+        # 状态查询变成异常。且必须 rollback，否则脏事务会让同一 session 上
+        # 后续读取抛 PendingRollbackError。
+        db.rollback()
+        logger.exception("_expire_stale_tasks failed; skipping this patrol round")
 
 
 def _run_patrol(db: Session) -> None:
@@ -373,6 +380,12 @@ def _run_patrol(db: Session) -> None:
         patrol_interrupted_and_stalled(db)
     except Exception:
         logger.exception("patrol_interrupted_and_stalled failed; continuing with _expire_stale_tasks")
+        # 只记日志不够：失败的 flush 会把 session 留在 PendingRollback 状态，
+        # 后续 _expire_stale_tasks 与调用方的读取会连带抛错。
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("rollback after patrol failure also failed")
 
 
 

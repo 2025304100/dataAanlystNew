@@ -280,9 +280,20 @@ def resolve_forward_returns(
 
     forward_returns: pd.DataFrame | None = None
 
-    def _read_target_panel(batch_id: str) -> pd.DataFrame:
-        """读取并规范化一个目标批次，保证日期/面板类型稳定。"""
-        target_panel, _, _ = warehouse.get_target_panel(batch_id, target_code)
+    def _read_target_panel(
+        batch_id: str,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> pd.DataFrame:
+        """读取并规范化一个目标批次，保证日期/面板类型稳定。
+
+        常驻批次装的是全库标签，必须按本次评测窗口截，否则超出区间的信号日会
+        一起进 pivot。
+        """
+        target_panel, _, _ = warehouse.get_target_panel(
+            batch_id, target_code, start_date=start_date, end_date=end_date
+        )
         if target_panel is None or target_panel.empty:
             raise ValueError("target_panel empty")
         panel = target_panel.copy()
@@ -316,19 +327,22 @@ def resolve_forward_returns(
     requested_date_count = len(requested_dates)
 
     if latest_batch_id is None:
+        # hasattr 探针保留：resolve 最终仍要调 target_engine.calculate_targets，
+        # 调用方注入"没有该引擎"的模块时，就不能假装能即时补标签。
         if target_horizon == 5 and hasattr(te, "calculate_targets"):
             try:
-                calc_kwargs: dict[str, Any] = {"warehouse": warehouse}
-                if evaluation_start_date is not None:
-                    calc_kwargs["start_date"] = evaluation_start_date
-                if evaluation_end_date is not None:
-                    calc_kwargs["end_date"] = evaluation_end_date
-                batch_result = te.calculate_targets(**calc_kwargs)
-                latest_batch_id = (
-                    batch_result.calc_batch_id
-                    if batch_result and getattr(batch_result, "tradable_rows", 0) > 0
-                    else None
-                )
+                # 补齐写回常驻批次，不再新建私有 targets-{uuid} 批次
+                # （VIZ-0930-27 的第四个写入方）
+                from app.services.factors.label_batch import resolve_label_batch
+
+                win_start = evaluation_start_date or (
+                    min(requested_dates) if requested_dates else None)
+                win_end = evaluation_end_date or (
+                    max(requested_dates) if requested_dates else None)
+                if win_start is not None and win_end is not None:
+                    resolved = resolve_label_batch(
+                        warehouse, start_date=win_start, end_date=win_end)
+                    latest_batch_id = resolved.batch_id
             except Exception as e:
                 blockers.append(_blocker(
                     "eval.data.target_engine_exception",
@@ -386,7 +400,9 @@ def resolve_forward_returns(
             forward_returns = _fallback_shift_pct()
     else:
         try:
-            forward_returns = _read_target_panel(latest_batch_id)
+            forward_returns = _read_target_panel(
+                latest_batch_id, start_date=evaluation_start_date,
+                end_date=evaluation_end_date)
 
             # 仅在调用方明确提供评测区间时触发补算，保持旧的纯函数/测试行为。
             covered_count = len(set(requested_dates).intersection(forward_returns.index))
@@ -399,16 +415,17 @@ def resolve_forward_returns(
                 and evaluation_end_date is not None
             ):
                 try:
-                    regenerated = te.calculate_targets(
-                        warehouse=warehouse,
+                    from app.services.factors.label_batch import resolve_label_batch
+
+                    resolved = resolve_label_batch(
+                        warehouse,
                         start_date=evaluation_start_date,
                         end_date=evaluation_end_date,
                     )
-                    regenerated_batch_id = getattr(regenerated, "calc_batch_id", None)
-                    if regenerated_batch_id:
-                        regenerated_panel = _read_target_panel(regenerated_batch_id)
-                        latest_batch_id = regenerated_batch_id
-                        forward_returns = regenerated_panel
+                    latest_batch_id = resolved.batch_id
+                    forward_returns = _read_target_panel(
+                        latest_batch_id, start_date=evaluation_start_date,
+                        end_date=evaluation_end_date)
                 except Exception as regen_exc:  # noqa: BLE001
                     blockers.append(_blocker(
                         "eval.data.target_coverage_incomplete",
@@ -697,6 +714,84 @@ _PREFLIGHT_FIX_TARGETS = {
 _PREFLIGHT_FIX_BACKFILL = {
     "tab": "init-backfill", "label_zh": "去执行初始化补数",
 }
+
+
+def _preflight_target_availability_item(
+    warehouse: Any,
+    *,
+    target_code: str,
+    target_horizon: int,
+    latest_batch_id: str,
+    start_date: date | None,
+    end_date: date | None,
+) -> dict:
+    """预检④"目标标签可用性"的一项。
+
+    单独成函数是因为三个分支（区间齐且有标签 / 区间齐但缺标签 / 没给区间）
+    若不拆开就只能靠整条预检链跑通才测得到。"存在批次"不等于"所选区间有标签"：
+    共享标签批次装的是全库标签，指针也不再由最后写库的任务决定。
+    """
+    from app.services.factors.label_batch import usable_end
+    from app.services.factors.label_coverage import evaluate_label_coverage
+
+    coverage = None
+    if start_date is not None and end_date is not None:
+        coverage = evaluate_label_coverage(
+            warehouse,
+            batch_id=latest_batch_id,
+            target_code=target_code,
+            start_date=start_date,
+            # 预检没有 PIT 边界参数，按全库 bars 判（as_of=None）
+            end_date=usable_end(warehouse, end_date=end_date,
+                                as_of_exit_date=None, target_code=target_code),
+        )
+
+    if coverage is not None and not coverage.satisfied:
+        return {
+            "code": "preflight.target_availability.incomplete",
+            "severity": "warn",
+            "category": "target",
+            "title_zh": f"目标标签未覆盖所选区间：{target_code}",
+            "detail_zh": (
+                f"{coverage.message}。评价会继续，但只在已覆盖的交易日上计算；"
+                "如需完整区间，请对该窗口补齐标签（挖掘/评价会就地补进常驻标签批次）。"
+            ),
+            "evidence": {
+                "target_code": target_code,
+                "target_horizon": target_horizon,
+                "latest_batch_id": latest_batch_id,
+                "fallback_needed": False,
+                "expected_days": coverage.expected_days,
+                "covered_days": coverage.covered_days,
+                "missing_days": coverage.missing_days,
+                "blocker": coverage.blocker,
+            },
+            "fix_link": _PREFLIGHT_FIX_TARGETS,
+            "retryable": True,
+        }
+
+    detail_zh = (
+        f"{coverage.message}（批次 {latest_batch_id}），评价将基于真实标签计算 IC。"
+        if coverage is not None else
+        f"仓库中存在 {target_code} 的可交易批次 {latest_batch_id}；"
+        "未指定评测区间，因此无法判定窗口覆盖，评价按批次自身窗口计算。"
+    )
+    return {
+        "code": "preflight.target_availability.ok",
+        "severity": "pass",
+        "category": "target",
+        "title_zh": f"目标标签可用：{target_code}",
+        "detail_zh": detail_zh,
+        "evidence": {
+            "target_code": target_code,
+            "target_horizon": target_horizon,
+            "latest_batch_id": latest_batch_id,
+            "fallback_needed": False,
+            "expected_days": coverage.expected_days if coverage else None,
+            "covered_days": coverage.covered_days if coverage else None,
+        },
+        "retryable": True,
+    }
 
 
 def preflight_factor_evaluation(
@@ -1000,23 +1095,14 @@ def preflight_factor_evaluation(
     target_code = f"target_{target_horizon}d_return"
     latest_batch_id = warehouse.get_latest_target_batch_id(target_code)
     if latest_batch_id is not None:
-        items.append({
-            "code": "preflight.target_availability.ok",
-            "severity": "pass",
-            "category": "target",
-            "title_zh": f"目标标签可用：{target_code}",
-            "detail_zh": (
-                f"仓库中已冻结 {target_code} 的可交易批次 {latest_batch_id}，"
-                "评价将基于真实标签计算 IC。"
-            ),
-            "evidence": {
-                "target_code": target_code,
-                "target_horizon": target_horizon,
-                "latest_batch_id": latest_batch_id,
-                "fallback_needed": False,
-            },
-            "retryable": True,
-        })
+        items.append(_preflight_target_availability_item(
+            warehouse,
+            target_code=target_code,
+            target_horizon=target_horizon,
+            latest_batch_id=str(latest_batch_id),
+            start_date=start_date,
+            end_date=end_date,
+        ))
     elif target_horizon == 5:
         items.append({
             "code": "preflight.target_availability.fallback_5d",

@@ -48,10 +48,26 @@ from app.services.factors.mining.contracts import (
 )
 
 #: 目标标签面板缓存（性能优化？同 run 内每次 evaluate 都重新 pivot target 是
-#: 无谓浪费，50 个体×每次 pivot 397×1407 面板）。按 (batch_id, target_code)
-#: 只构建一次；带简单 LRU 上限防长期累积（OrderedDict 移动访问键即保活）。
-_TARGET_PIVOT_CACHE: "OrderedDict[tuple[str, str], pd.DataFrame]" = OrderedDict()
+#: 无谓浪费，50 个体×每次 pivot 397×1407 面板）。键必须含读取窗口与 PIT 上界：
+#: 标签批次改成常驻共享之后，同一个 batch_id 会被不同窗口的 run 复用，只按
+#: (batch_id, target_code) 缓存会让第二个 run 静默拿到第一个 run 的面板。
+#: 带简单 LRU 上限防长期累积（OrderedDict 移动访问键即保活）。
+_TARGET_PIVOT_CACHE: "OrderedDict[tuple[Any, ...], pd.DataFrame]" = OrderedDict()
 _TARGET_PIVOT_CACHE_MAX = 50
+
+
+def target_pivot_cache_key(ctx: Any, target_code: str) -> tuple[Any, ...]:
+    """目标面板缓存键：批次 + 口径 + 读取窗口 + PIT 上界。
+
+    批次改成常驻共享之后，`batch_id` 不再唯一标识一份面板；键里少了窗口就会
+    让后一个 run 静默使用前一个 run 的标签面板。
+    """
+    return (
+        str(getattr(ctx, "target_calc_batch_id", "") or ""), target_code,
+        str(getattr(ctx, "start_date", "") or ""),
+        str(getattr(ctx, "end_date", "") or ""),
+        str(getattr(ctx, "data_cutoff_at", "") or ""),
+    )
 
 # ══════════════════════════════════════════════════════════
 # 常量表（设计文档 §7.2.2）
@@ -374,14 +390,17 @@ def _evaluate_core(
     )
 
     with probe.stage("data_load"):
-        # 性能：同 run 的目标面板只 pivot 一次（任务内 50+ 个体会反复读同一批）
-        cache_key = (str(ctx.target_calc_batch_id or ""), "target_5d_return")
+        # 性能：同 run 同窗口的目标面板只 pivot 一次（任务内 50+ 个体会反复读）
+        cache_key = target_pivot_cache_key(ctx, "target_5d_return")
         target_pivot = _TARGET_PIVOT_CACHE.get(cache_key)
         if target_pivot is not None:
             _TARGET_PIVOT_CACHE.move_to_end(cache_key)
         else:
             target_df, _bid, _tcode = wh.get_target_panel(
-                ctx.target_calc_batch_id or "", target_code="target_5d_return"
+                ctx.target_calc_batch_id or "", target_code="target_5d_return",
+                start_date=getattr(ctx, "start_date", None),
+                end_date=getattr(ctx, "end_date", None),
+                as_of_exit_date=_as_date(getattr(ctx, "data_cutoff_at", None)),
             )
             if target_df is None or target_df.empty:
                 target_pivot = None
@@ -768,7 +787,10 @@ def build_full_panels(ctx: MiningContext, formula: str) -> tuple:
     hi = _as_date(getattr(split, "test_end", None))
 
     target_df, _bid, _tcode = wh.get_target_panel(
-        str(ctx.target_calc_batch_id or ""), target_code="target_5d_return")
+        str(ctx.target_calc_batch_id or ""), target_code="target_5d_return",
+        start_date=lo, end_date=hi,
+        as_of_exit_date=_as_date(getattr(ctx, "data_cutoff_at", None)),
+    )
     if target_df is None or target_df.empty:
         raise ValueError("target_panel_empty: 目标面板为空，无法做最终验证。")
     fr = target_df.pivot(index="signal_date", columns="symbol",

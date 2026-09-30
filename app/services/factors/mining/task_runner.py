@@ -554,8 +554,8 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
         subexpr_cache as SC,
     )
     from app.services.factors.mining.contracts import MiningContext
+    from app.services.factors.label_batch import resolve_label_batch
     from app.services.factors.store import FactorWarehouse
-    from app.services.factors.target_engine import calculate_targets
     from app.db.session import get_session_local
 
     db = get_session_local()()
@@ -573,17 +573,32 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
         # 连接池 pool_pre_ping/recycle=60s 在下次 checkout 时自动刷新。
         db.rollback()
 
-        # ① 目标标签：按 run 区间生成（worker 已持 duckdb_write）
+        # ① 目标标签：读常驻标签库，缺哪段就地补写回同一批次。
+        # 不再按 run 抄一份全窗口快照（VIZ-0930-27：实测 19 份逐字节同一的副本）；
+        # 窗口够不够由覆盖 gate 判定，不够直接失败并给出真实缺口，而不是静默用短面板。
         wh = FactorWarehouse(str(
             payload.get("warehouse_path") or Settings().factor_warehouse_path))
-        calc_batch = f"mining-{ctx.run_id}"
-        calculate_targets(
-            wh, start_date=run.start_date.date(), end_date=run.end_date.date(),
-            calc_batch_id=calc_batch,
+        cutoff = EVA._as_date(run.data_cutoff_at)
+        resolved = resolve_label_batch(
+            wh,
+            start_date=run.start_date.date(),
+            end_date=run.end_date.date(),
+            as_of_exit_date=cutoff,
+        )
+        calc_batch = resolved.batch_id
+        logger.info(
+            "mining labels run=%s batch=%s backfilled=%s rows=%s usable_end=%s",
+            ctx.run_id, calc_batch, resolved.backfilled,
+            resolved.rows_written, resolved.usable_end,
         )
 
         # ② MiningContext（切分走归一化入口；候选池过滤留 A5）
-        target_df, _bid, _tcode = wh.get_target_panel(calc_batch, "target_5d_return")
+        target_df, _bid, _tcode = wh.get_target_panel(
+            calc_batch, "target_5d_return",
+            start_date=run.start_date.date(),
+            end_date=resolved.usable_end,
+            as_of_exit_date=cutoff,
+        )
         all_dates = sorted(
             d for d in (EVA._as_date(v) for v in target_df["signal_date"].tolist())
             if d is not None

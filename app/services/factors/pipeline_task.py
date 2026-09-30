@@ -40,7 +40,7 @@ from app.services.factor_set_service import factor_set_readiness
 from app.services.factors.ridge_model import train_rolling_ridge
 from app.services.factors.runtime import get_factor_runtime_snapshot
 from app.services.factors.scoring_bridge import materialize_factor_scores
-from app.services.factors.store import FactorWarehouse
+from app.services.factors.store import FactorWarehouse, SHARED_TARGET_BATCH_ID
 from app.models.score import Score
 from app.models.decision_engine import DecisionEvidence
 from app.models.journal_entry import JournalEntry
@@ -111,6 +111,53 @@ def _prune_unreferenced_scores(db, *, keep_batches: int = 30) -> dict[str, objec
         "score_rows_deleted": len(candidates),
         "protected_factor_batch_ids": sorted(protected_factor_batches),
     }
+
+
+def retention_protected_batch_ids(db: Session, score_retention: dict) -> list[str]:
+    """保留清理的保护集：Score 引用批次 ∪ 模型 identity 引用批次。
+
+    单独成函数是因为"漏了 target 侧"这个 bug 就长在调用点的组装上，
+    不抽出来就只能测到 helper、测不到真实保护集。
+    """
+    merged = {
+        str(item) for item in score_retention.get("protected_factor_batch_ids", [])
+        if item
+    }
+    merged |= _model_referenced_batch_ids(db)
+    return sorted(merged)
+
+
+def _model_referenced_batch_ids(db: Session) -> set[str]:
+    """已训练模型在 MySQL 里持久引用的 duckdb 计算批次。
+
+    `ridge_model` 把 identity（含 `factor_calc_batch_id` 与
+    `target_calc_batch_id`）整包写进 `factor_model_runs.hyperparameters_json`，
+    所以这些批次承担着"复现该模型当年所用标签"的职责。按数量淘汰若把它们删掉，
+    重跑同一模型的评估会静默换成另一套标签——而 target 侧此前完全没进保护清单。
+    """
+    from app.models.factor_model import FactorModelRun
+
+    batch_ids: set[str] = set()
+    try:
+        rows = db.execute(select(FactorModelRun.hyperparameters_json)).all()
+    except Exception:
+        # 旧库可能还没有该表/列；保护清单缺一项不能阻断保留清理本身
+        logger.exception("读取模型引用批次失败，本轮按无引用处理")
+        return batch_ids
+    for (raw,) in rows:
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        for key in ("factor_calc_batch_id", "target_calc_batch_id"):
+            value = payload.get(key)
+            if value:
+                batch_ids.add(str(value))
+    return batch_ids
 
 
 class FactorPipelineBindingError(ValueError):
@@ -725,13 +772,16 @@ def _run_factor_pipeline(task_id: str) -> None:
                 'start_date': calculation_start_date.isoformat(),
                 'end_date': effective_end_date.isoformat(),
             },
-        ):
+        ) as factor_batch_audit:
             factors = calculate_stock_factors(
                 warehouse,
                 start_date=calculation_start_date,
                 end_date=effective_end_date,
                 calc_batch_id=factor_calc_batch_id,
             )
+            # 审计行数只是记账，不许把计算阶段带崩：字段缺失时留 0
+            factor_batch_audit.rows_written = getattr(factors, 'rows_written', 0)
+            factor_batch_audit.rows_received = getattr(factors, 'rows_written', 0)
         results['factors'] = asdict(factors)
         if should_cancel():
             return
@@ -753,7 +803,10 @@ def _run_factor_pipeline(task_id: str) -> None:
             message='Generating T+1 to T+5 labels',
         )
         current_stage = 'targets'
-        target_calc_batch_id = f'targets-{uuid4().hex}'
+        # 常驻共享批次：本次只刷新 [calculation_start_date, effective_end_date]
+        # 这一段（含尾部 horizon 天），历史行的覆盖情况以覆盖表为准，不看这里的
+        # scope——scope 记的是"这次刷到哪"，不是"这个批次覆盖哪"。
+        target_calc_batch_id = SHARED_TARGET_BATCH_ID
         with batch_context(
             warehouse,
             batch_id=target_calc_batch_id,
@@ -761,14 +814,17 @@ def _run_factor_pipeline(task_id: str) -> None:
             scope={
                 'start_date': calculation_start_date.isoformat(),
                 'end_date': effective_end_date.isoformat(),
+                'shared_batch': True,
             },
-        ):
+        ) as target_batch_audit:
             targets = calculate_targets(
                 warehouse,
                 start_date=calculation_start_date,
                 end_date=effective_end_date,
                 calc_batch_id=target_calc_batch_id,
             )
+            target_batch_audit.rows_written = getattr(targets, 'rows_written', 0)
+            target_batch_audit.rows_received = getattr(targets, 'rows_written', 0)
         results['targets'] = asdict(targets)
         if should_cancel():
             return
@@ -837,9 +893,11 @@ def _run_factor_pipeline(task_id: str) -> None:
         try:
             score_retention = _prune_unreferenced_scores(db)
             db.commit()
+            protected = retention_protected_batch_ids(db, score_retention)
             results['batch_retention'] = warehouse.prune_calculation_batches(
-                protected_batch_ids=score_retention.get('protected_factor_batch_ids', []),
+                protected_batch_ids=protected,
             )
+            results['batch_retention']['protected_batch_ids'] = protected
             results['batch_retention']['score_rows_deleted'] = score_retention['score_rows_deleted']
         except Exception as cleanup_exc:
             logger.warning(

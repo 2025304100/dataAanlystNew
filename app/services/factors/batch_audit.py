@@ -572,6 +572,20 @@ def get_batch_audit_report(
     )
 
 
+@dataclass
+class BatchAuditHandle:
+    """调用方在 with 块内回填的行数，退出时写进 ingestion_batches。
+
+    ``batch_context`` 只保证"批次提交了"，行数只有被包的计算自己知道；
+    不回填就会留下 ``rows_written=0`` 的 committed 记录，原子性核对
+    （``audit_batch_atomicity`` 比较 rows_written 与实际行数）因此恒判不符。
+    """
+
+    batch_id: str
+    rows_received: int = 0
+    rows_written: int = 0
+
+
 @contextmanager
 def batch_context(
     warehouse: FactorWarehouse,
@@ -580,13 +594,15 @@ def batch_context(
     source_key: BatchSourceKey,
     scope: dict[str, Any] | None = None,
     source_contract_version: str | None = None,
-) -> Iterator[None]:
+) -> Iterator[BatchAuditHandle]:
     """Context manager that wraps begin/finalize_batch.
 
     On entry, calls begin_batch (errors are swallowed so the wrapped code
     still runs). On normal exit, calls finalize_batch(committed). On
     exception, calls finalize_batch(failed) then re-raises. Finalize errors
     are always swallowed so batch tracking never blocks the main flow.
+
+    Yields a :class:`BatchAuditHandle` for the caller to report row counts.
     """
     begin_ok = False
     try:
@@ -604,8 +620,9 @@ def batch_context(
             batch_id,
         )
 
+    handle = BatchAuditHandle(batch_id=batch_id)
     try:
-        yield
+        yield handle
     except Exception as exc:
         if begin_ok:
             try:
@@ -630,6 +647,8 @@ def batch_context(
                     warehouse,
                     batch_id=batch_id,
                     status="committed",
+                    rows_received=handle.rows_received,
+                    rows_written=handle.rows_written,
                 )
             except Exception:
                 logger.exception(
@@ -639,6 +658,7 @@ def batch_context(
 
 __all__ = [
     "BatchAuditEntry",
+    "BatchAuditHandle",
     "BatchAuditReport",
     "BatchLagDiagnostic",
     "BatchRecord",

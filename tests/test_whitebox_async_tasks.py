@@ -214,6 +214,83 @@ def test_expire_stale_tasks_marks_running_as_failed(db_session):
     assert "expired" in task.message.lower()
 
 
+def _poison_session_via_failed_flush(db_session, task) -> None:
+    """把 session 推进 PendingRollback —— 复现生产那条错的成因。
+
+    必须是 **flush 失败**，普通语句报错不会污染 session（第一版用例就是这么写
+    错的，剥掉守护照样绿）。生产原文是 "rolled back due to a previous exception
+    during flush"，原始异常 `database is locked`；这里用 NOT NULL 违约稳定触发
+    同样的状态。
+    """
+    task.status = None
+    try:
+        db_session.flush()
+    except Exception:
+        pass
+
+
+def test_run_patrol_failure_leaves_session_readable(db_session, monkeypatch):
+    """VIZ-0930-30：巡检写失败不能把调用方的 session 变成 PendingRollback。
+
+    这条钉的是整轮套件里"红的位置每次都不一样"的真因：_run_patrol 声称
+    best-effort，但异常只记日志、不回滚，于是失败的 flush 污染了 session，
+    紧接着同 session 上的读（_expire_stale_tasks 的 SELECT、任务状态查询）
+    连带抛 PendingRollbackError。
+    """
+    import app.services.task_state_machine as tsm
+
+    task = _create_task(db_session, status="running", task_type="factor_pipeline")
+
+    def _poison_then_raise(session):
+        _poison_session_via_failed_flush(session, task)
+        raise RuntimeError("patrol exploded")
+
+    monkeypatch.setattr(tsm, "patrol_interrupted_and_stalled", _poison_then_raise)
+
+    async_tasks._run_patrol(db_session)  # 不得向外抛
+
+    reloaded = db_session.get(AsyncTaskRecord, task.id)
+    assert reloaded is not None
+    assert reloaded.status == "running"
+
+
+def test_expire_stale_tasks_rolls_back_when_commit_fails(db_session, monkeypatch):
+    """过期清理失败只能算"这轮没清"，不能污染读路径。"""
+    from datetime import datetime, timedelta, timezone
+
+    task = _create_task(db_session, status="running", task_type="universe_smart_sync")
+    task.updated_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=31)
+    db_session.commit()
+
+    def _fail_commit(*_args, **_kwargs):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(db_session, "commit", _fail_commit)
+    async_tasks._expire_stale_tasks(db_session)  # 不得向外抛
+
+    db_session.refresh(task)
+    assert task.status == "running"
+
+
+def test_get_async_task_survives_poisoned_patrol(db_session, monkeypatch):
+    """状态查询入口：巡检把 session 弄脏后，仍必须读到任务而不是抛错。"""
+    import app.services.task_state_machine as tsm
+
+    task = _create_task(db_session, status="done", task_type="factor_pipeline")
+
+    def _poison_then_raise(session):
+        victim = session.get(AsyncTaskRecord, task.id)
+        _poison_session_via_failed_flush(session, victim)
+        raise RuntimeError("patrol exploded")
+
+    monkeypatch.setattr(tsm, "patrol_interrupted_and_stalled", _poison_then_raise)
+
+    read = async_tasks.get_async_task(task.id)
+    assert read is not None
+    assert read.id == task.id
+    assert read.status == "done"
+
+
 def test_interrupt_orphaned_async_tasks_marks_only_non_terminal(db_session):
     queued = _create_task(db_session, status="queued", task_type="factor_pipeline")
     running = _create_task(db_session, status="running", task_type="universe_smart_sync")

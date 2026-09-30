@@ -6,7 +6,7 @@ import pytest
 
 pytest.importorskip("duckdb")
 
-from app.services.factors.store import FactorWarehouse
+from app.services.factors.store import SCHEMA_VERSION, FactorWarehouse
 
 pytestmark = pytest.mark.whitebox
 
@@ -44,7 +44,7 @@ def test_initialize_and_health(tmp_path):
     health = warehouse.health()
 
     assert health.available is True
-    assert health.schema_version == "3"
+    assert health.schema_version == SCHEMA_VERSION
     assert health.raw_daily_bars == 0
 
 
@@ -59,7 +59,7 @@ def test_health_remains_readable_during_same_process_write_connection(
         try:
             health = warehouse.health()
             assert health.available is True
-            assert health.schema_version == "3"
+            assert health.schema_version == SCHEMA_VERSION
         finally:
             writer.execute("ROLLBACK")
 

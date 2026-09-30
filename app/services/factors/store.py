@@ -26,7 +26,18 @@ from app.services.factors.warehouse_locks import (
 )
 
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
+
+# 标签库的常驻批次：流水线维护它，挖掘与评估实验室只按窗口读它。
+# 批次 ID 不再隐含窗口——窗口是读取参数（``get_target_panel`` 的 start/end/as_of），
+# 因此一份覆盖可以服务多方，而不必每个 run 重抄一份全窗口快照（VIZ-0930-27）。
+# adjust 不在 factor_targets 的主键里，将来若出现第二种复权口径必须另起批次 ID。
+SHARED_TARGET_BATCH_ID = "targets-labels"
+
+#: 当前唯一被 `target_engine` 产出的口径（entry=T+1 / exit=T+5）。
+#: 放在 store 侧是为了让"指针优先常驻批次"的判断不必反向依赖 target_engine
+#: （后者 import store，反向会成环）；target_engine.TARGET_CODE 即别名至此。
+DEFAULT_TARGET_CODE = "target_5d_return"
 
 _PATH_LOCKS: dict[str, threading.RLock] = {}
 _PATH_LOCKS_GUARD = threading.Lock()
@@ -264,6 +275,22 @@ SCHEMA_STATEMENTS = (
         calc_batch_id VARCHAR NOT NULL,
         created_at TIMESTAMP NOT NULL,
         PRIMARY KEY (symbol, signal_date, target_code, calc_batch_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS warehouse_label_coverage (
+        batch_id VARCHAR NOT NULL,
+        target_code VARCHAR NOT NULL,
+        adjust VARCHAR NOT NULL,
+        min_signal_date DATE,
+        max_signal_date DATE,
+        signal_days INTEGER NOT NULL DEFAULT 0,
+        symbol_count INTEGER NOT NULL DEFAULT 0,
+        rows_total BIGINT NOT NULL DEFAULT 0,
+        rows_tradable BIGINT NOT NULL DEFAULT 0,
+        bars_latest_date DATE,
+        updated_at TIMESTAMP NOT NULL,
+        PRIMARY KEY (batch_id, target_code, adjust)
     )
     """,
 )
@@ -901,6 +928,9 @@ class FactorWarehouse:
         if keep_batches < 1:
             raise ValueError("keep_batches must be at least 1")
         protected = {str(item) for item in protected_batch_ids if item}
+        # 常驻标签批次不能靠"它恰好是最新的一批"活下来：一旦有更新的计算批次，
+        # 按数量保留就会把全市场标签删掉，挖掘与评估会静默拿到空面板。
+        protected.add(SHARED_TARGET_BATCH_ID)
         self.initialize()
         with self._write_lock, self.connection() as conn:
             rows = conn.execute(
@@ -1092,17 +1122,40 @@ class FactorWarehouse:
         except Exception:
             return False
 
-    def get_latest_target_batch_id(
-        self, target_code: str = "target_5d_return"
-    ) -> str | None:
-        """查询 target_code 下 is_tradable=True 且 tradable_rows>0 的最新批次
-        calc_batch_id，按 created_at DESC LIMIT 1。返回 None 意味着没有批次。
+    def _has_tradable_rows(self, calc_batch_id: str, target_code: str) -> bool:
+        """该批次该口径是否存在可交易标签行（存在性检查，不数全量）。"""
+        try:
+            with self.connection(read_only=True) as conn:
+                row = conn.execute(
+                    "SELECT 1 FROM factor_targets "
+                    "WHERE calc_batch_id = ? AND target_code = ?"
+                    "  AND is_tradable = TRUE LIMIT 1",
+                    [calc_batch_id, target_code],
+                ).fetchone()
+            return row is not None
+        except Exception:
+            return False
 
-        如果 factor_targets 表不存在也返回 None。
+    def get_latest_target_batch_id(
+        self, target_code: str = DEFAULT_TARGET_CODE
+    ) -> str | None:
+        """返回该口径应使用的标签批次。
+
+        常驻标签批次存在且该口径有可交易行时，它就是权威答案；否则回落到旧的
+        "按 created_at 取最新"扫描——其它 horizon 的标签不在常驻批次里
+        （`target_engine` 只产 5d），必须继续走这条路，不能假装常驻批次有。
+
+        回落语义本身的坑（VIZ-0930-29）：老实现下"最新"由最后写库的任务决定，
+        挖掘批次（550 天）与流水线批次（10~12 天）谁写完谁当指针，同一因子的
+        同一评估会在两种宽度的标签面板之间摆动。
         """
         try:
             if not self._table_exists("factor_targets"):
                 return None
+            if target_code == DEFAULT_TARGET_CODE and self._has_tradable_rows(
+                SHARED_TARGET_BATCH_ID, target_code
+            ):
+                return SHARED_TARGET_BATCH_ID
             with self.connection(read_only=True) as conn:
                 row = conn.execute(
                     """
@@ -1127,13 +1180,24 @@ class FactorWarehouse:
             return None
 
     def get_target_panel(
-        self, calc_batch_id: str, target_code: str = "target_5d_return"
+        self,
+        calc_batch_id: str,
+        target_code: str = DEFAULT_TARGET_CODE,
+        *,
+        start_date: Any | None = None,
+        end_date: Any | None = None,
+        as_of_exit_date: Any | None = None,
     ) -> tuple[Any, str, str]:
         """返回 (DataFrame 含 columns=[symbol, signal_date, target_value],
         calc_batch_id, target_code)。
 
         DataFrame 后续被评估器 pivot(index=signal_date, columns=symbol,
         values=target_value) 使用。仅返回 is_tradable=True 的行。
+
+        ``start_date``/``end_date`` 按 signal_date 截取窗口，``as_of_exit_date``
+        追加 ``exit_date <= as_of`` 过滤。共享标签批次被多方复用时，批次 ID 不再
+        隐含窗口，这两组过滤是唯一的 PIT 保证：任何一次运行都读不到 as_of 之后
+        才确定的标签。
 
         如果 factor_targets 表不存在，返回空 DataFrame。
         """
@@ -1143,17 +1207,243 @@ class FactorWarehouse:
         try:
             if not self._table_exists("factor_targets"):
                 return empty_df, calc_batch_id, target_code
+            conditions = [
+                "calc_batch_id = ?",
+                "target_code = ?",
+                "is_tradable = TRUE",
+            ]
+            params: list[Any] = [calc_batch_id, target_code]
+            if start_date is not None:
+                conditions.append("signal_date >= ?")
+                params.append(start_date)
+            if end_date is not None:
+                conditions.append("signal_date <= ?")
+                params.append(end_date)
+            if as_of_exit_date is not None:
+                conditions.append("exit_date <= ?")
+                params.append(as_of_exit_date)
             with self.connection(read_only=True) as conn:
                 df = conn.execute(
-                    """
+                    f"""
                     SELECT symbol, signal_date, target_value
                     FROM factor_targets
-                    WHERE calc_batch_id = ?
-                      AND target_code = ?
-                      AND is_tradable = TRUE
+                    WHERE {' AND '.join(conditions)}
                     """,
-                    [calc_batch_id, target_code],
+                    params,
                 ).fetchdf()
                 return df, calc_batch_id, target_code
         except Exception:
             return empty_df, calc_batch_id, target_code
+
+    # ------------------------------------------------------------------
+    # 标签库覆盖：共享批次的 gate 依据
+    # ------------------------------------------------------------------
+
+    def refresh_label_coverage(
+        self,
+        calc_batch_id: str,
+        target_code: str = DEFAULT_TARGET_CODE,
+        adjust: str = "qfq",
+    ) -> dict[str, Any]:
+        """按当前 factor_targets / raw_daily_bars 重算覆盖摘要并写回覆盖表。
+
+        覆盖表是 gate 的物证：调用方不必为判"标签够不够"而扫全量标签行。
+        """
+        self.initialize()
+        with self._write_lock, self.connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    MIN(signal_date),
+                    MAX(signal_date),
+                    COUNT(DISTINCT signal_date),
+                    COUNT(DISTINCT symbol),
+                    COUNT(*),
+                    SUM(CASE WHEN is_tradable THEN 1 ELSE 0 END)
+                FROM factor_targets
+                WHERE calc_batch_id = ? AND target_code = ?
+                """,
+                [calc_batch_id, target_code],
+            ).fetchone()
+            bars_latest = conn.execute(
+                "SELECT MAX(trade_date) FROM raw_daily_bars WHERE adjust = ?",
+                [adjust],
+            ).fetchone()[0]
+            summary = {
+                "batch_id": calc_batch_id,
+                "target_code": target_code,
+                "adjust": adjust,
+                "min_signal_date": row[0],
+                "max_signal_date": row[1],
+                "signal_days": int(row[2] or 0),
+                "symbol_count": int(row[3] or 0),
+                "rows_total": int(row[4] or 0),
+                "rows_tradable": int(row[5] or 0),
+                "bars_latest_date": bars_latest,
+            }
+            conn.execute(
+                """
+                INSERT INTO warehouse_label_coverage (
+                    batch_id, target_code, adjust, min_signal_date,
+                    max_signal_date, signal_days, symbol_count, rows_total,
+                    rows_tradable, bars_latest_date, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (batch_id, target_code, adjust) DO UPDATE SET
+                    min_signal_date = excluded.min_signal_date,
+                    max_signal_date = excluded.max_signal_date,
+                    signal_days = excluded.signal_days,
+                    symbol_count = excluded.symbol_count,
+                    rows_total = excluded.rows_total,
+                    rows_tradable = excluded.rows_tradable,
+                    bars_latest_date = excluded.bars_latest_date,
+                    updated_at = excluded.updated_at
+                """,
+                [
+                    calc_batch_id,
+                    target_code,
+                    adjust,
+                    summary["min_signal_date"],
+                    summary["max_signal_date"],
+                    summary["signal_days"],
+                    summary["symbol_count"],
+                    summary["rows_total"],
+                    summary["rows_tradable"],
+                    summary["bars_latest_date"],
+                    _utcnow_naive(),
+                ],
+            )
+        return summary
+
+    def get_label_coverage(
+        self,
+        calc_batch_id: str,
+        target_code: str = DEFAULT_TARGET_CODE,
+        adjust: str = "qfq",
+    ) -> dict[str, Any] | None:
+        if not self._table_exists("warehouse_label_coverage"):
+            return None
+        with self.connection(read_only=True) as conn:
+            row = conn.execute(
+                """
+                SELECT batch_id, target_code, adjust, min_signal_date,
+                       max_signal_date, signal_days, symbol_count, rows_total,
+                       rows_tradable, bars_latest_date, updated_at
+                FROM warehouse_label_coverage
+                WHERE batch_id = ? AND target_code = ? AND adjust = ?
+                """,
+                [calc_batch_id, target_code, adjust],
+            ).fetchone()
+        if row is None:
+            return None
+        keys = (
+            "batch_id", "target_code", "adjust", "min_signal_date",
+            "max_signal_date", "signal_days", "symbol_count", "rows_total",
+            "rows_tradable", "bars_latest_date", "updated_at",
+        )
+        return dict(zip(keys, row))
+
+    def list_trading_days(
+        self,
+        start_date: Any,
+        end_date: Any,
+        adjust: str = "qfq",
+    ) -> list[Any]:
+        """返回镜像 bars 日历在 [start, end] 内的全部交易日（升序）。
+
+        覆盖判定的期望值只能来自这个日历，不能用自然日：停牌/节假日会让
+        "缺 N 天"变成永久无法补齐的死循环。
+        """
+        if not self._table_exists("raw_daily_bars"):
+            return []
+        with self.connection(read_only=True) as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT trade_date
+                FROM raw_daily_bars
+                WHERE adjust = ? AND trade_date >= ? AND trade_date <= ?
+                ORDER BY trade_date
+                """,
+                [adjust, start_date, end_date],
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def latest_bar_date(self, adjust: str = "qfq") -> Any | None:
+        """全库该复权口径的最新交易日，用于标签覆盖上界推算。"""
+        return self._bar_date_edge("MAX", adjust)
+
+    def earliest_bar_date(self, adjust: str = "qfq") -> Any | None:
+        """全库该复权口径的最早交易日，用于判定"请求起点早于镜像"这一头缺口。
+
+        必须拿全库边界比，不能拿"请求区间内第一个交易日"比：开始日期落在周末或
+        节假日时，后者会永远晚于开始日期，把每一次正常请求都误判成 K 线缺口。
+        """
+        return self._bar_date_edge("MIN", adjust)
+
+    def _bar_date_edge(self, aggregate: str, adjust: str) -> Any | None:
+        if aggregate not in ("MIN", "MAX"):
+            raise ValueError("aggregate must be MIN or MAX")
+        if not self._table_exists("raw_daily_bars"):
+            return None
+        with self.connection(read_only=True) as conn:
+            row = conn.execute(
+                f"SELECT {aggregate}(trade_date) FROM raw_daily_bars "
+                "WHERE adjust = ?",
+                [adjust],
+            ).fetchone()
+        return row[0] if row else None
+
+    def shift_back_trading_days(
+        self,
+        anchor: Any,
+        trading_days: int,
+        adjust: str = "qfq",
+    ) -> Any | None:
+        """把 anchor 往回推 N 个交易日，返回落在日历上的那一天。
+
+        标签需要 horizon 个未来交易日才能定值，所以覆盖上界必须用交易日推，
+        否则 gate 会永远认为"最近 5 天缺失"。
+        """
+        if trading_days < 0:
+            raise ValueError("trading_days must be >= 0")
+        if not self._table_exists("raw_daily_bars"):
+            return None
+        with self.connection(read_only=True) as conn:
+            row = conn.execute(
+                """
+                SELECT trade_date
+                FROM (
+                    SELECT DISTINCT trade_date
+                    FROM raw_daily_bars
+                    WHERE adjust = ? AND trade_date <= ?
+                    ORDER BY trade_date DESC
+                    LIMIT ?
+                )
+                ORDER BY trade_date ASC
+                LIMIT 1
+                """,
+                [adjust, anchor, trading_days + 1],
+            ).fetchone()
+        return row[0] if row else None
+
+    def list_covered_signal_dates(
+        self,
+        calc_batch_id: str,
+        target_code: str,
+        start_date: Any,
+        end_date: Any,
+    ) -> list[Any]:
+        if not self._table_exists("factor_targets"):
+            return []
+        with self.connection(read_only=True) as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT signal_date
+                FROM factor_targets
+                WHERE calc_batch_id = ? AND target_code = ?
+                  AND signal_date >= ? AND signal_date <= ?
+                ORDER BY signal_date
+                """,
+                [calc_batch_id, target_code, start_date, end_date],
+            ).fetchall()
+        return [row[0] for row in rows]
+

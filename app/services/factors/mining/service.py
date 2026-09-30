@@ -900,8 +900,15 @@ def build_mining_context(db: Any, run: Any, *, warehouse_path: str | None,
     from app.services.factors.store import FactorWarehouse
 
     wh = FactorWarehouse(str(warehouse_path or ""))
-    target_df, _bid, _tcode = wh.get_target_panel(str(target_calc_batch_id),
-                                                   "target_5d_return")
+    # 读取窗口与覆盖判定用同一口径：run 自己的区间 + data_cutoff_at 的 PIT 上界。
+    # 共享批次里装着全库标签，不按窗口截就会把超出本 run 的信号日一起读进来。
+    target_df, _bid, _tcode = wh.get_target_panel(
+        str(target_calc_batch_id),
+        "target_5d_return",
+        start_date=run.start_date.date(),
+        end_date=run.end_date.date(),
+        as_of_exit_date=EVA._as_date(run.data_cutoff_at),
+    )
     all_dates = sorted(
         d for d in (EVA._as_date(v) for v in target_df["signal_date"].tolist())
         if d is not None
@@ -929,18 +936,23 @@ def build_mining_context(db: Any, run: Any, *, warehouse_path: str | None,
 
 def evaluate_all_impl(db: Any, *, run_id: str, top_k: int = 50,
                       warehouse_path: str | None = None) -> dict[str, Any]:
-    """批量创建最终验证（test-once）：生成目标标签 → finalize_run。"""
+    """批量创建最终验证（test-once）：解析常驻标签批次 → finalize_run。"""
     from app.core.config import Settings
+    from app.services.factors.label_batch import resolve_label_batch
+    from app.services.factors.mining import evaluation_adapter as EVA
     from app.services.factors.store import FactorWarehouse
-    from app.services.factors.target_engine import calculate_targets
 
     run = load_run(db, run_id)
     if run is None:
         raise ValueError(f"run 不存在: {run_id!r}")
     wh = FactorWarehouse(str(warehouse_path or Settings().factor_warehouse_path))
-    batch = f"mining-{run_id}"
-    calculate_targets(wh, start_date=run.start_date.date(),
-                      end_date=run.end_date.date(), calc_batch_id=batch)
+    resolved = resolve_label_batch(
+        wh,
+        start_date=run.start_date.date(),
+        end_date=run.end_date.date(),
+        as_of_exit_date=EVA._as_date(run.data_cutoff_at),
+    )
+    batch = resolved.batch_id
     ctx = build_mining_context(db, run, warehouse_path=str(wh.path),
                                target_calc_batch_id=batch)
     return finalize_run(db, ctx=ctx, run_id=run_id, top_k=max(0, int(top_k)))

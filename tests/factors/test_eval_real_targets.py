@@ -215,8 +215,11 @@ class TestRealTargetPanelPivot:
             _target_engine_module=MagicMock(spec=[]),
         )
 
+        # 常驻批次装的是全库标签，读取必须带窗口参数（这里调用方没给评测区间，
+        # 所以是 None —— 关键是参数被传下去，而不是回到"整批都拿"）
         warehouse.get_target_panel.assert_called_once_with(
-            "batch-real-001", "target_5d_return"
+            "batch-real-001", "target_5d_return",
+            start_date=None, end_date=None,
         )
         assert ctx["latest_batch_id"] == "batch-real-001"
         assert ctx["fallback_used"] is False
