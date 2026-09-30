@@ -97,7 +97,10 @@ export default function AppSettingsSection() {
               {t("appSettingsValueSource")}
               {"："}
               {sourceLabel(item)}
-              {item.env_var ? `（${item.env_var}）` : ""}
+              {/* 环境变量名只在值真的来自环境变量时才标：以前无条件括注，
+                  导致 source=默认值 时也显示（DISCOVERY_AUTO_DATA_PREP_ENABLED），
+                  用户会误读成“这个默认值来自那个环境变量”（拟真走查 g12）。 */}
+              {item.source === "env" && item.env_var ? `（${item.env_var}）` : ""}
             </div>
           </div>
           {item.type === "bool" ? (

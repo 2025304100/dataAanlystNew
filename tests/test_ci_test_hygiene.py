@@ -843,3 +843,28 @@ def test_portfolio_ui_copy_does_not_print_raw_enums():
         + "\n".join(offenders)
     )
 
+
+def test_app_setting_registry_entries_have_user_facing_copy():
+    """app_settings 登记表的每一个开关都必须自带中文名与说明。
+
+    前端 AppSettingsSection 写的是 `item.label_zh || item.key`：一旦新开关只登了 key，
+    界面就把内部配置键当标题给用户（拟真走查在系统设置页看到过这类原值）。
+    前端“不维护开关清单”是对的（避开 PT-DEF-13 那类双写），但前提是登记表里文案齐备，
+    所以这条得钉在后端。不登文案就会红，而不是把裸 key 泄给用户。
+    """
+    from app.services.app_settings import APP_SETTING_REGISTRY
+
+    assert APP_SETTING_REGISTRY, "app_settings 登记表为空，本守护已失效"
+
+    problems: list[str] = []
+    for key, spec in sorted(APP_SETTING_REGISTRY.items()):
+        label = str(spec.get("label_zh") or "").strip()
+        desc = str(spec.get("description_zh") or "").strip()
+        if not label:
+            problems.append(f"{key}: 缺 label_zh（界面会回退成显示 key 本身）")
+        if not desc:
+            problems.append(f"{key}: 缺 description_zh（同上）")
+        if label and (label == key or "_" in label):
+            problems.append(f"{key}: label_zh 仍含内部命名形式 {label!r}")
+    assert not problems, "以下应用开关没有可用的用户可读文案：\n" + "\n".join(problems)
+
