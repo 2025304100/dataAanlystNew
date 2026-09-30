@@ -20,6 +20,7 @@ import {
 } from "@ant-design/icons";
 import { api, type FactorOverview, type ScoringOverview } from "../api/client";
 import { actionLabel, enumLabel, stageLabel, t, template } from "../i18n";
+import { govStatusLabel } from "../utils/govStatusLabel";
 import { useApp } from "../context/AppContext";
 import { navigateToResearch } from "../utils/sourceContext";
 import { baseOpportunityScoreValue, formatRelativeTime, opportunityScoreValue, score, withFinalOpportunityScore } from "../utils/format";
@@ -1010,13 +1011,13 @@ export default function TodayDecision() {
             {(!perm.allow_new_buys || !perm.allow_risk_exits) && (
               <Space size={4}>
                 {!perm.allow_new_buys && (
-                  <Tooltip title="HG1 门禁：禁止 NEW_BUY 型动作（加仓/新建）">
-                    <Tag color="red" icon={<StopOutlined />} style={{ marginInlineEnd: 0 }}>🚫 NEW_BUY</Tag>
+                  <Tooltip title={`HG1 门禁：禁止${actionLabel("NEW_BUY")}型动作（加仓/新建）`}>
+                    <Tag color="red" icon={<StopOutlined />} style={{ marginInlineEnd: 0 }}>🚫 {actionLabel("NEW_BUY")}</Tag>
                   </Tooltip>
                 )}
                 {!perm.allow_risk_exits && (
-                  <Tooltip title="HG1 门禁：禁止 RISK_EXIT 型动作（止损/减仓/清仓）">
-                    <Tag color="orange" icon={<WarningOutlined />} style={{ marginInlineEnd: 0 }}>⚠ RISK_EXIT 暂不可用</Tag>
+                  <Tooltip title={`HG1 门禁：禁止${actionLabel("RISK_EXIT")}型动作（止损/减仓/清仓）`}>
+                    <Tag color="orange" icon={<WarningOutlined />} style={{ marginInlineEnd: 0 }}>⚠ {actionLabel("RISK_EXIT")} 暂不可用</Tag>
                   </Tooltip>
                 )}
               </Space>
@@ -1036,8 +1037,8 @@ export default function TodayDecision() {
               const denyReason = allowed
                 ? undefined
                 : isRiskExit
-                  ? `当前组合状态 ${currentState} 禁止 RISK_EXIT（风险退出）。${perm.requires_manual_ack ? "请管理员在治理 Tab 解除刹车/确认差异。" : "自动恢复/对账差异清零后解除。"}`
-                  : `当前组合状态 ${currentState} 禁止 NEW_BUY（加仓/新建）。${perm.requires_manual_ack ? "请人工在治理 Tab 完成审查/确认。" : "数据补齐/自动恢复后解除。"}`;
+                  ? `当前组合状态「${govStatusLabel(currentState)}」禁止${actionLabel("RISK_EXIT")}。${perm.requires_manual_ack ? "请管理员在治理 Tab 解除刹车/确认差异。" : "自动恢复/对账差异清零后解除。"}`
+                  : `当前组合状态「${govStatusLabel(currentState)}」禁止${actionLabel("NEW_BUY")}。${perm.requires_manual_ack ? "请人工在治理 Tab 完成审查/确认。" : "数据补齐/自动恢复后解除。"}`;
               return (
                 <Tooltip key={item.symbol_id} title={denyReason} placement="topLeft">
                   <span style={{ display: "block", width: "100%" }}>

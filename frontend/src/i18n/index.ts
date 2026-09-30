@@ -14,8 +14,10 @@ export const STAGE_LABELS: Record<string, Record<string, string>> = {
 };
 
 export const ACTION_LABELS: Record<string, Record<string, string>> = {
-  "zh-CN": { buy_dip: "回落低吸", exit: "退出观望", hold: "持有观察", open: "试探建仓", reduce: "减仓保护" },
-  "en-US": { buy_dip: "Buy Dip", exit: "Exit", hold: "Hold", open: "Open", reduce: "Reduce" },
+  // NEW_BUY / RISK_EXIT 是 HG1 权限对应的动作类别：界面文案不得直接把枚举原值给用户
+  //（今日决策卡片曾显示「🚫 NEW_BUY」）。
+  "zh-CN": { buy_dip: "回落低吸", exit: "退出观望", hold: "持有观察", open: "试探建仓", reduce: "减仓保护", NEW_BUY: "新买单", RISK_EXIT: "风险退出" },
+  "en-US": { buy_dip: "Buy Dip", exit: "Exit", hold: "Hold", open: "Open", reduce: "Reduce", NEW_BUY: "New Buy", RISK_EXIT: "Risk Exit" },
 };
 
 export const ASSET_LABELS: Record<string, Record<string, string>> = {

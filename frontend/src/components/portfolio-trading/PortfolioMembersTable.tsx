@@ -367,14 +367,14 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
   const rebalanceDisabled = !allowNewBuys || !allowRiskExits;
   const rebalanceHint = (() => {
     if (!allowNewBuys && !allowRiskExits) return "HG1 门禁：禁止新买单/风险退出，再平衡不可用";
-    if (!allowNewBuys) return "HG1 门禁：禁止新买单，再平衡不可用（需 NEW_BUY 权限）";
-    if (!allowRiskExits) return "HG1 门禁：禁止风险退出，再平衡不可用（需 RISK_EXIT 权限）";
+    if (!allowNewBuys) return "HG1 门禁：禁止新买单，再平衡不可用";
+    if (!allowRiskExits) return "HG1 门禁：禁止风险退出，再平衡不可用";
     return "";
   })();
   const handleRebalance = useCallback(async () => {
     if (!portfolioId) return;
     if (rebalanceDisabled) {
-      showToast("error", "HG1 门禁：当前组合状态禁止再平衡（缺少 NEW_BUY 或 RISK_EXIT 权限）");
+      showToast("error", "HG1 门禁：当前组合状态禁止再平衡（缺少新买单或风险退出权限）");
       return;
     }
     const confirmed = await confirmDialog(
@@ -402,7 +402,7 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
     async (p: PositionRow) => {
       if (!portfolioId) return;
       if (!allowRiskExits) {
-        showToast("error", "HG1 门禁：当前组合状态禁止风险退出（缺少 RISK_EXIT 权限）");
+        showToast("error", "HG1 门禁：当前组合状态禁止风险退出");
         return;
       }
       const qty = Number(p.quantity);
@@ -467,11 +467,11 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
       }
       // FR-P1-8a HG1 检查
       if (diff > 0 && !allowNewBuys) {
-        showToast("error", "HG1 门禁：调仓方向为买入，当前组合禁止新买单（需 NEW_BUY 权限）");
+        showToast("error", "HG1 门禁：调仓方向为买入，当前组合禁止新买单");
         return;
       }
       if (diff < 0 && !allowRiskExits) {
-        showToast("error", "HG1 门禁：调仓方向为卖出，当前组合禁止风险退出（需 RISK_EXIT 权限）");
+        showToast("error", "HG1 门禁：调仓方向为卖出，当前组合禁止风险退出");
         return;
       }
       setRowActionSymbolId(p.symbol_id);

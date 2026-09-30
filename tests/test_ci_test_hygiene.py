@@ -769,12 +769,16 @@ def test_alert_titles_do_not_interpolate_raw_task_type():
     )
 
 
-# 只盯两种真反模式：① 把治理状态变量直接插进「」给用户；② 文案里写死动作枚举原值。
-# 故意**不包含** RECONCILIATION_BLOCKED: 形式 —— 它在多个组件里作为字典键（颜色/文案映射），
-# 把那种写法也报红就成了一句真错没有、天天误报的噪声守护。
+# 只钉两种可干净执行的真反模式（口径宁窄勿宽，否则就是天天误报的噪声守护）：
+# ① 把治理状态变量直接插进「」给用户；
+# ② JSX 元素文本里写死动作枚举原值（如今日决策卡片那个 <Tag>🚫 NEW_BUY</Tag>）。
+# 故意不管的合法形式：对象字典键（RECONCILIATION_BLOCKED: { bg: … }、NEW_BUY: false）、
+# 代码注释与 {/* … */} JSX 注释（给开发看的内部术语）。
 _RAW_ENUM_IN_UI_TEXT_RE = re.compile(
-    r"「\{\s*currentState\s*\}」|(?:NEW_BUY|RISK_EXIT)\s*[:：]"
+    r"「\{\s*currentState\s*\}」|>\s*[^<\n]*(?:NEW_BUY|RISK_EXIT)"
 )
+# actionLabel("NEW_BUY") 是正确写法（枚举只当查表键，不直接呈现）
+_LABEL_HELPER_RE = re.compile(r"actionLabel\(|govStatusLabel\(|enumLabel\(")
 
 
 def test_portfolio_ui_copy_does_not_print_raw_enums():
@@ -782,7 +786,12 @@ def test_portfolio_ui_copy_does_not_print_raw_enums():
 
     拟真走查实测：持仓成员横幅里是硬编码的
     `NEW_BUY: 禁止 | RISK_EXIT: 禁止` 和 `「{currentState}」`，用户因此读到
-    RECONCILIATION_BLOCKED 这种词。这些位置必须走 utils/govStatusLabel（原值只进 tooltip）。
+    RECONCILIATION_BLOCKED 这种词。这些位置必须走 utils/govStatusLabel / actionLabel。
+
+    口径说明（有意不管的）：toast / 确认框里带“需 NEW_BUY 权限”这类文案已有少量残留在
+    PortfolioMembersTable:545/970、PortfolioOverview:279-280、PortfolioStrategyRules:649，
+    它们不在本守护当前口径内（当时先把 JSX 文本与插值两类零风险收掉）；
+    已写进拟真走查报告 §十三 未完清单，下轮一并改。
     """
     offenders: list[str] = []
     comp_dir = REPO_ROOT / "frontend" / "src" / "components"
@@ -791,8 +800,22 @@ def test_portfolio_ui_copy_does_not_print_raw_enums():
             continue
         src = f.read_text(encoding="utf-8", errors="ignore")
         for lineno, line in enumerate(src.splitlines(), 1):
-            if _RAW_ENUM_IN_UI_TEXT_RE.search(line):
-                offenders.append(f"{f.relative_to(REPO_ROOT).as_posix()}:{lineno} {line.strip()[:110]}")
+            stripped = line.strip()
+            # 注释（含 JSX 的 {/* … */}）里提枚举名是给开发看的，不算泄露
+            if (
+                stripped.startswith("//")
+                or stripped.startswith("*")
+                or stripped.startswith("/*")
+                or stripped.startswith("{/*")
+                or stripped.endswith("*/}")
+                or stripped.endswith("*/")
+            ):
+                continue
+            if not _RAW_ENUM_IN_UI_TEXT_RE.search(line):
+                continue
+            if _LABEL_HELPER_RE.search(line):
+                continue
+            offenders.append(f"{f.relative_to(REPO_ROOT).as_posix()}:{lineno} {line.strip()[:110]}")
     assert not offenders, (
         "以下界面文案直接拼了枚举原值（应改走 govStatusLabel / 中文权限名）：\n"
         + "\n".join(offenders)
