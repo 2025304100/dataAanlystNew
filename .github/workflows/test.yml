@@ -32,9 +32,15 @@ jobs:
           pip install -r requirements.txt
       - name: Shard coverage self-check
         # 断言 4 片并起来 == 全量收集（丢文件 / 重文件直接失败），防静默漏测
-        run: python scripts/ci_shard.py --marker whitebox --groups 4 --plan
+        run: python scripts/ci_shard.py --marker "whitebox and not slow" --groups 4 --plan
       - name: Run whitebox tests (this shard)
-        run: python scripts/ci_shard.py --marker whitebox --groups 4 --group ${{ matrix.shard }}
+        run: python scripts/ci_shard.py --marker "whitebox and not slow" --groups 4 --group ${{ matrix.shard }}
+      # 真实联网用例（带 @pytest.mark.slow，如 ak.stock_info_sz_name_code 等）不进阻断闸门：
+      # GitHub runner 拉不到深交所/东财时，红的是网络而不是代码，会把闸门变成没人看的噪声。
+      # 但仍单独跑一轮且保留结果可见（continue-on-error），所以不会悄悄消失。
+      - name: Run slow (real-network) whitebox tests — non-blocking
+        continue-on-error: true
+        run: pytest -m "whitebox and slow" -q --tb=short -rX
 
   # ── 前端测试 ──────────────────────────────────────────────
   frontend:
