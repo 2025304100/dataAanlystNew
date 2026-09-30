@@ -411,11 +411,18 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
     return () => window.clearInterval(etaTimer);
   }, [activeTask?.id, activeTask?.status, trainModel, fullRefresh]);
 
-  // 预计剩余时间 = max(0, 推荐总时长 - 已运行时长)
+  // 预计剩余时间：优先用本次任务自身的 percent 反推，percent 还没动时才退回历史中位数。
+  // VIZ-0930-26：本轮实测 factor inputs 镜像段把 percent 冻在 27% 达 40 分钟，
+  // 而历史中位数只有 432s —— 纯历史样本在数据规模变化（需镜像 132 万根 K 线）时严重误导。
+  // 自反推的估算会随实际进度走，哪怕越算越久，也是诚实的"比预期慢"。
   const remainingSeconds = useMemo(() => {
+    const pct = Number(activeTask?.percent ?? 0);
+    if (elapsed > 0 && pct > 0 && pct < 100) {
+      return Math.round((elapsed * (100 - pct)) / pct);
+    }
     if (!eta || elapsed <= 0) return null;
     return Math.max(0, Math.round(eta.recommended_seconds - elapsed));
-  }, [eta, elapsed]);
+  }, [activeTask?.percent, eta, elapsed]);
 
   const averageCoverage = useMemo(() => {
     const rows = overview?.factor_coverage ?? [];

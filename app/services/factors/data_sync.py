@@ -41,6 +41,8 @@ TAIL_PROXY_SOURCE_KEY = "sql.tail_accumulation_snapshots"
 ETF_INDICATOR_SOURCE_KEY = "sql.etf_indicators"
 MACRO_SOURCE_KEY = "sql.macro_indicator_values"
 CancelCheck = Callable[[], bool]
+# 与 bar_mirror.ProgressCallback 同签名：(phase, processed, total, message)
+ProgressCallback = Callable[[str, int, int, str], None]
 
 
 @dataclass
@@ -660,8 +662,14 @@ def mirror_factor_inputs(
     include_macro: bool = True,
     full_refresh: bool = False,
     should_cancel: CancelCheck | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> FactorInputMirrorResult:
-    """Mirror local SQL factor inputs without making a network request."""
+    """Mirror local SQL factor inputs without making a network request.
+
+    `progress_callback(phase, processed, total, message)` 与 bar_mirror 同签名：
+    以"已完成的输入类数 / 启用的输入类数"上报，供流水线把 27%→35% 这段做插值。
+    没有它时这段会长时间停在同一个百分比上（VIZ-0930-26）。
+    """
     if batch_size < 1:
         raise ValueError("batch_size must be positive")
     if not any(
@@ -680,6 +688,25 @@ def mirror_factor_inputs(
         raise ValueError("start_date must not be after end_date")
 
     result = FactorInputMirrorResult(batch_id=f"factor-inputs-{uuid4().hex}")
+    # VIZ-0930-26：这段原先完全不上报进度，流水线只能写死 percent=27，
+    # 于是用户看到百分比冻住几十分钟、无法区分在跑还是卡死。
+    _enabled_sections = sum(1 for on in (
+        include_valuations, include_financial_reports, include_fund_flows,
+        include_sentiment, include_tail_proxy, include_etf_indicators, include_macro,
+    ) if on)
+    _done_sections = [0]
+
+    def _report(section: str) -> None:
+        _done_sections[0] += 1
+        if progress_callback is not None:
+            progress_callback(
+                "factor_inputs",
+                _done_sections[0],
+                _enabled_sections,
+                f"Mirroring factor inputs: {section} "
+                f"({_done_sections[0]}/{_enabled_sections})",
+            )
+
     if _cancelled(should_cancel):
         return result
     target = warehouse or FactorWarehouse()
@@ -697,6 +724,7 @@ def mirror_factor_inputs(
             full_refresh=full_refresh,
             should_cancel=should_cancel,
         )
+        _report("valuations")
     if include_financial_reports and not _cancelled(should_cancel):
         _mirror_financial_reports(
             db,
@@ -707,6 +735,7 @@ def mirror_factor_inputs(
             full_refresh=full_refresh,
             should_cancel=should_cancel,
         )
+        _report("financial reports")
     if include_fund_flows and not _cancelled(should_cancel):
         _mirror_fund_flows(
             db,
@@ -718,6 +747,7 @@ def mirror_factor_inputs(
             full_refresh=full_refresh,
             should_cancel=should_cancel,
         )
+        _report("fund flows")
     if include_sentiment and not _cancelled(should_cancel):
         _mirror_lhb_institution(
             db,
@@ -740,6 +770,7 @@ def mirror_factor_inputs(
                 full_refresh=full_refresh,
                 should_cancel=should_cancel,
             )
+        _report("sentiment")
     if include_tail_proxy and not _cancelled(should_cancel):
         _mirror_tail_proxy(
             db,
@@ -751,12 +782,14 @@ def mirror_factor_inputs(
             full_refresh=full_refresh,
             should_cancel=should_cancel,
         )
+        _report("tail proxy")
     if include_etf_indicators and not _cancelled(should_cancel):
         _mirror_etf_indicators(
             db, target, result, start_date=start_date, end_date=end_date,
             batch_size=batch_size, full_refresh=full_refresh,
             should_cancel=should_cancel,
         )
+        _report("etf indicators")
     if include_macro and not _cancelled(should_cancel):
         _mirror_macro(
             db,
@@ -768,4 +801,5 @@ def mirror_factor_inputs(
             full_refresh=full_refresh,
             should_cancel=should_cancel,
         )
+        _report("macro")
     return result

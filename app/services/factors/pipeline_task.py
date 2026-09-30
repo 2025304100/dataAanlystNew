@@ -249,10 +249,12 @@ def _canonical_stage(raw: str) -> str:
 # metadata: 5% → 8%（通常很快）
 # universe_bars: 8% → 18%
 # business_bars: 18% → 25%
+# factor_inputs: 27% → 35%（VIZ-0930-26：这段原先没有回调，实测百分比能冻住 40 分钟）
 _MIRROR_PHASE_PERCENT = {
     'metadata': (5.0, 8.0),
     'universe_bars': (8.0, 18.0),
     'business_bars': (18.0, 25.0),
+    'factor_inputs': (27.0, 35.0),
 }
 
 
@@ -690,6 +692,8 @@ def _run_factor_pipeline(task_id: str) -> None:
             end_date=effective_end_date,
             full_refresh=payload.full_refresh,
             should_cancel=should_cancel,
+            # 7 类输入逐段上报，percent 在 27→35 之间插值
+            progress_callback=_make_mirror_progress_callback(task_id),
         )
         results['bar_mirror'] = bars.to_dict()
         results['input_mirror'] = {
