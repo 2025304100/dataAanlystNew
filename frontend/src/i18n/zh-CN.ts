@@ -2238,7 +2238,7 @@ const zhCN: Record<string, string> = {
     scEtfTab: "ETF",
     scPresetList: "预设列表",
     scPresetName: "预设名称",
-    scPresetKey: "预设 Key",
+    scPresetKey: "预设标识",
     scSource: "来源",
     scSourceSystem: "系统",
     scSourceUser: "用户",

@@ -2251,7 +2251,7 @@ const enUS: Record<string, string> = {
     scEtfTab: "ETF",
     scPresetList: "Presets",
     scPresetName: "Preset Name",
-    scPresetKey: "Preset Key",
+    scPresetKey: "Preset ID",
     scSource: "Source",
     scSourceSystem: "System",
     scSourceUser: "User",

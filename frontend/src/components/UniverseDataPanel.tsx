@@ -1267,7 +1267,7 @@ export default function UniverseDataPanel() {
                 <Space size={4}>
                   <Tag color="success" style={{ fontWeight: 600 }}>系统默认</Tag>
                   <span style={{ color: "var(--text-secondary, #555)", fontSize: 12 }}>
-                    行情/因子底座统一存储为<strong>前复权</strong>口径，保证涨跌幅计算与 K 线形态一致；基准指数 <code>index_prices</code> 表默认写入<strong>后复权</strong>，用于长期收益率对比。
+                    行情/因子底座统一存储为<strong>前复权</strong>口径，保证涨跌幅计算与 K 线形态一致；基准指数表默认写入<strong>后复权</strong>，用于长期收益率对比。
                   </span>
                 </Space>
               </Space>
