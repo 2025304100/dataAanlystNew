@@ -1080,8 +1080,10 @@ const ReconciliationPanel: React.FC<{
       const out = await api.confirmPortfolioReconciliation(portfolioId, payload);
       const ok = out.portfolio_now_ready === true;
       if (ok) {
-        const statusAlias = out.acknowledged_diffs_cleared ? "RECONCILED_CLEARED" : "ACKNOWLEDGED";
-        showToast("success", `${t("governance.reconcile.confirmed")} (status=${statusAlias}, correlation=${out.correlation_id ?? "—"})`);
+        // 不把后端状态别名（RECONCILED_CLEARED / ACKNOWLEDGED）直接给用户，
+        // 但关联追踪号是运维溯源要用的，保留。
+        const statusText = out.acknowledged_diffs_cleared ? "差异已清零" : "已人工确认";
+        showToast("success", `${t("governance.reconcile.confirmed")}（${statusText}，关联追踪号：${out.correlation_id ?? "—"}）`);
         setAckChecked(false);
         setForceSkipChecked(false);
         setReviewNote("");
@@ -1528,7 +1530,7 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("governance.audit.filter.query")}</label>
-            <input className="pt-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="keyword / correlation_id" style={{ padding: "6px 10px" }} />
+            <input className="pt-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="关键词 / 关联追踪号" style={{ padding: "6px 10px" }} />
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="pt-btn-primary" onClick={() => runQuery(1)} disabled={loading}>
