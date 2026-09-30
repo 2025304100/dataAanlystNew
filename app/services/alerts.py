@@ -19,6 +19,8 @@ from app.models.score import Score
 from app.models.symbol import Symbol
 from app.services.factors.__facade__ import get_active_score_scope  # Public ACL entrypoint
 
+from app.services.task_type_labels import task_type_label_zh
+
 logger = logging.getLogger(__name__)
 
 
@@ -282,7 +284,9 @@ def reconcile_task_alert_recoveries(session: Session) -> int:
                 failed_task.message, failed_task.stage
             )
             technical_details = _task_technical_details(failed_task)
-            desired_title = f"{failed_task.task_type} 任务失败"
+            # 告警标题是用户可读文案：不能把 task_type 原值（如 factor_pipeline）直接拼进去。
+            # 技术细节仍保留在 data/技术详情里供运维查看。
+            desired_title = f"{task_type_label_zh(failed_task.task_type)}任务失败"
             desired_message = f"任务 {failed_task.id[:8]}…：{summary}"
             needs_normalization = (
                 data.get("error_code") != error_code
@@ -476,13 +480,13 @@ def _eval_task_failed(session: Session, rule: AlertRule) -> list[AlertEvent]:
         technical_details = _task_technical_details(task)
         events.append(_fire_event(
             session, rule,
-            title=f"{task.task_type} 任务失败",
+            title=f"{task_type_label_zh(task.task_type)}任务失败",
             message=f"任务 {task.id[:8]}... 于 {task.updated_at} 失败: {task.message or task.stage}",
             data={"task_id": task.id, "task_type": task.task_type, "stage": task.stage,
                   "message": task.message},
         ))
         event = events[-1]
-        event.title = f"{task.task_type} 任务失败"
+        event.title = f"{task_type_label_zh(task.task_type)}任务失败"
         event.message = f"任务 {task.id[:8]}…：{summary}"
         event.data_json = json.dumps(
             {

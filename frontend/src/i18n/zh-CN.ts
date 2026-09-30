@@ -3191,6 +3191,13 @@ const zhCN: Record<string, string> = {
     // 扫描记录覆盖范围（原先表格直接印 discovery_score_snapshot.scope 原值）
     scanScopeCnStock: "A股股票",
     scanScopeCnEtf: "A股ETF",
+    // 治理阻断状态（界面上不得直接印 RECONCILIATION_BLOCKED 这种枚举值）
+    govStatusReady: "就绪（可下单）",
+    govStatusDataIncompletePaused: "数据不完整，已暂停买入",
+    govStatusReconciliationBlocked: "昨日对账存在差异，已被治理保护",
+    govStatusModelInactive: "模型未启用，已阻断",
+    govStatusScoreStale: "评分已过期，已阻断",
+    govStatusUnknown: "治理状态未识别",
     taskStatus_done: "已完成",
     taskStatus_failed: "失败",
     taskStatus_cancelled: "已取消",

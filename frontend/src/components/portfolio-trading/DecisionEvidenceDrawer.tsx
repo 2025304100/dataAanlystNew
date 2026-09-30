@@ -47,6 +47,9 @@ import {
   type DecisionRunRead,
 } from "../../api/client";
 import { useApp } from "../../context/AppContext";
+// 治理阻断状态对用户要说人话：原先直接把 run.blocking_status 原值打印到标题与提示语，
+// 界面上因此出现过「门禁阻断：RECONCILIATION_BLOCKED」这种句子（拟真走查检出）。
+import { govStatusCodeForTooltip, govStatusLabel } from "../../utils/govStatusLabel";
 
 /**
  * DecisionEvidenceDrawer — WP1-1 证据与归因抽屉（680px 右侧抽屉）。
@@ -1064,7 +1067,11 @@ export const DecisionEvidenceDrawer: React.FC<DecisionEvidenceDrawerProps> = ({
                   )}
                   {run && (
                     <span
-                      title={run.blocking_status}
+                      title={`${govStatusLabel(run.blocking_status)}${
+                        govStatusCodeForTooltip(run.blocking_status)
+                          ? `（${govStatusCodeForTooltip(run.blocking_status)}）`
+                          : ""
+                      }`}
                       style={{
                         fontSize: 12, padding: "2px 8px", borderRadius: 999,
                         color: blockingStatusColor(run.blocking_status),
@@ -1072,7 +1079,7 @@ export const DecisionEvidenceDrawer: React.FC<DecisionEvidenceDrawerProps> = ({
                         border: `1px solid ${blockingStatusColor(run.blocking_status)}55`,
                       }}
                     >
-                      {run.blocking_status}
+                      {govStatusLabel(run.blocking_status)}
                     </span>
                   )}
                 </div>
@@ -1249,7 +1256,11 @@ export const DecisionEvidenceDrawer: React.FC<DecisionEvidenceDrawerProps> = ({
                   style={{ marginTop: 12 }}
                   type={run.blocking_status === "READY" ? "info" : "warning"}
                   showIcon
-                  message={run.blocking_status === "READY" ? "门禁检查项（ready）" : `门禁阻断：${run.blocking_status}`}
+                  message={
+                    run.blocking_status === "READY"
+                      ? "门禁检查项已通过"
+                      : `门禁阻断：${govStatusLabel(run.blocking_status)}`
+                  }
                   description={<div style={{ marginTop: 4 }}><PrettyJson data={run.blocking_reasons_json} /></div>}
                 />
               ) : null}

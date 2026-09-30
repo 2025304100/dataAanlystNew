@@ -683,3 +683,88 @@ def test_task_type_label_keys_exist_in_both_dictionaries():
         absent = sorted(k for k in wanted if not re.search(rf'^\s*{k}:', src, re.M))
         assert not absent, f"{locale_file} 缺少这些任务类型文案键：{absent}"
 
+
+# ══════════════════════════════════════════
+# 20/21/22. 可读标签不再漂：两侧映射、治理枚举、告警标题
+# ══════════════════════════════════════════
+
+_BACKEND_LABEL_DICT_RE = re.compile(
+    r'^\s{4}"([a-z][a-z0-9_]*)":\s*"([^"]+)"', re.M
+)
+_BLOCKING_UNION_RE = re.compile(
+    r'export type DecisionBlockingStatus =([^;]*?);', re.S
+)
+_UNION_MEMBER_RE = re.compile(r'"([A-Z0-9_]+)"')
+_GOV_LABEL_ENTRY_RE = re.compile(r'^\s{2}([A-Z0-9_]+):\s*"(govStatus[A-Za-z0-9]*)"', re.M)
+
+
+def test_task_type_label_maps_do_not_drift():
+    """后端中文标签表与前端英文标签表必须覆盖同一批 task_type。
+
+    两处是同一含义的跨语言重复实现（没法共码）：只改一边就会出现
+    “告警标题已中文化、任务中心还在露 code”这种半新半旧的状态。
+    """
+    backend_src = (REPO_ROOT / "app" / "services" / "task_type_labels.py").read_text(
+        encoding="utf-8", errors="ignore"
+    )
+    head, _, tail = backend_src.partition("TASK_TYPE_LABELS_ZH")
+    assert tail, "没找到 TASK_TYPE_LABELS_ZH 定义，后端标签表改名了"
+    backend_keys = {k for k, _v in _BACKEND_LABEL_DICT_RE.findall(tail.partition("}")[0])}
+    assert backend_keys, "后端 task_type 中文标签表为空"
+
+    frontend_keys = set(_frontend_task_type_map())
+    only_backend = sorted(backend_keys - frontend_keys)
+    only_frontend = sorted(frontend_keys - backend_keys)
+    assert not only_backend and not only_frontend, (
+        f"两侧 task_type 标签表已漂移：仅后端有 {only_backend}，仅前端有 {only_frontend}。"
+        "新增/删除 task_type 时两边要一起改。"
+    )
+
+
+def test_decision_blocking_status_has_labels():
+    """client.ts 里声明的每一个治理状态枚举，前端都要有可读文案。"""
+    src = (REPO_ROOT / "frontend" / "src" / "api" / "client.ts").read_text(
+        encoding="utf-8", errors="ignore"
+    )
+    match = _BLOCKING_UNION_RE.search(src)
+    assert match, "找不到 export type DecisionBlockingStatus，声明形式变了"
+    declared = set(_UNION_MEMBER_RE.findall(match.group(1)))
+    assert declared, "DecisionBlockingStatus 为空 union，实扫口径已失效"
+
+    label_src = (REPO_ROOT / "frontend" / "src" / "utils" / "govStatusLabel.ts").read_text(
+        encoding="utf-8", errors="ignore"
+    )
+    labeled = {k for k, _v in _GOV_LABEL_ENTRY_RE.findall(label_src)}
+    missing = sorted(declared - labeled)
+    assert not missing, (
+        f"治理状态 {missing} 没有可读文案，界面会直接印枚举值（如 RECONCILIATION_BLOCKED）。"
+    )
+
+
+def test_alert_titles_do_not_interpolate_raw_task_type():
+    """告警标题不得把 task_type 原值直拼进去（应走 task_type_label_zh）。
+
+    历史写法：title=f"{task.task_type} 任务失败” —— 用户在告警中心看到
+    `factor_pipeline 任务失败`。技术详情里仍可以带原值。
+    """
+    offenders: list[str] = []
+    for path in (REPO_ROOT / "app").rglob("*.py"):
+        src = path.read_text(encoding="utf-8", errors="ignore")
+        for lineno, line in enumerate(src.splitlines(), 1):
+            if "任务失败" not in line:
+                continue
+            # 只查真正给标题赋值/传参的行：标签模块的文档字符串里会引用那句
+            # 历史写法作为成因说明，不能把它当成违规（自指式误报）。
+            if "title" not in line:
+                continue
+            # 已走 label 函数包装的行是正确写法（f-string 里仍会出现 .task_type）
+            if "task_type_label_zh(" in line:
+                continue
+            if ".task_type}" in line or "task_type)}" in line:
+                offenders.append(f"{path.relative_to(REPO_ROOT).as_posix()}:{lineno} {line.strip()}")
+    assert not offenders, (
+        "以下告警标题直接把 task_type 原值拼进了用户可读文案：\n"
+        + "\n".join(offenders)
+        + "\n修法：用 app/services/task_type_labels.task_type_label_zh(...) 包装。"
+    )
+

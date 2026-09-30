@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { KNOWN_TASK_TYPES, taskTypeCodeForTooltip, taskTypeLabel } from "../taskTypeLabel";
 import { KNOWN_SCAN_SCOPES, describeScanScope } from "../scanScopeLabel";
+import { govStatusLabel, KNOWN_GOV_STATUSES } from "../govStatusLabel";
 
 /** 后端真实会产生 task_type 的取值（与 app/ 里的 task_type= 字面量对齐；
  *  Python 侧守护 test_backend_task_types_have_frontend_labels 负责防漂移）。 */
@@ -100,6 +101,38 @@ describe("describeScanScope", () => {
     expect(KNOWN_SCAN_SCOPES.length).toBeGreaterThan(0);
     for (const scope of KNOWN_SCAN_SCOPES) {
       expect(describeScanScope(scope)).toBeTruthy();
+    }
+  });
+});
+
+// 治理阻断状态：拟真走查在组合交易多个子页看到过 RECONCILIATION_BLOCKED 原值，
+// 并拼进了提示语「门禁阻断：RECONCILIATION_BLOCKED」。
+describe("govStatusLabel", () => {
+  it("client.ts 声明的每个枚举值都有可读文案，且不等于原值", () => {
+    const declared = ["READY", "DATA_INCOMPLETE_PAUSED", "RECONCILIATION_BLOCKED", "MODEL_INACTIVE", "SCORE_STALE"];
+    for (const status of declared) {
+      const label = govStatusLabel(status);
+      expect(label).toBeTruthy();
+      expect(label).not.toBe(status);
+      expect(label).not.toMatch(/^[A-Z][A-Z0-9_]+$/);
+      expect(label).not.toMatch(/^govStatus[A-Z]/); // 键名回显也算泄露
+    }
+  });
+
+  it("具体状态说得清发生了什么", () => {
+    expect(govStatusLabel("RECONCILIATION_BLOCKED")).toBe("昨日对账存在差异，已被治理保护");
+    expect(govStatusLabel("READY")).toBe("就绪（可下单）");
+  });
+
+  it("未收录状态不返回枚举原值，只给通用文案；原值单独取用做 tooltip", () => {
+    expect(govStatusLabel("SOMETHING_NEW")).toBe("治理状态未识别");
+    expect(govStatusLabel(null)).toBe("治理状态未识别");
+  });
+
+  it("已收录清单非空且都能拿到文案", () => {
+    expect(KNOWN_GOV_STATUSES.length).toBeGreaterThan(0);
+    for (const status of KNOWN_GOV_STATUSES) {
+      expect(govStatusLabel(status)).toBeTruthy();
     }
   });
 });

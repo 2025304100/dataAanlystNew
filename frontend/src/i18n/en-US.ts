@@ -3190,6 +3190,13 @@ const enUS: Record<string, string> = {
     // Scan snapshot coverage (was printing raw scope values)
     scanScopeCnStock: "A-share Stocks",
     scanScopeCnEtf: "A-share ETFs",
+    // Governance blocking status (must not print raw enum values in the UI)
+    govStatusReady: "Ready (orders allowed)",
+    govStatusDataIncompletePaused: "Data incomplete, buying paused",
+    govStatusReconciliationBlocked: "Reconciliation diff found, protected by governance",
+    govStatusModelInactive: "Model inactive, blocked",
+    govStatusScoreStale: "Scores stale, blocked",
+    govStatusUnknown: "Unrecognized governance status",
     taskStatus_done: "Done",
     taskStatus_failed: "Failed",
     taskStatus_cancelled: "Cancelled",
