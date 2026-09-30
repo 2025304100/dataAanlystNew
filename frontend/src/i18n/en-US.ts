@@ -5427,7 +5427,7 @@ const enUS: Record<string, string> = {
     "governance.audit.filter.severity": "Severity",
     "governance.audit.filter.startDate": "Start date",
     "governance.audit.filter.endDate": "End date",
-    "governance.audit.filter.query": "Keyword / correlation_id",
+    "governance.audit.filter.query": "Keyword / trace ID",
     "governance.audit.filter.apply": "Search",
     "governance.audit.filter.reset": "Reset",
     "governance.audit.col.id": "ID",
@@ -5438,9 +5438,9 @@ const enUS: Record<string, string> = {
     "governance.audit.col.reviewedAt": "Reviewed at",
     "governance.audit.col.reviewNote": "Review note",
     "governance.audit.col.fromTo": "State From → To",
-    "governance.audit.col.correlation": "correlation_id",
+    "governance.audit.col.correlation": "Trace ID",
     "governance.audit.col.time": "Created at",
-    "governance.audit.col.expand": "Expand attributes",
+    "governance.audit.col.expand": "Expand details",
     "governance.audit.empty": "No audit events yet.",
 
     // Terminal lock 9-scenario Tooltips (FR-P1-2 AC-10 T-LOCK-1 ~ T-LOCK-9)

@@ -868,3 +868,47 @@ def test_app_setting_registry_entries_have_user_facing_copy():
             problems.append(f"{key}: label_zh 仍含内部命名形式 {label!r}")
     assert not problems, "以下应用开关没有可用的用户可读文案：\n" + "\n".join(problems)
 
+
+# ════════════════════════════════════════
+# 25. i18n 文案里的内部标识：棘轮基线（只降不升）
+# ════════════════════════════════════════
+
+_I18N_ENTRY_RE = re.compile(r'^\s*"?(?P<key>[A-Za-z0-9_.]+)"?\s*:\s*"(?P<val>[^"]*)"')
+_I18N_IDENT_RE = re.compile(r"\b(?:[a-z][a-z0-9]*_[a-z0-9_]+|[A-Z][A-Z0-9]+_[A-Z0-9_]+)\b")
+
+# 基线取**本轮清理之后**的实测值 63（清理前是 67：治理审计表头与搜索标签共 4 条
+# 带字段名的文案已改成人话）。存量里很多是**故意**的（输入框示例值如 pe_ttm / snake_case、
+# 运维环境变量名、状态机节点名），所以不能一刀切报红；但新增一条就红。
+# 降下来后请同步调低这个数字（守护也会提醒）。
+I18N_IDENTIFIER_BASELINE = 63
+
+
+def test_i18n_copy_identifier_ratchet():
+    """用户可见文案里夹带内部标识的条目数不得增长。
+
+    背景：治理审计表头就是 `correlation_id`、搜索框标签写“关键词 / correlation_id”
+    （拟真走查 g19），这类东西散在字典里没人拦。改成硬零不现实（示例值/环境变量名
+    本来就该出现），所以用棘轮：只允许变少，不允许变多。
+    """
+    hits: list[str] = []
+    for locale in ("zh-CN.ts", "en-US.ts"):
+        path = REPO_ROOT / "frontend" / "src" / "i18n" / locale
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            m = _I18N_ENTRY_RE.match(line)
+            if not m:
+                continue
+            # 先挖掉 {占位符}，否则会把插值名当字段名误报
+            value = re.sub(r"\{[^}]*\}", "", m.group("val"))
+            if _I18N_IDENT_RE.search(value):
+                hits.append(f"{locale}:{lineno} {m.group('key')}")
+
+    assert len(hits) <= I18N_IDENTIFIER_BASELINE, (
+        f"文案里夹带内部标识的条目从基线 {I18N_IDENTIFIER_BASELINE} 涨到了 {len(hits)}。"
+        "新增项请改成用户可读说法（必要时把原字段名放 tooltip/括号注里）。"
+        f"\n新增样本（按文件序）：\n  " + "\n  ".join(hits[-6:])
+    )
+    assert len(hits) >= I18N_IDENTIFIER_BASELINE - 12, (
+        f"实测只剩 {len(hits)} 条，远低于基线 {I18N_IDENTIFIER_BASELINE}："
+        "已清理完毕，请把 I18N_IDENTIFIER_BASELINE 调低到实际值，否则基线会失去约束力。"
+    )
+

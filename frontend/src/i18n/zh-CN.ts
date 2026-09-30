@@ -5428,7 +5428,7 @@ const zhCN: Record<string, string> = {
     "governance.audit.filter.severity": "严重级别",
     "governance.audit.filter.startDate": "起始日期",
     "governance.audit.filter.endDate": "结束日期",
-    "governance.audit.filter.query": "关键词 / correlation_id",
+    "governance.audit.filter.query": "关键词 / 关联追踪号",
     "governance.audit.filter.apply": "查询",
     "governance.audit.filter.reset": "重置",
     "governance.audit.col.id": "ID",
@@ -5438,10 +5438,10 @@ const zhCN: Record<string, string> = {
     "governance.audit.col.operatedBy": "操作人",
     "governance.audit.col.reviewedAt": "审查时间",
     "governance.audit.col.reviewNote": "审查备注",
-    "governance.audit.col.fromTo": "状态转移 From → To",
-    "governance.audit.col.correlation": "correlation_id",
+    "governance.audit.col.fromTo": "状态转移（原状态 → 新状态）",
+    "governance.audit.col.correlation": "关联追踪号",
     "governance.audit.col.time": "产生时间",
-    "governance.audit.col.expand": "展开 attributes",
+    "governance.audit.col.expand": "展开详情",
     "governance.audit.empty": "暂无审计事件",
 
     // 终态锁 9 场景 Tooltip 文案（FR-P1-2 AC-10 T-LOCK-1 ~ T-LOCK-9）
