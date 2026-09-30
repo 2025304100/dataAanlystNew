@@ -596,6 +596,26 @@ def load_analysis_panel(db: Session, *, member_symbols: Sequence[str],
     )
 
 
+# fail-soft 不等于沉默：数仓压根没建表时，只报“无数据”会让用户去查一个不存在的问题。
+# 文案必须给出下一步动作（去哪、点什么），而且不能把“未初始化”说成“没数据”。
+WAREHOUSE_UNINITIALIZED_WARNING = (
+    "因子数仓尚未初始化（原始表不存在），本次分析拿不到任何真实数据。"
+    "请先在「因子系统」执行数仓初始化并同步行情/估值数据，再重新生成挖掘物料。"
+)
+
+
+def warehouse_warning_for(evidence: dict[str, Any] | None) -> str | None:
+    """把“数仓未建表”的证据翻译成人能行动的提示；其他情况返回 None。
+
+    只对“表不存在”说话：表存在但无数据是另一种状态（build_analysis 已有自己的提醒），
+    把两者混成一句会让人误判。_resolve_as_of_date 只在表缺失时记
+    `warehouse_uninitialized`，所以这里能可靠区分。
+    """
+    if evidence and evidence.get("warehouse_uninitialized"):
+        return WAREHOUSE_UNINITIALIZED_WARNING
+    return None
+
+
 def analyze_pool(
     db: Session, *, pool_id: str, operator_id: str = "system",
     warehouse: Any | None = None, panel: AnalysisPanel | None = None,
@@ -612,12 +632,14 @@ def analyze_pool(
     pool_service._assert_not_locked(db, pool_id, "生成挖掘物料")
 
     resolved = as_of_date
+    as_of_evidence: dict[str, Any] | None = None
     if panel is None:
         wh = warehouse if warehouse is not None else R._default_warehouse(db)
         with wh.connection(read_only=True) as conn:
-            resolved, _adjusted, _ev = R._resolve_as_of_date(conn, as_of_date)
+            resolved, _adjusted, as_of_evidence = R._resolve_as_of_date(conn, as_of_date)
     if resolved is None:
-        # 解析不出 as_of（数仓空）→ 用今天，让分析自己报告"无数据"，而不是在这里崩
+        # 解析不出 as_of（数仓空或未建表）→ 用今天，让分析自己报告无数据，而不是在这里崩。
+        # “为什么无数据”不能丢：下面会把它翻译成可行动提示写进 warnings。
         resolved = _utcnow().date()
 
     # 幂等：若已有「未分析且未锁定」的快照则复用，否则新建。
@@ -646,6 +668,11 @@ def analyze_pool(
         panel = load_analysis_panel(db, member_symbols=member_symbols,
                                     as_of_date=resolved, warehouse=wh)
     analysis = build_analysis(panel)
+    # 把“数仓未建表”追加进 warnings：该字段会被持久化到快照，且前端
+    # PoolAnalysisModal 已经把 warnings 渲染出来，所以用户能看到可行动的下一步。
+    _wh_warning = warehouse_warning_for(as_of_evidence)
+    if _wh_warning:
+        analysis.setdefault("warnings", []).append(_wh_warning)
 
     snapshot = pool_service.mark_analyzed(db, snapshot_id=snapshot.id,
                                           analysis=analysis, operator_id=operator_id)
@@ -675,6 +702,8 @@ __all__ = [
     "ANALYSIS_WINDOW_DAYS",
     "AnalysisPanel",
     "build_analysis",
+    "warehouse_warning_for",
+    "WAREHOUSE_UNINITIALIZED_WARNING",
     "load_analysis_panel",
     "analyze_pool",
 ]
