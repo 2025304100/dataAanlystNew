@@ -4,6 +4,7 @@ import { message } from "antd";
 import { api } from "../../api/client";
 import { t } from "../../i18n";
 import { money, percent } from "../../utils/format";
+import { govStatusCodeForTooltip, govStatusLabel } from "../../utils/govStatusLabel";
 import type { AllocationSnapshot, PortfolioStatePermissions, PortfolioStatusResponse, Position, SignalRule } from "../../types";
 
 /**
@@ -400,9 +401,10 @@ const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({ portfolioId, onNa
               <p style={sectionSubStyle}>{t("portfolioTrading.overview.autoTradeSub")}</p>
               {/* FR-P1-8a: HG1 状态小字提示 */}
               {currentState !== "READY" && (
-                <div style={{ marginTop: 6, fontSize: 11, color: hardBlockAutoOn ? "var(--pt-state-error, #ef4444)" : "var(--pt-state-warning, #f59e0b)" }}>
+                <div title={govStatusCodeForTooltip(currentState) ?? undefined} style={{ marginTop: 6, fontSize: 11, color: hardBlockAutoOn ? "var(--pt-state-error, #ef4444)" : "var(--pt-state-warning, #f59e0b)" }}>
                   {hardBlockAutoOn ? <ShieldAlert size={11} style={{ display: "inline", verticalAlign: "-1px", marginRight: 4 }} /> : <AlertTriangle size={11} style={{ display: "inline", verticalAlign: "-1px", marginRight: 4 }} />}
-                  HG1 状态：「{currentState}」{hardBlockAutoOn ? "（禁止开启自动交易）" : "（开启前会二次确认）"}
+                  {/* currentState 是治理枚举原值（如 RECONCILIATION_BLOCKED），不能直接给用户看 */}
+                  HG1 状态：「{govStatusLabel(currentState)}」{hardBlockAutoOn ? "（禁止开启自动交易）" : "（开启前会二次确认）"}
                 </div>
               )}
             </div>

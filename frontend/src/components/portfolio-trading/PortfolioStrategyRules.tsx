@@ -3,6 +3,7 @@ import { Bot, Plus, AlertTriangle, Save, RotateCcw, FileText, Info, ShieldAlert,
 import { api } from "../../api/client";
 import type { ScoringModelBrief, ScoringFactorSetBrief } from "../../api/client";
 import { t } from "../../i18n";
+import { govStatusCodeForTooltip, govStatusLabel } from "../../utils/govStatusLabel";
 import { useApp } from "../../context/AppContext";
 import type { PortfolioStatePermissions, PortfolioStatusResponse, SignalRule } from "../../types";
 
@@ -756,9 +757,9 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
               </p>
               {/* FR-P1-8a: HG1 状态小字提示 */}
               {currentState !== "READY" && (
-                <div style={{ marginTop: 5, fontSize: 11, color: hardBlockAutoOn ? "var(--pt-state-error, #ef4444)" : "var(--pt-state-warning, #f59e0b)" }}>
+                <div title={govStatusCodeForTooltip(currentState) ?? undefined} style={{ marginTop: 5, fontSize: 11, color: hardBlockAutoOn ? "var(--pt-state-error, #ef4444)" : "var(--pt-state-warning, #f59e0b)" }}>
                   {hardBlockAutoOn ? <ShieldAlert size={11} style={{ display: "inline", verticalAlign: "-1px", marginRight: 4 }} /> : <AlertTriangle size={11} style={{ display: "inline", verticalAlign: "-1px", marginRight: 4 }} />}
-                  HG1 状态：「{currentState}」{hardBlockAutoOn ? "（禁止开启自动交易）" : "（保存时若开启将二次确认）"}
+                  HG1 状态：「{govStatusLabel(currentState)}」{hardBlockAutoOn ? "（禁止开启自动交易）" : "（保存时若开启将二次确认）"}
                 </div>
               )}
             </div>

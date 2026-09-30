@@ -768,3 +768,33 @@ def test_alert_titles_do_not_interpolate_raw_task_type():
         + "\n修法：用 app/services/task_type_labels.task_type_label_zh(...) 包装。"
     )
 
+
+# 只盯两种真反模式：① 把治理状态变量直接插进「」给用户；② 文案里写死动作枚举原值。
+# 故意**不包含** RECONCILIATION_BLOCKED: 形式 —— 它在多个组件里作为字典键（颜色/文案映射），
+# 把那种写法也报红就成了一句真错没有、天天误报的噪声守护。
+_RAW_ENUM_IN_UI_TEXT_RE = re.compile(
+    r"「\{\s*currentState\s*\}」|(?:NEW_BUY|RISK_EXIT)\s*[:：]"
+)
+
+
+def test_portfolio_ui_copy_does_not_print_raw_enums():
+    """组合交易组件的界面文案不得直接把治理/动作枚举原值写给用户。
+
+    拟真走查实测：持仓成员横幅里是硬编码的
+    `NEW_BUY: 禁止 | RISK_EXIT: 禁止` 和 `「{currentState}」`，用户因此读到
+    RECONCILIATION_BLOCKED 这种词。这些位置必须走 utils/govStatusLabel（原值只进 tooltip）。
+    """
+    offenders: list[str] = []
+    comp_dir = REPO_ROOT / "frontend" / "src" / "components"
+    for f in sorted(comp_dir.rglob("*.tsx")):
+        if "__tests__" in f.parts or ".test." in f.name:
+            continue
+        src = f.read_text(encoding="utf-8", errors="ignore")
+        for lineno, line in enumerate(src.splitlines(), 1):
+            if _RAW_ENUM_IN_UI_TEXT_RE.search(line):
+                offenders.append(f"{f.relative_to(REPO_ROOT).as_posix()}:{lineno} {line.strip()[:110]}")
+    assert not offenders, (
+        "以下界面文案直接拼了枚举原值（应改走 govStatusLabel / 中文权限名）：\n"
+        + "\n".join(offenders)
+    )
+

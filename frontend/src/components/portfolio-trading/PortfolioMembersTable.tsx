@@ -4,6 +4,7 @@ import { Download, RefreshCw, Search, AlertTriangle, ShieldAlert } from "lucide-
 import { api, requestJson } from "../../api/client";
 import { useApp } from "../../context/AppContext";
 import { t } from "../../i18n";
+import { govStatusCodeForTooltip, govStatusLabel } from "../../utils/govStatusLabel";
 import type { PortfolioStatePermissions, PortfolioStatusResponse, Position, WorkbenchCandidate } from "../../types";
 
 /**
@@ -616,10 +617,15 @@ const PortfolioMembersTable: React.FC<PortfolioMembersTableProps> = ({ portfolio
           )}
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, color: (!allowNewBuys || !allowRiskExits) ? "var(--pt-state-error, #ef4444)" : "var(--pt-state-warning, #f59e0b)" }}>
-              🔒 HG1 组合治理状态：「{currentState}」
+              🔒 HG1 组合治理状态：「{govStatusLabel(currentState)}」
+              {/* currentState 是枚举原值（如 RECONCILIATION_BLOCKED），不能直接给用户看；
+                  原值仅当未收录时才作为 title 给出，便于运维定位。 */}
             </div>
-            <div style={{ marginTop: 2, color: "var(--pt-muted-foreground)" }}>
-              NEW_BUY: {allowNewBuys ? "✅ 允许" : "🚫 禁止"}　|　RISK_EXIT: {allowRiskExits ? "✅ 允许" : "🚫 禁止"}
+            <div
+              title={govStatusCodeForTooltip(currentState) ?? undefined}
+              style={{ marginTop: 2, color: "var(--pt-muted-foreground)" }}
+            >
+              新买单：{allowNewBuys ? "✅ 允许" : "🚫 禁止"}　|　风险退出：{allowRiskExits ? "✅ 允许" : "🚫 禁止"}
               &nbsp;&nbsp;·&nbsp;&nbsp;详细说明与解除步骤请前往「治理」子 Tab 查看。
             </div>
           </div>
