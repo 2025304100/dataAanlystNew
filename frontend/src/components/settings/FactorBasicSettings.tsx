@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { InputNumber, Select, Space, Typography } from "antd";
 import { t } from "../../i18n";
+import { api } from "../../api/client";
 
 /**
  * 「因子基础配置」设置栏（C2）。
@@ -16,6 +17,31 @@ export interface FactorBasicConfig {
   maxComplexity?: number | null;
   language?: string | null;
   warehousePath?: string | null;
+  /** 后端真实返回但此前未展示的字段 */
+  featureEnabled?: boolean | null;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
+}
+
+/** GET /factors/config 的原始结构（字段名与后端一致，非 camelCase）。 */
+interface FactorConfigResponse {
+  feature_enabled?: boolean;
+  warehouse_path?: string | null;
+  updated_by?: string | null;
+  updated_at?: string | null;
+}
+
+function toConfig(raw: FactorConfigResponse): FactorBasicConfig {
+  return {
+    warehousePath: raw.warehouse_path ?? null,
+    featureEnabled: raw.feature_enabled ?? null,
+    updatedBy: raw.updated_by ?? null,
+    updatedAt: raw.updated_at ?? null,
+    // 后端目前不返回这三项：留 null，由 UI 明确标"后端未提供"，不再假装"未设置"
+    defaultDirection: null,
+    maxComplexity: null,
+    language: null,
+  };
 }
 
 interface FactorBasicSettingsProps {
@@ -30,8 +56,31 @@ const DIRECTIONS = [
 ];
 
 export default function FactorBasicSettings({
-  config = null,
+  config: configProp = null,
 }: FactorBasicSettingsProps) {
+  // VIZ-0930-20：此前 Settings.tsx 以 <FactorBasicSettings /> 无 props 调用，config 恒为 null，
+  // 于是这个分区永远停在"后端配置未下发/未设置"，而 GET /factors/config 其实有真实值。
+  // 补上自身读取：父层没注入就自己去拿。
+  const [fetched, setFetched] = useState<FactorBasicConfig | null>(configProp);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (configProp) {
+      setFetched(configProp);
+      return;
+    }
+    let cancelled = false;
+    api.getFactorBasicConfig()
+      .then((raw) => { if (!cancelled) { setFetched(toConfig(raw as FactorConfigResponse)); setLoadError(null); } })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setFetched(null);
+        setLoadError(err instanceof Error ? err.message : String(err));
+      });
+    return () => { cancelled = true; };
+  }, [configProp]);
+
+  const config = fetched;
   // 内部展示用状态：config 为空 → 空态，但控件仍可编辑（不落库）
   const [direction, setDirection] = useState<string | null>(
     config?.defaultDirection ?? null,
@@ -46,13 +95,18 @@ export default function FactorBasicSettings({
     <div data-factor-basic-settings className="mining-exp-page">
       <p className="mining-exp-desc">{t("factorBasicDesc")}</p>
 
-      {empty && <p data-factor-basic-empty>{t("factorBasicEmpty")}</p>}
+      {empty && (
+        <p data-factor-basic-empty>
+          {t("factorBasicEmpty")}
+          {loadError ? `（${loadError}）` : ""}
+        </p>
+      )}
 
       <section className="mining-pool-blocked" style={{ borderColor: "var(--line)", background: "rgba(255,255,255,0.5)", color: "var(--ink)" }}>
         <dl className="factor-basic-dl">
           <div>
             <dt>{t("factorBasicDefaultDirection")}</dt>
-            <dd>{direction ? t(DIRECTIONS.find((d) => d.value === direction)?.labelKey ?? direction) : t("factorBasicPlaceholder")}</dd>
+            <dd>{direction ? t(DIRECTIONS.find((d) => d.value === direction)?.labelKey ?? direction) : t("factorBasicNotProvided")}</dd>
           </div>
           <div>
             <dt>{t("factorBasicWarehouse")}</dt>
@@ -60,7 +114,21 @@ export default function FactorBasicSettings({
           </div>
           <div>
             <dt>{t("factorBasicLanguage")}</dt>
-            <dd>{config?.language ?? "zh"}</dd>
+            <dd>{config?.language ?? t("factorBasicNotProvided")}</dd>
+          </div>
+          <div>
+            <dt>{t("factorBasicEnabled")}</dt>
+            <dd>
+              {config?.featureEnabled == null
+                ? t("factorBasicPlaceholder")
+                : config.featureEnabled
+                  ? t("yes")
+                  : t("no")}
+            </dd>
+          </div>
+          <div>
+            <dt>{t("factorBasicUpdatedAt")}</dt>
+            <dd>{config?.updatedAt ?? t("factorBasicPlaceholder")}{config?.updatedBy ? ` · ${config.updatedBy}` : ""}</dd>
           </div>
         </dl>
       </section>

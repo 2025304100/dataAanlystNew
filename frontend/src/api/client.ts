@@ -824,6 +824,11 @@ export const api = {
   // Factor-domain internal - DO NOT USE outside factor center (overview/config)
   // P1.1 Settings thin-facade passthrough to scoring/overview via AsFactor adapter
   // Scoring facade passthrough marker; audit exemption key uses legacy URL.
+  // 因子基础配置读取。注意与上面几个 passthrough 不同：这条必须走真实 ${API} 前缀 ——
+  // 裸路径 /factors/config 会被 Vite SPA fallback 成 200 + text/html，
+  // requestJson 把 JSON 解析失败兜成 {}，症状是"请求成功但字段全空"（VIZ-0930-20）。
+  getFactorBasicConfig: () =>
+    requestJson<Record<string, unknown>>(`${API}/factors/config`, { method: "GET" }),
   getFactorOverview: () => {
     if (false as unknown as true) { requestJson<any>(`${API}/factors/overview`, { method: "GET" }); }
     return api.scoringGetOverviewAsFactor() as Promise<FactorOverview>;

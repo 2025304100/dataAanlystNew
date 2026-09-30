@@ -396,14 +396,23 @@ def _name_of(symbol: str) -> str:
     return symbol
 
 
+_LINEARITY_WINDOW = 1000
+
+
 def _linearity_dev(db: Session, symbol: str) -> float | None:
     """计算基准指数偏离直线的程度（百分比）。
 
     - 有数据且有波动 → 返回偏离度（如 11.26 表示 11.26%）
     - 无数据或数据不足 → None
     - 全是一条直线（极端case）→ 接近 0
+
+    VIZ-0930-21：窗口必须取**最近** _LINEARITY_WINDOW 根。`list_index_prices` 是
+    trade_date 升序 + `limit` 截头，直接把 limit 传下去拿到的是最旧的一段
+    （实测 000300 用 2016-10-10..2020-11-13 算出 28.58%，而同一行覆盖区间显示到
+    2026-09-29），于是"检测基准曲线是否为假直线"这个健康度永远看不到最近几年的劣化。
     """
-    bars = index_data.list_index_prices(db, symbol, limit=1000)
+    all_bars = index_data.list_index_prices(db, symbol, limit=0)
+    bars = all_bars[-_LINEARITY_WINDOW:]
     if len(bars) < 5:
         return None
     closes = [float(b.close) for b in bars if b.close is not None]
