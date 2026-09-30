@@ -54,7 +54,24 @@ describe("AppSettingsSection", () => {
     expect(
       screen.getByText(/DISCOVERY_AUTO_DATA_PREP_ENABLED/),
     ).toBeInTheDocument();
+    // 但说法必须跟 source 对齐：默认值来源时要写成“可用…覆盖”，
+    // 不能只括个裸变量名（会被读成“默认值来自那个环境变量”）。
+    expect(
+      screen.getByText(/可用环境变量 DISCOVERY_AUTO_DATA_PREP_ENABLED 覆盖/),
+    ).toBeInTheDocument();
     expect(screen.getByRole("switch")).toBeInTheDocument();
+  });
+
+  it("值真来自环境变量时，标成「来自环境变量」而不是「可用…覆盖」", async () => {
+    mockApi.getAppSettings.mockResolvedValue([
+      settingItem({ source: "env", value: false, default: true }),
+    ]);
+    render(<AppSettingsSection />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/来自环境变量 DISCOVERY_AUTO_DATA_PREP_ENABLED/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/可用环境变量 DISCOVERY_AUTO_DATA_PREP_ENABLED 覆盖/)).not.toBeInTheDocument();
   });
 
   it("切换开关会按 key 调用 PUT，并把来源改为「已在本页保存」", async () => {

@@ -97,10 +97,14 @@ export default function AppSettingsSection() {
               {t("appSettingsValueSource")}
               {"："}
               {sourceLabel(item)}
-              {/* 环境变量名只在值真的来自环境变量时才标：以前无条件括注，
-                  导致 source=默认值 时也显示（DISCOVERY_AUTO_DATA_PREP_ENABLED），
-                  用户会误读成“这个默认值来自那个环境变量”（拟真走查 g12）。 */}
-              {item.source === "env" && item.env_var ? `（${item.env_var}）` : ""}
+              {/* 环境变量名一直都要露（运维要知道可用什么覆盖），但说法要跟 source 对齐：
+                  旧写法不分 source 一律括个裸变量名，source=默认值 时会被读成
+                  “这个默认值来自那个环境变量”。字段仍然可见，只是不再歧义。 */}
+              {item.env_var
+                ? item.source === "env"
+                  ? `（来自环境变量 ${item.env_var}）`
+                  : `（可用环境变量 ${item.env_var} 覆盖）`
+                : ""}
             </div>
           </div>
           {item.type === "bool" ? (
