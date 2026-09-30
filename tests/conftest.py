@@ -199,15 +199,11 @@ _SLOW_FUNCTION_NAMES = {
     "test_dashboard_workbench",
     "test_list_observations_status_filter",
     "test_observation_endpoints_404",
-    "test_probe_returns_within_30s",
-    "test_probe_returns_within_30s_with_real_backend",
-    "test_probe_all_17_apis_complete_within_180s",
-    # T4 (FR-4.5) 连续探测性能不退化：
-    # - stability_guard.py L299 内部 3 次同接口探测对比
-    # - api_mgmt.py L354 更完整的版本（含 _response_time 后缀）
-    "test_consecutive_probes_do_not_degrade",
-    "test_consecutive_probes_do_not_degrade_response_time",
-    "test_batch_probe_completes_within_180s",
+    # 注：原先还列着一批探测用例名（test_probe_returns_within_30s /
+    # test_probe_all_17_apis_complete_within_180s / test_consecutive_probes_* /
+    # test_batch_probe_completes_within_180s 等），它们已随“探测改提交任务 +
+    # 心跳轮询”一起被重写或删除（PT-DEF-18/27），名字留在集合里只会
+    # 假装还在管东西。现在有守护用例断言“名单里的每个名字都必须存”。
 }
 
 

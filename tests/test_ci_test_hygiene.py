@@ -530,3 +530,35 @@ def test_tests_do_not_create_temp_databases_at_repo_root():
         "或 pytest 的 tmp_path）：\n" + "\n".join(offenders)
     )
 
+
+# ══════════════════════════════════════════
+# 16. dev 慢测试名单不得含已不存在的用例名
+# ══════════════════════════════════════════
+
+_DEV_XFAIL_NAMES_RE = re.compile(r"^def (test_[A-Za-z0-9_]+)\(", re.M)
+
+
+def test_dev_hardware_xfail_names_still_exist():
+    """`_SLOW_FUNCTION_NAMES` 里每个名字都必须对应一个真实存在的用例函数。
+
+    为什么值得守：dev 硬件判定会给这批用例自动挂 xfail(strict=False)，名字不在名单里
+    就会默默失效——名单看起来还在“管东西”，实际已经管不到任何事。
+    实测发生过：探测改成任务化后，名单里 6 个用例名（test_probe_returns_within_30s /
+    test_batch_probe_completes_within_180s / test_consecutive_probes_* 等）全部成为死名字。
+    死名字不是无害的：它会让下一个人以为这些守护还在。
+    """
+    import tests.conftest as root_conftest
+
+    names = set(getattr(root_conftest, "_SLOW_FUNCTION_NAMES", set()))
+    assert names, "_SLOW_FUNCTION_NAMES 不应被清空（清空等于取消全部 dev 保护，需重新评估）"
+
+    existing: set[str] = set()
+    for f in (REPO_ROOT / "tests").rglob("test_*.py"):
+        existing.update(_DEV_XFAIL_NAMES_RE.findall(f.read_text(encoding="utf-8", errors="ignore")))
+
+    dead = sorted(names - existing)
+    assert not dead, (
+        f"dev 慢测试名单里有 {len(dead)} 个不存在的用例名：{dead}。"
+        "用例已重构/删除就要同步清掉，否则名单会给人「这些守护还在」的错觉。"
+    )
+
