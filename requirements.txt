@@ -28,4 +28,12 @@ python-multipart>=0.0.9
 # 测试依赖
 pytest>=8.0.0
 httpx>=0.27.0
-pytest-playwright>=1.4.0
+# Playwright 必须钉死到精确版本：它和已安装的浏览器 build 是一对一绑定的。
+# 实测坑：只钉 pytest-playwright>=1.4.0 而不钉 playwright 本体时，venv 会自动升到
+# 1.62.0（要 browser build 1234），而本机浏览器还是旧版装的 1223 —— 结果整个
+# -m e2e 共38 个用例集体报 "Executable doesn't exist" 而挂掉（体检报告 §拟真走查八）。
+# 升级 playwright 时必须同步跑：python -m playwright install chromium
+playwright==1.62.0
+# 原来的 `pytest-playwright>=1.4.0` 已移除：代码里没用它（`page`/`browser` fixture 由
+# tests/e2e/conftest.py 自己提供），而且本地 venv 根本没安装它 e2e 也能跑过 34 条。
+# 留着一个从未使用的依赖，只会让人误以为 e2e 行为来自它。
