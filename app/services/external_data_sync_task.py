@@ -73,7 +73,7 @@ ExternalSyncMode = Literal["incremental", "backfill"]
 _DATASET_CAPABILITIES: dict[ExternalDataset, dict[str, Any]] = {
     "fundamental": {"modes": {"incremental", "backfill"}, "history_limit_days": None, "reason": "通过个股历史估值接口写入真实交易日 PE/PB 快照；接口未返回的日期不会填补。"},
     "financial": {"modes": {"incremental", "backfill"}, "history_limit_days": None, "reason": "按公告日保存可取得的报告历史。"},
-    "capital_flow": {"modes": {"incremental", "backfill"}, "history_limit_days": 100, "reason": "提供商通常仅返回近 100 个交易日前后数据；超出范围必须接入新数据源或导入。"},
+    "capital_flow": {"modes": {"incremental", "backfill"}, "history_limit_days": 100, "reason": "提供商每次返回近约 100 个交易日；增量除当日外，还会为可比历史不足的标的顺带落这段窗口，超出可得范围必须接入新数据源或导入。"},
     "lhb": {"modes": {"incremental", "backfill"}, "history_limit_days": 31, "reason": "龙虎榜为事件数据，单次区间受接口限制。"},
     "hot_rank": {"modes": {"incremental"}, "history_limit_days": 0, "reason": "人气榜接口仅提供当前快照。"},
     "tail_proxy": {"modes": {"incremental"}, "history_limit_days": 0, "reason": "尾盘代理当前仅做候选池当天采集。"},

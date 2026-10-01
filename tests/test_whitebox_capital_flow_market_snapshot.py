@@ -507,9 +507,106 @@ def test_scoring_on_demand_path_still_returns_stale_row_on_failure(db_session, m
         raise capital_flow_data.FundFlowProviderError("600000: ConnectionError: aborted")
 
     monkeypatch.setattr(
-        capital_flow_data, "_fetch_individual_fund_flow", boom
+        capital_flow_data, "_fetch_individual_fund_flow_history", boom
     )
 
     row = capital_flow_data.get_or_sync_capital_flow(db_session, symbols[0], date(2026, 10, 9))
 
     assert row is stale
+
+
+def _flow_rows(*days: date, inflow: float = 100.0) -> list[dict]:
+    return [
+        {
+            "trade_date": item,
+            "main_net_inflow": inflow,
+            "main_net_inflow_pct": 1.0,
+            "super_large_net_inflow": 1.0,
+            "large_net_inflow": 1.0,
+            "medium_net_inflow": 1.0,
+            "small_net_inflow": 1.0,
+        }
+        for item in days
+    ]
+
+
+def test_sync_symbol_seeds_whole_window_when_history_is_thin(db_session, monkeypatch):
+    """首次触到的标的：同一次请求已经拿回整段窗口，就一次落满，不再等十天。"""
+    symbols = _cn_symbols(db_session, ["600000"])
+    days = [date(2026, 9, d) for d in range(10, 25)]
+    monkeypatch.setattr(
+        capital_flow_data,
+        "_fetch_individual_fund_flow_history",
+        lambda *_a, **_k: _flow_rows(*days),
+    )
+
+    row = capital_flow_data.sync_symbol_capital_flow(db_session, symbols[0], date(2026, 9, 24))
+    db_session.commit()
+
+    stored = db_session.query(CapitalFlow).order_by(CapitalFlow.trade_date).all()
+    assert len(stored) == len(days)
+    assert row.trade_date == days[-1]
+    # 落库顺序是旧→新：除首场没有可比前序外，其余都必须拿真实前序行算分
+    assert stored[0].main_net_inflow_score is None
+    assert all(item.main_net_inflow_score is not None for item in stored[1:])
+
+
+def test_sync_symbol_writes_only_new_rows_once_history_is_deep(db_session, monkeypatch):
+    """历史够深后不得每天重刷全窗：旧行的分值必须原样留着。"""
+    symbols = _cn_symbols(db_session, ["600000"])
+    days = [date(2026, 9, d) for d in range(10, 25)]
+    for index in range(len(days)):
+        item = _flow_rows(days[index], inflow=100.0 + index)[0]
+        db_session.add(CapitalFlow(
+            symbol_id=symbols[0].id,
+            trade_date=item["trade_date"],
+            main_net_inflow=item["main_net_inflow"],
+            main_net_inflow_score=1.0 if index == 0 else 70.0,
+            source="seed",
+        ))
+    db_session.commit()
+    calls: list[int] = []
+
+    def fake_history(*_a, **_k):
+        calls.append(1)
+        return _flow_rows(*days, date(2026, 9, 25), inflow=500.0)
+
+    monkeypatch.setattr(capital_flow_data, "_fetch_individual_fund_flow_history", fake_history)
+
+    row = capital_flow_data.sync_symbol_capital_flow(db_session, symbols[0], date(2026, 9, 25))
+    db_session.commit()
+
+    assert len(calls) == 1
+    stored = db_session.query(CapitalFlow).order_by(CapitalFlow.trade_date).all()
+    assert len(stored) == len(days) + 1
+    assert stored[0].main_net_inflow_score == 1.0
+    assert row.trade_date == date(2026, 9, 25)
+
+
+def test_calc_score_returns_none_without_comparable_history():
+    assert capital_flow_data.calc_main_net_inflow_score(120.0, [120.0]) is None
+    assert capital_flow_data.calc_main_net_inflow_score(-5.0, [-5.0]) is None
+    assert capital_flow_data.calc_main_net_inflow_score(120.0, [120.0, 100.0, 90.0]) is not None
+
+
+def test_stale_check_no_longer_refetches_when_only_the_score_is_null(db_session, monkeypatch):
+    """分值可以是合法的 None；不能再拿它当"上次同步失败"去反复打外网。"""
+    symbols = _cn_symbols(db_session, ["600000"])
+    stored = CapitalFlow(
+        symbol_id=symbols[0].id, trade_date=date(2026, 9, 24),
+        main_net_inflow=100.0, main_net_inflow_score=None, source="seed",
+    )
+    db_session.add(stored)
+    db_session.commit()
+    calls: list[int] = []
+
+    def spy(*_a, **_k):
+        calls.append(1)
+        return _flow_rows(date(2026, 9, 25), inflow=1.0)
+
+    monkeypatch.setattr(capital_flow_data, "_fetch_individual_fund_flow_history", spy)
+
+    row = capital_flow_data.get_or_sync_capital_flow(db_session, symbols[0], date(2026, 9, 25))
+
+    assert calls == []
+    assert row is stored

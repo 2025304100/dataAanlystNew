@@ -20,7 +20,7 @@ from typing import Any
 
 import akshare as ak
 import pandas as pd
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.capital_flow import CapitalFlow, NorthboundFlow
@@ -120,18 +120,6 @@ def _fetch_individual_fund_flow_history(
         ) from exc
 
 
-def _fetch_individual_fund_flow(
-    db: Session, symbol: Symbol, trade_date: date
-) -> dict[str, Any]:
-    """Backward-compatible latest-row adapter for scoring callers."""
-    rows = _fetch_individual_fund_flow_history(
-        db, symbol, end_date=trade_date
-    )
-    if not rows:
-        return {}
-    return rows[-1]
-
-
 def calc_main_net_inflow_score(
     main_net_inflow: float | None,
     history_inflows: list[float],
@@ -151,12 +139,9 @@ def calc_main_net_inflow_score(
     if main_net_inflow is None:
         return None
     if not history_inflows or len(history_inflows) < 2:
-        # 无历史对比，仅按当日正负评分
-        if main_net_inflow > 0:
-            return 65.0
-        if main_net_inflow < 0:
-            return 40.0
-        return 50.0
+        # 没有可比的前序行就不给分：按当日正负给 65/40/50 是"看着像真值"的造数，
+        # 消费方（评分维度）拿到 None 会走"无数据"分支。
+        return None
 
     # 基于历史均值的标准化
     avg = sum(history_inflows) / len(history_inflows)
@@ -334,7 +319,14 @@ def sync_market_capital_flow_snapshot(
 
 
 def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | None = None) -> CapitalFlow | None:
-    """同步单个 symbol 的最新可用资金流快照。"""
+    """Persist the fetched session, seeding the whole available window when history is too thin to score.
+
+    The per-symbol endpoint already returns roughly 100 trading days per
+    request, so a symbol without local history is seeded from that same
+    response (oldest→newest, so every row's score uses real prior rows) instead
+    of waiting days for a scoreable window. Once history is deep enough, only
+    rows newer than what is stored get written.
+    """
     if symbol.asset_type != "stock":
         return None
     region = region_from_market(symbol.market)
@@ -342,12 +334,40 @@ def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | Non
         return None
 
     target_date = trade_date or date.today()
-    flow_data = _fetch_individual_fund_flow(db, symbol, target_date)
-    if not flow_data or flow_data.get("main_net_inflow") is None:
+    rows = _fetch_individual_fund_flow_history(
+        db, symbol, end_date=target_date
+    )
+    if not rows:
         logger.info("No fund flow data for %s, skip", symbol.symbol)
         return None
 
-    return _upsert_capital_flow(db, symbol, flow_data)
+    newest_stored = db.execute(
+        select(func.max(CapitalFlow.trade_date)).where(
+            CapitalFlow.symbol_id == symbol.id
+        )
+    ).scalar()
+    stored_count = db.execute(
+        select(func.count(CapitalFlow.id)).where(
+            CapitalFlow.symbol_id == symbol.id
+        )
+    ).scalar() or 0
+    if stored_count >= _FLOW_LOOKBACK_DAYS and newest_stored is not None:
+        pending = [row for row in rows if row["trade_date"] > newest_stored]
+        if not pending:
+            # 已经写过这一场：重写它，让分值随更满的历史一起刷新，并保持
+            # "本函数落的就是这次取到的那场"这一不变量。
+            pending = [rows[-1]]
+    else:
+        pending = rows
+
+    written: CapitalFlow | None = None
+    for row in pending:
+        saved = _upsert_capital_flow(db, symbol, row)
+        if saved is not None:
+            written = saved
+    if written is None:
+        logger.info("No usable main net inflow rows for %s, skip", symbol.symbol)
+    return written
 
 
 def get_latest_capital_flow(db: Session, symbol_id: int) -> CapitalFlow | None:
@@ -370,8 +390,9 @@ def get_or_sync_capital_flow(db: Session, symbol: Symbol, trade_date: date) -> C
     latest = get_latest_capital_flow(db, symbol.id)
     if latest is not None:
         days_stale = (trade_date - latest.trade_date).days if hasattr(latest.trade_date, "year") else 0
-        # 兜底：若 DB 命中但关键分值为 None（上次同步失败），也触发重新同步
-        if days_stale <= _FLOW_FRESHNESS_DAYS and latest.main_net_inflow_score is not None:
+        # 分值为 None 现在是一个合法状态（可比历史不足时不给分），不能再拿它当
+        # "上次同步失败"的信号触发重拉，否则每次打分都会打外网。
+        if days_stale <= _FLOW_FRESHNESS_DAYS:
             return latest
 
     try:
