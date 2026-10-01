@@ -144,7 +144,9 @@ def main() -> int:
 
     # -rX：让 xpassed（被 dev 放宽但其实能过的用例）出现在 CI 日志里，
     # 不然它只会藏在那一行统计数字里，没人回头看。
-    cmd = [sys.executable, "-m", "pytest", "-m", args.marker, "--tb=short", "-q", "-rX", *bucket]
+    # -rf：还要短摘要里的 FAILED/ERROR 行。实测踩过——只有 -rX 时，-q 输出里根本没有
+    # 失败条目清单，导致“知道红了但不知道哪条红”，ci_digest 也无从提取。
+    cmd = [sys.executable, "-m", "pytest", "-m", args.marker, "--tb=short", "-q", "-rX", "-rf", *bucket]
     return subprocess.call(cmd)
 
 

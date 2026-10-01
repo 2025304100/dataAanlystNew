@@ -39,7 +39,14 @@ jobs:
         # 断言 4 片并起来 == 全量收集（丢文件 / 重文件直接失败），防静默漏测
         run: python scripts/ci_shard.py --marker "whitebox and not slow" --groups 4 --plan
       - name: Run whitebox tests (this shard)
-        run: python scripts/ci_shard.py --marker "whitebox and not slow" --groups 4 --group ${{ matrix.shard }}
+        run: |
+          set -o pipefail
+          python scripts/ci_shard.py --marker "whitebox and not slow" --groups 4 --group ${{ matrix.shard }} 2>&1 | tee /tmp/ci-whitebox.log
+      - name: Publish failure digest
+        # Actions 的 job 日志接口对匿名请求是 403：红因只写在日志里，自动化侧就只知道“红了”而不知道为什么。
+        # 这一步把 FAILED/ERROR 摘要发到 annotations 与 step summary；它自身永不失败（否则会把真因掉包）。
+        if: failure()
+        run: python scripts/ci_digest.py /tmp/ci-whitebox.log || true
       # 真实联网用例（带 @pytest.mark.slow，如 ak.stock_info_sz_name_code 等）不进阻断闸门：
       # GitHub runner 拉不到深交所/东财时，红的是网络而不是代码，会把闸门变成没人看的噪声。
       # 但仍单独跑一轮且保留结果可见（continue-on-error），所以不会悄悄消失。
@@ -100,7 +107,12 @@ jobs:
         # -rX：把 xpassed（被放宽但其实能过的用例）列进日志，不然它们会默默消失在统计里
         env:
           REQUIRE_LIVE_BACKEND: "1"
-        run: pytest -m blackbox --tb=short -q -rX
+        run: |
+          set -o pipefail
+          pytest -m blackbox --tb=short -q -rX -rf 2>&1 | tee /tmp/ci-blackbox.log
+      - name: Publish failure digest
+        if: failure()
+        run: python scripts/ci_digest.py /tmp/ci-blackbox.log || true
 
   # ── E2E 测试（需前后端 + 浏览器）─────────────────────────
   e2e:
@@ -156,4 +168,9 @@ jobs:
           # 断言实现在 tests/conftest.py 的 pytest_sessionfinish，
           # 阈值与说明见 tests/_e2e_coverage_guard.py。
           E2E_REQUIRE_MINIMUM: "1"
-        run: pytest tests/e2e/ -m e2e --tb=short -q -rX
+        run: |
+          set -o pipefail
+          pytest tests/e2e/ -m e2e --tb=short -q -rX -rf 2>&1 | tee /tmp/ci-e2e.log
+      - name: Publish failure digest
+        if: failure()
+        run: python scripts/ci_digest.py /tmp/ci-e2e.log || true
