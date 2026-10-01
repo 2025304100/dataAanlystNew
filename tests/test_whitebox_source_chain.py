@@ -165,7 +165,12 @@ class TestTDXHelpers:
         """文件路径构造:vipdoc/<sh|sz>/lday/<code>.day。"""
         sym = _make_symbol("600000", "SH")
         path = tdx_file_path("C:\\new_tdx", sym)
-        assert path == Path("C:\\new_tdx\\vipdoc\\sh\\lday\\sh600000.day")
+        # 只断言真正的契约：vipdoc/<市场>/lday/<代码>.day 这几层与文件名。
+        # 不拿整个 Path 字面量比：tdx_file_path 用 "/" 拼接，在 Linux 上得到
+        # 'C:\\new_tdx/vipdoc/sh/lday/...'（Windows 则是全反斜杠），
+        # 两种表示在同一契约下都对，写死分隔符只会让 Linux 跑测必红。
+        assert path.parts[-4:] == ("vipdoc", "sh", "lday", "sh600000.day")
+        assert path.name == "sh600000.day"
 
 
 # ====================================================================

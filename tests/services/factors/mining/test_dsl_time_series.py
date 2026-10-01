@@ -92,9 +92,10 @@ TEMPLATE_FORMULAS = [
 
 #: T03 已固化的 golden hash（**不含 cs_ / ts_**）→ 本次必须逐条不变
 _T03_GOLDEN = (
-    pathlib.Path(__file__).resolve().parents[4]
-    / ".workbuddy" / "mining" / "evidence" / "T03_content_hash_golden.json"
+    pathlib.Path(__file__).resolve().parent / "golden" / "T03_content_hash_golden.json"
 )
+# 与 test_dialect_and_executor.py 读同一份受版本控制的归档；
+# 旧路径 `.workbuddy/mining/evidence/` 被 gitignore，CI 上取不到 → 守护空转。
 
 
 def _golden_hashes() -> dict[str, str]:
