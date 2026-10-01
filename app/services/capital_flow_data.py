@@ -39,6 +39,8 @@ class FundFlowProviderError(RuntimeError):
 _FLOW_FRESHNESS_DAYS = 3
 # 评分时近 N 日均值窗口
 _FLOW_LOOKBACK_DAYS = 10
+# 少于这个可比样本数就不出分（2 样本时 z 恒为 ±1，见 calc_main_net_inflow_score）
+_FLOW_MIN_SCORE_SAMPLES = 5
 
 
 def _safe_float(val: Any) -> float | None:
@@ -138,8 +140,10 @@ def calc_main_net_inflow_score(
     """
     if main_net_inflow is None:
         return None
-    if not history_inflows or len(history_inflows) < 2:
-        # 没有可比的前序行就不给分：按当日正负给 65/40/50 是"看着像真值"的造数，
+    if len(history_inflows) < _FLOW_MIN_SCORE_SAMPLES:
+        # 样本太少时 z-score 不是" noisy"，而是**没有信息**：只有 2 个样本时
+        # (x-avg)/std 恒等于 ±1，得分只能是 75 或 45，与净流入的量级无关
+        # （2026-10-01 实测 000048 种子序列第二行就是 75.0 整）。
         # 消费方（评分维度）拿到 None 会走"无数据"分支。
         return None
 

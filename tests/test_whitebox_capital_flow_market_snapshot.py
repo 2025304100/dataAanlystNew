@@ -546,9 +546,10 @@ def test_sync_symbol_seeds_whole_window_when_history_is_thin(db_session, monkeyp
     stored = db_session.query(CapitalFlow).order_by(CapitalFlow.trade_date).all()
     assert len(stored) == len(days)
     assert row.trade_date == days[-1]
-    # 落库顺序是旧→新：除首场没有可比前序外，其余都必须拿真实前序行算分
-    assert stored[0].main_net_inflow_score is None
-    assert all(item.main_net_inflow_score is not None for item in stored[1:])
+    # 落库顺序是旧→新：前 4 场可比样本不足 5 个，必须留 None，第 5 场起才出分
+    assert [item.main_net_inflow_score is None for item in stored] == (
+        [True] * 4 + [False] * (len(stored) - 4)
+    )
 
 
 def test_sync_symbol_writes_only_new_rows_once_history_is_deep(db_session, monkeypatch):
@@ -583,10 +584,34 @@ def test_sync_symbol_writes_only_new_rows_once_history_is_deep(db_session, monke
     assert row.trade_date == date(2026, 9, 25)
 
 
-def test_calc_score_returns_none_without_comparable_history():
+def test_calc_score_needs_enough_comparable_samples():
+    """2 个样本时 z 恒等于 ±1，得分只能是 75 或 45 —— 与净流入量级无关的假数。"""
     assert capital_flow_data.calc_main_net_inflow_score(120.0, [120.0]) is None
-    assert capital_flow_data.calc_main_net_inflow_score(-5.0, [-5.0]) is None
-    assert capital_flow_data.calc_main_net_inflow_score(120.0, [120.0, 100.0, 90.0]) is not None
+    assert capital_flow_data.calc_main_net_inflow_score(120.0, [120.0, 100.0]) is None
+    assert capital_flow_data.calc_main_net_inflow_score(-1_000_000.0, [-1e6, 100.0]) is None
+    assert capital_flow_data.calc_main_net_inflow_score(
+        120.0, [120.0, 100.0, 90.0, 80.0]
+    ) is None
+
+    big = capital_flow_data.calc_main_net_inflow_score(
+        500.0, [500.0, 100.0, 90.0, 80.0, 70.0]
+    )
+    small = capital_flow_data.calc_main_net_inflow_score(
+        120.0, [120.0, 100.0, 90.0, 80.0, 70.0]
+    )
+    assert big is not None and small is not None
+    # 同一组前序、不同当日量级必须给不同的分，否则这个分数没有信息
+    assert big != small
+
+
+def test_two_sample_score_would_be_exactly_75_or_45_if_allowed():
+    """锁住"为什么门槛是 5 而不是 2"：2 样本的 z 恒为 ±1。"""
+    for value, prior in ((120.0, 100.0), (1e9, 100.0), (-7.0, 100.0)):
+        avg = (value + prior) / 2
+        std = ((value - avg) ** 2 + (prior - avg) ** 2) / 2
+        std = std ** 0.5
+        z = (value - avg) / std if std else 0.0
+        assert abs(abs(z) - 1.0) < 1e-9
 
 
 def test_stale_check_no_longer_refetches_when_only_the_score_is_null(db_session, monkeypatch):
