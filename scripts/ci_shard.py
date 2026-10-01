@@ -92,6 +92,14 @@ def partition(counts: dict[str, int], groups: int) -> list[list[str]]:
 
     确定性：先按 (-用例数, 路径) 排序，所以任何 job 独立计算都得到同一结果，
     不需要在 CI 之间传中间状态。
+
+    为什么最后还要按目录聚合一次：LPT 会把同一目录的文件拆散到不同位置，
+    而 pytest（8.x）在 `pytest 多个显式文件参数` 下会为同一目录创建第二个 Dir 对象；
+    _pytest.fixtures 的 `_matchfactories` 只要 `fixturedef.node` 非空就**只按对象身份**
+    匹配（`baseid` 字符串兼容路径根本走不到），于是后一个 Dir 下的用例看不到
+    该目录 conftest 里的 fixture，报 `fixture 'client' not found`（ERROR at setup）。
+    实测：交错传参时复现、同目录相邻传参时不出现（tmp/micro_dir_identity.py）。
+    聚合只改调用顺序，不动分桶归属 → 负载均衡与覆盖面都不变。
     """
     if groups < 1:
         raise ValueError(f"groups 必须 >= 1，实际 {groups}")
@@ -102,6 +110,10 @@ def partition(counts: dict[str, int], groups: int) -> list[list[str]]:
         i = load.index(min(load))
         buckets[i].append(path)
         load[i] += weight
+    # 同目录的文件必须相邻（见上面 docstring 的 pytest Dir 对象身份问题）：
+    # 按 (目录, 路径) 稳排，不改变各桶的用例数。
+    for b in buckets:
+        b.sort(key=lambda p: (str(Path(p).parent).replace("\\", "/"), p))
     return buckets
 
 

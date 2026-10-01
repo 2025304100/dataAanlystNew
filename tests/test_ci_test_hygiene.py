@@ -912,3 +912,55 @@ def test_i18n_copy_identifier_ratchet():
         "已清理完毕，请把 I18N_IDENTIFIER_BASELINE 调低到实际值，否则基线会失去约束力。"
     )
 
+
+# ════════════════════════════════════════
+# 26. 分片顺次：同一目录的文件必须相邻
+# ════════════════════════════════════════
+
+
+def test_ci_shard_keeps_same_directory_files_adjacent():
+    """ci_shard 的每个桶内，同目录文件必须相邻。
+
+    实际事故：LPT 把同一目录的文件拆开后，pytest 8.x 会给同一目录建第二个 Dir 对象，
+    而 `_matchfactories` 在 `fixturedef.node` 非空时只按对象身份匹配（baseid 兼容路径
+    走不到）→ 后一个 Dir 下的用例看不到该目录 conftest 的 fixture，报
+    `fixture 'client' not found`。本地与 CI 都中过，交错传参可稳定复现。
+    这道守护把“按目录聚合”钉成硬要求（否则将来有人改回纯 LPT 排序又静默踩坑）。
+    """
+    import importlib.util as ilu  # noqa: PLC0415
+    import os  # noqa: PLC0415
+
+    # scripts/ 不是包（无 __init__.py），按文件路径加载
+    spec = ilu.spec_from_file_location("ci_shard_under_test", REPO_ROOT / "scripts" / "ci_shard.py")
+    assert spec and spec.loader
+    shard = ilu.module_from_spec(spec)
+    spec.loader.exec_module(shard)
+
+    counts = {
+        "tests/integration/a_90.py": 90,
+        "tests/unit/x_50.py": 50,
+        "tests/integration/b_10.py": 10,
+        "tests/unit/y_40.py": 40,
+        "tests/integration/c_5.py": 5,
+        "tests/e2e/z_30.py": 30,
+    }
+    for bucket in shard.partition(counts, 2):
+        dirs = [os.path.dirname(p.replace("\\", "/")) for p in bucket]
+        # 同一个目录名在序列里只能连续出现一段（不得被别的目录插开）
+        seen: set[str] = set()
+        prev = None
+        for d in dirs:
+            if d != prev:
+                assert d not in seen, (
+                    f"分片把同目录文件拆开了（pytest Dir 对象身份会重复，"
+                    f"导致 conftest fixture 对部分用例不可见）：\n  {bucket}"
+                )
+                seen.add(d)
+                prev = d
+
+    # 并且：只改顺序，不改归属与负载（防止“聚合”退化成重新分桶）
+    plain_total = sum(counts.values())
+    buckets = shard.partition(counts, 3)
+    assert sum(sum(counts[p] for p in b) for b in buckets) == plain_total
+    assert sorted(p for b in buckets for p in b) == sorted(counts)
+
