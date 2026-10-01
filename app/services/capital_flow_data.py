@@ -31,6 +31,10 @@ from app.services.regions import region_from_market
 
 logger = logging.getLogger(__name__)
 
+
+class FundFlowProviderError(RuntimeError):
+    """资金流请求本身失败（网络/接口变更），与"provider 没返回这个标的数据"不同。"""
+
 # 资金流数据新鲜度阈值（天）
 _FLOW_FRESHNESS_DAYS = 3
 # 评分时近 N 日均值窗口
@@ -106,8 +110,14 @@ def _fetch_individual_fund_flow_history(
             for _, row in eligible.sort_values("日期").iterrows()
         ]
     except Exception as exc:
-        logger.debug("stock_individual_fund_flow failed for %s: %s", symbol.symbol, exc)
-        return []
+        # 请求失败不能塌成"这个标的没有数据"：回填验收要靠 failed 与 provider 空返回
+        # 分得开，否则网络被掐时整市场爬取会跑成"done，但全是 skipped"。
+        logger.warning(
+            "stock_individual_fund_flow request failed for %s: %s", symbol.symbol, exc
+        )
+        raise FundFlowProviderError(
+            f"{symbol.symbol}: {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def _fetch_individual_fund_flow(

@@ -424,3 +424,92 @@ def test_capital_flow_backfill_still_uses_per_symbol_range_endpoint(db_session, 
 
     assert calls == {"snapshot": 0, "range": 1}
     assert result["records"] == 3
+
+
+def test_history_fetch_separates_empty_response_from_request_failure(db_session, monkeypatch):
+    """provider 答"没有这只票" 与 "请求失败" 是两种结果，不能都塌成空列表。"""
+    symbols = _cn_symbols(db_session, ["600000"])
+    monkeypatch.setattr(
+        capital_flow_data,
+        "call_akshare_with_retry",
+        lambda *a, **k: pd.DataFrame(),
+    )
+    assert capital_flow_data._fetch_individual_fund_flow_history(
+        db_session, symbols[0], start_date=date(2026, 8, 25), end_date=date(2026, 9, 30)
+    ) == []
+
+    def boom(*_a, **_k):
+        raise ConnectionError("Remote end closed connection without response")
+
+    monkeypatch.setattr(capital_flow_data, "call_akshare_with_retry", boom)
+    with pytest.raises(capital_flow_data.FundFlowProviderError, match="ConnectionError"):
+        capital_flow_data._fetch_individual_fund_flow_history(
+            db_session, symbols[0], start_date=date(2026, 8, 25), end_date=date(2026, 9, 30)
+        )
+
+
+def test_range_sync_propagates_provider_failure(db_session, monkeypatch):
+    symbols = _cn_symbols(db_session, ["600000"])
+
+    def boom(*_a, **_k):
+        raise ConnectionError("Remote end closed connection without response")
+
+    monkeypatch.setattr(capital_flow_data, "call_akshare_with_retry", boom)
+
+    with pytest.raises(capital_flow_data.FundFlowProviderError):
+        capital_flow_data.sync_symbol_capital_flow_range(
+            db_session, symbols[0], start_date=date(2026, 8, 25), end_date=date(2026, 9, 30)
+        )
+
+
+def test_backfill_task_counts_provider_failure_as_failed_not_skipped(db_session, monkeypatch):
+    """回填被掐网时必须记成 failed：否则 5,554 只跑完显示 done/skipped 无法验收。"""
+    symbols = _cn_symbols(db_session, ["600000", "000001"])
+    task = _running_task(db_session, "cf-backfill-provider-failure")
+    monkeypatch.setattr(
+        service, "resolve_external_symbols", lambda *_args, **_kwargs: symbols
+    )
+    monkeypatch.setattr(service, "_wait_for_market_priority", lambda *_args: True)
+
+    def boom(*_a, **_k):
+        raise capital_flow_data.FundFlowProviderError("600000: ConnectionError: aborted")
+
+    monkeypatch.setattr(capital_flow_data, "sync_symbol_capital_flow_range", boom)
+
+    payload = {
+        "dataset": "capital_flow", "source": "all", "mode": "backfill",
+        "start_date": "2026-08-25", "end_date": "2026-09-30",
+        "lookback_days": 37, "include_northbound": False,
+    }
+    plan = service.build_external_sync_plan("capital_flow", payload, today=date(2026, 10, 9))
+    result = service._run_symbol_sync(
+        db_session, task.id, "capital_flow", {**payload, "plan": plan}
+    )
+
+    assert result["failed"] == 2
+    assert result["skipped"] == 0
+    assert result["success"] == 0
+    assert any("FundFlowProviderError" in message or "ConnectionError" in message
+               for message in result["errors"])
+
+
+def test_scoring_on_demand_path_still_returns_stale_row_on_failure(db_session, monkeypatch):
+    """评分按需拉取不能被请求失败打断：宁可回旧行，也不抛到打分链里。"""
+    symbols = _cn_symbols(db_session, ["600000"])
+    stale = CapitalFlow(
+        symbol_id=symbols[0].id, trade_date=date(2026, 8, 20),
+        main_net_inflow=1.0, main_net_inflow_score=55.0, source="test",
+    )
+    db_session.add(stale)
+    db_session.commit()
+
+    def boom(*_a, **_k):
+        raise capital_flow_data.FundFlowProviderError("600000: ConnectionError: aborted")
+
+    monkeypatch.setattr(
+        capital_flow_data, "_fetch_individual_fund_flow", boom
+    )
+
+    row = capital_flow_data.get_or_sync_capital_flow(db_session, symbols[0], date(2026, 10, 9))
+
+    assert row is stale
