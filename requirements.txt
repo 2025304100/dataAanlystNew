@@ -5,6 +5,17 @@ akshare==1.18.30
 pandas==2.3.3
 numpy>=1.26,<3
 vectorbt==0.28.5
+# plotly 必须显式约束：它是 vectorbt 的传递依赖，不钉就会被解析到最新版。
+# 实测坑（CI 白盒 shard 1，两条 vectorbt 回测用例报）：新版 plotly 从
+# plotly.graph_objs.layout.template.Data 里移除了 `scattermapbox`，而 vectorbt 0.28.5
+# 内部绘图仍写这个字段 → ValueError。
+# 本地为什么看不到的两层原因（比“版本漂移”更隐）：
+#   1) 本地 venv 里 plotly 之前根本没装；
+#   2) 本地 venv 连 vectorbt 都没装（尽管本文件写了 vectorbt==0.28.5），
+#      所以这段绘图路径在本地从未被执行过 —— 本地环境不等于 requirements。
+# 本次只钉上界 <6（下界不写具体数字：本地拿不到 vectorbt 元数据，无法核实它自己的约束）。
+# 升 plotly 6.x 前需先确认 vectorbt 已适配；真验证只能靠 CI（本地装了 vectorbt 后也可）。
+plotly>=5,<6
 duckdb>=1.2,<2
 scikit-learn>=1.5,<2
 alembic==1.15.2

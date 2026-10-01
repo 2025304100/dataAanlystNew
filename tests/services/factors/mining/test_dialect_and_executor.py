@@ -64,9 +64,11 @@ from app.services.factors.factor_executor import (
 pytestmark = pytest.mark.whitebox
 
 _T03_GOLDEN = (
-    pathlib.Path(__file__).resolve().parents[4]
-    / ".workbuddy" / "mining" / "evidence" / "T03_content_hash_golden.json"
+    pathlib.Path(__file__).resolve().parent / "golden" / "T03_content_hash_golden.json"
 )
+# 不再从 `.workbuddy/` 读：那个目录被 gitignore，归档只存在于开发者本地，
+# CI 上永远是空文件 → “golden hash 逐条不变”这个回归守护在 CI 上实质空转。
+# 归档本体（721 B）现在就在测试旁边受版本控制。
 
 
 def _golden_hashes() -> dict[str, str]:
