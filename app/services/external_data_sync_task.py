@@ -725,26 +725,73 @@ def _run_symbol_sync(
         started_at=_now(),
     )
 
+    if dataset == "capital_flow" and payload.get("include_northbound", True):
+        from app.services.capital_flow_data import sync_northbound_flow
+
+        _update_task(db, task_id, stage="northbound", percent=4, message="Syncing northbound flow")
+        try:
+            sync_northbound_flow(
+                db, days=min(max((range_end - range_start).days + 1, 1), 100)
+            )
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            result["errors"].append(f"northbound: {exc}")
+            logger.warning("northbound sync failed in external task: %s", exc)
+
     # The provider already returns the complete A-share snapshot. Fetch it
-    # once for incremental valuation syncs instead of repeating the same
-    # full-market request for every symbol.
-    if dataset == "fundamental" and plan.get("mode") != "backfill":
-        from app.services.fundamental_data import sync_market_valuation_snapshot
+    # once for incremental valuation and fund-flow syncs instead of repeating
+    # the same full-market request for every symbol.
+    if dataset in {"fundamental", "capital_flow"} and plan.get("mode") != "backfill":
+        if dataset == "capital_flow":
+            from app.services.capital_flow_data import (
+                sync_market_capital_flow_snapshot,
+                sync_symbol_capital_flow,
+            )
+
+            def _snapshot_sync(active_db: Session) -> set[int]:
+                return sync_market_capital_flow_snapshot(active_db, symbols, range_end)
+
+            def _single_symbol_sync(active_db: Session, symbol: Symbol) -> Any:
+                return sync_symbol_capital_flow(active_db, symbol, range_end)
+        else:
+            from app.services.fundamental_data import (
+                sync_market_valuation_snapshot,
+                sync_symbol_valuation,
+            )
+
+            def _snapshot_sync(active_db: Session) -> set[int]:
+                return sync_market_valuation_snapshot(active_db, symbols, range_end)
+
+            def _single_symbol_sync(active_db: Session, symbol: Symbol) -> Any:
+                return sync_symbol_valuation(active_db, symbol, range_end)
 
         if _is_cancelled(db, task_id):
             return None
         try:
-            synced_ids = sync_market_valuation_snapshot(db, symbols, range_end) or set()
+            synced_ids = _snapshot_sync(db) or set()
         except Exception as exc:
             db.rollback()
             # The complete-market endpoint is occasionally disconnected by
             # the provider. Do not turn one failed HTTP request into N failed
             # symbols; fall back to the per-symbol historical endpoint.
-            logger.warning("fundamental snapshot sync failed; falling back to per-symbol valuation: %s", exc)
-            result["errors"].append(
-                f"批量接口不可用，已切换个股估值接口: {type(exc).__name__}: {exc}"
+            if dataset == "capital_flow" and source == "all" and not sync_plan_id:
+                # 全市场逐标的兜底等于 5,000+ 次个股请求（8/23-8/24 实测 6.5 小时只跑到
+                # 2,738 只），日更不能退化成那种规模；定向补数走缺口修复或小范围任务。
+                logger.warning(
+                    "capital flow market snapshot failed; refusing per-symbol fan-out for all scope: %s",
+                    exc,
+                )
+                raise RuntimeError(
+                    f"全市场资金流排行接口不可用，未执行逐标的兜底（避免 5,000+ 次请求）："
+                    f"{type(exc).__name__}: {exc}"
+                ) from exc
+            logger.warning(
+                "%s snapshot sync failed; falling back to per-symbol sync: %s", dataset, exc
             )
-            from app.services.fundamental_data import sync_symbol_valuation
+            result["errors"].append(
+                f"批量接口不可用，已切换个股接口: {type(exc).__name__}: {exc}"
+            )
 
             def _fallback_worker(symbol_id: int) -> tuple[int, bool, str | None]:
                 worker_db = SessionLocal()
@@ -752,7 +799,7 @@ def _run_symbol_sync(
                     worker_symbol = worker_db.get(Symbol, symbol_id)
                     if worker_symbol is None:
                         return symbol_id, False, "symbol not found"
-                    item = sync_symbol_valuation(worker_db, worker_symbol, range_end)
+                    item = _single_symbol_sync(worker_db, worker_symbol)
                     worker_db.commit()
                     return symbol_id, item is not None, None
                 except Exception as worker_exc:
@@ -824,20 +871,6 @@ def _run_symbol_sync(
         if sync_plan_id:
             _refresh_sync_plan(db, sync_plan_id, terminal=True)
         return result
-
-    if dataset == "capital_flow" and payload.get("include_northbound", True):
-        from app.services.capital_flow_data import sync_northbound_flow
-
-        _update_task(db, task_id, stage="northbound", percent=4, message="Syncing northbound flow")
-        try:
-            sync_northbound_flow(
-                db, days=min(max((range_end - range_start).days + 1, 1), 100)
-            )
-            db.commit()
-        except Exception as exc:
-            db.rollback()
-            result["errors"].append(f"northbound: {exc}")
-            logger.warning("northbound sync failed in external task: %s", exc)
 
     # Historical valuation requests are independent per symbol. Run them in
     # bounded batches with one SQLAlchemy session per worker; the coordinator

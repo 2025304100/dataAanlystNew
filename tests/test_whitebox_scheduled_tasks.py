@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -36,11 +37,11 @@ def test_calculate_next_daily_and_weekly_run_in_configured_timezone():
 
 
 def test_seed_default_schedules_is_idempotent(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 13
+    assert scheduled_tasks.seed_default_schedules(db_session) == 14
     db_session.commit()
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     rows = db_session.query(ScheduledTask).all()
-    assert len(rows) == 13
+    assert len(rows) == 14
     enabled = [item for item in rows if item.enabled]
     # 默认启用：行情增量同步 + 组合净值快照 + 指数日线同步（自动交易默认关闭，需用户主动开启）
     assert {item.task_type for item in enabled} == {
@@ -58,13 +59,103 @@ def test_seed_default_schedules_is_idempotent(db_session):
 
 
 def test_deleted_or_renamed_defaults_are_not_reseeded(db_session):
-    assert scheduled_tasks.seed_default_schedules(db_session) == 13
+    assert scheduled_tasks.seed_default_schedules(db_session) == 14
     db_session.commit()
     item = db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").one()
     scheduled_tasks.delete_schedule(db_session, item.id)
 
     assert scheduled_tasks.seed_default_schedules(db_session) == 0
     assert db_session.query(ScheduledTask).filter_by(name="每日宏观数据更新").count() == 0
+
+
+def _seed_legacy_defaults_only(db_session) -> None:
+    """Simulate a database already seeded by the previous default schedule set."""
+    from app.models.scheduled_task import ScheduledTaskSeedState
+
+    for data in scheduled_tasks.DEFAULT_SCHEDULES:
+        if data["name"] == "每日因子资金流增量同步":
+            continue
+        payload = ScheduledTaskCreate(**data, timezone="Asia/Shanghai")
+        db_session.add(ScheduledTask(
+            name=payload.name,
+            task_type=payload.task_type,
+            frequency=payload.frequency,
+            time_of_day=payload.time_of_day,
+            weekdays_json=json.dumps(payload.weekdays),
+            interval_minutes=payload.interval_minutes,
+            timezone=payload.timezone,
+            payload_json=json.dumps(payload.payload, ensure_ascii=False),
+            enabled=int(payload.enabled),
+        ))
+    db_session.add(ScheduledTaskSeedState(key="default_schedules_v7"))
+    db_session.commit()
+
+
+def test_capital_flow_daily_schedule_is_seeded_once(db_session):
+    assert scheduled_tasks.seed_default_schedules(db_session) == 14
+    db_session.commit()
+
+    item = db_session.query(ScheduledTask).filter_by(name="每日因子资金流增量同步").one()
+    assert item.enabled == 1
+    assert item.time_of_day == "19:10"
+    assert json.loads(item.payload_json) == {
+        "dataset": "capital_flow",
+        "source": "all",
+        "include_northbound": False,
+        "mode": "incremental",
+        "lookback_days": 1,
+    }
+
+
+def test_seed_key_bump_adds_capital_flow_to_a_legacy_seeded_db(db_session):
+    _seed_legacy_defaults_only(db_session)
+
+    created = scheduled_tasks.seed_default_schedules(db_session)
+    db_session.commit()
+
+    assert created == 1
+    assert db_session.query(ScheduledTask).filter_by(
+        name="每日因子资金流增量同步"
+    ).count() == 1
+    assert db_session.query(ScheduledTask).count() == 14
+
+
+def test_capital_flow_schedule_validates_and_dispatches(monkeypatch):
+    payload = scheduled_tasks.validate_task_payload(
+        "external_data_sync",
+        {"dataset": "capital_flow", "source": "all", "include_northbound": False},
+    )
+    assert payload == {
+        "dataset": "capital_flow",
+        "source": "all",
+        "include_northbound": False,
+        "mode": "incremental",
+        "lookback_days": 1,
+    }
+
+    captured = {}
+    monkeypatch.setattr(
+        "app.services.external_data_sync_task.start_external_data_sync",
+        lambda dataset, task_payload: captured.update(dataset=dataset, payload=task_payload)
+        or SimpleNamespace(id="external-2", status="queued", message="queued"),
+    )
+    item = SimpleNamespace(
+        task_type="external_data_sync",
+        payload_json=json.dumps(payload),
+    )
+
+    source, task = scheduled_tasks._dispatch_task(item)
+
+    assert source == "async"
+    assert task.id == "external-2"
+    assert captured == {"dataset": "capital_flow", "payload": payload}
+
+
+def test_scheduled_external_sync_still_rejects_unschedulable_datasets():
+    with pytest.raises(ValueError, match="fundamental and capital_flow"):
+        scheduled_tasks.validate_task_payload(
+            "external_data_sync", {"dataset": "financial", "source": "all"}
+        )
 
 
 def test_external_data_schedule_validates_and_dispatches_incremental_sync(monkeypatch):

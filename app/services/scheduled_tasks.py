@@ -23,7 +23,7 @@ from app.schemas.scheduled_task import ScheduledTaskCreate, ScheduledTaskUpdate
 
 logger = logging.getLogger(__name__)
 SCHEDULER_CHECK_INTERVAL_SECONDS = 30
-DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v7"
+DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v8"
 
 TASK_DEFINITIONS: dict[str, dict] = {
     "universe_incremental_sync": {
@@ -105,8 +105,8 @@ TASK_DEFINITIONS: dict[str, dict] = {
         "default_payload": {"symbol": "000300", "lookback_days": 5},
     },
     "external_data_sync": {
-        "name": "因子输入估值增量同步",
-        "description": "每天抓取全市场 A 股最新 PE/PB/市值快照，供因子公式使用",
+        "name": "因子输入增量同步",
+        "description": "按 payload.dataset 每天抓取全市场 A 股最新 PE/PB/市值或当日主力资金流快照，供因子公式使用",
         "default_payload": {
             "dataset": "fundamental",
             "source": "all",
@@ -140,6 +140,23 @@ DEFAULT_SCHEDULES = (
         "time_of_day": "19:00",
         "weekdays": [],
         "payload": TASK_DEFINITIONS["external_data_sync"]["default_payload"],
+        "enabled": True,
+    },
+    # 资金流接口是逐标的的，日更必须走全市场排行快照（见 sync_market_capital_flow_snapshot），
+    # 排在估值任务之后，避免两个全市场抓取抢同一时段。
+    {
+        "name": "每日因子资金流增量同步",
+        "task_type": "external_data_sync",
+        "frequency": "daily",
+        "time_of_day": "19:10",
+        "weekdays": [],
+        "payload": {
+            "dataset": "capital_flow",
+            "source": "all",
+            "include_northbound": False,
+            "mode": "incremental",
+            "lookback_days": 1,
+        },
         "enabled": True,
     },
     {
@@ -440,8 +457,10 @@ def validate_task_payload(task_type: str, payload: dict) -> dict:
         return {"symbol": symbol, "lookback_days": lookback_days}
     if task_type == "external_data_sync":
         dataset = str(payload.get("dataset") or "fundamental")
-        if dataset != "fundamental":
-            raise ValueError("scheduled external sync currently supports fundamental only")
+        if dataset not in {"fundamental", "capital_flow"}:
+            raise ValueError(
+                "scheduled external sync supports fundamental and capital_flow only"
+            )
         source = str(payload.get("source") or "all")
         if source not in {"watchlist", "positions", "all"}:
             raise ValueError("unsupported external sync source")

@@ -231,6 +231,98 @@ def sync_symbol_capital_flow_range(
     return written
 
 
+_RANK_FIELD_MAP = {
+    "main_net_inflow": "今日主力净流入-净额",
+    "main_net_inflow_pct": "今日主力净流入-净占比",
+    "super_large_net_inflow": "今日超大单净流入-净额",
+    "large_net_inflow": "今日大单净流入-净额",
+    "medium_net_inflow": "今日中单净流入-净额",
+    "small_net_inflow": "今日小单净流入-净额",
+}
+
+
+def _fetch_market_fund_flow_rank(db: Session) -> list[dict[str, Any]]:
+    """拉取全市场当日主力资金流排行（provider 分页，请求数与标的数无关）。"""
+    with _proxy_bypass(), quiet_akshare_output():
+        frame = call_akshare_with_retry(
+            ak.stock_individual_fund_flow_rank,
+            indicator="今日",
+            api_key="stock_individual_fund_flow_rank",
+            db=db,
+        )
+    if frame is None or frame.empty or "代码" not in frame.columns:
+        raise RuntimeError("market fund flow ranking returned no usable rows")
+    rows: list[dict[str, Any]] = []
+    for _, frame_row in frame.iterrows():
+        code = str(frame_row.get("代码") or "").split(".")[-1]
+        if not code:
+            continue
+        row: dict[str, Any] = {"symbol_code": code.zfill(6)}
+        for field, column in _RANK_FIELD_MAP.items():
+            row[field] = _safe_float(frame_row.get(column))
+        rows.append(row)
+    return rows
+
+
+def _corroborate_trade_date(
+    db: Session, symbols: list[Symbol], requested_date: date
+) -> date | None:
+    """Return the session the provider is actually reporting, or None.
+
+    The ranking endpoint has no date column: on a weekend or holiday it shows
+    the previous session. The dated per-symbol endpoint is the only truth
+    source for which session that is, so the snapshot is stamped with it
+    instead of with the calendar day (which would invent non-trading dates).
+    """
+    for symbol in symbols[:3]:
+        rows = _fetch_individual_fund_flow_history(db, symbol, end_date=requested_date)
+        if rows:
+            latest = rows[-1].get("trade_date")
+            if isinstance(latest, date):
+                return latest
+    return None
+
+
+def sync_market_capital_flow_snapshot(
+    db: Session,
+    symbols: list[Symbol],
+    trade_date: date | None = None,
+) -> set[int]:
+    """Upsert the whole-market daily fund flow with a single provider endpoint.
+
+    The per-symbol endpoint needs one request per stock, so an incremental
+    all-market sync would cost 5,000+ requests a day; the ranking endpoint
+    carries the same daily columns for every stock. Stocks the provider omits
+    (suspended, delisted) stay unwritten instead of being filled.
+    """
+    requested_date = trade_date or date.today()
+    eligible = [
+        symbol for symbol in symbols
+        if symbol.asset_type == "stock" and region_from_market(symbol.market) == "cn"
+    ]
+    if not eligible:
+        return set()
+    actual_date = _corroborate_trade_date(db, eligible, requested_date)
+    if actual_date is None:
+        raise RuntimeError(
+            "fund flow ranking has no corroborating session date; nothing was written"
+        )
+    by_code = {row["symbol_code"]: row for row in _fetch_market_fund_flow_rank(db)}
+    synced: set[int] = set()
+    for symbol in eligible:
+        row = by_code.get(_market_code_for_akshare(symbol).zfill(6))
+        if row is None:
+            continue
+        flow_data = {"trade_date": actual_date}
+        flow_data.update(
+            {key: value for key, value in row.items() if key != "symbol_code"}
+        )
+        if _upsert_capital_flow(db, symbol, flow_data) is not None:
+            synced.add(symbol.id)
+    db.flush()
+    return synced
+
+
 def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | None = None) -> CapitalFlow | None:
     """同步单个 symbol 的最新可用资金流快照。"""
     if symbol.asset_type != "stock":

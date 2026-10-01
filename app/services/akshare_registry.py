@@ -322,6 +322,18 @@ AKSHARE_API_REGISTRY: list[dict[str, Any]] = [
         "probe_args": {"stock": "000001", "market": "sz"},
     },
     {
+        "key": "stock_individual_fund_flow_rank",
+        "name_zh": "个股资金流排行（全市场）",
+        "name_en": "Individual Fund Flow Ranking (Whole Market)",
+        "category_zh": "资金流",
+        "category_en": "Capital Flow",
+        "module": "capital_flow_data",
+        "desc_zh": "全市场当日主力/超大单/大单净流入排行，日更资金流的数据源",
+        "desc_en": "Whole-market daily main/super-large/large net inflow ranking, daily capital flow source",
+        "default_strategy": "conservative",
+        "probe_args": {"indicator": "今日"},
+    },
+    {
         "key": "stock_lhb_detail_em",
         "name_zh": "龙虎榜明细（东财）",
         "name_en": "Dragon-Tiger List Details (EastMoney)",
