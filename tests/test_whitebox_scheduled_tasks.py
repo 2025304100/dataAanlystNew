@@ -475,3 +475,120 @@ def test_scheduled_task_api_crud_and_manual_run(db_session, monkeypatch):
         assert client.get(f"/api/v1/scheduled-tasks/{schedule_id}").status_code == 404
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def _due_schedule(db_session, name: str, task_type: str = "hot_rank_snapshot"):
+    from datetime import datetime, timedelta, timezone
+
+    item = scheduled_tasks.ScheduledTask(
+        name=name,
+        task_type=task_type,
+        frequency="daily",
+        time_of_day="19:10",
+        weekdays_json="[]",
+        timezone="Asia/Shanghai",
+        payload_json=json.dumps({}),
+        enabled=1,
+        next_run_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=5),
+    )
+    db_session.add(item)
+    db_session.commit()
+    return item
+
+
+def test_dispatch_failure_retries_within_the_day(db_session, monkeypatch):
+    """先推进 next_run_at 再派发，所以派发失败必须回拨，否则这一天被无声吃掉。"""
+    from datetime import datetime, timedelta, timezone
+
+    item = _due_schedule(db_session, "资金流日更撞前台同步")
+    monkeypatch.setattr(
+        scheduled_tasks, "_dispatch_task",
+        lambda *_a: (_ for _ in ()).throw(RuntimeError("前台行情同步进行中，拒绝创建")),
+    )
+
+    scheduled_tasks.run_due_schedules()
+
+    db_session.expire_all()
+    reloaded = db_session.query(scheduled_tasks.ScheduledTask).filter_by(id=item.id).one()
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    assert reloaded.last_status == "failed"
+    assert "前台行情同步进行中" in (reloaded.last_error or "")
+    delta = (reloaded.next_run_at - now_utc).total_seconds()
+    assert 10 * 60 <= delta <= 20 * 60, reloaded.next_run_at
+    assert reloaded.next_run_at.date() == now_utc.date()
+
+
+def test_one_unexpected_failure_does_not_skip_other_due_schedules(db_session, monkeypatch):
+    """一条调度抛非 ValueError 时，同一轮里其它到期任务还得被尝试。"""
+    from sqlalchemy.exc import OperationalError
+
+    first = _due_schedule(db_session, "先炸的那条")
+    second = _due_schedule(db_session, "应该照跑的那条")
+    attempted: list[int] = []
+
+    def fake_execute(db, schedule_id, *, trigger_source):
+        attempted.append(schedule_id)
+        if schedule_id == first.id:
+            raise OperationalError("SELECT 1", {}, Exception("connection reset"))
+        return SimpleNamespace(id=schedule_id)
+
+    monkeypatch.setattr(scheduled_tasks, "execute_schedule", fake_execute)
+    count = scheduled_tasks.run_due_schedules()
+
+    assert count == 2
+    assert sorted(attempted) == sorted([first.id, second.id])
+
+
+def test_dispatch_retry_gives_up_after_the_daily_limit(db_session, monkeypatch):
+    """连续失败不能变成每 15 分钟一次的空转；到上限就让位给下一个正常时段。"""
+    from datetime import datetime, timedelta, timezone
+
+    item = _due_schedule(db_session, "一直失败的那条")
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    for _ in range(scheduled_tasks.DISPATCH_MAX_RETRIES_PER_DAY):
+        db_session.add(scheduled_tasks.ScheduledTaskRun(
+            schedule_id=item.id,
+            trigger_source="scheduled",
+            task_source="async",
+            status="failed",
+            message="前台行情同步进行中，拒绝创建",
+            created_at=now_utc - timedelta(minutes=1),
+        ))
+    db_session.commit()
+    monkeypatch.setattr(
+        scheduled_tasks, "_dispatch_task",
+        lambda *_a: (_ for _ in ()).throw(RuntimeError("前台行情同步进行中，拒绝创建")),
+    )
+
+    scheduled_tasks.run_due_schedules()
+
+    db_session.expire_all()
+    reloaded = db_session.query(scheduled_tasks.ScheduledTask).filter_by(id=item.id).one()
+    delta = (reloaded.next_run_at - now_utc).total_seconds()
+    assert delta > 20 * 60, reloaded.next_run_at
+
+
+def test_failure_reason_is_not_masked_by_a_secondary_db_error(db_session, monkeypatch):
+    """记账那次 commit 也炸时，抛出去的必须还是原始原因，不是数据库错误。"""
+    from sqlalchemy.exc import OperationalError
+
+    item = _due_schedule(db_session, "记账也失败的那条")
+    monkeypatch.setattr(
+        scheduled_tasks, "_dispatch_task",
+        lambda *_a: (_ for _ in ()).throw(RuntimeError("原始原因：优先级冲突")),
+    )
+    real_commit = db_session.commit
+    commits: list[int] = []
+
+    def flaky_commit():
+        commits.append(1)
+        if len(commits) >= 2:
+            raise OperationalError("UPDATE scheduled_tasks", {}, Exception("connection gone"))
+        return real_commit()
+
+    monkeypatch.setattr(db_session, "commit", flaky_commit)
+
+    with pytest.raises(ValueError, match="原始原因：优先级冲突"):
+        scheduled_tasks.execute_schedule(db_session, item.id, trigger_source="scheduled")
+
+    assert len(commits) >= 2

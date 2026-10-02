@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import delete, desc, select, update
+from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session_local
@@ -23,6 +23,9 @@ from app.schemas.scheduled_task import ScheduledTaskCreate, ScheduledTaskUpdate
 
 logger = logging.getLogger(__name__)
 SCHEDULER_CHECK_INTERVAL_SECONDS = 30
+# 派发失败后的短延迟重试：撞上前台行情同步这类瞬时冲突时，不该把一整天算成已跑。
+DISPATCH_RETRY_DELAY_MINUTES = 15
+DISPATCH_MAX_RETRIES_PER_DAY = 6
 DEFAULT_SCHEDULE_SEED_KEY = "default_schedules_v8"
 
 TASK_DEFINITIONS: dict[str, dict] = {
@@ -744,15 +747,25 @@ def execute_schedule(
         db.refresh(run)
         return run
     except Exception as exc:
-        run.status = "failed"
-        run.message = str(exc)
-        item.last_run_at = _now()
-        item.last_status = "failed"
-        item.last_error = str(exc)
-        item.updated_at = _now()
-        db.commit()
-        logger.exception("Scheduled task %s dispatch failed", schedule_id)
-        raise ValueError(str(exc)) from exc
+        reason = str(exc)
+        # 记账本身也可能失败（前台行情同步跑两小时期间连接容易被拖垮）。二级异常
+        # 绝不能顶掉原始原因，否则调用方只看到"数据库断了"，看不到"被优先级挡住"。
+        try:
+            db.rollback()
+            run.status = "failed"
+            run.message = reason
+            item.last_run_at = _now()
+            item.last_status = "failed"
+            item.last_error = reason
+            item.updated_at = _now()
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "Could not record dispatch failure for scheduled task %s", schedule_id
+            )
+        logger.warning("Scheduled task %s dispatch failed: %s", schedule_id, reason)
+        raise ValueError(reason) from exc
 
 
 def _task_state(db: Session, source: str | None, task_id: str | None):
@@ -818,6 +831,43 @@ def run_to_dict(db: Session, run: ScheduledTaskRun) -> dict:
     }
 
 
+def _schedule_dispatch_retry(schedule_id: int) -> None:
+    """派发失败后决定下一次什么时候再试（用**新会话**，调用方的会话此刻可能已经脏了）。
+
+    `run_due_schedules` 是先推进 `next_run_at` 再派发的（防止重复派发），所以派发
+    一旦失败，这一轮已经把今天用掉了。撞上前台行情同步这类瞬时冲突时应该短延迟重来；
+    但连续失败（配置错、类型不支持）不能变成每 15 分钟一次的空转，超过当日上限就
+    让位给下一个正常时段。
+    """
+    db = get_session_local()()
+    try:
+        item = db.get(ScheduledTask, schedule_id)
+        if item is None:
+            return
+        today_start = _now().replace(hour=0, minute=0, second=0, microsecond=0)
+        attempts = int(db.execute(
+            select(func.count(ScheduledTaskRun.id)).where(
+                ScheduledTaskRun.schedule_id == schedule_id,
+                ScheduledTaskRun.status == "failed",
+                ScheduledTaskRun.created_at >= today_start,
+            )
+        ).scalar() or 0)
+        if attempts >= DISPATCH_MAX_RETRIES_PER_DAY:
+            logger.warning(
+                "Scheduled task %s hit the daily dispatch retry limit (%s); next run stays at %s",
+                schedule_id, DISPATCH_MAX_RETRIES_PER_DAY, item.next_run_at,
+            )
+            return
+        item.next_run_at = _now() + timedelta(minutes=DISPATCH_RETRY_DELAY_MINUTES)
+        item.updated_at = _now()
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Could not reschedule retry for scheduled task %s", schedule_id)
+    finally:
+        db.close()
+
+
 def run_due_schedules() -> int:
     SessionLocal = get_session_local()
     db = SessionLocal()
@@ -849,8 +899,17 @@ def run_due_schedules() -> int:
         for schedule_id in claimed:
             try:
                 execute_schedule(db, schedule_id, trigger_source="scheduled")
-            except ValueError:
-                logger.warning("Scheduled task %s failed to dispatch", schedule_id)
+            except ValueError as exc:
+                logger.warning("Scheduled task %s failed to dispatch: %s", schedule_id, exc)
+                _schedule_dispatch_retry(schedule_id)
+            except Exception as exc:
+                # 一条调度的意外（含二级数据库异常）不得吃掉同一轮里其它到期任务。
+                # 会话是否已脏不用在这里判断：重试帮助函数自己另开新会话。
+                logger.exception(
+                    "Scheduled task %s dispatch raised unexpectedly: %s", schedule_id, exc
+                )
+                db.rollback()
+                _schedule_dispatch_retry(schedule_id)
         return len(claimed)
     finally:
         db.close()
