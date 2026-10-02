@@ -592,3 +592,43 @@ def test_failure_reason_is_not_masked_by_a_secondary_db_error(db_session, monkey
         scheduled_tasks.execute_schedule(db_session, item.id, trigger_source="scheduled")
 
     assert len(commits) >= 2
+
+
+def test_failure_reason_is_rewritten_from_a_clean_session(db_session, monkeypatch):
+    """派发那个会话已被拖垮时，原因和 run 状态仍要落账（实测它们曾全部停在 dispatching）。"""
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.scheduled_task import ScheduledTaskRun
+
+    item = _due_schedule(db_session, "会话脏了的那条")
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    run = ScheduledTaskRun(
+        schedule_id=item.id,
+        trigger_source="scheduled",
+        status="dispatching",
+        message="Dispatching task",
+        created_at=now_utc,
+    )
+    db_session.add(run)
+    db_session.commit()
+    run_id = run.id
+
+    def poisoned_execute(db, schedule_id, *, trigger_source):
+        raise scheduled_tasks.ScheduleDispatchError(
+            "已有更高优先级任务在前台运行", schedule_id=schedule_id, run_id=run_id
+        )
+
+    monkeypatch.setattr(scheduled_tasks, "execute_schedule", poisoned_execute)
+
+    scheduled_tasks.run_due_schedules()
+
+    db_session.expire_all()
+    reloaded = db_session.query(scheduled_tasks.ScheduledTask).filter_by(id=item.id).one()
+    reloaded_run = db_session.query(ScheduledTaskRun).filter_by(id=run_id).one()
+    assert reloaded.last_status == "failed"
+    assert reloaded.last_error == "已有更高优先级任务在前台运行"
+    assert reloaded.last_run_at is not None
+    assert reloaded_run.status == "failed"
+    assert reloaded_run.message == "已有更高优先级任务在前台运行"
+    delta = (reloaded.next_run_at - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds()
+    assert 10 * 60 <= delta <= 20 * 60

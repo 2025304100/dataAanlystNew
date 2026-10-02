@@ -709,6 +709,16 @@ def _dispatch_task(item: ScheduledTask):
     raise ValueError(f"Unsupported scheduled task type: {item.task_type}")
 
 
+class ScheduleDispatchError(ValueError):
+    """派发失败，带上是哪条调度、哪条 run，好让调用方在干净会话里补记原因。"""
+
+    def __init__(self, reason: str, *, schedule_id: int, run_id: int | None) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.schedule_id = schedule_id
+        self.run_id = run_id
+
+
 def execute_schedule(
     db: Session,
     schedule_id: int,
@@ -765,7 +775,9 @@ def execute_schedule(
                 "Could not record dispatch failure for scheduled task %s", schedule_id
             )
         logger.warning("Scheduled task %s dispatch failed: %s", schedule_id, reason)
-        raise ValueError(reason) from exc
+        raise ScheduleDispatchError(
+            reason, schedule_id=schedule_id, run_id=getattr(run, "id", None)
+        ) from exc
 
 
 def _task_state(db: Session, source: str | None, task_id: str | None):
@@ -831,19 +843,36 @@ def run_to_dict(db: Session, run: ScheduledTaskRun) -> dict:
     }
 
 
-def _schedule_dispatch_retry(schedule_id: int) -> None:
-    """派发失败后决定下一次什么时候再试（用**新会话**，调用方的会话此刻可能已经脏了）。
+def _schedule_dispatch_retry(
+    schedule_id: int,
+    reason: str,
+    run_id: int | None = None,
+) -> None:
+    """把派发失败记到干净会话里，并决定下一次什么时候再试。
+
+    前台行情同步跑两个小时期间，调度那一轮的会话很容易被连接问题拖垮；此时若在
+    同一个会话里补写"失败原因"，写不进去就什么都没留下（实测：run 一直停在
+    `dispatching`、`last_status` 为 NULL，看板上等于"从未跑过"）。所以这里另开
+    会话，先落账，再安排重试。
 
     `run_due_schedules` 是先推进 `next_run_at` 再派发的（防止重复派发），所以派发
-    一旦失败，这一轮已经把今天用掉了。撞上前台行情同步这类瞬时冲突时应该短延迟重来；
-    但连续失败（配置错、类型不支持）不能变成每 15 分钟一次的空转，超过当日上限就
-    让位给下一个正常时段。
+    一旦失败，这一轮已经把今天用掉了：短延迟重来；但连续失败（配置错、类型不支持）
+    不能变成每 15 分钟一次的空转，超过当日上限就让位给下一个正常时段。
     """
     db = get_session_local()()
     try:
         item = db.get(ScheduledTask, schedule_id)
         if item is None:
             return
+        item.last_run_at = _now()
+        item.last_status = "failed"
+        item.last_error = reason
+        item.updated_at = _now()
+        if run_id is not None:
+            run = db.get(ScheduledTaskRun, run_id)
+            if run is not None:
+                run.status = "failed"
+                run.message = reason
         today_start = _now().replace(hour=0, minute=0, second=0, microsecond=0)
         attempts = int(db.execute(
             select(func.count(ScheduledTaskRun.id)).where(
@@ -857,13 +886,13 @@ def _schedule_dispatch_retry(schedule_id: int) -> None:
                 "Scheduled task %s hit the daily dispatch retry limit (%s); next run stays at %s",
                 schedule_id, DISPATCH_MAX_RETRIES_PER_DAY, item.next_run_at,
             )
+            db.commit()
             return
         item.next_run_at = _now() + timedelta(minutes=DISPATCH_RETRY_DELAY_MINUTES)
-        item.updated_at = _now()
         db.commit()
     except Exception:
         db.rollback()
-        logger.exception("Could not reschedule retry for scheduled task %s", schedule_id)
+        logger.exception("Could not record dispatch failure for scheduled task %s", schedule_id)
     finally:
         db.close()
 
@@ -901,7 +930,9 @@ def run_due_schedules() -> int:
                 execute_schedule(db, schedule_id, trigger_source="scheduled")
             except ValueError as exc:
                 logger.warning("Scheduled task %s failed to dispatch: %s", schedule_id, exc)
-                _schedule_dispatch_retry(schedule_id)
+                _schedule_dispatch_retry(
+                    schedule_id, str(exc), getattr(exc, "run_id", None)
+                )
             except Exception as exc:
                 # 一条调度的意外（含二级数据库异常）不得吃掉同一轮里其它到期任务。
                 # 会话是否已脏不用在这里判断：重试帮助函数自己另开新会话。
@@ -909,7 +940,9 @@ def run_due_schedules() -> int:
                     "Scheduled task %s dispatch raised unexpectedly: %s", schedule_id, exc
                 )
                 db.rollback()
-                _schedule_dispatch_retry(schedule_id)
+                _schedule_dispatch_retry(
+                    schedule_id, f"{type(exc).__name__}: {exc}", None
+                )
         return len(claimed)
     finally:
         db.close()
@@ -928,6 +961,7 @@ async def scheduler_loop() -> None:
 
 
 __all__ = [
+    "ScheduleDispatchError",
     "TASK_DEFINITIONS",
     "calculate_next_run",
     "create_schedule",
