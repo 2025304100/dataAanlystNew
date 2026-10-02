@@ -120,8 +120,9 @@ class TestMigrationUpDown:
             # UTF-8 中文（迁移注释含全角箭头）→ UnicodeDecodeError。固定 UTF-8。
             env["PYTHONIOENCODING"] = "utf-8"
             proc = subprocess.run(
-                [sys.executable, str(ROOT / ".workbuddy" / "mining"
-                                    / "verify_schema_drift.py"),
+                # 脚本已请进受跟踪的 scripts/：旧路径在 `.workbuddy/mining/` 里，
+                # 那个目录被 gitignore → CI 上“can't open file”，本地永远绿。
+                [sys.executable, str(ROOT / "scripts" / "verify_schema_drift.py"),
                  "--tables", "factor_versions", "--url-from-env", "--json"],
                 capture_output=True, text=True, cwd=str(ROOT), env=env,
                 encoding="utf-8", errors="replace",

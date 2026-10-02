@@ -528,7 +528,11 @@ def isolated_db_session(request) -> Session:
                 except Exception as _unlink_exc:
                     if _attempt == 3:
                         try:
-                            _diag = ROOT / ".workbuddy" / "mining" / "_td2_unlink_failures.txt"
+                            # 诊断文件进系统临时目录：原来写 ROOT/.workbuddy/，那个目录被
+                            # gitignore，CI 上不存在 → 外层 try/except 把它默默吞掉，
+                            # 于是“临时库删不掉”这类线索在 CI 上永远丢失。
+                            # 诊断路径不能依赖仓库内某个目录是否存在。
+                            _diag = Path(tempfile.gettempdir()) / "qa_td2_unlink_failures.txt"
                             with _diag.open("a", encoding="utf-8") as _fh:
                                 _fh.write(
                                     f"{request.node.nodeid}\t{repr(_unlink_exc)}\n"

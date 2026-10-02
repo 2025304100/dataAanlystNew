@@ -964,3 +964,43 @@ def test_ci_shard_keeps_same_directory_files_adjacent():
     assert sum(sum(counts[p] for p in b) for b in buckets) == plain_total
     assert sorted(p for b in buckets for p in b) == sorted(counts)
 
+
+# ════════════════════════════════════════
+# 27. 测试不得把未跟踪目录当运行时依赖
+# ════════════════════════════════════════
+
+
+def test_tests_do_not_depend_on_untracked_scratch_dir():
+    """tests/ 里不得出现将 `.workbuddy/` 作为路径的写法。
+
+    实际事故（同一根因两次）：
+    - golden hash 归档放在 `.workbuddy/mining/evidence/` → CI 上取不到，
+      “逐条 hash 不变”的回归守护在 CI 上拿着空归档空转；
+    - test_grade_columns_b1 用子进程跑 `.workbuddy/mining/verify_schema_drift.py` →
+      CI 直接 `can't open file` 报红（本地却永远是绿的）。
+    `.workbuddy/` 在 .gitignore 里，只存在于开发者本地；测试依赖它等于“本地必过、
+    CI 必炸”的假覆盖。需要长期保留的产物一律放进受跟踪的 scripts/ 或 tests/**/golden/。
+    """
+    needle = '".workbuddy"'          # 只拦路径拼接用的引号字面量，不拦注释里的提名
+    needle2 = "'.workbuddy'"
+    self_name = Path(__file__).name
+
+    offenders: list[str] = []
+    for path in sorted((REPO_ROOT / "tests").rglob("*.py")):
+        if path.name == self_name:
+            continue  # 本守护自己含有该字样
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for lineno, line in enumerate(text.splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#") or stripped.startswith("*"):
+                continue  # 注释/文档说明允许提到旧路径
+            if needle in line or needle2 in line:
+                offenders.append(f"{path.relative_to(REPO_ROOT)}:{lineno}")
+
+    assert not offenders, (
+        "测试不得把被 gitignore 的 `.workbuddy/` 当作运行时依赖（CI 上这个目录不存在，\n"
+        "轻则守护拿着空数据空转、重则直接红，而本地永远是绿的）：\n  "
+        + "\n  ".join(offenders)
+        + "\n请改成受跟踪位置：脚本放 scripts/，基准数据放 tests/**/golden/，诊断输出放系统临时目录。"
+    )
+
