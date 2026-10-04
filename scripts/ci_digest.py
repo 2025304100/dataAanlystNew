@@ -16,7 +16,9 @@ import sys
 from pathlib import Path
 
 MAX_ANNOTATIONS = 12
-MAX_LEN = 300
+# 300 字会把结构化错误的 technical_details 刚好切掉（实测：正好卡在 "technical_"
+# 处），而那一段才是定位问题需要的约束名/原始错误 —— 宁可长一点也不要断在要害。
+MAX_LEN = 900
 
 FAILED_RE = re.compile(r"^(FAILED|ERROR)\s+\S+")
 EXC_RE = re.compile(r"^E\s+\S")
