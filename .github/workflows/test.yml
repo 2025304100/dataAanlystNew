@@ -73,6 +73,21 @@ jobs:
   # ── 后端黑盒测试（需启动后端）────────────────────────────
   backend-blackbox:
     runs-on: ubuntu-latest
+    # 与生产同方言：黑盒测的是跑在 MySQL 上的应用，而不是退化成 SQLite。
+    # 实测代价：CI 没 MySQL 时应用静默走 SQLite，出现“本地绿、CI 红”的
+    # PUT → 409 DB_INTEGRITY_VIOLATION（两方言约束行为不一致）。
+    # 注意：services 块拿不到 job 的 env 上下文，所以下面口令与步骤里的必须字面一致。
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_pw      # 临时容器内口令，非真实凭据
+          MYSQL_DATABASE: gpfx_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_root_pw"
+          --health-interval=10s --health-timeout=5s --health-retries=12
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -83,6 +98,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: 写入 CI 数据库配置（必须写文件：load_db_config() 不看环境变量）
+        env:
+          CI_DB_HOST: 127.0.0.1
+          CI_DB_PORT: "3306"
+          CI_DB_NAME: gpfx_ci
+          CI_DB_USER: root
+          CI_DB_PASSWORD: ci_root_pw
+        run: python scripts/ci_write_db_config.py
+      - name: 初始化数据库结构（与生产同一条 alembic 迁移链）
+        run: python -m alembic upgrade head
       - name: Start backend
         run: |
           python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
@@ -117,6 +142,18 @@ jobs:
   # ── E2E 测试（需前后端 + 浏览器）─────────────────────────
   e2e:
     runs-on: ubuntu-latest
+    # 同 blackbox：E2E 跑的是真实后端，必须与生产同方言（MySQL）。
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_pw      # 临时容器内口令，非真实凭据
+          MYSQL_DATABASE: gpfx_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_root_pw"
+          --health-interval=10s --health-timeout=5s --health-retries=12
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -137,6 +174,16 @@ jobs:
         run: cd frontend && npm ci
       - name: Install Playwright
         run: python -m playwright install chromium
+      - name: 写入 CI 数据库配置（必须写文件：load_db_config() 不看环境变量）
+        env:
+          CI_DB_HOST: 127.0.0.1
+          CI_DB_PORT: "3306"
+          CI_DB_NAME: gpfx_ci
+          CI_DB_USER: root
+          CI_DB_PASSWORD: ci_root_pw
+        run: python scripts/ci_write_db_config.py
+      - name: 初始化数据库结构（与生产同一条 alembic 迁移链）
+        run: python -m alembic upgrade head
       - name: Start backend
         run: |
           python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
