@@ -81,7 +81,7 @@ def upgrade() -> None:
         Column('ic_value', Float, nullable=True),
         Column('coverage', Float, nullable=True),
         Column('turnover', Float, nullable=True),
-        Column('metrics_json', Text, nullable=False, server_default='{}'),
+        Column('metrics_json', Text, nullable=False),
         Column('health_status', String(24), nullable=False, server_default='healthy'),
         Column('health_reason', Text, nullable=True),
         Column('created_at', DateTime, nullable=False),

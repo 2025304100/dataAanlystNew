@@ -38,7 +38,7 @@ def upgrade() -> None:
         Column('alert_type', String(32), nullable=False),
         Column('severity', String(16), nullable=False, server_default='warn'),
         Column('title', String(200), nullable=False, server_default=''),
-        Column('message', Text, nullable=False, server_default=''),
+        Column('message', Text, nullable=False),
         Column('symbol_id', Integer, nullable=True),
         Column('data_json', Text, nullable=True),
         Column('acknowledged', Integer, nullable=False, server_default='0'),

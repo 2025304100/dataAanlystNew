@@ -38,7 +38,7 @@ def upgrade() -> None:
         sa.Column("action", sa.String(32), nullable=False),
         sa.Column("rule_code", sa.String(64), nullable=False),
         sa.Column("reason", sa.Text, nullable=False),
-        sa.Column("raw_status_json", sa.Text, nullable=False, server_default="{}"),
+        sa.Column("raw_status_json", sa.Text, nullable=False),
         sa.Column("effective_status", sa.String(32), nullable=False, server_default="LISTED"),
         sa.Column("price_used", sa.Float, nullable=True),
         sa.Column("config_hash", sa.String(64), nullable=False),

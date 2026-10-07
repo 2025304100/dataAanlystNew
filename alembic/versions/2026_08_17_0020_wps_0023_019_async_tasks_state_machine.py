@@ -23,7 +23,7 @@ def upgrade() -> None:
         Column('status', String(16), nullable=False),
         Column('stage', String(32), nullable=False),
         Column('percent', Float, nullable=False, server_default='0'),
-        Column('message', Text, nullable=False, server_default=''),
+        Column('message', Text, nullable=False),
         Column('total', Integer, nullable=False, server_default='0'),
         Column('processed', Integer, nullable=False, server_default='0'),
         Column('ok_count', Integer, nullable=False, server_default='0'),

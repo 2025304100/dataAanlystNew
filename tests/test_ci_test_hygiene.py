@@ -1004,3 +1004,37 @@ def test_tests_do_not_depend_on_untracked_scratch_dir():
         + "\n请改成受跟踪位置：脚本放 scripts/，基准数据放 tests/**/golden/，诊断输出放系统临时目录。"
     )
 
+
+# ════════════════════════════════════════
+# 28. 迁移不得给 TEXT/JSON 列设 server_default（MySQL 直接拒）
+# ════════════════════════════════════════
+
+
+def test_migrations_do_not_put_server_default_on_text_columns():
+    """alembic 迁移里 TEXT/JSON 列不得带 server_default。
+
+    实测事故：MySQL 对 BLOB/TEXT/GEOMETRY/JSON 列的默认值直接报 1101，
+    而 SQLite 不拦——所以 6 个历史迁移（共 12 列）在本地/CI 用 SQLite 时能建表，
+    一到 MySQL 就根本跑不起来（“没有任何环境能从空库重放整条链”，直到 CI 接入
+    MySQL 才暴露）。模型侧这些列本来就有 Python default，server_default 是多余的。
+    只拦 Text/JSON：String/Integer 的 server_default 合法且必需，不能误伤。
+    """
+    offenders: list[str] = []
+    versions = REPO_ROOT / "alembic" / "versions"
+    for path in sorted(versions.glob("*.py")):
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        for lineno, line in enumerate(lines, 1):
+            stripped = line.strip()
+            if stripped.startswith("#") or "server_default" not in stripped:
+                continue
+            # 只认“同一行里确实是 Text/JSON 类型”的列。
+            # 不要再加“上一行是 Text 列”之类的模糊判断：实测会把同表里合法的
+            # Integer/String 默认值全部误报（守护口径过宽 = 没人看的噪声）。
+            if re.search(r"\b(?:sa\.)?Text\b|\bsa\.JSON\b|\bLongText\b|\bJSONObject\b", stripped):
+                offenders.append(f"{path.name}:{lineno}: {stripped[:90]}")
+
+    assert not offenders, (
+        "迁移里给 TEXT/JSON 列写了 server_default：MySQL 会报 1101，新库无法引导\n"
+        "（模型侧用 Python default 即可）：\n  " + "\n  ".join(offenders)
+    )
+

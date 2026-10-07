@@ -6,6 +6,7 @@ from pathlib import Path
 
 from alembic import context
 from sqlalchemy import create_engine, event, engine_from_config, pool
+from sqlalchemy import inspect as sa_inspect
 
 from app.core.config import settings, load_db_config, build_mysql_url
 from app.db.base import Base
@@ -312,6 +313,42 @@ def _attach_sqlite_pragmas(connectable) -> None:
         cursor.close()
 
 
+def _ensure_version_table_width(connection) -> None:
+    """保证 alembic_version.version_num 能装下本项目的 revision id。
+
+    实测问题：alembic 1.15.2 建出来的 version_num 是 VARCHAR(32)，而本项目 revision id
+    最长 52 字（如 wps_0023_027_g3_data_governance_and_portfolio_status）。
+    SQLite 不校验长度，所以本地永不受影响；MySQL 则在升级到中途直接
+    `1406 Data too long for column 'version_num'`，结果是**没有任何环境能从空库重放整条链**
+    （CI / 新部署 / 灾备重建均不可用）。
+    已核 `context.configure(version_table_length=...)` 在 1.15.2 上不生效（参数被忽略），
+    所以在此直接建表/加宽；对已存在的宽列是 no-op。
+    """
+    wanted = 128
+    insp = sa_inspect(connection)
+    if "alembic_version" not in insp.get_table_names():
+        connection.exec_driver_sql(
+            f"CREATE TABLE alembic_version (version_num VARCHAR({wanted}) NOT NULL, "
+            "PRIMARY KEY (version_num))"
+        )
+        return
+
+    dialect = connection.engine.dialect.name
+    if dialect == "sqlite":
+        return  # SQLite 不校验长度，不去碰它（避免重写表）
+    if dialect == "mysql":
+        row = connection.exec_driver_sql(
+            "SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alembic_version' "
+            "AND COLUMN_NAME = 'version_num'"
+        ).first()
+        current = int(row[0]) if row and row[0] else 0
+        if current < wanted:
+            connection.exec_driver_sql(
+                f"ALTER TABLE alembic_version MODIFY version_num VARCHAR({wanted}) NOT NULL"
+            )
+
+
 def run_migrations_offline() -> None:
     _install_idempotent_operations_patch()
     url = _apply_db_url_from_env_or_settings()
@@ -345,6 +382,9 @@ def run_migrations_online() -> None:
         dialect_name = connection.dialect.name
         if dialect_name == "sqlite":
             connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        # 先保证版本表列宽能装下 revision id，否则 MySQL 上会在迁移中途 1406。
+        _ensure_version_table_width(connection)
+        connection.commit()
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
