@@ -382,6 +382,13 @@ def run_migrations_online() -> None:
         dialect_name = connection.dialect.name
         if dialect_name == "sqlite":
             connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        if dialect_name == "mysql":
+            # 实测：有些 MySQL 实例的 default_storage_engine 是 MyISAM（本机 5.7 就是），
+            # 那么从空库重放建出来的表全是 MyISAM：没有事务、外键直接被丢弃，
+            # 与生产库（gpfx 全部 InnoDB、136 个外键生效）完全不是一个形状；
+            # 还会先在 VARCHAR(255) 索引上撞 1071（MyISAM 索引上限 1000 字节）。
+            # 只改本次会话，不动服务器配置。
+            connection.exec_driver_sql("SET default_storage_engine=InnoDB")
         # 先保证版本表列宽能装下 revision id，否则 MySQL 上会在迁移中途 1406。
         _ensure_version_table_width(connection)
         connection.commit()
