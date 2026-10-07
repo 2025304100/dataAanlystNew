@@ -372,3 +372,110 @@ def test_g4_api_04_transition(tmp_alembic_db):
     )
     assert r_d.status == "OK"
     assert r_d.to_state == "READY"
+
+
+# ===========================================================================
+# T_G4_API_08 — 缺省对账目标日 = 上一个已收盘的交易日
+#
+# 判定口径复用因子域的 `factors.trade_calendar`（universe_daily_bars + region='cn'
+# + 完整度 ≥ 过去 20 日中位数 × 0.9），不查交易日历表 —— A 股节假日不固定
+# （春节/中秋按农历、调休逐年通知），日历跟不上就会把假期算成交易日。
+# ===========================================================================
+import app.api.routes.portfolio_governance as _pgr
+from app.services.portfolio_reconciliation import ReconciliationReport
+
+# 2025 年 9 月的全部工作日（含 9-29 / 9-30 两个收尾交易日）
+_UNIVERSE_DAYS = [
+    date(2025, 9, d) for d in (
+        1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 22, 23, 24, 25, 26, 29, 30,
+    )
+]
+
+
+def _seed_universe(db, base_id: int, *, count: int, region: str = "cn") -> list[int]:
+    from app.models.universe import UniverseSymbol
+    ids: list[int] = []
+    for i in range(count):
+        sid = base_id + i
+        db.add(UniverseSymbol(
+            id=sid, symbol=f"U{region}{sid}", name=f"u{sid}",
+            asset_type="stock", market="sh", region=region, is_synced=1,
+        ))
+        ids.append(sid)
+    db.flush()
+    return ids
+
+
+def _seed_universe_bars(db, symbol_ids, days) -> None:
+    from app.models.universe import UniverseDailyBar
+    for sid in symbol_ids:
+        for d in days:
+            db.add(UniverseDailyBar(
+                universe_symbol_id=sid, trade_date=d,
+                open=10.0, high=10.0, low=10.0, close=10.0, volume=1.0,
+            ))
+    db.flush()
+
+
+def test_g4_api_08a_excludes_today(tmp_alembic_db):
+    """今天的数据即使已同步也不算 —— 今天还没走完，拿它当对账目标日等于用未来当基准。"""
+    db = tmp_alembic_db
+    ids = _seed_universe(db, 700000, count=20)
+    _seed_universe_bars(db, ids, _UNIVERSE_DAYS)
+    assert _pgr._previous_closed_trade_date(db, today=date(2025, 10, 1)) == date(2025, 9, 30)
+
+
+def test_g4_api_08b_skips_incomplete_day(tmp_alembic_db):
+    """残缺日要跳过：9-30 只同步到 10% 标的时，退回 9-29。"""
+    db = tmp_alembic_db
+    ids = _seed_universe(db, 700100, count=20)
+    _seed_universe_bars(db, ids, [d for d in _UNIVERSE_DAYS if d != date(2025, 9, 30)])
+    _seed_universe_bars(db, ids[:2], [date(2025, 9, 30)])
+    assert _pgr._previous_closed_trade_date(db, today=date(2025, 10, 1)) == date(2025, 9, 29)
+
+
+def test_g4_api_08c_us_region_does_not_count(tmp_alembic_db):
+    """region 不是 cn 的行情不参与判定。
+
+    线上国庆就是这个形态：A 股 5800+ 标的停更，只剩美股 AAPL 每天一行。
+    这里让 us 数据停在 9-26 —— 若漏掉 region 过滤就会返回 9-26。
+    """
+    db = tmp_alembic_db
+    ids = _seed_universe(db, 700200, count=20, region="us")
+    _seed_universe_bars(db, ids, [d for d in _UNIVERSE_DAYS if d <= date(2025, 9, 26)])
+    assert _pgr._previous_closed_trade_date(db, today=date(2025, 10, 1)) == date(2025, 9, 30)
+
+
+def test_g4_api_08d_falls_back_when_universe_empty(tmp_alembic_db):
+    """完全没有 universe 数据时退回自然日昨天，不让对账接口挂掉。"""
+    db = tmp_alembic_db
+    assert _pgr._previous_closed_trade_date(db, today=date(2025, 10, 1)) == date(2025, 9, 30)
+
+
+def test_g4_api_08e_route_uses_default_only_when_payload_omits_date(
+    tmp_alembic_db, monkeypatch,
+):
+    """不传日期 → 走缺省解析；显式传日期 → 绝不覆盖用户选择。"""
+    sentinel = date(2025, 10, 8)
+    monkeypatch.setattr(_pgr, "_previous_closed_trade_date", lambda db, today=None: sentinel)
+
+    seen: list[date] = []
+
+    def _fake_reconcile(db, portfolio_id, trade_date, **kw):
+        seen.append(trade_date)
+        return ReconciliationReport(
+            portfolio_id=portfolio_id, trade_date=trade_date,
+            decision_run_id=None, status="PASSED",
+        )
+
+    monkeypatch.setattr(_pgr, "reconcile_trade_date", _fake_reconcile)
+
+    db = tmp_alembic_db
+    pid = _seed_portfolio(db)
+
+    _pgr.reconcile_portfolio(pid, _pgr.ReconcileRequest(), db, "u_api_08")
+    assert seen[-1] == sentinel, "缺省应落到上一个已收盘的交易日"
+
+    explicit = date(2025, 9, 15)
+    _pgr.reconcile_portfolio(pid, _pgr.ReconcileRequest(trade_date=explicit), db, "u_api_08")
+    assert seen[-1] == explicit, "显式 trade_date 必须优先于缺省"

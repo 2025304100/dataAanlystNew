@@ -4598,6 +4598,80 @@ tr.mining-run-top-new {
   justify-content: flex-start;
 }
 
+/* ── 模板配置：工具条（搜索 / 类型筛选 / 排序） ── */
+
+.mining-tpl-toolbar {
+  margin: var(--m-s4) 0;
+}
+
+.mining-tpl-search,
+.mining-tpl-select {
+  height: 32px;
+  padding: 0 var(--m-s3);
+  font-size: var(--m-fs-sm);
+  color: var(--m-text);
+  background: var(--m-surface);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mining-tpl-search {
+  min-width: 220px;
+}
+
+.mining-tpl-search::placeholder {
+  color: var(--m-text-3);
+}
+
+.mining-tpl-search:focus,
+.mining-tpl-select:focus {
+  border-color: var(--m-border-brand);
+  box-shadow: 0 0 0 3px var(--m-brand-softer);
+}
+
+.mining-tpl-match {
+  font-size: var(--m-fs-sm);
+  color: var(--m-text-2);
+}
+
+/* ── 模板配置：详情弹窗（只读） ── */
+
+.mining-tpl-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-s3);
+  padding: var(--m-s4) var(--m-s5) var(--m-s2);
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.mining-tpl-detail-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: var(--m-s4);
+  align-items: start;
+  font-size: var(--m-fs-sm);
+  color: var(--m-text);
+  line-height: 1.6;
+}
+
+.mining-tpl-detail-label {
+  color: var(--m-text-3);
+  text-align: right;
+}
+
+.mining-tpl-detail-code {
+  font-family: var(--m-mono);
+  font-size: var(--m-fs-sm);
+  padding: 2px var(--m-s2);
+  background: var(--m-surface-sunken);
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r-sm);
+  word-break: break-all;
+}
+
 /* ── 12. 响应式 ─────────────────────────────────────────── */
 
 @media (max-width: 1180px) {

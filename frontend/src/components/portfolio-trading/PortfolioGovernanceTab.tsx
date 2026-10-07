@@ -23,6 +23,13 @@ import type {
   ReconciliationResponse,
   StateTransitionRequest,
 } from "../../types";
+import {
+  classifyReconVerdict,
+  reconDimCodeForTooltip,
+  reconDimLabel,
+  reconDimWhy,
+  type ReconVerdict,
+} from "../../utils/reconDimLabel";
 
 /* ========================================================================== */
 /* PortfolioGovernanceTab                                                     */
@@ -31,7 +38,7 @@ import type {
 /* 内含 4 个子 Tab:                                                           */
 /*   state          → 9 状态彩色徽章 + ADMIN_PAUSED 红色刹车条 + 9×4 允许矩阵  */
 /*                    + allowed_transitions 驱动状态转移 (单人确认)            */
-/*   reconciliation → 对账守恒 10 列明细 + zeroSumCheck + force_skip 红警告    */
+/*   reconciliation → 结论卡(四态分诊) + 差异明细(可读名称) + 折叠的人工解锁区 */
 /*   audit          → 审计事件 5 过滤 + 分页 + correlation_id + 展开 attributes */
 /*   g5             → G5 双跑启动(连续10交易日校验) + 6×6 混淆矩阵 +            */
 /*                    eligible_g6 红绿徽章 + 异步任务行终态锁 disabled          */
@@ -185,7 +192,7 @@ const SubTabNav: React.FC<{ active: GovSubTabKey; onChange: (k: GovSubTabKey) =>
   //   ④ 系统状态：看完上面 3 个之后，看状态、做转移、执行最终决策（最核心动作放在靠后，和"先检查再决策"的顺序一致）
   //   ⑤ 审计事件：发生过什么、谁动了什么，事后/追溯用（最末尾）
   const tabs: { key: GovSubTabKey; label: string; icon: React.ReactNode; hint?: string }[] = [
-    { key: "reconciliation", label: t("portfolioTrading.governance.subtab.reconciliation"), icon: <CheckCircle2 size={14} />, hint: "① 对账守恒（先清账，再谈其它）" },
+    { key: "reconciliation", label: t("portfolioTrading.governance.subtab.reconciliation"), icon: <CheckCircle2 size={14} />, hint: t("governance.reconcile.subtabHint") },
     { key: "operations", label: t("portfolioTrading.governance.subtab.operations"), icon: <AlertTriangle size={14} />, hint: "② 运行保障（看 blocker）" },
     { key: "g5", label: t("portfolioTrading.governance.subtab.g5DualRun"), icon: <PlayCircle size={14} />, hint: "③ G5 双跑对账（G6 前置验收）" },
     { key: "state", label: t("portfolioTrading.governance.subtab.state"), icon: <ShieldCheck size={14} />, hint: "④ 系统状态（最终决策 / 调整运行状态）" },
@@ -1006,6 +1013,18 @@ const TransitionDialog: React.FC<{
 /* Sub Tab 2：对账守恒 ReconciliationPanel                                    */
 /* -------------------------------------------------------------------------- */
 
+/* 结论卡的四种处境。同一句「守恒失败」背后是完全不同的局面：
+   缺基准 / 没接数据源 / 真差异 —— 用户该做的事完全不同，不能混着讲。 */
+const RECON_VERDICT_STYLE: Record<
+  ReconVerdict,
+  { bg: string; border: string; fg: string; icon: typeof CheckCircle2; hasNext: boolean }
+> = {
+  passed:      { bg: "#ecfdf5", border: "#10b981", fg: "#065f46", icon: CheckCircle2, hasNext: false },
+  no_decision: { bg: "#eff6ff", border: "#3b82f6", fg: "#1e3a8a", icon: Compass,      hasNext: true },
+  unavailable: { bg: "#f3f4f6", border: "#9ca3af", fg: "#1f2937", icon: HelpCircle,   hasNext: true },
+  broken:      { bg: "#fef2f2", border: "#dc2626", fg: "#7f1d1d", icon: AlertTriangle, hasNext: true },
+};
+
 const ReconciliationPanel: React.FC<{
   portfolioId: number;
   showToast: (t: "success" | "error" | "info", msg: React.ReactNode) => void;
@@ -1017,6 +1036,9 @@ const ReconciliationPanel: React.FC<{
   const [rerunFirst, setRerunFirst] = useState(true);
   const [reviewNote, setReviewNote] = useState("");
   const [confirming, setConfirming] = useState(false);
+  // 人工确认区默认收起：它是「绕过门禁」的高危动作，不该和结论平铺并列，
+  // 否则用户一进来就被推到一排勾选框前，不知道要不要动。
+  const [showManual, setShowManual] = useState(false);
 
   const runReconcile = useCallback(async () => {
     if (!portfolioId) return;
@@ -1024,8 +1046,15 @@ const ReconciliationPanel: React.FC<{
     try {
       const r = await api.triggerPortfolioReconcile(portfolioId);
       setResp(r);
-      if (r.zero_sum_check_passed) showToast("success", t("governance.reconcile.zeroSum"));
-      else showToast("info", t("governance.reconcile.zeroSumFailed"));
+      // 提示与结论卡共用同一套分诊：同一件事不该在横幅和 toast 里说成两种。
+      const v = classifyReconVerdict({
+        zero_sum_check_passed: r.zero_sum_check_passed,
+        items: r.items,
+      });
+      showToast(
+        v === "passed" ? "success" : v === "broken" ? "error" : "info",
+        t(`governance.reconcile.verdict.${v}.title`),
+      );
     } catch (err: any) {
       showToast("error", (err?.message || String(err)) + " (triggerReconcile)");
     } finally {
@@ -1048,6 +1077,14 @@ const ReconciliationPanel: React.FC<{
   const noteShort = reviewNote.trim().length < 10;
   const zeroSum = resp?.zero_sum_check_passed === true;
   const canConfirm = ackChecked && (!hasDiff || forceSkipChecked) && !noteShort;
+
+  // 结论分诊：把「缺基准 / 没接数据源 / 真差异」分开，用户才知道要不要动手。
+  const verdict: ReconVerdict = classifyReconVerdict({
+    zero_sum_check_passed: resp?.zero_sum_check_passed,
+    items: diffs,
+  });
+  const verdictStyle = RECON_VERDICT_STYLE[verdict];
+  const VerdictIcon = verdictStyle.icon;
 
   const doConfirm = async () => {
     if (!portfolioId) return;
@@ -1108,27 +1145,56 @@ const ReconciliationPanel: React.FC<{
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* 顶部卡：最后对账 + 执行按钮 + 守恒通过 */}
+    <div data-testid="reconcile-panel" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* 顶部卡：先讲清楚「现在什么情况、要不要你动手」，再放数字 */}
       <div className="pt-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ fontSize: 12, color: "var(--pt-muted-foreground)", lineHeight: 1.7 }}>
+          {t("governance.reconcile.intro")}
+        </div>
+
+        {resp && (
+          <div
+            role="status"
+            data-testid="recon-verdict"
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+              padding: "12px 14px",
+              borderRadius: 10,
+              background: verdictStyle.bg,
+              border: `1px solid ${verdictStyle.border}`,
+              color: verdictStyle.fg,
+            }}
+          >
+            <VerdictIcon size={18} style={{ flexShrink: 0, marginTop: 2 }} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>
+                {t(`governance.reconcile.verdict.${verdict}.title`)}
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+                {t(`governance.reconcile.verdict.${verdict}.desc`)}
+              </div>
+              {verdictStyle.hasNext && (
+                <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+                  <b>{t("governance.reconcile.nextStep")}：</b>
+                  {t(`governance.reconcile.verdict.${verdict}.next`)}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>{t("governance.reconcile.last")}:</span>
-            <b>{resp?.trade_date ?? resp?.last_reconciled_trade_date ?? "—"}</b>
-            {resp?.zero_sum_check_passed != null && (
-              resp.zero_sum_check_passed ? (
-                <span style={{ color: "#059669", fontSize: 12, fontWeight: 600 }}>
-                  ✓ {t("governance.reconcile.zeroSum")}
-                </span>
-              ) : (
-                <span style={{ color: "#b91c1c", fontSize: 12, fontWeight: 600 }}>
-                  ⚠ {t("governance.reconcile.zeroSumFailed")}
-                </span>
-              )
-            )}
-            {hasDiff && (
-              <span style={{ color: "#b45309", fontSize: 12, fontWeight: 600 }}>{t("governance.reconcile.diffFound")}</span>
-            )}
+          <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13 }}>
+              <span style={{ color: "var(--pt-muted-foreground)" }}>{t("governance.reconcile.targetDate")}：</span>
+              <b>{resp?.trade_date ?? "—"}</b>
+            </span>
+            <span style={{ fontSize: 13 }}>
+              <span style={{ color: "var(--pt-muted-foreground)" }}>{t("governance.reconcile.lastSuccessDate")}：</span>
+              <b>{resp?.last_reconciled_trade_date ?? "—"}</b>
+            </span>
           </div>
           <button type="button" className="pt-btn-primary" onClick={runReconcile} disabled={loading}>
             <RefreshCw size={14} /> {loading ? "…" : t("governance.reconcile.btn")}
@@ -1150,21 +1216,19 @@ const ReconciliationPanel: React.FC<{
             </thead>
             <tbody>
               {diffs.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: 16, textAlign: "center", color: "var(--pt-muted-foreground)" }}>—</td></tr>
+                <tr>
+                  <td colSpan={6} style={{ padding: 16, textAlign: "center", color: "var(--pt-muted-foreground)" }}>
+                    {t("governance.reconcile.noDiff")}
+                  </td>
+                </tr>
               )}
               {diffs.map((d, i) => {
                 const dim = d.dimension;
-                const dimLabel =
-                  dim === "order_count" ? t("governance.reconcile.dim.orderCount") :
-                  dim === "order_amount" ? t("governance.reconcile.dim.orderAmount") :
-                  dim === "trade_count" ? t("governance.reconcile.dim.tradeCount") :
-                  dim === "trade_amount" ? t("governance.reconcile.dim.tradeAmount") :
-                  dim === "position_count" ? t("governance.reconcile.dim.positionCount") :
-                  dim === "position_market_value" ? t("governance.reconcile.dim.positionValue") :
-                  dim === "cash_balance" ? t("governance.reconcile.dim.cashBalance") :
-                  dim === "evidence_items" ? t("governance.reconcile.dim.evidenceItems") :
-                  dim === "evidence_hash" ? t("governance.reconcile.dim.evidenceHash") :
-                  t("governance.reconcile.dim.unknown") + ` (${String(dim)})`;
+                // 维度列不再把后端枚举原值拼给用户看（「自定义维度 (DECISION_RUN_NOT_FOUND)」
+                // 这种行没人读得懂）；内部 code 只留在 tooltip 里。
+                const dimLabel = reconDimLabel(dim);
+                const dimCode = reconDimCodeForTooltip(dim);
+                const dimWhy = reconDimWhy(dim);
                 const expected = toNumber(d.expected_value);
                 const actual = toNumber(d.actual_value);
                 const diff = toNumber(d.diff_value);
@@ -1233,8 +1297,13 @@ const ReconciliationPanel: React.FC<{
                 return (
                   <tr key={`${String(dim)}-${i}`} style={{ background: rowBg }}>
                     <td style={tdStyle("left")}>
-                      {rowBadge}
-                      {dimLabel}
+                      {dimCode ? (
+                        <Tooltip title={dimCode}>
+                          <span>{rowBadge}{dimLabel}</span>
+                        </Tooltip>
+                      ) : (
+                        <span>{rowBadge}{dimLabel}</span>
+                      )}
                     </td>
                     <td style={tdStyle()}>
                       {isMetaRow
@@ -1281,7 +1350,17 @@ const ReconciliationPanel: React.FC<{
                         fmtNum(diff)
                       )}
                     </td>
-                    <td style={tdStyle("left")}>{(d.explain_note ?? (`${expected - actual === diff ? "" : ""}`.trim())) || "—"}</td>
+                    <td style={tdStyle("left")}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "left" }}>
+                        {dimWhy && <span>{dimWhy}</span>}
+                        {d.explain_note && (
+                          <span style={{ fontSize: 11, color: "var(--pt-muted-foreground)", lineHeight: 1.6 }}>
+                            {d.explain_note}
+                          </span>
+                        )}
+                        {!dimWhy && !d.explain_note && <span>—</span>}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -1289,75 +1368,116 @@ const ReconciliationPanel: React.FC<{
           </table>
         </div>
 
-        {/* 确认区：ack + force_skip(高危红警告) + rerun + review_note + 单人确认按钮 */}
-        <div
-          style={{
-            padding: 14,
-            borderRadius: 10,
-            border: "1px solid var(--pt-border)",
-            background: "var(--pt-surface-0)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 700 }}>{t("governance.reconcile.confirmTitle")}</div>
-
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-            <input type="checkbox" checked={ackChecked} onChange={(e) => setAckChecked(e.target.checked)} />
-            {t("governance.reconcile.ackRequired")}
-          </label>
-
-          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "#7f1d1d" }}>
-            <input
-              type="checkbox"
-              checked={forceSkipChecked}
-              onChange={(e) => {
-                setForceSkipChecked(e.target.checked);
-                if (e.target.checked && rerunFirst) setRerunFirst(true);
-              }}
-              style={{ marginTop: 3 }}
-            />
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ fontWeight: 600 }}>{t("governance.reconcile.forceSkip")}</span>
-              <span style={{ fontSize: 12, background: "#fef2f2", padding: "4px 8px", borderRadius: 6 }}>
-                {t("governance.reconcile.forceSkipWarn")}
-              </span>
-            </div>
-          </label>
-
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-            <input type="checkbox" checked={rerunFirst} onChange={(e) => setRerunFirst(e.target.checked)} />
-            {t("governance.reconcile.rerunFirst")}
-          </label>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>
-              {t("governance.transition.reviewNote")} <span style={{ color: "#dc2626" }}>*</span>
-              {noteShort && <span style={{ color: "#dc2626", marginLeft: 6, fontSize: 12 }}>{t("governance.reconcile.reviewNoteMin10")}</span>}
-            </label>
-            <textarea
-              className="pt-input"
-              rows={3}
-              value={reviewNote}
-              onChange={(e) => setReviewNote(e.target.value)}
-              placeholder="记录修复的具体问题与原因（至少 10 字符）。"
-              style={{ padding: "8px 10px", resize: "vertical" }}
-            />
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        {/* 人工处理区：默认收起。force_skip 是「绕过门禁」的高危动作，不该和结论
+            平铺并列 —— 否则用户一进来就被推到一排勾选框前，不知道要不要动。 */}
+        {verdict !== "passed" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <button
               type="button"
-              className="pt-btn-primary"
-              onClick={doConfirm}
-              disabled={confirming || !canConfirm}
-              style={forceSkipChecked ? { background: "#dc2626", borderColor: "#991b1b" } : undefined}
+              onClick={() => setShowManual((v) => !v)}
+              aria-expanded={showManual}
+              data-testid="recon-manual-toggle"
+              style={{
+                alignSelf: "flex-start",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "5px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--pt-border)",
+                background: "transparent",
+                color: "inherit",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
             >
-              {confirming ? "…" : t("governance.reconcile.confirmBtn")}
+              <Lock size={13} />
+              {showManual ? t("governance.reconcile.hideManual") : t("governance.reconcile.showManual")}
             </button>
+
+            {!showManual && (
+              <div style={{ fontSize: 12, color: "var(--pt-muted-foreground)", lineHeight: 1.7 }}>
+                {t("governance.reconcile.manualHint")}
+              </div>
+            )}
+
+            {showManual && (
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 10,
+                  border: "1px solid var(--pt-border)",
+                  background: "var(--pt-surface-0)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{t("governance.reconcile.confirmTitle")}</div>
+                  <div style={{ fontSize: 12, color: "var(--pt-muted-foreground)", lineHeight: 1.7 }}>
+                    {t("governance.reconcile.confirmSubtitle")}
+                  </div>
+                </div>
+
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <input type="checkbox" checked={ackChecked} onChange={(e) => setAckChecked(e.target.checked)} />
+                  {t("governance.reconcile.ackRequired")}
+                </label>
+
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "#7f1d1d" }}>
+                  <input
+                    type="checkbox"
+                    checked={forceSkipChecked}
+                    onChange={(e) => {
+                      setForceSkipChecked(e.target.checked);
+                      if (e.target.checked && rerunFirst) setRerunFirst(true);
+                    }}
+                    style={{ marginTop: 3 }}
+                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontWeight: 600 }}>{t("governance.reconcile.forceSkip")}</span>
+                    <span style={{ fontSize: 12, background: "#fef2f2", padding: "4px 8px", borderRadius: 6 }}>
+                      {t("governance.reconcile.forceSkipWarn")}
+                    </span>
+                  </div>
+                </label>
+
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <input type="checkbox" checked={rerunFirst} onChange={(e) => setRerunFirst(e.target.checked)} />
+                  {t("governance.reconcile.rerunFirst")}
+                </label>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>
+                    {t("governance.transition.reviewNote")} <span style={{ color: "#dc2626" }}>*</span>
+                    {noteShort && <span style={{ color: "#dc2626", marginLeft: 6, fontSize: 12 }}>{t("governance.reconcile.reviewNoteMin10")}</span>}
+                  </label>
+                  <textarea
+                    className="pt-input"
+                    rows={3}
+                    value={reviewNote}
+                    onChange={(e) => setReviewNote(e.target.value)}
+                    placeholder={t("governance.reconcile.notePlaceholder")}
+                    style={{ padding: "8px 10px", resize: "vertical" }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="pt-btn-primary"
+                    onClick={doConfirm}
+                    disabled={confirming || !canConfirm}
+                    style={forceSkipChecked ? { background: "#dc2626", borderColor: "#991b1b" } : undefined}
+                  >
+                    {confirming ? "…" : t("governance.reconcile.confirmBtn")}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -2474,7 +2594,7 @@ const PortfolioGovernanceTab: React.FC<PortfolioGovernanceTabProps> = ({ portfol
               🗂️ 5 个子 Tab 分工
             </div>
             <div style={{ color: "var(--pt-foreground)" }}>
-              ① <b>对账守恒</b>：持仓/现金/订单/成交 10 列明细，zero-sum 零和检查 + 差异确认（每天先看这里）<br />
+              ① <b>对账守恒</b>：每天先看这里 —— 昨天的决策对得上今天的持仓/现金吗？对不上会暂停自动交易，待你确认<br />
               ② <b>运行保障</b>：G7 运行态（可扩张？已停止新单？可恢复？+ blocker 清单）<br />
               ③ <b>G5 双跑对账</b>：模拟 vs 生产 10 交易日双跑启动 + 6×6 混淆矩阵 + 通过/失败结果（G6 前置）<br />
               ④ <b>系统状态</b>：当前状态徽章 + 允许转移目标 + 9×4 允许矩阵 + 调整运行状态（最终决策入口）<br />
@@ -2494,7 +2614,7 @@ const PortfolioGovernanceTab: React.FC<PortfolioGovernanceTabProps> = ({ portfol
               🧪 3 种典型使用场景
             </div>
             <div style={{ color: "var(--pt-foreground)" }}>
-              ① <b>先对账（日常）</b>：<b>对账守恒 Tab</b> → zero-sum 清零 → 点「差异确认」把 RECONCILIATION_BLOCKED 解锁<br />
+              ① <b>先对账（日常）</b>：<b>对账守恒 Tab</b> → 先看结论卡判断属于哪类问题 → 差异清零后点「差异确认」解除阻断<br />
               ② <b>再验收（G6 前置）</b>：<b>G5 双跑对账 Tab</b> → 连续 10 日 P0/P1 全通过 + <b>运行保障 Tab</b> blocker 清零 → 才具备 G6 准入<br />
               ③ <b>后决策（转移状态）</b>：以上都过 → <b>系统状态 Tab</b> → 看「允许目标状态」里 READY 是否出现 → 点「调整运行状态」→ 填 ≥10 字审查备注 → 恢复/刹车
             </div>

@@ -81,12 +81,11 @@ def fetch_recent_trade_day_snapshots(
 
     anchor_stmt = (
         select(func.max(UniverseDailyBar.trade_date))
-        .join(
-            UniverseSymbol,
-            UniverseSymbol.id == UniverseDailyBar.universe_symbol_id,
-        )
-        .where(*sym_filters)
     )
+    # 锚点只用于定位回溯窗口的起点，因此**刻意不 JOIN universe_symbols**：
+    # 一旦带上 JOIN，MySQL 要为 3560 只标的逐一回查 K 线（实测 3.9s），而不带
+    # JOIN 时 `ix_universe_bar_trade_date` 反向扫描第一行即可（实测 0.001s）。
+    # 窗口位置最多差一两天，对「按横截面完整度选交易日」没有实质影响。
     anchor = db_session.execute(anchor_stmt).scalar()
     if anchor is None:
         return []
@@ -99,6 +98,15 @@ def fetch_recent_trade_day_snapshots(
             func.count(UniverseDailyBar.universe_symbol_id.distinct()).label(
                 "symbol_count"
             ),
+        )
+        # MySQL 默认会从 universe_symbols 侧驱动、逐标的回查 K 线（实测约 193 万次
+        # 索引查找 / 4.4s）。显式提示走 `ix_universe_bar_trade_date` 的日期区间扫描
+        # 之后降到 0.19s，结果集完全一致（同一 22 行、同样的 symbol_count）。
+        # 该索引由 wps_0023_065 迁移建立；SQLite（测试库）不支持此提示，会自动忽略。
+        .with_hint(
+            UniverseDailyBar,
+            "USE INDEX (ix_universe_bar_trade_date)",
+            "mysql",
         )
         .join(
             UniverseSymbol,
@@ -338,6 +346,70 @@ def evaluate_trade_date_completeness(
         completeness_ratio=candidate_ratio,
         fallback_reason=fallback_reason,
         median_baseline=candidate_baseline,
+        evaluated_candidate_dates=evaluated_dates,
+        candidate_ratios=candidate_ratios,
+    )
+
+
+def previous_complete_trade_date(
+    db_session: Session,
+    *,
+    before: date | None = None,
+    completeness_threshold: float = 0.9,
+    sample_size: int = 20,
+    lookback_days: int = 30,
+    asset_type: str = "stock",
+    region: str = "cn",
+    require_synced: bool = True,
+) -> CompleteTradeDayEvidence:
+    """返回 **严格早于 ``before``**（缺省为今天）的最近一个完整交易日。
+
+    与 :func:`latest_complete_trade_date` 只差一件事：排除 ``before`` 当天。
+
+    为什么需要它：对账、结算这类「T+1 回看」口径要的是「上一个**已收盘**的
+    交易日」。盘后数据同步完成后，``latest_complete_trade_date`` 会把今天本身
+    选出来 —— 而今天还没走完，拿它当对账目标日等于用未来当基准。
+
+    判定口径与 ``latest_complete_trade_date`` 完全一致（见模块 docstring）：
+    以 ``universe_daily_bars`` 的横截面完整度（≥ 阈值 × 过去 20 日中位数）为准，
+    不查交易日历表 —— A 股节假日不固定（春节/中秋按农历、调休逐年通知），
+    日历跟不上就会把假期算成交易日。
+    """
+    ref = before or date.today()
+    snapshots = fetch_recent_trade_day_snapshots(
+        db_session,
+        asset_type=asset_type,
+        region=region,
+        require_synced=require_synced,
+        lookback_days=lookback_days,
+        max_snapshots=max(sample_size + 5, 25),
+    )
+    past = [s for s in snapshots if s.trade_date < ref]
+    if not past:
+        return _no_data_evidence()
+
+    selected, evaluated_dates, candidate_ratios = _search_complete_day(
+        past, completeness_threshold=completeness_threshold, sample_size=sample_size
+    )
+    if selected is None:
+        selected = max(past, key=lambda s: s.symbol_count)
+        fallback_reason = "all_below_threshold_fallback_to_max"
+    else:
+        fallback_reason = (
+            None if selected is past[0] else "below_90pct_median_20d"
+        )
+
+    target = past[0]
+    target_baseline = _baseline_excluding(
+        past, target.trade_date, sample_size=sample_size
+    )
+    return CompleteTradeDayEvidence(
+        selected_trade_date=selected.trade_date,
+        observed_symbols=target.symbol_count,
+        expected_symbols=target_baseline,
+        completeness_ratio=_ratio(target.symbol_count, target_baseline),
+        fallback_reason=fallback_reason,
+        median_baseline=target_baseline,
         evaluated_candidate_dates=evaluated_dates,
         candidate_ratios=candidate_ratios,
     )

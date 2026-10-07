@@ -21,7 +21,10 @@ class PortfolioCandidate(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id", ondelete="RESTRICT"), index=True)
+    # 候选池是**组合私有**数据：删组合时连带清掉它自己的候选，各组合互不影响
+    # （`delete_portfolio` 的级联清理设计即依赖此行为）。故用 CASCADE。
+    # symbol_id 相反 —— symbols 是全市场共享标的，删它不该静默清掉候选，用 RESTRICT。
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"), index=True)
     symbol_id: Mapped[int] = mapped_column(ForeignKey("symbols.id", ondelete="RESTRICT"), index=True)
     effective_from: Mapped[date] = mapped_column(
         Date,

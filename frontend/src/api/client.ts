@@ -2692,7 +2692,13 @@ export const api = {
       {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-User": "local_user" },
-        body: JSON.stringify({ trade_date: payload?.trade_date ?? payload?.as_of_trade_date ?? new Date(Date.now() - 86400000).toISOString().slice(0, 10) }),
+        // 不在前端猜日期：自然日昨天在周一/节后会落到非交易日（国庆当天点开会拿
+        // 10-01 去对账）。留空交给后端按交易日历解析成「上一个已收盘的交易日」。
+        body: JSON.stringify(
+          (payload?.trade_date ?? payload?.as_of_trade_date)
+            ? { trade_date: payload?.trade_date ?? payload?.as_of_trade_date }
+            : {},
+        ),
         timeoutMs: 45000,   // 对账可能涉及订单/成交/持仓/现金/证据5张表 join，给更长超时
       },
     ).then((raw: any) => {

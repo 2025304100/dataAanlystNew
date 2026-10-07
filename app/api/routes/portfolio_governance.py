@@ -43,7 +43,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -56,6 +56,10 @@ from app.models.portfolio import Portfolio
 from app.services.data_governance_audit import (
     ALLOWED_AUDIT_ACTIONS,
     DataGovernanceAuditEvent,
+)
+from app.services.factors.trade_calendar import (
+    EPOCH_DATE,
+    previous_complete_trade_date,
 )
 from app.services.portfolio_reconciliation import (
     ReconciliationReport,
@@ -104,6 +108,36 @@ def _allowed_transitions_from(from_state: str) -> list[str]:
 def _corr_id() -> str:
     from uuid import uuid4
     return f"c_api_{uuid4().hex[:12]}"
+
+
+def _previous_closed_trade_date(db: Session, today: date | None = None) -> date:
+    """上一个已收盘的交易日：复用因子域的完整交易日判定，不查交易日历表。
+
+    为什么不信日历：A 股节假日不固定 —— 春节/中秋按农历、每年日期都不同，调休还得
+    国务院逐年通知；日历一旦没跟上就会把假期算成交易日（实测 ``trade_calendar`` 把
+    2025-10-01~10-08 与 2026-10-01 全标成了 ``is_trading_day=1``）。行情数据是
+    「事实验证」，不是「预测未来的放假安排」，天然免疫这件事。
+
+    为什么走 ``factors.trade_calendar`` 而不是自己查行情表：那里已经把口径定死了 ——
+    ``universe_daily_bars`` + ``region='cn'`` + 「≥ 过去 20 日中位数 × 0.9」的完整度
+    阈值。直接用 ``daily_bars`` 会踩两个坑：① 该表 9 月每天只有十几行，是残缺数据，
+    会把目标日误推到很久以前；② 它是全市场混合，必须自己按 market 过滤，否则国庆
+    期间美股 AAPL 每天那一行会让整个假期看起来都"有交易"。
+
+    判定不出来时退回自然日昨天，避免把对账接口变成 500 —— 目标日选错最多多报一条
+    能自解释的 ``DECISION_RUN_NOT_FOUND``，接口 500 的代价不对等。
+
+    ``today`` 仅用于测试注入；生产一律取系统当天。
+    """
+    ref = today or date.today()
+    fallback = ref - timedelta(days=1)
+    try:
+        evidence = previous_complete_trade_date(db, before=ref)
+    except Exception:
+        return fallback
+    if not evidence.selected_trade_date or evidence.selected_trade_date == EPOCH_DATE:
+        return fallback
+    return evidence.selected_trade_date
 
 
 # ──────────────────────────────────────────────────────────── Schemas
@@ -246,7 +280,12 @@ def reconcile_portfolio(
 ) -> ReconciliationResponse:
     p = _load_portfolio(db, portfolio_id)
     corr = _corr_id()
-    effective_trade_date = payload.trade_date or payload.as_of_trade_date or p.last_decision_trade_date or date.today()
+    effective_trade_date = (
+        payload.trade_date
+        or payload.as_of_trade_date
+        or p.last_decision_trade_date
+        or _previous_closed_trade_date(db)
+    )
     report: ReconciliationReport = reconcile_trade_date(
         db, portfolio_id, effective_trade_date,
         operator_id=actor, correlation_id=corr,
@@ -349,7 +388,8 @@ def confirm_portfolio_reconciliation(
     from_state = current_state
     try:
         result = confirm_reconciliation_fixed(
-            db, portfolio_id, payload.trade_date or p.last_decision_trade_date or date.today(),
+            db, portfolio_id,
+            payload.trade_date or p.last_decision_trade_date or _previous_closed_trade_date(db),
             operator_id=operator,
             acknowledge_all_diffs_cleared=True,
             force_skip_re_reconcile=bool(

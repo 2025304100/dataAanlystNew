@@ -26,7 +26,8 @@ vi.mock("../../../../api/dataMirror", () => ({
 }));
 
 import { dataMirrorApi } from "../../../../api/dataMirror";
-import DataMirrorPage from "./DataMirrorPage";
+import { ApiError } from "../../../../api/client";
+import DataMirrorPage, { humanBytes, humanSeconds } from "./DataMirrorPage";
 
 describe("DataMirrorPage（C2）", () => {
   it("渲染状态与任务列表", async () => {
@@ -64,6 +65,77 @@ describe("DataMirrorPage（C2）", () => {
     await waitFor(() => {
       expect(dataMirrorApi.cancelTask).toHaveBeenCalledWith("t-1");
     });
+  });
+
+  it("创建成功 → 展示估算块（行数/耗时/占用）且显式标注「估算」", async () => {
+    vi.mocked(dataMirrorApi.createTask).mockResolvedValueOnce({
+      task_id: "t-new", status: "queued", preset: "5y",
+      estimated: {
+        estimated: true,
+        estimated_rows: 1_234_567,
+        estimated_symbols: 5200,
+        estimated_seconds: 411.5,
+        estimated_bytes: 4_800_000_000,
+        note_zh: "以上均为**估算值**（规则：源表 COUNT ÷ 吞吐假设），实际以任务完成后展示为准。",
+      },
+    });
+    render(<DataMirrorPage />);
+    await waitFor(() => {
+      expect(document.querySelector("[data-mirror-create]")).toBeTruthy();
+    });
+    fireEvent.click(document.querySelector("[data-mirror-create]") as HTMLElement);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-mirror-create-info]")).toBeTruthy();
+    });
+    const info = document.querySelector("[data-mirror-create-info]") as HTMLElement;
+    // 估算标记必须可见（设计 §10.1：估算值须标注）
+    expect(info.querySelector("[data-mirror-estimate-tag]")!.textContent).toBe("估算");
+    expect(info.querySelector("[data-mirror-est-rows]")!.textContent).toContain("1,234,567");
+    expect(info.querySelector("[data-mirror-est-seconds]")!.textContent).toContain("6.9 分钟");
+    expect(info.querySelector("[data-mirror-est-bytes]")!.textContent).toContain("4.5 GB");
+    // note_zh 的 markdown 强调符必须剥掉，不能把 ** 甩上屏
+    expect(info.textContent).not.toContain("**");
+    expect(info.textContent).toContain("估算值");
+  });
+
+  it("创建失败 → 不再静默：展示后端中文原因（磁盘余量不足）", async () => {
+    vi.mocked(dataMirrorApi.createTask).mockRejectedValueOnce(
+      new ApiError("boom", {
+        status_code: 400,
+        detail: {
+          error_code: "VALIDATION_ERROR",
+          detail_zh: "磁盘剩余 2.0 GB，预估需要 5.0 GB（含 1.5x 安全余量），不足以完成本次镜像。",
+        },
+      }),
+    );
+    render(<DataMirrorPage />);
+    await waitFor(() => {
+      expect(document.querySelector("[data-mirror-create]")).toBeTruthy();
+    });
+    fireEvent.click(document.querySelector("[data-mirror-create]") as HTMLElement);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-mirror-create-error]")).toBeTruthy();
+    });
+    const box = document.querySelector("[data-mirror-create-error]") as HTMLElement;
+    expect(box.textContent).toContain("磁盘剩余 2.0 GB");
+    expect(box.textContent).toContain("不足以完成本次镜像");
+    // 失败时不得残留上一次的成功估算块
+    expect(document.querySelector("[data-mirror-create-info]")).toBeNull();
+  });
+
+  it("humanBytes / humanSeconds：边界与非法值", () => {
+    expect(humanBytes(512)).toBe("512 B");
+    expect(humanBytes(2048)).toBe("2.0 KB");
+    expect(humanBytes(4_800_000_000)).toBe("4.5 GB");
+    expect(humanBytes(null)).toBe("-");
+    expect(humanBytes(Number.NaN)).toBe("-");
+
+    expect(humanSeconds(41.5)).toBe("41.5 秒");
+    expect(humanSeconds(411.5)).toBe("6.9 分钟");
+    expect(humanSeconds(7200)).toBe("2.0 小时");
+    expect(humanSeconds(null)).toBe("-");
   });
 
   it("接口异常 → 错误态（不崩页）", async () => {

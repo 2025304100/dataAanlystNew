@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { t } from "../../../../i18n";
 import { dataMirrorApi } from "../../../../api/dataMirror";
 import type { DataMirrorStatus, DataMirrorTask } from "../../../../api/dataMirror";
+import { normalizeBackendError } from "../../../../utils/errorRender";
 
 /**
  * 数据中心 · 历史行情镜像管理页（C2，设计 §10.1）。
@@ -15,8 +16,17 @@ import type { DataMirrorStatus, DataMirrorTask } from "../../../../api/dataMirro
  * - P1-2：`available:false` 时展示**中文兜底文案**（不把后端英文底层错误
  *   直接甩给用户），错误详情折叠展示，且**禁用「创建镜像任务」**。
  *
- * ⚠️ 设计 §10.1 的「预计耗时（须标注估算）/ 磁盘检查 / 完成后提示占用空间」依赖
- * 后端补充字段，当前契约未提供，**前端不臆造数值**，仅在界面给出估算口径说明。
+ * ⚠️ 2026-10-02 勘误：原注释称「预计耗时 / 磁盘检查 / 占用空间」后端未提供、
+ * 前端只能给口径说明——**该判断不准确**。实测 `mirror_task.estimate_rows()` 返回
+ * `estimated_rows / estimated_symbols / estimated_seconds / estimated_bytes`，
+ * `check_disk_space()` 在空间不足时抛中文说明（经路由转 400），且 `POST /tasks`
+ * 的返回体就带完整 `estimated` 块（含 `note_zh`）。已接入：
+ *   - 创建成功后展示「预计行数 / 预计耗时 / 预计占用」（**显式标注估算**）；
+ *   - 创建失败不再静默吞掉，展示后端中文原因（典型：磁盘余量不足）。
+ *
+ * 仍缺一项能力（需后端补路由，前端不臆造）：**提交前**的估算与磁盘检查预览。
+ * `estimate_rows` 目前只在 `POST /tasks` 内部调用，没有 GET 估算端点，
+ * 所以「先看估算再决定建不建」还做不到——只能建完看到。详见下方注释。
  */
 const PRESETS = [
   { value: "5y", labelKey: "dataMirrorPreset5y" },
@@ -35,6 +45,37 @@ function taskStatusChipClass(status: string | null | undefined): string {
   return "mining-chip";
 }
 
+/** 字节 → 人话（换算到 KB/MB/GB/TB 保留 1 位）；非有限值返回 "-" */
+export function humanBytes(bytes?: number | null): string {
+  if (bytes == null || !Number.isFinite(Number(bytes))) return "-";
+  const b = Number(bytes);
+  if (b < 1024) return `${Math.round(b)} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = b / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v.toFixed(1)} ${units[i]}`;
+}
+
+/** 秒 → 人话；非有限值返回 "-" */
+export function humanSeconds(sec?: number | null): string {
+  if (sec == null || !Number.isFinite(Number(sec))) return "-";
+  const s = Number(sec);
+  if (s < 60) return `${s.toFixed(1)} ${t("dataMirrorUnitSecond")}`;
+  if (s < 3600) {
+    return `${(s / 60).toFixed(1)} ${t("dataMirrorUnitMinute")}`;
+  }
+  return `${(s / 3600).toFixed(1)} ${t("dataMirrorUnitHour")}`;
+}
+
+/** 后端 note_zh 里带 markdown 强调符（`**估算值**`），上屏前剥掉 */
+function plainText(s?: string | null): string {
+  return (s ?? "").replace(/\*\*/g, "").trim();
+}
+
 export default function DataMirrorPage() {
   const [status, setStatus] = useState<DataMirrorStatus | null>(null);
   const [tasks, setTasks] = useState<DataMirrorTask[]>([]);
@@ -42,6 +83,10 @@ export default function DataMirrorPage() {
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preset, setPreset] = useState("5y");
+  /** 创建成功后的返回体（含 estimated 块）；用于展示估算行数/耗时/占用 */
+  const [created, setCreated] = useState<DataMirrorTask | null>(null);
+  /** 创建失败的中文原因（磁盘不足 / 写锁被占 / 数仓不可用…） */
+  const [createErr, setCreateErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,11 +113,21 @@ export default function DataMirrorPage() {
 
   const create = async () => {
     setBusy(true);
+    setCreateErr(null);
     try {
-      await dataMirrorApi.createTask({ preset });
+      // 返回体含 estimated 块 —— 拿它展示估算（否则用户看不到任何反馈）
+      const res = await dataMirrorApi.createTask({ preset });
+      setCreated(res);
       await load();
-    } catch {
-      // 创建失败保持现状（不崩页）
+    } catch (err) {
+      // 不再静默吞掉：磁盘不足/写锁被占都会带中文 detail_zh，必须让用户看见
+      setCreated(null);
+      const detail = (err as { detail?: unknown })?.detail;
+      const norm = normalizeBackendError(detail ?? err);
+      setCreateErr(
+        plainText(norm.detail_zh) || plainText(norm.title_zh) ||
+          (err instanceof Error ? err.message : "") || t("dataMirrorCreateFailed"),
+      );
     } finally {
       setBusy(false);
     }
@@ -214,6 +269,45 @@ export default function DataMirrorPage() {
               {t("dataMirrorRefresh")}
             </button>
           </div>
+
+          {/* 创建失败：把后端中文原因显示出来（此前是静默无反应） */}
+          {createErr && (
+            <div className="mining-banner mining-banner--danger" data-mirror-create-error>
+              <div className="mining-banner-body">
+                <span className="mining-banner-title">{t("dataMirrorCreateFailed")}</span>
+                <span>{createErr}</span>
+              </div>
+            </div>
+          )}
+
+          {/* 创建成功：展示估算块（行数 / 耗时 / 占用），并显式标注「估算」 */}
+          {created?.estimated && (
+            <div className="mining-banner mining-banner--info" data-mirror-create-info>
+              <div className="mining-banner-body">
+                <span className="mining-banner-title">{t("dataMirrorCreateOk")}</span>
+                <span className="mining-chip mining-chip--warn" data-mirror-estimate-tag>
+                  {t("dataMirrorEstimatedTag")}
+                </span>
+                <span data-mirror-est-rows>
+                  {t("dataMirrorEstimateRows")}：
+                  {Number(created.estimated.estimated_rows ?? 0).toLocaleString()}
+                </span>
+                <span data-mirror-est-seconds>
+                  {t("dataMirrorEstimateSeconds")}：
+                  {humanSeconds(created.estimated.estimated_seconds)}
+                </span>
+                <span data-mirror-est-bytes>
+                  {t("dataMirrorEstimateSize")}：
+                  {humanBytes(created.estimated.estimated_bytes)}
+                </span>
+                {created.estimated.note_zh && (
+                  <span className="mining-hint">
+                    {plainText(created.estimated.note_zh)}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

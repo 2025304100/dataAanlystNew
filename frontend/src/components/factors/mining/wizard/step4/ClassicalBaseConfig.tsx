@@ -1,5 +1,6 @@
 import { t } from "../../../../../i18n";
 import { Checkbox, InputNumber, Radio, Tooltip } from "antd";
+import { ALL_CATEGORIES, CATEGORY_LABEL_KEY } from "../../factorCategory";
 
 /**
  * 经典底座配置（§6.3 初始种群·第一层；antd 控件版）。
@@ -16,17 +17,7 @@ export interface ClassicalBaseConfigProps {
   onChange?: (patch: Record<string, unknown>) => void;
 }
 
-const ALL_CATEGORIES = ["trend", "reversal", "volatility", "valuation", "quality", "volume_price"];
-
-const CATEGORY_LABEL_KEY: Record<string, string> = {
-  trend: "miningEvoCatTrend",
-  reversal: "miningEvoCatReversal",
-  volatility: "miningEvoCatVolatility",
-  valuation: "miningEvoCatValuation",
-  quality: "miningEvoCatQuality",
-  volume_price: "miningEvoCatVolumePrice",
-};
-
+// 类别枚举与译名映射统一收在 ../factorCategory（避免多页各写一份导致漂移）
 /** 类别 → 所需字段提示（§6.3.2 字段联动：估值/质量类依赖估值/财报字段） */
 const CATEGORY_NEED_FIELD: Record<string, string> = {
   valuation: "miningEvoClassicNeedFieldValuation",
@@ -34,7 +25,7 @@ const CATEGORY_NEED_FIELD: Record<string, string> = {
 };
 
 export default function ClassicalBaseConfig({
-  availableCategories = ALL_CATEGORIES,
+  availableCategories = [...ALL_CATEGORIES],
   categoryLimits = {},
   coverageStrategy = "keep",
   onChange,

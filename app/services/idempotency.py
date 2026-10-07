@@ -1,5 +1,24 @@
 """IdempotencyService：WP0-2 TR-02.6 幂等键双保险协议。
 
+⚠️ 状态：**未启用（2026-10-01 核实）**
+=====================================
+本模块**当前没有任何业务调用** —— `try_acquire_or_get` / `record_response`
+全仓只有 1 个测试文件引用。对应的 `idempotency_records` 表也是 0 行。
+
+原因：这是一次**没做完的设计升级**。模型（`app/models/idempotency_record.py`）
+已按 WP0-2 契约改成「自增 `id` 主键 + `idempotency_key` UNIQUE」，
+**但库里没执行该升级**（PK 仍是 `idempotency_key`、没有 `id` 列），
+且业务侧从未接入。
+
+**所以：一旦真按本模块契约调用，会立刻撞 `Unknown column 'id'`。**
+在 A5 裁决前请勿在业务代码里引入本服务。
+
+项目**实际在跑**的幂等机制是「把 `idempotency_key` 直接存在业务表上」：
+`async_tasks`（1131 行）、`decision_runs`（77 行）都带该列。
+详见 `docs/技术债-全库schema漂移核对报告.md` §A5。
+
+协议说明（设计态，供将来启用参考）
+================================
 两步调用（典型在 save_and_apply_usage_atomic / PUT APIs 中）：
   1. try_acquire_or_get(db, idem_key, request_hash, portfolio_id, correlation_id, entity_type_hint)
      → 返回 {"status": "ACQUIRED" | "REPLAY" | "CONFLICT", replay_response? , conflict_info?}

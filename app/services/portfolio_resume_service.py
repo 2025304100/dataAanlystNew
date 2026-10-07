@@ -57,7 +57,13 @@ def _next_trade_date(db: Session, after: date) -> date | None:
         if row is not None:
             return row
     except Exception:
-        pass
+        # 降级本身是设计内的（交易日历表缺失时用弱近似兜底），但**必须留痕**：
+        # 这里曾因 `app/models/market_data.py` 长期不存在而静默降级，
+        # 导致国庆这类长假被当成交易日排进「待补算交易日」（见模块 docstring）。
+        logger.warning(
+            "portfolio_resume: trade_calendar 查询失败，回退到工作日近似（假期会被误判）",
+            exc_info=True,
+        )
 
     # 弱回退：扫 1~14 天，取第一个周一到周五（不含 10/1、5/1 等假期，但 resume 前若
     # 有 DB 应该走上面分支；这里兜底仅用于单测或无 market_calendar 场景）
@@ -70,17 +76,24 @@ def _next_trade_date(db: Session, after: date) -> date | None:
 
 
 def _is_trade_date(db: Session, d: date) -> bool:
+    """判断 `d` 是否为交易日（查交易日历表）。
+
+    查不到或表不可用时一律返回 False —— **不再回退到 `d.weekday() < 5`**：
+    那个回退会把国庆这类假期认成交易日，与本模块「逐日补算」的语义直接冲突。
+    """
     try:
         from app.models.market_data import MarketCalendar
         stmt = select(MarketCalendar).where(
             MarketCalendar.trade_date == d,
             MarketCalendar.is_trading_day == 1,
         )
-        if db.execute(stmt).first() is not None:
-            return True
+        return db.execute(stmt).first() is not None
     except Exception:
-        return d.weekday() < 5
-    return False
+        logger.warning(
+            "portfolio_resume: trade_calendar 查询失败（_is_trade_date），按非交易日处理",
+            exc_info=True,
+        )
+        return False
 
 
 # ---------------------------------------------------------------------------

@@ -83,7 +83,32 @@
 | decision_evidence / manual_price_overrides / outbox_events / portfolio_factor_usage / data_governance_audit_events / task_idempotencies | 各 1 个（action 6 值 / resolved_mode 3 值 / status 值 / binding_status 值 / dg action 值 / task_type 4 值） |
 
 ### A5 ORM/库主键错位 —— 1 项（P1）
-`idempotency_records`：ORM 声明自增 `id` 主键（WP0-2 契约），**库里没有该列**（DB 仍以 idempotency_key 唯一键形态存在）。任何走 ORM 的 INSERT 都会撞 `Unknown column 'id'`；现网未炸说明写入走的是裸 SQL/旧路径——需核实写入路径后，补迁移加列或修正模型。
+`idempotency_records`：ORM 声明自增 `id` 主键（WP0-2 契约），**库里没有该列**（DB 仍以 idempotency_key 唯一键形态存在）。任何走 ORM 的 INSERT 都会撞 `Unknown column 'id'`。
+
+> **2026-10-01 复核更新（写入路径已查明，原推测不成立）**
+>
+> 原文推测「现网未炸说明写入走的是裸 SQL/旧路径」。**实际是第三种情况：根本没有业务写入路径。**
+>
+> 1. **这是未做完的设计升级，不是笔误** —— 模型注释自陈「WP0-2 契约需要一个独立
+>    autoincrement id 列 + idempotency_key 再做 UNIQUE」。代码升了，库没升。
+> 2. **写入点是死代码** —— `app/services/idempotency.py` 的 `try_acquire_or_get` /
+>    `record_response` 全仓**只有 1 个测试文件引用、零业务调用**；
+>    `app/services/portfolio_factor_usage.py` 的写入点同为 TD7 认定的「原型实现、app/ 零引用」。
+> 3. **表 0 行**（`idempotency_records`、`task_idempotencies` 都是 0）。
+>
+> **项目实际在跑的幂等机制是「把 idempotency_key 直接存在业务表上」**：
+> `async_tasks` **1131 行**、`decision_runs` **77 行**（两表都有 `idempotency_key` 列）。
+> `dev-plan-opportunity-center/开发计划-机会中心标的研究组合交易改造.md` 里的幂等设计
+> 也是这么写的（「`idempotency_key: str(128) UNIQUE indexed` 业务表内建」）。
+> **`docs/` 下找不到任何支撑这套「中央幂等表」的设计文档。**
+>
+> **处置：登记为「未启用的设计」，不补列。** 理由：给一套零调用、无文档、且项目已有
+> 替代方案的机制补列，等于**掩盖「这里有套死代码」这个事实**——下一个读代码的人会更
+> 难发现它从未生效。且 `try_acquire_or_get` 一旦真被按契约调用就会立刻炸，
+> 保持"一用就炸"的显性状态，比"看起来能用"更安全。
+>
+> **后续留给业务决策**：这套中央幂等到底要不要启用？
+> 要 → 补 `id` 列 + 把业务迁过来（大工程）；不要 → 让 `idempotency.py` 显式标 deprecated。
 
 ---
 
@@ -161,3 +186,131 @@ C1/C2 两项裁决已由 TD6 卡执行完毕，此处留档关键结论：
 - **遗留（P3 排期）**：双轨整合——`portfolio_factor_usage.atomic` 原型与现役 `factor_usage_service` 功能重叠；单数 `portfolio_factor_usage` 表（Integer id）与复数 `portfolio_factor_usages` 表（String id）两套并存，`factor_set_id` Integer→String PK 的 FK 亲和依赖（生产 MySQL 靠弱类型比较）是潜在数据一致性风险，需专项裁决统一。
 
 > 复核方式：修复卡完成后重跑 `.venv/Scripts/python.exe .workbuddy/mining/verify_schema_drift.py`（逐表）与 `--json`（全量），漂移数应单调下降。
+
+---
+
+## 9. 后续处置记录（2026-10-01 复核）
+
+本节记录本报告发布后实际执行了什么、什么做不了、以及登记豁免项。**漂移数的
+权威口径始终以 `verify_schema_drift.py --json` 为准。**
+
+### 9.1 漂移总量
+
+| 时点 | 漂移表 | 总表数 |
+|---|---|---|
+| TD5 报告（2026-09-18） | 49 | 127 |
+| 本次复核（2026-10-01）迁移前 | 51 | 134 |
+| **本次复核（2026-10-01）迁移后** | **43** | 134 |
+
+> 表总数 127 → 134 是这期间新增业务表所致，非漂移恶化。
+
+### 9.2 分类现状（2026-10-01）
+
+| 类别 | TD5 | 现在 | 状态 |
+|---|---|---|---|
+| missing_fk | 18 表 30 个 | **0** ✅ | **已补齐**（迁移 `wps_0023_067`） |
+| missing_uq | 1 | **0** ✅ | 已修（TD5 之后 rev 062） |
+| missing_check | 11 表 19 个 | 11 | ⛔ **环境不支持**，见 §9.4 |
+| fk_mismatch | 12 | 15 | 全是 RESTRICT ≡ NO ACTION，见 §9.5 |
+| extra_idx | 26 表 47 | 27 | P3，未动 |
+| col_db_only | 10 表 28 | 9 | P3，未动（含已豁免的 2 项） |
+| col_orm_only | 1 | 1 | P1，`idempotency_records.id`，未动 |
+| engine / charset / missing_idx / extra_fk | 0 | 0 | ✅ |
+
+### 9.3 A1 缺外键：已补齐（迁移 `wps_0023_067_missing_foreign_keys`）
+
+- 以 **ORM 声明**为准重新枚举，实际待补 **34 个 / 18 张表**（报告写的 30 个是漏数）：
+  CASCADE 19、SET NULL 11、RESTRICT 4。执行耗时 14 秒。
+- **前置：孤儿数据清理。** 报告要求「加 FK 前必须先清孤儿（1452）」，实际清出
+  **1281 行**，分两批：
+  1. 组合 2（2026-08 的测试组合，成员含 `symbol_id = -1/-2/-3` 假标的）在 7 张表的
+     残留 **1275 行**；
+  2. 删父表后暴露的**二级孤儿** `scan_results` **6 行**
+     （该表无 `portfolio_id` 列，只能按 `scan_run_id` 定位）。
+- **教训：删父表会暴露子表孤儿，必须「删一批 → 重扫 → 再删」**，一次删完会漏。
+- 清理后复核：34 个待补外键列**全部零孤儿**。
+- 脚本：`purge_orphan_portfolio_2.py`、`purge_orphan_scan_results.py`、
+  `_orphan_audit.py`（只读清查）。备份在 `.workbuddy/mining/backups/`。
+
+### 9.4 A4 缺检查约束：**当前环境不可执行 → 登记豁免**
+
+⚠️ **本机 MySQL 版本是 5.7.26**。MySQL **5.7 及以前对 CHECK 是「解析并忽略」**
+（`ALTER TABLE ... ADD CONSTRAINT ... CHECK` 不报错、DDL 里也不出现、更不生效），
+**8.0.16+ 才真正实施**。本报告 §A4 写的「MySQL 8.0.16+ 已支持」属实，但**发布时未核实
+部署库版本**。
+
+实测证据（2026-10-01）：迁移 `wps_0023_068` 打印
+`CHECK 补齐：新建 19 个，跳过已存在 0 个` 且无异常，但随后
+`SHOW CREATE TABLE portfolios` 的 DDL 里**没有任何 CHECK 子句**，
+`missing_check` 仍为 11。
+
+**处置（按本报告 §A4 括号内那半句「若应用层校验完备可降 P3」）**：
+
+> 登记为 **`NOT_APPLICABLE: MySQL 5.7`**。这 19 个枚举/范围校验的兜底责任
+> 明确留在应用层（各枚举值在 Pydantic / ORM 枚举层已有校验）。
+> 若将来把部署库升到 8.0.16+，可直接重跑 `wps_0023_068` 的第 2 步生效。
+
+**本次唯一真实产出**：该迁移的第 1 步修掉一个**真实隐患** ——
+`portfolios` 的 4 个维度状态列（`status_data/status_model/status_score/status_reconciliation`）
+在库里 12 行**全是空串 `''`**，而 ORM 声明 `default='READY'`；
+`app/services/portfolio_status.py` 把这 4 列强类型成 `PortfolioStatus` 枚举，
+读到 `''` 会构造不出枚举值。已修正 **48 个空串 → 'READY'**（12 行 × 4 列）。
+
+### 9.5 B3 RESTRICT ≡ NO ACTION：确认为不可修，登记豁免
+
+补 FK 后 `fk_mismatch` 由 12 升至 15，**新出现的 3 个全部是 RESTRICT 类**。
+根因（`SHOW CREATE TABLE` 实测确认）：
+
+    MySQL 认为 ON DELETE RESTRICT 与默认行为等价，**在 DDL 里直接省略该子句**，
+    于是 REFERENTIAL_CONSTRAINTS.DELETE_RULE 返回 NO ACTION。
+
+    CONSTRAINT `fk_positions_portfolio_id` FOREIGN KEY (`portfolio_id`)
+      REFERENCES `portfolios` (`id`)          ← 没有 ON DELETE
+
+即 **无法通过 DDL 让 MySQL 存成 RESTRICT**。与 §B3 判断一致（语义等价，纯声明漂移）。
+
+> 登记 B3 全部 15 项为 **语义等价豁免**（含本次新增的 4 项 RESTRICT）。
+> 注意与 §A2 的 CASCADE 严格区分 —— 那才是行为级差异。
+
+### 9.6 仍未处理
+
+| 项 | 类别 | 建议 |
+|---|---|---|
+| extra_idx 27 | P3 冗余索引 | 先 EXPLAIN 确认无查询依赖再 DROP |
+| col_db_only 9 | P3 库多列 | 逐列核引用面后清理 |
+| col_orm_only 1 | **P1** | `idempotency_records.id`：ORM 有自增主键、库里没有该列 → 补迁移或改模型 |
+
+### 9.6.1 A2 已裁决：`portfolio_id` 保持 CASCADE（2026-10-01 拍板）
+
+§A2 认定的「唯一行为级差异」已收口。**产品口径（用户拍板）**：
+「各删各的 —— 每个组合的候选池是独立的，不会被别的组合删除影响。」
+
+即候选池是**组合私有**数据，删组合时连带清掉它自己的候选是**正确行为**；
+CASCADE 天然只删指向本组合的行，不会跨组合。
+
+**落地方式**：改的是 **ORM 声明**（库本来就是 CASCADE，所以属于「对齐声明」而非改库）：
+
+| 列 | 处置 | 依据 |
+|---|---|---|
+| `portfolio_id` | 声明 `RESTRICT` → **`CASCADE`** | 组合私有从属数据，父亡子亡 |
+| `symbol_id` | 库 `CASCADE` → **`RESTRICT`**（迁移 `wps_0023_069`） | `symbols` 是全市场共享标的，删它不该静默清候选 |
+
+`symbol_id` 那次改动**已实测验证**：事务内 `DELETE FROM symbols WHERE id=3215`
+（被 1 行候选引用）→ 被 MySQL 拒绝 `IntegrityError (1451)`，回滚后数据完好。
+
+**可复用判据**：外键 ondelete 取哪个，看**子行是否父行的私有从属数据** ——
+私有从属 → CASCADE；共享基础数据 → RESTRICT。**不要只看"哪个更安全"**。
+
+
+### 9.7 本次新增的可复用工具
+
+| 脚本 | 用途 | 性质 |
+|---|---|---|
+| `_orphan_audit.py` | 以 ORM 声明为准清查孤儿 | 只读 |
+| `_dump_fk_defs.py` / `_dump_check_defs.py` | 从 ORM 提取 FK / CHECK 定义 | 只读 |
+| `_check_violation_audit.py` | 加 CHECK 前的违规行清查 | 只读 |
+| `purge_orphan_*.py` | 带备份的孤儿清理 | 写（默认 dry-run） |
+| `_gen_fk_migration.py` | 按定义生成 FK 迁移 | 代码生成 |
+
+**新增迁移**：`wps_0023_066_trade_calendar_table`（补建表，此前无任何迁移创建它）、
+`wps_0023_067_missing_foreign_keys`、`wps_0023_068_missing_check_constraints`。
