@@ -1842,6 +1842,10 @@ def init_db() -> None:
     # Akshare 第三方接口缓存
     _load_akshare_api_config_cache()
 
+    # 新库（由 create_all 建的）没有 alembic_version 会让两套机制互不相认，
+    # 必须在建库后补上版本记录，否则日后 `alembic upgrade head` 会从第 1 个迁移重放。
+    _stamp_alembic_head_if_absent(eng)
+
     logger.info("init_db() 全流程结束：schema对齐 → 数据修复 → 种子数据，全部完成")
 
 
@@ -1918,3 +1922,57 @@ def _load_akshare_api_config_cache() -> None:
         logger.info("Akshare API config cache loaded")
     except Exception as e:
         logger.warning("Failed to load akshare API config cache: %s", e)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 9) create_all 与 alembic 互认：新库补 alembic_version
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _alembic_head_revision() -> str | None:
+    """只读迁移目录拿到唯一 head；不跑 env.py（避开 fileConfig 关掉宿主 logger 的旧坑）。
+
+    多 head（分叉未合并）时返回 None：宁可不写也不能赌一个错的版本号。
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    ini = Path(settings.base_dir) / "alembic.ini"
+    if not ini.exists():
+        return None
+    try:
+        script = ScriptDirectory.from_config(Config(str(ini)))
+        heads = script.get_heads()
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("读取 alembic head 失败：%s", exc)
+        return None
+    return heads[0] if len(heads) == 1 else None
+
+
+def _stamp_alembic_head_if_absent(engine: Engine) -> None:
+    """create_all 建出来的新库没有 alembic_version ⇒ alembic 会认为“从未迁移过”，
+    下次 `upgrade head` 就从第 1 个迁移重放，不是撞“表已存在”就是撞类型不匹配。
+    所以表缺失时写入当前 head；表已存在则**一律不改**（那是已有库的演进事实）。
+
+    失败不影响启动（只记 warning）：版本记录是事后补救，不能拖死应用。
+    """
+    logger = logging.getLogger(__name__)
+    try:
+        head = _alembic_head_revision()
+        if not head:
+            logger.warning("未能确定 alembic 唯一 head，跳过版本标记（已有库不受影响）")
+            return
+        insp = inspect(engine)
+        if "alembic_version" in insp.get_table_names():
+            return
+        with engine.begin() as conn:
+            conn.exec_driver_sql(
+                "CREATE TABLE alembic_version ("
+                "version_num VARCHAR(128) NOT NULL, PRIMARY KEY (version_num))"
+            )
+            conn.execute(
+                text("INSERT INTO alembic_version (version_num) VALUES (:v)"), {"v": head}
+            )
+        logger.info("新库已标记 alembic 版本：%s（使 create_all 与 alembic 互认）", head)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("标记 alembic 版本失败（不阻断启动）：%s", exc)

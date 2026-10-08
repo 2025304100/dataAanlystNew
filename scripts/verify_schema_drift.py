@@ -77,7 +77,10 @@ import sys
 from datetime import datetime
 
 HERE = pathlib.Path(__file__).resolve().parent
-REPO = HERE.parent.parent
+REPO = HERE.parent          # scripts/ 的上一级就是仓库根
+# 以前这里写的是 HERE.parent.parent（多跳一级），`import app` 必炸
+# ModuleNotFoundError；只是调用方（测试子进程）额外设了 PYTHONPATH 把它盖住了，
+# 导致按本文件文档里给的用法直接跑其实从来跑不通。
 sys.path.insert(0, str(REPO))
 
 from sqlalchemy import CheckConstraint  # noqa: E402
