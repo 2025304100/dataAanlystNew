@@ -24,6 +24,10 @@ import pytest
 from app.models.market_data import MarketCalendar
 from app.services.portfolio_resume_service import _is_trade_date, _next_trade_date
 
+# 这个文件得带 marker，否则 `pytest -m whitebox`（本地闸门与 CI 分片）会
+# 静默跳过它——守护 test_every_test_file_declares_a_ci_marker 正是为这类盲区而存在。
+pytestmark = pytest.mark.whitebox
+
 
 @pytest.fixture
 def tmp_alembic_db():
