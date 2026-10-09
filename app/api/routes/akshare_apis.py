@@ -31,6 +31,7 @@ import akshare as ak
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db, get_session_local
@@ -147,21 +148,45 @@ def _get_cfg_row(db: Session, api_key: str) -> AkshareApiConfig | None:
 
 
 def _ensure_cfg_row(db: Session, api_key: str) -> AkshareApiConfig:
-    """获取或创建配置行（用 registry 默认档位）。"""
+    """获取或创建配置行（用 registry 默认档位）。
+
+    select-then-insert 在并发下不安全：另一个连接（启动种子 / 后台任务 / 并发请求）
+    可能刚插入并提交了同一 api_key。MySQL 默认 REPEATABLE READ 下，本 session 的
+    快照读看不到那条已提交的行，于是走 INSERT 分支撞唯一索引 → 1062，
+    用户侧表现为 `409 DB_INTEGRITY_VIOLATION`（CI 实测发生过，本地 SQLite 测不到）。
+
+    处理：插入走 SAVEPOINT，撞错就回滚到保存点，再用**当前读**（FOR UPDATE，
+    不受旧快照限制）取回已存在的那行继续用；SQLite 下 with_for_update 为空操作。
+    """
     row = _get_cfg_row(db, api_key)
-    if row is None:
-        entry = get_registry_entry(api_key)
-        if entry is None:
-            raise HTTPException(status_code=404, detail=f"Unknown api_key: {api_key}")
-        row = AkshareApiConfig(
-            api_key=api_key,
-            enabled=True,
-            anti_risk_strategy=entry["default_strategy"],
-            delay_min_ms=300,
-            delay_max_ms=800,
+    if row is not None:
+        return row
+    entry = get_registry_entry(api_key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Unknown api_key: {api_key}")
+    row = AkshareApiConfig(
+        api_key=api_key,
+        enabled=True,
+        anti_risk_strategy=entry["default_strategy"],
+        delay_min_ms=300,
+        delay_max_ms=800,
+    )
+    try:
+        with db.begin_nested():
+            db.add(row)
+    except IntegrityError:
+        # 竞态：行已被别人提交。不能把冲突当错误抛给用户。
+        existing = db.execute(
+            select(AkshareApiConfig)
+            .where(AkshareApiConfig.api_key == api_key)
+            .with_for_update()
+        ).scalars().first()
+        if existing is None:
+            raise
+        logger.warning(
+            "akshare_api_config(%s) 创建撞唯一索引（并发已写入），改用已有行", api_key
         )
-        db.add(row)
-        db.flush()
+        return existing
     return row
 
 
