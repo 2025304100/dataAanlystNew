@@ -35,6 +35,31 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Env probe (versions + dependency consistency; report only)
+        # 为什么要这一步：CI 里 vectorbt 用例报 `AttributeError: 'function' object has no
+        # attribute 'get_call_template'`，而本地 venv 根本没装 vectorbt —— 拿不到任何证据，
+        # 于是只能靠猜版本号（不接受）。requirements.txt 也没声明 numba/llvmlite，
+        # 所以“CI 实际装了哪套 ABI”本身就是未知量。这一步把它变成可测量的事实：
+        # pip check 会直接说出“X has requirement Y==Z, but you have Y W”。
+        # 只报告、不失败：它不是闸门，是仪表。
+        if: always()
+        run: |
+          python -m pip check || true
+          python - <<'PY'
+          import importlib.metadata as m
+          for p in ("vectorbt", "numba", "llvmlite", "numpy", "pandas", "plotly", "scipy", "scikit-learn"):
+              try:
+                  print(f"  {p}=={m.version(p)}")
+              except Exception:
+                  print(f"  {p}=MISSING")
+          for mod in ("numpy", "pandas", "numba", "vectorbt"):
+              try:
+                  x = __import__(mod)
+                  print(f"  import {mod} OK -> {getattr(x, '__version__', '?')}")
+              except Exception as e:
+                  print(f"  import {mod} FAILED: {type(e).__name__}: {str(e)[:260]}")
+          PY
+        continue-on-error: true
       - name: Shard coverage self-check
         # 断言 4 片并起来 == 全量收集（丢文件 / 重文件直接失败），防静默漏测
         run: python scripts/ci_shard.py --marker "whitebox and not slow" --groups 4 --plan
