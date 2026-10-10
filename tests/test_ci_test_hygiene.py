@@ -1038,3 +1038,34 @@ def test_migrations_do_not_put_server_default_on_text_columns():
         "（模型侧用 Python default 即可）：\n  " + "\n  ".join(offenders)
     )
 
+
+def test_requirements_txt_is_pure_ascii() -> None:
+    """requirements.txt 必须只含 ASCII 字节。
+
+    实测故障（不是风格问题）：pip 读取 `-r requirements.txt` 时走
+    pip._internal.utils.encoding.auto_decode —— 它先按**本机区域编码**解码，
+    中文 Windows 上是 cp936，遇到 UTF-8 中文注释直接抛
+    `UnicodeDecodeError: 'gbk' codec can't decode byte ...`，
+    于是 `pip install -r requirements.txt` **整条命令失败**，新环境装不起来。
+    CI 是 Ubuntu/UTF-8 区域，永远看不到这个故障 —— 属于"CI 绿、本地坏"的反向不对称。
+
+    已核实这是历史遗留：加中文注释之前的 40cadbe7 版本同样读不了
+    （非 ASCII 1013 字节），不是我某次改动引入的。
+
+    口径只卡"非 ASCII 字节"这一条硬事实：注释请写英文。
+    不要用"加 BOM"绕过 —— 那会让别的工具（以及 pip 旧版本）出现新的边角。
+    """
+    raw = (REPO_ROOT / "requirements.txt").read_bytes()
+    offenders = [
+        f"第 {raw[:i].count(10) + 1} 行偏移 {i}: 0x{b:02x}"
+        for i, b in enumerate(raw)
+        if b > 127
+    ]
+    assert not offenders, (
+        "requirements.txt 含非 ASCII 字节，中文 Windows 上 pip install -r 会因 "
+        "auto_decode 按 cp936 解码而失败（注释请改用英文）：\n  "
+        + "\n  ".join(offenders[:10])
+    )
+    assert raw[:3] != b"\xef\xbb\xbf", "requirements.txt 不该带 UTF-8 BOM"
+
+

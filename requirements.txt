@@ -1,55 +1,87 @@
+# Runtime dependencies for the quant workbench backend.
+#
+# ENCODING RULE: this file must stay pure ASCII. pip <24.1 on a Chinese Windows
+# locale decodes `-r requirements.txt` with the locale codec (cp936) via
+# pip._internal.utils.encoding.auto_decode and raises UnicodeDecodeError when it
+# meets non-UTF-8-compatible bytes -- i.e. `pip install -r requirements.txt`
+# fails outright on zh-CN Windows (verified: it fails for both the current file
+# and the 40cadbe7 revision). CI on Ubuntu uses a UTF-8 locale, so it never
+# noticed. Guarded by
+# tests/test_ci_test_hygiene.py::test_requirements_txt_is_pure_ascii
+#
+# Python 3.12
+
+# --- Web framework ---
 fastapi==0.135.1
 uvicorn==0.42.0
+
+# --- Database ---
 sqlalchemy==2.0.48
+alembic==1.15.2
+pymysql>=1.1.0          # MySQL driver (dev DB = MySQL 5.7 gpfx)
+cryptography>=41.0.0    # required by pymysql for caching_sha2_password auth
+
+# --- Data sources ---
 akshare==1.18.30
+
+# --- Data processing ---
 pandas==2.3.3
 numpy>=1.26,<3
+duckdb>=1.2,<2          # factor warehouse columnar store
 vectorbt==0.28.5
-# plotly 必须显式约束：它是 vectorbt 的传递依赖，不钉就会被解析到最新版。
-# 实测坑（CI 白盒 shard 1，两条 vectorbt 回测用例报）：新版 plotly 从
-# plotly.graph_objs.layout.template.Data 里移除了 `scattermapbox`，而 vectorbt 0.28.5
-# 内部绘图仍写这个字段 → ValueError。
-# 本地为什么看不到的两层原因（比“版本漂移”更隐）：
-#   1) 本地 venv 里 plotly 之前根本没装；
-#   2) 本地 venv 连 vectorbt 都没装（尽管本文件写了 vectorbt==0.28.5），
-#      所以这段绘图路径在本地从未被执行过 —— 本地环境不等于 requirements。
-# 本次只钉上界 <6（下界不写具体数字：本地拿不到 vectorbt 元数据，无法核实它自己的约束）。
-# 升 plotly 6.x 前需先确认 vectorbt 已适配；真验证只能靠 CI（本地装了 vectorbt 后也可）。
-plotly>=5,<6
-duckdb>=1.2,<2
-scikit-learn>=1.5,<2
-alembic==1.15.2
-pymysql>=1.1.0
-cryptography>=41.0.0
 
-# 因子挖掘（M1a，2026-09-16 显式声明）
-# scipy 此前仅作为 scikit-learn 的传递依赖存在（环境内已装 1.18.0），
-# M2 统计层 8 方法（t 检验/Bootstrap/置换/DSR 偏度峰度）为其直接消费方，
-# 挖掘统计层（t 检验 / 置换检验 / DSR 偏度峰度）直接 import，属隐式依赖，
-# sklearn 升级或换环境时会断，故显式声明。
+# plotly must be pinned explicitly: it is a TRANSITIVE dependency of vectorbt, so
+# an unpinned resolve floats it to the newest major.
+# Real breakage seen in CI (whitebox shard 1, two vectorbt backtest cases): newer
+# plotly removed `scattermapbox` from plotly.graph_objs.layout.template.Data, while
+# vectorbt 0.28.5 still writes that field -> ValueError.
+# Why it stayed invisible locally (two layers, worse than plain version drift):
+#   1) plotly was not installed in the local venv at all;
+#   2) the local venv did not even have vectorbt (despite this file pinning it),
+#      so this plotting path had never executed locally -- local env != requirements.
+# Only the upper bound is pinned here (<6); no exact lower bound, because locally
+# I could not read vectorbt's own metadata to verify what it actually requires.
+# Before moving to plotly 6.x, confirm vectorbt supports it. Real verification can
+# only come from CI (or locally once vectorbt is installed).
+plotly>=5,<6
+
+# --- Factor mining (M1a, declared explicitly 2026-09-16) ---
+# scipy used to exist only as a transitive dependency of scikit-learn (1.18.0 was
+# already in the env). The M2 statistics layer's 8 methods (t-test / bootstrap /
+# permutation / DSR skew-kurtosis) consume it directly, so an sklearn upgrade or a
+# fresh environment would have broken it silently. Declared explicitly.
 scipy>=1.13
-# 股票池文件导入（挖掘向导 Step1 方式 A）
-# 读 .xlsx 用 openpyxl；读旧版 .xls 用 xlrd（2.x 仅支持 .xls）
-openpyxl>=3.1
-xlrd>=2.0
-# HTTP 文件上传（multipart/form-data）。FastAPI 的 File()/Form() 在**路由注册期**
-# 就会检查它，缺失会让整个应用 import 失败 —— 属运行必需的显式声明，不是可选增强。
+scikit-learn>=1.5,<2
+
+# --- Universe file import (mining wizard step 1, mode A) ---
+openpyxl>=3.1           # read .xlsx
+xlrd>=2.0               # read legacy .xls (xlrd 2.x supports .xls only)
+
+# --- HTTP file upload (multipart/form-data) ---
+# FastAPI's File()/Form() is checked at ROUTE REGISTRATION time; if the package is
+# missing, importing the whole app fails. Runtime-required, not an optional extra.
 python-multipart>=0.0.9
 
-# 测试依赖
+# --- Test dependencies ---
 pytest>=8.0.0
-httpx>=0.27.0
-# Playwright 必须钉到精确版本：它和已安装的浏览器 build 是一对一绑定的。
-# 实测坑：只钉 pytest-playwright>=1.4.0 而不钉 playwright 本体时，venv 会自动升到
-# 1.62.0（要 browser build 1234），而本机浏览器还是旧版装的 1223 —— 结果整个
-# -m e2e 共 38 个用例集体报 "Executable doesn't exist" 而挂掉（体检报告 §拟真走查八）。
+httpx>=0.27.0           # TestClient transport for FastAPI
+
+# Playwright must be pinned to an EXACT version: it is bound 1:1 to the browser
+# build it downloads.
+# Real breakage seen: pinning only `pytest-playwright>=1.4.0` without pinning
+# playwright itself let the venv resolve to 1.62.0 (wants browser build 1234) while
+# this machine had build 1223 -- all 38 `-m e2e` cases died with
+# "Executable doesn't exist" (see the walkthrough report, section 8).
+# Why 1.60.0 rather than 1.62.0: 1.62 needs a fresh ~192MB browser download, which
+# measurably kept dropping around 90% (server closed connection) on both the
+# Microsoft CDN and the domestic mirror; 1.60.0 matches the already-installed build
+# 1223 and only needs a 38MB wheel to run the chromium channel.
+# Local and CI now use the same version and the same browser build, so behaviour is
+# reproducible. When upgrading playwright, also run:
+#   python -m playwright install chromium   (and confirm the download can complete)
 #
-# 为什么钉 1.60.0 而不是 1.62.0：钉 1.62 需要重下 ~192MB 的浏览器包，实测在微软 CDN
-# 与国内镜像上都在 90% 附近被提前掉线（server closed connection）仍不能完成；
-# 而 1.60.0 正好对应本机已有的 build 1223，只需一个 38MB 的 wheel 就能跑 chromium 通道。
-# 本地与 CI 用同一个版本 + 同一个 browser build，行为可复现。
-# 升级 playwright 时必须同步跑：python -m playwright install chromium（并确认网络能拉完）
+# The old `pytest-playwright>=1.4.0` line was removed: the code never used it (the
+# `page`/`browser` fixtures come from tests/e2e/conftest.py), and e2e passed 34
+# cases locally without it installed. Keeping a never-used dependency only makes
+# people assume e2e behaviour comes from it.
 playwright==1.60.0
-# 原来的 `pytest-playwright>=1.4.0` 已移除：代码里没用它（`page`/`browser` fixture 由
-# tests/e2e/conftest.py 自己提供），而且本地 venv 根本没安装它 e2e 也能跑过 34 条。
-# 留着一个从未使用的依赖，只会让人误以为 e2e 行为来自它。
