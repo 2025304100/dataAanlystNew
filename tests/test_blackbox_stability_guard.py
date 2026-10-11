@@ -265,8 +265,10 @@ def test_batch_probe_submits_fast_and_all_tasks_converge(client):
     旧断言"批量 180s 内完成"的前提是每个探测都占着一个 HTTP 请求；PT-DEF-18
     之后探测跑在后台任务里，真正该守的两件事变成：
       ① 提交阶段必须快（不被上游拖住）；
-      ② 每个任务最终都能走到可解释的结论（终态或心跳可疑）—— 线程池若耗尽，
-         这里会看到一堆永远 running 的任务。
+      ② 每个任务最终都能走到**可解释**的结论：终态、心跳可疑、或"仍在等上游但心跳
+         新鲜且已报出阶段"—— 线程池若耗尽或 worker 静默死亡，这里会看到一堆
+         没有心跳/没有阶段的任务；大面积滞留也有独立闸门兜住。
+         注意：本守护**不押注上游快慢**（见 §5 同一原则与产品"提交+心跳轮询"定案）。
     顺带摘掉 xfail_dev_hardware：那顶帽子只会让这条守护在 CI 里永远"预期失败"，
     等于从来没测（体检报告 §十五）。
     """
@@ -314,15 +316,44 @@ def test_batch_probe_submits_fast_and_all_tasks_converge(client):
         if pending:
             time.sleep(2.0)
 
-    unresolved = []
+    unexplained = []
+    waiting_upstream = []
     for task_id in pending:
         st = client.get(
             f"/api/v1/external-data/apis/probe/{task_id}", timeout=PROBE_BATCH_TIMEOUT
         )
-        unresolved.append((task_id, st.json()))
-    assert not unresolved, (
-        f"{len(unresolved)} 个探测任务在测试上限内既无终态也无心跳异常"
-        f"（探测线程池可能被耗尽或 worker 静默死亡）：{unresolved[:3]}"
+        assert st.status_code == 200, f"已提交的任务不应 404: {task_id}"
+        body = st.json()
+        # 这条守护守的是**后端稳定性**，不是上游快慢（本文件 §5 已确立同一原则：
+        # 提交路径不押注上游；产品侧也已定案：长耗时上游调用走"提交任务 + 心跳轮询"，
+        # 禁止用固定超时猜上游）。所以"到上限仍在 running"要分两种，不能一刀切失败：
+        #   ① 有可解释的等待：心跳新鲜 + 已报出 stage/percent → 说明 worker 活着、
+        #      线程池没耗尽，只是上游慢（CI 拉不到东财时就是这个形状）。
+        #   ② 没有可解释状态：心跳可疑、或压根没走到"开始等上游" → 才是真故障。
+        # 另外加一条总量闸门：只允许极少数任务还在等上游，大面积滞留仍算失败，
+        # 免得把"整体卡死"降级成"个别在等"。
+        since_beat = body.get("seconds_since_heartbeat")
+        still_working = (
+            body.get("status") == "running"
+            and not body.get("heartbeat_stale")
+            and isinstance(since_beat, (int, float))
+            and since_beat < 30.0
+            and bool(body.get("stage"))
+        )
+        if still_working:
+            waiting_upstream.append((task_id, body.get("api_key"), body.get("message")))
+        else:
+            unexplained.append((task_id, body))
+
+    assert not unexplained, (
+        f"{len(unexplained)} 个探测任务到上限既无终态、也无新鲜心跳/阶段可解释"
+        f"（探测线程池可能被耗尽或 worker 静默死亡）：{unexplained[:2]}"
+    )
+    allowance = max(1, len(task_ids) // 10)
+    assert len(waiting_upstream) <= allowance, (
+        f"大面积探测任务滞留在等待上游（{len(waiting_upstream)}/{len(task_ids)}，"
+        f"允许上限 {allowance}）：不再是'上游慢'能解释的范围，疑似探测池排队或 worker 耗尽；"
+        f"样本：{waiting_upstream[:3]}"
     )
 
 
