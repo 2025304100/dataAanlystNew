@@ -168,6 +168,15 @@ def pytest_configure(config):
         "markers",
         "xfail_dev_hardware: 在 --hardware-capability=dev 且 DuckDB>=2GB/universe>=7000 下预期失败（不计入失败统计），可参数化说明 reason；prod 模式下真实执行",
     )
+    # env_gap 与 xfail_dev_hardware 的区别很要紧：xfail 会**不报**，用得久了就变成
+    # “从来没测过”（本项目已经为这个坑付过学费）；env_gap 只是**不阻断**，
+    # 仍在非阻断道每轮真实执行并打印结果，适用于“第三方依赖 ABI 不兼容”这类
+    # 我们本地无法取证也无法自证的环境缺陷（必须写清理由并进台账）。
+    config.addinivalue_line(
+        "markers",
+        "env_gap: known third-party env/ABI defect; excluded from the blocking gate "
+        "but still run every CI round in the non-blocking lane (must carry reason)",
+    )
 
 
 def _is_dev_hardware(config) -> bool:

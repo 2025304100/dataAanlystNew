@@ -70,22 +70,24 @@ jobs:
         continue-on-error: true
       - name: Shard coverage self-check
         # 断言 4 片并起来 == 全量收集（丢文件 / 重文件直接失败），防静默漏测
-        run: python scripts/ci_shard.py --marker "whitebox and not slow" --groups 4 --plan
+        run: python scripts/ci_shard.py --marker "whitebox and not slow and not env_gap" --groups 4 --plan
       - name: Run whitebox tests (this shard)
         run: |
           set -o pipefail
-          python scripts/ci_shard.py --marker "whitebox and not slow" --groups 4 --group ${{ matrix.shard }} 2>&1 | tee /tmp/ci-whitebox.log
+          python scripts/ci_shard.py --marker "whitebox and not slow and not env_gap" --groups 4 --group ${{ matrix.shard }} 2>&1 | tee /tmp/ci-whitebox.log
       - name: Publish failure digest
         # Actions 的 job 日志接口对匿名请求是 403：红因只写在日志里，自动化侧就只知道“红了”而不知道为什么。
         # 这一步把 FAILED/ERROR 摘要发到 annotations 与 step summary；它自身永不失败（否则会把真因掉包）。
         if: failure()
         run: python scripts/ci_digest.py /tmp/ci-whitebox.log || true
-      # 真实联网用例（带 @pytest.mark.slow，如 ak.stock_info_sz_name_code 等）不进阻断闸门：
-      # GitHub runner 拉不到深交所/东财时，红的是网络而不是代码，会把闸门变成没人看的噪声。
-      # 但仍单独跑一轮且保留结果可见（continue-on-error），所以不会悄悄消失。
-      - name: Run slow (real-network) whitebox tests — non-blocking
+      # 两类不进阻断闸门：1) slow = 真实联网用例（runner 拉不到深交所/东财时，红的是网络不是
+      # 代码）；2) env_gap = 已定性的第三方依赖 ABI 缺陷（当前：vectorbt 0.28.5 与 1.0.0 在
+      # 任何支持 numpy 2.5 的 numba 上都报 get_call_template；退 numba 会逼全项目降 numpy）。
+      # 两者都**每轮真实执行并打印结果**（continue-on-error），所以不会悄悄消失；
+      # 用 env_gap 必须写清理由并进台账，禁止拿它藏真 bug（区别于 xfail：那会慢慢变成没测）。
+      - name: Run slow / env-gap whitebox tests - non-blocking
         continue-on-error: true
-        run: pytest -m "whitebox and slow" -q --tb=short -rX
+        run: pytest -m "whitebox and (slow or env_gap)" -q --tb=short -rX -rf
 
   # ── 前端测试 ──────────────────────────────────────────────
   frontend:

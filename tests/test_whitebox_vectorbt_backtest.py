@@ -164,6 +164,25 @@ def test_score_trend_selects_daily_top_n_by_ranking_score():
     assert bool(entries.loc[index[3], "600000"])
     assert bool(entries.loc[index[5], "000001"])
 
+# 为什么这两条带 env_gap（台账 ENV-GAP-1）：
+# CI 实测（经 env probe 量到真实版本，不是推测）：
+#   vectorbt==0.28.5 + numba==0.68.0 + numpy==2.5.4  → 运行期报
+#   AttributeError: 'function' object has no attribute 'get_call_template'
+#   （栈在 numba 自己的类型推导里：functions.py get_call_type 调
+#    self.dispatcher.get_call_template，但拿到的是普通函数）
+# 已逐个排除的假设：
+#   • “是最新 numba 破坏的”→ 钉到 numba 0.67.0（仍支持 numpy 2.5 的最老版本）完全同样报错；
+#     再往下的 0.66- 都要求 numpy<2.5，会逼全项目降 numpy，代价不可接受；
+#   • “vectorbt 升个小版本就好”→ 探针分支试过 1.0.0（元数据 pandas<3，兼容本项目
+#     pandas 2.3.3），还是一样报错；1.1.x 要 pandas>=3.0.3，属跨大版本迁移；
+#   • “我们的代码写法不对”→ app/ 里没有任何 numba 用法（njit/generated_jit/prange 全 0 命中），
+#     报错发生在 vectorbt 自身的 JIT 路径，本地无旋钮可调。
+# 处理方式：不阻断（这不是业务失败），但在非阻断道**每轮真实执行且结果可见**；
+# 严禁拿 env_gap 当 xfail 用 —— 那会慢慢变成“从来没测”。
+@pytest.mark.env_gap(
+    "vectorbt 0.28.5/1.0.0 + 支持 numpy 2.5 的任意 numba 均报 get_call_template"
+    "（CI 实测，台账 ENV-GAP-1）"
+)
 def test_vectorbt_engine_returns_portfolio_metrics_and_trades():
     # 环内依赖：vectorbt 在 requirements.txt 里（CI 会装），但体量大且未入部分本地
     # venv；`run_vectorbt_backtest` 是延迟 import，缺库时整条引擎路径不可用，
@@ -531,6 +550,10 @@ def test_simulation_prices_never_backfill_before_first_observation():
     assert prepared.loc[index[4], "000002"] == 22
 
 
+@pytest.mark.env_gap(
+    "同 test_vectorbt_engine_returns_portfolio_metrics_and_trades："
+    "vectorbt/numba ABI 不兼容（台账 ENV-GAP-1）"
+)
 def test_vectorbt_engine_handles_staggered_listing_without_backfill():
     pytest.importorskip(
         "vectorbt", reason="vectorbt 未安装（requirements.txt 可选重型依赖）"
