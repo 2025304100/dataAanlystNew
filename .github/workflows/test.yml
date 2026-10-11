@@ -47,17 +47,25 @@ jobs:
           python -m pip check || true
           python - <<'PY'
           import importlib.metadata as m
+          rows = []
           for p in ("vectorbt", "numba", "llvmlite", "numpy", "pandas", "plotly", "scipy", "scikit-learn"):
               try:
-                  print(f"  {p}=={m.version(p)}")
+                  rows.append(f"{p}=={m.version(p)}")
               except Exception:
-                  print(f"  {p}=MISSING")
+                  rows.append(f"{p}=MISSING")
+          imports = []
           for mod in ("numpy", "pandas", "numba", "vectorbt"):
               try:
                   x = __import__(mod)
-                  print(f"  import {mod} OK -> {getattr(x, '__version__', '?')}")
+                  imports.append(f"{mod}:OK:{getattr(x, '__version__', '?')}")
               except Exception as e:
-                  print(f"  import {mod} FAILED: {type(e).__name__}: {str(e)[:260]}")
+                  imports.append(f"{mod}:FAIL:{type(e).__name__}:{str(e)[:120]}")
+          line = " | ".join(rows) + "  ||  " + " ".join(imports)
+          print(line)
+          # 同时发 annotation：Actions 的 job 日志对匿名请求是 403，只写 stdout 的话
+          # 自动化侧（以及我这边）依然读不到 —— annotation 是唯一可查询的通道。
+          esc = line.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::notice title=Env probe::{esc}")
           PY
         continue-on-error: true
       - name: Shard coverage self-check
