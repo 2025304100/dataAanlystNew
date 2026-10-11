@@ -5121,6 +5121,10 @@ const enUS: Record<string, string> = {
     "portfolioTrading.backtest.runFailed": "Backtest failed",
     "portfolioTrading.backtest.autoTradeRequired": "Portfolio backtest requires enabling Auto-Takeover on the Overview page first",
     "portfolioTrading.backtest.autoTradeRequiredHint": "Enable Auto-takeover in Strategy Rules before running a backtest",
+    // T5.1: the auto precheck no longer opens a page-blocking modal; it shows an inline,
+    // non-blocking notice plus an explicit entry point to the details.
+    "portfolioTrading.backtest.blockersInline": "Backtest is currently blocked (browsing other tabs is unaffected)",
+    "portfolioTrading.backtest.viewBlockers": "View reasons",
     "portfolioTrading.backtest.noPositions": "Portfolio has no positions and no scan candidates. Cannot run whole-portfolio backtest. Please add positions or candidates first",
     "portfolioTrading.backtest.symbolRequired": "Please enter a symbol",
     "portfolioTrading.backtest.singleComingSoon": "Single-symbol backtest coming soon",

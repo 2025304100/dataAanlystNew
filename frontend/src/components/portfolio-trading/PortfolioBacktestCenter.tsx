@@ -734,21 +734,26 @@ const cutoffMismatchToastFiredRef = useRef(false);
         try {
           const resp = await api.postBacktestPrecheck({ portfolio_id: portfolioId, symbol_ids: [], start_date: portStart, end_date: portEnd }, ctrl.signal);
           setPrecheckResp(resp);
-          if ((resp?.blocking_reasons?.length ?? 0) > 0) { try { setBlockingOpen(true); } catch { /* noop */ } }
+          // T5.1 调整（本次）：**自动**预检不再弹模态。之前只要 blocking_reasons>0
+          // 就 setBlockingOpen(true)，而模态自带遮罩会把整页（包括其他子导航）锁住：
+          // 新装机一进「组合交易」就会被一份自己没索取的报告拦在原地（CI e2e 也是
+          // 在这里点不到「治理」）。状态仍可见：按钮会变“已阻断”并且下方多一行
+          // 不遮挡的提示 + “查看原因”入口；用户主动点「运行回测」时仍会弹完整详情。
         } catch (err: any) {
           if (err instanceof Error && err.name === "AbortError") {
             // 区分「超时中止」与「组件卸载中止」：超时 → 落失败态
             if (ctrl.signal.reason === "timeout") {
               const msg = "预检超时（15 秒未返回），请检查数仓连接后重试";
               setPrecheckResp(_pre500(msg));
-              try { setBlockingOpen(true); showToast("error", "回测预检超时，已阻断回测提交"); } catch { /* noop */ }
+              // 超时/5xx 也不弹模态：toast + 下方行内提示足够，detail 由用户主动查看。
+              try { showToast("error", "回测预检超时，已阻断回测提交"); } catch { /* noop */ }
             }
             return;
           }
           const sc = err?.status_code; const msg = String(err?.message ?? "");
           if (sc === 500 || /\b500\b|server.?error/i.test(`${msg} ${sc ?? ""}`)) {
             setPrecheckResp(_pre500(msg));
-            try { setBlockingOpen(true); showToast("error", "回测预检服务异常，已阻断回测提交" + (msg ? `：${msg}` : "")); } catch { /* noop */ }
+            try { showToast("error", "回测预检服务异常，已阻断回测提交" + (msg ? `：${msg}` : "")); } catch { /* noop */ }
           }
         } finally {
           window.clearTimeout(timeoutTimer);
@@ -2112,6 +2117,52 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
               }}
             >
               {t("portfolioTrading.backtest.autoTradeRequiredHint")}
+            </div>
+          )}
+          {/* T5.1：自动预检发现阻断时的**不遮挡**呈现。必须配这个入口，因为“点击看详情”
+              原本长在 disabled 的运行按钮上（有阻断项时 disabled 根本点不动），
+              只去掉自动弹窗会把原因藏起来。 */}
+          {blockersCount > 0 && !precheckLoading && (
+            <div
+              data-testid="precheck-blockers-inline"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                padding: "8px 10px",
+                borderRadius: "var(--pt-radius-md)",
+                border: "1px solid var(--pt-state-error)",
+                background: "color-mix(in srgb, var(--pt-state-error) 8%, transparent)",
+                marginTop: 4,
+              }}
+            >
+              <span style={{ fontSize: 12, color: "var(--pt-state-error)", lineHeight: 1.5 }}>
+                {/* 本文件的 t() 只接 key（不支持插值），所以数量用语言中立的数字徽章展示，
+                    不拼进句子（避免中英文量词语病）。 */}
+                {t("portfolioTrading.backtest.blockersInline")}
+                <span
+                  data-testid="precheck-blockers-count"
+                  style={{
+                    marginLeft: 6,
+                    padding: "0 6px",
+                    borderRadius: 8,
+                    fontSize: 11,
+                    background: "color-mix(in srgb, var(--pt-state-error) 18%, transparent)",
+                  }}
+                >
+                  {blockersCount}
+                </span>
+              </span>
+              <button
+                type="button"
+                className="pt-btn pt-btn-ghost pt-btn-sm"
+                data-testid="precheck-blockers-open"
+                style={{ flexShrink: 0, color: "var(--pt-state-error)" }}
+                onClick={() => onOpenBlockers?.()}
+              >
+                {t("portfolioTrading.backtest.viewBlockers")}
+              </button>
             </div>
           )}
           <button

@@ -681,6 +681,14 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
     // T5.1 自动预检完成后出现阻断结果；T5.3 按钮变成 "已阻断..." 且 disabled
     await waitFor(() => { expect(mockApi.postBacktestPrecheck).toHaveBeenCalledTimes(1); });
+    // T5.1 新语义：自动预检**不得**弹盖住整页的模态，只能给不遮挡的行内提示。
+    // （旧行为会让新装机一进「组合交易」就被一份未索取的报告锁在原地，
+    // 并表现为端到端用例点不到其他子导航。）
+    expect(screen.queryByTestId("antd-modal")).not.toBeInTheDocument();
+    expect(screen.getByTestId("precheck-blockers-inline")).toBeInTheDocument();
+    expect(screen.getByTestId("precheck-blockers-count").textContent).toBe("1");
+    // 缺口详情仍然可看，但必须由用户主动打开
+    fireEvent.click(screen.getByTestId("precheck-blockers-open"));
     const gapText = await screen.findByText(/39 天/);
     expect(gapText).toBeInTheDocument();
     const submitBtn = await screen.findByRole("button", { name: /已阻断.*缺口/ });
@@ -712,6 +720,11 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     });
     render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
     await waitFor(() => { expect(mockApi.postBacktestPrecheck).toHaveBeenCalledTimes(1); });
+
+    // T5.1：自动预检不再弹模态；下面的断言验证的是“用户主动点开”后的内容渲染，
+    // 所以先确认不弹、再点入口，原PT-DEF-25a 的保护全部保留。
+    expect(screen.queryByTestId("antd-modal")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("precheck-blockers-open"));
 
     // 注意：本文件的 antd Modal mock 把 data-testid 固定成 "antd-modal"，
     // 所以这里按内容断言，而不是查 blocking-error-modal。
@@ -750,6 +763,10 @@ describe("PortfolioBacktestCenter paged ledger contract", () => {
     });
     render(<PortfolioBacktestCenter portfolioId={1} autoTradeEnabled />);
     await waitFor(() => { expect(mockApi.postBacktestPrecheck).toHaveBeenCalledTimes(1); });
+
+    // T5.1：不自动弹模态，详情靠行内入口主动打开
+    expect(screen.queryByTestId("antd-modal")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("precheck-blockers-open"));
 
     const fixes = await screen.findAllByTestId("precheck-blocker-fix");
     expect(fixes.length).toBe(2);

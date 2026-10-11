@@ -5122,6 +5122,10 @@ const zhCN: Record<string, string> = {
     "portfolioTrading.backtest.runFailed": "回测运行失败",
     "portfolioTrading.backtest.autoTradeRequired": "组合全局回测需要先在总览页开启「自动接管」开关",
     "portfolioTrading.backtest.autoTradeRequiredHint": "请先在策略规则页开启自动接管，再运行回测",
+    // T5.1 调整：自动预检发现阻断时不再弹模态挡整页，改成行内不遮挡提示 + 显式入口。
+    // “不影响你浏览其他页”是故意写明的：过去路过看一眼也会被一份未索取的报告锁在原地。
+    "portfolioTrading.backtest.blockersInline": "回测暂时被阻断（不影响你浏览其他页）",
+    "portfolioTrading.backtest.viewBlockers": "查看原因",
     "portfolioTrading.backtest.noPositions": "组合暂无持仓和候选标的，无法运行全局回测。请先添加持仓或候选标的",
     "portfolioTrading.backtest.symbolRequired": "请输入标的代码",
     "portfolioTrading.backtest.singleComingSoon": "单标的回测即将上线",
