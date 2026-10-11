@@ -275,7 +275,10 @@ jobs:
           E2E_REQUIRE_MINIMUM: "1"
         run: |
           set -o pipefail
-          pytest tests/e2e/ -m e2e --tb=short -q -rX -rf 2>&1 | tee /tmp/ci-e2e.log
+          # -s 不是风格问题：pytest 默认是 **fd 级**捕获，用例里发的 ::notice
+          # （用于上报“预检模态阻塞导航”是否正在发生）会被一并吞掉，
+          # annotation 根本不会生成——实测无 -s 时两条探测行都不输出。
+          pytest tests/e2e/ -m e2e -s --tb=short -q -rX -rf 2>&1 | tee /tmp/ci-e2e.log
       - name: Publish failure digest
         if: failure()
         run: python scripts/ci_digest.py /tmp/ci-e2e.log || true

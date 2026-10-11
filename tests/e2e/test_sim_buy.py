@@ -19,6 +19,8 @@
 """
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from tests._e2e_settle import settle
@@ -162,6 +164,17 @@ def test_portfolio_view_has_no_page_errors(page):
                     f"{wrap.first.inner_text()[:200]!r}"
                 )
                 blocked_by_modal.append(f"{label} <- {heading}")
+                # 可观测性：Actions 的 job 日志对匿名请求是 403，光靠“用例绿了”分不出
+                # 到底是“模态没弹”还是“弹了并被关掉”。发一条 notice，让每轮 CI 自己
+                # 报告这个阻塞导航的产品行为有没有发生（annotations 接口能读到）。
+                # 必须写 sys.__stdout__ 并 flush：pytest 会捕获普通 print，
+                # 被捕获的 workflow command 到不了 runner，annotation 根本不会生成。
+                sys.__stdout__.write(
+                    "::notice title=E2E 预检模态阻塞导航已被关闭::"
+                    + f"拦在切向「{label}」前，标题={heading!r}"
+                      f"（本轮共 {len(blocked_by_modal)} 次）\n"
+                )
+                sys.__stdout__.flush()
                 closer = wrap.first.locator(
                     ".ant-modal-close, button:has-text('关闭'), button:has-text('取消')"
                 ).first
