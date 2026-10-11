@@ -98,6 +98,9 @@ def test_manual_trade_entry_lives_in_members_table(page):
         "symbols=0 / portfolios=0 / portfolio_members=0，而 symbol_id 是外键，"
         "没有行情底座就无法通过 UI「加入持仓」造出成员 —— 这是 e2e 数据前置缺失，"
         "不是 UI 缺陷，也不要用放宽断言来转绿。"
+        "CI 上数据由「预置 e2e 最小数据」步骤提供（scripts/ci_seed_e2e_fixture.py）："
+        "先确认那一步是否执行成功、以及 workflow 的 CI_DB_NAME 是否还在它的库名白名单里，"
+        "再来看这里。"
         "（若持仓被刻意清空，请连同本用例一起改写，不要直接删断言）"
     )
 

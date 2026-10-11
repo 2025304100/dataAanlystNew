@@ -252,6 +252,14 @@ jobs:
             sleep 2
           done
           if [ "$ok" != "1" ]; then echo "frontend not reachable" >&2; tail -n 80 /tmp/frontend.log >&2 || true; exit 1; fi
+      - name: 预置 e2e 最小数据（CI-only 双门禁）
+        # 为什么需要：「组合交易 → 持仓成员」那页的行来自 GET /portfolios/{id}/positions，
+        # 而后端 init_db() 建出的空库 symbols=0 / portfolios=0 / positions=0，页面只能渲染
+        # 空态占位行 → "行内应有再平衡/清仓入口"的用例在 CI 必红（本地开发库有数据，永远绿）。
+        # symbol_id 是外键且 CI 拉不到 akshare 行情底座，用例无法自己造数据，所以由环境提供种子。
+        # 双门禁在脚本里：非 CI=true 不执行；目标库不在 CI 库名白名单内直接 exit 2、不写一行。
+        # 必须排在"等后端健康"之后：表是后端启动时的 init_db() 建的，跑早了会找不到表。
+        run: python scripts/ci_seed_e2e_fixture.py
       - name: Run E2E tests
         env:
           REQUIRE_LIVE_BACKEND: "1"
