@@ -137,7 +137,19 @@ def page(browser):
     pg.on("pageerror", on_page_error)
 
     pg.goto(FRONTEND_URL)
-    pg.wait_for_load_state("networkidle")
+    # 就绪信号不能用裸 wait_for_load_state("networkidle")：本应用持续轮询
+    # （任务心跳、行情、进度），networkidle 在后端刚重启时可能永远不满足，
+    # 于是夹具 30s 超时、整个 e2e 文件表现为 "ERROR at setup"（本地实测复现；
+    # CI 上前端负载恰好稳定，所以这条脆弱性一直没暴露）。
+    # 改为等**真实可交互信号**：主导航 view-tab 可见即首屏已渲染；
+    # networkidle 只尽力而为，等不到不算页面故障（它是产品行为）。
+    from playwright.sync_api import Error as PlaywrightError
+
+    pg.wait_for_selector("button.view-tab", state="visible", timeout=30000)
+    try:
+        pg.wait_for_load_state("networkidle", timeout=5000)
+    except PlaywrightError:
+        pass
 
     yield pg
 

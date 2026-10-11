@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests._e2e_settle import settle
+
 pytestmark = pytest.mark.e2e
 
 # i18n 文本（zh-CN / en）。
@@ -38,8 +40,7 @@ def _click_view_tab(page, labels):
         tab = page.locator(f"button.view-tab:has-text('{label}')").first
         if tab.is_visible():
             tab.click()
-            page.wait_for_timeout(1500)
-            page.wait_for_load_state("networkidle")
+            settle(page, 1500)
             return tab
     return None
 
@@ -50,8 +51,7 @@ def _click_settings_nav(page, labels):
         nav = page.locator(f".settings-nav-item:has-text('{label}')").first
         if nav.is_visible():
             nav.click()
-            page.wait_for_timeout(1500)
-            page.wait_for_load_state("networkidle")
+            settle(page, 1500)
             return nav
     return None
 

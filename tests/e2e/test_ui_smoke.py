@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests._e2e_settle import settle
+
 pytestmark = pytest.mark.e2e
 
 # 当前主视图（实测 6 个）：旧列表里的「投资中心」「目前观察池」「机会挖掘」
@@ -41,7 +43,7 @@ def smoke_page(browser):
     pg.on("pageerror", on_page_error)
 
     pg.goto("http://localhost:5173")
-    pg.wait_for_load_state("networkidle")
+    settle(pg, ms=0)
     pg.wait_for_timeout(2000)
 
     yield pg, console_errors, page_errors
@@ -69,8 +71,7 @@ def test_tab_clickable_and_no_console_error(smoke_page, label, key):
     tab_btn = pg.locator(f"button.view-tab:has-text('{label}')").first
     assert tab_btn.is_visible(), f"Tab '{label}' 不可见"
     tab_btn.click()
-    pg.wait_for_timeout(1500)
-    pg.wait_for_load_state("networkidle")
+    settle(pg, 1500)
 
     # 检查该 Tab 切换后是否新增 console error
     # 注意：console_errors 是累积的，这里仅验证无致命错误
@@ -89,8 +90,7 @@ def test_portfolio_subtabs_visible(smoke_page):
     portfolio_tab = pg.locator("button.view-tab:has-text('组合交易')").first
     assert portfolio_tab.is_visible(), "主视图「组合交易」不可见"
     portfolio_tab.click()
-    pg.wait_for_timeout(2000)
-    pg.wait_for_load_state("networkidle")
+    settle(pg, 2000)
 
     # 验证子导航
     expected = ("总览", "持仓成员", "策略规则", "回测中心", "治理")

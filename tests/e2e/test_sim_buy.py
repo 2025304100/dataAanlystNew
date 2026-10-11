@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests._e2e_settle import settle
+
 pytestmark = pytest.mark.e2e
 
 # 组合交易主视图：现名 + 历史名（改名过渡期都能命中）
@@ -39,8 +41,7 @@ def _open_view(page, labels):
         tab = page.locator(f"button.view-tab:has-text('{label}')").first
         if tab.count() > 0 and tab.is_visible():
             tab.click()
-            page.wait_for_timeout(2500)
-            page.wait_for_load_state("networkidle")
+            settle(page, 2500)
             return tab
     pytest.fail(
         f"主视图不可达，已尝试标签：{labels}（界面若再次改名，请更新本用例标签表）"
@@ -83,13 +84,26 @@ def test_manual_trade_entry_lives_in_members_table(page):
     members_nav.click()
     page.wait_for_timeout(2500)
 
-    rows = page.locator("table tbody tr")
-    assert rows.count() >= 1, (
-        "持仓成员表没有数据行，无法验证手动交易入口——"
-        "若持仓被刻意清空，请连同本用例一起改写，不要直接删断言"
+    # 「有 <tr>」不等于「有成员行」：空态时组件渲染的是
+    # <tr><td colSpan={10}>暂无持仓数据</td></tr>（PortfolioMembersTable.tsx L735-740）。
+    # 若按 `table tbody tr` 计数做前置，占位行会把它恒满足，于是后面的断言只能报出
+    # 「按钮 []」这种误导症状，把「环境没数据」说成「UI 回归」。
+    # 真实成员行带 data-symbol-id（同文件 L747），占位行没有 —— 用它做前置既精准
+    # 又与文案无关。注意不要用 `td[colspan]` 判空态：本页第二张表（候选标的池）
+    # 也有 colspan 空态行（L950-953），页面级选择器会把本地正常的用例误杀。
+    member_rows = page.locator("table tbody tr[data-symbol-id]")
+    assert member_rows.count() >= 1, (
+        "持仓成员表没有真实成员行（只有空态占位行或整表为空），无法验证手动交易入口。"
+        "本用例的前置条件是「环境里已有持仓」：CI 用 init_db 新建空库，实测 "
+        "symbols=0 / portfolios=0 / portfolio_members=0，而 symbol_id 是外键，"
+        "没有行情底座就无法通过 UI「加入持仓」造出成员 —— 这是 e2e 数据前置缺失，"
+        "不是 UI 缺陷，也不要用放宽断言来转绿。"
+        "（若持仓被刻意清空，请连同本用例一起改写，不要直接删断言）"
     )
 
-    actions = page.locator("table tbody tr td:last-child button")
+    # 只在真实成员行里找动作（Playwright 对多元素 locator 取后代并集），
+    # 这样既覆盖所有成员行，也不会把候选池表的按钮算进来。
+    actions = member_rows.locator("td:last-child button")
     labels = [actions.nth(i).inner_text().strip() for i in range(actions.count())]
     manual = [
         text for text in labels
