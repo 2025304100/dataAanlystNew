@@ -21,6 +21,9 @@ from datetime import date, timedelta
 import pytest
 from sqlalchemy import text
 
+from app.models.portfolio import Portfolio
+from app.models.portfolio_candidate import PortfolioCandidate
+from app.models.symbol import Symbol
 from app.schemas.bfg_precheck import BacktestPrecheckRequest
 from app.services.bfg_precheck_service import run_backtest_precheck
 
@@ -127,4 +130,61 @@ def test_five_symbols_neither_blocks_nor_warns(db_session):
     assert ZERO_CODE not in _codes(resp.blocking_reasons)
     assert SMALL_CODE not in _codes(resp.warnings), (
         f"5 只标的仍在告警，说明阈值被改大了：warnings={_codes(resp.warnings)}"
+    )
+
+
+def test_autofill_from_candidate_pool_does_not_claim_no_symbols(db_session):
+    """不带 symbol_ids 时，预检必须从「成员 ∪ 候选池」auto-fill 出标的。
+
+    钉住的缺陷：原先写 `union_all(...).distinct().subquery()`，而 SQLAlchemy 2.0 的
+    CompoundSelect 没有 .distinct() → auto-fill **每次必抛** AttributeError，又被外层
+    `except Exception` 吞成 [] → 直接报 NO_BACKTEST_SYMBOLS、提示“去同步基础数据”，
+    而数据其实就在库里。等于“任何不带 symbol_ids 的回测请求都被误阻断”。
+
+    这条分支此前零覆盖：上面的边界用例都显式传 symbol_ids，所以缺陷一直活着。
+    如果把这个用例改回旧写法（加 .distinct()）它就立刻变红。
+    """
+    _seed_weekday_calendar(db_session, WINDOW_START, WINDOW_END)
+
+    # _run() 里写的是 portfolio_id=1，候选池的外键要求这个组合必须存在，
+    # 所以显式用 id=1 建一个（否则先撞 FK，报的就不是被测分支了）。
+    db_session.add(
+        Portfolio(
+            id=1, name="auto-fill 回归组合", account_type="simulated",
+            total_capital=200000.0, investable_ratio=0.9, cash_reserve_ratio=0.1,
+            currency="CNY", is_default=0, auto_trade_enabled=1,
+        )
+    )
+    db_session.commit()
+
+    sym = Symbol(
+        symbol="600999", name="auto-fill 回归标的", asset_type="stock",
+        market="SSE", board="main",
+    )
+    db_session.add(sym)
+    db_session.commit()
+
+    db_session.add(
+        PortfolioCandidate(
+            portfolio_id=1, symbol_id=sym.id,
+            effective_from=WINDOW_START, effective_to=None,
+            auto_authorized_flag=1, removed_manually_flag=0,
+            audit_version=1, source_type="manual",
+            pool_memberships_json="[]", admission_snapshot_json="{}",
+        )
+    )
+    db_session.commit()
+
+    resp = _run(db_session, [])  # 空 symbol_ids → 走 auto-fill 分支
+
+    blocked = _codes(resp.blocking_reasons)
+    assert ZERO_CODE not in blocked, (
+        f"候选池里有标的却报 NO_BACKTEST_SYMBOLS，auto-fill 又坏了：{blocked}；"
+        f"evidence={[b.evidence for b in resp.blocking_reasons if str(b.code) == ZERO_CODE]}"
+    )
+    # 不能再有被吞掉的查询异常（修好后这个键应该不出现）
+    item = _find(resp.blocking_reasons, ZERO_CODE)
+    assert item is None or "universe_source_error" not in (item.evidence or {}), (
+        "auto-fill 查询报错又被静默当成‘没标的’："
+        f"{(item.evidence if item else {})}"
     )

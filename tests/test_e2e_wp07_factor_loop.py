@@ -28,6 +28,7 @@ from app.models.factor_evaluation import FactorSet
 from app.models.portfolio import Portfolio, PortfolioRule
 from app.models.portfolio_candidate import PortfolioCandidate
 from app.models.score import Score
+from app.models.security_status import SecurityStatusDaily
 from app.models.symbol import Symbol
 from app.services.sim_accounts import ensure_sim_account_seed
 
@@ -157,12 +158,17 @@ def _install_calendar_utils(monkeypatch) -> None:
     1. 裸表 `trade_calendar`（列 date / is_trading_day）；
     2. 顶层 `calendar_utils` 模块的 `get_trading_days(start, end)`。
 
-    为什么测试里不能走 1：`_query_trade_calendar_table` 用裸 SQL SELECT，
-    SQLAlchemy 对 text() 结果不做类型转换，SQLite 下 `date` 列拿回来的是
-    字符串，进入“未知类型 → 放弃该 fallback”分支（MySQL/pymysql 下才返回
-    date 对象）。已实测：建表 + 插表后 adapter 仍返回 None（PT-DEF-24）。
-    因此这里按产品自身的扩展点约定注册一个内存模块，用 monkeypatch 自动回收，
-    不会泄漏给其它用例。窗口仍须 ≥ 预检阈值（DEFAULT_BACKTEST_MINIMUM_TRADE_DAYS=240）个交易日。
+    为什么不再依赖它作为主路径：旧说明写“SQLite 下裸 SQL 取回的 date 列是字符串，
+    会被判成未知类型而放弃该数据源（PT-DEF-24）”——那是 **修之前** 的实测结论，现在
+    已不成立：tests/test_whitebox_trade_calendar_adapter.py
+    ::test_sqlite_string_date_column_is_readable 钉住了“字符串日期可读”。
+    本用例因此改为种生产主数据源 trade_calendar 表
+    （见 _make_trade_calendar_for_window）：适配器 Priority 1 只要该表存在就采用其
+    结果（含空表），不种表就会拿到 trade_days=0，被误报成“区间交易日不足”。
+
+    这里仍注册一个内存 calendar_utils 模块，只作为 Priority 2 的多一重保险
+    （产品文档明确支持该扩展点），用 monkeypatch 自动回收，不泄漏给其它用例。
+    窗口仍须 ≥ 预检阈值（DEFAULT_BACKTEST_MINIMUM_TRADE_DAYS=240）个交易日。
     """
     import sys
     import types
@@ -181,6 +187,77 @@ def _install_calendar_utils(monkeypatch) -> None:
 
     module.get_trading_days = get_trading_days
     monkeypatch.setitem(sys.modules, "calendar_utils", module)
+
+
+def _make_ssd_for_window(db, symbol_id: int, start_date: date, end_date: date) -> int:
+    """为窗口内每个工作日补一行「正常上市」的 security_status_daily。
+
+    为什么必须种：回测预检有 SSD fail-closed 门（覆盖交易日比例 < 70% 直接
+    报 STATUS_DATA_UNAVAILABLE），产品注释明写“保真回测不允许使用固定 0 基线
+    伪装通过”。本用例要证的是 FactorSet→Model→Score→Rule→Backtest 全链路，
+    所以按产品口径把状态数据补齐，而不是去关预检门（那等于把被测对象拆掉）。
+
+    工作日集合与 _install_calendar_utils 的日历扩展点同一口径（Mon~Fri），
+    否则覆盖率分母与 SSD 行对不上。listing_date 给一个早于窗口的日期，
+    避免把标的算成次新排除。
+    """
+    days = 0
+    cursor = start_date
+    while cursor <= end_date:
+        if cursor.weekday() < 5:
+            db.add(
+                SecurityStatusDaily(
+                    symbol_id=symbol_id,
+                    trade_date=cursor,
+                    is_st=False,
+                    is_suspended=False,
+                    is_delisting_period=False,
+                    is_listed=True,
+                    listing_date=date(2015, 1, 5),
+                    delisting_date=None,
+                    status_source="raw_universe",
+                    as_of_batch_id="wp07-e2e-ssd",
+                )
+            )
+            days += 1
+        cursor += timedelta(days=1)
+    db.commit()
+    return days
+
+
+def _make_trade_calendar_for_window(db, start_date: date, end_date: date) -> int:
+    """种生产主数据源 trade_calendar：窗口内工作日标为交易日，周末标为非交易日。
+
+    为什么必须种表而不是只靠 calendar_utils 扩展点：适配器 Priority 1 只要
+    `trade_calendar` 表存在就采用它的结果（空表也算“可用”，这是被
+    tests/test_whitebox_trade_calendar_adapter.py::test_empty_table_is_not_reported_unavailable
+    显式钉住的语义）。因此空表会让 Priority 2 的扩展点永远走不到，预检拿到
+    trade_days=0 后报 INSUFFICIENT_TRADE_DAYS（“缺口 240 天，请扩大区间”），
+    并把 SSD 检查拖成“trade_days 为空”——病因被误报成参数问题。
+
+    建表语句与那份白盒测试保持同一形状（date / is_trading_day 两列）。
+    工作日口径与 _install_calendar_utils 一致（Mon~Fri）。
+    """
+    from sqlalchemy import text
+
+    db.execute(text(
+        "CREATE TABLE IF NOT EXISTS trade_calendar ("
+        "  date DATE NOT NULL,"
+        "  is_trading_day INTEGER NOT NULL"
+        ")"
+    ))
+    db.execute(text("DELETE FROM trade_calendar"))
+    rows = []
+    cursor = start_date - timedelta(days=7)
+    while cursor <= end_date + timedelta(days=7):
+        rows.append({"d": cursor.isoformat(), "f": 1 if cursor.weekday() < 5 else 0})
+        cursor += timedelta(days=1)
+    db.execute(
+        text("INSERT INTO trade_calendar (date, is_trading_day) VALUES (:d, :f)"),
+        rows,
+    )
+    db.commit()
+    return sum(1 for r in rows if r["f"] == 1)
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +294,12 @@ def test_wp07_e2e_01_full_factor_loop_traceable(client, db_session, monkeypatch)
         ),
     )
     db_session.add(cand); db_session.commit()
+
+    # 回测预检的 SSD fail-closed 门：按产品口径补齐窗口内的证券状态日度数据。
+    _make_ssd_for_window(db_session, sym.id, start_date, end_date)
+    # 交易日历主数据源（适配器 Priority 1）：不种它就会拿到 trade_days=0，
+    # 预检误报“区间交易日不足”，详见 _make_trade_calendar_for_window。
+    _make_trade_calendar_for_window(db_session, start_date, end_date)
 
     # ── 2. POST /factor-sets 创建 FactorSet ──
     resp = client.post(

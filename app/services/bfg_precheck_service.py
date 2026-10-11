@@ -300,6 +300,7 @@ def run_backtest_precheck(
     data_cutoff, cutoff_mismatch, cutoff_warning_zh = compute_data_cutoff(db)
 
     # ---------------- Auto-fill symbol_ids（T1 保留） ----------------
+    universe_source_error: str | None = None
     if not req.symbol_ids:
         try:
             member_stmt = (
@@ -318,12 +319,29 @@ def run_backtest_precheck(
                     PortfolioCandidate.removed_manually_flag == 0,
                 )
             )
-            union_stmt = union_all(member_stmt, cand_stmt).distinct().subquery()
-            rows = db.execute(select(union_stmt.c.sid)).all()
+            # SQLAlchemy 2.0 的 CompoundSelect 没有 .distinct()：原先写
+            # `union_all(...).distinct().subquery()` 会抛
+            # AttributeError: 'CompoundSelect' object has no attribute 'distinct'，
+            # 而外层 except Exception 把它吞成"0 只标的"，于是**任何不带
+            # symbol_ids 的回测请求都被误阻断**，并提示用户"去同步基础数据"
+            # ——一条从来没工作过的 auto-fill 路径。
+            # 去重本来由下面的 set 推导完成，这里直接用 union_all 即可。
+            union_subq = union_all(member_stmt, cand_stmt).subquery()
+            rows = db.execute(select(union_subq.c.sid)).all()
             effective_symbol_ids: list[int] = sorted(
                 {int(r[0]) for r in rows if r and r[0] is not None}
             )
-        except Exception:
+        except Exception as ex:
+            # 这里以前静默返回 []，于是下面直接报 NO_BACKTEST_SYMBOLS、并让用户
+            # “去同步基础数据”——把“查询本身报错”伪装成“数据缺失”，跟着提示做也不会好。
+            # 保持 fail-closed（仍按 0 只处理、仍要阻断），但把真实异常放进日志与
+            # evidence，让诊断与提示不再跑偏。
+            universe_source_error = f"{type(ex).__name__}: {ex}"
+            logger.warning(
+                "回测预检 auto-fill 标的查询失败，按 0 只处理：%s",
+                ex,
+                exc_info=True,
+            )
             effective_symbol_ids = []
     else:
         effective_symbol_ids = [int(s) for s in req.symbol_ids]
@@ -468,7 +486,16 @@ def run_backtest_precheck(
                     "当前范围内没有任何可回测标的（候选池为空或全部被数据新鲜度/规则过滤），"
                     "回测无法产生有效结果。请先同步行情与评分数据，或调整选股池/策略规则。"
                 ),
-                evidence={"symbol_count": 0},
+                evidence={
+                    "symbol_count": 0,
+                    # 只有真的出过报错才多这个键：避免把“确实没数据”的正常场景
+                    # 染上似错非错的字段。
+                    **(
+                        {"universe_source_error": universe_source_error}
+                        if universe_source_error
+                        else {}
+                    ),
+                },
                 fix_link={
                     "tab": "settings-data-center",
                     "label_zh": "去同步基础数据",
