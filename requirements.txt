@@ -30,24 +30,23 @@ numpy>=1.26,<3
 duckdb>=1.2,<2          # factor warehouse columnar store
 vectorbt==0.28.5
 
-# numba must be pinned explicitly, because vectorbt declares only `numba>=0.60`
-# (verified from PyPI metadata of 0.28.5) -- with no upper bound, pip resolves the
-# newest numba, and CI measured that combination to be broken at RUNTIME, not at
-# install time:
-#   vectorbt==0.28.5 + numba==0.68.0 + numpy==2.5.4
-#   -> AttributeError: 'function' object has no attribute 'get_call_template'
-#      (raised inside numba/core/types/functions.py get_call_type(), i.e. numba's
-#       typing machinery got a plain function where it expected a Dispatcher)
-#   Both `import numba` and `import vectorbt` succeed, so this is an ABI/API drift
-#   issue, not a missing dependency.
-# Why 0.67 and not older: numba's own metadata caps numpy at <2.5 for every release
-# up to 0.66 (measured from PyPI), so pinning further back would force a project-wide
-# numpy downgrade and hit akshare/pandas/scikit-learn/duckdb too. 0.67 is the oldest
-# numba that still accepts numpy 2.5.
-# Status: this is a hypothesis with a documented rationale, to be confirmed by the CI
-# whitebox vectorbt cases; local venv has no vectorbt, so it cannot be verified here.
-# Before upgrading numba again, re-run those two tests.
-numba>=0.67,<0.68
+# Known-broken combination, measured (not inferred) -- do not "fix" it by pinning
+# numba again, that route is already closed:
+#   vectorbt 0.28.5 + numba 0.68.0 + numpy 2.5.4  -> whitebox vectorbt cases raise
+#   AttributeError: 'function' object has no attribute 'get_call_template'
+#   (raised inside numba's own type inference: functions.py get_call_type() calls
+#    self.dispatcher.get_call_template(), but the object is a plain function).
+#   CI env probe then tried numba 0.67.0 / llvmlite 0.49.0: SAME error. So it is not
+#   "the newest numba" -- every numba release that accepts numpy 2.5 is affected.
+#   Going older is not available: numba <= 0.66 requires numpy < 2.5 (verified from
+#   PyPI metadata per release), which would force a project-wide numpy downgrade and
+#   hit akshare/pandas/scikit-learn/duckdb. A numba pin was therefore tried and
+#   reverted; leaving one in place would only be misleading noise.
+# Remaining candidate (not yet validated): vectorbt 1.0.0, whose metadata still says
+# pandas >=2.0,<3.0 (compatible with our pandas 2.3.3). vectorbt 1.1.x requires
+# pandas >= 3.0.3, i.e. a cross-major migration, so it is out of scope for now.
+# Two whitebox cases keep this visible in the gate; they are the acceptance check for
+# whatever we try next.
 
 # plotly must be pinned explicitly: it is a TRANSITIVE dependency of vectorbt, so
 # an unpinned resolve floats it to the newest major.
