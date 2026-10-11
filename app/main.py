@@ -444,7 +444,20 @@ def _auto_start_universe_init() -> None:
 
     异步执行，不阻塞启动。用户也可在前端手动触发。
     若已有运行中的同步任务则跳过。
+
+    可用开关 AUTO_UNIVERSE_SYNC_ON_STARTUP（默认 True，生产行为不变）。测试与 CI
+    必须关掉它：那些环境每次都是空库，一启动就拉起 5 个线程带重试地访问 akshare，
+    实测会把无关用例的等待拖爆（integration 里"任务 15s 未到终态"即由此而来），
+    并在前端弹出同步进度模态遮挡导航点击。关闭不影响产品能力 —— 数据中心里
+    手动触发的还是同一个任务。
     """
+    if not settings.AUTO_UNIVERSE_SYNC_ON_STARTUP:
+        logger.info(
+            "AUTO_UNIVERSE_SYNC_ON_STARTUP=false，跳过启动自动同步"
+            "（测试/CI 环境；生产需要时可在数据中心手动触发同一任务）"
+        )
+        return
+
     try:
         from app.services import universe_sync, universe_sync_task
         SessionLocal = _get_session_local()

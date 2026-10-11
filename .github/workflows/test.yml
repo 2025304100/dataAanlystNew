@@ -230,6 +230,11 @@ jobs:
       # version_num 宽度 1406、引擎退 MyISAM 导致 1071；仍剩 0032 的 1215 列型不匹配）。
       # 该缺陷已挂账，不靠“CI 不跑迁移”假装它不存在：blackbox job 有全表 drift 检查托底。
       - name: Start backend
+        env:
+          # CI 每次都是空库，启动自动同步会拉起 5 个线程带重试地访问 akshare：
+          # 拖慢整轮 e2e，并在前端弹出同步进度模态遮挡视图导航的点击（实测间歇红）。
+          # 关掉它不影响 e2e 要验的东西；生产默认仍为开启。
+          AUTO_UNIVERSE_SYNC_ON_STARTUP: "0"
         run: |
           python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
           sleep 5

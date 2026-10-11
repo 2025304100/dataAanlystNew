@@ -32,6 +32,17 @@ os.environ.setdefault(
     str(Path(tempfile.gettempdir()) / f"qa_factor_warehouse_{os.getpid()}.duckdb"),
 )
 
+# 3) 关闭"启动即自动发起全市场基础数据同步"。
+#    测试/CI 每次都是空库，应用 lifespan 一看 universe_symbols 为空就会拉起
+#    5 个线程、带重试地访问 akshare。后果（都实测过）：
+#      - 把无关用例的等待拖爆：integration 里"任务 15s 未到终态"的超时即由此而来
+#        （调用栈取证显示网络请求来自 universe_sync_task._run_universe_sync_init，
+#         而不是被测的评估任务本身）；
+#      - 在前端弹出同步进度模态，遮挡视图导航的点击（e2e 间歇红的来源之一）。
+#    测试要的是确定性，不是"和外网赛跑"。外部显式设过该变量时尊重它
+#    （便于专门验证同步链路的场景），生产默认仍是开启。
+os.environ.setdefault("AUTO_UNIVERSE_SYNC_ON_STARTUP", "0")
+
 # WP9 验证环境兼容：若 akshare/sklearn 未安装（如 CI 沙箱），注入 stub 以允许
 # `import app.main`（transitively imports app.services.discovery_tasks /
 # app.services.factors.ridge_model）。真正调用这些库的测试应显式 import 并标记 slow/联网。

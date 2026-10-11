@@ -132,6 +132,15 @@ class Settings:
         self.DATA_FRESHNESS_AUTO_RECOVERY = _env_bool(
             "DATA_FRESHNESS_AUTO_RECOVERY", True
         )
+        # 首次启动时，若 universe_symbols 为空则自动发起「全市场基础数据初始化同步」。
+        # 生产默认开启（新机器开箱即用）。但测试与 CI 必须关闭：那边每次都是空库，
+        # 一启动就拉起 5 个线程带重试地访问 akshare，实测会
+        #   1) 把无关用例的等待拖爆（integration 的 15s 任务终态超时即由此而来）；
+        #   2) 在前端弹出同步进度模态，遮挡视图导航点击。
+        # 关闭不影响产品能力：用户仍可在「数据中心」手动触发同一任务。
+        self.AUTO_UNIVERSE_SYNC_ON_STARTUP = _env_bool(
+            "AUTO_UNIVERSE_SYNC_ON_STARTUP", True
+        )
         # WP-AI.6：结构化输出与审计配置
         # 会话保留天数（超过后由 cleanup_expired_sessions 归档）
         self.AI_SESSION_RETENTION_DAYS = int(
