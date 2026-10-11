@@ -30,6 +30,25 @@ numpy>=1.26,<3
 duckdb>=1.2,<2          # factor warehouse columnar store
 vectorbt==0.28.5
 
+# numba must be pinned explicitly, because vectorbt declares only `numba>=0.60`
+# (verified from PyPI metadata of 0.28.5) -- with no upper bound, pip resolves the
+# newest numba, and CI measured that combination to be broken at RUNTIME, not at
+# install time:
+#   vectorbt==0.28.5 + numba==0.68.0 + numpy==2.5.4
+#   -> AttributeError: 'function' object has no attribute 'get_call_template'
+#      (raised inside numba/core/types/functions.py get_call_type(), i.e. numba's
+#       typing machinery got a plain function where it expected a Dispatcher)
+#   Both `import numba` and `import vectorbt` succeed, so this is an ABI/API drift
+#   issue, not a missing dependency.
+# Why 0.67 and not older: numba's own metadata caps numpy at <2.5 for every release
+# up to 0.66 (measured from PyPI), so pinning further back would force a project-wide
+# numpy downgrade and hit akshare/pandas/scikit-learn/duckdb too. 0.67 is the oldest
+# numba that still accepts numpy 2.5.
+# Status: this is a hypothesis with a documented rationale, to be confirmed by the CI
+# whitebox vectorbt cases; local venv has no vectorbt, so it cannot be verified here.
+# Before upgrading numba again, re-run those two tests.
+numba>=0.67,<0.68
+
 # plotly must be pinned explicitly: it is a TRANSITIVE dependency of vectorbt, so
 # an unpinned resolve floats it to the newest major.
 # Real breakage seen in CI (whitebox shard 1, two vectorbt backtest cases): newer
