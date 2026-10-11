@@ -138,14 +138,47 @@ def test_portfolio_view_has_no_page_errors(page):
     _open_view(page, PORTFOLIO_TAB_LABELS)
 
     clicked = 0
+    blocked_by_modal: list[str] = []
     for label in PORTFOLIO_SUBNAV_LABELS:
         item = page.locator(
             f"button:has-text('{label}'), [role='tab']:has-text('{label}')"
         ).first
         if item.count() > 0 and item.is_visible():
+            # 进「回测中心」会首进自动预检；只要 blocking_reasons>0，产品就主动弹出
+            # 阻断模态（既有设计，前端单测钉着它）。模态遮罩会盖住下一个子导航的
+            # 点击 —— CI 实测就是稳定红在切向「治理」的那一步。
+            # 这里不当“没看见”：先记下它确实弹了，并硬要求
+            #   ① 有标题（用户能判断来历）；② 能关掉（否则子导航被永久阻塞）。
+            # 关掉后继续导航，本用例守的仍是“切子导航不产生 JS 异常”。
+            # “预检阻断该不该用模态盖住整个视图”属产品语义，已单独汇总待拍板。
+            wrap = page.locator("div.ant-modal-wrap")
+            if wrap.count() > 0 and wrap.first.is_visible():
+                title = wrap.first.locator(
+                    ".ant-modal-title, .ant-modal-confirm-title"
+                ).first
+                heading = title.inner_text().strip() if title.count() > 0 else ""
+                assert heading, (
+                    f"预检/告警模态弹出却不说明来历（无标题），拦在切向「{label}」之前："
+                    f"{wrap.first.inner_text()[:200]!r}"
+                )
+                blocked_by_modal.append(f"{label} <- {heading}")
+                closer = wrap.first.locator(
+                    ".ant-modal-close, button:has-text('关闭'), button:has-text('取消')"
+                ).first
+                if closer.count() > 0:
+                    closer.click(timeout=5000)
+                else:
+                    page.keyboard.press("Escape")
+                page.wait_for_timeout(600)
+                assert not (wrap.count() > 0 and wrap.first.is_visible()), (
+                    f"预检模态关不掉，组合交易子导航被永久阻塞：title={heading!r}"
+                )
             item.click()
             page.wait_for_timeout(1800)
             clicked += 1
 
     assert clicked >= 3, f"子导航切换不足，只点到 {clicked} 项，本用例未真正走通"
-    assert len(page_errors) == 0, f"组合交易视图出现 page error：{page_errors}"
+    assert len(page_errors) == 0, (
+        f"组合交易视图出现 page error：{page_errors}"
+        f"（本轮曾被以下模态拦住导航：{blocked_by_modal}）"
+    )
