@@ -25,6 +25,13 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3]
     name: backend-whitebox shard ${{ matrix.shard }}/4
+    env:
+      # 探针实验（仅在本分支）：在**进程启动前**禁用 numba JIT。
+      # 产品侧 VectorBTConfig.disable_numba 默认就是 True，但它靠
+      # os.environ.setdefault 在 import 前生效 —— 若 numba 已被其它导入拉起来，
+      # 那句 setdefault 就是空操作。用 job 级 env 才能回答“到底是 JIT 没关掉，
+      # 还是这个错与 JIT 无关”。
+      NUMBA_DISABLE_JIT: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -47,6 +54,7 @@ jobs:
           python -m pip check || true
           python - <<'PY'
           import importlib.metadata as m
+          import os
           rows = []
           for p in ("vectorbt", "numba", "llvmlite", "numpy", "pandas", "plotly", "scipy", "scikit-learn"):
               try:
@@ -61,6 +69,8 @@ jobs:
               except Exception as e:
                   imports.append(f"{mod}:FAIL:{type(e).__name__}:{str(e)[:120]}")
           line = " | ".join(rows) + "  ||  " + " ".join(imports)
+          # 把关键环境变量回显出来：否则“设了但没生效”会被当成“生效了但没用”
+          line += f"  ||  env NUMBA_DISABLE_JIT={os.getenv('NUMBA_DISABLE_JIT')!r}"
           print(line)
           # 同时发 annotation：Actions 的 job 日志对匿名请求是 403，只写 stdout 的话
           # 自动化侧（以及我这边）依然读不到 —— annotation 是唯一可查询的通道。

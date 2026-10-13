@@ -179,10 +179,9 @@ def test_score_trend_selects_daily_top_n_by_ranking_score():
 #     报错发生在 vectorbt 自身的 JIT 路径，本地无旋钮可调。
 # 处理方式：不阻断（这不是业务失败），但在非阻断道**每轮真实执行且结果可见**；
 # 严禁拿 env_gap 当 xfail 用 —— 那会慢慢变成“从来没测”。
-@pytest.mark.env_gap(
-    "vectorbt 0.28.5/1.0.0 + 支持 numpy 2.5 的任意 numba 均报 get_call_template"
-    "（CI 实测，台账 ENV-GAP-1）"
-)
+# 探针分支临时改动：拿掉 env_gap，让这两条回到阻断道 —— 否则非阻断道
+# 是 continue-on-error，实验结果会被“不报错”混过去，结论不可分辨。
+# （主线仍保留 env_gap；本分支只为拿一次 JIT 假设的裁决。）
 def test_vectorbt_engine_returns_portfolio_metrics_and_trades():
     # 环内依赖：vectorbt 在 requirements.txt 里（CI 会装），但体量大且未入部分本地
     # venv；`run_vectorbt_backtest` 是延迟 import，缺库时整条引擎路径不可用，
@@ -550,10 +549,7 @@ def test_simulation_prices_never_backfill_before_first_observation():
     assert prepared.loc[index[4], "000002"] == 22
 
 
-@pytest.mark.env_gap(
-    "同 test_vectorbt_engine_returns_portfolio_metrics_and_trades："
-    "vectorbt/numba ABI 不兼容（台账 ENV-GAP-1）"
-)
+# （同上：探针分支临时取消 env_gap，以便裁决可分辨）
 def test_vectorbt_engine_handles_staggered_listing_without_backfill():
     pytest.importorskip(
         "vectorbt", reason="vectorbt 未安装（requirements.txt 可选重型依赖）"
