@@ -300,8 +300,10 @@ class PortfolioStateMachine:
 # ════════════════════════════════════════════════════════════════════════════
 def _portfolio_status_column_exists(db: Session) -> bool:
     try:
-        row = db.execute(sqltext("SELECT portfolio_status FROM portfolios LIMIT 0"))
-        return True
+        # Inspect before SELECT: probing a missing column would also leave a
+        # PostgreSQL transaction in an error state. This path must stay read-only.
+        columns = sa_inspect(db.connection()).get_columns("portfolios")
+        return any(column["name"] == "portfolio_status" for column in columns)
     except Exception:
         return False
 
@@ -324,19 +326,24 @@ def _ensure_status_column(db: Session) -> bool:
     return _portfolio_status_column_exists(db)
 
 
-def _get_status(db: Session, p: Portfolio) -> str:
-    if _ensure_status_column(db):
-        row = db.execute(
-            sqltext("SELECT portfolio_status FROM portfolios WHERE id=:i"),
-            {"i": int(p.id)},
-        ).fetchone()
-        s = None if row is None else (row[0] if isinstance(row, tuple) else row._mapping.get("portfolio_status"))
-        if s in VALID_STATES:
-            return s
-    # 启发式：从未决策成功 + 从未对账成功 = PENDING_INITIAL_REVIEW
-    if p.last_decision_trade_date is None and p.last_reconciled_trade_date is None:
-        return "PENDING_INITIAL_REVIEW"
-    return "READY"
+def _get_status(db: Session, p: Portfolio, *, current_read: bool = False) -> str:
+    # Reading a status must never run the legacy schema-repair DDL or commit
+    # unrelated work. Only _set_status owns that write-side compatibility path.
+    with db.no_autoflush:
+        if _portfolio_status_column_exists(db):
+            row = db.execute(
+                sqltext("SELECT portfolio_status FROM portfolios WHERE id=:i" + (
+                    " FOR UPDATE" if current_read and db.get_bind().dialect.name != "sqlite" else ""
+                )),
+                {"i": int(p.id)},
+            ).fetchone()
+            s = None if row is None else (row[0] if isinstance(row, tuple) else row._mapping.get("portfolio_status"))
+            if s in VALID_STATES:
+                return s
+        # 启发式：从未决策成功 + 从未对账成功 = PENDING_INITIAL_REVIEW
+        if p.last_decision_trade_date is None and p.last_reconciled_trade_date is None:
+            return "PENDING_INITIAL_REVIEW"
+        return "READY"
 
 
 def _set_status(db: Session, p: Portfolio, to_state: str) -> None:
@@ -408,6 +415,7 @@ class ReconciliationFixConfirmation:
     operator_id: str
     acknowledged_diffs_cleared: bool
     portfolio_now_ready: bool
+    audit_event_id: int | None = None
 
 
 def confirm_reconciliation_fixed(
@@ -419,6 +427,7 @@ def confirm_reconciliation_fixed(
     acknowledge_all_diffs_cleared: bool = False,
     correlation_id: str | None = None,
     force_skip_re_reconcile: bool = False,
+    review_note: str | None = None,
 ) -> ReconciliationFixConfirmation:
     """WP0-2 TR-02.7b2：人工确认对账差异已修正。"""
     if not operator_id:
@@ -431,44 +440,66 @@ def confirm_reconciliation_fixed(
     if p is None:
         raise ValueError(f"Portfolio {portfolio_id} not found")
 
-    # 重跑一次对账（除非管理员显式跳过）
-    if not force_skip_re_reconcile:
-        try:
-            from app.services.portfolio_reconciliation import reconcile_trade_date
-            report = reconcile_trade_date(db, portfolio_id, trade_date,
-                                          operator_id=operator_id,
-                                          correlation_id=correlation_id)
-            if report.has_any_diff and report.status == "BLOCKED":
-                raise StateTransitionError(
-                    portfolio_id, "RECONCILIATION_BLOCKED", "READY",
-                    reason=(
-                        "Re-reconcile仍有差异："
-                        + ", ".join(
-                            f"{d.kind}#{d.symbol_id or 'global'}"
-                            for d in report.differences
-                            if d.kind != "NOT_CHECKED"
-                        )
-                    ),
-                )
-        except ImportError:
-            # 本模块可独立加载，缺对账服务时跳过重跑，依赖调用方校验
-            pass
+    if force_skip_re_reconcile:
+        raise ValueError("对账确认必须重跑且差异清零，不能跳过校验")
+    if review_note is not None and len(review_note.strip()) < 10:
+        raise ValueError("对账确认备注至少需要 10 个字")
+    from_state = _get_status(db, p)
+    reconciliation_before = getattr(p.status_reconciliation, "value", p.status_reconciliation)
+    if from_state != "RECONCILIATION_BLOCKED" and reconciliation_before != "RECONCILIATION_BLOCKED":
+        raise StateTransitionError(portfolio_id, from_state, "READY", reason="仅对账阻断状态可确认修复")
+    # Fail closed: neither a BLOCKED report with no rows nor a missing service
+    # is evidence that reconciliation passed.
+    from app.services.portfolio_reconciliation import reconcile_trade_date
+    report = reconcile_trade_date(db, portfolio_id, trade_date,
+                                  operator_id=operator_id,
+                                  correlation_id=correlation_id)
+    if report.status != "PASSED" or report.differences:
+        raise StateTransitionError(
+            portfolio_id, "RECONCILIATION_BLOCKED", "READY",
+            reason="Re-reconcile仍有差异：" + ", ".join(
+                f"{d.kind}#{d.symbol_id or 'global'}" for d in report.differences
+            ),
+        )
 
     # 单调推进 last_reconciled_trade_date
     if p.last_reconciled_trade_date is None or p.last_reconciled_trade_date < trade_date:
         p.last_reconciled_trade_date = trade_date
 
-    res = transition_portfolio_state(
-        db, portfolio_id, "READY",
+    if from_state == "RECONCILIATION_BLOCKED":
+        transition_portfolio_state(
+            db, portfolio_id, "READY",
+            operator_id=operator_id, correlation_id=correlation_id,
+            reason="Manual reconciliation confirmation after diffs cleared",
+        )
+    to_state = _get_status(db, p)
+    from app.services.portfolio_status import confirm_active_model_binding, resolve_composite_status
+    from app.services.data_governance_audit import write_audit_event
+    confirm_active_model_binding(
+        db, portfolio_id, confirm_model_binding=False, confirm_reconciliation_passed=True,
+    )
+    event = write_audit_event(
+        db, "DATA_BLOCK_RESOLUTION", portfolio_id=portfolio_id,
+        business_key=f"reconciliation::{trade_date.isoformat()}",
         operator_id=operator_id, correlation_id=correlation_id,
-        reason="Manual reconciliation confirmation after diffs cleared",
+        before={"portfolio_state": from_state, "status_reconciliation": reconciliation_before},
+        after={"portfolio_state": to_state, "status_reconciliation": "READY", "last_reconciled_trade_date": trade_date.isoformat()},
+        attributes={
+            "confirmation_type": "RECONCILIATION_CONFIRMED",
+            "trade_date": trade_date.isoformat(), "ack": True,
+            "review_note": review_note.strip() if review_note else None,
+            "from_state": from_state, "to_state": to_state,
+            "reconciliation_status": report.status,
+        },
+        note=review_note.strip() if review_note else "本人确认对账差异已修复（内部兼容调用未提供备注）",
     )
     return ReconciliationFixConfirmation(
         portfolio_id=portfolio_id,
         trade_date=trade_date,
         operator_id=operator_id,
         acknowledged_diffs_cleared=True,
-        portfolio_now_ready=(res.to_state == "READY"),
+        portfolio_now_ready=(to_state == "READY" and resolve_composite_status(p).composite_status.value == "READY"),
+        audit_event_id=event.event_id,
     )
 
 

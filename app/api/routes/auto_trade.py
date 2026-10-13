@@ -44,6 +44,7 @@ from app.services.auto_trade_readiness import (
     readiness_to_dict,
 )
 from app.services.auto_trade_safety import check_data_health
+from app.services.portfolio_action_items import build_portfolio_action_items
 from app.services.portfolio_members import has_position, list_members
 
 
@@ -338,6 +339,45 @@ def get_auto_trade_readiness_route(
     response = readiness_to_dict(result)
     response["portfolio_id"] = portfolio_id
     return response
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/auto-trade/action-items",
+    tags=["auto-trade"],
+)
+def get_portfolio_action_items_route(
+    portfolio_id: int,
+    for_schedule: bool = True,
+    db: Session = Depends(get_db),
+):
+    """P0 行动项聚合：HG1 状态机 + 就绪门禁 + G7 运维阻断的只读归并视图。
+
+    - 不存在组合：404。
+    - 纯只读：不触发状态转移、对账或审计写入。
+    - 默认 for_schedule=true，与顶栏就绪检查口径一致。
+    """
+    _get_portfolio_or_404(db, portfolio_id)
+
+    try:
+        payload = build_portfolio_action_items(
+            db,
+            portfolio_id,
+            for_schedule=bool(for_schedule),
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("action-items 聚合失败 portfolio_id=%s", portfolio_id)
+        raise HTTPException(
+            status_code=500,
+            detail="行动项加载失败，请稍后重试",
+        ) from exc
+
+    payload["portfolio_id"] = portfolio_id
+    return payload
 
 
 # ----------------------------------------------------------------------------

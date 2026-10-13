@@ -18,6 +18,7 @@ from app.models.portfolio import Portfolio
 from app.models.score import Score
 from app.models.symbol import Symbol
 from app.services.decision_engine import default_engine
+from tests.portfolio_binding_helpers import bind_applied_snapshot
 
 
 import pytest
@@ -55,6 +56,8 @@ def _seed_three_mode_portfolio(db):
         effective_from=datetime(2025, 1, 1),
     )
     db.add(snapshot)
+    bind_applied_snapshot(db, snapshot)
+    portfolio.last_decision_trade_date = trade_date
     db.commit()
     return portfolio, snapshot, trade_date, s_auto, s_manual, s_confirm
 

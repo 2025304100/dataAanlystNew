@@ -1,3 +1,5 @@
+import { resolvePortfolioNavigation } from "./actionItemRegistry";
+
 /**
  * 应用内跳转的可替换 helper（用于 P2 流水线 UI 从 Settings 跳到因子中心）。
  *
@@ -61,5 +63,44 @@ export function navigate(url: string): void {
     }
   } catch {
     /* 忽略 */
+  }
+}
+
+/**
+ * 打开「设置」并定位到内部 section（如 settings:data-center / settings:tasks）。
+ * 先写 localStorage（Settings 挂载时的初值），再派事件（已挂载则即时切换），双保险，
+ * 不依赖调用时 Settings 是否已挂载。
+ */
+export function openSettingsSection(section: string): void {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem("settings_active_section", section);
+    }
+  } catch {
+    /* 隐私模式等场景下存储不可用，忽略后仍有事件路径 */
+  }
+  try {
+    if (typeof window !== "undefined" && typeof CustomEvent === "function") {
+      window.dispatchEvent(new CustomEvent("settings:navigate", { detail: section }));
+    }
+  } catch {
+    /* 环境不支持 CustomEvent，忽略 */
+  }
+}
+
+/**
+ * 请求组合交易主壳切换子 Tab 并做一次性高亮。
+ * 由 PortfolioTradingShell 监听 `portfolio:subtab-navigate` 完成实际切换。
+ */
+export function requestPortfolioSubtab(tab: string): void {
+  if (!resolvePortfolioNavigation(tab)) return;
+  try {
+    if (typeof window !== "undefined" && typeof CustomEvent === "function") {
+      window.dispatchEvent(
+        new CustomEvent("portfolio:subtab-navigate", { detail: { tab } }),
+      );
+    }
+  } catch {
+    /* ignore */
   }
 }

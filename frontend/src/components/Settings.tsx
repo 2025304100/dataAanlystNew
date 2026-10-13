@@ -77,7 +77,7 @@ export default function Settings() {
     const handleSettingsNavigate = (event: Event) => {
       const target = (event as CustomEvent<string>).detail;
       const section = target === "api-management" ? "api-mgmt" : target;
-      if (["factor-model", "factor-center", "factor-mining", "data-center", "api-mgmt"].includes(section)) {
+      if (["factor-model", "factor-center", "factor-mining", "data-center", "api-mgmt", "tasks"].includes(section)) {
         setActiveSection(section as typeof activeSection);
       }
     };

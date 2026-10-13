@@ -12,8 +12,15 @@
 
   POST /portfolios/{pid}/confirm-reconciliation
     body: { trade_date: date, acknowledge_all_diffs_cleared: bool,
-            force_skip_re_reconcile?: bool, operator_id?: string }
-    → 人工对账修复确认（先重跑对账 → 对账清零 → RECONCILIATION_BLOCKED → READY）
+            review_note: string, operator_id?: string }
+    → 本人确认（备注至少 10 字 + 重跑差异清零；只解除对账阻断，保留其他锁定）
+
+  GET /portfolios/{pid}/model-binding-review
+    → 只读模型与策略变更摘要（上次明确接受绑定 / 当前应用绑定 / 确认阻断）
+
+  POST /portfolios/{pid}/confirm-model-binding
+    body: { snapshot_id: string, model_run_id?: string, review_note?: string, ack: true }
+    → 接受用户看到的有效绑定；变化返回 409，仅解除模型维度锁定并原子记录审计
 
   POST /portfolios/{pid}/transition-state
     body: { to_state: string, reason?: string } (X-User 作为 operator_id)
@@ -38,7 +45,7 @@
   - 404 组合不存在
   - 400 参数非法（trade_date 格式 / to_state 不在 7 状态枚举 / ack 未勾选）
   - 409 状态机非法跳转（Response detail = ILLEGAL_STATE_TRANSITION；并已写审计事件）
-  - 428 预条件不满足：confirm-reconciliation 但当前不是 RECONCILIATION_BLOCKED
+  - 428 预条件不满足：confirm-reconciliation 但运行状态与对账维度均无对账阻断
 """
 from __future__ import annotations
 
@@ -56,7 +63,11 @@ from app.models.portfolio import Portfolio
 from app.services.data_governance_audit import (
     ALLOWED_AUDIT_ACTIONS,
     DataGovernanceAuditEvent,
+    write_audit_event,
 )
+from app.services.portfolio_binding_review import BINDING_CONFIRMATION_TYPE, build_binding_review
+from app.services.portfolio_status import confirm_active_model_binding, resolve_composite_status
+from app.services.factors.__facade__ import lock_score_runtime_for_binding_review
 from app.services.factors.trade_calendar import (
     EPOCH_DATE,
     previous_complete_trade_date,
@@ -167,7 +178,7 @@ class ConfirmReconciliationRequest(BaseModel):
     )
     force_skip_re_reconcile: bool = Field(
         False,
-        description="管理员模式：跳过重跑对账直接推进 last_reconciled_trade_date（慎用）",
+        description="兼容旧字段；确认接口拒绝跳过重跑对账",
     )
     operator_id: str | None = Field(
         default=None,
@@ -178,6 +189,13 @@ class ConfirmReconciliationRequest(BaseModel):
     force_skip: bool | None = None
     force_rerun_before: bool | None = None
     review_note: str | None = None
+
+
+class ConfirmModelBindingRequest(BaseModel):
+    snapshot_id: str = Field(min_length=1, max_length=64)
+    model_run_id: str | None = None
+    review_note: str | None = None
+    ack: bool = False
 
 
 class ReconciliationDiffResponse(BaseModel):
@@ -240,6 +258,91 @@ class ConfirmReconciliationResponse(BaseModel):
     last_reconciled_trade_date: date | None = None
     acknowledged_diffs_cleared: bool = False
     portfolio_now_ready: bool = False
+    audit_event_id: int | None = None
+
+
+@router.get("/portfolios/{portfolio_id}/model-binding-review")
+def get_portfolio_model_binding_review(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return build_binding_review(db, _load_portfolio(db, portfolio_id))
+
+
+@router.post("/portfolios/{portfolio_id}/confirm-model-binding")
+def confirm_portfolio_model_binding(
+    portfolio_id: int,
+    payload: ConfirmModelBindingRequest,
+    db: Session = Depends(get_db),
+    actor: str = Depends(_actor),
+) -> dict[str, Any]:
+    if payload.ack is not True:
+        raise HTTPException(status_code=400, detail="请确认接受所展示的模型与策略变更")
+    # Re-read in the write transaction so acceptance never uses a stale UI view.
+    p = db.execute(
+        select(Portfolio).where(Portfolio.id == portfolio_id)
+        .with_for_update().execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if p is None:
+        raise HTTPException(status_code=404, detail="组合不存在")
+    lock_score_runtime_for_binding_review(db)
+    review = build_binding_review(db, p, current_read=True)
+    if payload.snapshot_id != review["snapshot_id"] or (
+        "model_run_id" in payload.model_fields_set
+        and payload.model_run_id != review["model_run_id"]
+    ):
+        raise HTTPException(status_code=409, detail={
+            "error_code": "BINDING_REVIEW_CHANGED",
+            "message": "模型或策略快照已变化，请刷新变更摘要后重新确认",
+        })
+    if not review["can_confirm"]:
+        raise HTTPException(status_code=409, detail={
+            "error_code": "BINDING_REVIEW_BLOCKED",
+            "message": "当前绑定无法确认",
+            "blockers": review["blockers"],
+        })
+    from_state = _psm_get_status(db, p)
+    status_model_before = str(p.status_model)
+    corr = _corr_id()
+    try:
+        confirm_active_model_binding(db, portfolio_id, confirm_model_binding=True)
+        # Clear only the legacy MODEL_INACTIVE state. ADMIN_PAUSED, initial
+        # review, interruption and every independent dimension stay intact.
+        if from_state == "MODEL_INACTIVE":
+            transition_portfolio_state(
+                db, portfolio_id, "READY", operator_id=actor,
+                correlation_id=corr, reason="本人确认接受模型与策略变更",
+            )
+        to_state = _psm_get_status(db, p)
+        event = write_audit_event(
+            db, "FACTOR_USAGE_APPLIED", portfolio_id=portfolio_id,
+            business_key=review["snapshot_id"], operator_id=actor,
+            correlation_id=corr,
+            before={"accepted_binding": review["before"], "status_model": status_model_before},
+            after={"accepted_binding": review["after"], "status_model": "READY"},
+            attributes={
+                "confirmation_type": BINDING_CONFIRMATION_TYPE,
+                "first_confirmation": review["first_confirmation"],
+                "change_summary": review["change_summary"],
+                "review_note": (payload.review_note or "").strip() or None,
+                "from_state": from_state, "to_state": to_state,
+                "ack": True,
+            },
+            note=(payload.review_note or "").strip() or "本人确认接受所展示的模型与策略快照",
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(p)
+    composite = resolve_composite_status(p).composite_status.value
+    current_state = composite if to_state == "READY" and composite != "READY" else to_state
+    return {
+        "portfolio_id": portfolio_id, "snapshot_id": review["snapshot_id"],
+        "model_run_id": review["model_run_id"], "model_confirmed": True,
+        "current_state": current_state, "audit_event_id": event.event_id,
+        "binding_review": build_binding_review(db, p),
+    }
 
 
 # ──────────────────────────────────────────────────────────── GET /portfolios/{pid}/status
@@ -363,13 +466,14 @@ def confirm_portfolio_reconciliation(
         raise HTTPException(status_code=400, detail="operator_id is required")
 
     current_state = _psm_get_status(db, p)
-    if current_state != "RECONCILIATION_BLOCKED":
-        # 仅在 RBLOCKED 时走确认接口；READY 状态不需要人工确认
+    if current_state != "RECONCILIATION_BLOCKED" and getattr(
+        p.status_reconciliation, "value", p.status_reconciliation
+    ) != "RECONCILIATION_BLOCKED":
         raise HTTPException(
             status_code=428,
             detail=(
                 f"当前组合状态为 {current_state}，无需人工对账修复确认；"
-                "仅在 RECONCILIATION_BLOCKED 状态可调用本接口。"
+                "仅在运行状态或对账维度为 RECONCILIATION_BLOCKED 时可调用本接口。"
             ),
         )
 
@@ -385,6 +489,12 @@ def confirm_portfolio_reconciliation(
             ),
         )
 
+    review_note = (payload.review_note or "").strip()
+    if len(review_note) < 10:
+        raise HTTPException(status_code=422, detail="对账确认备注至少需要 10 个字")
+    if payload.force_skip_re_reconcile or payload.force_skip or payload.force_rerun_before is False:
+        raise HTTPException(status_code=400, detail="对账确认必须重跑且差异清零，不能跳过校验")
+
     from_state = current_state
     try:
         result = confirm_reconciliation_fixed(
@@ -392,10 +502,9 @@ def confirm_portfolio_reconciliation(
             payload.trade_date or p.last_decision_trade_date or _previous_closed_trade_date(db),
             operator_id=operator,
             acknowledge_all_diffs_cleared=True,
-            force_skip_re_reconcile=bool(
-                payload.force_skip_re_reconcile if payload.force_skip is None else payload.force_skip
-            ),
+            force_skip_re_reconcile=False,
             correlation_id=corr,
+            review_note=review_note,
         )
     except StateTransitionError as e:
         # 重跑对账仍有差异 → 409
@@ -403,6 +512,9 @@ def confirm_portfolio_reconciliation(
     except ValueError as e:
         # ack 未勾选或 operator 非法 → 400
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception:
+        db.rollback()
+        raise
 
     db.commit()
     db.refresh(p)
@@ -411,10 +523,11 @@ def confirm_portfolio_reconciliation(
         trade_date=result.trade_date,
         operator_id=result.operator_id,
         from_state=from_state,
-        to_state="READY",
+        to_state=_psm_get_status(db, p),
         last_reconciled_trade_date=p.last_reconciled_trade_date,
         acknowledged_diffs_cleared=result.acknowledged_diffs_cleared,
         portfolio_now_ready=result.portfolio_now_ready,
+        audit_event_id=result.audit_event_id,
     )
 
 
@@ -1018,7 +1131,8 @@ def preflight_auto_simulation(
     decision_at = payload.decision_at or datetime.now()
 
     # ── Check 1: 状态机 READY ───────────────────────────────────────────────
-    if current_state != "READY":
+    composite_state = resolve_composite_status(p).composite_status.value
+    if current_state != "READY" or composite_state != "READY":
         audit_auto_simulation_result(
             db, portfolio_id, payload.trade_date, result_status="FAILED",
             decision_run_id=f"preflight_skip_{portfolio_id}_{payload.trade_date.isoformat()}",
@@ -1032,8 +1146,8 @@ def preflight_auto_simulation(
             proceed=False,
             skip_reason="PORTFOLIO_NOT_READY",
             skip_detail=(
-                f"当前状态为 {current_state}，auto_simulation 必须从 READY 启动；"
-                "可能是对账阻塞(RECONCILIATION_BLOCKED)或管理员暂停(ADMIN_PAUSED)。"
+                f"当前运行状态为 {current_state}，维度状态为 {composite_state}，"
+                "自动执行必须在运行状态和各项条件均已就绪时启动。"
             ),
             from_state=current_state, to_state=None,
         )

@@ -690,9 +690,35 @@ def save_and_apply_usage(
     now = _utcnow_naive()
 
     try:
-        # 乐观锁：重读 runtime 取版本
-        runtime = db.get(FactorRuntimeState, 1) or _get_runtime_state(db)
+        # Accept and apply acquire the portfolio lock in the same order.
+        # A concurrent new application cannot have its confirmation lock
+        # cleared by acceptance of an earlier snapshot.
+        portfolio = db.execute(
+            select(Portfolio).where(Portfolio.id == portfolio_id)
+            .with_for_update().execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+        runtime = db.execute(
+            select(FactorRuntimeState).where(FactorRuntimeState.id == 1)
+            .with_for_update().execution_options(populate_existing=True)
+        ).scalar_one_or_none() or _get_runtime_state(db)
         pre_version = runtime.version
+        idem = _snapshot_idempotency_key(portfolio_id, _usage_content_hash(portfolio_id, payload), now)
+        existing = db.execute(
+            select(StrategyExecutionSnapshot).where(
+                StrategyExecutionSnapshot.portfolio_id == portfolio_id,
+                StrategyExecutionSnapshot.idempotency_key == idem,
+                StrategyExecutionSnapshot.snapshot_type == "save_and_apply",
+            ).limit(1)
+        ).scalar_one_or_none()
+        if existing and existing.portfolio_factor_usage_id:
+            existing_usage = db.get(PortfolioFactorUsage, existing.portfolio_factor_usage_id)
+            if existing_usage and existing_usage.status == "active":
+                return SaveAndApplyResponse(
+                    factor_usage=PortfolioFactorUsageRead.model_validate(existing_usage),
+                    strategy_snapshot_id=existing.id, snapshot_hash=existing.snapshot_hash,
+                    idempotency_key=idem, effective_from=existing.effective_from,
+                    warnings=[],
+                )
 
         # 关闭旧 usage
         active_usages = db.execute(
@@ -713,6 +739,11 @@ def save_and_apply_usage(
         snapshot, new_usage, _warns, _clock = _assemble_preflight_or_save_payload(
             db, portfolio_id, payload, actor,
         )
+        if any(w.severity == "blocking" for w in _warns):
+            raise HTTPException(status_code=409, detail={
+                "error": "BINDING_CHANGED_DURING_APPLY",
+                "warnings": [w.model_dump(mode="json") for w in _warns if w.severity == "blocking"],
+            })
         # 重写 id 里的时间戳为 now（统一使用事务提交时间）
         new_usage.id = content_hash("pfu", new_usage.content_hash, now.isoformat(), actor)
         new_usage.effective_from = now
@@ -721,11 +752,18 @@ def save_and_apply_usage(
         new_usage.status = "active" if new_usage.run_mode.startswith("production") else "active"
         snapshot.portfolio_factor_usage_id = new_usage.id
         snapshot.id = content_hash("ses", snapshot.snapshot_hash, now.isoformat(), actor)
+        snapshot.idempotency_key = idem
         snapshot.effective_from = now
         snapshot.created_at = now
 
         db.add(new_usage)
         db.add(snapshot)
+        # A newly applied immutable snapshot changes the portfolio's execution
+        # binding. Keep takeover locked until the user accepts its review.
+        # Idempotent recovery below returns the existing snapshot without
+        # creating a new confirmation requirement.
+        if portfolio is not None:
+            portfolio.status_model = "MODEL_INACTIVE"
 
         # 审计（Q28+方案 A 变更）
         db.add(FactorModelAuditLog(

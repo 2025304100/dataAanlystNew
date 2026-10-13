@@ -63,6 +63,11 @@ BLOCKER_SOURCE_MODE_INVALID = "SOURCE_MODE_INVALID"
 BLOCKER_NO_TRADEABLE_RANGE = "NO_TRADEABLE_RANGE"
 BLOCKER_MARKET_DATA_STALE = "MARKET_DATA_STALE"
 BLOCKER_SCHEDULE_DISABLED = "SCHEDULE_DISABLED"
+# Execution-only prerequisites are displayed by action-items. They do not
+# change this legacy readiness service or the actual execution gate.
+BLOCKER_DECISION_ENGINE_SOURCE_REQUIRED = "DECISION_ENGINE_SOURCE_REQUIRED"
+BLOCKER_STRATEGY_SNAPSHOT_REQUIRED = "STRATEGY_SNAPSHOT_REQUIRED"
+BLOCKER_STRATEGY_BINDING_INVALID = "STRATEGY_BINDING_INVALID"
 
 WARNING_SCHEDULE_DISABLED = "SCHEDULE_DISABLED"
 WARNING_SOURCE_MODE_LEGACY_SCAN = "SOURCE_LEGACY_SCAN"
@@ -77,6 +82,156 @@ class ReadinessIssue:
     code: str
     message: str
     detail: str | None = None
+    # P0 行动项：基础级别由「进入 blockers / warnings 哪个列表」决定，
+    # title/fix_link 由 READINESS_FIX_REGISTRY 统一补齐（见下方工厂）。
+    severity: str = "blocker"
+    title: str | None = None
+    fix_link: dict[str, Any] | None = None
+
+
+# 主动作类型与前端契约一致：toggle=原地开关 / redirect=跨页 / subtab=组合内子页 /
+# open-modal=打开既有弹窗 / guided=分步引导 / none=仅说明。
+READINESS_ACTION_TYPES: frozenset[str] = frozenset(
+    {"toggle", "redirect", "subtab", "open-modal", "guided", "none"}
+)
+
+# title ≤12 字、impact 一句话；target 对 redirect 填 settings 区、subtab 填子页键、
+# open-modal 填弹窗键，toggle/guided/none 为 None。
+# display_severity 仅用于聚合层的「展示降级」（如今日无信号 warning→info）。
+READINESS_FIX_REGISTRY: dict[str, dict[str, Any]] = {
+    BLOCKER_PORTFOLIO_DISABLED: {
+        "title": "自动接管未开启",
+        "impact": "开关关闭，今天不会自动下单",
+        "action_type": "toggle",
+        "target": None,
+    },
+    BLOCKER_ACCOUNT_NOT_SIMULATED: {
+        "title": "账户类型不支持",
+        "impact": "自动接管当前仅支持模拟账户",
+        # P0 前端暂无「编辑组合账户类型」入口，降级为说明；待入口就绪再改 subtab/redirect。
+        "action_type": "none",
+        "target": None,
+    },
+    BLOCKER_RULE_NOT_CONFIGURED: {
+        "title": "未配置激活策略",
+        "impact": "没有可执行的选股与风控规则",
+        "action_type": "subtab",
+        "target": "strategy",
+    },
+    BLOCKER_RULE_INVALID_PARAMS: {
+        "title": "策略参数不合法",
+        "impact": "仓位或止损等字段超出允许范围",
+        "action_type": "subtab",
+        "target": "strategy",
+    },
+    BLOCKER_SOURCE_MODE_INVALID: {
+        "title": "标的来源配置异常",
+        "impact": "决策引擎取不到选股范围",
+        # P0 前端无来源模式配置控件，降级为说明。
+        "action_type": "none",
+        "target": None,
+    },
+    BLOCKER_NO_TRADEABLE_RANGE: {
+        "title": "没有可交易对象",
+        "impact": "当前既无持仓，也没有合格买入计划",
+        "action_type": "open-modal",
+        "target": "add-candidate",
+    },
+    BLOCKER_MARKET_DATA_STALE: {
+        "title": "行情或评分过期",
+        "impact": "今天不会真实下单，回测与手动分析不受影响",
+        "action_type": "redirect",
+        "target": "settings:data-center",
+    },
+    BLOCKER_SCHEDULE_DISABLED: {
+        "title": "自动调度未启用",
+        "impact": "不会每日自动执行，手动 Dry Run 不受影响",
+        "action_type": "redirect",
+        "target": "settings:tasks",
+    },
+    WARNING_SOURCE_MODE_LEGACY_SCAN: {
+        "title": "使用旧扫描来源",
+        "impact": "不阻断执行，新鲜度检查较宽松，建议迁移",
+        "action_type": "none",
+        "target": None,
+    },
+    WARNING_SOURCE_ENV_OVERRIDE: {
+        "title": "来源被环境开关熔断",
+        "impact": "紧急熔断中，真实自动交易已阻断，需恢复成员来源开关",
+        "action_type": "none",
+        "target": None,
+    },
+    WARNING_NO_AUTO_MEMBERS: {
+        "title": "无自动模式成员",
+        "impact": "成员不会被自动调仓，候选池建仓不受影响",
+        "action_type": "subtab",
+        "target": "members",
+    },
+    WARNING_NO_CANDIDATES: {
+        "title": "组合还没有标的",
+        "impact": "自动交易没有工作对象，不会产生买卖",
+        "action_type": "open-modal",
+        "target": "add-candidate",
+    },
+    WARNING_SIGNAL_EMPTY_TODAY: {
+        "title": "今日无买入信号",
+        "impact": "属于正常节奏，不代表系统故障",
+        "action_type": "none",
+        "target": None,
+        "display_severity": "info",
+    },
+    BLOCKER_DECISION_ENGINE_SOURCE_REQUIRED: {
+        "title": "执行来源未启用",
+        "impact": "真实自动交易需要成员来源开关，旧扫描仅用于双跑对照",
+        "action_type": "none",
+        "target": None,
+    },
+    BLOCKER_STRATEGY_SNAPSHOT_REQUIRED: {
+        "title": "策略尚未保存应用",
+        "impact": "请完成策略预检并保存应用，生成可执行的策略快照",
+        "action_type": "subtab",
+        "target": "strategy",
+    },
+    BLOCKER_STRATEGY_BINDING_INVALID: {
+        "title": "策略绑定需要更新",
+        "impact": "当前快照的模型或策略绑定不满足执行条件，请重新保存应用",
+        "action_type": "subtab",
+        "target": "strategy",
+    },
+}
+
+
+def _make_issue(
+    code: str,
+    message: str,
+    severity: str,
+    detail: str | None = None,
+) -> ReadinessIssue:
+    """从注册表补 title/fix_link；未登记 code 走安全兜底（动作 none、不阻断序列化）。"""
+    meta = READINESS_FIX_REGISTRY.get(code, {})
+    action_type = meta.get("action_type", "none")
+    if action_type not in READINESS_ACTION_TYPES:
+        action_type = "none"
+    fix_link: dict[str, Any] = {"action_type": action_type}
+    target = meta.get("target")
+    if target:
+        fix_link["target"] = target
+    return ReadinessIssue(
+        code=code,
+        message=message,
+        detail=detail,
+        severity=severity,
+        title=meta.get("title"),
+        fix_link=fix_link,
+    )
+
+
+def _blocker(code: str, message: str, detail: str | None = None) -> ReadinessIssue:
+    return _make_issue(code, message, "blocker", detail)
+
+
+def _warning(code: str, message: str, detail: str | None = None) -> ReadinessIssue:
+    return _make_issue(code, message, "warning", detail)
 
 
 @dataclass(slots=True)
@@ -286,19 +441,9 @@ def get_auto_trade_readiness(
     account_ready = portfolio.account_type == "simulated"
 
     if not enabled:
-        blockers.append(
-            ReadinessIssue(
-                code=BLOCKER_PORTFOLIO_DISABLED,
-                message="自动交易开关未开启",
-            )
-        )
+        blockers.append(_blocker(BLOCKER_PORTFOLIO_DISABLED, "自动交易开关未开启"))
     if not account_ready:
-        blockers.append(
-            ReadinessIssue(
-                code=BLOCKER_ACCOUNT_NOT_SIMULATED,
-                message="仅模拟组合可执行自动交易",
-            )
-        )
+        blockers.append(_blocker(BLOCKER_ACCOUNT_NOT_SIMULATED, "仅模拟组合可执行自动交易"))
 
     # 2. 来源模式（组合自身持久化字段为唯一来源；env 仅作为紧急熔断参考并记录 warning）
     source_mode, source_mode_valid = _normalize_source_mode(
@@ -306,26 +451,26 @@ def get_auto_trade_readiness(
     )
     if not source_mode_valid:
         blockers.append(
-            ReadinessIssue(
-                code=BLOCKER_SOURCE_MODE_INVALID,
-                message="自动交易来源模式非法，已回退为默认值",
+            _blocker(
+                BLOCKER_SOURCE_MODE_INVALID,
+                "自动交易来源模式非法，已回退为默认值",
                 detail=f"raw={getattr(portfolio, 'auto_trade_source_mode', None)}",
             )
         )
     if source_mode == AUTO_TRADE_SOURCE_LEGACY_SCAN:
         warnings.append(
-            ReadinessIssue(
-                code=WARNING_SOURCE_MODE_LEGACY_SCAN,
-                message="当前仍使用旧全局扫描来源，建议迁移为 portfolio/members_only",
+            _warning(
+                WARNING_SOURCE_MODE_LEGACY_SCAN,
+                "当前仍使用旧全局扫描来源，建议迁移为 portfolio/members_only",
             )
         )
     from app.services.auto_trade_dual_run import is_member_source_enabled as _is_member_source_enabled
     env_source_enabled = bool(_is_member_source_enabled(portfolio_id))
     if source_mode != AUTO_TRADE_SOURCE_LEGACY_SCAN and not env_source_enabled:
         warnings.append(
-            ReadinessIssue(
-                code=WARNING_SOURCE_ENV_OVERRIDE,
-                message="成员来源全局开关已关闭，真实执行仍将回退为旧扫描逻辑",
+            _warning(
+                WARNING_SOURCE_ENV_OVERRIDE,
+                "成员来源全局开关已关闭，真实自动模拟执行将被阻断",
             )
         )
     # source_ready：来源模式合法 + 非 legacy 或已在迁移期显式启用
@@ -338,11 +483,11 @@ def get_auto_trade_readiness(
     rule_configured, rule_invalid_reason = _validate_rule_fields(active_rule)
     if not rule_configured:
         blockers.append(
-            ReadinessIssue(
-                code=BLOCKER_RULE_NOT_CONFIGURED
+            _blocker(
+                BLOCKER_RULE_NOT_CONFIGURED
                 if "缺少激活策略规则" in (rule_invalid_reason or "")
                 else BLOCKER_RULE_INVALID_PARAMS,
-                message=rule_invalid_reason or "策略规则未配置",
+                rule_invalid_reason or "策略规则未配置",
             )
         )
 
@@ -417,23 +562,23 @@ def get_auto_trade_readiness(
         if fresh_symbol_count <= 0:
             data_ready = False
             blockers.append(
-                ReadinessIssue(
-                    code=BLOCKER_MARKET_DATA_STALE,
-                    message="行情或评分数据已过期，当前组合候选均未通过新鲜度检查",
+                _blocker(
+                    BLOCKER_MARKET_DATA_STALE,
+                    "行情或评分数据已过期，当前组合候选均未通过新鲜度检查",
                 )
             )
     if candidate_count == 0 and auto_member_count == 0 and position_count == 0:
         warnings.append(
-            ReadinessIssue(
-                code=WARNING_NO_CANDIDATES,
-                message="当前组合既无持仓，也没有候选或自动成员，自动交易不会产生任何动作",
+            _warning(
+                WARNING_NO_CANDIDATES,
+                "当前组合既无持仓，也没有候选或自动成员，自动交易不会产生任何动作",
             )
         )
     if source_mode != AUTO_TRADE_SOURCE_LEGACY_SCAN and auto_member_count == 0:
         warnings.append(
-            ReadinessIssue(
-                code=WARNING_NO_AUTO_MEMBERS,
-                message="当前组合没有配置为自动模式的成员，自动买入可能仅依赖组合候选池",
+            _warning(
+                WARNING_NO_AUTO_MEMBERS,
+                "当前组合没有配置为自动模式的成员，自动买入可能仅依赖组合候选池",
             )
         )
     if (position_count == 0 or source_mode == AUTO_TRADE_SOURCE_MEMBERS_ONLY) and eligible_buy_count == 0:
@@ -441,9 +586,9 @@ def get_auto_trade_readiness(
             b.code == BLOCKER_MARKET_DATA_STALE for b in blockers
         ):
             warnings.append(
-                ReadinessIssue(
-                    code=WARNING_SIGNAL_EMPTY_TODAY,
-                    message="今日暂无满足条件的买入计划，仍可卖出已有持仓",
+                _warning(
+                    WARNING_SIGNAL_EMPTY_TODAY,
+                    "今日暂无满足条件的买入计划，仍可卖出已有持仓",
                 )
             )
 
@@ -451,9 +596,9 @@ def get_auto_trade_readiness(
     tradeable_range_ok = position_count > 0 or eligible_buy_count > 0
     if not tradeable_range_ok:
         blockers.append(
-            ReadinessIssue(
-                code=BLOCKER_NO_TRADEABLE_RANGE,
-                message="当前组合既无可卖出持仓，也无可执行买入计划",
+            _blocker(
+                BLOCKER_NO_TRADEABLE_RANGE,
+                "当前组合既无可卖出持仓，也无可执行买入计划",
             )
         )
 
@@ -461,25 +606,24 @@ def get_auto_trade_readiness(
     schedule = _find_schedule_for_portfolio(db, portfolio_id)
     schedule_ready = bool(schedule and int(schedule.enabled or 0) == 1)
     if schedule is None:
-        warnings.append(
-            ReadinessIssue(
-                code=WARNING_SCHEDULE_DISABLED,
-                message="尚未创建自动交易定时任务，只能手动触发",
-            )
+        issue = (_blocker if for_schedule else _warning)(
+            BLOCKER_SCHEDULE_DISABLED,
+            "尚未创建自动交易定时任务，只能手动触发",
         )
+        (blockers if for_schedule else warnings).append(issue)
     elif not schedule_ready:
         if for_schedule:
             blockers.append(
-                ReadinessIssue(
-                    code=BLOCKER_SCHEDULE_DISABLED,
-                    message="自动交易定时任务已暂停，本次调度执行跳过",
+                _blocker(
+                    BLOCKER_SCHEDULE_DISABLED,
+                    "自动交易定时任务已暂停，本次调度执行跳过",
                 )
             )
         else:
             warnings.append(
-                ReadinessIssue(
-                    code=WARNING_SCHEDULE_DISABLED,
-                    message="自动交易定时任务已暂停",
+                _warning(
+                    WARNING_SCHEDULE_DISABLED,
+                    "自动交易定时任务已暂停",
                 )
             )
     last_schedule_run_at = _iso(schedule.last_run_at) if schedule is not None else None

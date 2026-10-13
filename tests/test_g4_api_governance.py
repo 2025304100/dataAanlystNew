@@ -284,7 +284,8 @@ def test_g4_api_03_confirm(tmp_alembic_db):
     with pytest.raises(HTTPException) as ei_c:
         confirm_portfolio_reconciliation(
             pid, ConfirmReconciliationRequest(trade_date=td,
-                                              acknowledge_all_diffs_cleared=True),
+                                              acknowledge_all_diffs_cleared=True,
+                                              review_note="已核对成交持仓与资金，所有差异已经修复"),
             db, "u_trader",
         )
     assert ei_c.value.status_code == 409
@@ -318,7 +319,8 @@ def test_g4_api_03_confirm(tmp_alembic_db):
         tps(db, pid, "RECONCILIATION_BLOCKED", operator_id="u_resetter")
         ok = confirm_portfolio_reconciliation(
             pid, ConfirmReconciliationRequest(trade_date=td,
-                                              acknowledge_all_diffs_cleared=True),
+                                              acknowledge_all_diffs_cleared=True,
+                                              review_note="已核对成交持仓与资金，所有差异已经修复"),
             db, "u_trader",
         )
     finally:

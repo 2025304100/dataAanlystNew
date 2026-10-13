@@ -3,8 +3,8 @@ import { AlertCircle, Briefcase, ChevronDown, Zap, Trophy, Plus, AlertTriangle, 
 import { Tooltip } from "antd";
 import { useApp } from "../../context/AppContext";
 import { api } from "../../api/client";
-import { t } from "../../i18n";
-import type { AutoTradeReadiness, PortfolioStatePermissions, PortfolioStatus, PortfolioStatusResponse } from "../../types";
+import { t, template } from "../../i18n";
+import type { ActionItemChecks, ActionItemsResponse, PortfolioStatePermissions, PortfolioStatus, PortfolioStatusResponse } from "../../types";
 import PortfolioOverview from "./PortfolioOverview";
 import PortfolioMembersTable from "./PortfolioMembersTable";
 import PortfolioStrategyRules from "./PortfolioStrategyRules";
@@ -15,6 +15,8 @@ import AddCandidateModal from "./AddCandidateModal";
 import PortfolioRankingDrawer from "./PortfolioRankingDrawer";
 import PortfolioReviewDrawer from "./PortfolioReviewDrawer";
 import PortfolioSelectorDropdown from "./PortfolioSelectorDropdown";
+import ReadinessRepairDrawer from "./ReadinessRepairDrawer";
+import { resolvePortfolioNavigation, type GovernanceTabTarget } from "../../utils/actionItemRegistry";
 
 /**
  * PortfolioTradingShell — 组合交易主壳
@@ -39,14 +41,9 @@ import PortfolioSelectorDropdown from "./PortfolioSelectorDropdown";
 
 type SubTabKey = "overview" | "members" | "strategy" | "backtest" | "governance";
 
-const VALID_SUB_TABS: SubTabKey[] = ["overview", "members", "strategy", "backtest", "governance"];
-
 /** 将 AppContext.activeSubTab 规整为 4 子 Tab 之一，非法值回退 'overview'。 */
 function resolveSubTab(raw: string | undefined): SubTabKey {
-  if (raw && (VALID_SUB_TABS as string[]).includes(raw)) {
-    return raw as SubTabKey;
-  }
-  return "overview";
+  return resolvePortfolioNavigation(raw)?.tab ?? "overview";
 }
 
 /** 实盘/模拟标签：account_type='manual' → 实盘，其余 → 模拟（默认模拟）。 */
@@ -56,186 +53,42 @@ function accountTypeLabel(accountType: string | undefined): string {
     : t("portfolioTrading.tag.simulated");
 }
 
-/* ==========================================================================
- * 就绪检查 code → 中文名 + 修复指引
- *   · 用户看到的 tooltip 中方括号改为「中文（原英文code）」格式
- *     → 用户先看中文，开发排错仍保留原枚举线索
- *   · 每个 code 配一组 fix[]：直接告诉用户"现在我该点哪里"
- * ======================================================================== */
-type ReadinessCodeMeta = { cn: string; category: "开关" | "账户" | "来源" | "规则" | "数据" | "范围" | "调度" | "其他"; fix: string[] };
-const READINESS_CODE_META: Record<string, ReadinessCodeMeta> = {
-  PORTFOLIO_DISABLED: {
-    cn: "自动交易开关未开", category: "开关",
-    fix: ["打开「自动接管」卡片右侧总开关；或前往治理 Tab 启用自动交易。"],
-  },
-  AUTO_TRADE_DISABLED: {
-    cn: "自动交易开关未开", category: "开关",
-    fix: ["打开「自动接管」卡片右侧总开关；或前往治理 Tab 启用自动交易。"],
-  },
-  ACCOUNT_NOT_SIMULATED: {
-    cn: "账户非模拟", category: "账户",
-    fix: [
-      "当前自动交易仅支持「模拟」账户类型。",
-      "操作：打开左上角「组合选择器→编辑组合」，把账户类型改为「模拟」；若需实盘自动，请先跑通模拟全流程后再升级。",
-    ],
-  },
-  SOURCE_MODE_INVALID: {
-    cn: "来源模式非法", category: "来源",
-    fix: [
-      "前往「组合→设置→自动交易来源」或「治理 Tab」：把 auto_trade_source_mode 选为合法值 portfolio / members_only / legacy_scan。",
-    ],
-  },
-  SOURCE_LEGACY_SCAN: {
-    cn: "使用旧全局扫描来源", category: "来源",
-    fix: [
-      "属于警告，不阻断执行，但建议迁移：在「治理 Tab→自动交易来源」切为 portfolio 或 members_only，可获得更稳定的新鲜度检查与范围。",
-    ],
-  },
-  WARNING_SOURCE_MODE_LEGACY_SCAN: {
-    cn: "使用旧全局扫描来源", category: "来源",
-    fix: [
-      "属于警告，不阻断执行，但建议迁移：在「治理 Tab→自动交易来源」切为 portfolio 或 members_only。",
-    ],
-  },
-  SOURCE_ENV_OVERRIDE: {
-    cn: "成员来源被环境变量熔断", category: "来源",
-    fix: [
-      "检查部署环境：是否设置了 `MEMBER_SOURCE_ENABLED=false`（紧急时期用于全局熔断成员来源）。",
-      "如非紧急情形，把开关改回 true；否则真实执行会回退到旧扫描逻辑。",
-    ],
-  },
-  WARNING_SOURCE_ENV_OVERRIDE: {
-    cn: "成员来源被环境变量熔断", category: "来源",
-    fix: [
-      "检查部署环境：是否设置了成员来源全局熔断开关；如非紧急，打开后可消除本警告。",
-    ],
-  },
-  RULE_NOT_CONFIGURED: {
-    cn: "未配置激活策略规则", category: "规则",
-    fix: [
-      "切换到「策略规则」Tab：选好选股池、风控阈值、调仓周期，然后**点击保存**，生成一条激活版本的规则快照。",
-      "如果用路径B绑定训练产出：请先在「因子模型训练页」训练一个「已验证」状态的模型，再回到本页下拉选中。",
-    ],
-  },
-  NO_RULE: {
-    cn: "缺少激活规则", category: "规则",
-    fix: ["切到「策略规则」Tab，保存一次激活版的规则。"],
-  },
-  RULE_INVALID_PARAMS: {
-    cn: "策略规则参数非法", category: "规则",
-    fix: [
-      "前往「策略规则」Tab 修复标红字段：通常是 max_single_position_pct / max_loss_per_trade_pct 等百分比超出 0~1 合法范围。",
-      "另一个常见原因：「阶段限制 stage_limits_json」为空——请在风控阶段限制模块里保存有效 JSON。",
-    ],
-  },
-  MARKET_DATA_STALE: {
-    cn: "行情或评分数据过期", category: "数据",
-    fix: [
-      "① 前往「设置 → 数据中心 → 行情底座」：点击「智能同步」或「每日同步」，把 A 股股票和指数行情拉到今天。",
-      "② 切换到「因子输入」Tab：点「同步/重算」候选的股票估值、财报历史、人气榜等因子依赖，直到候选新鲜度全部变为「今日」。",
-      "③ 同步完成后，点击页面中间「就绪检查」旁的「刷新状态」，readiness 会立即重算。",
-    ],
-  },
-  NO_FRESH_SCORES: {
-    cn: "最新评分缺失", category: "数据",
-    fix: [
-      "前往「因子输入 Tab」或「策略规则 Tab」：点「同步候选评分」，重新跑一轮候选打分，让评分更新时间刷新到今日。",
-    ],
-  },
-  NO_TRADEABLE_RANGE: {
-    cn: "无可交易范围", category: "范围",
-    fix: [
-      "当前既没持仓可卖，也没有任何可执行买入计划。",
-      "操作：① 先在「候选/持仓成员」Tab 手动添加几只股票；② 同步行情+评分（修复 MARKET_DATA_STALE）；③ 点「Dry Run 预演」让系统产生买入信号。",
-    ],
-  },
-  SCHEDULE_DISABLED: {
-    cn: "定时任务未创建或暂停", category: "调度",
-    fix: [
-      "前往「治理 → 调度任务」：创建或启用 `task_type=portfolio_auto_trade` 的定时任务，推荐每天 20:00 之后运行（对齐调度时间窗 HG2）。",
-      "注：手动 Dry Run / 真实执行不受调度影响，调度只负责「自动按天跑」。",
-    ],
-  },
-  NO_SCHEDULED_TASK: {
-    cn: "未创建自动交易定时任务", category: "调度",
-    fix: [
-      "前往「治理 → 调度任务」，新建一条 type=portfolio_auto_trade 的定时任务。",
-    ],
-  },
-  SCHEDULED_TASK_DISABLED: {
-    cn: "定时任务已暂停", category: "调度",
-    fix: ["前往「治理 → 调度任务」，把对应的定时任务切为「启用」。"],
-  },
-  SCHEDULE_WINDOW: {
-    cn: "不在调度时间窗", category: "调度",
-    fix: ["调度型就绪检查只会在每日允许时间段（默认 20:00 之后）判定为通过。手动执行 Dry Run / 真实下单不受此限。"],
-  },
-  NO_AUTO_MEMBERS: {
-    cn: "无自动模式成员", category: "范围",
-    fix: [
-      "前往「持仓成员」Tab：找到希望自动管理的成员行，把「执行模式」从「手动/确认」切为「自动」。",
-      "如果「自动交易来源 = portfolio」：即使没有自动成员，也可以直接靠候选池走自动买入（建仓时会自动创建成员）。",
-    ],
-  },
-  NO_CANDIDATES: {
-    cn: "无候选也无持仓", category: "范围",
-    fix: [
-      "点击页面右上角「+ 添加候选标的」，先加入若干只股票作为自动交易的选股范围。",
-      "没有候选也没有已有持仓的组合，自动交易没有工作对象，不会产生任何买卖动作。",
-    ],
-  },
-  NO_BUY_SIGNALS_TODAY: {
-    cn: "今日暂无买入信号", category: "范围",
-    fix: [
-      "属于「今日节奏」类警告（非阻塞）：说明当前候选打分没有产生买入 action，属于正常节奏。",
-      "如果希望主动产生信号：① 扩大选股池 / 加入更多候选；② 在「策略规则」调整因子权重或降低风控阈值；③ 先执行 Dry Run 查看真实打分明细。",
-    ],
-  },
-  DECISION_ENGINE_SOURCE_REQUIRED: {
-    cn: "决策引擎来源缺失", category: "来源",
-    fix: ["前往「设置 → 决策引擎」：打开成员来源订单计划的全局开关 members_source_enabled。"],
-  },
-  STRATEGY_SNAPSHOT_REQUIRED: {
-    cn: "缺少策略执行快照", category: "规则",
-    fix: [
-      "先在「策略规则 Tab」保存一次激活规则，然后跑一轮「Dry Run」或「回测」，系统会自动生成一份策略执行快照并应用。",
-    ],
-  },
-  NOT_READY: {
-    cn: "通用未就绪", category: "其他",
-    fix: ["查看 blockers 列表，按对应 code 逐项修复；或先执行一次 Dry Run 查看更详细的阻断明细。"],
-  },
-};
-
-function getReadinessCodeMeta(code: string): { cn: string; dev: string; fix: string[]; category: string } {
-  const m = READINESS_CODE_META[code];
-  if (m) return { cn: m.cn, dev: code, fix: m.fix, category: m.category };
-  const cn = code.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
-  return {
-    cn, dev: code, category: "其他",
-    fix: ["属于未知阻塞项，请把下方「message + code」一起截图发给技术支持定位。"],
-  };
-}
+const HEADER_CHECKS: Array<{ key: keyof ActionItemChecks; labelKey: string }> = [
+  { key: "enabled", labelKey: "repairDrawer.light.enabled" },
+  { key: "account_ready", labelKey: "repairDrawer.light.account" },
+  { key: "data_ready", labelKey: "repairDrawer.light.data" },
+  { key: "source_ready", labelKey: "repairDrawer.light.source" },
+  { key: "schedule_ready", labelKey: "repairDrawer.light.schedule" },
+];
 
 /* ==========================================================================
  * FR-P0-10 / FR-P1-8a HG1：9 状态配色（与 PortfolioSelectorDropdown/GovernanceTab 严格对齐）
  * ======================================================================== */
 const PORTFOLIO_STATUS_STYLES: Partial<Record<PortfolioStatus | string, {
   bg: string; fg: string; border: string; dot: string;
-  title: string; hint: string;
 }>> = {
-  PENDING_INITIAL_REVIEW: { bg: "#fef3c7", fg: "#7c2d12", border: "#f59e0b", dot: "#f59e0b", title: "待初始审查", hint: "新建组合尚未通过管理员合规审查，禁止所有交易动作。" },
-  READY:                    { bg: "#ecfdf5", fg: "#065f46", border: "#10b981", dot: "#10b981", title: "生产就绪", hint: "HG1 门禁全项通过，可正常交易。" },
-  RUNNING_AUTO_SIMULATION:  { bg: "#eff6ff", fg: "#1e3a8a", border: "#3b82f6", dot: "#3b82f6", title: "自动推演中", hint: "20:30 自动推演运行中，买单能力同就绪态。" },
-  RUNNING_BACKTEST:         { bg: "#eef2ff", fg: "#3730a3", border: "#6366f1", dot: "#6366f1", title: "回测中", hint: "后台回测运行中，不影响前台交易。" },
-  DATA_INCOMPLETE_PAUSED:   { bg: "#fef9c3", fg: "#713f12", border: "#eab308", dot: "#eab308", title: "数据缺失暂停", hint: "数据缺口触发软暂停：禁止新买单，允许风险退出。" },
-  RECONCILIATION_BLOCKED:   { bg: "#fee2e2", fg: "#7f1d1d", border: "#ef4444", dot: "#ef4444", title: "对账差异阻塞", hint: "对账差异非零，禁止新买单，需治理 Tab 单人确认。" },
-  MODEL_INACTIVE:           { bg: "#f3f4f6", fg: "#1f2937", border: "#6b7280", dot: "#6b7280", title: "模型未激活", hint: "绑定模型已退役/未激活，禁止新买单。" },
-  SCORE_STALE:              { bg: "#fff7ed", fg: "#7c2d12", border: "#f97316", dot: "#f97316", title: "Score 不新鲜", hint: "Score 覆盖率/新鲜度未通过门禁，禁止新买单。" },
-  INTERRUPTED:              { bg: "#fae8ff", fg: "#701a75", border: "#d946ef", dot: "#d946ef", title: "任务异常中断", hint: "Worker 心跳超时，恢复扫描器将尝试自动接续。" },
-  ADMIN_PAUSED:             { bg: "#fef2f2", fg: "#7f1d1d", border: "#dc2626", dot: "#dc2626", title: "管理员刹车", hint: "紧急暂停：禁止新买单/风险退出/自动恢复。" },
+  PENDING_INITIAL_REVIEW: { bg: "#fef3c7", fg: "#7c2d12", border: "#f59e0b", dot: "#f59e0b" },
+  READY:                    { bg: "#ecfdf5", fg: "#065f46", border: "#10b981", dot: "#10b981" },
+  RUNNING_AUTO_SIMULATION:  { bg: "#eff6ff", fg: "#1e3a8a", border: "#3b82f6", dot: "#3b82f6" },
+  RUNNING_BACKTEST:         { bg: "#eef2ff", fg: "#3730a3", border: "#6366f1", dot: "#6366f1" },
+  DATA_INCOMPLETE_PAUSED:   { bg: "#fef9c3", fg: "#713f12", border: "#eab308", dot: "#eab308" },
+  RECONCILIATION_BLOCKED:   { bg: "#fee2e2", fg: "#7f1d1d", border: "#ef4444", dot: "#ef4444" },
+  MODEL_INACTIVE:           { bg: "#f3f4f6", fg: "#1f2937", border: "#6b7280", dot: "#6b7280" },
+  SCORE_STALE:              { bg: "#fff7ed", fg: "#7c2d12", border: "#f97316", dot: "#f97316" },
+  INTERRUPTED:              { bg: "#fae8ff", fg: "#701a75", border: "#d946ef", dot: "#d946ef" },
+  ADMIN_PAUSED:             { bg: "#fef2f2", fg: "#7f1d1d", border: "#dc2626", dot: "#dc2626" },
 };
 const PORTFOLIO_STATUS_FALLBACK = { bg: "#f3f4f6", fg: "#374151", border: "#9ca3af", dot: "#9ca3af", title: "状态未知", hint: "未从治理 API 读取到组合状态。" };
+
+function portfolioStatusMeta(status: PortfolioStatus | string | null | undefined) {
+  const style = status ? PORTFOLIO_STATUS_STYLES[status] : undefined;
+  if (!style) return PORTFOLIO_STATUS_FALLBACK;
+  return {
+    ...style,
+    title: t(`portfolioStatus.${status}` as "portfolioStatus.READY"),
+    hint: t(`portfolioStatus.${status}.desc` as "portfolioStatus.READY.desc"),
+  };
+}
 
 /** FR-P1-8a 9×4 权限矩阵静态兜底（API 未返回 permissions 时使用，与 GovernanceTab 对齐）。 */
 const HG1_FALLBACK_MATRIX: Record<PortfolioStatus | string, PortfolioStatePermissions> = {
@@ -284,6 +137,10 @@ const PortfolioTradingShell: React.FC = () => {
 
   // 子 Tab 状态：与 AppContext.activeSubTab 同步
   const [localSubTab, setLocalSubTab] = useState<SubTabKey>(() => resolveSubTab(activeSubTab));
+  const [governanceNavigation, setGovernanceNavigation] = useState<{ tab: GovernanceTabTarget; requestId: number }>(() => ({
+    tab: resolvePortfolioNavigation(activeSubTab)?.governanceTab ?? "overview",
+    requestId: 0,
+  }));
 
   // VIZ-0929-08：消费研究页"模拟下单"深链（?symbol_id=&source=research）——
   // 切到持仓成员子页并定位该标的行，替代此前无人读取、落在总览页的死链接。
@@ -296,6 +153,9 @@ const PortfolioTradingShell: React.FC = () => {
       setFocusMemberSymbolId(sid);
     }
   }, []);
+
+  // P0：行动项「直达子页」目标面板高亮态（事件监听挂在 handleSubTabChange 之后）。
+  const [highlightTab, setHighlightTab] = useState<SubTabKey | null>(null);
 
   // 当前组合（从 portfolios 派生）
   const currentPortfolio = useMemo(
@@ -317,26 +177,37 @@ const PortfolioTradingShell: React.FC = () => {
         ? "ETF 组合"
         : "混合组合";
   const effectivePortfolioId = currentPortfolio?.id ?? 0;
+  const currentPortfolioIdRef = useRef(effectivePortfolioId);
+  currentPortfolioIdRef.current = effectivePortfolioId;
   // P0-FIX: 从真实组合 auto_trade_enabled 派生自动接管状态（0=关闭，1=开启）
   const autoTradeEnabled = currentPortfolio ? Number(currentPortfolio.auto_trade_enabled) === 1 : false;
   const isSimulated = currentPortfolio?.account_type === "simulated";
 
   // FR-P0-10/P1-8a：组合治理状态 + 权限
   const [portfolioStatus, setPortfolioStatus] = useState<PortfolioStatusResponse | null>(null);
+  const [statusPortfolioId, setStatusPortfolioId] = useState(0);
+  const statusRequestRef = useRef(0);
   const [statusLoading, setStatusLoading] = useState(false);
   const loadPortfolioStatus = useCallback(async () => {
+    const requestId = ++statusRequestRef.current;
+    const isCurrent = () => requestId === statusRequestRef.current && effectivePortfolioId === currentPortfolioIdRef.current;
     if (!effectivePortfolioId) {
       setPortfolioStatus(null);
+      setStatusPortfolioId(0);
+      setStatusLoading(false);
       return;
     }
     setStatusLoading(true);
     try {
       const data = await api.getPortfolioStatus(effectivePortfolioId);
-      setPortfolioStatus(data ?? null);
+      if (isCurrent()) {
+        setPortfolioStatus(data ?? null);
+        setStatusPortfolioId(effectivePortfolioId);
+      }
     } catch {
-      setPortfolioStatus(null);
+      if (isCurrent()) setPortfolioStatus(null);
     } finally {
-      setStatusLoading(false);
+      if (isCurrent()) setStatusLoading(false);
     }
   }, [effectivePortfolioId]);
   useEffect(() => {
@@ -346,11 +217,12 @@ const PortfolioTradingShell: React.FC = () => {
     return () => { if (handle) clearInterval(handle); };
   }, [effectivePortfolioId, loadPortfolioStatus]);
   // 从 Portfolio 接口派生的状态（当 governance API 还没返回时，优先用列表接口里的 portfolio_status 显示色）
+  const currentStatus = statusPortfolioId === effectivePortfolioId ? portfolioStatus : null;
   const portfolioStatusRaw: PortfolioStatus | string | null | undefined =
-    portfolioStatus?.current_state ?? currentPortfolio?.portfolio_status;
+    currentStatus?.current_state ?? currentPortfolio?.portfolio_status;
   const perm = useMemo<PortfolioStatePermissions>(
-    () => resolveShellPermissions(portfolioStatus),
-    [portfolioStatus],
+    () => resolveShellPermissions(currentStatus),
+    [currentStatus],
   );
   // FR-P1-8a：综合判定治理层是否阻断操作（需要人工确认的终态/严重态）
   const governanceBlocked = useMemo<boolean>(() => {
@@ -359,46 +231,131 @@ const PortfolioTradingShell: React.FC = () => {
     return ["ADMIN_PAUSED", "RECONCILIATION_BLOCKED", "PENDING_INITIAL_REVIEW"].includes(String(portfolioStatusRaw));
   }, [perm, portfolioStatusRaw]);
 
-  // P0-AutoTrade：真实就绪状态 readdy（取代仅 autoTradeEnabled 的单色显示）
-  const [readiness, setReadiness] = useState<AutoTradeReadiness | null>(null);
-  const [readinessLoading, setReadinessLoading] = useState(false);
-  const loadReadiness = useCallback(async () => {
-    if (!effectivePortfolioId || !isSimulated) {
-      setReadiness(null);
+  // P0：行动项聚合（HG1 状态机 + 就绪五维 + G7 运维），顶栏计数与修复抽屉的唯一数据源
+  const [actionItems, setActionItems] = useState<ActionItemsResponse | null>(null);
+  const [actionPortfolioId, setActionPortfolioId] = useState(0);
+  const actionRequestRef = useRef(0);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const loadActionItems = useCallback(async () => {
+    const requestId = ++actionRequestRef.current;
+    const isCurrent = () => requestId === actionRequestRef.current && effectivePortfolioId === currentPortfolioIdRef.current;
+    if (!effectivePortfolioId) {
+      setActionItems(null);
+      setActionPortfolioId(0);
+      setActionLoading(false);
       return;
     }
-    setReadinessLoading(true);
+    setActionLoading(true);
+    setActionError(null);
     try {
-      const data = (await api.getAutoTradeReadiness(effectivePortfolioId, { for_schedule: true })) as AutoTradeReadiness;
-      setReadiness(data);
+      const data = await api.getPortfolioActionItems(effectivePortfolioId, { for_schedule: true });
+      if (isCurrent()) {
+        setActionItems(data);
+        setActionPortfolioId(effectivePortfolioId);
+      }
     } catch {
-      setReadiness(null);
+      if (isCurrent()) {
+        setActionItems(null);
+        setActionError(t("repairDrawer.loadFailed"));
+      }
     } finally {
-      setReadinessLoading(false);
+      if (isCurrent()) setActionLoading(false);
     }
-  }, [effectivePortfolioId, isSimulated]);
+  }, [effectivePortfolioId]);
   useEffect(() => {
-    void loadReadiness();
-    let handle: ReturnType<typeof setInterval> | null = null;
-    if (effectivePortfolioId && isSimulated) {
-      handle = setInterval(() => void loadReadiness(), 30000);
-    }
-    return () => {
-      if (handle) clearInterval(handle);
-    };
-  }, [effectivePortfolioId, isSimulated, loadReadiness]);
+    void loadActionItems();
+    const handle = effectivePortfolioId
+      ? setInterval(() => void loadActionItems(), 30000)
+      : null;
+    return () => { if (handle) clearInterval(handle); };
+  }, [effectivePortfolioId, loadActionItems]);
 
-  const ready = readiness?.ready === true;
-  const hasBlockers = (readiness?.blockers?.length ?? 0) > 0;
+  const currentActionItems = actionPortfolioId === effectivePortfolioId ? actionItems : null;
+  const blockerCount = currentActionItems?.summary.blockers ?? 0;
+  const actionReady = currentActionItems?.summary.ready === true && blockerCount === 0;
+  const actionWaitingForSignal = currentActionItems?.summary.waiting_for_signal === true && blockerCount === 0;
+  const actionRunning = blockerCount === 0 && (
+    currentActionItems?.summary.execution_state === "running" ||
+    (currentActionItems?.summary.execution_state == null && portfolioStatusRaw === "RUNNING_AUTO_SIMULATION" && (actionReady || actionWaitingForSignal))
+  );
+  const actionChecks: ActionItemChecks | null = currentActionItems?.checks ?? null;
+  const refreshPortfolioSources = useCallback(async () => {
+    await Promise.allSettled([loadActionItems(), loadPortfolioStatus(), loadWorkbench()]);
+  }, [loadActionItems, loadPortfolioStatus, loadWorkbench]);
+  const handleGovernanceChanged = useCallback(async (changedPortfolioId: number) => {
+    if (changedPortfolioId !== currentPortfolioIdRef.current) return;
+    await refreshPortfolioSources();
+  }, [refreshPortfolioSources]);
+
+  // 抽屉内原地开关仅在 HG1 健康/运行态放行；其余引导去总览，避免绕过门禁二次确认
+  const canToggleInDrawer =
+    portfolioStatusRaw === "READY" ||
+    portfolioStatusRaw === "RUNNING_AUTO_SIMULATION" ||
+    portfolioStatusRaw === "RUNNING_BACKTEST";
+
+  const handleToggleEnabled = useCallback(async () => {
+    if (!effectivePortfolioId || toggling) return;
+    setToggling(true);
+    setActionError(null);
+    try {
+      await api.updatePortfolio(effectivePortfolioId, {
+        auto_trade_enabled: autoTradeEnabled ? 0 : 1,
+      });
+      await Promise.all([loadActionItems(), loadPortfolioStatus(), loadWorkbench()]);
+    } catch (err: any) {
+      setActionError(
+        t("portfolioTrading.overview.autoTradeToggleFailed") +
+          (err?.message ? ": " + err.message : ""),
+      );
+    } finally {
+      setToggling(false);
+    }
+  }, [
+    effectivePortfolioId,
+    toggling,
+    autoTradeEnabled,
+    loadActionItems,
+    loadPortfolioStatus,
+    loadWorkbench,
+  ]);
 
   // 切换子 Tab：同步本地 + AppContext
   const handleSubTabChange = useCallback(
-    (tab: SubTabKey) => {
-      setLocalSubTab(tab);
-      setActiveSubTab(tab);
+    (target: string) => {
+      const navigation = resolvePortfolioNavigation(target);
+      if (!navigation) return;
+      if (navigation.tab === "governance") {
+        setGovernanceNavigation((previous) => ({
+          tab: navigation.governanceTab ?? "overview",
+          requestId: previous.requestId + 1,
+        }));
+      }
+      setLocalSubTab(navigation.tab);
+      setActiveSubTab(navigation.tab);
     },
     [setActiveSubTab],
   );
+
+  // P0：行动项「直达子页」——监听 navigate.ts 的请求，切页并对目标面板做一次性高亮。
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const target = (event as CustomEvent<{ tab?: string }>).detail?.tab;
+      const navigation = resolvePortfolioNavigation(target);
+      if (!navigation || !target) return;
+      const tab = navigation.tab;
+      handleSubTabChange(target);
+      setDrawerOpen(false);
+      setHighlightTab(tab);
+      window.setTimeout(() => {
+        setHighlightTab((cur) => (cur === tab ? null : cur));
+      }, 1800);
+    };
+    window.addEventListener("portfolio:subtab-navigate", handler);
+    return () => window.removeEventListener("portfolio:subtab-navigate", handler);
+  }, [handleSubTabChange]);
 
   // 组合选择下拉 → 切换组合
   const handleSelectPortfolio = useCallback(
@@ -447,8 +404,8 @@ const PortfolioTradingShell: React.FC = () => {
 
   const handleCandidatesAdded = useCallback(() => {
     setMembersRevision((value) => value + 1);
-    void loadWorkbench();
-  }, [loadWorkbench]);
+    void refreshPortfolioSources();
+  }, [refreshPortfolioSources]);
 
   return (
     <div className="pt-theme-scope pt-portfolio-workbench">
@@ -464,6 +421,12 @@ const PortfolioTradingShell: React.FC = () => {
           50% { opacity: 0.55; }
         }
         .pt-bolt-pulse { animation: pt-bolt-pulse 2s ease-in-out infinite; }
+        @keyframes pt-highlight-flash {
+          0% { box-shadow: 0 0 0 0 rgba(34,211,238,0.0); outline: 2px solid rgba(34,211,238,0.0); }
+          25% { box-shadow: 0 0 0 4px rgba(34,211,238,0.18); outline: 2px solid rgba(34,211,238,0.85); border-radius: 10px; }
+          100% { box-shadow: 0 0 0 0 rgba(34,211,238,0.0); outline: 2px solid rgba(34,211,238,0.0); }
+        }
+        .pt-theme-scope [data-pt-highlight="true"] { animation: pt-highlight-flash 1.8s ease-out 1; }
       `}</style>
 
       {/* ========== 组合头部 ========== */}
@@ -472,11 +435,15 @@ const PortfolioTradingShell: React.FC = () => {
         accountTypeLabel={currentAccountTypeLabel}
         assetScopeLabel={currentAssetScopeLabel}
         autoTradeEnabled={autoTradeEnabled}
-        autoTradeReady={ready}
-        autoTradeHasBlockers={hasBlockers}
-        autoTradeLoading={readinessLoading}
-        autoTradeReadiness={readiness}
-        onRefreshReadiness={loadReadiness}
+        actionReady={actionReady}
+        actionWaitingForSignal={actionWaitingForSignal}
+        actionRunning={actionRunning}
+        blockerCount={blockerCount}
+        actionLoading={actionLoading}
+        checks={actionChecks}
+        isSimulated={isSimulated}
+        governanceBlocked={governanceBlocked}
+        onOpenRepair={() => setDrawerOpen(true)}
         onOpenSelector={() => setSelectorDropdownOpen((v) => !v)}
         onOpenRanking={() => setRankingDrawerOpen(true)}
         onOpenReviews={() => setReviewsOpen(true)}
@@ -484,7 +451,6 @@ const PortfolioTradingShell: React.FC = () => {
         selectorOpen={selectorDropdownOpen}
         portfolioStatusRaw={portfolioStatusRaw}
         statusLoading={statusLoading}
-        governanceBlocked={governanceBlocked}
         allowNewBuys={perm.allow_new_buys}
         selectorDropdown={
           <PortfolioSelectorDropdown
@@ -504,12 +470,15 @@ const PortfolioTradingShell: React.FC = () => {
       <SubTabContent
         active={localSubTab}
         portfolioId={effectivePortfolioId}
-        onNavigate={(tab) => handleSubTabChange(resolveSubTab(tab))}
+        onNavigate={handleSubTabChange}
+        governanceNavigation={governanceNavigation}
+        onGovernanceChanged={handleGovernanceChanged}
         autoTradeEnabled={autoTradeEnabled}
         membersRevision={membersRevision}
-        portfolioStatus={portfolioStatus}
+        portfolioStatus={currentStatus}
         perm={perm}
         focusSymbolId={focusMemberSymbolId}
+        highlightTab={highlightTab}
       />
 
       {/* ========== 浮层 ========== */}
@@ -523,7 +492,7 @@ const PortfolioTradingShell: React.FC = () => {
         onClose={() => setAddCandidateModalOpen(false)}
         portfolioId={effectivePortfolioId}
         onSuccess={handleCandidatesAdded}
-        portfolioStatus={portfolioStatus}
+        portfolioStatus={currentStatus}
         perm={perm}
         statusLoading={statusLoading}
       />
@@ -536,6 +505,20 @@ const PortfolioTradingShell: React.FC = () => {
         open={reviewsOpen}
         onClose={() => setReviewsOpen(false)}
         portfolioId={effectivePortfolioId}
+      />
+      <ReadinessRepairDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        portfolioId={effectivePortfolioId}
+        data={currentActionItems}
+        loading={actionLoading}
+        loadError={actionError}
+        isSimulated={isSimulated}
+        toggling={toggling}
+        canToggle={canToggleInDrawer}
+        onRefresh={refreshPortfolioSources}
+        onToggleEnabled={handleToggleEnabled}
+        onOpenAddCandidate={() => setAddCandidateModalOpen(true)}
       />
     </div>
   );
@@ -550,11 +533,15 @@ interface PortfolioHeaderProps {
   accountTypeLabel: string;
   assetScopeLabel: string;
   autoTradeEnabled: boolean;
-  autoTradeReady?: boolean;
-  autoTradeHasBlockers?: boolean;
-  autoTradeLoading?: boolean;
-  autoTradeReadiness?: AutoTradeReadiness | null;
-  onRefreshReadiness?: () => void;
+  actionReady: boolean;
+  actionWaitingForSignal: boolean;
+  actionRunning: boolean;
+  blockerCount: number;
+  actionLoading: boolean;
+  checks: ActionItemChecks | null;
+  isSimulated: boolean;
+  governanceBlocked: boolean;
+  onOpenRepair: () => void;
   selectorOpen: boolean;
   onOpenSelector: () => void;
   onOpenRanking: () => void;
@@ -565,7 +552,6 @@ interface PortfolioHeaderProps {
   // FR-P0-10/P1-8a HG1 字段
   portfolioStatusRaw?: PortfolioStatus | string | null;
   statusLoading?: boolean;
-  governanceBlocked?: boolean;
   allowNewBuys?: boolean;
 }
 
@@ -574,11 +560,14 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
   accountTypeLabel,
   assetScopeLabel,
   autoTradeEnabled,
-  autoTradeReady,
-  autoTradeHasBlockers,
-  autoTradeLoading,
-  autoTradeReadiness,
-  onRefreshReadiness,
+  actionReady,
+  actionWaitingForSignal,
+  actionRunning,
+  blockerCount,
+  actionLoading,
+  checks,
+  isSimulated,
+  onOpenRepair,
   selectorOpen,
   onOpenSelector,
   onOpenRanking,
@@ -587,31 +576,23 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
   selectorDropdown,
   portfolioStatusRaw,
   statusLoading,
+  governanceBlocked,
   allowNewBuys = true,
 }) => {
-  // P0-AutoTrade：语义颜色
-  // ── FR-P1-8a 修正：先看 portfolio_status 是否阻塞（ADMIN_PAUSED/RECONCILIATION_BLOCKED → 红 notReady） ──
-  // enabled=false → 灰色 off
-  // enabled=true + (ADMIN_PAUSED/RECONCILIATION_BLOCKED/PENDING_INITIAL_REVIEW) → 红 blockedByGovernance
-  // enabled=true + ready=true → 绿色 ready&enabled
-  // enabled=true + ready=false + blockers → 红色 notReady
-  // enabled=true + ready=false + no blockers + readiness loaded → 黄色 enabledOnly
-  // readiness still loading → 蓝色/未知
-  const loaded = autoTradeReadiness != null;
-  const governanceBlocked =
-    portfolioStatusRaw === "ADMIN_PAUSED" ||
-    portfolioStatusRaw === "RECONCILIATION_BLOCKED" ||
-    portfolioStatusRaw === "PENDING_INITIAL_REVIEW";
-  const statusColor: "off" | "ready" | "notReady" | "enabledOnly" | "unknown" = !autoTradeEnabled
+  // P0：单 pill 语义色。数据源为 action-items 聚合（checks 五维 + summary 计数）。
+  // off=开关关；notReady=HG1 硬阻塞或存在 blocker；ready=就绪；
+  // enabledOnly=已开但暂不就绪且无 blocker；unknown=聚合尚未返回。
+  const loaded = checks != null;
+  const statusColor: "off" | "ready" | "running" | "waitingSignal" | "notReady" | "enabledOnly" | "unknown" = !autoTradeEnabled
     ? "off"
-    : governanceBlocked
+    : governanceBlocked || blockerCount > 0
     ? "notReady"
-    : autoTradeLoading && !loaded
-    ? "unknown"
-    : autoTradeReady
+    : actionRunning
+    ? "running"
+    : actionWaitingForSignal
+    ? "waitingSignal"
+    : actionReady
     ? "ready"
-    : loaded && autoTradeHasBlockers
-    ? "notReady"
     : loaded
     ? "enabledOnly"
     : "unknown";
@@ -627,7 +608,19 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
       bg: "var(--pt-state-success-dim)",
       fg: "var(--pt-state-success)",
       dot: "var(--pt-state-success)",
+      pulseClassName: "",
+    },
+    running: {
+      bg: "var(--pt-state-success-dim)",
+      fg: "var(--pt-state-success)",
+      dot: "var(--pt-state-success)",
       pulseClassName: "pt-status-dot-pulse",
+    },
+    waitingSignal: {
+      bg: "var(--pt-state-success-dim)",
+      fg: "var(--pt-state-success)",
+      dot: "var(--pt-state-success)",
+      pulseClassName: "",
     },
     notReady: {
       bg: "rgba(239,68,68,0.12)",
@@ -650,169 +643,44 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
   };
   const palette = colorMap[statusColor];
 
-  const statusText =
-    !autoTradeEnabled
-      ? t("portfolioTrading.status.paused")
-      : autoTradeReady
-      ? t("portfolioTrading.status.running")
-      : t("portfolioTrading.status.notReady");
-
   const pillText =
     statusColor === "off"
       ? t("portfolioTrading.autotrade.off")
       : statusColor === "ready"
-      ? t("portfolioTrading.autotrade.readyAndEnabled")
+      ? t("repairDrawer.pillWaiting")
+      : statusColor === "running"
+      ? t("repairDrawer.pillRunning")
+      : statusColor === "waitingSignal"
+      ? t("repairDrawer.pillWaitingForSignal")
       : statusColor === "notReady"
-      ? t("portfolioTrading.autotrade.notReady")
+      ? template("repairDrawer.pillPending", { n: blockerCount })
       : statusColor === "enabledOnly"
       ? t("portfolioTrading.autotrade.enabledOnly")
       : t("portfolioTrading.autotrade.unknown");
 
-  // —— 顶栏「待就绪」徽章的 Tooltip：结构化（中文 code 名 + 原英文括号小字 + 每项修复指引）
-  const pillHint: React.ReactNode = useMemo(() => {
-    if (!autoTradeEnabled) return <span>{t("autoTradeDisabled")}</span>;
-    const subStatuses: Array<{ label: string; no: boolean }> = autoTradeReadiness
-      ? [
-          { label: t("autoTradeSubStatusEnabled"), no: !autoTradeReadiness.enabled },
-          { label: t("autoTradeSubStatusAccount"), no: !autoTradeReadiness.account_ready },
-          { label: t("autoTradeSubStatusData"), no: !autoTradeReadiness.data_ready },
-          { label: t("autoTradeSubStatusSource"), no: !autoTradeReadiness.source_ready },
-          { label: t("autoTradeSubStatusSchedule"), no: !autoTradeReadiness.schedule_ready },
-        ]
-      : [];
-    const subNoMap: Record<string, boolean> = {};
-    subStatuses.forEach((s) => (subNoMap[s.label] = s.no));
-
-    const headLine =
-      statusColor === "ready"
-        ? t("autoTradeStatusReady")
-        : statusColor === "notReady"
-        ? t("autoTradeStatusNotReady")
-        : statusColor === "enabledOnly"
-        ? t("autoTradeStatusEnabledOnly")
-        : t("autoTradeRunning");
-
-    const blockers = autoTradeReadiness?.blockers?.slice(0, 6) ?? [];
-    const warnings = autoTradeReadiness?.warnings?.slice(0, 4) ?? [];
-
-    return (
-      <div style={{ maxWidth: 460, fontSize: 12, lineHeight: 1.7, color: "#e5e7eb" }}>
-        {/* 1. HG1 门禁优先 */}
-        {governanceBlocked && (() => {
-          const meta = portfolioStatusRaw
-            ? PORTFOLIO_STATUS_STYLES[portfolioStatusRaw] ?? PORTFOLIO_STATUS_FALLBACK
-            : PORTFOLIO_STATUS_FALLBACK;
-          return (
-            <div
-              style={{
-                marginBottom: 8,
-                padding: "6px 8px",
-                borderRadius: 6,
-                background: "rgba(220,38,38,0.14)",
-                border: "1px solid rgba(220,38,38,0.4)",
-              }}
-            >
-              <span style={{ color: "#fca5a5", fontWeight: 600 }}>🔒 HG1 门禁：{meta.title}</span>
-              <div style={{ color: "#f3f4f6", marginTop: 2 }}>{meta.hint}</div>
-            </div>
-          );
-        })()}
-
-        {/* 2. 大状态行 + 5 个子状态（开关/账户/数据/来源/调度） */}
-        <div style={{ fontWeight: 600, marginBottom: 6, color: "#fecaca" }}>{headLine}</div>
-        {subStatuses.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginBottom: 8 }}>
-            {subStatuses.map((s) => (
-              <span key={s.label} style={{ color: s.no ? "#fca5a5" : "#86efac", whiteSpace: "nowrap" }}>
-                {s.label}: <strong style={{ fontWeight: 700 }}>{s.no ? "NO" : "OK"}</strong>
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* 3. Blockers（阻塞项）：每项「中文名（原code）」+ 后端 message + 修复指引分步骤 */}
-        {blockers.length > 0 && (
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontWeight: 600, color: "#fca5a5", marginBottom: 4 }}>
-              ❌ 阻塞项（{blockers.length}，真实下单会被拒绝）
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 18, listStyle: "disc" }}>
-              {blockers.map((b, i) => {
-                const meta = getReadinessCodeMeta(b.code);
-                // 把「数据: NO · [中文名（code）]」格式拼出来，和用户截图旧格式习惯对齐
-                const subForCode = subNoMap[meta.category]
-                  ? `${meta.category}: NO · `
-                  : "";
-                return (
-                  <li key={`blk-${i}`} style={{ marginBottom: 6 }}>
-                    <div>
-                      <span style={{ color: "#fca5a5" }}>{subForCode}[</span>
-                      <span style={{ color: "#fff", fontWeight: 600 }}>{meta.cn}</span>
-                      <span style={{ color: "#94a3b8", fontStyle: "italic" }}>（{meta.dev}）</span>
-                      <span style={{ color: "#fca5a5" }}>]</span>{" "}
-                      <span>{b.message}</span>
-                      {typeof (b as any).detail === "string" && (b as any).detail ? (
-                        <span style={{ color: "#94a3b8", marginLeft: 6 }}>（{(b as any).detail}）</span>
-                      ) : null}
-                    </div>
-                    {/* 修复指引 */}
-                    <ul style={{ margin: "4px 0 0 0", paddingLeft: 16, listStyle: "circle" }}>
-                      {meta.fix.map((f, fi) => (
-                        <li key={fi} style={{ color: "#a5f3fc" }}>
-                          <span style={{ color: "#22d3ee", fontWeight: 600 }}>修复指引：</span>
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-
-        {/* 4. Warnings（警告项，非阻塞） */}
-        {warnings.length > 0 && (
-          <div>
-            <div style={{ fontWeight: 600, color: "#fcd34d", marginBottom: 4 }}>
-              ⚠️ 注意事项（{warnings.length}，暂不阻断，但建议修复）
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 18, listStyle: "disc" }}>
-              {warnings.map((w, i) => {
-                const meta = getReadinessCodeMeta(w.code);
-                return (
-                  <li key={`warn-${i}`} style={{ marginBottom: 6 }}>
-                    <div>
-                      <span style={{ color: "#fcd34d" }}>[</span>
-                      <span style={{ color: "#fff", fontWeight: 600 }}>{meta.cn}</span>
-                      <span style={{ color: "#94a3b8", fontStyle: "italic" }}>（{meta.dev}）</span>
-                      <span style={{ color: "#fcd34d" }}>]</span>{" "}
-                      <span>{w.message}</span>
-                    </div>
-                    <ul style={{ margin: "4px 0 0 0", paddingLeft: 16, listStyle: "circle" }}>
-                      {meta.fix.map((f, fi) => (
-                        <li key={fi} style={{ color: "#fde68a" }}>
-                          <span style={{ color: "#f59e0b", fontWeight: 600 }}>建议：</span>
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-
-        {/* 5. 兜底：没有任何 blocker/warning 且未就绪，给下一步建议 */}
-        {statusColor !== "ready" && blockers.length === 0 && warnings.length === 0 && (
-          <div style={{ color: "#94a3b8", marginTop: 4 }}>
-            若状态异常：点「就绪检查」旁的「刷新状态」，或先跑一次 Dry Run 检查 readiness 接口明细。
-          </div>
-        )}
+  // P0：hover 只留五维灯 + 一句引导；长说明与修复动作全部进修复抽屉。
+  const pillHint: React.ReactNode = !autoTradeEnabled ? (
+    <span>{t("autoTradeDisabled")}</span>
+  ) : (
+    <div style={{ maxWidth: 320, fontSize: 12, lineHeight: 1.7 }}>
+      <div style={{ fontWeight: 600, marginBottom: checks ? 6 : 0, color: statusColor === "ready" || statusColor === "running" || statusColor === "waitingSignal" ? "#86efac" : "#fecaca" }}>
+        {statusColor === "running" ? t("repairDrawer.pillRunning") : statusColor === "ready" ? t("repairDrawer.header.ready") : statusColor === "waitingSignal" ? t("repairDrawer.header.waitingForSignal") : t("repairDrawer.header.notReady")}
       </div>
-    );
-  }, [autoTradeEnabled, autoTradeReadiness, statusColor, governanceBlocked, portfolioStatusRaw]);
+      {isSimulated && checks && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginBottom: 6 }}>
+          {HEADER_CHECKS.map(({ key, labelKey }) => {
+            const no = !checks[key];
+            return (
+              <span key={key} style={{ color: no ? "#fca5a5" : "#86efac", whiteSpace: "nowrap" }}>
+                {t(labelKey)}: <strong style={{ fontWeight: 700 }}>{no ? "NO" : "OK"}</strong>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ color: "#94a3b8" }}>{t("repairDrawer.openHint")}</div>
+    </div>
+  );
 
   return (
     <header
@@ -888,17 +756,17 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
             </span>
             {/* FR-P0-10/P1-8a 9 状态徽章：与 GovernanceTab/SelectorDropdown 色板一致 */}
             {(() => {
-              const meta = portfolioStatusRaw
-                ? PORTFOLIO_STATUS_STYLES[portfolioStatusRaw] ?? PORTFOLIO_STATUS_FALLBACK
-                : PORTFOLIO_STATUS_FALLBACK;
+              const meta = portfolioStatusMeta(portfolioStatusRaw);
               const isEmphasis =
                 portfolioStatusRaw === "ADMIN_PAUSED" || portfolioStatusRaw === "RECONCILIATION_BLOCKED";
               return (
-                <Tooltip title={`HG1 组合状态 · ${meta.title}\n${meta.hint}`}>
+                <Tooltip title={`${meta.title}\n${meta.hint}`}>
                   <span
+                    onClick={onOpenRepair}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
+                      cursor: "pointer",
                       gap: 6,
                       fontSize: 11,
                       fontWeight: 500,
@@ -944,42 +812,12 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
           {selectorDropdown}
         </div>
 
-        {/* P0-AutoTrade: 运行状态徽章——按 readiness 语义变色，非仅 autoTradeEnabled */}
-        <Tooltip title={pillHint}>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "4px 12px",
-              borderRadius: "var(--pt-radius-full)",
-              background: palette.bg,
-              color: palette.fg,
-              fontSize: 12,
-              fontWeight: 500,
-            }}
-          >
-            <span
-              className={palette.pulseClassName}
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: palette.dot,
-                flexShrink: 0,
-              }}
-            />
-            {statusText}
-          </span>
-        </Tooltip>
-
-        {/* P0-AutoTrade: 自动接管 pill——语义颜色 + 阻塞告警圆点 + 点击刷新 */}
+        {/* P0-AutoTrade: 自动接管 pill——单 pill，语义颜色 + 阻塞计数，点击开修复抽屉 */}
         <Tooltip title={pillHint}>
           <button
             type="button"
             className="pt-autotrade-pill"
-            onClick={onRefreshReadiness}
-            title={t("autoTradeRefreshReadiness")}
+            onClick={onOpenRepair}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -1024,12 +862,10 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({
         </button>
         {/* FR-P1-8a：添加候选标的入口（NEW_BUY 入口），allow_new_buys=false 时禁用并给出明确原因 */}
         {(() => {
-          const meta = portfolioStatusRaw
-            ? PORTFOLIO_STATUS_STYLES[portfolioStatusRaw] ?? PORTFOLIO_STATUS_FALLBACK
-            : PORTFOLIO_STATUS_FALLBACK;
+          const meta = portfolioStatusMeta(portfolioStatusRaw);
           const reason = allowNewBuys
             ? undefined
-            : `当前组合 HG1 状态「${meta.title}」禁止新增候选/买单。\n${meta.hint}`;
+            : `${template("portfolioTrading.header.newBuysBlocked", { state: meta.title })}\n${meta.hint}`;
           const btn = (
             <button
               type="button"
@@ -1094,34 +930,49 @@ interface SubTabContentProps {
   active: SubTabKey;
   portfolioId: number;
   onNavigate: (tab: string) => void;
+  governanceNavigation: { tab: GovernanceTabTarget; requestId: number };
+  onGovernanceChanged: (portfolioId: number) => void | Promise<void>;
   autoTradeEnabled: boolean;
   membersRevision: number;
   portfolioStatus: PortfolioStatusResponse | null;
   perm: PortfolioStatePermissions;
   focusSymbolId?: number | null;
+  highlightTab?: SubTabKey | null;
 }
 
-const SubTabContent: React.FC<SubTabContentProps> = ({ active, portfolioId, onNavigate, autoTradeEnabled, membersRevision, portfolioStatus, perm, focusSymbolId }) => {
+const SubTabContent: React.FC<SubTabContentProps> = ({ active, portfolioId, onNavigate, governanceNavigation, onGovernanceChanged, autoTradeEnabled, membersRevision, portfolioStatus, perm, focusSymbolId, highlightTab }) => {
+  let content: React.ReactNode;
   switch (active) {
     case "overview":
-      return <PortfolioOverview portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} />;
+      content = <PortfolioOverview portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} />;
+      break;
     case "members":
-      return <PortfolioMembersTable key={`${portfolioId}-${membersRevision}`} portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} focusSymbolId={focusSymbolId} />;
+      content = <PortfolioMembersTable key={`${portfolioId}-${membersRevision}`} portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} focusSymbolId={focusSymbolId} />;
+      break;
     case "strategy":
-      return <PortfolioStrategyRules portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} />;
+      content = <PortfolioStrategyRules portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} />;
+      break;
     case "backtest":
-      return (
+      content = (
         <PortfolioBacktestCenter
           portfolioId={portfolioId}
           onNavigate={onNavigate}
           autoTradeEnabled={autoTradeEnabled}
         />
       );
+      break;
     case "governance":
-      return <PortfolioGovernanceTab portfolioId={portfolioId} onNavigate={onNavigate} />;
+      content = <PortfolioGovernanceTab key={portfolioId} portfolioId={portfolioId} onNavigate={onNavigate} navigation={governanceNavigation} onGovernanceChanged={onGovernanceChanged} />;
+      break;
     default:
-      return <PortfolioOverview portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} />;
+      content = <PortfolioOverview portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} />;
   }
+  // 行动项直达时对目标子页做一次不占布局的高亮（outline 动画，见顶部 keyframes）。
+  return (
+    <div data-pt-highlight={highlightTab === active ? "true" : undefined} style={{ minHeight: 0 }}>
+      {content}
+    </div>
+  );
 };
 
 export default PortfolioTradingShell;

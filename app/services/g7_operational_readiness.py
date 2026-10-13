@@ -39,6 +39,9 @@ class G7OperationalStatus:
     can_resume: bool
     operational_blockers: list[str] = field(default_factory=list)
     resume_blockers: list[str] = field(default_factory=list)
+    # P1：结构化阻断项（与行动项契约对齐），供待办总览/修复抽屉消费；
+    # 原 operational_blockers 文本保留，供旧消费方与 G7 面板兼容。
+    structured_blockers: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -118,6 +121,7 @@ def evaluate_g7_operational_status(
     ready_for_expansion = (
         g6.eligible
         and current_state == "READY"
+        and not new_buys_stopped
         and pending_count == 0
         and active_alert_count == 0
     )
@@ -134,6 +138,43 @@ def evaluate_g7_operational_status(
         resume_blockers.append("当前组合不处于 ADMIN_PAUSED，无需或不能通过人工暂停恢复")
     can_resume = not resume_blockers
 
+    # P1：把运维阻断结构化为行动项。G7 是上线前灰度/运维视角，统一为 info 级，
+    # 不与交易门禁（HG1/readiness 的 blocker）混淆；当前前端无稳定直达入口，动作暂为 none。
+    structured_blockers: list[dict] = []
+    if g6.blockers:
+        structured_blockers.append(
+            {
+                "code": "G6_GATE_NOT_READY",
+                "severity": "info",
+                "title": "灰度准入条件未满足",
+                "impact": "灰度准入尚有未清条件，日常交易是否可执行以交易门禁为准",
+                "detail": "；".join(str(b) for b in g6.blockers),
+                "fix_link": {"action_type": "none"},
+            }
+        )
+    if pending_count:
+        structured_blockers.append(
+            {
+                "code": "PENDING_SIM_ORDERS",
+                "severity": "info",
+                "title": "有待处理模拟订单",
+                "impact": f"存在 {pending_count} 笔待处理模拟订单，扩大灰度前需先处置",
+                "detail": f"pending_order_count={pending_count}",
+                "fix_link": {"action_type": "none"},
+            }
+        )
+    if active_alert_count:
+        structured_blockers.append(
+            {
+                "code": "ACTIVE_ALERTS",
+                "severity": "info",
+                "title": "有未确认告警",
+                "impact": f"存在 {active_alert_count} 条未确认告警，扩大灰度前需先确认",
+                "detail": f"active_alert_count={active_alert_count}",
+                "fix_link": {"action_type": "none"},
+            }
+        )
+
     return G7OperationalStatus(
         portfolio_id=portfolio.id,
         current_state=current_state,
@@ -148,4 +189,5 @@ def evaluate_g7_operational_status(
         can_resume=can_resume,
         operational_blockers=operational_blockers,
         resume_blockers=resume_blockers,
+        structured_blockers=structured_blockers,
     )

@@ -347,6 +347,40 @@ class ModelRelationsDTO:
 
 # ── 1. Scoring models / Strategy & Backtest consumers ────────────────
 
+def review_score_model_binding(session: Any, model_run_id: str, factor_set_id: str, *, current_read: bool = False) -> dict[str, Any]:
+    """Read-only release evidence and display name for portfolio acceptance."""
+    from app.models.factor_model import FactorModelRun
+    from app.services.factor_model_contract import assess_factor_model_readiness
+
+    if current_read:
+        from app.models.factor_evaluation import FactorSet
+        # Strong references retain the latest locked ORM rows throughout the
+        # contract check; ordinary db.get must not reload an earlier RR view.
+        runtime = lock_score_runtime_for_binding_review(session)
+        model = session.get(FactorModelRun, model_run_id, with_for_update=True, populate_existing=True)
+        factor_set = session.get(FactorSet, factor_set_id, with_for_update=True, populate_existing=True)
+    else:
+        model = session.get(FactorModelRun, model_run_id)
+
+    result = assess_factor_model_readiness(
+        session, model_run_id=model_run_id,
+        expected_factor_set_id=factor_set_id, require_runtime_active=True,
+    ).to_dict()
+    result["model_name"] = _model_display_name(model, factor_set_id) if model else None
+    return result
+
+
+def lock_score_runtime_for_binding_review(session: Any) -> Any:
+    """Serialize portfolio acceptance with activation/fallback of the model."""
+    from sqlalchemy import select
+    from app.models.factor_runtime import FactorRuntimeState
+
+    return session.execute(
+        select(FactorRuntimeState).where(FactorRuntimeState.id == 1)
+        .with_for_update().execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def list_score_models(
     scope: ScoreModelScope = "any",
     limit: int = 50,

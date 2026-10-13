@@ -6,6 +6,7 @@ const { mockApi, mockToast } = vi.hoisted(() => ({
   mockApi: {
     getPortfolioStatus: vi.fn(),
     getG7OperationalStatus: vi.fn(),
+    getPortfolioActionItems: vi.fn(),
   },
   mockToast: vi.fn(),
 }));
@@ -16,7 +17,7 @@ vi.mock("../../../context/AppContext", () => ({
 }));
 vi.mock("../../../i18n", () => ({
   t: (key: string) => ({
-    "portfolioTrading.governance.subtab.operations": "运行保障",
+    "portfolioTrading.governance.subtab.state": "运行状态",
     "governance.g7.title": "运行保障",
     "governance.g7.readyForExpansion": "可扩大范围",
     "governance.g7.newBuysStopped": "新买入已停止",
@@ -29,9 +30,14 @@ vi.mock("../../../i18n", () => ({
     "governance.g7.status.pending_confirmation": "待人工确认",
     "common.refresh": "刷新",
   }[key] ?? key),
+  template: (key: string) => key,
 }));
 vi.mock("antd", () => ({
   Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
+  Button: ({ children, onClick }: { children?: ReactNode; onClick?: () => void }) => (
+    <button type="button" onClick={onClick}>{children}</button>
+  ),
+  Modal: ({ open, children }: { open?: boolean; children?: ReactNode }) => (open ? <div>{children}</div> : null),
 }));
 
 import PortfolioGovernanceTab from "../PortfolioGovernanceTab";
@@ -42,6 +48,11 @@ describe("PortfolioGovernanceTab G7 operations", () => {
     mockApi.getPortfolioStatus.mockResolvedValue({
       current_state: "READY",
       allowed_transitions: ["ADMIN_PAUSED"],
+    });
+    mockApi.getPortfolioActionItems.mockResolvedValue({
+      items: [],
+      summary: { blockers: 0, warnings: 0, info: 0, ready: true },
+      checks: null,
     });
     mockApi.getG7OperationalStatus.mockResolvedValue({
       portfolio_id: 7,
@@ -63,7 +74,7 @@ describe("PortfolioGovernanceTab G7 operations", () => {
   it("loads the G7 control-room facts and translates pending-order statuses", async () => {
     render(<PortfolioGovernanceTab portfolioId={7} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "运行保障" }));
+    fireEvent.click(screen.getByRole("button", { name: "运行状态" }));
 
     await waitFor(() => {
       expect(mockApi.getG7OperationalStatus).toHaveBeenCalledWith(7);

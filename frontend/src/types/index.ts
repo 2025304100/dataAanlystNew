@@ -549,6 +549,109 @@ export interface ReadinessIssue {
   code: string;
   message: string;
   detail?: unknown;
+  // P0 行动项（后端注册表补齐，旧消费方可忽略这些可选字段）
+  severity?: "blocker" | "warning" | "info";
+  title?: string | null;
+  fix_link?: ActionPrimaryAction | null;
+}
+
+// P0：组合行动项（对齐 GET /portfolios/{id}/auto-trade/action-items）
+export type ActionType =
+  | "toggle"
+  | "redirect"
+  | "subtab"
+  | "open-modal"
+  | "guided"
+  | "none";
+
+export interface ActionPrimaryAction {
+  action_type: ActionType;
+  target?: string;
+}
+
+export type ActionItemSource = "readiness" | "hg1_status" | "g7_ops" | string;
+
+export interface ActionItem {
+  id: string;
+  source: ActionItemSource;
+  code: string;
+  severity: "blocker" | "warning" | "info";
+  title: string;
+  impact: string;
+  detail?: string | null;
+  family?: string | null;
+  primary_action: ActionPrimaryAction | null;
+  sources: string[];
+}
+
+export interface ActionItemsSummary {
+  blockers: number;
+  warnings: number;
+  info: number;
+  ready: boolean;
+  waiting_for_signal?: boolean;
+  execution_state?: "disabled" | "blocked" | "waiting_signal" | "ready" | "running";
+}
+
+export interface ActionItemChecks {
+  enabled: boolean;
+  account_ready: boolean;
+  data_ready: boolean;
+  source_ready: boolean;
+  schedule_ready: boolean;
+}
+
+export interface ActionItemsResponse {
+  portfolio_id?: number;
+  items: ActionItem[];
+  summary: ActionItemsSummary;
+  // 五维指示灯；非模拟账户为 null。
+  checks?: ActionItemChecks | null;
+  generated_at: string;
+  binding_review?: ModelBindingReviewResponse | null;
+}
+
+export interface ModelBindingDetail {
+  snapshot_id: string;
+  model_run_id: string | null;
+  model_name: string | null;
+  factor_set_id?: string | null;
+  rule_id?: number | null;
+  rule_version?: number | null;
+  run_mode?: string | null;
+  pit_mode?: string | null;
+  snapshot_no?: number | null;
+}
+
+export interface ModelBindingReviewResponse {
+  portfolio_id: number;
+  snapshot_id: string | null;
+  model_run_id: string | null;
+  model_name: string | null;
+  change_summary: string;
+  before: ModelBindingDetail | null;
+  after: ModelBindingDetail | null;
+  can_confirm: boolean;
+  blockers: string[];
+  requires_confirmation: boolean;
+  first_confirmation: boolean;
+}
+
+export interface ConfirmModelBindingRequest {
+  snapshot_id: string;
+  model_run_id: string | null;
+  ack: boolean;
+  review_note?: string;
+}
+
+export interface ConfirmModelBindingResponse {
+  portfolio_id: number;
+  snapshot_id: string;
+  model_run_id: string | null;
+  model_confirmed: boolean;
+  current_state: string;
+  audit_event_id: number;
+  binding_review: ModelBindingReviewResponse;
 }
 
 // P0-AutoTrade：自动交易就绪状态（对齐 /auto-trade/readiness 响应）
@@ -2070,6 +2173,7 @@ export interface ReconciliationResponse {
 
 /** POST /portfolios/{pid}/confirm-reconciliation → 单人确认 3 字段（无 second_reviewer/dual_approval） */
 export interface ConfirmReconciliationRequest {
+  trade_date?: string;
   ack: boolean;                                   // 必须=true（否则 400）
   force_skip?: boolean;                           // 高危：差异未清零就强行转 READY；true=二次确认红底
   operator_id?: number | null;                    // 为空后端自动取当前登录用户；前端默认隐藏（单人确认）
@@ -2077,6 +2181,7 @@ export interface ConfirmReconciliationRequest {
   force_rerun_before?: boolean;                   // 是否先重新跑一次 reconcile 再确认（默认 true）
 }
 export interface ConfirmReconciliationResponse {
+  audit_event_id?: number | null;
   portfolio_id: number;
   trade_date: string;
   operator_id: number;
@@ -2290,6 +2395,15 @@ export interface G7OperationalStatus {
   can_resume: boolean;
   operational_blockers: string[];
   resume_blockers: string[];
+  // P1：结构化运维阻断（与行动项契约对齐），旧消费方可忽略
+  structured_blockers?: Array<{
+    code: string;
+    severity: "blocker" | "warning" | "info";
+    title: string;
+    impact: string;
+    detail?: string | null;
+    fix_link?: ActionPrimaryAction | null;
+  }>;
 }
 
 export interface G6RolloutResult {

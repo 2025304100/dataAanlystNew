@@ -1,6 +1,6 @@
-﻿import { t } from "../i18n";
+import { t } from "../i18n";
 import type { AIDraftDetail, AIDraftExecuteResult, AIDraftPreviewResult, AsyncTaskCancelRequest, AsyncTaskCancelResponse, AsyncTaskRead, AutoSimulationPreflightRequest, AutoSimulationPreflightResponse, AppSettingRead, BacktestPosition, BacktestRun, BacktestTrade, CapabilitiesResponse, CustomIndicatorPreviewRead, CustomIndicatorPromoteResponse, PortfolioBacktestResult, PortfolioResumeExecuteRequest, PortfolioResumeExecuteResponse, PortfolioResumePlanRequest, PortfolioResumePlanResponse, SignalRule, SignalRulePreviewResult, SnapshotStatusRead } from "../types";
-import type { AttributionReport, Review } from "../types";
+import type { ActionItemsResponse, AttributionReport, Review } from "../types";
 import type { SymbolRelationships } from "../types/symbolRelationships";
 import type {
   AISession,
@@ -15,6 +15,9 @@ import type {
   ReconciliationResponse,
   ConfirmReconciliationRequest,
   ConfirmReconciliationResponse,
+  ModelBindingReviewResponse,
+  ConfirmModelBindingRequest,
+  ConfirmModelBindingResponse,
   StateTransitionRequest,
   StateTransitionResponse,
   AuditEventFilter,
@@ -1491,6 +1494,19 @@ export const api = {
       { timeoutMs: 30000 },
     );
   },
+  // P0：组合行动项聚合（HG1 状态 + 就绪门禁 + G7 运维，只读），默认与顶栏同口径 for_schedule=1
+  getPortfolioActionItems: (
+    portfolioId: number,
+    options?: { for_schedule?: boolean },
+  ) => {
+    const params = new URLSearchParams();
+    params.set("for_schedule", options?.for_schedule === false ? "0" : "1");
+    const qs = params.toString();
+    return requestJson<ActionItemsResponse>(
+      `${API}/portfolios/${portfolioId}/auto-trade/action-items?${qs}`,
+      { timeoutMs: 30000 },
+    );
+  },
   // WP6.6 双跑观测面（dry-run-diff / member-source-status / rollback-to-old-source）
   // 已随旧 AutoTradePanel 一起下线：回滚走 g6-rollback（见下方 rollbackG6Rollout），
   // 双跑对比由 snapshot / DecisionOrderPlan 三入口一致性 + DecisionEvidence 拒绝记录承接。
@@ -2728,13 +2744,24 @@ export const api = {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-User": "local_user" },
         body: JSON.stringify({
-          trade_date: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
+          trade_date: payload.trade_date,
           acknowledge_all_diffs_cleared: payload.ack,
+          review_note: payload.review_note.trim(),
           force_skip_re_reconcile: payload.force_skip ?? false,
           operator_id: payload.operator_id == null ? undefined : String(payload.operator_id),
         }),
       },
     ),
+
+  getPortfolioModelBindingReview: (portfolioId: number) =>
+    requestJson<ModelBindingReviewResponse>(`${API}/portfolios/${portfolioId}/model-binding-review`),
+
+  confirmPortfolioModelBinding: (portfolioId: number, payload: ConfirmModelBindingRequest) =>
+    requestJson<ConfirmModelBindingResponse>(`${API}/portfolios/${portfolioId}/confirm-model-binding`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User": "local_user" },
+      body: JSON.stringify({ ...payload, review_note: payload.review_note?.trim() }),
+    }),
 
   /** 4. POST /portfolios/{pid}/transition-state：9 状态机 ANY → ADMIN_PAUSED 刹车 / ADMIN → READY 解除 / RECON→READY */
   transitionPortfolioState: (portfolioId: number, payload: StateTransitionRequest) =>

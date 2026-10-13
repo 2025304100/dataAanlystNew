@@ -151,6 +151,21 @@ def test_g7_uses_composite_buy_gate_for_stale_score(db_session):
 
     assert status.current_state == "READY"
     assert status.new_buys_stopped is True
+    assert status.ready_for_expansion is False
+
+
+def test_composite_stop_blocks_expansion_even_with_a_passing_g5_report(db_session):
+    from app.services.g7_operational_readiness import evaluate_g7_operational_status
+
+    portfolio = _portfolio(db_session, "g7-model-lock-with-g5")
+    persist_g5_summary(db_session, _passing_g5(portfolio.id))
+    portfolio.status_model = "MODEL_INACTIVE"
+    db_session.commit()
+    status = evaluate_g7_operational_status(db_session, portfolio_id=portfolio.id)
+    assert status.g6_eligible is True
+    assert status.current_state == "READY"
+    assert status.new_buys_stopped is True
+    assert status.ready_for_expansion is False
 
 
 def test_g7_counts_partial_and_pending_confirmation_orders(db_session):

@@ -1070,7 +1070,7 @@ def _execute_snapshot_order_plans(
     only translates a plan into the existing simulated-account order API.
     """
     from app.models.decision_engine import DecisionEvidence, StrategyExecutionSnapshot
-    from app.services.decision_engine import default_engine
+    from app.services.decision_engine import auto_simulation_governance_reasons, default_engine
     from app.services.sim_accounts import (
         apply_sim_order_fill,
         cash_balance,
@@ -1131,6 +1131,9 @@ def _execute_snapshot_order_plans(
         dry_run=bool(dry_run),
         state_context=state_context,
         match_mode="NEXT_OPEN",
+        # Preserve verified SELL exits and existing partial-plan retries. The
+        # shared engine rejects every new BUY when entry governance is locked.
+        governance_exit_only=True,
     )
     snapshot_row = (
         db.get(StrategyExecutionSnapshot, strategy_snapshot_id)
@@ -1413,6 +1416,22 @@ def _execute_snapshot_order_plans(
         if plan.action not in {"BUY", "SELL"} or float(plan.target_quantity or 0) <= 0:
             continue
         try:
+            if not dry_run:
+                existing = db.execute(
+                    select(SimOrder).where(SimOrder.client_order_key == str(plan.order_plan_id))
+                    .with_for_update().execution_options(populate_existing=True)
+                ).scalars().first()
+                if existing is not None:
+                    if not is_retry or existing.status != "partial":
+                        # Replaying an old plan after a governance change is
+                        # still the same order; do not create a second rejection.
+                        result["skipped_orders"].append({
+                            "order_plan_id": str(plan.order_plan_id),
+                            "existing_order_id": existing.id,
+                            "reason": "idempotent_skip",
+                        })
+                        continue
+                    pending_order = existing
             # G6 manual-stop path: a new BUY must pass the durable composite
             # governance gate before it can reach matching or the account
             # ledger. A partially-filled existing plan is a retry, not a new
@@ -1420,22 +1439,37 @@ def _execute_snapshot_order_plans(
             if plan.action == "BUY" and not is_retry and db is not None:
                 from app.services.portfolio_status import order_entry_gate_check
                 from app.services.portfolio_state_machine import _get_status
+                from app.services.factors.__facade__ import lock_score_runtime_for_binding_review
 
-                portfolio_state = _get_status(db, db.get(Portfolio, portfolio_id))
-                gate = order_entry_gate_check(db, portfolio_id, "BUY")
+                if not dry_run:
+                    # Apply/accept use the same lock order. Model activation
+                    # cannot change the binding between this check and fill.
+                    db.execute(
+                        select(Portfolio).where(Portfolio.id == portfolio_id)
+                        .with_for_update().execution_options(populate_existing=True)
+                    ).scalar_one_or_none()
+                    lock_score_runtime_for_binding_review(db)
+                portfolio_state = _get_status(db, db.get(Portfolio, portfolio_id), current_read=not dry_run)
+                gate = order_entry_gate_check(db, portfolio_id, "BUY", current_read=not dry_run)
+                binding_reasons = auto_simulation_governance_reasons(
+                    db, portfolio_id=portfolio_id, strategy_snapshot_id=strategy_snapshot_id, current_read=True,
+                ) if not dry_run else []
                 state_blocked = portfolio_state in {
                     "ADMIN_PAUSED",
                     "RECONCILIATION_BLOCKED",
                     "DATA_INCOMPLETE_PAUSED",
                 }
-                if state_blocked or not gate.allowed:
+                if state_blocked or not gate.allowed or binding_reasons:
                     rejection_code = (
                         "PORTFOLIO_STATE_NEW_BUY_BLOCKED"
-                        if state_blocked else str(gate.rejection_reason_code)
+                        if state_blocked else (str(gate.rejection_reason_code) if not gate.allowed else "MODEL_BINDING_EXECUTION_BLOCKED")
                     )
                     rejection_detail = (
                         f"portfolio_state={portfolio_state}; manual stop of new buys is active"
-                        if state_blocked else str(gate.block_reason or "new buy blocked by governance gate")
+                        if state_blocked else (
+                            str(gate.block_reason) if not gate.allowed
+                            else "；".join(reason["message"] for reason in binding_reasons)
+                        )
                     )
                     item.update({
                         "rejection_code": rejection_code,
@@ -1472,20 +1506,6 @@ def _execute_snapshot_order_plans(
                     continue
             if dry_run:
                 continue
-            existing = db.execute(
-                select(SimOrder).where(SimOrder.client_order_key == str(plan.order_plan_id))
-            ).scalars().first()
-            if existing is not None:
-                if not is_retry or existing.status != "partial":
-                    result["skipped_orders"].append({
-                        "order_plan_id": str(plan.order_plan_id),
-                        "existing_order_id": existing.id,
-                        "reason": "idempotent_skip",
-                    })
-                    continue
-                # The rehydrated plan is deliberately allowed through.  The
-                # account adapter below accumulates its fill on this row.
-                pending_order = existing
             portfolio = db.get(Portfolio, portfolio_id)
             symbol = db.get(Symbol, int(plan.symbol_id))
             if portfolio is None or symbol is None:

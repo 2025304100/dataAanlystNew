@@ -507,6 +507,7 @@ class DecisionEngine:
         state_context: DecisionStateContext | None = None,
         match_mode: MatchMode | str | None = None,
         allow_t_close_research_override: bool | None = None,
+        governance_exit_only: bool = False,
     ) -> EvaluateResult:
         """Q25：统一 evaluate 入口。dry_run 只返回证据，不写库。
 
@@ -528,6 +529,19 @@ class DecisionEngine:
         """
         # Q25 / G1-3：run_type 旧值兼容（auto_sim → auto_simulation，dry_run → research_preflight）
         run_type = _normalize_run_type(run_type)
+
+        governance_reasons: list[dict[str, Any]] = []
+        if run_type == "auto_simulation" and not dry_run and db is not None:
+            governance_reasons = auto_simulation_governance_reasons(
+                db, portfolio_id=portfolio_id, strategy_snapshot_id=strategy_snapshot_id,
+            )
+            if governance_reasons and not governance_exit_only:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=409, detail={
+                    "error": "PORTFOLIO_EXECUTION_BLOCKED",
+                    "message": "组合尚未就绪，不能启动持久化自动推演",
+                    "blockers": governance_reasons,
+                })
 
         # Step 1-2: Snapshot + Clock
         snap = self.load_snapshot(db, strategy_snapshot_id)
@@ -820,6 +834,27 @@ class DecisionEngine:
             match_mode=resolved_match_mode.value,
             manual_overrides_context=ta9_context,
         )
+        if governance_reasons:
+            # The automatic order adapter may continue verified exits under
+            # an entry lock. A guarded run never creates a new BUY plan.
+            detail = "；".join(reason["message"] for reason in governance_reasons)
+            for ev in evidence:
+                if ev.action != "BUY":
+                    continue
+                original_delta = float(ev.target_qty_delta or ev.target_quantity or 0.0)
+                ev.target_quantity = max(0.0, float(ev.target_quantity or 0.0) - original_delta)
+                ev.target_qty_delta = 0.0
+                ev.action = "REJECTED"
+                ev.action_subtype = "REJECTED_GOVERNANCE_GATE"
+                ev.rejection_reason = "PORTFOLIO_EXECUTION_BLOCKED"
+                ev.rejection_detail = detail
+                ev.blocking_reason = detail
+                ev.executed_price = None
+                ev.reason_codes.append("PORTFOLIO_EXECUTION_BLOCKED")
+            blocking_reasons.extend(governance_reasons)
+            blocking_status = _classify_blocking(blocking_reasons)
+            is_result_production_eligible = False
+            gate_result = {**gate_result, "governance_exit_only": True, "governance_blockers": governance_reasons}
         # T-A9.3：回填 consumed_override_ids（已 apply 的 ManualPriceOverride.id 集合，用于 persist 时 mark consumed）
         consumed_override_ids: set[int] = set(ta9_context.get("applied_override_ids") or [])
         for ev in evidence:
@@ -832,6 +867,14 @@ class DecisionEngine:
             clock.decision_at.isoformat(), trade_date.isoformat(), run_type,
             state_context.state_hash if state_context is not None else None,
         )
+        if governance_reasons:
+            # A governance change is a different decision input: its BUY
+            # evidence cannot reuse a succeeded run with another action/id.
+            # Keep unlocked historical IDs and durable partial-plan IDs intact.
+            decision_run_id = content_hash(
+                "governance_guarded_decision", decision_run_id,
+                sorted({(str(reason["code"]), str(reason["message"])) for reason in governance_reasons}),
+            )
         evidence_idempotency_prefix = decision_run_id[:16]
         order_plans = _build_order_plans(
             decision_run_id=decision_run_id,
@@ -1250,6 +1293,72 @@ def _stub_snapshot_loader(db: Session, strategy_snapshot_id: str) -> LoadedSnaps
             "snapshot_type": snap.snapshot_type,
         },
     )
+
+
+def auto_simulation_governance_reasons(
+    db: Session, *, portfolio_id: int, strategy_snapshot_id: str, current_read: bool = False,
+) -> list[dict[str, Any]]:
+    """Current entry locks and applied binding for an automatic decision.
+
+    Read-only evidence; callers that place BUY orders hold the portfolio and
+    runtime locks until their ledger transaction commits.
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.decision_engine import PortfolioFactorUsage
+    from app.services.portfolio_binding_review import build_binding_review
+    from app.services.portfolio_state_machine import _get_status
+    from app.services.portfolio_status import resolve_composite_status
+
+    statement = select(Portfolio).where(Portfolio.id == portfolio_id).execution_options(populate_existing=True)
+    if current_read:
+        statement = statement.with_for_update()
+    portfolio = db.execute(statement).scalar_one_or_none()
+    if portfolio is None:
+        return [{"severity": "blocking", "code": "PORTFOLIO_NOT_FOUND", "message": "组合不存在"}]
+    reasons: list[dict[str, Any]] = []
+    runtime_state = _get_status(db, portfolio, current_read=current_read)
+    if runtime_state not in {"READY", "RUNNING_AUTO_SIMULATION"}:
+        reasons.append({"severity": "blocking", "code": "PORTFOLIO_NOT_READY", "message": "组合运行状态尚未允许自动接管"})
+    composite = resolve_composite_status(portfolio)
+    if composite.highest_block_level >= 3:
+        reasons.append({"severity": "blocking", "code": composite.composite_status.value, "message": "组合仍有未解除的独立状态锁定"})
+    review = build_binding_review(db, portfolio, current_read=current_read)
+    if review["requires_confirmation"]:
+        reasons.append({"severity": "blocking", "code": "MODEL_INACTIVE", "message": "请本人确认接受当前模型与策略变更"})
+    if review["snapshot_id"] != strategy_snapshot_id:
+        # Explicit historical applied snapshots remain replayable while the
+        # currently accepted model/strategy binding is unchanged. Deprecated
+        # usage is expected on those immutable snapshots; it cannot authorize
+        # a new BUY under a different model, FactorSet or strategy version.
+        snapshot = db.get(StrategyExecutionSnapshot, strategy_snapshot_id, with_for_update=current_read, populate_existing=current_read)
+        usage = db.get(PortfolioFactorUsage, snapshot.portfolio_factor_usage_id, with_for_update=current_read, populate_existing=current_read) if snapshot and snapshot.portfolio_factor_usage_id else None
+        current = review["after"] or {}
+        now = utcnow_naive()
+        def effective(value: datetime | None) -> bool:
+            if value is None:
+                return False
+            value = value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+            return value <= now
+        valid_replay = bool(
+            snapshot and snapshot.portfolio_id == portfolio_id
+            and snapshot.snapshot_type == "save_and_apply"
+            and effective(snapshot.effective_from)
+            and usage and usage.portfolio_id == portfolio_id
+            and usage.status in {"active", "deprecated"}
+            and effective(usage.effective_from)
+            and usage.run_mode in {"production_pit", "production_sim"}
+            and all(
+                getattr(snapshot, key) == getattr(usage, key) == current.get(review_key)
+                for key, review_key in (
+                    ("factor_model_run_id", "model_run_id"), ("factor_set_id", "factor_set_id"),
+                    ("rule_id", "rule_id"), ("rule_version", "rule_version"),
+                )
+            )
+        )
+        if not valid_replay:
+            reasons.append({"severity": "blocking", "code": "MODEL_INACTIVE", "message": "执行快照不是已应用且与当前有效绑定一致的策略快照"})
+    reasons.extend({"severity": "blocking", "code": "MODEL_INACTIVE", "message": message} for message in review["blockers"])
+    return reasons
 
 
 def _stub_gate(

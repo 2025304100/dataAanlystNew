@@ -11,6 +11,11 @@ const { mockApi, mockToast } = vi.hoisted(() => ({
   mockApi: {
     getPortfolioStatus: vi.fn(),
     triggerPortfolioReconcile: vi.fn(),
+    getPortfolioActionItems: vi.fn().mockResolvedValue({
+      items: [],
+      summary: { blockers: 0, warnings: 0, info: 0, ready: true },
+      checks: null,
+    }),
   },
   mockToast: vi.fn(),
 }));
@@ -21,6 +26,10 @@ vi.mock("../../../context/AppContext", () => ({
 }));
 vi.mock("antd", () => ({
   Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
+  Button: ({ children, onClick }: { children?: ReactNode; onClick?: () => void }) => (
+    <button type="button" onClick={onClick}>{children}</button>
+  ),
+  Modal: ({ open, children }: { open?: boolean; children?: ReactNode }) => (open ? <div>{children}</div> : null),
 }));
 
 import { setLocale } from "../../../i18n";
@@ -50,7 +59,7 @@ const NO_DECISION_RESP = {
 const panelText = (): string => screen.getByTestId("reconcile-panel").textContent ?? "";
 
 const openReconcileTab = () => {
-  fireEvent.click(screen.getByRole("button", { name: "对账守恒" }));
+  fireEvent.click(screen.getByRole("button", { name: "每日对账" }));
 };
 
 describe("对账守恒子 Tab", () => {

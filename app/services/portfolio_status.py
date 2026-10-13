@@ -117,7 +117,7 @@ def resolve_composite_status(portfolio: Portfolio) -> ResolvedCompositeStatus:
     )
 
 
-def resolve_composite_status_by_id(db: Session, portfolio_id: int) -> ResolvedCompositeStatus:
+def resolve_composite_status_by_id(db: Session, portfolio_id: int, *, current_read: bool = False) -> ResolvedCompositeStatus:
     """T-D2：Q27.3 resolve_composite_status(portfolio_id) 入口。
 
     Steps：
@@ -125,14 +125,15 @@ def resolve_composite_status_by_id(db: Session, portfolio_id: int) -> ResolvedCo
       2. 返回 resolve_composite_status_from_row 结果。
          portfolio 不存在 → raise LookupError（返回具体 portfolio_id 帮助排障）。
     """
-    row = db.execute(
-        select(
-            Portfolio.status_score,
-            Portfolio.status_data,
-            Portfolio.status_model,
-            Portfolio.status_reconciliation,
-        ).where(Portfolio.id == int(portfolio_id))
-    ).one_or_none()
+    statement = select(
+        Portfolio.status_score,
+        Portfolio.status_data,
+        Portfolio.status_model,
+        Portfolio.status_reconciliation,
+    ).where(Portfolio.id == int(portfolio_id))
+    if current_read:
+        statement = statement.with_for_update()
+    row = db.execute(statement).one_or_none()
     if row is None:
         raise LookupError(f"Portfolio id={portfolio_id} not found for resolve_composite_status_by_id")
     return resolve_composite_status_from_row(
@@ -531,6 +532,7 @@ def order_entry_gate_check(
     requested_action: str,
     *,
     data_verifiable_for_sell: bool = True,
+    current_read: bool = False,
 ) -> GateCheckResult:
     """T-D4 订单入口门禁。
 
@@ -539,7 +541,7 @@ def order_entry_gate_check(
             T-A8 数据可验证标志。True=今日价格/行情齐全可验证是否已触达止损线；
             False=数据缺失且无法验证 → 拒绝并返回 UNABLE_TO_VERIFY_STOP_LOSS。
     """
-    composite = resolve_composite_status_by_id(db, int(portfolio_id))
+    composite = resolve_composite_status_by_id(db, int(portfolio_id), current_read=current_read)
     action = str(requested_action).strip().upper()
 
     if action in BUY_ENTRY_ACTIONS:

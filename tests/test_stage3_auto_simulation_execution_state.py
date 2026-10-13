@@ -19,6 +19,7 @@ from app.models.sim_account import SimOrder, SimTrade
 from app.models.symbol import Symbol
 from app.services.auto_trade_member_source import execute_member_source
 from app.services.sim_accounts import cash_balance
+from tests.portfolio_binding_helpers import bind_applied_snapshot
 
 
 TRADE_DATE = date(2026, 2, 3)
@@ -73,6 +74,7 @@ def _seed_snapshot_plan(db_session, *, total_capital: float, volume_limit_pct: f
         created_by="test",
     )
     db_session.add(snapshot)
+    bind_applied_snapshot(db_session, snapshot)
     db_session.flush()
 
     run_id = f"run-auto-state-{int(total_capital)}"

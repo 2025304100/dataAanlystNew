@@ -70,6 +70,7 @@ def _apply_member_snapshot(
     import json as _json
 
     from app.models.decision_engine import StrategyExecutionSnapshot
+    from tests.portfolio_binding_helpers import bind_applied_snapshot
 
     sym_ids = [int(m["symbol_id"]) for m in members if m.get("symbol_id") is not None]
     if sym_ids:
@@ -88,6 +89,7 @@ def _apply_member_snapshot(
         effective_from=datetime(2026, 1, 1),
     )
     db_session.add(snap)
+    bind_applied_snapshot(db_session, snap)
     db_session.commit()
     return snap
 
