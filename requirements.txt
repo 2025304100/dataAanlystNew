@@ -30,23 +30,27 @@ numpy>=1.26,<3
 duckdb>=1.2,<2          # factor warehouse columnar store
 vectorbt==0.28.5
 
-# Known-broken combination, measured (not inferred) -- do not "fix" it by pinning
-# numba again, that route is already closed:
-#   vectorbt 0.28.5 + numba 0.68.0 + numpy 2.5.4  -> whitebox vectorbt cases raise
-#   AttributeError: 'function' object has no attribute 'get_call_template'
-#   (raised inside numba's own type inference: functions.py get_call_type() calls
-#    self.dispatcher.get_call_template(), but the object is a plain function).
-#   CI env probe then tried numba 0.67.0 / llvmlite 0.49.0: SAME error. So it is not
-#   "the newest numba" -- every numba release that accepts numpy 2.5 is affected.
-#   Going older is not available: numba <= 0.66 requires numpy < 2.5 (verified from
-#   PyPI metadata per release), which would force a project-wide numpy downgrade and
-#   hit akshare/pandas/scikit-learn/duckdb. A numba pin was therefore tried and
-#   reverted; leaving one in place would only be misleading noise.
-# Remaining candidate (not yet validated): vectorbt 1.0.0, whose metadata still says
-# pandas >=2.0,<3.0 (compatible with our pandas 2.3.3). vectorbt 1.1.x requires
-# pandas >= 3.0.3, i.e. a cross-major migration, so it is out of scope for now.
-# Two whitebox cases keep this visible in the gate; they are the acceptance check for
-# whatever we try next.
+# vectorbt + numba: root cause FOUND, and it is NOT a version problem -- do not add a
+# numba pin here again, that route was measured and closed:
+#   Symptom (CI): vectorbt 0.28.5 + numba 0.68.0 + numpy 2.5.4 raised, at runtime,
+#     AttributeError: 'function' object has no attribute 'get_call_template'
+#     inside numba's own type inference (get_call_type -> self.dispatcher....).
+#   Falsified hypotheses (each measured):
+#     - pin numba 0.67.0 (newest-oldest that still accepts numpy 2.5): same error.
+#       numba <= 0.66 requires numpy < 2.5, which would force a project-wide numpy
+#       downgrade -> not acceptable for one research engine.
+#     - upgrade to vectorbt 1.0.0 (metadata pandas >=2.0,<3.0, OK for our 2.3.3):
+#       same error. 1.1.x needs pandas >=3.0.3 (cross-major migration), out of scope.
+#     - "our code misuses numba": app/ has zero numba usage (0 hits).
+#   Real cause: VectorBTConfig.disable_numba defaults to True, but it sets
+#   NUMBA_DISABLE_JIT via os.environ.setdefault at import time. If numba was already
+#   imported, that call is a no-op -- so CI had been exercising the JIT-on path, which
+#   is not what the product uses by default. Setting NUMBA_DISABLE_JIT=1 at CI job level
+#   (before any import) makes the two whitebox vectorbt cases pass; they are back in the
+#   blocking gate (verified on probe branch main_work_vbtjit, run f64b03c4).
+# Still open: the CLI opt-in `scripts/backtest_vectorbt.py --enable-numba` (JIT on) is
+# broken. It is kept visible by a non-blocking step in the whitebox job instead of being
+# hidden. Removing that option, or fixing JIT, would delete that step.
 
 # plotly must be pinned explicitly: it is a TRANSITIVE dependency of vectorbt, so
 # an unpinned resolve floats it to the newest major.

@@ -158,7 +158,9 @@ def main() -> int:
     # 不然它只会藏在那一行统计数字里，没人回头看。
     # -rf：还要短摘要里的 FAILED/ERROR 行。实测踩过——只有 -rX 时，-q 输出里根本没有
     # 失败条目清单，导致“知道红了但不知道哪条红”，ci_digest 也无从提取。
-    cmd = [sys.executable, "-m", "pytest", "-m", args.marker, "--tb=short", "-q", "-rX", "-rf", *bucket]
+    # -rs：还要把“被跳过”的用例列出来。曾经只能从“绿”判断是否真跑了，
+    # 而 importorskip 造成的跳过与“全部通过”在 -q 输出里长得一模一样。
+    cmd = [sys.executable, "-m", "pytest", "-m", args.marker, "--tb=short", "-q", "-rX", "-rf", "-rs", *bucket]
     return subprocess.call(cmd)
 
 

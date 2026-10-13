@@ -25,6 +25,15 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3]
     name: backend-whitebox shard ${{ matrix.shard }}/4
+    env:
+      # 探针实验（分支 main_work_vbtjit，run f64b03c4）证明：之前 4 片里的 vectorbt 红
+      # 不是“numba 版本不对”，而是 **CI 在测产品默认不用的那条路径**：
+      # VectorBTConfig.disable_numba 默认 True，靠导入前的 os.environ.setdefault 生效；
+      # 若 numba 已被其它 import 拉起来，那句就是空操作 → JIT 仍在跑 → 报
+      # get_call_template。在进程启动前就设好这个变量后，那 2 条用例在阻断道里是绿的。
+      # 下方另有一个步骤故意开着 JIT 跑同一文件（non-blocking）：因为 CLI 的
+      # --enable-numba 是公开 opt-in 且**仍然坏**，要让它可见而不是把它藏起来。
+      NUMBA_DISABLE_JIT: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -88,6 +97,16 @@ jobs:
       - name: Run slow / env-gap whitebox tests - non-blocking
         continue-on-error: true
         run: pytest -m "whitebox and (slow or env_gap)" -q --tb=short -rX -rf
+      - name: VectorBT with numba JIT enabled (opt-in path - non-blocking)
+        # 产品默认走非 JIT（上方 job env），阻断道测的就是那条路。
+        # 但 scripts/backtest_vectorbt.py --enable-numba 是公开可选，而在当前 numba
+        # 版本下 JIT-on 仍报 get_call_template（探针已实测）。这一步不拦闸门，
+        # 但每轮真实跑一遍并打印结果：把已知缺陷放在明处，而不是当成不存在。
+        # 修好（或决定去掉该 CLI 选项）后，删掉这一步。
+        env:
+          NUMBA_DISABLE_JIT: "0"
+        continue-on-error: true
+        run: pytest tests/test_whitebox_vectorbt_backtest.py -q --tb=short -rs -rf
 
   # ── 前端测试 ──────────────────────────────────────────────
   frontend:
