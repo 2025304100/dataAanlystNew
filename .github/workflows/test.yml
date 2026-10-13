@@ -166,6 +166,15 @@ jobs:
       # version_num 宽度 1406、引擎退 MyISAM 导致 1071；仍剩 0032 的 1215 列型不匹配）。
       # 该缺陷已挂账，不靠“CI 不跑迁移”假装它不存在：blackbox job 有全表 drift 检查托底。
       - name: Start backend
+        env:
+          # 间歇红取证（run f64b03c4）：test_blackbox_api_mgmt 的 3 个 PUT 报
+          # httpx.ReadTimeout（客户端超时 30s），而同一组在主线上一轮是绿的。
+          # 已排除“内存配置锁”（网络在锁外）；剩两个候选瓶颈的共同源头都是
+          # “后端一起来就拿空库去同步全市场”：5 个线程带重试访问 akshare，
+          # 既可能占满同步路由的线程池，也可能与写 akshare_api_config 的
+          # 事务争行锁（InnoDB 默认等 50s > 客户端 30s）。e2e 已同样关掉。
+          # 不下调试的超时、也不加 sleep 掩盖症状：下一轮 CI 负责定论。
+          AUTO_UNIVERSE_SYNC_ON_STARTUP: "0"
         run: |
           python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/backend.log 2>&1 &
           sleep 5
