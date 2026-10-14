@@ -80,7 +80,9 @@ class ExternalSyncTaskCreate(BaseModel):
     mode: ExternalSyncMode = "incremental"
     start_date: date | None = None
     end_date: date | None = None
-    lookback_days: int = Field(default=30, ge=1, le=100)
+    # This is the request bound, not a provider capability: datasets with real
+    # long history must remain usable with multi-year presets or explicit dates.
+    lookback_days: int = Field(default=30, ge=1, le=36500)
     limit: int = Field(default=20, ge=1, le=50)
     max_workers: int = Field(default=4, ge=1, le=8)
 

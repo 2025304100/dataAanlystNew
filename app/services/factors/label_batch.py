@@ -103,6 +103,7 @@ def resolve_label_batch(
     as_of_exit_date: date | None = None,
     allow_backfill: bool = True,
     limit_threshold: float = 0.095,
+    allow_horizon_backfill: bool = False,
 ) -> ResolvedLabelBatch:
     """返回可支撑窗口的标签批次，必要时就地补齐。
 
@@ -119,6 +120,13 @@ def resolve_label_batch(
     )
 
     if target_code != TARGET_CODE:
+        if allow_horizon_backfill:
+            horizon = horizon_trading_days_of(target_code)
+            if target_code != f"target_{horizon}d_return" or not 1 <= horizon <= 20:
+                raise ValueError("Unsupported mining target code")
+            return _resolve_horizon_batch(warehouse, start_date=start_date, end_date=capped_end,
+                target_code=target_code, adjust=adjust, horizon=horizon,
+                allow_backfill=allow_backfill, limit_threshold=limit_threshold)
         return _resolve_other_target_code(
             warehouse,
             start_date=start_date,
@@ -181,6 +189,30 @@ def resolve_label_batch(
         coverage=after,
         usable_end=capped_end,
     )
+
+
+def _resolve_horizon_batch(warehouse: Any, *, start_date: date, end_date: date,
+                          target_code: str, adjust: str, horizon: int,
+                          allow_backfill: bool, limit_threshold: float) -> ResolvedLabelBatch:
+    from app.services.factors.target_engine import calculate_targets
+
+    batch_id = f"{SHARED_TARGET_BATCH_ID}:{target_code}"
+    report = evaluate_label_coverage(warehouse, batch_id=batch_id, target_code=target_code,
+        adjust=adjust, start_date=start_date, end_date=end_date)
+    written = 0
+    if not report.satisfied:
+        if not allow_backfill or report.blocker != "coverage_gap":
+            raise LabelCoverageError(report)
+        result = calculate_targets(warehouse, start_date=start_date, end_date=end_date,
+            calc_batch_id=batch_id, adjust=adjust, limit_threshold=limit_threshold,
+            target_horizon=horizon)
+        written = result.rows_written
+        report = evaluate_label_coverage(warehouse, batch_id=batch_id, target_code=target_code,
+            adjust=adjust, start_date=start_date, end_date=end_date)
+        if not report.satisfied:
+            raise LabelCoverageError(report)
+    return ResolvedLabelBatch(batch_id=batch_id, target_code=target_code,
+        backfilled=written > 0, rows_written=written, coverage=report, usable_end=end_date)
 
 
 def _resolve_other_target_code(

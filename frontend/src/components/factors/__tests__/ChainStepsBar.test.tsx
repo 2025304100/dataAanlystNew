@@ -54,6 +54,49 @@ describe("ChainStepsBar — Task 3 断言", () => {
 
   afterEach(() => {});
 
+  it("当前步骤突出待处理，后续步骤显示等待；展开后仍可访问原步骤入口", () => {
+    const onGo = vi.fn();
+    render(<ChainStepsBar state={makeState({
+      factorWarehouseReady: true,
+      anyFactorSetCreated: true,
+      anyFactorSetMembersReady: true,
+      anyFactorSetFrozen: true,
+    })} onGoStep={onGo} />);
+
+    expect(screen.getByText("当前待处理：训练模型")).toBeTruthy();
+    expect(screen.getByTestId("chain-step-5").getAttribute("aria-current")).toBe("step");
+    expect(screen.getByTestId("chain-step-5").textContent).toContain("待处理");
+    for (const idx of [6, 7, 8]) {
+      const step = screen.getByTestId(`chain-step-${idx}`);
+      expect(step.getAttribute("data-visual-state")).toBe("waiting");
+      expect(step.textContent).toContain("等待前序步骤");
+    }
+    fireEvent.click(screen.getByTestId("chain-btn-next"));
+    expect(onGo).toHaveBeenLastCalledWith(5);
+    fireEvent.click(screen.getByText("其它步骤入口"));
+    fireEvent.click(screen.getByTestId("chain-btn-review-model"));
+    expect(onGo).toHaveBeenLastCalledWith(6);
+  });
+
+  it("研发条件全部就绪时明确下一步生成评分，不声称已有评分结果", () => {
+    const onGo = vi.fn();
+    render(<ChainStepsBar state={makeState({
+      factorWarehouseReady: true,
+      anyFactorSetCreated: true,
+      anyFactorSetMembersReady: true,
+      anyFactorSetFrozen: true,
+      anyModelTrained: true,
+      anyModelValidated: true,
+      decisionModeEqualsFormalActive: true,
+      pipelineReady: true,
+    })} onGoStep={onGo} />);
+    expect(screen.getByText("评分条件已就绪")).toBeTruthy();
+    expect(screen.getByText("8 / 8 步已就绪")).toBeTruthy();
+    expect(screen.getByText(/任务完成后再查看评分结果/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("chain-btn-start-scoring"));
+    expect(onGo).toHaveBeenCalledWith(8);
+  });
+
   // ───────────────────────────────────────────────────
   // TR-3.1：全部未初始化 → 8 节点渲染，Step1 blocked，Step2..Step8 blocked，Tooltip 有初始化文案
   // ───────────────────────────────────────────────────

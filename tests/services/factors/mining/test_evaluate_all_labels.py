@@ -6,6 +6,7 @@ NameError 一类问题无处可藏（本次改造中就真的踩到一次）。
 """
 
 from datetime import date, datetime, timedelta
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -55,7 +56,16 @@ def _run(start: date, end: date, cutoff: datetime) -> SimpleNamespace:
         candidate_pool_snapshot_id="pool-1",
         split_algorithm_version="split-1.0.0",
         random_seed=42,
+        split_config_json="{}", filter_config_json="{}", evolution_params_json="{}",
     )
+
+
+def _snapshot(db):
+    from test_factor_mining_routes import _seed_snapshot
+    snapshot = _seed_snapshot(db, "pool-1")
+    snapshot.members_json = json.dumps([{"symbol": "600000"}, {"symbol": "000001"}])
+    snapshot.member_count = 2
+    db.commit()
 
 
 def _batch_ids(warehouse: FactorWarehouse) -> set[str]:
@@ -68,7 +78,8 @@ def _batch_ids(warehouse: FactorWarehouse) -> set[str]:
         }
 
 
-def test_evaluate_all_impl_resolves_shared_batch(tmp_path, monkeypatch):
+def test_evaluate_all_impl_resolves_shared_batch(tmp_path, monkeypatch, db_session):
+    _snapshot(db_session)
     warehouse = FactorWarehouse(tmp_path / "eval_all.duckdb")
     warehouse.initialize()
     # daily 频率的切分地板是 252 个调仓点，窗口给足才不会卡在切分阶段
@@ -87,7 +98,7 @@ def test_evaluate_all_impl_resolves_shared_batch(tmp_path, monkeypatch):
     monkeypatch.setattr(SVC, "finalize_run", _fake_finalize)
 
     result = SVC.evaluate_all_impl(
-        None, run_id=run.id, top_k=5, warehouse_path=str(warehouse.path))
+        db_session, run_id=run.id, top_k=5, warehouse_path=str(warehouse.path))
 
     assert result == {"status": "ok"}
     assert seen["batch"] == SHARED_TARGET_BATCH_ID
@@ -100,9 +111,10 @@ def test_evaluate_all_impl_resolves_shared_batch(tmp_path, monkeypatch):
     assert codes == {TARGET_CODE}
 
 
-def test_evaluate_all_impl_fails_loudly_on_bars_gap(tmp_path, monkeypatch):
+def test_evaluate_all_impl_fails_loudly_on_bars_gap(tmp_path, monkeypatch, db_session):
     """K 线没覆盖到的窗口必须报错，不能退回"抄一份能看到多少算多少"。"""
     warehouse = FactorWarehouse(tmp_path / "eval_all_gap.duckdb")
+    _snapshot(db_session)
     warehouse.initialize()
     _seed_bars(warehouse, _days(20, offset=20))       # 库里只有 1 月下旬起
     run = _run(START, START + timedelta(days=5), datetime(2026, 1, 6))
@@ -115,4 +127,4 @@ def test_evaluate_all_impl_fails_loudly_on_bars_gap(tmp_path, monkeypatch):
 
     with pytest.raises(LabelCoverageError):
         SVC.evaluate_all_impl(
-            None, run_id=run.id, top_k=5, warehouse_path=str(warehouse.path))
+            db_session, run_id=run.id, top_k=5, warehouse_path=str(warehouse.path))

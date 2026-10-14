@@ -52,6 +52,7 @@ class ScoreRead(BaseModel):
     weight_mode: str = 'manual'
     factor_model_run_id: str | None = None
     factor_data_cutoff_at: datetime | None = None
+    factor_set_id: str | None = None
     factor_quality_score: float | None = None
     factor_timing_score: float | None = None
     model_alpha_score: float | None = None

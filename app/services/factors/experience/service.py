@@ -113,6 +113,12 @@ def store_experience(db: Session, *, payload: dict[str, Any]) -> tuple[str, str]
         select(FactorExperience).where(FactorExperience.fingerprint == fingerprint)
     ).scalar_one_or_none()
     if existing is not None:
+        # 治理结果优先于去重；同一公式族先沉淀、后被判为负样本时，
+        # 不能因已存在而继续参与下一轮初始种群。
+        if payload.get("is_negative_sample") and not existing.is_negative_sample:
+            existing.is_negative_sample = 1
+            existing.updated_at = _now()
+            db.commit()
         return existing.id, "duplicate"
 
     category = payload.get("category") or fp.infer_category(formula_ast)

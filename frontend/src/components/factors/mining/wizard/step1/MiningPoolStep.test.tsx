@@ -38,6 +38,7 @@ const {
   deleteLatestSnapshot,
   removeMembers,
   fetchMembers,
+  fetchSnapshot,
 } = vi.hoisted(() => ({
   previewPool: vi.fn(),
   createPoolFromFilter: vi.fn(),
@@ -46,6 +47,7 @@ const {
   deleteLatestSnapshot: vi.fn(),
   removeMembers: vi.fn(),
   fetchMembers: vi.fn(),
+  fetchSnapshot: vi.fn(),
 }));
 
 vi.mock("./poolApi", () => ({
@@ -85,6 +87,7 @@ vi.mock("./poolApi", () => ({
     min_pool_size: 50,
   })),
   fetchMembers,
+  fetchSnapshot,
   fetchLatestSnapshot: vi.fn(async () => null),
   downloadImportTemplate: vi.fn(),
   previewImport: vi.fn(async () => ({
@@ -120,7 +123,19 @@ beforeEach(() => {
   createSnapshot.mockResolvedValue({ id: "snap-1", is_locked: true, analysis_json: {} });
   deleteLatestSnapshot.mockResolvedValue({ ok: true });
   removeMembers.mockResolvedValue({ removed: 1 });
+  fetchMembers.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 });
   window.localStorage.clear();
+  fetchSnapshot.mockResolvedValue({ id: "snap-history", pool_id: "pool-history", is_locked: true, data_cutoff_at: "2026-09-01", member_count: 100, members_sample: [{ symbol: "000001", name: "历史标的" }], analysis_json: {} });
+});
+
+describe("MiningPoolStep 已保存快照回显", () => {
+  it("恢复原快照与锁定状态，不把当前全市场筛选预览当作原任务候选池", async () => {
+    render(<MiningPoolStep poolId="pool-history" initialSnapshotId="snap-history" />);
+    await waitFor(() => expect(fetchSnapshot).toHaveBeenCalledWith("pool-history", "snap-history"));
+    await waitFor(() => expect(document.querySelector("[data-pool-lock-banner]")).toBeTruthy());
+    expect(document.querySelector("[data-pool-snapshot-source]")?.textContent).toContain("100");
+    expect(previewPool).not.toHaveBeenCalled();
+  });
 });
 
 afterEach(() => {

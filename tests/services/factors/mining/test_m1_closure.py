@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import random
+import json
 import time
 import uuid
 from datetime import date, datetime, timedelta
@@ -153,12 +154,13 @@ class TestFullRouteRealGA:
 
         db_session.merge(TrainingCandidatePool(
             id="pool-snap-a5", name="测试候选池", source_type="filter",
-            status="frozen", member_count=0,
+            status="frozen", member_count=N_SYMBOLS,
         ))
         db_session.merge(TrainingCandidatePoolSnapshot(
-            id="snap-a5", pool_id="pool-snap-a5", members_json="[]",
+            id="snap-a5", pool_id="pool-snap-a5",
+            members_json=json.dumps([{"symbol": f"{i:06d}"} for i in range(N_SYMBOLS)]),
             rule_hash="rh-a5", data_cutoff_at=datetime(2026, 12, 1),
-            is_locked=1, member_count=0,
+            is_locked=1, member_count=N_SYMBOLS,
         ))
         db_session.commit()
 
@@ -275,6 +277,8 @@ class TestFullRouteRealGA:
 class TestAISeedsInitialPopulation:
     def test_ai_enabled_fills_remaining_slots(self, db_session, warehouse_path,
                                               monkeypatch):
+        from test_factor_mining_routes import _seed_snapshot
+        _seed_snapshot(db_session, "snap-ai")
         from app.services.factors.mining import ai_generator as AIG
 
         run_id = uuid.uuid4().hex
@@ -344,6 +348,8 @@ class TestAISeedsInitialPopulation:
 
     def test_ai_disabled_skips_ai_fill(self, db_session, warehouse_path,
                                        monkeypatch):
+        from test_factor_mining_routes import _seed_snapshot
+        _seed_snapshot(db_session, "snap-ai2")
         """ai_enabled 关闭 → 不调 AI（默认配置跑经典底座，行为与 A2 一致）。"""
         from app.services.factors.mining import ai_generator as AIG
 

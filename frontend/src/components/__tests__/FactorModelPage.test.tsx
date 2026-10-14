@@ -15,7 +15,7 @@
 // - mock antd 的 message（兼容 App.useApp()）
 // - i18n mock：t(key) 返回 key
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act, within } from "@testing-library/react";
 
 const { mockApi, mockMessage } = vi.hoisted(() => ({
   mockApi: {
@@ -39,6 +39,7 @@ const { mockApi, mockMessage } = vi.hoisted(() => ({
     scoringGetModelRelations: vi.fn(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
     scoringListFactorDefinitions: vi.fn(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
     scoringListFactorSetsAsFactor: vi.fn<any>(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
+    scoringGetFactorSetReadiness: vi.fn<(id: string) => Promise<any>>(),
     scoringRenameModel: vi.fn(async () => ({})),
     scoringCreateTask: vi.fn<any>(async () => ({ id: "score-task-001", status: "queued" })),
     scoringTrainModel: vi.fn(async () => ({})),
@@ -85,6 +86,7 @@ vi.mock("../../api/client", () => ({
 }));
 
 import FactorModelPage from "../factors/FactorModelPage";
+import { navigate } from "../../utils/navigate";
 
 /** 构造 runtime 状态。 */
 function makeRuntime(overrides: Partial<any> = {}): any {
@@ -177,7 +179,7 @@ function mockLoadSuccess(overrides: { runtime?: any; models?: any[]; factorSets?
   const models = overrides.models ?? [makeModel()];
   const factorSets = overrides.factorSets ?? [makeFactorSet()];
   // 镜像层（P1.1）：组件从这三个方法取数据，形状必须对齐其解构
-  mockApi.scoringGetOverviewAsFactor.mockResolvedValue({ runtime });
+  mockApi.scoringGetOverviewAsFactor.mockResolvedValue({ runtime, health: { warehouse_available: true } });
   mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ items: models });
   mockApi.scoringListFactorSetsAsFactor.mockResolvedValue(factorSets);
   return { runtime, models, factorSets };
@@ -185,7 +187,10 @@ function mockLoadSuccess(overrides: { runtime?: any; models?: any[]; factorSets?
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+  window.history.replaceState(null, "", window.location.pathname);
   mockApi.scoringCreateTask.mockResolvedValue({ id: "score-task-001", status: "queued" });
+  mockApi.scoringGetFactorSetReadiness.mockImplementation(async (id: string) => ({ ready: true, factor_set_id: id, code: "READY", message: "集合资格检查通过", details: {} }));
 });
 
 afterEach(() => {
@@ -193,6 +198,130 @@ afterEach(() => {
 });
 
 describe("FactorModelPage", () => {
+  it("模型页已经挂载后，关联模型深链仍打开指定模型的真实验证详情", async () => {
+    mockLoadSuccess({ models: [makeModel({ id: "deep-model" })] });
+    mockApi.getFactorModel.mockResolvedValue(makeModel({ id: "deep-model" }));
+    render(<><button onClick={() => navigate("/settings/factors?model_id=deep-model")}>查看关联模型</button><FactorModelPage /></>);
+    await screen.findByText("deep-model");
+
+    fireEvent.click(screen.getByRole("button", { name: "查看关联模型" }));
+
+    await waitFor(() => expect(mockApi.getFactorModel).toHaveBeenCalledWith("deep-model"));
+    expect(await screen.findByTestId("model-validation-detail")).toHaveTextContent("deep-model");
+  });
+
+  it("训练预检未通过时显示缺失原因并阻止提交，修复后可重新检查", async () => {
+    mockLoadSuccess({ models: [] });
+    mockApi.scoringGetFactorSetReadiness.mockResolvedValueOnce({ ready: false, factor_set_id: "fs-test-001", code: "FACTOR_VERSION_MISMATCH", message: "集合因子版本缺少来源，需更新成员后重新冻结", details: {} });
+    render(<FactorModelPage />);
+    await waitFor(() => expect(screen.getByTestId("chain-btn-next")).toHaveTextContent("训练模型"));
+    fireEvent.click(screen.getByTestId("chain-btn-next"));
+
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByText("集合因子版本缺少来源，需更新成员后重新冻结")).toBeVisible());
+    expect(within(dialog).getByRole("button", { name: "提交训练" })).toBeDisabled();
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "重新检查" }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "提交训练" })).toBeEnabled());
+    expect(mockApi.scoringGetFactorSetReadiness).toHaveBeenCalledTimes(2);
+  });
+
+  it("训练预检接口失败时保留对话框和重试入口，不放行任务", async () => {
+    mockLoadSuccess({ models: [] });
+    mockApi.scoringGetFactorSetReadiness.mockRejectedValueOnce(new Error("预检服务不可用"));
+    render(<FactorModelPage />);
+    await waitFor(() => expect(screen.getByTestId("chain-btn-next")).toHaveTextContent("训练模型"));
+    fireEvent.click(screen.getByTestId("chain-btn-next"));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByText(/预检服务不可用/)).toBeVisible());
+    expect(within(dialog).getByRole("button", { name: "提交训练" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "重新检查" }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "提交训练" })).toBeEnabled());
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+  });
+
+  it("切换训练集合后，先前集合的迟到预检结果不会阻断当前集合", async () => {
+    let resolveOld: (value: unknown) => void = () => undefined;
+    mockLoadSuccess({ models: [], factorSets: [makeFactorSet({ id: "fs-A", name: "集合A" }), makeFactorSet({ id: "fs-B", name: "集合B" })] });
+    mockApi.scoringGetFactorSetReadiness.mockImplementation((id: string) => id === "fs-A"
+      ? new Promise((resolve) => { resolveOld = resolve; })
+      : Promise.resolve({ ready: true, factor_set_id: id, code: "READY", message: "集合资格检查通过", details: {} }));
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByTestId("btn-train-fs-A"));
+    const dialogA = await screen.findByRole("dialog");
+    fireEvent.click(within(dialogA).getByRole("button", { name: /取\s*消/ }));
+    fireEvent.click(screen.getByTestId("btn-train-fs-B"));
+    const dialogB = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(dialogB).getByRole("button", { name: "提交训练" })).toBeEnabled());
+
+    await act(async () => resolveOld({ ready: false, factor_set_id: "fs-A", code: "OLD_FAILED", message: "旧集合来源不匹配", details: {} }));
+
+    expect(within(dialogB).getByRole("button", { name: "提交训练" })).toBeEnabled();
+    expect(within(dialogB).getByText("集合B")).toBeInTheDocument();
+    expect(within(dialogB).queryByText("旧集合来源不匹配")).not.toBeInTheDocument();
+  });
+
+  it("旧模型虽标记已验证但生产资格失败时，下一步查看真实验证详情", async () => {
+    mockLoadSuccess({ models: [makeModel({ production_eligible: false, readiness_message: "训练来源无法核验" })] });
+    mockApi.getFactorModel.mockResolvedValue(makeModel({ production_eligible: false, readiness_message: "训练来源无法核验" }));
+    render(<FactorModelPage />);
+    await waitFor(() => expect(screen.getByTestId("chain-step-5")).toHaveAttribute("data-step-state", "ready"));
+    expect(screen.getByTestId("chain-step-6")).toHaveAttribute("data-step-state", "blocked");
+
+    fireEvent.click(screen.getByTestId("chain-btn-next"));
+
+    await waitFor(() => expect(mockApi.getFactorModel).toHaveBeenCalledWith("model-001-abc"));
+    const detail = await screen.findByTestId("model-validation-detail");
+    expect(within(detail).getByText("训练来源无法核验")).toBeVisible();
+    fireEvent.click(within(detail).getByRole("button", { name: "使用此集合重新训练" }));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "提交训练" })).toBeEnabled());
+    expect(mockApi.scoringGetFactorSetReadiness).toHaveBeenCalledWith("fs-test-001");
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+  });
+
+  it("去激活选择生产资格通过的模型，跳过列表里的旧验证模型", async () => {
+    mockLoadSuccess({ models: [
+      makeModel({ id: "legacy-candidate", production_eligible: false }),
+      makeModel({ id: "production-candidate", production_eligible: true }),
+    ] });
+    render(<FactorModelPage />);
+    await waitFor(() => expect(screen.getByTestId("chain-step-6")).toHaveAttribute("data-step-state", "ready"));
+
+    fireEvent.click(screen.getByTestId("chain-btn-activate-model"));
+
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByText("production-candidate")).toBeVisible());
+    expect(mockMessage.error).not.toHaveBeenCalled();
+  });
+
+  it("仓库不可用时不会仅凭runtime打勾，主按钮重新检查仓库", async () => {
+    const { runtime } = mockLoadSuccess();
+    mockApi.scoringGetOverviewAsFactor.mockResolvedValue({ runtime, health: { warehouse_available: false } });
+    render(<FactorModelPage />);
+    await waitFor(() => expect(screen.getByText("model-001-abc")).toBeVisible());
+    expect(screen.getByTestId("chain-step-1")).toHaveAttribute("data-step-state", "blocked");
+    const before = mockApi.scoringGetOverviewAsFactor.mock.calls.length;
+    fireEvent.click(screen.getByTestId("chain-btn-next"));
+    await waitFor(() => expect(mockApi.scoringGetOverviewAsFactor).toHaveBeenCalledTimes(before + 1));
+  });
+
+  it("下一步训练直接打开股票冻结集合的训练对话框，不误选ETF集合", async () => {
+    mockLoadSuccess({ models: [], factorSets: [
+      makeFactorSet({ id: "fs-etf", asset_type: "etf", name: "ETF冻结集合" }),
+      makeFactorSet({ id: "fs-stock", asset_type: "stock", name: "股票冻结集合" }),
+    ] });
+    render(<FactorModelPage />);
+    await waitFor(() => expect(screen.getByTestId("chain-btn-next")).toHaveTextContent("训练模型"));
+
+    fireEvent.click(screen.getByTestId("chain-btn-next"));
+
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByText("股票冻结集合")).toBeVisible());
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+  });
+
   it("renders runtime / models / factorSets after load", async () => {
     mockLoadSuccess();
 

@@ -1,41 +1,117 @@
 .chain-steps-bar {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  padding: 14px 16px;
-  border: 1px solid #dbe4e2;
-  border-radius: 10px;
+  padding: 18px;
+  border: 1px solid #d9e6e2;
+  border-radius: 12px;
   background: #fff;
-  box-shadow: 0 2px 8px rgba(15, 70, 65, .06);
 }
+.chain-focus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.chain-focus-copy { min-width: 0; }
+.chain-focus-eyebrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 6px;
+  color: #61777a;
+  font-size: 12px;
+}
+.chain-focus-eyebrow span + span {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #eff5f2;
+  color: #35685f;
+}
+.chain-focus-title { color: #183f3b; font-size: 16px; font-weight: 600; }
+.chain-focus-description {
+  max-width: 820px;
+  margin: 6px 0 0;
+  color: #637172;
+  line-height: 1.6;
+  font-size: 13px;
+}
+.chain-primary-action.ant-btn { flex-shrink: 0; font-weight: 600; }
 .chain-steps-wrapper {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
   align-items: stretch;
   gap: 6px;
   min-width: 0;
-  flex: 1 1 auto;
 }
-.chain-step { display: flex; align-items: center; gap: 8px; min-width: 0; height: 56px; box-sizing: border-box; padding: 7px 8px; border-radius: 7px; }
-.chain-dot { width: 28px; height: 28px; flex: 0 0 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
-.chain-step button { margin-left: auto; flex: 0 0 auto; white-space: nowrap; }
-.chain-step-label { display: flex; min-width: 0; flex-direction: column; justify-content: center; line-height: 1.2; }
-.chain-step-label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chain-connector { display: none; }
-.chain-next-action { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; padding-left: 4px; }
-.chain-restart-step1 { white-space: nowrap; }
+.chain-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 58px;
+  box-sizing: border-box;
+  padding: 9px 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #f5f7f6;
+  color: #718181;
+}
+.chain-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #e8eeec;
+  color: #758681;
+  font-size: 12px;
+}
+.chain-step-label { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.chain-step-name { font-size: 12px; font-weight: 600; }
+.chain-step-status { font-size: 11px; line-height: 1.3; }
+.chain-ready { background: #f0f7f2; color: #4c715b; }
+.chain-ready .chain-dot { background: #d8ecde; color: #338651; }
+.chain-current { border-color: #7dbdb3; background: #eaf6f2; color: #167b70; }
+.chain-current .chain-dot { background: #167b70; color: #fff; }
+.chain-waiting { color: #879390; }
+.chain-secondary-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 10px;
+  border-top: 1px solid #edf1ef;
+}
+.chain-step-shortcuts { flex: 1; min-width: 0; }
+.chain-step-shortcuts summary {
+  width: fit-content;
+  padding: 4px 0;
+  color: #687f79;
+  cursor: pointer;
+  font-size: 12px;
+}
+.chain-step-shortcuts summary:focus-visible { outline: 2px solid #167b70; outline-offset: 4px; border-radius: 2px; }
+.chain-shortcuts-grid { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 8px; }
+.chain-shortcuts-grid .ant-btn { color: #56736c; }
+.chain-shortcuts-empty { color: #7b8c85; font-size: 12px; }
+.chain-restart-step1.ant-btn { flex-shrink: 0; color: #6e817c; font-size: 12px; }
 @media (max-width: 1200px) {
   .chain-steps-wrapper { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .chain-next-action { width: 100%; padding: 4px 0 0; text-align: right; }
 }
-@media (max-width: 640px) {
-  .chain-steps-wrapper { grid-template-columns: 1fr; }
-  .chain-step { height: auto; min-height: 56px; }
-  .chain-next-action { text-align: stretch; }
-  .chain-next-action .ant-btn { width: 100%; }
-  .chain-next-action .chain-restart-step1 { width: auto; }
+@media (max-width: 760px) {
+  .chain-focus { align-items: stretch; flex-direction: column; gap: 12px; }
+  .chain-primary-action.ant-btn { align-self: flex-start; }
+}
+@media (max-width: 480px) {
+  .chain-steps-bar { padding: 14px; }
+  .chain-steps-wrapper { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chain-primary-action.ant-btn { width: 100%; align-self: stretch; }
+  .chain-secondary-actions { flex-direction: column; gap: 8px; }
 }

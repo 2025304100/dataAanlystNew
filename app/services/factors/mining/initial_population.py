@@ -416,7 +416,7 @@ def build_candidates(
 
     out: list[dict[str, Any]] = []
     skipped: list[SkippedItem] = []
-    for tpl in (templates or CLASSIC_TEMPLATES):
+    for tpl in (CLASSIC_TEMPLATES if templates is None else templates):
         if not tpl.enabled:
             skipped.append(SkippedItem(
                 reason=SKIP_TEMPLATE_DISABLED,

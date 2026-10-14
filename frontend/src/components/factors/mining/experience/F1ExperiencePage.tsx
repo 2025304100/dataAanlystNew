@@ -48,31 +48,41 @@ export default function F1ExperiencePage({ active = true }: F1ExperiencePageProp
   const [items, setItems] = useState<F1Experience[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setFailed(false);
     try {
-      const page = await factorExperienceApi.list({ page: 1, page_size: 50 });
+      const page = await factorExperienceApi.list({ page: pageNumber, page_size: 50 });
       setItems(Array.isArray(page?.items) ? page.items : []);
+      setTotal(page.total ?? 0);
     } catch {
       setItems([]);
       setFailed(true);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageNumber]);
 
   useEffect(() => {
     if (active) void load();
   }, [active, load]);
 
   const archive = async (experienceId: string) => {
+    if (busy) return;
+    setBusy(true);
+    setActionError(null);
     try {
       await factorExperienceApi.archive(experienceId);
       await load();
-    } catch {
-      // 归档失败保持原列表
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t("archiveFailed"));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -86,13 +96,19 @@ export default function F1ExperiencePage({ active = true }: F1ExperiencePageProp
           <span className="mining-page-title">{t("miningExpPageTitle")}</span>
           <span className="mining-page-sub">{t("miningExpDesc")}</span>
         </div>
+        <button type="button" className="mining-pool-btn" disabled={loading || busy}
+          onClick={() => void load()}>{t("refresh")}</button>
       </div>
+      {actionError && <p role="alert" className="mining-inline-error">{actionError}</p>}
+      {!loading && !failed && <p>{t("miningExpPageSummary").replace("{total}", String(total))
+        .replace("{page}", String(pageNumber))
+        .replace("{pages}", String(Math.max(1, Math.ceil(total / 50))))}</p>}
 
       {!loading && !failed && items.length > 0 && (
         <div className="mining-tiles">
           <div className="mining-tile">
             <span className="mining-tile-label">{t("miningExpColTemplate")}</span>
-            <span className="mining-tile-value">{items.length}</span>
+            <span className="mining-tile-value">{total}</span>
           </div>
           <div className="mining-tile">
             <span className="mining-tile-label">{t("miningExpNegative")}</span>
@@ -129,7 +145,7 @@ export default function F1ExperiencePage({ active = true }: F1ExperiencePageProp
             <tbody>
               {items.map((exp, idx) => (
                 <tr key={exp.experience_id}>
-                  <td className="mining-cell-idx">{idx + 1}</td>
+                  <td className="mining-cell-idx">{(pageNumber - 1) * 50 + idx + 1}</td>
                   <td className="mining-cell-formula">
                     {exp.formula_template}
                     {Boolean(exp.is_negative_sample) && (
@@ -161,7 +177,7 @@ export default function F1ExperiencePage({ active = true }: F1ExperiencePageProp
                       type="button"
                       className="mining-pool-btn"
                       data-f1-exp-archive={exp.experience_id}
-                      disabled={exp.status === "archived"}
+                      disabled={busy || exp.status === "archived"}
                       onClick={() => void archive(exp.experience_id)}
                     >
                       {t("miningExpArchive")}
@@ -173,6 +189,12 @@ export default function F1ExperiencePage({ active = true }: F1ExperiencePageProp
           </table>
         </div>
       )}
+      {!failed && total > 50 && <div className="mining-toolbar">
+        <button type="button" className="mining-pool-btn" disabled={loading || busy || pageNumber <= 1}
+          onClick={() => setPageNumber((page) => page - 1)}>{t("miningExpPreviousPage")}</button>
+        <button type="button" className="mining-pool-btn" disabled={loading || busy || pageNumber * 50 >= total}
+          onClick={() => setPageNumber((page) => page + 1)}>{t("miningExpNextPage")}</button>
+      </div>}
     </div>
   );
 }

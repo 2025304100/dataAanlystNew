@@ -245,12 +245,17 @@ def test_batch_context_records_rows_written(tmp_path):
     assert row[2] > 0
 
 
-def test_horizon_constant_matches_target_engine_joins():
-    """标签需要 5 个未来交易日；常量与 target_engine 的自连接偏移必须一致。"""
-    import inspect
-
-    import app.services.factors.target_engine as te
-
-    sql = inspect.getsource(te._load_target_panel)
-    assert "s.trade_index + 5" in sql
+def test_horizon_constant_matches_target_engine_joins(tmp_path):
+    """默认共享标签仍使用 T+1 买入、T+5 退出的实际交易日记录。"""
+    warehouse = _make_warehouse(tmp_path, _days(12))
+    calculate_targets(warehouse, start_date=START, end_date=START,
+        calc_batch_id=SHARED_TARGET_BATCH_ID)
+    with warehouse.connection(read_only=True) as conn:
+        rows = conn.execute(
+            "SELECT entry_date, exit_date, target_code FROM factor_targets WHERE calc_batch_id = ?",
+            [SHARED_TARGET_BATCH_ID],
+        ).fetchall()
+    assert len(rows) == len(SYMBOLS)
+    assert all(row == (START + timedelta(days=1), START + timedelta(days=5), TARGET_CODE)
+        for row in rows)
     assert TARGET_HORIZON_TRADING_DAYS == 5

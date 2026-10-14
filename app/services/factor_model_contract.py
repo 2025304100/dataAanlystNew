@@ -337,9 +337,40 @@ def assess_factor_model_readiness(
     )
 
 
+def assess_factor_score_publication_readiness(
+    db: Session,
+    *,
+    model_run_id: str,
+    expected_weight_mode: str,
+) -> FactorModelReadiness:
+    """Permit real shadow observation without relaxing the production gate.
+
+    Trading/strategy callers continue using assess_factor_model_readiness,
+    whose runtime-active check requires ridge. Score publication must instead
+    match the explicitly activated shadow or ridge model and exact mode.
+    """
+    readiness = assess_factor_model_readiness(db, model_run_id=model_run_id)
+    if not readiness.ready:
+        return readiness
+    runtime = db.get(FactorRuntimeState, 1)
+    active_id = runtime.active_model_run_id if runtime else None
+    actual_mode = runtime.weight_mode if runtime else "manual"
+    if (expected_weight_mode not in {"shadow", "ridge"}
+            or active_id != model_run_id or actual_mode != expected_weight_mode):
+        return _result(
+            False, "MODEL_NOT_GLOBAL_ACTIVE",
+            "Score publication requires the current explicitly activated model and mode",
+            model_run_id=model_run_id, factor_set_id=readiness.factor_set_id,
+            active_model_run_id=active_id, weight_mode=actual_mode,
+            expected_weight_mode=expected_weight_mode,
+        )
+    return readiness
+
+
 __all__ = [
     "FactorModelReadiness",
     "assess_factor_model_readiness",
+    "assess_factor_score_publication_readiness",
     "model_factor_set_id",
     "model_training_mode",
 ]

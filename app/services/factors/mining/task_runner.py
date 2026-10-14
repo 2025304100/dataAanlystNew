@@ -101,7 +101,7 @@ class MiningWorkerContext:
         """阶段内长耗时步骤应周期性调用（§6.5：每代结束 + 每完成 10 个因子）。"""
         heartbeat_mining(self.task_id)
 
-    def should_stop(self) -> bool:
+    def should_stop(self, *, fresh: bool = False) -> bool:
         """worker 应停止吗（DEF-12/DEF-3）：
 
         ① 进程级优雅停机事件（既有语义）；
@@ -110,7 +110,7 @@ class MiningWorkerContext:
         """
         if is_worker_stop_requested(task_id=self.task_id):
             return True
-        return _cancel_requested_cached(self.task_id)
+        return _cancel_requested_cached(self.task_id, fresh=fresh)
 
 
 # ══════════════════════════════════════════════════════════
@@ -174,7 +174,7 @@ def touch_run_progress(
         return False
 
 
-def _cancel_requested_cached(task_id: str) -> bool:
+def _cancel_requested_cached(task_id: str, *, fresh: bool = False) -> bool:
     """带节流缓存地读 `async_task_records.cancel_requested`。
 
     任务记录不存在 ⇒ 返回 False（保守：测试注入/直跑场景不误杀）。
@@ -182,7 +182,7 @@ def _cancel_requested_cached(task_id: str) -> bool:
     now = time.monotonic()
     with _cancel_guard:
         hit = _cancel_state.get(task_id)
-        if hit is not None and now - hit[0] < CANCEL_CHECK_INTERVAL:
+        if not fresh and hit is not None and now - hit[0] < CANCEL_CHECK_INTERVAL:
             return hit[1]
     requested = False
     try:
@@ -276,6 +276,20 @@ def _reject_if_mining_busy() -> None:
         )
 
 
+def request_mining_cancellation(task_id: str) -> None:
+    from app.services.async_tasks import cancel_async_task
+    from app.db.session import get_session_local
+    task = cancel_async_task(task_id)
+    # A queued task has no worker finally-block to remove it and free mining_domain.
+    if task.status == "cancelled":
+        db = get_session_local()()
+        try:
+            TL.remove_queued_task(db, task_id=task_id)
+        finally:
+            db.close()
+        _release_all_locks(task_id)
+
+
 # ══════════════════════════════════════════════════════════
 # worker
 # ══════════════════════════════════════════════════════════
@@ -314,6 +328,7 @@ def run_mining_worker(
     """
     heartbeat_stop = threading.Event()
     heartbeat_thread: threading.Thread | None = None
+    run_id = ""
     from app.db.session import get_session_local
 
     db = get_session_local()()
@@ -346,7 +361,8 @@ def run_mining_worker(
             holds_duckdb_write=holds_write,
         )
 
-        if ctx.should_stop():
+        if ctx.should_stop(fresh=True):
+            _sync_run_terminal(run_id, "cancelled")
             _set_task_fresh(task_id, status="cancelled", stage="cancelled",
                             message="cancelled before stages", finished_at=_now())
             return
@@ -354,7 +370,8 @@ def run_mining_worker(
         runner = stage_runner or _default_stage_runner
         result = runner(ctx) or {}
 
-        if ctx.should_stop():
+        if ctx.should_stop(fresh=True):
+            _sync_run_terminal(run_id, "cancelled")
             _set_task_fresh(task_id, status="cancelled", stage="cancelled",
                             message="cancelled after stages", finished_at=_now())
             return
@@ -367,11 +384,33 @@ def run_mining_worker(
             result_json=_dumps(result),
             finished_at=_now(),
         )
+    except Exception as exc:
+        _sync_run_terminal(run_id, "failed", error_code=getattr(exc, "error_code", None)
+                           or "MINING_WORKER_FAILED")
+        raise
     finally:
         heartbeat_stop.set()
         if heartbeat_thread is not None:
             heartbeat_thread.join(timeout=5)
         _release_all_locks(task_id, resume_runner=stage_runner)
+        db.close()
+
+
+def _sync_run_terminal(run_id: str, status: str, *, error_code: str | None = None) -> None:
+    if not run_id:
+        return
+    from app.db.session import get_session_local
+    from app.services.factors.mining.service import load_run
+    db = get_session_local()()
+    try:
+        run = load_run(db, run_id)
+        # Human pause/early-stop and a completed test stage are not overwritten by task cleanup.
+        if run is not None and run.status not in ("succeeded", "paused", "converged", "cancelled"):
+            run.status = status
+            if error_code and not run.error_code:
+                run.error_code = error_code
+            db.commit()
+    finally:
         db.close()
 
 
@@ -449,6 +488,7 @@ def _fill_random_exploration(
 def _make_random_supplier(
     *, selected_fields: Sequence[str], base_seed: int,
     existing_formulas: Sequence[str],
+    random_state: dict[str, Any] | None = None,
 ) -> Callable[[int], list[dict[str, Any]]]:
     """D2 随机注入供给（`run_ga_loop.random_supplier` 注入点）。
 
@@ -460,14 +500,17 @@ def _make_random_supplier(
         generate_random_candidates,
     )
 
-    seen: set[str] = {str(f) for f in existing_formulas if str(f)}
-    calls = {"n": 0}
+    saved = random_state if random_state is not None else {}
+    seen: set[str] = set(saved.get("seen_formulas") or existing_formulas)
+    saved["seen_formulas"] = sorted(seen)
+    calls = {"n": int(saved.get("calls", 0))}
 
     def _supply(count: int) -> list[dict[str, Any]]:
         count = max(0, int(count))
         if count <= 0:
             return []
         calls["n"] += 1
+        saved["calls"] = calls["n"]
         try:
             result = generate_random_candidates(
                 cfg=RandomGeneratorConfig(
@@ -486,6 +529,7 @@ def _make_random_supplier(
             if formula:
                 seen.add(formula)
             out.append(entry)
+        saved["seen_formulas"] = sorted(seen)
         return out
 
     return _supply
@@ -564,13 +608,29 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
         if run is None:
             raise ValueError(f"run 不存在: {ctx.run_id!r}")
         payload = dict(ctx.payload or {})
+        from app.services.factors.mining import checkpoints as CP
+        frozen = SVC.run_configuration(run)
+        payload = {**frozen, **payload}
+        train_ratio = float(payload.get("train_ratio", 0.6))
+        validation_ratio = float(payload.get("validation_ratio", 0.2))
+        initial_state = (CP.restore_checkpoint(db, run_id=run.id, payload=ctx.payload)
+                         if payload.get("resume_from_checkpoint") else None)
+        if run.status not in ("succeeded", "validating"):
+            SVC.set_run_status(db, run, "running")
+            run.error_code = None
+            db.commit()
         freq = str(run.rebalance_frequency or "daily")
         horizon = int(getattr(run, "target_horizon", 0) or 5)
+        from app.services.factors.mining.data_scope import load_snapshot_symbols
+        candidate_symbols = load_snapshot_symbols(db, run.candidate_pool_snapshot_id)
+        target_code = f"target_{horizon}d_return"
         # 立即结束 `load_run` 开启的隐式事务并归还连接：目标计算与逐代进化
         # 都是分钟级纯 DuckDB 计算，期间若继续持有 MySQL 连接，会被
         # `wait_timeout`（实测本机 120s）断开，首代持久化即 2006
         # （eval.db.mysql_gone_away_2006）→ worker crash。归还后由
         # 连接池 pool_pre_ping/recycle=60s 在下次 checkout 时自动刷新。
+        db.refresh(run)
+        db.expunge(run)
         db.rollback()
 
         # ① 目标标签：读常驻标签库，缺哪段就地补写回同一批次。
@@ -584,6 +644,7 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
             start_date=run.start_date.date(),
             end_date=run.end_date.date(),
             as_of_exit_date=cutoff,
+            target_code=target_code, allow_horizon_backfill=True,
         )
         calc_batch = resolved.batch_id
         logger.info(
@@ -594,25 +655,27 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
 
         # ② MiningContext（切分走归一化入口；候选池过滤留 A5）
         target_df, _bid, _tcode = wh.get_target_panel(
-            calc_batch, "target_5d_return",
+            calc_batch, target_code,
             start_date=run.start_date.date(),
             end_date=resolved.usable_end,
             as_of_exit_date=cutoff,
         )
-        all_dates = sorted(
-            d for d in (EVA._as_date(v) for v in target_df["signal_date"].tolist())
-            if d is not None
-        )
+        target_df = target_df.loc[target_df["symbol"].isin(candidate_symbols)]
+        available_dates = {d for d in (EVA._as_date(v) for v in target_df["signal_date"].tolist())
+                           if d is not None}
+        all_dates = tuple(d for d in EVA.select_signal_dates(wh.list_trade_dates(), frequency=freq)
+                          if d in available_dates)
         split, budget = EVA.build_split(
-            all_dates=all_dates, frequency=freq, target_horizon=horizon)
+            all_dates=all_dates, frequency=freq, target_horizon=horizon,
+            train_ratio=train_ratio, validation_ratio=validation_ratio, tail_loss_points=0)
         mc = MiningContext(
             run_id=run.id, candidate_pool_snapshot_id=str(run.candidate_pool_snapshot_id),
             data_cutoff_at=run.data_cutoff_at, start_date=run.start_date.date(),
             end_date=run.end_date.date(), rebalance_frequency=freq,
             target_horizon=horizon, split=split,
             purge_points=budget.purge_points, embargo_points=budget.embargo_points,
-            train_ratio=0.6, validation_ratio=0.2,
-            random_seed=int(getattr(run, "random_seed", 0) or 42),
+            train_ratio=train_ratio, validation_ratio=validation_ratio,
+            random_seed=int(run.random_seed if run.random_seed is not None else 42),
             config_hash=str(getattr(run, "config_hash", "") or ""),
             split_algorithm_version=str(getattr(run, "split_algorithm_version", "")
                                         or budget and "split-1.0.0"),
@@ -620,24 +683,32 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
             warehouse_path=str(wh.path),
             data_snapshot_version=str(getattr(run, "split_algorithm_version", "")
                                       or "snapshot-default"),
+            candidate_symbols=candidate_symbols, signal_dates=all_dates,
         )
 
         # ③ 初始种群（经典模板底座；AI/随机探索层接入 A3）
         evo = dict(payload.get("evolution_params") or {})
         pop_size = max(4, int(evo.get("population_size", 60) or 60))
-        max_gen = max(1, int(evo.get("max_generations", 8) or 8))
+        max_gen = max(1, int(evo.get("max_generations", run.max_generation)))
         fields = list(payload.get("selected_fields") or [
             "close", "open", "high", "low", "volume", "amount", "turnover_rate"])
         cats = list(evo.get("enabled_categories") or [
             "trend", "reversal", "volatility", "volume_price"])
         try:
-            result = IP.build_initial_population(
-                population_size=pop_size, selected_fields=fields,
-                enabled_categories=cats,
-                template_limit=evo.get("classic_template_limit"))
+            from app.services.factors.mining import template_service as TPL
+            if initial_state is not None:
+                from types import SimpleNamespace
+                result = SimpleNamespace(candidates=initial_state["population"])
+            else:
+                result = IP.build_initial_population(
+                    population_size=pop_size, selected_fields=fields,
+                    enabled_categories=cats,
+                    template_limit=evo.get("classic_template_limit"),
+                    templates=TPL.load_population_templates(db))
         except Exception as exc:  # noqa: BLE001 - 模板/字段配置异常 → 阻断本任务
             raise RuntimeError(f"初始种群生成失败: {type(exc).__name__}: {exc}") from exc
         population: list[dict[str, Any]] = []
+        from app.services.factors.mining.dedup import formula_hash
         for row in (result.candidates or []):
             formula = str(row.get("formula") or "")
             if not formula:
@@ -645,7 +716,7 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
             population.append({
                 **dict(row),
                 "canonical_formula": formula,
-                "formula_hash": str(row.get("formula_hash") or "") or formula,
+                "formula_hash": formula_hash(formula),
                 "operation": "enumerated",
                 "generation": 0,
                 "source": "template",
@@ -659,7 +730,7 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
         # ③.5 AI 层填充剩余名额（`ai_enabled` 显式开才走；尽力而为，失败不阻断）
         #     AIResult 契约：永不抛异常；accepted 条目自带 formula/formula_hash/
         #     operation=ai_generated/economic_logic 等完整字段（验收报告 #16）。
-        if bool(evo.get("ai_enabled")):
+        if initial_state is None and bool(evo.get("ai_enabled")):
             remaining = max(0, pop_size - len(population))
             if remaining > 0:
                 try:
@@ -718,7 +789,7 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
             random_rate=float(evo.get("random_rate", 0.20) or 0.20),
             convergence_threshold=float(evo.get("convergence_threshold", 1e-3) or 1e-3),
             convergence_generations=int(evo.get("convergence_generations", 2) or 2),
-            seed=int(evo.get("random_seed", 0) or int(getattr(run, "random_seed", 0) or 42)),
+            seed=int(evo.get("random_seed", run.random_seed if run.random_seed is not None else 42)),
             # ── M2 选择/繁殖（P0：前端已提交的配置现在真实生效） ──
             selection_mode=_resolve_selection_mode(evo),
             objectives=(tuple(str(o) for o in evo["objectives"])
@@ -762,8 +833,7 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
         def _runtime_dedup(ranked: Sequence[Mapping[str, Any]]) -> Any:
             """第 4 层相关性去重（P1-6；naive/advanced 均启用）。"""
             return RC.dedup_by_correlation(
-                ranked, seed=int(evo.get("random_seed", 0)
-                                 or int(getattr(run, "random_seed", 0) or 42)))
+                ranked, seed=ga_cfg.seed)
 
         def _persist_generation_once(gen: int, record: Mapping[str, Any],
                                  ranked: Sequence[Mapping[str, Any]]) -> None:
@@ -812,10 +882,19 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
                         db = get_session_local()()
             ctx.heartbeat()
 
+        checkpoint_state: dict[str, Any] | None = initial_state
+        random_state = dict((initial_state or {}).get("random_supplier") or {})
+
+        def _on_checkpoint(state: Mapping[str, Any]) -> None:
+            nonlocal checkpoint_state
+            checkpoint_state = {**dict(state), "random_supplier": dict(random_state)}
+            CP.save_checkpoint(db, run_id=run.id, payload=ctx.payload, state=checkpoint_state)
+
         outcome = GA.run_ga_loop(
             ga_cfg, population, evaluate=_evaluate,
             random_supplier=_make_random_supplier(
                 selected_fields=fields, base_seed=ga_cfg.seed,
+                random_state=random_state,
                 existing_formulas=tuple(
                     str(p.get("canonical_formula") or p.get("formula") or "")
                     for p in population)),
@@ -823,11 +902,13 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
             runtime_dedup=_runtime_dedup,
             # DEF-12/DEF-3：逐个体协作式停止——pause/看门狗请求后 worker 自止
             should_stop=ctx.should_stop,
+            initial_state=initial_state,
+            on_checkpoint=_on_checkpoint,
         )
 
         # 停止请求后不再继续 finalize（run 可能已被看门狗置 failed）；
         # worker 外层会把 task 置 cancelled 并释放锁。
-        if ctx.should_stop():
+        if ctx.should_stop(fresh=True):
             return {
                 "message_zh": "已按停止请求提前结束（未执行最终验证）",
                 "generations": outcome.generations_run,
@@ -843,6 +924,10 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
         final_top_k = max(0, int(payload.get("finalize_top_k", 50) or 0))
         final: dict[str, Any] | None = None
         if final_top_k > 0:
+            # Once the test stage starts, this checkpoint must never rerun the test experiment.
+            if checkpoint_state is not None:
+                CP.save_checkpoint(db, run_id=run.id, payload=ctx.payload,
+                                   state=checkpoint_state, resumable=False)
             # DEF-9 稳定性（2026-09-25 V4a 实测）：长进化后 worker 的 MySQL
             # 会话常被 wait_timeout 掉线（2006/2013），finalize 若拿着死连接
             # 会把整批候选 evaluate_full 吞成 failed → 结果页永不可达。
@@ -860,7 +945,10 @@ def _run_real_stages(ctx: MiningWorkerContext) -> dict[str, Any]:
                     pass
                 db = get_session_local()()
             final = SVC.finalize_run(db, ctx=mc, run_id=run.id, top_k=final_top_k)
+            if final.get("status") == "failed":
+                raise RuntimeError("MINING_FINAL_EVALUATION_FAILED: 最终验证未产生任何有效评估结果。")
         else:
+            run = SVC.load_run(db, ctx.run_id)
             if run.status not in ("succeeded",):
                 SVC.set_run_status(db, run, "succeeded")
             run.converged = 1

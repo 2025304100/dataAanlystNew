@@ -16,6 +16,19 @@ export interface ResultGotoFactorModelButtonProps {
   onNavigate?: (ctx: MiningResultContext) => void;
 }
 
+export function navigateMiningResult(context: MiningResultContext): void {
+  if (!contextComplete(context)) return;
+  const params = new URLSearchParams({
+    next: "pipeline",
+    set_id: String(context.factor_set_id),
+    factor_set_id: String(context.factor_set_id),
+    data_cutoff_at: String(context.data_cutoff_at),
+    candidate_pool_snapshot_id: String(context.candidate_pool_snapshot_id),
+    rebalance_frequency: String(context.rebalance_frequency),
+  });
+  navigate(`/factors?${params.toString()}`);
+}
+
 export default function ResultGotoFactorModelButton({
   context = null,
   onNavigate,
@@ -33,7 +46,7 @@ export default function ResultGotoFactorModelButton({
         if (onNavigate) {
           onNavigate(context);
         } else {
-          navigate("/factors?next=pipeline");
+          navigateMiningResult(context);
         }
       }}
     >

@@ -40,7 +40,7 @@ SHARED_TARGET_BATCH_ID = "targets-labels"
 DEFAULT_TARGET_CODE = "target_5d_return"
 
 _PATH_LOCKS: dict[str, threading.RLock] = {}
-_PATH_LOCKS_GUARD = threading.Lock()
+_PATH_LOCKS_GUARD = threading.RLock()
 _PATH_CLASS_INSTANCES: dict = {}
 
 

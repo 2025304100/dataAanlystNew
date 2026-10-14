@@ -12,6 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from typing import Literal
 from uuid import uuid4
 
 from app.db.session import get_db
@@ -42,6 +43,7 @@ from app.services.factors.__facade__ import (
     get_model_detail,
     get_score_runtime_overview,
     get_scoring_task,
+    get_scoring_factor_set_readiness,
     list_factor_drafts,
     list_factorsets,
     list_score_models,
@@ -97,6 +99,9 @@ class CreateScoringTaskRequest(BaseModel):
     full_refresh: bool = False
     train_model: bool = False
     materialize_scores: bool = True
+    universe_source: Literal['watchlist', 'positions', 'all'] | None = None
+    watchlist_id: int | None = Field(default=None, ge=1)
+    portfolio_id: int | None = Field(default=None, ge=1)
     scope: str = Field(default="recent", pattern=r"^(recent|full|backfill)$")
     actor: str = "external:data_sync"
     source_hint: str = "external_data_sync"
@@ -267,6 +272,9 @@ def api_create_scoring_task(req: CreateScoringTaskRequest) -> dict:
             full_refresh=bool(req.full_refresh),
             train_model=bool(req.train_model),
             materialize_scores=bool(req.materialize_scores),
+            universe_source=req.universe_source,
+            watchlist_id=req.watchlist_id,
+            portfolio_id=req.portfolio_id,
             scope=req.scope,
             actor=req.actor,
             source_hint=req.source_hint,
@@ -357,6 +365,12 @@ def api_list_factorsets(
     """
     items: list[ScoreFactorSetDTO] = list_factorsets(scope=scope, limit=limit)  # type: ignore[arg-type]
     return [_dc2dict(x) for x in items]
+
+
+@router.get("/scoring/factorsets/{factorset_id}/readiness", response_model=dict)
+def api_scoring_factor_set_readiness(factorset_id: str) -> dict:
+    """Expose the real immutable FactorSet training precondition without writes."""
+    return get_scoring_factor_set_readiness(factorset_id)
 
 
 @router.get("/scoring/models/{model_id}", response_model=dict)

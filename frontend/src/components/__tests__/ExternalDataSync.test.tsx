@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { message } from "antd";
@@ -52,6 +52,7 @@ const { mockApi, makeTask, mockOverview } = vi.hoisted(() => {
     makeTask,
     mockOverview,
     mockApi: {
+      getWatchlists: vi.fn(async () => [] as Array<{ id: number; name: string; list_type: string }>),
       scoringCreateTask: vi.fn(async () => ({})),
       scoringGetTask: vi.fn(async () => ({})),
       importTailProxyMinutes: vi.fn(async () => ({})),
@@ -167,6 +168,10 @@ vi.mock("../../api/client", () => ({ api: mockApi }));
 import ExternalDataSync from "../ExternalDataSync";
 import { AppContext } from "../../context/AppContext";
 
+function renderWithWatchlist() {
+  return render(<AppContext.Provider value={{ activeWatchlistId: 22, portfolioId: 44, workbench: { watchlists: [{ id: 11, name: "core", list_type: "watch" }, { id: 22, name: "my-list", list_type: "watch" }] } } as any}><ExternalDataSync /></AppContext.Provider>);
+}
+
 async function chooseSelect(index: number, text: string) {
   fireEvent.mouseDown(document.querySelectorAll(".ant-select-selector")[index]);
   const option = await waitFor(() => {
@@ -178,8 +183,43 @@ async function chooseSelect(index: number, text: string) {
   fireEvent.click(option);
 }
 
+async function chooseDatePreset(label: string) {
+  const select = screen.getByRole("combobox", { name: "日期跨度预设" });
+  const user = userEvent.setup();
+  await user.click(select);
+  // rc-select virtualizes its list: keyboard navigation scrolls the later presets into view.
+  for (let step = 0; step <= 14; step += 1) {
+    const option = Array.from(document.querySelectorAll(".ant-select-item-option"))
+      .find((item) => item.textContent === label);
+    if (option) { fireEvent.click(option); return; }
+    const activeOption = document.getElementById(select.getAttribute("aria-activedescendant") ?? "");
+    if (activeOption?.getAttribute("aria-label") === label) {
+      fireEvent.keyDown(select, { key: "Enter", code: "Enter", keyCode: 13, which: 13 });
+      return;
+    }
+    fireEvent.keyDown(select, { key: "ArrowDown", code: "ArrowDown", keyCode: 40, which: 40 });
+  }
+  throw new Error(`Date preset is not available to click or keyboard navigation: ${label}`);
+}
+
+async function enterHistoricalRange(start: string, end: string) {
+  const user = userEvent.setup();
+  await user.clear(screen.getByPlaceholderText("开始日期"));
+  await user.type(screen.getByPlaceholderText("开始日期"), start);
+  await user.keyboard("{Enter}");
+  await user.clear(screen.getByPlaceholderText("结束日期"));
+  await user.type(screen.getByPlaceholderText("结束日期"), end);
+  await user.keyboard("{Enter}");
+}
+
 describe("ExternalDataSync dashboard", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
+    mockApi.getWatchlists.mockReset();
+    mockApi.getWatchlists.mockResolvedValue([]);
     vi.mocked(message.error).mockClear();
     vi.mocked(message.success).mockClear();
     vi.mocked(message.warning).mockClear();
@@ -292,6 +332,21 @@ describe("ExternalDataSync dashboard", () => {
     expect(await screen.findByText("估值按真实快照日期统计采集缺口，评分可在 7 天内沿用已有估值快照；财报按公告日期生效。仓库字段覆盖不表示已生成模型评分。")).toBeInTheDocument();
   });
 
+  it("keeps input synchronization usable when the wizard hides scoring operations", async () => {
+    const user = userEvent.setup();
+    render(<ExternalDataSync showScoringRefresh={false} />);
+
+    const syncInput = await screen.findByRole("button", { name: /extSyncFundamental/ });
+    expect(screen.queryByRole("button", { name: "刷新评分特征" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/当前评分仅支持 A 股股票/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "extCoverageActionModel" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "extCoverageActionApi" })).toBeInTheDocument();
+    await user.click(syncInput);
+
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({ dataset: "fundamental" })));
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+  });
+
   it("renders coverage readiness as a user-facing label instead of an internal enum", async () => {
     render(<ExternalDataSync />);
 
@@ -397,7 +452,7 @@ describe("ExternalDataSync dashboard", () => {
   });
   it("submits a score-only factor pipeline after input synchronization", async () => {
     const user = userEvent.setup();
-    render(<ExternalDataSync />);
+    renderWithWatchlist();
     await user.click(await screen.findByRole("button", { name: "刷新评分特征" }));
 
     await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({
@@ -405,6 +460,108 @@ describe("ExternalDataSync dashboard", () => {
       materialize_scores: true,
       full_refresh: false,
     })));
+  });
+
+  it.each([
+    ["watchlist", null, { universe_source: "watchlist", watchlist_id: 22 }],
+    ["positions", "extSourcePositions", { universe_source: "positions", portfolio_id: 44 }],
+    ["all", "extSourceAllMarket", { universe_source: "all" }],
+  ] as const)("submits the selected %s score universe without unrelated identifiers", async (_, option, scope) => {
+    renderWithWatchlist();
+    await screen.findByText("280");
+    if (option) await chooseSelect(0, option);
+    expect(screen.getByText("当前评分仅支持 A 股股票。为保持评分可比性，仍使用全市场数据作为计算参照，仅为所选范围生成评分。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新评分特征" }));
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith({
+      start_date: undefined, end_date: undefined, full_refresh: false,
+      train_model: false, materialize_scores: true, ...scope,
+    }));
+  });
+
+  it.each([
+    ["watchlist", null, "当前观察池尚未加载或不存在，无法刷新评分；请先选择有效观察池"],
+    ["positions", "extSourcePositions", "当前组合尚未加载或未选择，无法刷新持仓评分；请先选择组合"],
+  ] as const)("blocks %s scoring without its identity instead of falling back to all symbols", async (_, option, reason) => {
+    render(<ExternalDataSync />);
+    await screen.findByText("280");
+    if (option) await chooseSelect(0, option);
+    expect(screen.getByRole("button", { name: "刷新评分特征" })).toBeDisabled();
+    expect(screen.getByText(reason)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新评分特征" }));
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+    await chooseSelect(0, "extSourceAllMarket");
+    expect(screen.getByRole("button", { name: "刷新评分特征" })).toBeEnabled();
+  });
+
+  it("keeps a completed scoring task's frozen universe when the selector changes", async () => {
+    mockApi.scoringCreateTask.mockResolvedValue({ id: "score-scoped", status: "done", stage: "done", percent: 100, result: { score_universe: { source: "watchlist", watchlist_id: 22, portfolio_id: null, symbol_count: 3, normalization: "full_market" } } } as any);
+    renderWithWatchlist();
+    fireEvent.click(await screen.findByRole("button", { name: "刷新评分特征" }));
+    expect(await screen.findByText("本次评分范围：观察池 #22 · 3 只股票；使用全市场数据作为计算参照")).toBeInTheDocument();
+    await chooseSelect(0, "extSourceAllMarket");
+    expect(screen.getByText("本次评分范围：观察池 #22 · 3 只股票；使用全市场数据作为计算参照")).toBeInTheDocument();
+    expect(screen.queryByText(/本次评分范围：全量已同步标的/)).not.toBeInTheDocument();
+  });
+
+  it("shows the queued task's frozen scope from its payload before results exist", async () => {
+    const task = { id: "score-queued", status: "queued", stage: "queued", percent: 0, result: null, payload_json: JSON.stringify({ universe_source: "positions", portfolio_id: 44, score_symbols: ["600000", "000001"] }) };
+    mockApi.scoringCreateTask.mockResolvedValue(task as any);
+    mockApi.scoringGetTask.mockResolvedValue(task as any);
+    renderWithWatchlist();
+    await screen.findByText("280");
+    await chooseSelect(0, "extSourcePositions");
+    fireEvent.click(screen.getByRole("button", { name: "刷新评分特征" }));
+    expect(await screen.findByText("本次评分范围：组合 #44 持仓 · 2 只股票；使用全市场数据作为计算参照")).toBeInTheDocument();
+    await chooseSelect(0, "extSourceAllMarket");
+    expect(screen.getByText("本次评分范围：组合 #44 持仓 · 2 只股票；使用全市场数据作为计算参照")).toBeInTheDocument();
+  });
+
+  it("loads the actual core watchlist independently when the workbench is unavailable", async () => {
+    mockApi.getWatchlists.mockResolvedValue([{ id: 1, name: "core", list_type: "watch" }]);
+    render(<AppContext.Provider value={{ activeWatchlistId: 1, portfolioId: 1, workbench: null } as any}><ExternalDataSync /></AppContext.Provider>);
+    const button = await screen.findByRole("button", { name: "刷新评分特征" });
+    await waitFor(() => expect(button).toBeEnabled());
+    expect(mockApi.getWatchlists).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/core中的有效观察项/)).toBeInTheDocument();
+    fireEvent.click(button);
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({ universe_source: "watchlist", watchlist_id: 1 })));
+  });
+
+  it("honors the active watchlist in an independently loaded list", async () => {
+    mockApi.getWatchlists.mockResolvedValue([{ id: 1, name: "core", list_type: "watch" }, { id: 22, name: "selected-list", list_type: "watch" }]);
+    render(<AppContext.Provider value={{ activeWatchlistId: 22, workbench: null } as any}><ExternalDataSync /></AppContext.Provider>);
+    const button = await screen.findByRole("button", { name: "刷新评分特征" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({ universe_source: "watchlist", watchlist_id: 22 })));
+  });
+
+  it("uses available context watchlists without a duplicate list request", async () => {
+    renderWithWatchlist();
+    await screen.findByText("280");
+    expect(mockApi.getWatchlists).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "刷新评分特征" }));
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({ watchlist_id: 22 })));
+  });
+
+  it("blocks a failed standalone watchlist read and recovers through its retry", async () => {
+    mockApi.getWatchlists.mockRejectedValueOnce(new Error("watchlists offline")).mockResolvedValue([{ id: 1, name: "core", list_type: "watch" }]);
+    render(<ExternalDataSync />);
+    expect(await screen.findByText("观察池列表读取失败，无法刷新评分：watchlists offline；请重试读取")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新评分特征" })).toBeDisabled();
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "重试读取观察池" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "刷新评分特征" })).toBeEnabled());
+    expect(mockApi.getWatchlists).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/观察池列表读取失败/)).not.toBeInTheDocument();
+  });
+
+  it("keeps a genuinely empty standalone watchlist response blocked", async () => {
+    render(<ExternalDataSync />);
+    expect(await screen.findByText("当前观察池尚未加载或不存在，无法刷新评分；请先选择有效观察池")).toBeInTheDocument();
+    expect(mockApi.getWatchlists).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "刷新评分特征" })).toBeDisabled();
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
   });
 
   it.each(["fundamental", "financial", "lhb", "hot_rank", "tail_proxy", "capital_flow", "etf"] as const)(
@@ -444,6 +601,210 @@ describe("ExternalDataSync dashboard", () => {
     expect(screen.getByRole("button", { name: /extSyncTailProxy/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /extSyncEtf/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /extSyncFinancial/ })).toBeEnabled();
+  });
+
+  it("fills the inclusive default 60-day range when historical mode is selected", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    render(<ExternalDataSync />);
+    await screen.findByText("280");
+
+    await chooseSelect(1, "真实历史范围");
+
+    expect(screen.getByPlaceholderText("开始日期")).toHaveValue("2026-08-16");
+    expect(screen.getByPlaceholderText("结束日期")).toHaveValue("2026-10-14");
+    fireEvent.click(screen.getByRole("button", { name: /extSyncFinancial/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
+      dataset: "financial", mode: "backfill", start_date: "2026-08-16", end_date: "2026-10-14", lookback_days: 60,
+    })));
+  });
+
+  it("links a short day preset to both date inputs and the historical scoring request", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    renderWithWatchlist();
+    await screen.findByText("280");
+    await chooseSelect(1, "真实历史范围");
+
+    await chooseDatePreset("7 日");
+
+    expect(screen.getByPlaceholderText("开始日期")).toHaveValue("2026-10-08");
+    expect(screen.getByPlaceholderText("结束日期")).toHaveValue("2026-10-14");
+    fireEvent.click(screen.getByRole("button", { name: "刷新评分特征" }));
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith({
+      start_date: "2026-10-08", end_date: "2026-10-14", full_refresh: true,
+      train_model: false, materialize_scores: true,
+      universe_source: "watchlist", watchlist_id: 22,
+    }));
+  });
+
+  it.each([
+    ["14 日", "2026-10-01"],
+    ["30 日", "2026-09-15"],
+    ["90 日", "2026-07-17"],
+    ["100 日", "2026-07-07"],
+    ["180 日", "2026-04-18"],
+    ["1 年", "2025-10-15"],
+    ["2 年", "2024-10-15"],
+    ["3 年", "2023-10-15"],
+    ["5 年", "2021-10-15"],
+  ])("makes the %s preset visible in the linked date inputs", async (label, expectedStart) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    render(<ExternalDataSync />);
+    await screen.findByText("280");
+    await chooseSelect(1, "真实历史范围");
+
+    await chooseDatePreset(label);
+
+    expect(screen.getByPlaceholderText("开始日期")).toHaveValue(expectedStart);
+    expect(screen.getByPlaceholderText("结束日期")).toHaveValue("2026-10-14");
+  });
+
+  it("keeps the selected end date when changing from a custom range to a day preset", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    render(<ExternalDataSync />);
+    await screen.findByText("280");
+    await chooseSelect(1, "真实历史范围");
+    await enterHistoricalRange("2026-07-01", "2026-08-02");
+    expect(screen.getByText("自定义", { selector: ".ant-select-selection-item" })).toBeInTheDocument();
+
+    await chooseDatePreset("14 日");
+
+    expect(screen.getByPlaceholderText("开始日期")).toHaveValue("2026-07-20");
+    expect(screen.getByPlaceholderText("结束日期")).toHaveValue("2026-08-02");
+    fireEvent.click(screen.getByRole("button", { name: /extSyncFinancial/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
+      dataset: "financial", start_date: "2026-07-20", end_date: "2026-08-02", lookback_days: 14,
+    })));
+  });
+
+  it.each([
+    ["2026-10-08", "2026-10-14", "7 日"],
+    ["2023-03-01", "2024-02-29", "1 年"],
+  ])("matches a manually entered %s to %s range back to the %s preset", async (start, end, label) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    render(<ExternalDataSync />);
+    await screen.findByText("280");
+    await chooseSelect(1, "真实历史范围");
+
+    await enterHistoricalRange(start, end);
+
+    expect(screen.getByText(label, { selector: ".ant-select-selection-item" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("开始日期")).toHaveValue(start);
+    expect(screen.getByPlaceholderText("结束日期")).toHaveValue(end);
+  });
+
+  it("uses a calendar year anchored to a leap-day end date instead of subtracting 365 days", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    render(<ExternalDataSync />);
+    await screen.findByText("280");
+    await chooseSelect(1, "真实历史范围");
+    await enterHistoricalRange("2024-02-01", "2024-02-29");
+
+    await chooseDatePreset("1 年");
+
+    expect(screen.getByPlaceholderText("开始日期")).toHaveValue("2023-03-01");
+    expect(screen.getByPlaceholderText("结束日期")).toHaveValue("2024-02-29");
+    fireEvent.click(screen.getByRole("button", { name: /extSyncFinancial/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
+      start_date: "2023-03-01", end_date: "2024-02-29", lookback_days: 366,
+    })));
+  });
+
+  it.each([
+    ["本月至今", "2026-10-01"],
+    ["今年至今", "2026-01-01"],
+  ])("anchors %s to today even after a past end date was entered", async (label, expectedStart) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    render(<ExternalDataSync />);
+    await screen.findByText("280");
+    await chooseSelect(1, "真实历史范围");
+    await enterHistoricalRange("2026-07-01", "2026-08-02");
+
+    await chooseDatePreset(label);
+
+    expect(screen.getByPlaceholderText("开始日期")).toHaveValue(expectedStart);
+    expect(screen.getByPlaceholderText("结束日期")).toHaveValue("2026-10-14");
+  });
+
+  it("keeps explicit dates when custom is selected and blocks cleared historical actions until a preset restores them", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    renderWithWatchlist();
+    await screen.findByText("280");
+    await chooseSelect(1, "真实历史范围");
+    await chooseDatePreset("自定义");
+    expect(screen.getByPlaceholderText("开始日期")).toHaveValue("2026-08-16");
+    expect(screen.getByPlaceholderText("结束日期")).toHaveValue("2026-10-14");
+
+    fireEvent.click(document.querySelector(".ant-picker-clear")!);
+
+    expect(screen.getByText("自定义", { selector: ".ant-select-selection-item" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("开始日期")).toHaveValue("");
+    expect(screen.getByPlaceholderText("结束日期")).toHaveValue("");
+    expect(screen.getByRole("button", { name: /extSyncFinancial/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "刷新评分特征" })).toBeDisabled();
+    for (const button of screen.getAllByRole("button", { name: "检查并修复缺口" })) {
+      expect(button).toBeDisabled();
+    }
+    expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+    expect(mockApi.getExternalDataGaps).not.toHaveBeenCalled();
+
+    await chooseDatePreset("7 日");
+
+    expect(screen.getByPlaceholderText("开始日期")).toHaveValue("2026-10-08");
+    expect(screen.getByPlaceholderText("结束日期")).toHaveValue("2026-10-14");
+    expect(screen.getByRole("button", { name: /extSyncFinancial/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "刷新评分特征" })).toBeEnabled();
+  });
+
+  it("applies each provider's history limit without limiting valuation and financial-report presets", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    render(<ExternalDataSync />);
+    await screen.findByText("280");
+    await chooseSelect(1, "真实历史范围");
+
+    expect(screen.getByRole("button", { name: /extSyncLhb/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /extSyncCapitalFlow/ })).toBeEnabled();
+    await chooseDatePreset("30 日");
+    expect(screen.getByRole("button", { name: /extSyncLhb/ })).toBeEnabled();
+    await chooseDatePreset("100 日");
+    expect(screen.getByRole("button", { name: /extSyncLhb/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /extSyncCapitalFlow/ })).toBeEnabled();
+    await chooseDatePreset("180 日");
+    expect(screen.getByRole("button", { name: /extSyncCapitalFlow/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /extSyncFundamental/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /extSyncFinancial/ })).toBeEnabled();
+  });
+
+  it("uses snapshot dates and known gap coverage instead of a retained historical draft after switching modes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00+08:00"));
+    renderWithWatchlist();
+    await screen.findByText("280");
+    await chooseSelect(1, "真实历史范围");
+    await enterHistoricalRange("2026-01-01", "2026-01-23");
+
+    await chooseSelect(1, "最近快照");
+    fireEvent.click(screen.getByRole("button", { name: /extSyncFinancial/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({
+      dataset: "financial", mode: "incremental", start_date: undefined, end_date: undefined, lookback_days: 1,
+    })));
+    fireEvent.click(screen.getByRole("button", { name: "刷新评分特征" }));
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith({
+      start_date: undefined, end_date: undefined, full_refresh: false,
+      train_model: false, materialize_scores: true,
+      universe_source: "watchlist", watchlist_id: 22,
+    }));
+    fireEvent.click(screen.getAllByRole("button", { name: "检查并修复缺口" })[0]);
+    await waitFor(() => expect(mockApi.getExternalDataGaps).toHaveBeenCalledWith("fundamental", "2026-07-01", "2026-08-02"));
   });
 
   it("uses known historical coverage for gap scanning rather than the recent-mode 60-day default", async () => {
@@ -545,25 +906,21 @@ describe("ExternalDataSync dashboard", () => {
 
   it("labels a cancelled scoring task as cancelled and stops its poll", async () => {
     mockApi.scoringCreateTask.mockResolvedValue({ id: "score-cancelled", status: "cancelled", stage: "cancelled", percent: 20 });
-    render(<ExternalDataSync />);
+    renderWithWatchlist();
     fireEvent.click(await screen.findByRole("button", { name: "刷新评分特征" }));
     expect(await screen.findByText(/评分特征：已取消/)).toBeInTheDocument();
     expect(mockApi.scoringGetTask).not.toHaveBeenCalled();
   });
 
   it("passes an explicit historical date range to external sync and scoring refresh", async () => {
-    const user = userEvent.setup();
-    render(<ExternalDataSync />);
+    renderWithWatchlist();
     await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
     await chooseSelect(1, "真实历史范围");
-    await user.type(screen.getByPlaceholderText("开始日期"), "2026-07-01");
-    await user.keyboard("{Enter}");
-    await user.type(screen.getByPlaceholderText("结束日期"), "2026-08-02");
-    await user.keyboard("{Enter}");
-    await user.click(screen.getByRole("button", { name: /extSyncCapitalFlow/ }));
+    await enterHistoricalRange("2026-07-01", "2026-08-02");
+    await userEvent.setup().click(screen.getByRole("button", { name: /extSyncCapitalFlow/ }));
     await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({ dataset: "capital_flow", mode: "backfill", start_date: "2026-07-01", end_date: "2026-08-02" })));
-    await user.click(screen.getByRole("button", { name: "刷新评分特征" }));
-    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith({ start_date: "2026-07-01", end_date: "2026-08-02", full_refresh: true, train_model: false, materialize_scores: true }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "刷新评分特征" }));
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith({ start_date: "2026-07-01", end_date: "2026-08-02", full_refresh: true, train_model: false, materialize_scores: true, universe_source: "watchlist", watchlist_id: 22 }));
   });
 
   it("reports partial synchronization as warning with expandable result errors", async () => {
@@ -578,7 +935,7 @@ describe("ExternalDataSync dashboard", () => {
 
   it("exposes an actionable scoring failure message", async () => {
     mockApi.scoringCreateTask.mockResolvedValue({ id: "score-failed", status: "failed", stage: "materialize", percent: 70, message: "真实模型权重缺失，请重新训练并激活" });
-    render(<ExternalDataSync />);
+    renderWithWatchlist();
     fireEvent.click(await screen.findByRole("button", { name: "刷新评分特征" }));
     expect(await screen.findByText(/评分特征：失败 · 生成模型评分/)).toBeInTheDocument();
     expect(screen.queryByText(/真实模型权重缺失/)).toBeInTheDocument();
@@ -590,10 +947,18 @@ describe("ExternalDataSync dashboard", () => {
     await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
     await chooseSelect(1, "真实历史范围");
     expect(screen.getByRole("button", { name: /extSyncEtf/ })).toBeDisabled();
+    expect(screen.getByPlaceholderText("开始日期")).not.toHaveValue("");
+    expect(screen.getByPlaceholderText("结束日期")).not.toHaveValue("");
+    for (const repair of screen.getAllByRole("button", { name: "检查并修复缺口" })) {
+      expect(repair).toBeDisabled();
+    }
+    expect(mockApi.getExternalDataGaps).not.toHaveBeenCalled();
     expect(screen.getByText("capabilities unavailable")).toBeInTheDocument();
     mockApi.getExternalDataSyncCapabilities.mockResolvedValue({ financial: { modes: ["incremental", "backfill"], history_limit_days: null, reason: "history" }, capital_flow: { modes: ["incremental"], history_limit_days: 100, reason: "history" } } as any);
     fireEvent.click(screen.getByRole("button", { name: "重试同步能力" }));
     await waitFor(() => expect(screen.getByRole("button", { name: /extSyncFinancial/ })).toBeEnabled());
+    const financialRow = screen.getByRole("button", { name: /extSyncFinancial/ }).closest("tr")!;
+    expect(within(financialRow).getByRole("button", { name: "检查并修复缺口" })).toBeEnabled();
     expect(screen.queryByText("capabilities unavailable")).not.toBeInTheDocument();
   });
 
@@ -621,7 +986,7 @@ describe("ExternalDataSync dashboard", () => {
     ["COMPLETED", "DONE", 0, "计算完成，未生成评分"],
   ] as const)("uses score publication evidence for the %s outcome", async (completion, status, count, label) => {
     mockApi.scoringCreateTask.mockResolvedValue({ id: "score-outcome", status: "done", stage: "done", percent: 100, result: { completion_status: completion, scoring_bridge: { status, materialized_count: count } } });
-    render(<ExternalDataSync />);
+    renderWithWatchlist();
     fireEvent.click(await screen.findByRole("button", { name: "刷新评分特征" }));
     expect(await screen.findByText(`评分特征：${label} · 任务结束 · 100%`)).toBeInTheDocument();
     expect(screen.queryByText("评分特征：已完成")).not.toBeInTheDocument();

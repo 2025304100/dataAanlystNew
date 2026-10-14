@@ -418,8 +418,10 @@ class TestFinalizeRun:
                              draft_creator=_fake_draft_creator(),
                              run_evaluator=_fake_runner())
 
-    def test_empty_candidates_succeeds_with_zero(self, db_session, run_row):
+    def test_empty_candidates_fail_without_claiming_success(self, db_session, run_row):
         result = SVC.finalize_run(db_session, ctx=_ctx(), run_id=run_row.id,
                                   draft_creator=_fake_draft_creator(),
                                   run_evaluator=_fake_runner())
-        assert result["status"] == "succeeded" and result["evaluated"] == 0
+        assert result["status"] == "failed" and result["evaluated"] == 0
+        db_session.refresh(run_row)
+        assert run_row.error_code == "MINING_FINAL_EVALUATION_FAILED"

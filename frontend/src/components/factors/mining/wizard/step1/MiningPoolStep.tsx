@@ -15,6 +15,7 @@ import {
   downloadImportTemplate,
   exportImportErrors,
   fetchMembers,
+  fetchSnapshot,
   importPoolMembers,
   previewImport,
   previewPool,
@@ -42,6 +43,8 @@ const DEBOUNCE_MS = 300;
 
 export interface MiningPoolStepProps {
   poolId?: string;
+  initialSnapshotId?: string | null;
+  readOnly?: boolean;
   onNext?: () => void;
   /** 快照生成/重选后向上上报（A4：MiningShell 组装挖掘 payload 用） */
   onSnapshot?: (snap: PoolSnapshot | null) => void;
@@ -51,6 +54,8 @@ export interface MiningPoolStepProps {
 
 export default function MiningPoolStep({
   poolId = "",
+  initialSnapshotId = null,
+  readOnly = false,
   onNext,
   onSnapshot,
   onPoolCreated,
@@ -77,6 +82,10 @@ export default function MiningPoolStep({
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [snapshotRevision, setSnapshotRevision] = useState(0);
+  const controlsLocked = locked || readOnly || Boolean(initialSnapshotId);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // P0-4：blocked 以 `can_generate` 为准（后端已综合命中/覆盖/范围冲突等全部阻断），
@@ -129,20 +138,45 @@ export default function MiningPoolStep({
   const bootPreviewRef = useRef(false);
   useEffect(() => {
     if (bootPreviewRef.current) return;
+    if (initialSnapshotId || readOnly) return;
     bootPreviewRef.current = true;
     requestPreview(filterConfig);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载时首查一次
-  }, [requestPreview]);
+  }, [requestPreview, initialSnapshotId, readOnly]);
+
+  useEffect(() => {
+    if (!initialSnapshotId || snapshot?.id === initialSnapshotId) return;
+    let alive = true;
+    setLocked(true);
+    setSnapshotLoading(true);
+    setSnapshotError(null);
+    if (!poolId) {
+      setSnapshotLoading(false);
+      setSnapshotError(t("miningPoolSnapshotMissing"));
+      return;
+    }
+    void fetchSnapshot(poolId, initialSnapshotId).then((saved) => {
+      if (!alive) return;
+      if (!saved) { setSnapshotError(t("miningPoolSnapshotMissing")); return; }
+      setSnapshot(saved);
+      setMembers(saved.members_sample ?? []);
+      setLocked(true);
+    }).catch(() => {
+      if (alive) setSnapshotError(t("miningPoolSnapshotLoadFailed"));
+    }).finally(() => { if (alive) setSnapshotLoading(false); });
+    return () => { alive = false; };
+  }, [poolId, initialSnapshotId, snapshotRevision]);
 
   // ── 成员列表（池已存在时拉取；锁定态仍可查看，只是不能改）─────────
   useEffect(() => {
-    if (!poolId) return;
+    if (!poolId || initialSnapshotId) return;
     void fetchMembers(poolId, { page: 1, page_size: 20 })
       .then((page) => setMembers(page?.items ?? []))
       .catch(() => setMembers([]));
-  }, [poolId]);
+  }, [poolId, initialSnapshotId]);
 
   const onFilterChange = (next: Record<string, unknown>) => {
+    if (controlsLocked) return;
     setFilterConfig(next);
     requestPreview(next);
   };
@@ -173,6 +207,7 @@ export default function MiningPoolStep({
       setShowModal(true);
       return;
     }
+    if (readOnly) return;
     setGenerating(true);
     try {
       let pid = poolId;
@@ -218,7 +253,20 @@ export default function MiningPoolStep({
   };
 
   const onReselectConfirmed = async () => {
-    await deleteLatestSnapshot(poolId).catch(() => undefined);
+    if (readOnly) return;
+    if (initialSnapshotId) {
+      // Detach this draft. Deleting the source snapshot would damage the
+      // provenance of completed tasks that still reference it.
+      onPoolCreated?.("");
+      setMembers([]);
+      setFilterConfig({});
+      setPreview(null);
+      requestPreview({});
+    } else {
+      await deleteLatestSnapshot(poolId).catch(() => undefined);
+    }
+    setSnapshotError(null);
+    setSnapshotLoading(false);
     setLocked(false);
     setSnapshot(null);
     setShowModal(false);
@@ -314,7 +362,7 @@ export default function MiningPoolStep({
           data-pool-tab="filter"
           aria-current={entry === "filter" ? "page" : undefined}
           aria-disabled={locked ? "true" : undefined}
-          disabled={locked}
+          disabled={controlsLocked}
           title={locked ? t("miningPoolLockedHint") : undefined}
           onClick={() => trySwitch("filter")}
         >
@@ -326,7 +374,7 @@ export default function MiningPoolStep({
           data-pool-tab="import"
           aria-current={entry === "import" ? "page" : undefined}
           aria-disabled={locked ? "true" : undefined}
-          disabled={locked}
+          disabled={controlsLocked}
           title={locked ? t("miningPoolLockedHint") : undefined}
           onClick={() => trySwitch("import")}
         >
@@ -335,12 +383,18 @@ export default function MiningPoolStep({
       </div>
 
       {locked && <PoolLockBanner />}
+      {initialSnapshotId && <div className="mining-banner" data-pool-snapshot-source role="status">
+        <span>{t("miningPoolSnapshotSource").replace("{id}", initialSnapshotId.slice(0, 8)).replace("{count}", snapshot?.member_count == null ? "-" : String(snapshot.member_count)).replace("{date}", snapshot?.data_cutoff_at ?? "-")}</span>
+        {snapshotLoading && <span>{t("miningResultLoading")}</span>}
+        {snapshotError && <span role="alert">{snapshotError}<button type="button" onClick={() => setSnapshotRevision((value) => value + 1)}>{t("miningResultRetry")}</button></span>}
+        {!readOnly && <button type="button" className="mining-pool-btn" data-pool-detach-snapshot onClick={() => setConfirmReselect(true)}>{t("miningPoolReselectConfirm")}</button>}
+      </div>}
 
       {entry === "filter" ? (
-        <PoolFilterPanel locked={locked} value={filterConfig} onChange={onFilterChange} />
+        <PoolFilterPanel locked={controlsLocked} value={filterConfig} onChange={onFilterChange} />
       ) : (
         <PoolImportPanel
-          locked={locked}
+          locked={controlsLocked}
           busy={importBusy}
           result={importResult}
           error={importError}
@@ -572,7 +626,7 @@ export default function MiningPoolStep({
       <PoolMemberTable
         members={members}
         selected={selected}
-        locked={locked}
+        locked={controlsLocked}
         onToggle={toggleOne}
         onToggleAll={toggleAll}
       />
@@ -583,7 +637,7 @@ export default function MiningPoolStep({
           type="button"
           className="mining-pool-btn danger"
           data-pool-bulk-delete
-          disabled={locked || selected.length === 0}
+          disabled={controlsLocked || selected.length === 0}
           title={locked ? t("miningPoolLockedHint") : undefined}
           onClick={() => setConfirmDelete(true)}
           style={members.length === 0 ? { display: "none" } : undefined}
@@ -594,7 +648,7 @@ export default function MiningPoolStep({
           type="button"
           className="mining-pool-btn primary"
           data-pool-generate
-          disabled={blocked || generating || generateNotReady}
+          disabled={snapshotLoading || Boolean(snapshotError) || blocked || generating || generateNotReady || (readOnly && !snapshot)}
           title={
             generateNotReady
               ? t("miningPoolGenerateNotReady")
@@ -644,14 +698,14 @@ export default function MiningPoolStep({
         cancelText={t("miningPoolSwitchCancel")}
         onOk={onReselectConfirmed}
       >
-        <p>{t("miningPoolReselectDesc")}</p>
+        <p>{t(initialSnapshotId ? "miningPoolDetachSnapshotHint" : "miningPoolReselectDesc")}</p>
       </Modal>
 
       {showModal && (
         <PoolAnalysisModal
           snapshot={snapshot}
           onClose={() => setShowModal(false)}
-          onReselect={() => setConfirmReselect(true)}
+          onReselect={readOnly ? undefined : () => setConfirmReselect(true)}
           onNext={() => onNext?.()}
         />
       )}

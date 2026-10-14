@@ -1458,6 +1458,7 @@ class FactorExecutor:
         *,
         start_date: date,
         end_date: date,
+        symbols: list[str] | tuple[str, ...] | None = None,
     ) -> PanelExecutionOutcome:
         """批量计算因子面板（解决滚动窗口预热 + 横截面按天独立后处理）。
 
@@ -1517,6 +1518,13 @@ class FactorExecutor:
                     "message": f"{type(exc).__name__}: {exc}",
                 }],
             )
+
+        # Scope is applied before AST evaluation so rank/zscore and every
+        # cross-sectional operator use the frozen experimental universe.
+        # An explicit empty scope must never fall back to the whole warehouse.
+        if symbols is not None:
+            requested_symbols = {str(symbol).strip() for symbol in symbols if str(symbol).strip()}
+            source_data = source_data[source_data["symbol"].astype(str).isin(requested_symbols)].reset_index(drop=True)
 
         if source_data.empty:
             return PanelExecutionOutcome(

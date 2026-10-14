@@ -22,6 +22,7 @@ const { mockApi, mockMessage, mockModalConfirm } = vi.hoisted(() => ({
     // loadData 并行调用的两个薄封
     scoringGetFactorModelListAsFactor: vi.fn(),
     scoringListFactorSetsAsFactor: vi.fn(),
+    scoringGetFactorSetReadiness: vi.fn(async (id: string) => ({ ready: true, factor_set_id: id, code: "READY", message: "集合资格检查通过", details: {} })),
     scoringGetModelDetail: vi.fn(),
     // Task 2 新增写 API
     createFactorSet: vi.fn(),
@@ -507,7 +508,9 @@ describe("TR-2.4 训练门禁 错误 Banner 显示 detail_zh 原文", () => {
     render(<FactorModelPage />);
     fireEvent.click(await screen.findByTestId("btn-train-real-training-set"));
     fireEvent.change(await screen.findByPlaceholderText(/Q3 月更/), { target: { value: "本人真实训练备注" } });
-    fireEvent.click(await screen.findByRole("button", { name: /提交训练/ }));
+    const submit = await screen.findByRole("button", { name: /提交训练/ });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
     await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({ factor_set_id: "real-training-set", train_model: true, materialize_scores: false, hyperparameters: expect.objectContaining({ note: "本人真实训练备注" }), factor_scope: expect.objectContaining({ asset_type: "stock" }) })));
     expect(mockApi.scoringTrainModel).not.toHaveBeenCalled();
     expect(screen.queryByText(/offline_minimal/)).not.toBeInTheDocument();
@@ -544,6 +547,7 @@ describe("TR-2.4 训练门禁 错误 Banner 显示 detail_zh 原文", () => {
 
     // 点击「提交训练」按钮
     const submit = screen.getByRole("button", { name: /提交训练/ });
+    await waitFor(() => expect(submit).toBeEnabled());
     await act(async () => {
       fireEvent.click(submit);
     });

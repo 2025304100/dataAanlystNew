@@ -1,0 +1,402 @@
+.factor-workflow-guide {
+  --fwg-accent: #177d75;
+  --fwg-accent-soft: #e9f3ee;
+  --fwg-accent-border: #bdd7cc;
+  --fwg-ink: #233a37;
+  --fwg-muted: #6d7b76;
+  width: 100%;
+  min-width: 0;
+  padding: 28px;
+  box-sizing: border-box;
+  border: 1px solid #dce4db;
+  border-radius: 20px;
+  background: linear-gradient(125deg, #f9fbf4 0%, #fffdf7 64%);
+  box-shadow: 0 6px 22px rgb(40 70 57 / 4%);
+  color: var(--fwg-ink);
+}
+
+.factor-workflow-guide--warning {
+  --fwg-accent: #a86715;
+  --fwg-accent-soft: #fff4dc;
+  --fwg-accent-border: #ecd9ad;
+}
+
+.factor-workflow-guide--success {
+  --fwg-accent: #278057;
+  --fwg-accent-soft: #edf6e9;
+  --fwg-accent-border: #c1dabc;
+}
+
+.factor-workflow-guide--neutral {
+  --fwg-accent: #64756c;
+  --fwg-accent-soft: #eff2e9;
+  --fwg-accent-border: #d4dbce;
+}
+
+.factor-workflow-guide .factor-workflow-guide__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.factor-workflow-guide .factor-workflow-guide__intro {
+  flex: 1;
+  min-width: 0;
+}
+
+.factor-workflow-guide .factor-workflow-guide__eyebrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.factor-workflow-guide .factor-workflow-guide__eyebrow-label {
+  color: var(--fwg-muted);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.factor-workflow-guide .factor-workflow-guide__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--fwg-accent-border);
+  border-radius: 100px;
+  background: var(--fwg-accent-soft);
+  color: var(--fwg-accent);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.factor-workflow-guide .factor-workflow-guide__badge-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.factor-workflow-guide .factor-workflow-guide__title {
+  margin: 0 0 10px;
+  color: var(--fwg-ink);
+  font-size: clamp(20px, 2vw, 26px);
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.factor-workflow-guide .factor-workflow-guide__description {
+  max-width: 780px;
+  margin: 0;
+  color: var(--fwg-muted);
+  font-size: 14px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.factor-workflow-guide .factor-workflow-guide__actions {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.factor-workflow-guide .factor-workflow-guide__primary.ant-btn {
+  height: auto;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: #177d75;
+  border-color: #177d75;
+  box-shadow: 0 4px 8px rgb(23 125 117 / 12%);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.factor-workflow-guide .factor-workflow-guide__primary.ant-btn:not(:disabled):hover {
+  background: #11695f;
+  border-color: #11695f;
+}
+
+.factor-workflow-guide .factor-workflow-guide__primary.ant-btn:disabled {
+  background: #e9ece5;
+  border-color: #dfe3d9;
+  color: #89948b;
+  box-shadow: none;
+}
+
+.factor-workflow-guide .factor-workflow-guide__secondary.ant-btn {
+  height: auto;
+  min-height: 32px;
+  border-radius: 8px;
+  color: var(--fwg-muted);
+  font-size: 13px;
+  white-space: normal;
+}
+
+.factor-workflow-guide .factor-workflow-guide__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+  margin: 22px 0 0;
+  padding: 16px 0 0;
+  border-top: 1px solid #e5e9dd;
+}
+
+.factor-workflow-guide .factor-workflow-guide__fact {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 10px;
+  max-width: 100%;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.factor-workflow-guide .factor-workflow-guide__fact dt {
+  flex-shrink: 0;
+  color: var(--fwg-muted);
+}
+
+.factor-workflow-guide .factor-workflow-guide__fact dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--fwg-ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.factor-workflow-guide .factor-workflow-guide__navigation {
+  margin-top: 24px;
+}
+
+.factor-workflow-guide .factor-workflow-guide__steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step {
+  min-width: 0;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-button {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  min-height: 106px;
+  padding: 16px 14px;
+  border: 1px solid #e4e8dd;
+  border-radius: 12px;
+  background: #fcfdf8;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-button:not(:disabled) {
+  cursor: pointer;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-button:not(:disabled):hover {
+  border-color: #a7c9bb;
+  background: #f1f7ef;
+  box-shadow: 0 3px 9px rgb(36 71 54 / 5%);
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-button:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-button:focus-visible,
+.factor-workflow-guide .ant-btn:focus-visible {
+  outline: 3px solid #177d75;
+  outline-offset: 3px;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-icon {
+  display: flex;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #dfe5d8;
+  border-radius: 9px;
+  background: #f0f3e9;
+  color: #718075;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-height: 28px;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-title {
+  color: #3e5148;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-state {
+  color: #899387;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step-description {
+  display: block;
+  margin-top: 4px;
+  color: var(--fwg-muted);
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step--complete .factor-workflow-guide__step-icon {
+  border-color: #c6dfcf;
+  background: #e9f4e9;
+  color: #278057;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step--complete .factor-workflow-guide__step-state {
+  color: #278057;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step--current .factor-workflow-guide__step-button {
+  border-color: #9fc8ba;
+  background: #edf6ed;
+  box-shadow: inset 0 3px 0 #177d75;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step--current .factor-workflow-guide__step-icon {
+  border-color: #177d75;
+  background: #177d75;
+  color: #fff;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step--current .factor-workflow-guide__step-title,
+.factor-workflow-guide .factor-workflow-guide__step--current .factor-workflow-guide__step-state {
+  color: #177d75;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step--blocked .factor-workflow-guide__step-button {
+  border-color: #ecd9ad;
+  background: #fffaf0;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step--blocked .factor-workflow-guide__step-icon {
+  border-color: #ecd9ad;
+  background: #fff1d3;
+  color: #a86715;
+}
+
+.factor-workflow-guide .factor-workflow-guide__step--blocked .factor-workflow-guide__step-state {
+  color: #a86715;
+}
+
+.factor-workflow-guide .factor-workflow-guide__detail {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e9dd;
+  color: var(--fwg-muted);
+  font-size: 13px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .factor-workflow-guide .factor-workflow-guide__steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .factor-workflow-guide .factor-workflow-guide__step-button {
+    min-height: 92px;
+  }
+}
+
+@media (max-width: 700px) {
+  .factor-workflow-guide {
+    padding: 20px;
+    border-radius: 16px;
+  }
+
+  .factor-workflow-guide .factor-workflow-guide__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 18px;
+  }
+
+  .factor-workflow-guide .factor-workflow-guide__actions {
+    align-self: flex-start;
+  }
+
+  .factor-workflow-guide .factor-workflow-guide__summary {
+    gap: 10px 20px;
+    margin-top: 18px;
+  }
+
+  .factor-workflow-guide .factor-workflow-guide__navigation {
+    margin-top: 20px;
+  }
+}
+
+@media (max-width: 440px) {
+  .factor-workflow-guide {
+    padding: 16px;
+  }
+
+  .factor-workflow-guide .factor-workflow-guide__steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .factor-workflow-guide .factor-workflow-guide__step-button {
+    min-height: 0;
+    padding: 12px;
+  }
+
+  .factor-workflow-guide .factor-workflow-guide__actions {
+    align-self: stretch;
+  }
+
+  .factor-workflow-guide .factor-workflow-guide__summary {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .factor-workflow-guide .factor-workflow-guide__step-button {
+    transition: none;
+  }
+}

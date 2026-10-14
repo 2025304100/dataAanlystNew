@@ -16,6 +16,7 @@ describe("data-center external input API contracts", () => {
     ["task", () => api.getExternalDataSyncTask("id/a#b"), "/api/v1/external-data/sync-tasks/id%2Fa%23b"],
     ["partitions", () => api.getExternalDataSyncTaskPartitions("id/a#b"), "/api/v1/external-data/sync-tasks/id%2Fa%23b/partitions"],
     ["score task", () => api.scoringGetTask("id/a#b"), "/api/v1/scoring/tasks/id%2Fa%23b"],
+    ["watchlists", () => api.getWatchlists(), "/api/v1/watchlists"],
   ] as const)("GET %s uses its public API and encodes task identifiers", async (_, call, expected) => {
     await call();
     expect(fetchMock).toHaveBeenCalledWith(expected, expect.objectContaining({ signal: expect.any(AbortSignal) }));
@@ -62,8 +63,12 @@ describe("data-center external input API contracts", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(payload);
   });
 
-  it("score refresh uses the scoring facade and never enables model training", async () => {
-    const payload = { full_refresh: false, train_model: false, materialize_scores: true };
+  it.each([
+    { universe_source: "watchlist" as const, watchlist_id: 22 },
+    { universe_source: "positions" as const, portfolio_id: 44 },
+    { universe_source: "all" as const },
+  ])("score refresh retains $universe_source without enabling model training", async (scope) => {
+    const payload = { full_refresh: true, start_date: "2026-07-01", end_date: "2026-08-02", train_model: false, materialize_scores: true, ...scope };
     await api.scoringCreateTask(payload);
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/scoring/tasks");
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(payload);

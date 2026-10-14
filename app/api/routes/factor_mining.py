@@ -79,6 +79,16 @@ class MiningRunCreate(BaseModel):
     #: run succeeded 但候选 factor_version_id 全 null，结果页不可达。
     finalize_top_k: int | None = Field(default=None, ge=0, le=200)
 
+    @model_validator(mode="after")
+    def validate_window(self):
+        if self.start_date.date() >= self.end_date.date():
+            raise ValueError("开始日期必须早于结束日期。")
+        if self.end_date.date() > self.data_cutoff_at.date():
+            raise ValueError("结束日期不能晚于数据截止日期。")
+        if self.train_ratio + self.validation_ratio > 0.9:
+            raise ValueError("训练与验证比例之和不能超过 0.9，为测试段至少保留 10% 样本。")
+        return self
+
 
 class MiningRunCreated(BaseModel):
     run_id: str
@@ -153,6 +163,18 @@ def _task_for_run(db: Session, run_id: str) -> AsyncTaskRecord | None:
     return max(pool, key=lambda r: str(r.created_at or ""))
 
 
+def _guard_finalized_run(run: Any) -> None:
+    if run.status in ("succeeded", "validating"):
+        raise _factor_seven_http(factor_structured_error(
+            "MINING_TEST_LOCKED",
+            title_zh="批次已进入最终验证",
+            detail_zh="最终测试段只能评估一次，当前批次不能暂停、恢复或回退状态。需要新实验时请复制为草稿。",
+            impact="本次操作未执行",
+            fix_link="/settings/factor-mining",
+            retryable=False,
+        ))
+
+
 # ══════════════════════════════════════════════════════════
 # 批次
 # ══════════════════════════════════════════════════════════
@@ -215,6 +237,11 @@ def _validate_snapshot_for_run(db: Session, snapshot_id: str) -> None:
             retryable=False,
             extras={"snapshot_id": str(snapshot_id)},
         )) from None
+    from app.services.factors.mining.data_scope import load_snapshot_symbols
+    try:
+        load_snapshot_symbols(db, snapshot_id)
+    except FactorSevenError as exc:
+        raise _factor_seven_http(exc) from exc
 
 
 @router.post("/factor-mining/runs", status_code=201)
@@ -229,11 +256,16 @@ def create_factor_mining_run(payload: MiningRunCreate,
     """
     run_id = uuid.uuid4().hex
     evolution = dict(payload.evolution_params or {})
+    evolution["finalize_top_k"] = _resolve_finalize_top_k(payload)
+    filter_config = dict(payload.filter_config or {})
+    filter_config["selected_fields"] = list(filter_config.get("selected_fields") or [
+        "close", "open", "high", "low", "volume", "amount", "turnover_rate"])
     # DEF-2：快照存在性/锁定态校验前置（拒绝时不建 run 行、不建任务、不占锁）
     _validate_snapshot_for_run(db, payload.candidate_pool_snapshot_id)
     mining_service.create_run(
         db,
         run_id=run_id,
+        status="queued",
         candidate_pool_snapshot_id=payload.candidate_pool_snapshot_id,
         data_cutoff_at=payload.data_cutoff_at,
         start_date=payload.start_date,
@@ -242,6 +274,12 @@ def create_factor_mining_run(payload: MiningRunCreate,
         target_horizon=payload.target_horizon,
         random_seed=payload.random_seed,
         max_generation=max(1, int(evolution.get("max_generations", 20) or 20)),
+        draft_id=payload.draft_id,
+        template_id=payload.template_id,
+        split_config_json=json.dumps({"train_ratio": payload.train_ratio,
+                                      "validation_ratio": payload.validation_ratio}),
+        filter_config_json=json.dumps(filter_config, ensure_ascii=False),
+        evolution_params_json=json.dumps(evolution, ensure_ascii=False),
     )
     task_payload = {
         "run_id": run_id,
@@ -254,9 +292,8 @@ def create_factor_mining_run(payload: MiningRunCreate,
         "train_ratio": payload.train_ratio,
         "validation_ratio": payload.validation_ratio,
         "random_seed": payload.random_seed,
-        "evolution_params": dict(payload.evolution_params or {}),
-        "selected_fields": list((payload.filter_config or {}).get("selected_fields") or [
-            "close", "open", "high", "low", "volume", "amount", "turnover_rate"]),
+        "evolution_params": evolution,
+        "selected_fields": filter_config["selected_fields"],
         "finalize_top_k": _resolve_finalize_top_k(payload),
         "warehouse_path": (payload.filter_config or {}).get("warehouse_path"),
     }
@@ -311,11 +348,10 @@ def cancel_factor_mining_run(run_id: str, db: Session = Depends(get_db)):
     run = mining_service.load_run(db, run_id)
     if run is None:
         raise _not_found("挖掘批次", run_id)
+    _guard_finalized_run(run)
     task = _task_for_run(db, run_id)
     if task is not None and task.status not in ("done", "failed", "cancelled"):
-        from app.services.async_tasks import cancel_async_task
-
-        cancel_async_task(task.id)
+        mining_runner.request_mining_cancellation(task.id)
     mining_service.set_run_status(db, run, "cancelled")
     db.commit()
     return {"run_id": run_id, "status": "cancelled"}
@@ -327,11 +363,10 @@ def pause_factor_mining_run(run_id: str, db: Session = Depends(get_db)):
     run = mining_service.load_run(db, run_id)
     if run is None:
         raise _not_found("挖掘批次", run_id)
+    _guard_finalized_run(run)
     task = _task_for_run(db, run_id)
     if task is not None and task.status not in ("done", "failed", "cancelled"):
-        from app.services.async_tasks import cancel_async_task
-
-        cancel_async_task(task.id)
+        mining_runner.request_mining_cancellation(task.id)
     mining_service.set_run_status(db, run, "paused")
     db.commit()
     return {"run_id": run_id, "status": "paused"}
@@ -339,11 +374,19 @@ def pause_factor_mining_run(run_id: str, db: Session = Depends(get_db)):
 
 @router.post("/factor-mining/runs/{run_id}/resume")
 def resume_factor_mining_run(run_id: str, db: Session = Depends(get_db)):
-    """从断点恢复：以既有 run 配置重新提交（checkpoint 由断言-恢复接管）。"""
+    """Resume a completed generation with the original inputs and random state."""
     run = mining_service.load_run(db, run_id)
     if run is None:
         raise _not_found("挖掘批次", run_id)
-    task_payload = {
+    _guard_finalized_run(run)
+    if run.status not in ("paused", "cancelled", "failed"):
+        raise HTTPException(status_code=409, detail={
+            "error_code": "MINING_RESUME_STATE_INVALID",
+            "detail_zh": "仅暂停、取消或失败的批次可恢复；正在执行的任务请等待。",
+        })
+    _validate_snapshot_for_run(db, run.candidate_pool_snapshot_id)
+    previous_task = _task_for_run(db, run_id)
+    task_payload = json.loads(previous_task.payload_json or "{}") if previous_task else {
         "run_id": run_id,
         "candidate_pool_snapshot_id": str(run.candidate_pool_snapshot_id),
         "data_cutoff_at": str(run.data_cutoff_at),
@@ -352,20 +395,31 @@ def resume_factor_mining_run(run_id: str, db: Session = Depends(get_db)):
         "rebalance_frequency": str(run.rebalance_frequency or "daily"),
         "target_horizon": int(getattr(run, "target_horizon", 0) or 5),
         # 恢复不得篡改原配置：优先用 run 行上的原始比例（旧数据无此列时回退默认）
-        "train_ratio": float(getattr(run, "train_ratio", 0) or 0.6),
-        "validation_ratio": float(getattr(run, "validation_ratio", 0) or 0.2),
-        "random_seed": int(getattr(run, "random_seed", 0) or 42),
-        # DEF-9：恢复后同样默认执行最终验证（此前 0 → 恢复的 run 永不收官）
-        "finalize_top_k": 50,
+        "random_seed": int(run.random_seed if run.random_seed is not None else 42),
+        **mining_service.run_configuration(run),
     }
+    task_payload["resume_from_checkpoint"] = True
+    from app.services.factors.mining.checkpoints import restore_checkpoint
+    try:
+        restore_checkpoint(db, run_id=run_id, payload=task_payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={
+            "error_code": str(exc).split(":", 1)[0],
+            "detail_zh": str(exc).split(":", 1)[-1].strip(),
+            "fix_link": "/settings/factor-mining",
+            "retryable": False,
+        }) from exc
     try:
         result = mining_runner.submit_mining_run(task_payload, run_id=run_id)
     except mining_lock.MiningDomainBusy as exc:
         raise _factor_seven_http(_busy_error(exc)) from exc
     # V4b.3 回归修复：resume 提交成功后 run 行状态必须离开 paused，
     # 否则批次列表/看板永远显示「已暂停」（worker 只推 task 状态，不碰 run）。
-    mining_service.set_run_status(db, run, "running")
-    db.commit()
+    # The worker may already have finished while submit returns. Never revert its terminal status.
+    db.expire(run)
+    if run.status in ("paused", "cancelled", "failed"):
+        mining_service.set_run_status(db, run, "queued")
+        db.commit()
     return {"run_id": run_id, "status": "running", "task_id": result.task_id,
             "queue_position": result.queue_position}
 
@@ -376,10 +430,14 @@ def stop_factor_mining_run(run_id: str, db: Session = Depends(get_db)):
     run = mining_service.load_run(db, run_id)
     if run is None:
         raise _not_found("挖掘批次", run_id)
+    _guard_finalized_run(run)
     if run.status not in ("succeeded",):
         mining_service.set_run_status(db, run, "converged")
     run.converged = 1
     db.commit()
+    task = _task_for_run(db, run_id)
+    if task is not None and task.status not in ("done", "failed", "cancelled"):
+        mining_runner.request_mining_cancellation(task.id)
     return {"run_id": run_id, "status": "converged"}
 
 
@@ -389,11 +447,10 @@ def discard_factor_mining_run(run_id: str, db: Session = Depends(get_db)):
     run = mining_service.load_run(db, run_id)
     if run is None:
         raise _not_found("挖掘批次", run_id)
+    _guard_finalized_run(run)
     task = _task_for_run(db, run_id)
     if task is not None and task.status not in ("done", "failed", "cancelled"):
-        from app.services.async_tasks import cancel_async_task
-
-        cancel_async_task(task.id)
+        mining_runner.request_mining_cancellation(task.id)
     mining_service.set_run_status(db, run, "cancelled")
     db.commit()
     return {"run_id": run_id, "status": "cancelled"}

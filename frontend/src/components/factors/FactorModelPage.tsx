@@ -301,6 +301,8 @@ export default function FactorModelPage() {
   const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [runtime, setRuntime] = useState<FactorRuntime | null>(null);
+  const [warehouseReady, setWarehouseReady] = useState(false);
+  const [navigationRevision, setNavigationRevision] = useState(0);
   const [models, setModels] = useState<FactorModelRun[]>([]);
   const [factorSets, setFactorSets] = useState<FactorSet[]>([]);
   const [selectedModel, setSelectedModel] = useState<FactorModelRun | null>(null);
@@ -366,8 +368,15 @@ export default function FactorModelPage() {
   const [activationScoreNotice, setActivationScoreNotice] = useState<{ type: "info" | "warning"; text: string } | null>(null);
   /** 训练门禁错误 Banner：后端返回 detail_zh 原文（不翻译）。 */
   const [trainGateError, setTrainGateError] = useState<string | null>(null);
+  const [trainReadiness, setTrainReadiness] = useState<{
+    factorSetId: string;
+    status: "checking" | "ready" | "blocked" | "error";
+    message: string;
+  } | null>(null);
+  const trainReadinessRequest = useRef(0);
   /** 滚动锚点：新建模型后 scrollIntoView 该行 */
   const modelTableRef = useRef<HTMLDivElement | null>(null);
+  const modelDetailRef = useRef<HTMLDivElement | null>(null);
 
   // ═══════════════════════════════════════════════════════
   // Task 2：FactorSet UI 9 元素 + 3 门禁
@@ -427,9 +436,11 @@ export default function FactorModelPage() {
       // so activation refreshes show ridge/shadow immediately.
       setRuntime((current) => current && current.version > scoringOverview.runtime?.version
         ? current : scoringOverview.runtime);
+      setWarehouseReady(scoringOverview.health?.warehouse_available === true);
       setModels(modelList.items);
       setFactorSets(fsList);
     } catch (err) {
+      setWarehouseReady(false);
       message.error(t("factorModelLoadFailed") + ": " + String(err));
     } finally {
       setLoading(false);
@@ -440,9 +451,48 @@ export default function FactorModelPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (selectedModel) modelDetailRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, [selectedModel]);
+
+  const checkTrainReadiness = useCallback(async (factorSetId: string) => {
+    const request = ++trainReadinessRequest.current;
+    setTrainReadiness({ factorSetId, status: "checking", message: "正在检查冻结集合、成员版本与来源" });
+    try {
+      const result = await api.scoringGetFactorSetReadiness(factorSetId);
+      if (request !== trainReadinessRequest.current) return;
+      const matches = result.factor_set_id === factorSetId;
+      setTrainReadiness({
+        factorSetId,
+        status: matches && result.ready === true ? "ready" : "blocked",
+        message: matches ? result.message || "集合资格未通过，请检查成员版本与来源" : "检查结果与当前集合不一致，请重新检查",
+      });
+    } catch (err) {
+      if (request === trainReadinessRequest.current) {
+        setTrainReadiness({ factorSetId, status: "error", message: "读取训练资格失败：" + String(err) });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (trainModalOpen && trainTarget?.id) void checkTrainReadiness(trainTarget.id);
+    else setTrainReadiness(null);
+    return () => { trainReadinessRequest.current += 1; };
+  }, [trainModalOpen, trainTarget?.id, checkTrainReadiness]);
+
+  useEffect(() => {
+    const refreshNavigation = () => setNavigationRevision((current) => current + 1);
+    window.addEventListener("hashchange", refreshNavigation);
+    window.addEventListener("factor-center:navigate", refreshNavigation);
+    return () => {
+      window.removeEventListener("hashchange", refreshNavigation);
+      window.removeEventListener("factor-center:navigate", refreshNavigation);
+    };
+  }, []);
+
   // Task 6 (1): 进入因子中心页时解析 URL → set_id 或 model_id 查询 → 自动 scrollIntoView + pulse + 展开
   useEffect(() => {
-    if (loading || factorSets.length === 0) return;
+    if (loading || !runtime) return;
     const q = parseFactorCenterQuery();
     let setIdFromQuery: string | null = q.set_id ?? null;
     const modelIdFromQuery: string | null = q.model_id ?? null;
@@ -470,16 +520,16 @@ export default function FactorModelPage() {
       // 展开模型行 + 加载 relations
       setExpandModelIds((prev) => (prev.includes(modelIdFromQuery) ? prev : [...prev, modelIdFromQuery]));
       void ensureModelRelations(modelIdFromQuery);
+      void loadModelDetail(modelIdFromQuery);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, factorSets.length]);
+  }, [loading, factorSets.length, navigationRevision]);
 
   // ──────────────────────────────────────────────────────
   // Task 3：链式步骤导航 ChainStepsBar 状态派生 + 直达按钮 handler
   // ──────────────────────────────────────────────────────
   const chainState: ChainState = useMemo<ChainState>(() => {
-    // Step1：因子仓库可用 → 只要 runtime 能正常从 scoring 拉取就认为仓库 OK
-    const factorWarehouseReady = !!runtime || (loading === false && factorSets.length > 0);
+    const factorWarehouseReady = warehouseReady;
 
     // Step2：是否有 FactorSet
     const anyFactorSetCreated = factorSets.length > 0;
@@ -502,12 +552,13 @@ export default function FactorModelPage() {
     });
 
     // Step6：是否至少有 1 个 validated
-    const anyModelValidated = models.some((m) => String(m.status ?? "").toLowerCase() === "validated");
+    const anyModelValidated = models.some((m) =>
+      String(m.status ?? "").toLowerCase() === "validated" && m.production_eligible === true);
 
     // Step7：决策模式 formal(ridge) + active_model_run_id 非空
     const decisionModeEqualsFormalActive =
       (runtime?.weight_mode === "ridge" || (runtime as any)?.decision_mode === "formal") &&
-      !!runtime?.active_model_run_id;
+      models.some((m) => m.id === runtime?.active_model_run_id && m.production_eligible === true);
 
     // Step8：流水线就绪（仓库 + frozen 集合 + 激活模型）
     const pipelineReady =
@@ -523,7 +574,7 @@ export default function FactorModelPage() {
       decisionModeEqualsFormalActive,
       pipelineReady,
     };
-  }, [runtime, factorSets, models, loading]);
+  }, [runtime, factorSets, models, warehouseReady]);
 
   /** ChainStepsBar「修复直达按钮」onGoStep：定位父页面控件 / 跳转路由 */
   const handleChainGoStep = useCallback(
@@ -577,24 +628,28 @@ export default function FactorModelPage() {
           break;
         }
         case 5: {
-          // 直达：scrollIntoView 第一个 frozen + 合格的集合训练按钮
-          const frozenFs = factorSets.find((fs) => fs.status === "frozen");
+          const frozenFs = factorSets.find((fs) => !computeTrainGate(fs).disabled);
           if (frozenFs) {
-            const sel = `[data-testid="btn-train-${CSS.escape(String(frozenFs.id))}"]`;
-            const btn = document.querySelector<HTMLElement>(sel);
-            if (btn) {
-              btn.scrollIntoView({ behavior: "smooth", block: "center" });
-              btn.classList.add("ring-2", "ring-green-400", "ring-offset-1");
-              window.setTimeout(() => btn.classList.remove("ring-2", "ring-green-400", "ring-offset-1"), 2200);
-            }
+            setTrainTarget(frozenFs);
+            setTrainNote("");
+            setTrainGateError(null);
+            setTrainModalOpen(true);
+          } else {
+            message.warning("请先冻结一个股票因子集合，再开始真实训练");
           }
+          break;
+        }
+        case 6: {
+          const candidate = models.find((m) => String(m.status ?? "").toLowerCase() !== "draft");
+          if (candidate) void loadModelDetail(candidate.id);
+          else message.info("尚无模型验证结果，请先完成真实训练");
           break;
         }
         case 7: {
           // 直达：打开第一个已验证模型的生产激活对话框。
-          const validated = models.find((m) => String(m.status ?? "").toLowerCase() === "validated");
+          const validated = models.find((m) => String(m.status ?? "").toLowerCase() === "validated" && m.production_eligible === true);
           if (validated) openActivateModal(validated, "ridge");
-          else message.warning("暂无已验证模型可激活");
+          else message.warning("暂无通过正式运行资格检查的已验证模型，请先查看验证详情并修复");
           break;
         }
         case 8: {
@@ -628,13 +683,18 @@ export default function FactorModelPage() {
       try {
         // Factor-domain internal - DO NOT USE outside factor center
         const detail = await api.getFactorModel(modelRunId);
-        setSelectedModel(detail);
+        const listed = models.find((m) => m.id === modelRunId);
+        setSelectedModel(listed ? {
+          ...detail,
+          production_eligible: listed.production_eligible,
+          readiness_message: listed.readiness_message,
+        } : detail);
         setAuditLogs((detail.audit ?? []) as unknown as AuditEntry[]);
       } catch (err) {
         message.error(t("factorModelLoadFailed") + ": " + String(err));
       }
     },
-    [message]
+    [message, models]
   );
 
   /** P1: 懒加载模型权重详情（用于列表行展开，不抢详情页的带宽）。 */
@@ -834,6 +894,10 @@ export default function FactorModelPage() {
       message.warning("请先选择要训练的 FactorSet");
       return;
     }
+    if (trainReadiness?.factorSetId !== trainTarget.id || trainReadiness.status !== "ready") {
+      message.warning(trainReadiness?.message || "请先等待训练资格检查通过");
+      return;
+    }
     setTraining(true);
     setTrainGateError(null);
     try {
@@ -849,7 +913,7 @@ export default function FactorModelPage() {
       const code = err?.error_code || detail?.error_code || "";
       const zh = detail?.detail_zh as string | undefined;
       const msgRaw = err?.message ? String(err.message) : String(err);
-      if (
+      if (zh ||
         /TRAIN_GATE_(COVERAGE_LOW|IC_OUT_OF_RANGE|LOOKBACK_SHORT)/.test(code) ||
         /coverage_low|ic_out_of_range|lookback_short/i.test(msgRaw)
       ) {
@@ -3043,15 +3107,34 @@ export default function FactorModelPage() {
 
         {/* 选中模型详情 + 审计日志 */}
         {selectedModel && (
+          <div ref={modelDetailRef} data-testid="model-validation-detail">
           <Card
             size="small"
             title={`${t("factorModelDetail")}: ${selectedModel.id}`}
             extra={
               <Button size="small" onClick={() => setSelectedModel(null)}>
-                {t("close")}
+                关闭详情
               </Button>
             }
           >
+            {selectedModel.production_eligible !== true && (
+              <Alert
+                type="warning"
+                showIcon
+                message="正式运行资格未通过"
+                description={selectedModel.readiness_message || "生产资格尚未确认，请完成真实训练和验证后再激活。"}
+                action={(() => {
+                  const fs = factorSets.find((item) => item.id === selectedModel.hyperparameters?.factor_set_id && !computeTrainGate(item).disabled);
+                  return fs ? <Button size="small" onClick={() => {
+                    setTrainTarget(fs);
+                    setTrainNote("");
+                    setTrainGateError(null);
+                    setTrainModalOpen(true);
+                  }}>使用此集合重新训练</Button> : undefined;
+                })()}
+                style={{ marginBottom: 12 }}
+              />
+            )}
             <Descriptions size="small" column={3} bordered>
               <Descriptions.Item label={t("factorModelStatus")}>
                 <Tag color={modelStatusColor(selectedModel.status)}>
@@ -3147,6 +3230,7 @@ export default function FactorModelPage() {
               </>
             )}
           </Card>
+          </div>
         )}
       </Spin>
 
@@ -3447,6 +3531,7 @@ export default function FactorModelPage() {
           setTrainGateError(null);
         }}
         confirmLoading={training}
+        okButtonProps={{ disabled: trainReadiness?.factorSetId !== trainTarget?.id || trainReadiness?.status !== "ready" }}
         okText="提交训练"
         cancelText="取消"
         centered
@@ -3466,12 +3551,21 @@ export default function FactorModelPage() {
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="成员数 / feature 数">
-                <Tag>{(trainTarget.members?.length ?? trainTarget.n_members ?? 0)} 人</Tag>
+                <Tag>{(trainTarget.members?.length ?? trainTarget.n_members ?? 0)} 个</Tag>
                 <Tag color="blue" style={{ marginInlineEnd: 0 }}>
                   feature：{(trainTarget.members ?? []).filter((m) => m.role === "feature").length}
                 </Tag>
               </Descriptions.Item>
             </Descriptions>
+
+            <Alert
+              showIcon
+              type={trainReadiness?.status === "ready" ? "success" : trainReadiness?.status === "error" ? "error" : trainReadiness?.status === "blocked" ? "warning" : "info"}
+              message={trainReadiness?.status === "ready" ? "集合资格检查通过" : trainReadiness?.status === "error" ? "训练资格检查失败" : trainReadiness?.status === "blocked" ? "暂不能训练" : "正在检查训练资格"}
+              description={trainReadiness?.status === "ready" ? "已检查冻结状态、成员版本及来源；行情覆盖与训练统计将在实际训练中核验。" : trainReadiness?.message || "正在检查冻结集合、成员版本与来源"}
+              action={(trainReadiness?.status === "blocked" || trainReadiness?.status === "error") && <Button size="small" onClick={() => void checkTrainReadiness(trainTarget.id)}>重新检查</Button>}
+              style={{ marginBottom: 12 }}
+            />
 
             <div style={{ marginBottom: 12 }}>
               <Alert type="info" showIcon message="真实股票训练流水线" description="从真实仓库计算因子暴露并训练模型，默认训练窗口250天、验证50天；训练仅生成新模型，验证完成后需本人激活，再生成评分。当前仅支持股票集合。" />
@@ -3486,15 +3580,6 @@ export default function FactorModelPage() {
                 maxLength={300}
               />
             </div>
-
-            <Alert
-              type="info"
-              showIcon
-              message="内部 ID 不暴露"
-              description="factor_set_id 由前端状态从当前集合卡片上下文直接携带（隐式提交），不需您手动输入。"
-              style={{ marginBottom: 8 }}
-              icon={<InfoCircleOutlined />}
-            />
 
             {/* Task 2 训练门禁(2)：7 要素错误 Detail_zh 原文 Banner（不丢失） */}
             {trainGateError && (

@@ -15,15 +15,20 @@ export function navigate(url: string): void {
   if (typeof url !== "string") return;
 
   // 语义 URL：/factors?next=pipeline  →  对应 settings 下的因子中心 Tab
-  if (url.startsWith("/factors")) {
+  if (url.startsWith("/factors") || url.startsWith("/settings/factors")) {
+    // Persist before dispatch: Settings can mount FactorCenter only after the
+    // navigation event has already been delivered.
+    try {
+      window.localStorage.setItem("settings_factor_center_subtab", "model");
+    } catch {
+      /* The mounted event path still works when storage is unavailable. */
+    }
+    openSettingsSection("factor-center");
     try {
       if (typeof window !== "undefined" && typeof CustomEvent === "function") {
         window.dispatchEvent(
-          new CustomEvent("settings:navigate", { detail: "factor-center" }),
-        );
-        window.dispatchEvent(
           new CustomEvent("factor-center:navigate", {
-            detail: { target: "models", next: "pipeline" },
+            detail: { target: "model", next: "pipeline" },
           }),
         );
       }
@@ -46,13 +51,7 @@ export function navigate(url: string): void {
   // Settings is a tab-based view, not a real browser route. Keep pipeline
   // navigation inside the SPA instead of assigning window.location.href.
   if (url === "/settings/pipeline") {
-    try {
-      if (typeof window !== "undefined" && typeof CustomEvent === "function") {
-        window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-model" }));
-      }
-    } catch {
-      /* ignore unsupported event environments */
-    }
+    openSettingsSection("factor-model");
     return;
   }
 

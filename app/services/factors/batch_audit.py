@@ -348,7 +348,32 @@ def audit_batch_atomicity(
             return None
         record = _row_to_batch_record(row)
         table_name = SOURCE_KEY_TO_TABLE.get(record.source_key, "")
-        actual_rows = _count_batch_rows(conn, table_name, batch_id)
+        try:
+            scope = json.loads(record.scope_json or "{}")
+        except (TypeError, json.JSONDecodeError):
+            scope = {}
+        if not isinstance(scope, dict):
+            scope = {}
+        shared_targets = (record.source_key == "target.generation"
+                          and scope.get("shared_batch") is True
+                          and isinstance(scope.get("data_calc_batch_id"), str))
+        if shared_targets:
+            # Audit IDs identify individual writes; target data keeps a shared
+            # identity. Count only this refresh's signal window, rather than
+            # zero rows under the audit ID or all accumulated shared history.
+            start = _to_date(scope.get("start_date"))
+            end = _to_date(scope.get("end_date"))
+            target_code = scope.get("target_code")
+            if start is None or end is None or start > end or not isinstance(target_code, str):
+                actual_rows = -1
+            else:
+                actual_rows = int(conn.execute(
+                    "SELECT COUNT(*) FROM factor_targets WHERE calc_batch_id = ? "
+                    "AND target_code = ? AND signal_date >= ? AND signal_date <= ?",
+                    [scope["data_calc_batch_id"], target_code, start, end],
+                ).fetchone()[0] or 0)
+        else:
+            actual_rows = _count_batch_rows(conn, table_name, batch_id)
         now = _utcnow_naive()
         age_seconds = (
             (now - record.started_at).total_seconds()
@@ -367,6 +392,14 @@ def audit_batch_atomicity(
             "table": table_name,
             "batch_column": batch_column,
         }
+        if shared_targets:
+            evidence.update({
+                "data_calc_batch_id": scope["data_calc_batch_id"],
+                "start_date": scope.get("start_date"),
+                "end_date": scope.get("end_date"),
+                "target_code": scope.get("target_code"),
+                "shared_data_window": True,
+            })
     return BatchAuditEntry(
         batch=record,
         actual_rows_in_table=actual_rows,

@@ -21,6 +21,7 @@ import type {
   MiningRunCreate,
   MiningRunCreated,
   SplitBudget,
+  MiningBatchReviewResult,
 } from "../types/mining";
 
 const BASE = "/api/v1/factor-mining";
@@ -184,8 +185,8 @@ export const factorMiningApi = {
       { method: "POST" },
     ),
 
-  batchReview: (actions: Array<Record<string, unknown>>, createdBy = "local_user"): Promise<unknown> =>
-    requestJson(`${BASE}/candidates/batch-review`, {
+  batchReview: (actions: Array<Record<string, unknown>>, createdBy = "local_user"): Promise<MiningBatchReviewResult> =>
+    requestJson<MiningBatchReviewResult>(`${BASE}/candidates/batch-review`, {
       method: "POST",
       headers: JSON_HEADERS,
       body: JSON.stringify({ actions, created_by: createdBy }),

@@ -29,6 +29,7 @@ const { mockApi, mockMessage, mockModalConfirm, mockNavigate } = vi.hoisted(() =
   mockApi: {
     scoringGetFactorModelListAsFactor: vi.fn(),
     scoringListFactorSetsAsFactor: vi.fn(),
+    scoringGetFactorSetReadiness: vi.fn(async (id: string) => ({ ready: true, factor_set_id: id, code: "READY", message: "集合资格检查通过", details: {} })),
     scoringGetModelDetail: vi.fn(),
     scoringGetModelRelations: vi.fn(),
     createFactorSet: vi.fn(),

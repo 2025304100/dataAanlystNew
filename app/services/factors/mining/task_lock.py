@@ -217,6 +217,19 @@ def acquire_write_slot(
 # ══════════════════════════════════════════════════════════
 
 
+def remove_queued_task(db: Session, *, task_id: str) -> None:
+    """Remove a cancelled waiter without releasing the current writer's lock."""
+    with _QUEUE_LOCK:
+        row = db.execute(select(TaskLock).where(TaskLock.lock_key == LOCK_DUCKDB_WRITE)
+                         .with_for_update()).scalar_one_or_none()
+        if row is not None:
+            queue = _load_queue(row)
+            remaining = [item for item in queue if item.get("task_id") != task_id]
+            if len(remaining) != len(queue):
+                row.queue_json = _dump_queue(remaining) if remaining else None
+                db.commit()
+
+
 def release_lock(
     db: Session, *, lock_key: str, task_id: str, trigger_queue: bool = True
 ) -> str | None:

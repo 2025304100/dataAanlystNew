@@ -28,6 +28,7 @@ export interface FactorMiningResultProps {
   onGotoFactorModel?: (ctx: MiningResultContext) => void;
   onBatchAdd?: (candidateIds: string[]) => void;
   onExport?: () => void;
+  onCandidateChanged?: () => void;
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -42,7 +43,8 @@ const SOURCE_LABEL: Record<string, string> = {
 /** 质量分级数值序（用于「等级变更标记」等展示） */
 const GRADE_ORDER: QualityGrade[] = ["S", "A", "B", "C", "D"];
 
-function gradeClass(grade: QualityGrade): string {
+function gradeClass(grade: QualityGrade | null): string {
+  if (!grade) return "mining-chip mining-chip--muted";
   const key = GRADE_ORDER.includes(grade) ? grade.toLowerCase() : "d";
   return `mining-grade mining-grade--${key}`;
 }
@@ -100,6 +102,7 @@ export default function FactorMiningResult({
   onGotoFactorModel,
   onBatchAdd,
   onExport,
+  onCandidateChanged,
 }: FactorMiningResultProps) {
   const [filter, setFilter] = useState<QualityGrade | "all">("all");
   const [selected, setSelected] = useState<string[]>([]);
@@ -108,6 +111,8 @@ export default function FactorMiningResult({
   const [evidenceTarget, setEvidenceTarget] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<GradeEvidence | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [evidenceActionBusy, setEvidenceActionBusy] = useState(false);
+  const [evidenceActionError, setEvidenceActionError] = useState<string | null>(null);
 
   const loadEvidence = useCallback(async (candidateId: string) => {
     setEvidence(null);
@@ -124,21 +129,36 @@ export default function FactorMiningResult({
   }, []);
 
   const openEvidence = useCallback((candidateId: string) => {
+    setEvidenceActionError(null);
     setEvidenceTarget(candidateId);
     void loadEvidence(candidateId);
   }, [loadEvidence]);
 
   const handleAdjustGrade = useCallback(async (grade: Grade, reason: string) => {
-    if (!evidenceTarget) return;
-    await factorMiningApi.manualGrade(evidenceTarget, grade, reason);
-    await loadEvidence(evidenceTarget);   // 刷新：manual-tip / 历史时间轴
-  }, [evidenceTarget, loadEvidence]);
+    if (!evidenceTarget || evidenceActionBusy) return;
+    setEvidenceActionBusy(true);
+    setEvidenceActionError(null);
+    try {
+      await factorMiningApi.manualGrade(evidenceTarget, grade, reason);
+      await loadEvidence(evidenceTarget);
+      onCandidateChanged?.();
+    } catch (error) {
+      setEvidenceActionError(error instanceof Error ? error.message : t("miningRunOpError"));
+    } finally { setEvidenceActionBusy(false); }
+  }, [evidenceTarget, loadEvidence, onCandidateChanged, evidenceActionBusy]);
 
   const handleRestoreAuto = useCallback(async () => {
-    if (!evidenceTarget) return;
-    await factorMiningApi.restoreAutoGrade(evidenceTarget);
-    await loadEvidence(evidenceTarget);
-  }, [evidenceTarget, loadEvidence]);
+    if (!evidenceTarget || evidenceActionBusy) return;
+    setEvidenceActionBusy(true);
+    setEvidenceActionError(null);
+    try {
+      await factorMiningApi.restoreAutoGrade(evidenceTarget);
+      await loadEvidence(evidenceTarget);
+      onCandidateChanged?.();
+    } catch (error) {
+      setEvidenceActionError(error instanceof Error ? error.message : t("miningRunOpError"));
+    } finally { setEvidenceActionBusy(false); }
+  }, [evidenceTarget, loadEvidence, onCandidateChanged, evidenceActionBusy]);
 
   const countOf = (g: QualityGrade | "all") =>
     g === "all" ? rows.length : rows.filter((r) => r.grade === g).length;
@@ -159,7 +179,7 @@ export default function FactorMiningResult({
     .map((r) => ({
       id: r.candidate_id,
       x: Math.min(1, Math.max(0, r.turnover ?? 0)),
-      y: Math.min(1, Math.max(0, r.icir)),
+      y: Math.min(1, Math.max(0, r.icir ?? 0)),
       coverage: Math.min(1, Math.max(0, r.coverage ?? 0)),
       complexity: r.complexity ?? 3,
       rank: r.generation_rank,
@@ -217,13 +237,13 @@ export default function FactorMiningResult({
             {t("miningResultSortHint")}
           </span>
         </span>
-        <button type="button" data-result-export onClick={onExport}>
+        <button type="button" data-result-export disabled={!onExport || rows.length === 0} onClick={onExport}>
           {t("miningResultExport")}
         </button>
         <button
           type="button"
           data-result-goto-model
-          disabled={!canGoto}
+          disabled={!canGoto || !onGotoFactorModel}
           title={canGoto ? undefined : t("miningResultGotoDisabledHint")}
           onClick={() => {
             if (canGoto && context) onGotoFactorModel?.(context);
@@ -258,7 +278,7 @@ export default function FactorMiningResult({
         <span className="mining-chip mining-chip--muted">
           {t("miningResultDGradeHint")}
         </span>
-        <button type="button" data-result-batch-add onClick={doBatchAdd}>
+        <button type="button" data-result-batch-add disabled={!onBatchAdd || selected.length === 0} onClick={doBatchAdd}>
           {t("miningResultBatchAdd")}
         </button>
       </div>
@@ -381,7 +401,7 @@ export default function FactorMiningResult({
                 </td>
                 <td className="mining-result-formula">{r.formula}</td>
                 <td data-result-grade={r.candidate_id}>
-                  <span className={gradeClass(r.grade)}>{r.grade}</span>
+                  <span className={gradeClass(r.grade)}>{r.grade ?? t("miningResultUngraded")}</span>
                   {/* DEF-15：证据抽屉入口——回答「为什么是这个等级」（§8.4.1） */}
                   <button
                     type="button"
@@ -435,6 +455,8 @@ export default function FactorMiningResult({
         evidence ? (
           <GradeEvidenceDrawer
             evidence={evidence}
+            actionBusy={evidenceActionBusy}
+            actionError={evidenceActionError}
             onClose={() => setEvidenceTarget(null)}
             onAdjustGrade={(g, reason) => void handleAdjustGrade(g, reason)}
             onRestoreAuto={() => void handleRestoreAuto()}

@@ -49,6 +49,7 @@ const mkModel = (o: any = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ runtime: OV.runtime, items: [] });
   mockApi.scoringGetModelRelations.mockReset();
 });
@@ -66,6 +67,7 @@ it("TR-7.1 三行 relations 返回 full DTO → linked-fs-cell 三列非空，�
       factors: [], data_cutoff_at: s.data_cutoff_at, created_at: null, unbound_reason: null };
   });
   render(<FactorModelSettings initialTrainModel={false} />);
+  fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
   await waitFor(() => screen.getByTestId("linked-fs-cell-mA"));
   for (const id of ["mA", "mB", "mC"]) {
     expect(screen.queryByTestId(`linked-fs-cell-${id}`)).not.toBeNull();
@@ -90,6 +92,7 @@ it("TR-7.2 Drawer 6 列渲染 + coef_raw=null 显示 N/A 不出现 0 占位", as
     ], data_cutoff_at: "2026-07-14T18:00:00", created_at: null, unbound_reason: null,
   });
   render(<FactorModelSettings initialTrainModel={false} />);
+  fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
   await waitFor(() => screen.getByTestId("view-relations-m72"));
   fireEvent.click(screen.getByTestId("view-relations-m72"));
   await waitFor(() => screen.getByTestId("relations-details-table"));
@@ -111,6 +114,7 @@ it("TR-7.3 unbound_reason=AC7(200+字) → Alert warning 出现 + 文案含原�
     factors: [], data_cutoff_at: null, created_at: null, unbound_reason: AC7,
   });
   render(<FactorModelSettings initialTrainModel={false} />);
+  fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
   await waitFor(() => screen.getByTestId("view-relations-mu73"));
   fireEvent.click(screen.getByTestId("view-relations-mu73"));
   const a = await waitFor(() => screen.getByTestId("relations-unbound-alert"));
@@ -127,6 +131,7 @@ it("TR-7.3 unbound_reason=AC7(200+字) → Alert warning 出现 + 文案含原�
 it("TR-7.4 前往因子中心按钮 → navigate('/factors') 精确命中 1 次", async () => {
   mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue({ runtime: OV.runtime, items: [mkModel({ id: "m74" })] });
   render(<FactorModelSettings initialTrainModel={false} />);
+  fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
   const btn = await waitFor(() => screen.getByTestId("goto-factor-center-global"));
   expect(btn.textContent).toContain("前往因子中心"); expect(mockNavigate).not.toHaveBeenCalled();
   fireEvent.click(btn);

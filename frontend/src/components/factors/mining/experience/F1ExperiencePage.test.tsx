@@ -92,4 +92,25 @@ describe("F1ExperiencePage（B3）", () => {
         .toBeGreaterThanOrEqual(2);
     });
   });
+
+  it("归档失败显示原因，不把原数据误判为空", async () => {
+    vi.mocked(factorExperienceApi.archive).mockRejectedValueOnce(new Error("服务繁忙，请重试"));
+    const page = render(<F1ExperiencePage active />);
+    await waitFor(() => expect(document.querySelector("[data-f1-exp-archive='exp-1']")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-f1-exp-archive='exp-1']") as HTMLElement);
+    await waitFor(() => expect(page.getByRole("alert").textContent).toContain("服务繁忙，请重试"));
+    expect(document.querySelectorAll("[data-f1-exp-table] tbody tr")).toHaveLength(3);
+  });
+
+  it("经验超过50条可切换下一页，显示实际总数", async () => {
+    const original = await factorExperienceApi.list();
+    vi.mocked(factorExperienceApi.list).mockClear();
+    vi.mocked(factorExperienceApi.list).mockResolvedValueOnce({ ...original, total: 51 });
+    vi.mocked(factorExperienceApi.list).mockResolvedValueOnce({ ...original, items: [original.items[0]], total: 51, page: 2 });
+    const page = render(<F1ExperiencePage active />);
+    await waitFor(() => expect(page.getByText(/共 51 条/)).toBeTruthy());
+    fireEvent.click(page.getByRole("button", { name: "下一页" }));
+    await waitFor(() => expect(factorExperienceApi.list).toHaveBeenLastCalledWith({ page: 2, page_size: 50 }));
+    await waitFor(() => expect(document.querySelectorAll("[data-f1-exp-table] tbody tr")).toHaveLength(1));
+  });
 });

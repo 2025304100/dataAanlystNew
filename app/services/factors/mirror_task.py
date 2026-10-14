@@ -20,6 +20,8 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import json
 import logging
 import shutil
@@ -424,22 +426,20 @@ def _release_write_lock(task_id: str) -> str | None:
 def get_mirror_status(db: Any, warehouse: Any | None = None) -> dict[str, Any]:
     """已镜像区间 / 行数 / 标的数 / 低覆盖年份标注（向导 §10.2）。"""
     from app.services.factors.config import get_factor_system_config
-    from app.services.factors.candidate_pool import rules as pool_rules
+    from app.services.factors.store import FactorWarehouse
 
     config = get_factor_system_config(db)
     path = config.warehouse_path
+    if not Path(path).exists() and warehouse is None:
+        return {"available": False, "error": "因子仓库尚未建立，请先初始化并镜像行情。",
+                "warehouse_path": str(path)}
     try:
-        import duckdb
-
-        conn = duckdb.connect(str(path), read_only=True)
-        try:
+        warehouse = warehouse or FactorWarehouse.get_for_path(path)
+        with warehouse.connection(read_only=True) as conn:
             row = conn.execute(
                 "SELECT COUNT(*), COUNT(DISTINCT symbol), MIN(trade_date), "
                 "MAX(trade_date) FROM raw_daily_bars"
             ).fetchone()
-        finally:
-            conn.close()
-        available = True
     except Exception as exc:  # noqa: BLE001 - 数仓缺失/被占 → 明示不可用
         return {"available": False, "error": str(exc)[:300],
                 "warehouse_path": str(path)}
@@ -447,14 +447,11 @@ def get_mirror_status(db: Any, warehouse: Any | None = None) -> dict[str, Any]:
     # 低覆盖年份（向导 §10.2：标的数 < 4000，2016–2018 + 边界提示）
     low_years: list[dict[str, Any]] = []
     try:
-        conn = duckdb.connect(str(path), read_only=True)
-        try:
+        with warehouse.connection(read_only=True) as conn:
             rows = conn.execute(
                 "SELECT year(trade_date) AS y, COUNT(DISTINCT symbol) AS n "
                 "FROM raw_daily_bars GROUP BY 1 ORDER BY 1"
             ).fetchall()
-        finally:
-            conn.close()
         for y, n in rows:
             if n < 4000:
                 low_years.append({

@@ -24,7 +24,7 @@ import type { EChartsOption } from "echarts";
 export interface PoolAnalysisModalProps {
   snapshot: PoolSnapshot | null;
   onClose: () => void;
-  onReselect: () => void;
+  onReselect?: () => void;
   onNext: () => void;
 }
 
@@ -429,7 +429,7 @@ export default function PoolAnalysisModal({
         )}
 
         <footer className="mining-pool-modal-foot">
-          <button type="button" className="mining-pool-btn" data-pool-reselect onClick={onReselect}>
+          <button type="button" className="mining-pool-btn" data-pool-reselect disabled={!onReselect} onClick={onReselect}>
             {t("miningPoolReselect")}
           </button>
           <button type="button" className="mining-pool-btn primary" data-pool-next onClick={onNext}>

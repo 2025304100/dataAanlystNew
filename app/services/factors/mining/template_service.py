@@ -141,6 +141,34 @@ def get_template(db: Session, template_id: str) -> dict[str, Any] | None:
     return _to_view(row, _latest_version(db, row.id))
 
 
+def load_population_templates(db: Session) -> tuple[Any, ...]:
+    """实际初始种群读取模板配置，启停状态以主题行而非版本 JSON 为准。"""
+    from app.services.factors.mining.initial_population import ClassicTemplate, CLASSIC_TEMPLATES
+
+    rows = db.execute(select(FactorMiningTemplate).order_by(FactorMiningTemplate.name)).scalars().all()
+    # 尚未初始化系统库时保留经典底座；一旦已有系统行，关闭的模板不再回退。
+    output = [] if any(row.scope == "system" for row in rows) else list(CLASSIC_TEMPLATES)
+    for row in rows:
+        if not row.enabled:
+            continue
+        rule = _to_view(row, _latest_version(db, row.id))["rule_config"]
+        formula = str(rule.get("formula") or "").strip()
+        if not formula:
+            raise ValueError(f"模板「{row.name}」缺少公式，请停用或重新创建。")
+        params = rule.get("params") or {}
+        placeholders = set(re.findall(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", formula))
+        if any(not isinstance(params.get(key), (list, tuple)) or not params[key]
+               for key in placeholders):
+            raise ValueError(f"模板「{row.name}」参数候选值缺失，请停用或重新创建。")
+        output.append(ClassicTemplate(
+            name=row.name, category=rule.get("category") or "trend", formula=formula,
+            params=params, required_fields=tuple(rule.get("required_fields") or ()),
+            economy_logic_zh=rule.get("economy_logic_zh") or row.description or "",
+            priority=int(rule.get("priority") or 5), enabled=True,
+        ))
+    return tuple(output)
+
+
 def create_personal_template(
     db: Session, *, name: str, description: str | None,
     rule_config: Mapping[str, Any], owner: str,
@@ -165,15 +193,15 @@ def create_personal_template(
             f"template_formula_too_long: 公式最长 {MAX_FORMULA_LENGTH} 字符，"
             f"本次 {len(formula)} 字符。")
     # ⚠️ 模板公式是**带参模板**（`mean(close,{n1})`）：必须先用 `params` 的
-    # 首个候选值把 `{占位符}` 代入再编译（实测 25 个系统模板 raw 公式 21 个
-    # 过不了编译器、代入后 25/25 全过）。缺候选值的占位符用 20 兜底
-    # （与窗口类参数常见量级一致，只影响校验、不影响落库内容）。
+    # 首个候选值把 `{占位符}` 代入再编译；不能编造候选值绕过校验。
     params = rule_config.get("params") if isinstance(
         rule_config.get("params"), Mapping) else {}
 
     def _render(m: "re.Match[str]") -> str:
         vals = params.get(m.group(1))
-        return str(vals[0]) if vals else "20"
+        if not isinstance(vals, (list, tuple)) or not vals:
+            raise ValueError(f"template_params_required: 参数 {m.group(1)} 缺少候选值。")
+        return str(vals[0])
 
     rendered = re.sub(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", _render, formula)
     try:
@@ -191,7 +219,11 @@ def create_personal_template(
             + "；".join(f"[{e.error_code}] {e.message}" for e in errors[:3])
             + f"（共 {len(errors)} 处问题，首个错误码 {first.error_code}）。")
     tpl_id = uuid.uuid4().hex
-    rule = json.dumps(dict(rule_config), ensure_ascii=False, sort_keys=True)
+    from app.services.factors.experience.generalization import collect_fields
+    plan = FC.compile_formula(formula=rendered, strict_fields=False).execution_plan
+    normalized_rule = dict(rule_config)
+    normalized_rule["required_fields"] = collect_fields(plan.formula_ast) if plan else []
+    rule = json.dumps(normalized_rule, ensure_ascii=False, sort_keys=True)
     row = FactorMiningTemplate(
         id=tpl_id, name=str(name).strip(),
         description=description or "", scope="personal",
@@ -273,4 +305,5 @@ __all__ = [
     "seed_system_templates", "list_templates", "get_template",
     "create_personal_template", "copy_template", "set_template_enabled",
     "delete_template",
+    "load_population_templates",
 ]

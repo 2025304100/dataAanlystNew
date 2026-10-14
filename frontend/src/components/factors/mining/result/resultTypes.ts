@@ -14,10 +14,10 @@ export type CandidateSource =
 export interface MiningResultRow {
   candidate_id: string;
   formula: string;
-  grade: QualityGrade;
-  icir: number;
+  grade: QualityGrade | null;
+  icir: number | null;
   /** 校正后 ICIR（Bonferroni/FDR）—— 列表默认排序依据 */
-  icir_adjusted: number;
+  icir_adjusted: number | null;
   coverage?: number | null;
   turnover?: number | null;
   /** 公式复杂度（帕累托散点点大小） */

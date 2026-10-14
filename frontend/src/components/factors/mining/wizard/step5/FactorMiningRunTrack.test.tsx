@@ -88,6 +88,12 @@ describe("FactorMiningRunTrack 进化曲线与收敛提示", () => {
 });
 
 describe("FactorMiningRunTrack 中断/停止/放弃（§8.3.5）", () => {
+  it("一代已完成任务以 1 / 1 和完成进度展示，不停在零基下标 0 / 1", () => {
+    render(<FactorMiningRunTrack progress={p({ status: "succeeded", generation: 0, max_generations: 1 })} />);
+    expect(document.querySelector('[data-run-generation]')?.textContent).toContain('1 / 1');
+    expect(document.querySelector('[data-run-progressbar]')?.getAttribute('aria-valuenow')).toBe('100');
+  });
+
   it("中断后按钮变为「继续」", () => {
     const onPause = vi.fn();
     const { rerender } = render(

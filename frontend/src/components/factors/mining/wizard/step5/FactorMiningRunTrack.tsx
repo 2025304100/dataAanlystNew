@@ -173,14 +173,26 @@ export default function FactorMiningRunTrack({
 
   const diversity = progress.diversity ?? null;
   const premature = diversity != null && diversity < PREMATURE_DIVERSITY;
-  const suggestStop =
-    Boolean(progress.converged) &&
-    (progress.stall_generations ?? 0) >= STALL_SUGGEST_STOP;
   const paused = progress.status === "paused";
+  const terminal = ["succeeded", "converged", "failed", "cancelled", "discarded"].includes(progress.status);
+  const suggestStop = !terminal && Boolean(progress.converged) &&
+    (progress.stall_generations ?? 0) >= STALL_SUGGEST_STOP;
+  const completed = progress.status === "succeeded" || progress.status === "converged";
+  const statusKeys: Record<string, string> = {
+    succeeded: "miningRunStatusSucceeded", converged: "miningRunStatusConverged",
+    failed: "miningRunStatusFailed", cancelled: "miningRunStatusCancelled",
+    discarded: "miningRunStatusDiscarded", running: "miningRunStatusRunning",
+    queued: "miningRunStatusQueued", paused: "miningRunStatusPaused",
+    validating: "miningRunStatusValidating",
+  };
+  const statusLabel = progress.status === "succeeded" && progress.converged
+    ? t("miningRunStatusCompletedConverged")
+    : statusKeys[progress.status] ? t(statusKeys[progress.status]) : progress.status;
+  const shownGeneration = completed ? Math.min(progress.max_generations, progress.generation + 1) : progress.generation;
   const fv = progress.final_validation ?? null;
-  const genPercent = Math.round(
+  const genPercent = completed ? 100 : Math.min(100, Math.max(0, Math.round(
     (progress.generation / Math.max(1, progress.max_generations)) * 100,
-  );
+  )));
   const diversityDots = Math.min(10, Math.round((diversity ?? 0) * 10));
 
   // 多样性双轴曲线（SVG）：左轴最优 ICIR、右轴 health，均归一化到 0~1
@@ -204,7 +216,7 @@ export default function FactorMiningRunTrack({
       {/* 进度总览 */}
       <div className="mining-run-overview" data-run-overview>
         <span data-run-generation>
-          {t("miningRunGeneration")}: {progress.generation} / {progress.max_generations}
+          {t("miningRunGeneration")}: {shownGeneration} / {progress.max_generations}
           {/* §8.3.1：每代进度条 */}
           <Progress
             data-run-progressbar
@@ -214,7 +226,7 @@ export default function FactorMiningRunTrack({
           />
         </span>
         <span data-run-converged>
-          {progress.converged ? t("miningRunConverged") : t("miningRunNotConverged")}
+          {statusLabel}
         </span>
         {diversity != null && (
           <span data-run-diversity>
@@ -545,23 +557,23 @@ export default function FactorMiningRunTrack({
       </div>
 
       {/* 三操作（§8.3.5） */}
-      <div className="mining-run-actions">
+      {!terminal && <div className="mining-run-actions">
         {paused ? (
-          <button type="button" data-run-resume onClick={onResume}>
+          <button type="button" data-run-resume disabled={!onResume} onClick={onResume}>
             {t("miningRunResume")}
           </button>
         ) : (
-          <button type="button" data-run-pause onClick={onPause}>
+          <button type="button" data-run-pause disabled={!onPause || progress.status !== "running"} onClick={onPause}>
             {t("miningRunPause")}
           </button>
         )}
-        <button type="button" data-run-stop onClick={() => setConfirmStop(true)}>
+        <button type="button" data-run-stop disabled={!onStop} onClick={() => setConfirmStop(true)}>
           {t("miningRunStopEarly")}
         </button>
-        <button type="button" data-run-discard onClick={() => setConfirmDiscard(true)}>
+        <button type="button" data-run-discard disabled={!onDiscard} onClick={() => setConfirmDiscard(true)}>
           {t("miningRunDiscard")}
         </button>
-      </div>
+      </div>}
 
       {confirmStop && (
         <div className="mining-run-confirm" role="dialog">

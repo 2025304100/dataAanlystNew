@@ -28,7 +28,12 @@ describe("ResultGotoFactorModelButton（C1）", () => {
     const btn = document.querySelector("[data-result-goto-model]") as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
-    expect(navigateMock).toHaveBeenCalledWith("/factors?next=pipeline");
+    const url = new URL(navigateMock.mock.calls[0][0], "http://localhost");
+    expect(url.pathname).toBe("/factors");
+    expect(url.searchParams.get("set_id")).toBe("fs-1");
+    expect(url.searchParams.get("data_cutoff_at")).toBe(FULL_CTX.data_cutoff_at);
+    expect(url.searchParams.get("candidate_pool_snapshot_id")).toBe("snap-1");
+    expect(url.searchParams.get("rebalance_frequency")).toBe("weekly");
   });
 
   it("缺任一上下文（如 factor_set_id）→ 禁用且不跳转", () => {

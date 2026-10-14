@@ -77,6 +77,10 @@ class ScoringBridgeResult:
     skipped_symbol_count: int
     missing_symbol_mapping_count: int = 0
     factor_only_score_count: int = 0
+    requested_symbol_count: int | None = None
+    scoped_symbol_count: int = 0
+    missing_factor_count: int = 0
+    scope_excluded_symbol_count: int = 0
 
 
 def _utcnow_naive() -> datetime:
@@ -150,6 +154,7 @@ def _score_batch_id(
     factor_calc_batch_id: str,
     pipeline_run_id: str | None,
     manual_revision_identity: str = '',
+    target_symbols: frozenset[str] | None = None,
 ) -> str:
     identity = '|'.join(
         (
@@ -161,6 +166,11 @@ def _score_batch_id(
             manual_revision_identity,
         )
     )
+    # Keep legacy full-market identities intact. Explicit scopes have distinct
+    # immutable batches so their lineage cannot overwrite another scope's
+    # publication counts, including a later full-market run of the same inputs.
+    if target_symbols is not None:
+        identity += '|publication_scope:' + json.dumps(sorted(target_symbols))
     digest = hashlib.sha256(identity.encode('utf-8')).hexdigest()[:20]
     return f'factor-{mode}-{trade_date:%Y%m%d}-{digest}'
 
@@ -423,6 +433,7 @@ def materialize_factor_scores(
     run_mode: str = "production",
     scoring_actor: str | None = None,
     scoring_note: str | None = None,
+    target_symbols: tuple[str, ...] | None = None,
 ) -> ScoringBridgeResult:
     '''Create shadow or Ridge Score rows from one validated model snapshot.
 
@@ -432,7 +443,11 @@ def materialize_factor_scores(
     A shadow batch carries the full explanation but preserves every manual
     ranking field. Ridge mode blends the dynamic dimensions into the existing
     final score while retaining the manual scoring configuration and stage.
+    Explicit targets restrict publication only: normalization and percentile
+    scores retain the complete factor cross-section. An empty tuple publishes
+    nothing; it never means the legacy full-market default.
     '''
+    target_set = frozenset(target_symbols) if target_symbols is not None else None
     runtime = get_factor_runtime_snapshot(db)
     active_mode = mode or runtime.weight_mode
     model_run_id = model_run_id or runtime.active_model_run_id
@@ -442,15 +457,16 @@ def materialize_factor_scores(
         raise ValueError('quality_factor_weight must be within 0..1')
     if not 0.0 <= timing_factor_weight <= 1.0:
         raise ValueError('timing_factor_weight must be within 0..1')
-    if active_mode == 'manual':
+    if active_mode == 'manual' or target_set == frozenset():
         return ScoringBridgeResult(
-            mode='manual',
+            mode=active_mode,
             trade_date=trade_date,
-            model_run_id=None,
+            model_run_id=None if active_mode == 'manual' else model_run_id,
             calc_batch_id=None,
             manual_score_count=0,
             materialized_count=0,
             skipped_symbol_count=0,
+            requested_symbol_count=len(target_set) if target_set is not None else None,
         )
     if warehouse is None or not factor_calc_batch_id or not model_run_id:
         raise ValueError(
@@ -526,13 +542,26 @@ def materialize_factor_scores(
             Symbol.symbol.in_(sorted(factor_rows)), Symbol.asset_type == model.asset_type,
         )).scalars().all()
         symbols_by_code.update({symbol.symbol: symbol for symbol in mapped_symbols})
-    missing_symbol_mapping_count = len(set(factor_rows) - set(symbols_by_code))
     manual_by_symbol_id = {score.symbol_id: score for score in manual_scores}
     complete: dict[str, dict[str, dict[str, Any]]] = {
         symbol: values
         for symbol, values in factor_rows.items()
         if set(feature_codes).issubset(values)
     }
+    publication_symbols = set(factor_rows) if target_set is None else set(target_set)
+    scoped_factor_symbols = publication_symbols.intersection(factor_rows)
+    scoped_symbol_count = len(scoped_factor_symbols)
+    missing_symbol_mapping_count = len(scoped_factor_symbols - set(symbols_by_code))
+    missing_factor_count = len(publication_symbols - set(complete))
+    scope_excluded_symbol_count = len(set(factor_rows) - publication_symbols)
+    target_symbol_ids = {
+        symbol.id for code, symbol in symbols_by_code.items()
+        if target_set is None or code in target_set
+    }
+    manual_score_count = sum(
+        1 for score in manual_scores
+        if target_set is None or score.symbol_id in target_symbol_ids
+    )
 
     quality_raw: dict[str, float] = {}
     timing_raw: dict[str, float] = {}
@@ -572,6 +601,7 @@ def materialize_factor_scores(
              score.scoring_config_snapshot_json]
             for score in sorted(manual_scores, key=lambda row: row.symbol_id)
         ], default=str, sort_keys=True).encode('utf-8')).hexdigest(),
+        target_symbols=target_set,
     )
 
     existing_rows = db.execute(
@@ -584,6 +614,8 @@ def materialize_factor_scores(
     materialized = 0
     factor_only_count = 0
     for symbol_code in sorted(complete):
+        if symbol_code not in publication_symbols:
+            continue
         if symbol_code not in symbols_by_code:
             continue
         symbol = symbols_by_code[symbol_code]
@@ -738,8 +770,15 @@ def materialize_factor_scores(
             # 2) 构造 stats_json：批次元数据（对齐 ScoringBridgeResult）
             _stats = {
                 "n_scores": int(materialized),
-                "manual_score_count": int(len(manual_scores)),
-                "skipped_symbol_count": int(max(0, len(factor_rows) - materialized)),
+                "manual_score_count": int(manual_score_count),
+                "skipped_symbol_count": int(max(0, len(publication_symbols) - materialized)),
+                "requested_symbol_count": len(target_set) if target_set is not None else None,
+                "scoped_symbol_count": scoped_symbol_count,
+                "missing_factor_count": missing_factor_count,
+                "missing_symbol_mapping_count": missing_symbol_mapping_count,
+                "scope_excluded_symbol_count": scope_excluded_symbol_count,
+                "target_symbols": sorted(target_set) if target_set is not None else None,
+                "cross_section_symbol_count": len(complete),
                 "factor_calc_batch_id": factor_calc_batch_id,
                 "pipeline_run_id": pipeline_run_id,
                 "factor_symbols_in_warehouse": int(total_symbols_factor_rows),
@@ -862,23 +901,37 @@ def materialize_factor_scores(
         trade_date=trade_date,
         model_run_id=model.id,
         calc_batch_id=calc_batch_id,
-        manual_score_count=len(manual_scores),
+        manual_score_count=manual_score_count,
         materialized_count=materialized,
-        skipped_symbol_count=max(0, len(factor_rows) - materialized),
+        skipped_symbol_count=max(0, len(publication_symbols) - materialized),
         missing_symbol_mapping_count=missing_symbol_mapping_count,
         factor_only_score_count=factor_only_count,
+        requested_symbol_count=len(target_set) if target_set is not None else None,
+        scoped_symbol_count=scoped_symbol_count,
+        missing_factor_count=missing_factor_count,
+        scope_excluded_symbol_count=scope_excluded_symbol_count,
     )
 
 
 def materialize_factor_score_window(db, warehouse, *, trade_dates,
                                    factor_calc_batch_id, model_run_id,
-                                   mode, pipeline_run_id=None, publication_guard=None) -> dict:
+                                   mode, pipeline_run_id=None, publication_guard=None,
+                                   target_symbols: tuple[str, ...] | None = None) -> dict:
     """Publish every qualified day in a calculation window, in one transaction.
 
     Historical dates remain newly published facts: the score bridge always
     stamps actual availability, so a backfill cannot rewrite PIT history.
     """
     from dataclasses import asdict
+    if target_symbols is not None and not target_symbols:
+        return {
+            'status': 'SKIPPED', 'reason': 'empty_publication_scope',
+            'daily_batches': [], 'materialized_count': 0, 'unpublished_dates': [],
+            'missing_symbol_mapping_count': 0, 'skipped_symbol_count': 0,
+            'factor_only_score_count': 0, 'requested_symbol_count': 0,
+            'scoped_symbol_count': 0, 'missing_factor_count': 0,
+            'scope_excluded_symbol_count': 0,
+        }
     bridges = []
     with db.begin_nested():
         if publication_guard is not None:
@@ -889,6 +942,7 @@ def materialize_factor_score_window(db, warehouse, *, trade_dates,
                 factor_calc_batch_id=factor_calc_batch_id,
                 model_run_id=model_run_id, mode=mode,
                 pipeline_run_id=pipeline_run_id,
+                target_symbols=target_symbols,
             )))
         if not bridges or not any(b['materialized_count'] for b in bridges):
             raise ValueError('no_factor_scores_published:factor_input_or_symbol_mapping_missing')
@@ -909,6 +963,10 @@ def materialize_factor_score_window(db, warehouse, *, trade_dates,
         'missing_symbol_mapping_count': missing_symbol_mapping_count,
         'skipped_symbol_count': skipped_symbol_count,
         'factor_only_score_count': sum(b['factor_only_score_count'] for b in bridges),
+        'requested_symbol_count': len(set(target_symbols)) if target_symbols is not None else None,
+        'scoped_symbol_count': sum(b['scoped_symbol_count'] for b in bridges),
+        'missing_factor_count': sum(b['missing_factor_count'] for b in bridges),
+        'scope_excluded_symbol_count': sum(b['scope_excluded_symbol_count'] for b in bridges),
     }
 
 

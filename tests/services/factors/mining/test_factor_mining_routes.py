@@ -79,13 +79,14 @@ def _seed_snapshot(db_session, snap_id: str = "snap-c1", *, locked: int = 1):
 
     pool = TrainingCandidatePool(
         id=f"pool-{snap_id}", name="测试候选池", source_type="filter",
-        status="frozen", member_count=0,
+        status="frozen", member_count=12,
     )
     db_session.merge(pool)
     snap = TrainingCandidatePoolSnapshot(
-        id=snap_id, pool_id=f"pool-{snap_id}", members_json="[]",
+        id=snap_id, pool_id=f"pool-{snap_id}",
+        members_json=_safe_json([{"symbol": f"{i:06d}", "symbol_id": i + 1} for i in range(12)]),
         rule_hash="rh-test", data_cutoff_at=datetime(2026, 11, 10),
-        is_locked=locked, member_count=0,
+        is_locked=locked, member_count=12,
     )
     db_session.merge(snap)
     db_session.commit()
@@ -292,9 +293,9 @@ class TestRunsApi:
 class TestSplitBudgetApi:
     """P1-9：POST /factor-mining/split-budget 切分预算。
 
-    用 monkeypatch 固定数仓交易日序列（两周 10 个工作日），验证：
-    - 日频 total_points=10（全部交易日）；
-    - 周频重采样 → 每周最后交易日（2 点）；
+    固定完整数仓日历（一月 20 个工作日 + 二月 5 个未来日），验证：
+    - 一月信号已成熟，日频 total_points=20；
+    - 周频重采样 → 每周最后交易日（4 点）；
     - 月频重采样 → 每月最后交易日（1 点）；
     - 数仓/series 不可用 → available=False + reason_zh 降级。
     """
@@ -304,11 +305,13 @@ class TestSplitBudgetApi:
 
     @staticmethod
     def _weekdays() -> list[date]:
-        # 2026-01-05(周一) 起两周，每周 5 个交易日
+        # 2026-01-05 起五周；二月行情支持一月末 T+5 标签成熟。
         days: list[date] = []
         base = date(2026, 1, 5)
-        for i in range(10):
-            days.append(base + timedelta(days=i))
+        for i in range(33):
+            day = base + timedelta(days=i)
+            if day.weekday() < 5:
+                days.append(day)
         return days
 
     @staticmethod
@@ -330,7 +333,8 @@ class TestSplitBudgetApi:
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["available"] is True
-        assert body["total_points"] == 10
+        assert body["total_points"] == 20
+        assert body["tail_loss"] == 0  # 已扣未成熟日，不能再次减目标周期。
         assert "meets_floor" in body and "purge_trading_days" in body
 
     def test_weekly_resample(self, db_session, monkeypatch):
@@ -343,8 +347,8 @@ class TestSplitBudgetApi:
         })
         assert resp.status_code == 200, resp.text
         body = resp.json()
-        # 每周只保留最后交易日 → 2 个调仓点
-        assert body["total_points"] == 2
+        # 一月四个周五，二月只是标签未来行情。
+        assert body["total_points"] == 4
 
     def test_monthly_resample(self, db_session, monkeypatch):
         self._patch_trade_dates(monkeypatch, self._weekdays())

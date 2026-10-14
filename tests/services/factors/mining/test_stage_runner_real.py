@@ -69,6 +69,8 @@ def warehouse_path(tmp_path):
 
 @pytest.fixture
 def run_row(db_session, warehouse_path):
+    from test_factor_mining_routes import _seed_snapshot
+    _seed_snapshot(db_session, "snap-a2")
     row = FactorMiningRun(
         id="run-a2", status="running", candidate_pool_snapshot_id="snap-a2",
         data_cutoff_at=datetime(2026, 11, 10), start_date=datetime(2026, 1, 5),

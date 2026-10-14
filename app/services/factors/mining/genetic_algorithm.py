@@ -296,6 +296,8 @@ def run_ga_loop(
                             None] | None = None,
     runtime_dedup: Callable[[Sequence[Mapping[str, Any]]], Any] | None = None,
     should_stop: Callable[[], bool] | None = None,
+    initial_state: Mapping[str, Any] | None = None,
+    on_checkpoint: Callable[[Mapping[str, Any]], None] | None = None,
 ) -> GAResult:
     """**GA 主循环**（`selection_mode` 双路径）。
 
@@ -331,7 +333,13 @@ def run_ga_loop(
         `GAResult`（`total_trials` 每代累加 = Σ 种群大小，DSR 唯一输入源）
     """
     rng = random.Random(int(cfg.seed))
-    population: list[dict[str, Any]] = [dict(x) for x in initial_population]
+    state = dict(initial_state or {})
+    population: list[dict[str, Any]] = [dict(x) for x in
+                                      (state.get("population") or initial_population)]
+    if state.get("rng_state"):
+        def _tuple_tree(value):
+            return tuple(_tuple_tree(x) for x in value) if isinstance(value, (list, tuple)) else value
+        rng.setstate(_tuple_tree(state["rng_state"]))
     if not population:
         raise ValueError("初始种群为空。")
 
@@ -351,18 +359,22 @@ def run_ga_loop(
         from app.services.factors.mining.selection.track import TrackQuotaState
 
         specs = resolve_specs(cfg.objectives or DEFAULT_ENABLED_OBJECTIVES)
-        scheduler = AdaptiveScheduler() if cfg.adaptive else None
-        track_state = TrackQuotaState()
+        scheduler = AdaptiveScheduler(**dict(state.get("scheduler") or {})) if cfg.adaptive else None
+        track_state = TrackQuotaState(**dict(state.get("track_state") or {}))
 
-    total_trials = 0
-    stall = 0
-    best_icir: float | None = None
-    best_formula: str | None = None
+    total_trials = int(state.get("total_trials", 0))
+    stall = int(state.get("stall_count", 0))
+    best_icir: float | None = state.get("best_icir")
+    best_formula: str | None = state.get("best_formula")
     history: list[dict[str, Any]] = []
     stopped_reason = "max_generations"
-    generations_run = 0
+    generations_run = int(state.get("next_generation", 0))
+    if state.get("converged"):
+        return GAResult(generations_run=generations_run, total_trials=total_trials,
+                        best_icir=best_icir, best_formula=best_formula,
+                        stall_count=stall, stopped_reason="converged")
 
-    for gen in range(int(cfg.max_generations)):
+    for gen in range(generations_run, int(cfg.max_generations)):
         # ── 0. 协作式停止检查（DEF-12/DEF-3）：pause/看门狗请求后尽快自止 ──
         if should_stop is not None and should_stop():
             stopped_reason = "stopped"
@@ -746,6 +758,13 @@ def run_ga_loop(
                 offspring.append(parent)
             offspring = offspring[:slots]
 
+        # Every child is evaluated as its new expression, with a matching content identity.
+        from app.services.factors.mining.dedup import formula_hash
+        for child in offspring:
+            expression = str(child.get("formula") or child.get("canonical_formula") or "")
+            child["canonical_formula"] = expression
+            child["formula_hash"] = formula_hash(expression)
+
         total_trials += evaluated_count
         generations_run = gen + 1
 
@@ -787,10 +806,10 @@ def run_ga_loop(
         # ── 4. 收敛判断 ──
         # M2（D1）：先自救（stall≥2 已喂 C1）后停止（stall≥3）；
         # naive：连续 convergence_generations 代提升 < 阈值。
+        converged = False
         if m2:
             if conv is not None and conv.should_stop:
-                stopped_reason = "converged"
-                break
+                converged = True
         elif best_icir is not None and gen_best is not None:
             improvement = gen_best - best_icir
             if improvement < cfg.convergence_threshold:
@@ -798,16 +817,35 @@ def run_ga_loop(
             else:
                 stall = 0
             if stall >= int(cfg.convergence_generations):
-                stopped_reason = "converged"
+                converged = True
                 if on_generation is None:
                     history[-1]["stall_count"] = stall
-                break
         if gen_best is not None and (best_icir is None or gen_best > best_icir):
             best_icir = gen_best
             best_formula = str(ranked[0].get("formula") or "")
 
         # ── 5. 下一代种群 = 精英 + 子代（精英不参与繁殖，坑 3）──
         population = elites + offspring
+        if on_checkpoint is not None:
+            from dataclasses import asdict
+            # Persist only inputs to the next evaluation, never transient panels/signatures.
+            persistent_keys = {"id", "formula", "canonical_formula", "formula_hash",
+                               "category", "operation", "parent_ids", "generation",
+                               "economic_logic", "expected_direction", "logic_source",
+                               "interpretability_score"}
+            on_checkpoint({
+                "next_generation": gen + 1,
+                "population": [{k: v for k, v in item.items() if k in persistent_keys}
+                               for item in population],
+                "rng_state": rng.getstate(), "total_trials": total_trials,
+                "stall_count": stall, "best_icir": best_icir,
+                "best_formula": best_formula, "converged": converged,
+                "scheduler": asdict(scheduler) if scheduler is not None else None,
+                "track_state": asdict(track_state) if track_state is not None else None,
+            })
+        if converged:
+            stopped_reason = "converged"
+            break
 
     return GAResult(
         generations_run=generations_run,

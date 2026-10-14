@@ -2,15 +2,15 @@
 
 **本文件是「哨兵」，不是普通单测。** 它守住 TD3 的三层修复：
 
-  H1  写入侧统一清洗 —— 5 个 `metrics_json` 写入点（factor_evaluator.finalize /
+  H1  写入侧统一清洗 —— 4 个 `metrics_json` 写入点（factor_evaluator.finalize /
       wp5_eval_task 压力合并 / factor_shadow.record / ridge_model 训练落库 /
-      factor_models 离线最小训练）统一走 `db_numeric.clean_json_tree`：
+      训练路由已委托训练服务，不再直接写指标）统一走 `db_numeric.clean_json_tree`：
       NaN/±Inf → null（D-F/R33 口径，**不许归 0**），嵌套 dict/list 逐层展开
       （wp5 的 `stress_test` 子 dict 实测有嵌套，`clean_numeric_fields` 只洗顶层不够）。
   H2  fail-fast 双保险 —— 所有写入点 `json.dumps(..., allow_nan=False)`：万一清洗
       被绕过，序列化立即抛 ValueError，**绝不静默写出非标准 JSON**（历史行为：
       `NaN` 字面量落库 → 前端 `JSON.parse` 炸）。
-  H3  文本级守卫 —— 5 个写入点源码必须同时含 `clean_json_tree(` 与
+  H3  文本级守卫 —— 4 个写入点源码必须同时含 `clean_json_tree(` 与
       `allow_nan=False`；新增写入点若漏掉其中之一，本测试红。
 
 **读取侧兼容性结论（TD3 前置侦查，2026-09-18）**：null 读回 None 与历史 NaN 读回
@@ -26,6 +26,7 @@ ridge_model IC 对比分支在 NaN 与 None 下均走「跳过比较」，行为
 from __future__ import annotations
 
 import json
+import ast
 import re
 from typing import Any
 
@@ -208,7 +209,7 @@ class TestWriterEndpoints:
 
 
 # ══════════════════════════════════════════════════════════
-# H3 文本级守卫：5 个写入点必须统一清洗 + fail-fast（防回退/新点漏配）
+# H3 文本级守卫：4 个写入点必须统一清洗 + fail-fast（防回退/新点漏配）
 # ══════════════════════════════════════════════════════════
 
 #: (文件, 该文件 metrics_json 写入行必须命中的锚点片段)
@@ -217,11 +218,19 @@ _WRITER_FILES = (
     r"app/services/factors/wp5_eval_task.py",
     r"app/services/factors/factor_shadow.py",
     r"app/services/factors/ridge_model.py",
-    r"app/api/routes/factor_models.py",
 )
 
 
 class TestWriterSourceGuard:
+    def test_training_route_delegates_metric_writes_to_the_guarded_training_service(self):
+        with open("app/api/routes/factor_models.py", encoding="utf-8") as source_file:
+            tree = ast.parse(source_file.read())
+        writes = [node for node in ast.walk(tree) if
+                  (isinstance(node, ast.Attribute) and node.attr == "metrics_json"
+                   and isinstance(node.ctx, ast.Store))
+                  or (isinstance(node, ast.keyword) and node.arg == "metrics_json")]
+        assert writes == [], "训练路由重新开始写指标时，必须恢复该写入点的清洗/严格JSON守卫。"
+
     @pytest.mark.parametrize("relpath", _WRITER_FILES)
     def test_writer_uses_clean_json_tree_and_allow_nan_false(self, relpath):
         with open(relpath, encoding="utf-8") as f:

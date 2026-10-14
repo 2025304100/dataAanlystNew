@@ -22,7 +22,8 @@ import MiningTimeTargetStep from "./wizard/step2/MiningTimeTargetStep";
 import F1ExperiencePage from "./experience/F1ExperiencePage";
 import TemplateConfigPage from "./config/TemplateConfigPage";
 import FactorMiningResult from "./result/FactorMiningResult";
-import ResultGotoFactorModelButton from "./result/ResultGotoFactorModelButton";
+import MiningResultAddToSet from "./result/MiningResultAddToSet";
+import ResultGotoFactorModelButton, { navigateMiningResult } from "./result/ResultGotoFactorModelButton";
 import type { MiningResultContext, MiningResultRow, QualityGrade } from "./result/resultTypes";
 import FactorMiningRunTrack from "./wizard/step5/FactorMiningRunTrack";
 import PerfProbePanel from "./wizard/step5/PerfProbePanel";
@@ -108,16 +109,19 @@ function runErrorHint(code: string | null | undefined): string | undefined {
 
 /** DEF-3：解析后端错误信封 → 可读文案（HTTPException detail 为 7 要素 dict）。 */
 function extractRunOpErrorText(err: unknown): string {
+  const direct = (err as { detail?: unknown } | undefined)?.detail;
   const detail = (
     err as { response?: { data?: { detail?: unknown } } } | undefined
-  )?.response?.data?.detail;
+  )?.response?.data?.detail ?? direct;
   if (typeof detail === "string" && detail.trim()) return detail;
   if (detail && typeof detail === "object") {
-    const d = detail as { title_zh?: string; detail_zh?: string; error_code?: string };
+    const d = detail as { title_zh?: string; detail_zh?: string; error_code?: string; user_message?: string };
+    if (d.user_message) return d.user_message;
     const text = [d.title_zh, d.detail_zh].filter(Boolean).join("：");
     if (text) return text;
     if (d.error_code) return d.error_code;
   }
+  if (err instanceof Error && err.message) return err.message;
   return t("miningRunOpError");
 }
 
@@ -133,6 +137,8 @@ function runStatusLabel(status: string | null | undefined): string {
     done: "miningRunStatusDone",
     failed: "miningRunStatusFailed",
     cancelled: "miningRunStatusCancelled",
+    paused: "miningRunStatusPaused",
+    discarded: "miningRunStatusDiscarded",
   };
   return map[v] ? t(map[v] as string) : String(status ?? "-");
 }
@@ -190,10 +196,28 @@ export interface WizardConfig {
   target_horizon?: number;
   train_ratio?: number;
   validation_ratio?: number;
+  random_seed?: number;
   selected_fields?: string[];
   evolution_params?: Record<string, unknown>;
   /** C1：跳转因子模型页所需的因子集上下文（入组后由外层注入） */
   factor_set_id?: string | null;
+}
+
+function configFromRun(run: MiningRun): WizardConfig {
+  return {
+    candidate_pool_snapshot_id: run.candidate_pool_snapshot_id ?? null,
+    data_cutoff_at: run.data_cutoff_at ?? null,
+    start_date: run.start_date ?? undefined,
+    end_date: run.end_date ?? undefined,
+    rebalance_frequency: run.rebalance_frequency ?? undefined,
+    target_horizon: run.target_horizon ?? undefined,
+    train_ratio: typeof run.split_config?.train_ratio === "number" ? run.split_config.train_ratio : undefined,
+    validation_ratio: typeof run.split_config?.validation_ratio === "number" ? run.split_config.validation_ratio : undefined,
+    random_seed: run.random_seed ?? undefined,
+    selected_fields: run.selected_fields ?? undefined,
+    evolution_params: run.evolution_params ?? undefined,
+    factor_set_id: run.factor_set_id ?? null,
+  };
 }
 
 /** 轮询间隔：与任务中心口径一致（5s，not_do：不引入 WebSocket） */
@@ -233,12 +257,13 @@ function toRunProgress(run: MiningRun, prev: RunProgress): RunProgress {
     run_id: run.id,
     status: String(run.status ?? prev.status) as RunStatus,
     generation: run.current_generation ?? prev.generation,
-    max_generations: run.total_generations ?? prev.max_generations,
+    max_generations: totalGenerationsOf(run) || prev.max_generations,
+    queue_position: run.queue_position ?? prev.queue_position,
     best_icir: run.best_icir ?? prev.best_icir ?? null,
     avg_icir: prev.avg_icir ?? null,
     diversity: prev.diversity ?? null,
     convergence_threshold: prev.convergence_threshold,
-    converged: String(run.status) === "converged" || prev.converged,
+    converged: String(run.status) === "converged" || (run.converged != null ? Boolean(run.converged) : prev.converged),
     curve: prev.curve ?? [],
     eta_seconds: prev.eta_seconds ?? null,
   };
@@ -251,6 +276,9 @@ export default function MiningShell({
   const [tab, setTab] = useState<ShellTab>("runs");
   const [currentStep, setCurrentStep] = useState(0);
   const [runs, setRuns] = useState<MiningRun[]>([]);
+  const [runsPage, setRunsPage] = useState(1);
+  const [runsTotal, setRunsTotal] = useState(0);
+  const [listOperationError, setListOperationError] = useState<string | null>(null);
   // 统一任务列表：草稿（可编辑）与已提交 run 合并展示
   const [taskDrafts, setTaskDrafts] = useState<DraftSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -272,6 +300,12 @@ export default function MiningShell({
   const [runOpError, setRunOpError] = useState<string | null>(null);
   // A5：#20 结果页数据 —— run 成功后拉取真实候选列表
   const [resultCandidates, setResultCandidates] = useState<MiningCandidate[] | null>(null);
+  const [resultLoading, setResultLoading] = useState(false);
+  const [resultError, setResultError] = useState<string | null>(null);
+  const resultRequestRef = useRef(0);
+  const wizardSessionRef = useRef(0);
+  const [setCandidates, setSetCandidates] = useState<MiningCandidate[] | null>(null);
+  const [setFeedback, setSetFeedback] = useState<string | null>(null);
   // P0-2：Step3 字段目录（挂载时调候选池 filter-fields 映射注入，真实可选字段）
   const [fieldCatalog, setFieldCatalog] = useState<MiningField[]>([]);
   // P1-8：双锁状态（Step4 提交弹窗三态；后端 GET /factor-mining/locks/status）
@@ -300,6 +334,8 @@ export default function MiningShell({
 
   // props 注入优先于内部提交产生的状态（测试仍可外部注入 runProgress）
   const activeProgress = runState ?? runProgress;
+  const activeRunRef = useRef<string | null>(null);
+  activeRunRef.current = activeProgress?.run_id ?? null;
 
   const patchConfig = useCallback((patch: Partial<WizardConfig>) => {
     setWizardConfig((c) => ({ ...c, ...patch }));
@@ -332,8 +368,9 @@ export default function MiningShell({
     setLoading(true);
     setFailed(false);
     try {
-      const page = await factorMiningApi.listRuns({ page: 1, page_size: 20 });
+      const page = await factorMiningApi.listRuns({ page: runsPage, page_size: 20 });
       setRuns(Array.isArray(page?.items) ? page.items : []);
+      setRunsTotal(page?.total ?? 0);
     } catch {
       // 网络异常：不崩，落错误态
       setRuns([]);
@@ -341,7 +378,7 @@ export default function MiningShell({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [runsPage]);
 
   const loadTaskDrafts = useCallback(async () => {
     try {
@@ -361,15 +398,28 @@ export default function MiningShell({
 
   /** 载入某批次到向导（不自动弹抽屉；由列表「查看」显式打开）。 */
   const viewRun = useCallback((run: MiningRun) => {
+    wizardSessionRef.current += 1;
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setResultCandidates(null);
+    setResultError(null);
+    setResultLoading(false);
+    setSetCandidates(null);
+    setSetFeedback(null);
+    setWizardConfig(configFromRun(run));
+    setPoolId(run.candidate_pool_id ?? "");
     setRunState({
       run_id: run.id,
       status: String(run.status ?? "running") as RunStatus,
       generation: run.current_generation ?? 0,
       max_generations: totalGenerationsOf(run),
+      queue_position: run.queue_position ?? null,
       best_icir: run.best_icir ?? null,
       avg_icir: null,
       diversity: null,
-      converged: String(run.status) === "converged",
+      converged: String(run.status) === "converged" || Boolean(run.converged),
       curve: [],
       eta_seconds: null,
     });
@@ -383,6 +433,7 @@ export default function MiningShell({
   /** 列表「查看」：以只读模式打开抽屉（锁定，仅回显配置 + 运行/结果）。 */
   const openViewRun = useCallback((run: MiningRun) => {
     viewRun(run);
+    const session = wizardSessionRef.current;
     setDrawerMode("view");
     setRestoredNotice(false);
     setWizardOpen(true);
@@ -390,24 +441,18 @@ export default function MiningShell({
     void (async () => {
       try {
         const detail = await factorMiningApi.getRun(run.id);
-        patchConfig({
-          candidate_pool_snapshot_id: detail.candidate_pool_snapshot_id ?? null,
-          data_cutoff_at: detail.data_cutoff_at ?? null,
-          start_date: detail.start_date ?? undefined,
-          end_date: detail.end_date ?? undefined,
-          rebalance_frequency: detail.rebalance_frequency ?? undefined,
-          target_horizon: detail.target_horizon ?? undefined,
-          selected_fields: detail.selected_fields ?? undefined,
-          evolution_params: detail.evolution_params ?? undefined,
-        });
+        if (session !== wizardSessionRef.current || detail.id !== run.id) return;
+        setWizardConfig(configFromRun(detail));
+        setPoolId(detail.candidate_pool_id ?? "");
       } catch {
         /* 回显失败不影响查看运行/结果 */
       }
     })();
-  }, [viewRun, patchConfig]);
+  }, [viewRun]);
 
   /** 「新建挖掘」：清空向导态，编辑模式打开抽屉。 */
   const openNewWizard = useCallback(() => {
+    wizardSessionRef.current += 1;
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -416,6 +461,10 @@ export default function MiningShell({
     setPoolId("");
     setRunState(null);
     setResultCandidates(null);
+    setResultError(null);
+    setResultLoading(false);
+    setSetCandidates(null);
+    setSetFeedback(null);
     setSubmitError(null);
     setRunOpError(null);
     setDraftId(null);
@@ -428,6 +477,7 @@ export default function MiningShell({
 
   /** 「复制为草稿」：以某任务已存配置为模板，开一个全新可编辑草稿（不共享原 run）。 */
   const openCopyAsDraft = useCallback((run: MiningRun) => {
+    const session = ++wizardSessionRef.current;
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -436,6 +486,10 @@ export default function MiningShell({
     setPoolId("");
     setRunState(null);
     setResultCandidates(null);
+    setResultError(null);
+    setResultLoading(false);
+    setSetCandidates(null);
+    setSetFeedback(null);
     setSubmitError(null);
     setRunOpError(null);
     setDraftId(null);
@@ -447,25 +501,19 @@ export default function MiningShell({
     void (async () => {
       try {
         const detail = await factorMiningApi.getRun(run.id);
-        patchConfig({
-          candidate_pool_snapshot_id: detail.candidate_pool_snapshot_id ?? null,
-          data_cutoff_at: detail.data_cutoff_at ?? null,
-          start_date: detail.start_date ?? undefined,
-          end_date: detail.end_date ?? undefined,
-          rebalance_frequency: detail.rebalance_frequency ?? undefined,
-          target_horizon: detail.target_horizon ?? undefined,
-          selected_fields: detail.selected_fields ?? undefined,
-          evolution_params: detail.evolution_params ?? undefined,
-        });
+        if (session !== wizardSessionRef.current || detail.id !== run.id) return;
+        setWizardConfig({ ...configFromRun(detail), factor_set_id: null });
+        setPoolId(detail.candidate_pool_id ?? "");
         setDraftNote({ ok: true, text: t("miningTaskCopiedDraft") });
       } catch {
-        /* 拉取失败：仍打开空白编辑抽屉，用户可从头配置 */
+        if (session === wizardSessionRef.current) setDraftNote({ ok: false, text: t("miningCopyConfigFailed") });
       }
     })();
-  }, [patchConfig]);
+  }, []);
 
   /** 关闭抽屉：停轮询，回到批次列表。 */
   const closeWizard = useCallback(() => {
+    wizardSessionRef.current += 1;
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -473,7 +521,9 @@ export default function MiningShell({
     setWizardOpen(false);
     setRestoredNotice(false);
     setTab("runs");
-  }, []);
+    void loadRuns();
+    void loadTaskDrafts();
+  }, [loadRuns, loadTaskDrafts]);
 
 
   /** 批次列表行内「放弃」：调 discard 后刷新列表（失败不崩，列表保留原状） */
@@ -481,10 +531,11 @@ export default function MiningShell({
     async (run: MiningRun) => {
       try {
         await factorMiningApi.discardRun(run.id);
-      } catch {
-        // 静默：刷新后状态未变即可看出失败
+        setListOperationError(null);
+        void loadRuns();
+      } catch (error) {
+        setListOperationError(extractRunOpErrorText(error));
       }
-      void loadRuns();
     },
     [loadRuns],
   );
@@ -611,15 +662,27 @@ export default function MiningShell({
   const activeRunId = activeProgress?.run_id ?? null;
   const runDone =
     activeProgress?.status === "succeeded" || activeProgress?.status === "converged";
+  const loadCandidates = useCallback(async (runId: string) => {
+    const request = ++resultRequestRef.current;
+    const session = wizardSessionRef.current;
+    setResultLoading(true);
+    setResultError(null);
+    try {
+      const page = await factorMiningApi.listCandidates(runId, { page_size: 50 });
+      if (request !== resultRequestRef.current || session !== wizardSessionRef.current || activeRunRef.current !== runId) return;
+      setResultCandidates(Array.isArray(page?.items) ? page.items : []);
+    } catch {
+      if (request !== resultRequestRef.current || session !== wizardSessionRef.current || activeRunRef.current !== runId) return;
+      setResultCandidates(null);
+      setResultError(t("miningResultLoadFailed"));
+    } finally {
+      if (request === resultRequestRef.current && session === wizardSessionRef.current && activeRunRef.current === runId) setResultLoading(false);
+    }
+  }, []);
   useEffect(() => {
-    if (!runDone || !activeRunId) return;
-    void factorMiningApi
-      .listCandidates(activeRunId, { page_size: 50 })
-      .then((page) => {
-        setResultCandidates(Array.isArray(page?.items) ? page.items : []);
-      })
-      .catch(() => setResultCandidates([]));
-  }, [runDone, activeRunId]);
+    if (!wizardOpen || !runDone || !activeRunId) return;
+    void loadCandidates(activeRunId);
+  }, [wizardOpen, runDone, activeRunId, loadCandidates]);
 
   // §8.3.6：性能探针面板（调试态）—— `?debug=perf` 时 5s 轮询每代探针数据
   useEffect(() => {
@@ -659,7 +722,7 @@ export default function MiningShell({
     Boolean(wizardConfig.start_date && wizardConfig.end_date),
     (wizardConfig.selected_fields?.length ?? 0) > 0,
     wizardConfig.evolution_params != null,
-    runState != null,
+    runDone,
   ];
   const stepBlocked: boolean[] = [
     Boolean(submitError) && !wizardConfig.candidate_pool_snapshot_id,
@@ -673,13 +736,16 @@ export default function MiningShell({
     runState != null
       ? Math.min(
           100,
-          Math.round(
+          runDone ? 100 : Math.round(
             (runState.generation / Math.max(1, runState.max_generations)) * 100,
           ),
         )
       : null;
 
   const stepStateText = (idx: number): string => {
+    if (idx === 4 && activeProgress) return activeProgress.status === "succeeded" && activeProgress.converged
+      ? t("miningRunStatusCompletedConverged") : runStatusLabel(activeProgress.status);
+    if (idx === 2 && drawerMode === "view" && !stepDone[2]) return t("miningHistoryValidationMissing");
     if (stepBlocked[idx]) return t("miningStepStateBlocked");
     if (idx === currentStep) return t("miningStepStateActive");
     if (stepDone[idx]) return t("miningStepStateDone");
@@ -710,13 +776,13 @@ export default function MiningShell({
   const resultRows: MiningResultRow[] = useMemo(() => {
     if (!Array.isArray(resultCandidates)) return [];
     return resultCandidates
-      .filter((c) => c.factor_version_id != null)
       .map((c) => ({
         candidate_id: c.id,
         formula: c.canonical_formula ?? c.formula_expr ?? c.formula ?? c.id,
-        grade: (c.grade ?? "C") as QualityGrade,
-        icir: c.generation_icir ?? c.icir ?? 0,
-        icir_adjusted: c.latest_ic ?? c.generation_icir ?? c.icir ?? 0,
+        grade: (["S", "A", "B", "C", "D"].includes(String(c.grade)) ? c.grade : null) as QualityGrade | null,
+        icir: c.icir ?? c.generation_icir ?? null,
+        icir_adjusted: c.icir_adjusted ?? null,
+        decay_ratio: c.decay_ratio ?? null,
         coverage: c.generation_coverage ?? null,
         turnover: c.generation_turnover ?? null,
         complexity: c.generation_complexity ?? null,
@@ -743,17 +809,19 @@ export default function MiningShell({
       target_horizon: cfg.target_horizon ?? 5,
       train_ratio: cfg.train_ratio ?? 0.6,
       validation_ratio: cfg.validation_ratio ?? 0.2,
-      random_seed: 42,
+      random_seed: cfg.random_seed ?? 42,
       evolution_params: evo,
       filter_config: { selected_fields: cfg.selected_fields ?? [] },
     };
   };
 
   const refreshRun = useCallback((runId: string) => {
+    const session = wizardSessionRef.current;
     void factorMiningApi
       .getRun(runId)
       .then((run) => {
-        setRunState((prev) => (prev ? toRunProgress(run, prev) : prev));
+        if (session !== wizardSessionRef.current || activeRunRef.current !== runId || run.id !== runId) return;
+        setRunState((prev) => (prev?.run_id === runId ? toRunProgress(run, prev) : prev));
 
         // 停滞检测：running 但代数长时间不动 → 用户得知道"卡住了"而不是干等。
         // （后端 worker 未推进/探针未上报时，进度会永久停在 0/20）
@@ -772,19 +840,21 @@ export default function MiningShell({
         void factorMiningApi
           .listGenerations(runId)
           .then((gens) => {
-            setRunState((prev) => (prev ? { ...prev, curve: toCurve(gens) } : prev));
+            if (session === wizardSessionRef.current) setRunState((prev) => (prev?.run_id === runId ? { ...prev, curve: toCurve(gens) } : prev));
           })
           .catch(() => undefined);
 
         // 终态（含失败/取消）后停止轮询，避免无意义请求（R3）
-        if (["succeeded", "converged", "failed", "cancelled"].includes(String(run.status ?? ""))) {
+        if (TERMINAL_RUN_STATUSES.has(String(run.status ?? ""))) {
           if (pollRef.current) {
             clearInterval(pollRef.current);
             pollRef.current = null;
           }
         }
       })
-      .catch(() => undefined);
+      .catch((error) => {
+        if (session === wizardSessionRef.current && activeRunRef.current === runId) setRunOpError(extractRunOpErrorText(error));
+      });
   }, []);
 
   /** 启动 5s 轮询（先清旧定时器；提交后与 URL 会话直达共用） */
@@ -792,6 +862,21 @@ export default function MiningShell({
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(() => refreshRun(runId), POLL_INTERVAL_MS);
   }, [refreshRun]);
+
+  // The list snapshot is only the entry point. Reopening a live task resumes
+  // observation, and closing or switching tasks always detaches the old timer.
+  useEffect(() => {
+    const runId = runState?.run_id;
+    if (!wizardOpen || !runId) return;
+    refreshRun(runId);
+    if (!TERMINAL_RUN_STATUSES.has(String(runState.status))) startPolling(runId);
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [wizardOpen, runState?.run_id, runState?.status, refreshRun, startPolling]);
 
   // 会话恢复：URL `?run=<id>`（或 ?run_id=）优先，其次恢复 localStorage 里
   // 的「最近活跃会话」——提交/查看后退出前台、重新进入时自动回到该 run 的
@@ -816,16 +901,12 @@ export default function MiningShell({
         if (!alive) return;
         viewRun(run);
         // R7：快照上下文回填（filter 频率/截止日/持有期）→ 「跳转因子模型页」可用
-        patchConfig({
-          candidate_pool_snapshot_id: run.candidate_pool_snapshot_id ?? null,
-          data_cutoff_at: run.data_cutoff_at ?? null,
-          rebalance_frequency: run.rebalance_frequency ?? undefined,
-          target_horizon: run.target_horizon ?? undefined,
-        });
+        setWizardConfig(configFromRun(run));
+        setPoolId(run.candidate_pool_id ?? "");
         // R3：终态只展示不轮询；进行中才启动实时刷新
         // R-3：轮询目标用响应里的 run.id（而非入参 restoreId），保证展示与轮询同一 run
         const targetId = run.id || restoreId;
-        if (!["succeeded", "converged", "failed", "cancelled"].includes(String(run.status ?? ""))) {
+        if (!TERMINAL_RUN_STATUSES.has(String(run.status ?? ""))) {
           startPolling(targetId);
         }
         // 选项3：仅 localStorage 自动恢复时展示可关闭的「已恢复最近任务」提示条
@@ -876,6 +957,7 @@ export default function MiningShell({
             target_horizon: cfg.target_horizon ?? null,
             train_ratio: cfg.train_ratio ?? null,
             validation_ratio: cfg.validation_ratio ?? null,
+            random_seed: cfg.random_seed ?? null,
           },
           step3: { selected_fields: cfg.selected_fields ?? [] },
           step4: { evolution_params: { ...DEFAULT_EVO_CONFIG, ...(cfg.evolution_params ?? {}) } },
@@ -915,12 +997,20 @@ export default function MiningShell({
 
   /** DEF-10：把草稿的 step1~step4 回填到向导（跨会话续配）。 */
   const handleRestoreDraft = useCallback((draft: DraftSummary) => {
+    wizardSessionRef.current += 1;
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    setRunState(null);
+    setResultCandidates(null);
+    setResultError(null);
+    setSetCandidates(null);
+    setSetFeedback(null);
+    setRunOpError(null);
     const steps = (draft.steps ?? {}) as Record<string, Record<string, unknown>>;
     const s1 = steps.step1 ?? {};
     const s2 = steps.step2 ?? {};
     const s3 = steps.step3 ?? {};
     const s4 = steps.step4 ?? {};
-    patchConfig({
+    setWizardConfig({
       candidate_pool_snapshot_id:
         (s1.candidate_pool_snapshot_id as string | undefined)
         ?? draft.candidate_pool_snapshot_id ?? undefined,
@@ -932,11 +1022,12 @@ export default function MiningShell({
       target_horizon: (s2.target_horizon as number | undefined) ?? undefined,
       train_ratio: (s2.train_ratio as number | undefined) ?? undefined,
       validation_ratio: (s2.validation_ratio as number | undefined) ?? undefined,
+      random_seed: (s2.random_seed as number | undefined) ?? undefined,
       selected_fields: (s3.selected_fields as string[] | undefined) ?? [],
       evolution_params:
         (s4.evolution_params as WizardConfig["evolution_params"]) ?? undefined,
     });
-    if (s1.pool_id) setPoolId(String(s1.pool_id));
+    setPoolId(s1.pool_id ? String(s1.pool_id) : "");
     setDraftId(draftKey(draft));
     // 跳到草稿记录的所在步（1-based → 0-based，钳到向导步长内）
     const step = Math.min(
@@ -950,7 +1041,7 @@ export default function MiningShell({
       text: t("miningDraftRestored").replace(
         "{id}", draftKey(draft).slice(0, 8) || "-"),
     });
-  }, [patchConfig]);
+  }, []);
 
   /** DEF-5：删除草稿（后端此前无删除端点 → 405，草稿只进不出）。 */
   const handleDeleteDraft = useCallback(async (draftId_: string) => {
@@ -990,6 +1081,7 @@ export default function MiningShell({
         status: "queued",
         generation: 0,
         max_generations: Number(evo.max_generations) || 20,
+        queue_position: created.queue_position ?? null,
         convergence_threshold: 0.01,
         converged: false,
         curve: [],
@@ -1005,8 +1097,8 @@ export default function MiningShell({
       } catch { /* 隐私/存储不可用则跳过，不影响功能 */ }
       // 提交后启动 5s 轮询批次详情，更新第 5 步进度
       startPolling(created.run_id);
-    } catch {
-      setSubmitError(t("miningSubmitError"));
+    } catch (error) {
+      setSubmitError(extractRunOpErrorText(error));
     } finally {
       setSubmitting(false);
     }
@@ -1021,32 +1113,27 @@ export default function MiningShell({
       if (!id) return;
       void fn(id)
         .then(() => {
+          if (activeRunRef.current !== id) return;
           setRunOpError(null);
+          startPolling(id);
           return refreshRun(id);
         })
         .catch((err: unknown) => {
-          setRunOpError(extractRunOpErrorText(err));
+          if (activeRunRef.current === id) setRunOpError(extractRunOpErrorText(err));
         });
     },
-    [runState?.run_id, refreshRun],
+    [runState?.run_id, refreshRun, startPolling],
   );
 
   /** 提示条「新建任务」：离开当前 run（停轮询）+ 回到向导第 1 步 + 收起提示 */
-  const handleNewTaskFromNotice = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    setRestoredNotice(false);
-    setCurrentStep(0);
-  }, []);
+  const handleNewTaskFromNotice = openNewWizard;
 
   /** 抽屉只读态：查看历史任务时 step1-4 配置回显且禁用。 */
   const wizardReadOnly = drawerMode === "view";
 
   /** 统一任务列表：草稿 + 已提交 run，按创建时间倒序。 */
   const tasks = useMemo<MiningTask[]>(() => {
-    const draftTasks: MiningTask[] = taskDrafts.map((d) => ({
+    const draftTasks: MiningTask[] = (runsPage === 1 ? taskDrafts : []).map((d) => ({
       kind: "draft",
       id: draftKey(d),
       draft: d,
@@ -1063,7 +1150,7 @@ export default function MiningShell({
       const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
       return tb - ta;
     });
-  }, [taskDrafts, runs]);
+  }, [taskDrafts, runs, runsPage]);
 
   return (
     <div data-mining-shell className="settings-indicator-stack mining-shell">
@@ -1120,6 +1207,8 @@ export default function MiningShell({
           {MINING_STEPS.map((key, idx) => {
             const visual = stepBlocked[idx]
               ? "blocked"
+              : idx === 4 && activeProgress && TERMINAL_RUN_STATUSES.has(activeProgress.status)
+                ? runDone ? "done" : "blocked"
               : idx === currentStep
                 ? "current"
                 : stepDone[idx]
@@ -1172,12 +1261,15 @@ export default function MiningShell({
         <div
           className="mining-wizard-body"
           data-mining-wizard-body
-          data-mining-wizard-readonly={wizardReadOnly && currentStep < 4 ? "true" : undefined}
+          data-mining-wizard-readonly={wizardReadOnly && currentStep > 0 && currentStep < 4 ? "true" : undefined}
         >
           {currentStep === 0 && (
             <div data-mining-step-panel="pool">
               <MiningPoolStep
+                key={wizardSessionRef.current}
                 poolId={poolId}
+                initialSnapshotId={wizardConfig.candidate_pool_snapshot_id}
+                readOnly={wizardReadOnly}
                 onNext={() => setCurrentStep(1)}
                 onPoolCreated={(id) => setPoolId(id)}
                 onSnapshot={(snap) =>
@@ -1218,11 +1310,14 @@ export default function MiningShell({
           )}
           {currentStep === 2 && (
             <div data-mining-step-panel="field">
+              {wizardReadOnly && !stepDone[2] ? <p data-mining-history-validation-missing role="note">
+                {t("miningHistoryValidationMissing")}。{t("miningHistoryValidationCopyHint")}
+              </p> :
               <MiningFieldStep
                 fields={fieldCatalog}
                 selected={wizardConfig.selected_fields}
                 onChange={(selected) => patchConfig({ selected_fields: selected })}
-              />
+              />}
             </div>
           )}
           {currentStep === 3 && (
@@ -1323,14 +1418,23 @@ export default function MiningShell({
               )}
 
               {/* A5：#20 结果页数据 —— run 成功后展示真实候选（排行榜预览） */}
+              {runDone && resultLoading && <p data-mining-result-loading role="status">{t("miningResultLoading")}</p>}
+              {runDone && resultError && (
+                <div className="mining-run-op-error" data-mining-result-error role="alert">
+                  <span>{resultError}</span>
+                  <button type="button" data-mining-result-retry onClick={() => activeRunId && void loadCandidates(activeRunId)}>
+                    {t("miningResultRetry")}
+                  </button>
+                </div>
+              )}
               {activeProgress && resultCandidates != null && (
                 <div className="mining-result-section" data-mining-result-section>
                   <div className="mining-result-head-row">
                     <h4>{t("miningResultSectionTitle")}</h4>
                     {/* C1：4 上下文跳转因子模型页（缺任一禁用，复用 settings:navigate） */}
-                    <ResultGotoFactorModelButton
+                    {resultRows.length === 0 && <ResultGotoFactorModelButton
                       context={resultContext}
-                    />
+                    />}
                   </div>
                   {resultRows.length > 0 ? (
                     /* DEF-9 §8.4：结果页（研究声明/等级列/帕累托散点）——
@@ -1338,6 +1442,18 @@ export default function MiningShell({
                     <FactorMiningResult
                       rows={resultRows}
                       context={resultContext}
+                      onGotoFactorModel={navigateMiningResult}
+                      onCandidateChanged={() => { if (activeRunId) void loadCandidates(activeRunId); }}
+                      onExport={() => {
+                        const blob = new Blob([JSON.stringify({ run_id: activeRunId, context: resultContext, candidates: resultCandidates }, null, 2)], { type: "application/json;charset=utf-8" });
+                        const url = URL.createObjectURL(blob);
+                        const anchor = document.createElement("a");
+                        anchor.href = url;
+                        anchor.download = `factor-mining-${activeRunId ?? "results"}.json`;
+                        anchor.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      onBatchAdd={(ids) => setSetCandidates((resultCandidates ?? []).filter((candidate) => ids.includes(candidate.id)))}
                     />
                   ) : resultCandidates.length === 0 ? (
                     <p data-mining-result-empty>{t("miningResultEmpty")}</p>
@@ -1369,6 +1485,11 @@ export default function MiningShell({
                   )}
                 </div>
               )}
+              {setFeedback && <p data-mining-set-feedback role="status">{setFeedback}</p>}
+              {setCandidates && <MiningResultAddToSet candidates={setCandidates} onClose={() => setSetCandidates(null)} onAdded={(factorSetId, added) => {
+                patchConfig({ factor_set_id: factorSetId });
+                setSetFeedback(t("miningResultSetAdded").replace("{count}", String(added)));
+              }} />}
 
               {/* §8.3.6：性能探针面板（调试态，?debug=perf 开启；默认折叠在资源区下方） */}
               {debugPerf && activeRunId && <PerfProbePanel generations={probeGens} />}
@@ -1533,7 +1654,8 @@ export default function MiningShell({
           </button>
         </div>
         {loading && <p data-mining-runs-loading>{t("miningRunsLoading")}</p>}
-        {!loading && failed && <p data-mining-runs-error>{t("miningRunsError")}</p>}
+        {!loading && failed && <p data-mining-runs-error role="alert">{t("miningRunsError")} <button type="button" onClick={() => void loadRuns()}>{t("miningResultRetry")}</button></p>}
+        {listOperationError && <p role="alert" className="mining-run-op-error">{listOperationError}</p>}
         {!loading && !failed && tasks.length === 0 && (
           <p data-mining-runs-empty>{t("miningRunsEmpty")}</p>
         )}
@@ -1603,8 +1725,9 @@ export default function MiningShell({
                   // VIZ-0930-24：`current_generation` 是"当前所在代的 0 基下标"，跑完最后一代
                   // 也不会 +1（max_generation=1 的成功批次永远停在 0），列表于是显示
                   // "已完成 · 0 / 1 · 0%"，看着像没干活。终态成功的批次按跑满呈现。
-                  const shownGen = String(run.status) === "succeeded" && total > 0 ? total : gen;
-                  const percent = total > 0 ? Math.min(100, Math.round((shownGen / total) * 100)) : 0;
+                  const completed = run.status === "succeeded" || run.status === "converged";
+                  const shownGen = completed && total > 0 ? Math.min(total, gen + 1) : gen;
+                  const percent = completed ? 100 : total > 0 ? Math.min(100, Math.round((shownGen / total) * 100)) : 0;
                   const terminal = TERMINAL_RUN_STATUSES.has(String(run.status));
                   return (
                     <tr key={`run-${run.id}`} data-mining-task="run" data-mining-task-id={run.id}>
@@ -1631,7 +1754,7 @@ export default function MiningShell({
                         <div style={{ display: "grid", gap: 4, minWidth: 140 }}>
                           <span className="mining-meter mining-meter--sm">
                             <span
-                              className="mining-meter-fill"
+                              className={`mining-meter-fill${completed ? " mining-meter-fill--success" : run.status === "failed" ? " mining-meter-fill--danger" : ""}`}
                               style={{ width: `${percent}%` }}
                             />
                           </span>
@@ -1687,6 +1810,11 @@ export default function MiningShell({
             </table>
           </div>
         )}
+        {runsTotal > 20 && <nav className="mining-runs-pagination" aria-label={t("miningRunsPagination")}>
+          <button type="button" className="mining-pool-btn" data-mining-runs-prev disabled={loading || runsPage <= 1} onClick={() => setRunsPage((page) => page - 1)}>{t("miningRunsPrevPage")}</button>
+          <span>{t("miningRunsPageCount").replace("{page}", String(runsPage)).replace("{pages}", String(Math.ceil(runsTotal / 20))).replace("{total}", String(runsTotal))}</span>
+          <button type="button" className="mining-pool-btn" data-mining-runs-next disabled={loading || runsPage * 20 >= runsTotal} onClick={() => setRunsPage((page) => page + 1)}>{t("miningRunsNextPage")}</button>
+        </nav>}
       </div>
 
       {/* B3：F1 经验库（挂载到挖掘域导航；契约 GET /factor-experience） */}

@@ -3,7 +3,7 @@
 // 与已存在的 FactorModelPage.collections.test.tsx（TR-2.1~TR-2.4）不重复：
 //   ① 空态 hero 按钮（新建集合 Modal 打开；原文件只覆盖空态 placeholder 文本 + hero 存在 → 本文件专注 click 打开 Modal 闭环）
 //   ② 冻结摘要 Modal：不可逆勾选 → okBtn 启用（冻结前 + 勾选后）
-//   ③ 训练 Dialog：「内部 ID 不暴露」 Alert 存在（TR-2.3 校验 ID 输入框不存在；本文件补 Alert 文案提示）
+//   ③ 训练 Dialog：说明真实训练与本人激活流程
 //   ④ Drawer 编辑成员：两个 Tab 切换（all → selected → all）active 面板切换正确
 //   ⑤ FactorModelPage 三态 Tag CSS：蓝(draft) / 绿(frozen) / 灰(deprecated) 对应
 //   ⑥ 废弃门禁：当 active_factor_set_id 指向该集合 → btn disabled + gate-tooltip 含「正在使用的模型」
@@ -17,6 +17,7 @@ const { mockApi, mockMessage, mockModalConfirm } = vi.hoisted(() => ({
   mockApi: {
     scoringGetFactorModelListAsFactor: vi.fn(),
     scoringListFactorSetsAsFactor: vi.fn(),
+    scoringGetFactorSetReadiness: vi.fn(async (id: string) => ({ ready: true, factor_set_id: id, code: "READY", message: "集合资格检查通过", details: {} })),
     scoringGetModelDetail: vi.fn(),
     createFactorSet: vi.fn(),
     cloneFactorSet: vi.fn(),
@@ -227,10 +228,10 @@ describe("T13②：冻结摘要 — 不可逆勾选启用 okBtn", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// ③ 训练 Dialog 「内部 ID 不暴露」Alert 存在
+// ③ 训练 Dialog 说明真实训练与本人激活流程
 // ═══════════════════════════════════════════════════════════════════════
-describe("T13③：训练 Dialog 内部 ID 不暴露 Alert 存在", () => {
-  it("训练 Modal 打开后 DOM 内出现 message=『内部 ID 不暴露』的 Alert", async () => {
+describe("T13③：训练 Dialog 说明真实训练流程", () => {
+  it("训练 Modal 打开后说明真实训练和激活步骤", async () => {
     const frozen = makeFactorSet({
       id: "fs-t13train", name: "T13 训练集合", status: "frozen",
       frozen_at: "2026-09-02T10:00:00",
@@ -244,11 +245,8 @@ describe("T13③：训练 Dialog 内部 ID 不暴露 Alert 存在", () => {
 
     await waitFor(() => expect(screen.getByTestId("modal-train-model")).toBeInTheDocument());
 
-    // Alert Banner：message 精确文本「内部 ID 不暴露」(见 FactorModelPage L3413)
-    const alertNodes = screen.queryAllByText("内部 ID 不暴露");
-    expect(alertNodes.length).toBeGreaterThanOrEqual(1);
-    // 同时保证 description 内的解释文字也存在
-    expect(screen.getByText(/factor_set_id 由前端状态从当前集合卡片上下文直接携带/)).toBeInTheDocument();
+    expect(screen.getByText("真实股票训练流水线")).toBeInTheDocument();
+    expect(screen.getByText(/训练仅生成新模型，验证完成后需本人激活，再生成评分/)).toBeInTheDocument();
   });
 });
 

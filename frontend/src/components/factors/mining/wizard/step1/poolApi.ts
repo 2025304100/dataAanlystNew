@@ -209,6 +209,8 @@ export interface PoolSnapshot {
   data_cutoff_at?: string | null;
   as_of_date?: string | null;
   analyzed_at?: string | null;
+  member_count?: number | null;
+  members_sample?: PoolMember[];
 }
 
 /** 后端快照响应 → 前端统一形状（兼容 `snapshot_id`/`id` 与 `analysis`/`analysis_json`） */
@@ -229,6 +231,8 @@ function normalizeSnapshot(raw: unknown): PoolSnapshot {
       (rec.as_of_date ?? analysis?.as_of_date ?? pool?.as_of_date ?? null) as string | null,
     analyzed_at:
       (rec.analyzed_at ?? analysis?.generated_at ?? pool?.analyzed_at ?? null) as string | null,
+    member_count: typeof rec.member_count === "number" ? rec.member_count : null,
+    members_sample: Array.isArray(rec.members_sample) ? rec.members_sample.filter((item) => item && typeof item === "object" && typeof item.symbol === "string") as PoolMember[] : [],
   };
 }
 
@@ -374,6 +378,13 @@ export const fetchLatestSnapshot = async (poolId: string): Promise<PoolSnapshot 
     `${BASE}/${encodeURIComponent(poolId)}/snapshot/latest`,
   );
   return raw == null ? null : normalizeSnapshot(raw);
+};
+
+/** Read the task's original snapshot, which can differ from this pool's latest snapshot. */
+export const fetchSnapshot = async (poolId: string, snapshotId: string): Promise<PoolSnapshot | null> => {
+  const page = await requestJson<{ items?: Record<string, unknown>[] }>(`${BASE}/${encodeURIComponent(poolId)}/snapshots`);
+  const raw = page.items?.find((item) => String(item.snapshot_id ?? item.id) === snapshotId);
+  return raw ? normalizeSnapshot(raw) : null;
 };
 
 /** 删除最新快照（「重新选择」= 解锁 + 清分析数据）。 */

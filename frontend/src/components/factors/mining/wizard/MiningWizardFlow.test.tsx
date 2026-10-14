@@ -242,6 +242,7 @@ describe("A5：结果页数据（#20）", () => {
       convergence_threshold: 0.01, converged: false, curve: [],
     };
     const { rerender } = render(<MiningShell runProgress={running} />);
+    fireEvent.click(document.querySelector('[data-mining-new-task]') as HTMLElement);
     fireEvent.click(document.querySelector('[data-mining-step-jump="run"]') as HTMLElement);
     // 运行中：不出现结果区
     expect(document.querySelector("[data-mining-result-section]")).toBeNull();
@@ -260,7 +261,7 @@ describe("A5：结果页数据（#20）", () => {
         page_size: 50,
       });
     });
-    const rows = document.querySelectorAll("[data-mining-result-rows] tbody tr");
+    const rows = document.querySelectorAll("[data-result-rows] tr");
     expect(rows.length).toBe(2);
     expect(rows[0].textContent).toContain("mean(close,5)/mean(close,20)-1");
     expect(rows[1].textContent).toContain("0.41");

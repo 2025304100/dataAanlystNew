@@ -1066,6 +1066,8 @@ export const api = {
     requestJson<any[]>(`${API}/scoring/models?scope=any&limit=${limit}`).then(_scoringModelsToFactorModelList),
   scoringListFactorSetsAsFactor: (scope: "any" | "frozen" | "active" = "frozen", limit: number = 50) =>
     requestJson<any[]>(`${API}/scoring/factorsets?scope=${scope}&limit=${limit}`).then(_scoringFactorSetsToFactorSets),
+  scoringGetFactorSetReadiness: (factorSetId: string) =>
+    requestJson<{ ready: boolean; factor_set_id: string; code: string; message: string; details: Record<string, unknown> }>(`${API}/scoring/factorsets/${encodeURIComponent(factorSetId)}/readiness`),
   // Factor-domain internal - DO NOT USE outside factor center (pipeline list)
   // P1.1 Settings thin-facade passthrough to scoring/tasks?type=factor_pipeline
   // Scoring facade passthrough marker; audit exemption key uses legacy URL.
@@ -1129,6 +1131,9 @@ export const api = {
       full_refresh: boolean;
       train_model: boolean;
       materialize_scores: boolean;
+      universe_source: "watchlist" | "positions" | "all";
+      watchlist_id: number | null;
+      portfolio_id: number | null;
       scope: "recent" | "full" | "backfill";
       actor: string;
       source_hint: string;
@@ -1616,6 +1621,7 @@ export const api = {
     requestJson<SymbolRelationships>(`${API}/symbols/${symbolId}/relationships`),
 
   // Watchlists
+  getWatchlists: () => requestJson<Array<{ id: number; name: string; list_type: string }>>(`${API}/watchlists`),
   getWatchlistItems: (watchlistId: number) => requestJson<any[]>(`${API}/watchlists/${watchlistId}/items`),
   addWatchlistItem: (watchlistId: number, symbolId: number) =>
     requestJson(`${API}/watchlists/${watchlistId}/items`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol_id: symbolId }) }),
@@ -3296,6 +3302,7 @@ export interface FactorOverview {
   };
   latest_trade_date: string | null;
   factor_coverage: FactorCoverage[];
+  average_coverage?: number | null;
 }
 
 export interface FactorModelWeight {
@@ -3416,6 +3423,7 @@ export interface FactorPipelineTask {
   failed_count: number;
   current_item: string | null;
   result: Record<string, unknown> | null;
+  payload_json?: Record<string, unknown> | string | null;
   errors: Array<Record<string, unknown>>;
   created_at: string | null;
   started_at: string | null;
@@ -3611,11 +3619,14 @@ export interface ScoringSystemConfig {
 export function _scoringOverviewToFactorOverview(raw: any): any {
   if (!raw) return raw;
   const $ = (k: string, fb: any = null) => (raw && Object.prototype.hasOwnProperty.call(raw, k) ? raw[k] : fb);
-  const runtime: ScoringRuntimeSnapshot = {
-    weight_mode: raw?.weight_mode ?? "manual",
-    active_model_run_id: raw?.active_model_id ?? null,
+  const runtime: ScoringRuntimeSnapshot & { version: number; score_weight_mode: FactorWeightMode } = {
+    weight_mode: raw?.runtime_mode ?? raw?.weight_mode ?? "manual",
+    score_weight_mode: raw?.score_weight_mode ?? raw?.weight_mode ?? "manual",
+    // An explicit null is a cleared runtime pointer, not a missing field.
+    active_model_run_id: $("runtime_active_model_id", $("active_model_id", null)),
     fallback_reason: raw?.fallback_reason ?? null,
     runtime_version: Number(raw?.runtime_version ?? 0),
+    version: Number(raw?.runtime_version ?? 0),
     updated_at: raw?.updated_at ?? null,
   };
   const config: ScoringSystemConfig = {
@@ -3642,6 +3653,8 @@ export function _scoringOverviewToFactorOverview(raw: any): any {
     },
     latest_trade_date: $("latest_trade_date", null),
     factor_coverage: coverage,
+    average_coverage: Number(raw?.active_factor_coverage_count) > 0 && Number.isFinite(Number(raw?.active_factor_avg_coverage))
+      ? Number(raw.active_factor_avg_coverage) : null,
   };
 }
 export function _scoringModelsToFactorModelList(briefs: any[]): any {
@@ -3652,6 +3665,8 @@ export function _scoringModelsToFactorModelList(briefs: any[]): any {
     if (b2.sample_count != null) metrics.sample_count = Number(b2.sample_count);
     if (b2.data_cutoff_at != null) metrics.data_cutoff_at = b2.data_cutoff_at;
     b2.metrics = metrics;
+    const factorSetId = b2.factorset_id ?? b2.hyperparameters?.factor_set_id;
+    if (factorSetId) b2.hyperparameters = { ...(b2.hyperparameters || {}), factor_set_id: factorSetId };
     if (!("rejection_reason" in b2)) b2.rejection_reason = null;
     if (!("weights" in b2)) b2.weights = [];
     if (!("audit" in b2)) b2.audit = [];

@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import time
+import json
 from datetime import datetime
 
 import pytest
@@ -60,12 +61,13 @@ def _seed_locked_snapshot(db_session, warehouse_path: str):
     """DEF-2 上线后提交必须引用真实锁定快照。"""
     db_session.merge(TrainingCandidatePool(
         id="pool-e2e", name="E2E候选池", source_type="filter",
-        status="frozen", member_count=0,
+        status="frozen", member_count=12,
     ))
     db_session.merge(TrainingCandidatePoolSnapshot(
-        id="snap-e2e", pool_id="pool-e2e", members_json="[]",
+        id="snap-e2e", pool_id="pool-e2e",
+        members_json=json.dumps([{"symbol": f"{i:06d}"} for i in range(12)]),
         rule_hash="rh-e2e", data_cutoff_at=datetime(2027, 3, 1),
-        is_locked=1, member_count=0,
+        is_locked=1, member_count=12,
     ))
     db_session.commit()
 

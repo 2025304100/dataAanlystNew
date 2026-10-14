@@ -63,6 +63,12 @@ def target_pivot_cache_key(ctx: Any, target_code: str) -> tuple[Any, ...]:
     让后一个 run 静默使用前一个 run 的标签面板。
     """
     return (
+        str(getattr(ctx, "warehouse_path", "") or ""),
+        str(getattr(ctx, "data_snapshot_version", "") or ""),
+        str(getattr(ctx, "run_id", "") or ""),
+        str(getattr(ctx, "rebalance_frequency", "") or ""),
+        getattr(ctx, "candidate_symbols", None),
+        getattr(ctx, "signal_dates", None),
         str(getattr(ctx, "target_calc_batch_id", "") or ""), target_code,
         str(getattr(ctx, "start_date", "") or ""),
         str(getattr(ctx, "end_date", "") or ""),
@@ -144,6 +150,20 @@ def normalize_purge_points(*, target_horizon_days: int, frequency: str) -> int:
     return max(1, math.ceil(int(target_horizon_days) / interval))
 
 
+def select_signal_dates(all_dates: Sequence[date], frequency: str) -> tuple[date, ...]:
+    """Canonical daily, week-end or month-end dates from the full bar calendar."""
+    dates = sorted({d for value in all_dates if (d := _as_date(value)) is not None})
+    if frequency == "daily":
+        return tuple(dates)
+    if frequency not in {"weekly", "monthly"}:
+        raise ValueError(f"unsupported rebalance frequency: {frequency!r}")
+    grouped = {}
+    for day in dates:
+        key = day.isocalendar()[:2] if frequency == "weekly" else (day.year, day.month)
+        grouped[key] = day
+    return tuple(sorted(grouped.values()))
+
+
 def normalize_purge_trading_days(*, purge_points: int, frequency: str) -> int:
     """把归一化后的调仓点数折回交易日数（仅供 UI 展示，设计文档 §7.2.4）。"""
     interval = REBALANCE_INTERVAL_DAYS.get(frequency, 1)
@@ -187,8 +207,9 @@ def compute_split_budget(
         if (n and test_start_idx < n) else 0
     )
 
-    floor_total, _floor_val, _floor_test = SPLIT_MINIMUMS.get(frequency, (0, 0, 0))
-    meets_floor = n >= floor_total and val_points > 0 and test_points > 0
+    floor_total, floor_val, floor_test = SPLIT_MINIMUMS.get(frequency, (0, 0, 0))
+    floor_total = max(floor_total, math.ceil((floor_val + purge_points + embargo_points) / validation_ratio))
+    meets_floor = n >= floor_total and val_points >= floor_val and test_points >= floor_test
 
     return SplitBudget(
         frequency=frequency,  # type: ignore[arg-type]
@@ -218,6 +239,7 @@ def build_split(
     target_horizon: int,
     train_ratio: float = 0.6,
     validation_ratio: float = 0.2,
+    tail_loss_points: int | None = None,
 ) -> tuple[TimeSplit, SplitBudget]:
     """归一化参数后调用 `build_time_split`，返回 (TimeSplit, SplitBudget)。
 
@@ -235,7 +257,7 @@ def build_split(
         frequency=frequency,
         purge_points=purge_points,
         embargo_points=embargo_points,
-        tail_loss=target_horizon,
+        tail_loss=target_horizon if tail_loss_points is None else tail_loss_points,
         train_ratio=train_ratio,
         validation_ratio=validation_ratio,
     )
@@ -261,6 +283,7 @@ def build_split(
         min_validation_days=min_val,   # ← 显式传入（C12）
         min_test_days=min_test,        # ← 显式传入（C12）
         min_total_days=min_total,      # ← 显式传入（C12）
+        tail_loss_points=tail_loss_points,
     )
     return split, budget
 
@@ -391,17 +414,20 @@ def _evaluate_core(
 
     with probe.stage("data_load"):
         # 性能：同 run 同窗口的目标面板只 pivot 一次（任务内 50+ 个体会反复读）
-        cache_key = target_pivot_cache_key(ctx, "target_5d_return")
+        target_code = f"target_{ctx.target_horizon}d_return"
+        cache_key = target_pivot_cache_key(ctx, target_code)
         target_pivot = _TARGET_PIVOT_CACHE.get(cache_key)
         if target_pivot is not None:
             _TARGET_PIVOT_CACHE.move_to_end(cache_key)
         else:
             target_df, _bid, _tcode = wh.get_target_panel(
-                ctx.target_calc_batch_id or "", target_code="target_5d_return",
+                ctx.target_calc_batch_id or "", target_code=target_code,
                 start_date=getattr(ctx, "start_date", None),
                 end_date=getattr(ctx, "end_date", None),
                 as_of_exit_date=_as_date(getattr(ctx, "data_cutoff_at", None)),
             )
+            if target_df is not None and ctx.candidate_symbols is not None:
+                target_df = target_df[target_df["symbol"].astype(str).isin(ctx.candidate_symbols)]
             if target_df is None or target_df.empty:
                 target_pivot = None
             else:
@@ -409,6 +435,8 @@ def _evaluate_core(
                     index="signal_date", columns="symbol", values="target_value"
                 )
                 target_pivot.index = [_as_date(d) for d in target_pivot.index]
+                if ctx.signal_dates is not None:
+                    target_pivot = target_pivot.loc[target_pivot.index.isin(ctx.signal_dates)]
                 _TARGET_PIVOT_CACHE[cache_key] = target_pivot
                 _TARGET_PIVOT_CACHE.move_to_end(cache_key)
                 while len(_TARGET_PIVOT_CACHE) > _TARGET_PIVOT_CACHE_MAX:
@@ -442,7 +470,8 @@ def _evaluate_core(
 
     def _compute(text: str) -> pd.DataFrame:
         return _subexpr_matrix(
-            wh, text, start_date=start_date, end_date=end_date, probe=probe
+            wh, text, start_date=start_date, end_date=end_date, probe=probe,
+            **({"symbols": ctx.candidate_symbols} if ctx.candidate_symbols is not None else {}),
         )
 
     with probe.stage("subexpr_compute"):
@@ -456,13 +485,16 @@ def _evaluate_core(
         except (SC.CacheMissError, SC.ScopeMismatchError, SC.UnsupportedAstError):
             # 缓存是优化不是正确性依赖：缺失时回退直接计算（绝不产出错误值）
             panel = _subexpr_matrix(
-                wh, formula, start_date=start_date, end_date=end_date, probe=probe
+                wh, formula, start_date=start_date, end_date=end_date, probe=probe,
+                **({"symbols": ctx.candidate_symbols} if ctx.candidate_symbols is not None else {}),
             )
 
     if panel is None or panel.empty:
         return _zero_fitness(individual), probe, cache, None
 
     features = _pivot_dates_as_index(panel)
+    if ctx.signal_dates is not None:
+        features = features.loc[features.index.isin(ctx.signal_dates)]
 
     with probe.stage("metric_calc"):
         try:
@@ -588,6 +620,7 @@ def _resolve_sample_days(sample_length: str | int | None) -> int | None:
 
 def _subexpr_matrix(
     wh: Any, text: str, *, start_date: date, end_date: date, probe: Any = None,
+    symbols: tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
     """子表达式/完整公式 → **纯数值因子面板矩阵**（index=trade_date(date), columns=symbol）。
 
@@ -609,7 +642,7 @@ def _subexpr_matrix(
 
     with PROBE.measure_stage(probe, "data_load"):
         outcome = FactorExecutor(wh).execute_panel(
-            plan, start_date=start_date, end_date=end_date
+            plan, start_date=start_date, end_date=end_date, symbols=symbols,
         )
     if outcome.read_errors or outcome.factors_long is None:
         raise SC.UnsupportedAstError(
@@ -787,18 +820,23 @@ def build_full_panels(ctx: MiningContext, formula: str) -> tuple:
     hi = _as_date(getattr(split, "test_end", None))
 
     target_df, _bid, _tcode = wh.get_target_panel(
-        str(ctx.target_calc_batch_id or ""), target_code="target_5d_return",
+        str(ctx.target_calc_batch_id or ""), target_code=f"target_{ctx.target_horizon}d_return",
         start_date=lo, end_date=hi,
         as_of_exit_date=_as_date(getattr(ctx, "data_cutoff_at", None)),
     )
+    if target_df is not None and ctx.candidate_symbols is not None:
+        target_df = target_df[target_df["symbol"].astype(str).isin(ctx.candidate_symbols)]
     if target_df is None or target_df.empty:
         raise ValueError("target_panel_empty: 目标面板为空，无法做最终验证。")
     fr = target_df.pivot(index="signal_date", columns="symbol",
                          values="target_value")
     fr.index = [_as_date(d) for d in fr.index]
+    if ctx.signal_dates is not None:
+        fr = fr.loc[fr.index.isin(ctx.signal_dates)]
 
     fv = _pivot_dates_as_index(_subexpr_matrix(
-        wh, formula, start_date=lo, end_date=hi, probe=PROBE.new_probe()))
+        wh, formula, start_date=lo, end_date=hi, probe=PROBE.new_probe(),
+        **({"symbols": ctx.candidate_symbols} if ctx.candidate_symbols is not None else {})))
     if fv is None or fv.empty:
         raise ValueError("factor_panel_empty: 因子值计算为空，无法做最终验证。")
     if lo is not None:
@@ -807,6 +845,8 @@ def build_full_panels(ctx: MiningContext, formula: str) -> tuple:
         fv = fv.loc[[d is None or d <= hi for d in fv.index]]
     if fr is not None and lo is not None and hi is not None:
         fr = fr.loc[[d is None or (lo <= d <= hi) for d in fr.index]]
+    if ctx.signal_dates is not None:
+        fv = fv.loc[fv.index.isin(ctx.signal_dates)]
     return fv, fr
 
 
@@ -878,6 +918,9 @@ def evaluate_full(
     )
 
     config = EvaluationConfig(
+        evaluation_segment="test",
+        time_split_override=ctx.split,
+        target_code=f"target_{int(ctx.target_horizon)}d_return",
         target_horizon=int(ctx.target_horizon),
         purge_days=int(ctx.purge_points),       # 已归一化为「调仓点数」（§7.2）
         embargo_days=int(ctx.embargo_points),

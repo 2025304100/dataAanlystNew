@@ -79,9 +79,27 @@ const PT_DARK_THEME = {
     zIndexPopupBase: 1300,
     borderRadius: 8,
     fontFamily: 'var(--pt-font-sans, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif)',
+    // 控件尺寸对齐工作台自定义体系：.pt-btn/.pt-input/.pt-select 均为 36px 高、13px 字
+    controlHeight: 36,
+    fontSize: 13,
+    controlPaddingHorizontal: 12,
   },
   components: {
-    Button: { fontWeight: 500, primaryShadow: "none", defaultShadow: "none" },
+    Button: {
+      fontWeight: 500,
+      primaryShadow: "none",
+      defaultShadow: "none",
+      borderRadius: 8,
+      // antd 小按钮默认取 borderRadiusSM(6px)，需与 .pt-btn-sm 的 8px 圆角对齐
+      borderRadiusSM: 8,
+      // 默认 36/13（与 .pt-btn 对齐），small 28/12（与 .pt-btn-sm 对齐）
+      controlHeight: 36,
+      controlHeightSM: 28,
+      paddingInline: 16,
+      paddingInlineSM: 12,
+      contentFontSize: 13,
+      contentFontSizeSM: 12,
+    },
     Modal: { contentBg: "#1e293b", headerBg: "#1e293b" },
     Table: { headerBg: "#0f172a", headerColor: "#94a3b8", rowHoverBg: "rgba(148,163,184,0.08)" },
   },

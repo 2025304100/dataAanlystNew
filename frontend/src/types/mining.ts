@@ -58,11 +58,14 @@ export interface MiningRun {
   status: MiningRunStatus;
   /** 挖掘快照 id（GET /runs/{id} 返回；结果页「跳转因子模型页」上下文用） */
   candidate_pool_snapshot_id?: string | null;
+  candidate_pool_id?: string | null;
+  factor_set_id?: string | null;
   /** 数据截止日（GET /runs/{id} 返回；同上） */
   data_cutoff_at?: string | null;
   current_generation?: number | null;
   total_generations?: number | null;
   progress?: number | null;
+  converged?: boolean | number | null;
   queue_position?: number | null;
   best_icir?: number | null;
   rebalance_frequency?: MiningFrequency | null;
@@ -95,6 +98,11 @@ export interface MiningPage<T> {
   page_size: number;
 }
 
+export interface MiningBatchReviewResult {
+  results: Array<{ candidate_id: string; action: string; status: string; factor_version_id?: number; error_code?: string; error?: string }>;
+  counts: Record<string, number>;
+}
+
 /** 候选因子（GET /factor-mining/runs/{run_id}/candidates，A3 已实现） */
 export interface MiningCandidate {
   id: string;
@@ -124,6 +132,9 @@ export interface MiningCandidate {
   /** DEF-9：finalize 后回填（list_candidates 序列化新增） */
   latest_ic?: number | null;
   latest_evaluation_status?: string | null;
+  latest_evaluation_id?: number | null;
+  elimination_status?: string | null;
+  elimination_reason?: string | null;
 }
 
 /** 双锁状态（GET /factor-mining/locks/status，后端**已实现**；2026-09-21 对齐真实契约） */

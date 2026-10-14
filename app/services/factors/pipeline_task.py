@@ -10,7 +10,7 @@ from pathlib import Path
 from statistics import median
 from uuid import uuid4
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
@@ -40,7 +40,8 @@ from app.services.factor_set_service import factor_set_readiness
 from app.services.factors.ridge_model import train_rolling_ridge
 from app.services.factors.runtime import _snapshot
 from app.services.factors.scoring_bridge import materialize_factor_scores, materialize_factor_score_window
-from app.services.factors.store import FactorWarehouse, SHARED_TARGET_BATCH_ID
+from app.services.factors.scoring_universe import freeze_score_universe, score_universe_summary
+from app.services.factors.store import FactorWarehouse, SHARED_TARGET_BATCH_ID, DEFAULT_TARGET_CODE
 from app.models.score import Score
 from app.models.factor_model import FactorModelRun
 from app.models.factor_runtime import FactorRuntimeState
@@ -229,6 +230,26 @@ def _prune_unreferenced_scores(db, *, keep_batches: int = 30) -> dict[str, objec
     if not retained:
         return {"score_rows_deleted": 0, "protected_factor_batch_ids": []}
     referenced: set[int] = set()
+    # Narrow refreshes produce separate batches. Retaining only the newest
+    # global batches would eventually erase the current scores of symbols that
+    # were not selected. Protect their latest date (not merely latest insert,
+    # since a historical backfill can be newer than today's score).
+    latest_order = (
+        Score.trade_date.desc(), Score.factor_data_cutoff_at.desc(), Score.id.desc(),
+    )
+    group = (Score.symbol_id, Score.weight_mode, Score.factor_model_run_id)
+    for eligible_only in (False, True):
+        latest = select(Score.id, func.row_number().over(
+            partition_by=group, order_by=latest_order,
+        ).label('rank'))
+        if eligible_only:
+            latest = latest.where(or_(
+                Score.factor_model_run_id.is_(None),
+                and_(Score.model_alpha_score.between(0, 100),
+                     Score.factor_data_cutoff_at.is_not(None)),
+            ))
+        latest = latest.subquery()
+        referenced.update(db.scalars(select(latest.c.id).where(latest.c.rank == 1)).all())
     for model in (DecisionEvidence, JournalEntry, TradeSetup):
         try:
             referenced.update(
@@ -703,6 +724,7 @@ def _create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
     SessionLocal = get_session_local()
     runtime_db = SessionLocal()
     try:
+        freeze_score_universe(runtime_db, payload)
         runtime = _validate_requested_runtime(runtime_db, payload)
         _pin_scoring_runtime(payload, runtime)
     finally:
@@ -858,6 +880,7 @@ def _run_factor_pipeline(task_id: str) -> None:
         payload = FactorPipelineCreate.model_validate(
             json.loads(task.payload_json or '{}')
         )
+        frozen_universe = score_universe_summary(payload)
         starting_runtime = _validate_requested_runtime(db, payload)
         _pin_scoring_runtime(payload, starting_runtime)
         if payload.train_model and (payload.factor_scope_json or {}).get('asset_type', 'stock') != 'stock':
@@ -888,6 +911,8 @@ def _run_factor_pipeline(task_id: str) -> None:
             latest_bar_date=latest_bar_date,
         )
         results: dict = {}
+        if frozen_universe is not None:
+            results['score_universe'] = frozen_universe
         results['effective_range'] = {
             'mirror_start_date': effective_start_date,
             'calculation_start_date': calculation_start_date,
@@ -1028,14 +1053,21 @@ def _run_factor_pipeline(task_id: str) -> None:
         # 这一段（含尾部 horizon 天），历史行的覆盖情况以覆盖表为准，不看这里的
         # scope——scope 记的是"这次刷到哪"，不是"这个批次覆盖哪"。
         target_calc_batch_id = SHARED_TARGET_BATCH_ID
+        # The data batch is mutable shared coverage, while each task needs its
+        # own immutable audit identity. Reusing targets-labels as an audit PK
+        # made every later refresh silently lose its target-stage audit.
+        target_audit_batch_id = f'targets-refresh-{uuid4().hex}'
         with batch_context(
             warehouse,
-            batch_id=target_calc_batch_id,
+            batch_id=target_audit_batch_id,
             source_key='target.generation',
             scope={
                 'start_date': calculation_start_date.isoformat(),
                 'end_date': effective_end_date.isoformat(),
                 'shared_batch': True,
+                'data_calc_batch_id': target_calc_batch_id,
+                'target_code': DEFAULT_TARGET_CODE,
+                'pipeline_run_id': task_id,
             },
         ) as target_batch_audit:
             targets = calculate_targets(
@@ -1046,7 +1078,7 @@ def _run_factor_pipeline(task_id: str) -> None:
             )
             target_batch_audit.rows_written = getattr(targets, 'rows_written', 0)
             target_batch_audit.rows_received = getattr(targets, 'rows_written', 0)
-        results['targets'] = asdict(targets)
+        results['targets'] = {**asdict(targets), 'audit_batch_id': target_audit_batch_id}
         if should_cancel():
             return
 
@@ -1115,9 +1147,11 @@ def _run_factor_pipeline(task_id: str) -> None:
             # the scores and their lineage have committed together.
             runtime = _validate_requested_runtime(db, payload)
             scoring_model = db.get(FactorModelRun, runtime.active_model_run_id)
-            from app.services.factor_model_contract import assess_factor_model_readiness
-            readiness = assess_factor_model_readiness(db, model_run_id=runtime.active_model_run_id,
-                                                      require_runtime_active=True)
+            from app.services.factor_model_contract import assess_factor_score_publication_readiness
+            readiness = assess_factor_score_publication_readiness(
+                db, model_run_id=runtime.active_model_run_id,
+                expected_weight_mode=runtime.weight_mode,
+            )
             if not readiness.ready:
                 raise ValueError(f'{readiness.code}:{readiness.message}')
             expected = {member.factor_code: int(member.factor_version) for member in scoring_model.weights}
@@ -1132,6 +1166,7 @@ def _run_factor_pipeline(task_id: str) -> None:
                 model_run_id=runtime.active_model_run_id, mode=runtime.weight_mode,
                 pipeline_run_id=task_id,
                 publication_guard=lambda: _validate_requested_runtime(db, payload),
+                **({'target_symbols': tuple(payload.score_symbols)} if frozen_universe is not None else {}),
             )
             _validate_requested_runtime(db, payload)
             db.commit()

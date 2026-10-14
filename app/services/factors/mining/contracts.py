@@ -112,6 +112,10 @@ class MiningContext:
     warehouse_path: str | None = None
     #: G2 缓存数据快照版本（不匹配自动废弃缓存）
     data_snapshot_version: str | None = None
+    #: Frozen snapshot universe; None retains the legacy unscoped adapter API.
+    candidate_symbols: tuple[str, ...] | None = None
+    #: Canonical rebalance dates intersected with mature PIT labels.
+    signal_dates: tuple[date, ...] | None = None
 
 
 @dataclass

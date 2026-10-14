@@ -29,6 +29,8 @@ export interface GradeEvidenceDrawerProps {
   onClose?: () => void;
   onAdjustGrade?: (grade: Grade, reason: string) => void;
   onRestoreAuto?: () => void;
+  actionBusy?: boolean;
+  actionError?: string | null;
 }
 
 type TabKey = "grade" | "stats" | "lineage";
@@ -69,6 +71,8 @@ export default function GradeEvidenceDrawer({
   onClose,
   onAdjustGrade,
   onRestoreAuto,
+  actionBusy = false,
+  actionError = null,
 }: GradeEvidenceDrawerProps) {
   const [tab, setTab] = useState<TabKey>("grade");
   const [adjusting, setAdjusting] = useState(false);
@@ -159,6 +163,7 @@ export default function GradeEvidenceDrawer({
         <span>{evidence.formula}</span>
         <button type="button" data-evidence-close onClick={onClose}>×</button>
       </header>
+      {actionError && <p data-evidence-action-error role="alert" className="mining-run-op-error">{actionError}</p>}
 
       {/* 月频提示（pitfalls 第二条的另一半） */}
       {degraded && (
@@ -189,7 +194,7 @@ export default function GradeEvidenceDrawer({
       {evidence.manual_adjusted ? (
         <div className="mining-evidence-manual" data-evidence-manual-tip>
           {t("miningEvidManualTip")}
-          <button type="button" data-evidence-restore-auto onClick={onRestoreAuto}>
+          <button type="button" data-evidence-restore-auto disabled={actionBusy || !onRestoreAuto} onClick={onRestoreAuto}>
             {t("miningEvidRestoreAuto")}
           </button>
         </div>
@@ -219,7 +224,8 @@ export default function GradeEvidenceDrawer({
             type="primary"
             size="small"
             data-evidence-adjust-submit
-            disabled={!canSubmit}
+            loading={actionBusy}
+            disabled={!canSubmit || !onAdjustGrade}
             onClick={() => onAdjustGrade?.(targetGrade, reason.trim())}
           >
             {t("miningEvidAdjustSubmit")}

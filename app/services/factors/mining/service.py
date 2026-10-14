@@ -258,7 +258,7 @@ def create_run(db: Any, *, run_id: str | None = None, **fields: Any) -> FactorMi
     """创建 run 行（GA 入口；`total_trials` 从 0 起步）。"""
     row = FactorMiningRun(
         id=run_id or uuid.uuid4().hex,
-        status="running",
+        status=str(fields.pop("status", "running")),
         candidate_pool_snapshot_id=str(fields.pop("candidate_pool_snapshot_id")),
         data_cutoff_at=fields.pop("data_cutoff_at"),
         start_date=fields.pop("start_date"),
@@ -279,6 +279,22 @@ def create_run(db: Any, *, run_id: str | None = None, **fields: Any) -> FactorMi
 
 def load_run(db: Any, run_id: str) -> FactorMiningRun | None:
     return db.get(FactorMiningRun, str(run_id))
+
+
+def run_configuration(run: Any) -> dict[str, Any]:
+    """Rebuild frozen experiment inputs without silently replacing explicit zero values."""
+    split = _load_json_obj(run.split_config_json)
+    filters = _load_json_obj(run.filter_config_json)
+    evolution = _load_json_obj(run.evolution_params_json)
+    return {
+        "train_ratio": float(split.get("train_ratio", 0.6)),
+        "validation_ratio": float(split.get("validation_ratio", 0.2)),
+        "evolution_params": evolution,
+        "selected_fields": list(filters.get("selected_fields") or [
+            "close", "open", "high", "low", "volume", "amount", "turnover_rate"]),
+        "warehouse_path": filters.get("warehouse_path"),
+        "finalize_top_k": int(evolution.get("finalize_top_k", 50)),
+    }
 
 
 def load_generation(db: Any, *, run_id: str, generation: int
@@ -385,20 +401,13 @@ def compute_split_budget_preview(
             "reason_zh": f"区间 {lo.isoformat()} ~ {hi.isoformat()} 内无数仓交易日。",
         }
 
-    # 频率重采样：周/月只保留最后一个调仓点（向导 §4）
-    if frequency == "weekly":
-        by_key: dict[tuple[int, int], _date] = {}
-        for d in in_range:
-            iso = d.isocalendar()
-            by_key[(iso[0], iso[1])] = d  # 同一周保留最后（日期递增，后写覆盖）
-        points = sorted(by_key.values())
-    elif frequency == "monthly":
-        by_key = {}
-        for d in in_range:
-            by_key[(d.year, d.month)] = d  # 同一月保留最后
-        points = sorted(by_key.values())
-    else:
-        points = in_range
+    # Build the schedule from the complete bar calendar, then retain only
+    # mature signals. Truncating first invents week/month-end trading dates.
+    calendar = sorted({d for value in raw if (d := _as_date(value)) is not None})
+    horizon = int(target_horizon)
+    mature_end = calendar[-horizon - 1] if len(calendar) > horizon else None
+    points = [d for d in EVA.select_signal_dates(calendar, frequency)
+              if mature_end is not None and lo <= d <= hi and d <= mature_end]
 
     purge = EVA.normalize_purge_points(
         target_horizon_days=int(target_horizon), frequency=frequency)
@@ -407,7 +416,7 @@ def compute_split_budget_preview(
         frequency=frequency,
         purge_points=purge,
         embargo_points=purge,
-        tail_loss=int(target_horizon),
+        tail_loss=0,
         train_ratio=float(train_ratio),
         validation_ratio=float(validation_ratio),
     )
@@ -465,7 +474,7 @@ def finalize_run(
     run = db.get(FactorMiningRun, str(run_id))
     if run is None:
         raise ValueError(f"run 不存在: {run_id!r}")
-    if run.status in ("validating", "succeeded"):
+    if run.status in ("validating", "succeeded") or run.error_code == "MINING_FINAL_EVALUATION_FAILED":
         raise FactorSevenError(
             "MINING_TEST_LOCKED",
             detail_zh=f"run 已处于 {run.status}：test 段已评估过（或正在评估），"
@@ -520,8 +529,9 @@ def finalize_run(
         cand.factor_version_id = outcome.factor_version_id
         cand.latest_evaluation_id = outcome.evaluation_run_id
         cand.latest_evaluation_status = "done"
+        ic_metrics = outcome.metrics.get("ic")
         cand.latest_ic = DN.to_db_float(
-            outcome.metrics.get("ic"),
+            ic_metrics.get("rank_ic_mean") if isinstance(ic_metrics, dict) else ic_metrics,
             column=FactorMiningCandidate.__table__.columns["latest_ic"])
         outcomes.append({
             "formula_hash": cand.formula_hash,
@@ -540,12 +550,14 @@ def finalize_run(
         except Exception:  # noqa: BLE001 - 分级/治理尽力而为
             continue
 
-    set_run_status(db, run, "succeeded")
+    status = "succeeded" if outcomes else "failed"
+    set_run_status(db, run, status)
+    run.error_code = None if outcomes else "MINING_FINAL_EVALUATION_FAILED"
     run.converged = 1
     db.commit()
 
     return {"evaluated": len(outcomes), "failed": len(failures),
-            "outcomes": outcomes, "failures": failures, "status": "succeeded"}
+            "outcomes": outcomes, "failures": failures, "status": status}
 
 
 def submit_candidate_as_factor(
@@ -574,11 +586,13 @@ def submit_candidate_as_factor(
             "MINING_SAMPLE_INSUFFICIENT",
             detail_zh=f"候选 {candidate_id} 缺少 formula_hash，无法提交。",
         )
+    source_run = db.get(FactorMiningRun, cand.run_id)
     version_id, code = EA.create_candidate_draft(
         db, digest=digest, formula=str(cand.formula_expr or ""),
         category=cand.category,
         direction=str(cand.expected_direction or "positive"),
         logic=str(cand.economic_logic or ""), created_by=created_by,
+        frequency=source_run.rebalance_frequency if source_run else None,
     )
     cand.factor_version_id = int(version_id)
     cand.latest_evaluation_status = "submitted"
@@ -644,6 +658,7 @@ def batch_review_candidates(
             cand.elimination_status = "manual_rejected"
             cand.elimination_reason = str(action_item.get("reason")
                                           or "manual rejected")[:48]
+            db.commit()
             item["status"] = "rejected"
             counts["rejected"] += 1
 
@@ -668,6 +683,7 @@ def batch_review_candidates(
                                    factor_id=version.factor_id,
                                    factor_version_id=version.id,
                                    display_order=order))
+                db.commit()
                 order_cursor[factor_set_id] = order + 1
                 item.update(status="added",
                             factor_id=version.factor_id,
@@ -700,7 +716,7 @@ def _load_json_obj(raw: Any) -> dict[str, Any]:
     if not raw:
         return {}
     try:
-        val = _json.loads(raw)
+        val = json.loads(raw)
     except Exception:  # noqa: BLE001 - 脏数据降级为空对象，不阻断详情
         return {}
     return val if isinstance(val, dict) else {}
@@ -764,7 +780,11 @@ def get_run_detail(db: Any, run_id: str) -> dict[str, Any] | None:
     run = load_run(db, run_id)
     if run is None:
         return None
-    return _run_to_dict(run, include_config=True)
+    from app.models.mining_candidate_pool import TrainingCandidatePoolSnapshot
+    snapshot = db.get(TrainingCandidatePoolSnapshot, run.candidate_pool_snapshot_id)
+    result = _run_to_dict(run, include_config=True)
+    result["candidate_pool_id"] = snapshot.pool_id if snapshot is not None else None
+    return result
 
 
 def list_generations(db: Any, run_id: str) -> list[dict[str, Any]]:
@@ -845,6 +865,9 @@ def list_candidates(db: Any, run_id: str, *, page: int = 1, page_size: int = 20,
             "latest_ic": DN.to_db_float(c.latest_ic)
             if c.latest_ic is not None else None,
             "latest_evaluation_status": c.latest_evaluation_status,
+            "latest_evaluation_id": c.latest_evaluation_id,
+            "elimination_status": c.elimination_status,
+            "elimination_reason": c.elimination_reason,
             "grade": grades.get(int(c.factor_version_id))
             if c.factor_version_id is not None else None,
         })
@@ -898,39 +921,46 @@ def build_mining_context(db: Any, run: Any, *, warehouse_path: str | None,
     from app.services.factors.mining import evaluation_adapter as EVA
     from app.services.factors.mining.contracts import MiningContext
     from app.services.factors.store import FactorWarehouse
+    from app.services.factors.mining.data_scope import load_snapshot_symbols
 
     wh = FactorWarehouse(str(warehouse_path or ""))
+    candidate_symbols = load_snapshot_symbols(db, run.candidate_pool_snapshot_id)
+    horizon = int(getattr(run, "target_horizon", 0) or 5)
     # 读取窗口与覆盖判定用同一口径：run 自己的区间 + data_cutoff_at 的 PIT 上界。
     # 共享批次里装着全库标签，不按窗口截就会把超出本 run 的信号日一起读进来。
     target_df, _bid, _tcode = wh.get_target_panel(
         str(target_calc_batch_id),
-        "target_5d_return",
+        f"target_{horizon}d_return",
         start_date=run.start_date.date(),
         end_date=run.end_date.date(),
         as_of_exit_date=EVA._as_date(run.data_cutoff_at),
     )
-    all_dates = sorted(
-        d for d in (EVA._as_date(v) for v in target_df["signal_date"].tolist())
-        if d is not None
-    )
     freq = str(run.rebalance_frequency or "daily")
-    horizon = int(getattr(run, "target_horizon", 0) or 5)
+    target_df = target_df.loc[target_df["symbol"].isin(candidate_symbols)]
+    available_dates = {d for d in (EVA._as_date(v) for v in target_df["signal_date"].tolist())
+                       if d is not None}
+    all_dates = tuple(d for d in EVA.select_signal_dates(wh.list_trade_dates(), frequency=freq)
+                      if d in available_dates)
+    config = run_configuration(run)
     split, budget = EVA.build_split(all_dates=all_dates, frequency=freq,
-                                    target_horizon=horizon)
+                                    target_horizon=horizon,
+                                    train_ratio=config["train_ratio"],
+                                    validation_ratio=config["validation_ratio"], tail_loss_points=0)
     return MiningContext(
         run_id=run.id, candidate_pool_snapshot_id=str(run.candidate_pool_snapshot_id),
         data_cutoff_at=run.data_cutoff_at, start_date=run.start_date.date(),
         end_date=run.end_date.date(), rebalance_frequency=freq,
         target_horizon=horizon, split=split,
         purge_points=budget.purge_points, embargo_points=budget.embargo_points,
-        train_ratio=0.6, validation_ratio=0.2,
-        random_seed=int(getattr(run, "random_seed", 0) or 42),
+        train_ratio=config["train_ratio"], validation_ratio=config["validation_ratio"],
+        random_seed=int(run.random_seed if run.random_seed is not None else 42),
         config_hash="", split_algorithm_version=str(
             getattr(run, "split_algorithm_version", "") or "split-1.0.0"),
         target_calc_batch_id=target_calc_batch_id,
         warehouse_path=str(wh.path),
         data_snapshot_version=str(getattr(run, "split_algorithm_version", "")
                                   or "snapshot-default"),
+        candidate_symbols=candidate_symbols, signal_dates=all_dates,
     )
 
 
@@ -945,12 +975,14 @@ def evaluate_all_impl(db: Any, *, run_id: str, top_k: int = 50,
     run = load_run(db, run_id)
     if run is None:
         raise ValueError(f"run 不存在: {run_id!r}")
-    wh = FactorWarehouse(str(warehouse_path or Settings().factor_warehouse_path))
+    frozen = run_configuration(run)
+    wh = FactorWarehouse(str(warehouse_path or frozen["warehouse_path"] or Settings().factor_warehouse_path))
     resolved = resolve_label_batch(
         wh,
         start_date=run.start_date.date(),
         end_date=run.end_date.date(),
         as_of_exit_date=EVA._as_date(run.data_cutoff_at),
+        target_code=f"target_{int(run.target_horizon or 5)}d_return", allow_horizon_backfill=True,
     )
     batch = resolved.batch_id
     ctx = build_mining_context(db, run, warehouse_path=str(wh.path),
@@ -984,10 +1016,10 @@ def get_mining_evaluation(db: Any, evaluation_id: str) -> dict[str, Any] | None:
 
 
 def save_candidate_as_template(db: Any, *, candidate_id: str) -> dict[str, Any]:
-    """优质候选 → 个人公式模板（`factor_formula_templates`，scope=personal）。"""
-    import uuid as _uuid
-
-    from app.models.factor_formula_template import FactorFormulaTemplate
+    """候选 → 挖掘模板配置同源资产，保留批次与候选血缘。"""
+    from app.services.factors.mining import template_service as TPL
+    from app.services.factors import factor_compiler as FC
+    from app.services.factors.experience.generalization import collect_fields
 
     row = db.get(FactorMiningCandidate, str(candidate_id))
     if row is None:
@@ -996,33 +1028,24 @@ def save_candidate_as_template(db: Any, *, candidate_id: str) -> dict[str, Any]:
         raise ValueError(f"candidate_empty_formula:{candidate_id}")
     formula = row.canonical_formula or row.formula_expr
 
-    exists = db.execute(
-        select(FactorFormulaTemplate).where(
-            FactorFormulaTemplate.formula_template == formula,
-            FactorFormulaTemplate.scope == "personal",
-        )
-    ).scalar_one_or_none()
-    if exists is not None:
-        return {"template_id": exists.id, "status": "already"}
-
-    tpl = FactorFormulaTemplate(
-        id=_uuid.uuid4().hex,
-        name=f"挖掘模板·{formula[:24]}",
-        category=row.category or "trend",
-        formula_template=formula,
-        param_definitions_json="[]",
-        economic_logic=row.economic_logic,
-        priority=100,
-        scope="personal",
-        source=("ai_generated" if row.logic_source == "ai" else "manual"),
-        complexity=(int(row.generation_complexity)
-                    if row.generation_complexity is not None
-                    else formula.count("(")),
-        enabled=1,
+    existing = TPL.list_templates(db, scope="personal", limit=10000)["items"]
+    for template in existing:
+        if template["rule_config"].get("formula") == formula:
+            return {"template_id": template["template_id"], "status": "already"}
+    compiled = FC.compile_formula(formula=formula, strict_fields=False)
+    if not compiled.success or compiled.execution_plan is None:
+        raise ValueError(f"candidate_invalid_formula:{candidate_id}")
+    template = TPL.create_personal_template(
+        db, name=f"挖掘模板·{formula[:24]}", description=row.economic_logic,
+        owner="local_user", rule_config={
+            "formula": formula, "params": {}, "category": row.category or "trend",
+            "required_fields": collect_fields(compiled.execution_plan.formula_ast),
+            "economy_logic_zh": row.economic_logic, "priority": 5,
+            "source": _f1_source(row.logic_source),
+            "source_candidate_id": row.id, "source_run_id": row.run_id,
+        },
     )
-    db.add(tpl)
-    db.commit()
-    return {"template_id": tpl.id, "status": "created"}
+    return {"template_id": template["template_id"], "status": "created"}
 
 
 def ai_preview_skeletons(payload: dict[str, Any], db: Any) -> dict[str, Any]:

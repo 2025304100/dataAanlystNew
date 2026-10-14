@@ -218,4 +218,17 @@ describe("TemplateConfigPage（C2 / B4）", () => {
       expect(factorTemplatesApi.seed).toHaveBeenCalled();
     });
   });
+
+  it("空模板库也能初始化，启停失败保留列表并说明原因", async () => {
+    vi.mocked(factorTemplatesApi.list).mockResolvedValueOnce({ items: [], total: 0 });
+    const page = render(<TemplateConfigPage active />);
+    await waitFor(() => expect(document.querySelector("[data-tpl-empty]")).toBeTruthy());
+    fireEvent.click(page.getByRole("button", { name: /系统模板/ }));
+    await waitFor(() => expect(factorTemplatesApi.seed).toHaveBeenCalled());
+    await waitFor(() => expect(document.querySelector("[data-tpl-table]")).toBeTruthy());
+    vi.mocked(factorTemplatesApi.setEnabled).mockRejectedValueOnce(new Error("任务占用，稍后重试"));
+    fireEvent.click(document.querySelector("[data-tpl-toggle='tp-1']") as HTMLElement);
+    await waitFor(() => expect(page.getByRole("alert").textContent).toContain("任务占用，稍后重试"));
+    expect(document.querySelector("[data-tpl-table]")?.textContent).toContain("动量因子");
+  });
 });

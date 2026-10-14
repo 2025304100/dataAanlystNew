@@ -74,7 +74,8 @@ export default function FactorCenter() {
   useEffect(() => {
     const navHandler = (e: Event) => {
       const detail = (e as CustomEvent).detail as Record<string, unknown> | undefined;
-      const target = detail?.target as string | undefined;
+      const rawTarget = detail?.target as string | undefined;
+      const target = rawTarget === "models" ? "model" : rawTarget;
       // 兼容旧 target 值
       if (target === "detail") {
         const code = (detail?.factor_code as string) || selectedFactorCode;

@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
+import re
 
 # target_engine._load_target_panel: entry_calendar = trade_index + 1,
 # exit_calendar = trade_index + 5 —— 标签需要 5 个未来交易日才能定值。
@@ -116,6 +117,8 @@ def evaluate_label_coverage(
     """
     start = _as_date(start_date)
     end = _as_date(end_date)
+    horizon_match = re.fullmatch(r"target_(\d+)d_return", target_code)
+    horizon_days = int(horizon_match.group(1)) if horizon_match else TARGET_HORIZON_TRADING_DAYS
     base = dict(
         batch_id=batch_id,
         target_code=target_code,
@@ -172,7 +175,7 @@ def evaluate_label_coverage(
 
     # 覆盖上界：最近 horizon 个交易日的标签必然还没定值，不能算缺口。
     horizon_anchor = warehouse.shift_back_trading_days(
-        bars_latest, TARGET_HORIZON_TRADING_DAYS, adjust=adjust
+        bars_latest, horizon_days, adjust=adjust
     )
     effective_end = end
     if horizon_anchor is not None:
@@ -224,7 +227,7 @@ def evaluate_label_coverage(
             symbol_count=symbol_count,
             blocker="horizon_only",
             message=(
-                f"{start}..{end} 全部落在最近 {TARGET_HORIZON_TRADING_DAYS} "
+                f"{start}..{end} 全部落在最近 {horizon_days} "
                 "个交易日内，标签尚未定值（需要未来 K 线）"
             ),
             **base,

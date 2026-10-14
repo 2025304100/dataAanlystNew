@@ -37,6 +37,7 @@ def _load_target_panel(
     adjust: str,
     signal_from: date | None = None,
     signal_to: date | None = None,
+    target_horizon: int = 5,
 ) -> pd.DataFrame:
     """按交易日历自连接出 entry=T+1 / exit=T+5 的标签面板。
 
@@ -93,9 +94,9 @@ def _load_target_panel(
         LEFT JOIN calendar entry_calendar
           ON entry_calendar.trade_index = s.trade_index + 1
         LEFT JOIN calendar previous_exit_calendar
-          ON previous_exit_calendar.trade_index = s.trade_index + 4
+          ON previous_exit_calendar.trade_index = s.trade_index + {target_horizon - 1}
         LEFT JOIN calendar exit_calendar
-          ON exit_calendar.trade_index = s.trade_index + 5
+          ON exit_calendar.trade_index = s.trade_index + {target_horizon}
         LEFT JOIN bars entry_bar
           ON entry_bar.symbol = s.symbol
          AND entry_bar.trade_date = entry_calendar.trade_date
@@ -179,8 +180,12 @@ def calculate_targets(
     calc_batch_id: str | None = None,
     adjust: str = "qfq",
     limit_threshold: float = 0.095,
+    target_horizon: int = 5,
 ) -> TargetCalculationResult:
-    """Persist T+1 open to T+5 close labels without skipping suspensions."""
+    """Persist T+1 open to T+N close labels without skipping suspensions."""
+    if not isinstance(target_horizon, int) or not 1 <= target_horizon <= 20:
+        raise ValueError("target_horizon must be an integer between 1 and 20")
+    target_code = f"target_{target_horizon}d_return"
     if start_date and end_date and start_date > end_date:
         raise ValueError("start_date must not be after end_date")
     if not 0 < limit_threshold < 1:
@@ -193,6 +198,7 @@ def calculate_targets(
         adjust=adjust,
         signal_from=start_date,
         signal_to=end_date,
+        **({"target_horizon": target_horizon} if target_horizon != 5 else {}),
     )
     if not panel.empty:
         for column in ("signal_date", "entry_date", "exit_date"):
@@ -227,7 +233,7 @@ def calculate_targets(
                 "signal_date": row["signal_date"],
                 "entry_date": row["entry_date"],
                 "exit_date": row["exit_date"],
-                "target_code": TARGET_CODE,
+                "target_code": target_code,
                 "target_value": target_value,
                 "is_tradable": is_tradable,
                 "invalid_reason": reason,
@@ -240,7 +246,7 @@ def calculate_targets(
     )
     # 写完就刷新覆盖表：覆盖 gate 的依据必须是这次写入后的真实状态，
     # 而不是调用方再去扫一遍全量标签行。
-    warehouse.refresh_label_coverage(batch_id, TARGET_CODE, adjust=adjust)
+    warehouse.refresh_label_coverage(batch_id, target_code, adjust=adjust)
     return TargetCalculationResult(
         calc_batch_id=batch_id,
         rows_written=rows_written,

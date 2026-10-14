@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -74,6 +74,11 @@ class FactorPipelineCreate(BaseModel):
     full_refresh: bool = False
     train_model: bool = True
     materialize_scores: bool = True
+    universe_source: Literal['watchlist', 'positions', 'all'] | None = None
+    watchlist_id: int | None = Field(default=None, ge=1)
+    portfolio_id: int | None = Field(default=None, ge=1)
+    # Frozen by the dispatcher, rather than following later watchlist changes.
+    score_symbols: list[str] | None = None
     window_days: int = Field(default=250, ge=60, le=1000)
     validation_days: int = Field(default=50, ge=20, le=250)
     # Public train_model requests require a readiness-qualified FactorSet at
@@ -100,4 +105,14 @@ class FactorPipelineCreate(BaseModel):
     def validate_training_windows(self):
         if self.validation_days >= self.window_days:
             raise ValueError('validation_days must be less than window_days')
+        if self.universe_source == 'watchlist':
+            if self.watchlist_id is None or self.portfolio_id is not None:
+                raise ValueError('观察池评分必须指定 watchlist_id，不能附带 portfolio_id')
+        elif self.universe_source == 'positions':
+            if self.portfolio_id is None or self.watchlist_id is not None:
+                raise ValueError('持仓评分必须指定 portfolio_id，不能附带 watchlist_id')
+        elif self.watchlist_id is not None or self.portfolio_id is not None:
+            raise ValueError('请为评分范围指定对应的 universe_source')
+        if self.universe_source is not None and self.train_model:
+            raise ValueError('标的范围用于刷新评分；模型训练请使用因子模型入口')
         return self

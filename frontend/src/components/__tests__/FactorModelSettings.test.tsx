@@ -139,6 +139,9 @@ const { mockApi, showToast } = vi.hoisted(() => ({
         feature_count: 5,
       },
     ]),
+    scoringGetFactorSetReadiness: vi.fn(async (factorSetId: string) => ({
+      ready: true, factor_set_id: factorSetId, code: "READY", message: "已通过训练前置检查", details: {},
+    })),
     getEvaluationTaskHeartbeat: vi.fn(async () => ({})),
     activateFactorModel: vi.fn(async () => ({})),
     fallbackFactorModel: vi.fn(async () => ({})),
@@ -155,11 +158,13 @@ import FactorModelSettings from "../FactorModelSettings";
 describe("FactorModelSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockApi.scoringCreateTask.mockResolvedValue({ id: "settings-score-task", status: "queued", stage: "queued", percent: 0 } as any);
+    window.localStorage.clear();
+    mockApi.scoringCreateTask.mockResolvedValue({ id: "settings-score-task", status: "queued", stage: "queued", percent: 0, payload_json: { train_model: false, materialize_scores: true } } as any);
   });
   it("validated 演示模型或未知资格模型仍不能激活正式运行", async () => {
-    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValueOnce({ items: [{ id: "demo-model", status: "validated", production_eligible: false, training_mode: "offline_minimal", readiness_message: "演示模型不可用于正式运行", metrics: {}, sample_count: 250, weights: [] }] });
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValueOnce({ items: [{ id: "demo-model", status: "validated", production_eligible: false, training_mode: "offline_minimal", readiness_message: "演示模型不可用于正式运行", hyperparameters: { factor_set_id: "fs-20d" }, metrics: {}, sample_count: 250, weights: [] }] });
     render(<FactorModelSettings initialTrainModel={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
     await screen.findByText("demo-model");
     const productionButton = screen.getByRole("button", { name: /正式启用|生产运行|生产激活|Ridge/ });
     expect(productionButton).toBeDisabled();
@@ -237,11 +242,12 @@ describe("FactorModelSettings", () => {
     });
 
     render(<FactorModelSettings />);
-
+    await screen.findByTestId("wizard-page-prepare");
+    await waitFor(() => expect(screen.getByTestId("wizard-page-prepare")).toHaveTextContent("90.0%"));
+    fireEvent.click(screen.getByRole("button", { name: /第 3 步：验证与启用/ }));
     await waitFor(() => {
       expect(screen.getByText("ridge-20260714")).toBeInTheDocument();
     });
-    expect(screen.getByText("90.0%")).toBeInTheDocument();
 
     mockApi.scoringActivateModel.mockResolvedValue({ weight_mode: "shadow", active_model_run_id: "ridge-20260714", version: 2 } as any);
     fireEvent.click(screen.getByRole("button", { name: /影子运行/ }));
@@ -277,9 +283,10 @@ describe("FactorModelSettings", () => {
     mockApi.scoringActivateModel.mockResolvedValue({ weight_mode: "ridge", active_model_run_id: "ridge-20260714", version: 2 } as any);
     mockApi.scoringCreateTask.mockRejectedValueOnce(new Error("PIPELINE_BUSY"));
     render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: /第 3 步：验证与启用/ }));
     fireEvent.click(await screen.findByRole("button", { name: /正式启用|生产运行|生产激活|Ridge/ }));
     await screen.findByText(/模型已激活，评分生成未启动.*PIPELINE_BUSY/);
-    await waitFor(() => expect(screen.getAllByText("ridge-20260714").length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(screen.getByTestId("wizard-page-score")).toHaveTextContent("ridge-20260714"));
     expect(mockApi.scoringGetOverviewAsFactor).toHaveBeenCalledTimes(2);
     expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({
       hyperparameters: expect.objectContaining({ expected_model_run_id: "ridge-20260714", expected_weight_mode: "ridge" }),
@@ -321,10 +328,11 @@ describe("FactorModelSettings", () => {
     });
 
     render(<FactorModelSettings />);
-
+    fireEvent.click(await screen.findByRole("button", { name: /第 2 步：训练模型/ }));
     const runButton = await screen.findByRole("button", { name: /启动流水线/ });
     expect(runButton).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "启用因子功能" }));
+    fireEvent.click(screen.getByRole("button", { name: /第 1 步：准备输入/ }));
+    fireEvent.click(screen.getByRole("button", { name: "开启因子功能" }));
     await waitFor(() => {
       expect(mockApi.scoringUpdateSystemConfig).toHaveBeenCalledWith(true, "settings:toggle");
     });
@@ -365,7 +373,7 @@ describe("FactorModelSettings", () => {
     });
 
     render(<FactorModelSettings />);
-    fireEvent.click(await screen.findByRole("button", { name: "初始化仓库" }));
+    fireEvent.click(await screen.findByRole("button", { name: "初始化因子仓库" }));
     await waitFor(() => {
       expect(mockApi.scoringInitializeWarehouse).toHaveBeenCalledTimes(1);
     });

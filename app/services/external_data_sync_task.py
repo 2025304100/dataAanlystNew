@@ -343,6 +343,8 @@ def build_external_sync_plan(
         requested_start = requested_end - timedelta(days=lookback_days - 1)
     if requested_start > requested_end:
         raise ValueError("start_date must be on or before end_date")
+    if requested_end > reference_date:
+        raise ValueError("结束日期不能晚于今天，请勿选择未来日期")
     if mode == "incremental":
         if dataset in {"fundamental", "capital_flow"} and requested_end != reference_date:
             raise ValueError("估值和资金流增量仅支持当前日期；历史日期请使用历史回填模式")

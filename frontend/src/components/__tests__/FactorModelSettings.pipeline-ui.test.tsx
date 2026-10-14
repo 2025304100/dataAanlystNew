@@ -66,6 +66,9 @@ const { mockApi, showToast, mockNavigate } = vi.hoisted(() => ({
     })),
     scoringListTasks: vi.fn(async () => []),
     scoringListFactorSetsAsFactor: vi.fn(async () => [] as any[]),
+    scoringGetFactorSetReadiness: vi.fn(async (factorSetId: string) => ({
+      ready: true, factor_set_id: factorSetId, code: "READY", message: "已通过训练前置检查", details: {},
+    })),
     scoringGetTask: vi.fn(),
     scoringGetPipelineEta: vi.fn(async () => ({
       avg_seconds: 0,
@@ -76,7 +79,7 @@ const { mockApi, showToast, mockNavigate } = vi.hoisted(() => ({
       train_model: true,
       full_refresh: false,
     })),
-    scoringCreateTask: vi.fn(async () => ({
+    scoringCreateTask: vi.fn(async (): Promise<any> => ({
       id: "task-1",
       task_type: "factor_pipeline",
       status: "queued",
@@ -134,6 +137,7 @@ function makeFactorSet(overrides: Partial<any> = {}): any {
 describe("FactorModelSettings — Pipeline UI (T8)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     mockApi.scoringGetOverviewAsFactor.mockResolvedValue(OVERVIEW_BASE);
   });
 
@@ -144,6 +148,7 @@ describe("FactorModelSettings — Pipeline UI (T8)", () => {
       makeFactorSet({ id: "fs-B", name: "B 集合", label: "B 集合", n_members: 5, feature_count: 4 }),
     ]);
     render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: /第 2 步：训练模型/ }));
 
     const select = await screen.findByTestId("factor-set-select");
     expect(select).toBeInTheDocument();
@@ -174,6 +179,7 @@ describe("FactorModelSettings — Pipeline UI (T8)", () => {
     mockApi.scoringListFactorSetsAsFactor.mockResolvedValue([fs]);
 
     render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: /第 2 步：训练模型/ }));
 
     // Step 1: 确认 trainingFactorSetId == fs.id（通过 Select 已选项）
     const select = await screen.findByTestId("factor-set-select");
@@ -203,6 +209,7 @@ describe("FactorModelSettings — Pipeline UI (T8)", () => {
   it("TR-8.3：无冻结集合时 Select disabled、跳转按钮存在、点击触发 navigate('/factors?next=pipeline')", async () => {
     mockApi.scoringListFactorSetsAsFactor.mockResolvedValue([] as any[]);
     render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: /第 2 步：训练模型/ }));
 
     const select = await screen.findByTestId("factor-set-select");
     expect(select).toBeInTheDocument();
@@ -230,51 +237,30 @@ describe("FactorModelSettings — Pipeline UI (T8)", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/factors?next=pipeline");
   });
 
-  // —— TR-8.4：Steps 条渲染 5 个圆点，4 类态 CSS class 至少 ≥2/4 命中
-  it("TR-8.4：Steps 条渲染 5 个圆点，按 CSS class 验证 ready/wait/running/blocked 有 ≥2 个独立 class 生效", async () => {
-    // 选择 1 个冻结集合 → ready 命中 + wait 命中（3/5 都是 wait）
+  it("TR-8.4：尚无任务不显示阶段进度，真实训练只显示本次四个阶段", async () => {
     mockApi.scoringListFactorSetsAsFactor.mockResolvedValue([
       makeFactorSet({ id: "fs-READY", name: "就绪集合", label: "就绪集合", n_members: 3, feature_count: 2 }),
     ]);
+    mockApi.scoringCreateTask.mockResolvedValueOnce({
+      id: "task-1", task_type: "factor_pipeline", status: "running", stage: "train", percent: 72,
+      message: "Training ridge model", payload_json: { train_model: true, materialize_scores: false, factor_set_id: "fs-READY" },
+      total: 1, processed: 0, ok_count: 0, failed_count: 0, current_item: null, result: null, errors: [],
+      created_at: null, started_at: null, finished_at: null, updated_at: null,
+    });
     render(<FactorModelSettings />);
-
-    const bar = await screen.findByTestId("pipeline-steps-bar");
-    expect(bar).toBeInTheDocument();
-
-    const step1 = screen.getByTestId("pipeline-step-1");
-    const step2 = screen.getByTestId("pipeline-step-2");
-    const step3 = screen.getByTestId("pipeline-step-3");
-    const step4 = screen.getByTestId("pipeline-step-4");
-    const step5 = screen.getByTestId("pipeline-step-5");
-    [step1, step2, step3, step4, step5].forEach((s) => expect(s).toBeInTheDocument());
-
-    // Step 1 应是 ready（ps-state-ready）
-    const cls1 = step1.className;
-    expect(cls1).toContain("ps-state-ready");
-    // Step 3 是 wait
-    expect(step3.className).toContain("ps-state-wait");
-
-    // 再通过点击“启动流水线”让 step4 切 running
+    fireEvent.click(await screen.findByRole("button", { name: /第 2 步：训练模型/ }));
+    expect(screen.queryByTestId("pipeline-steps-bar")).not.toBeInTheDocument();
     const runBtn = screen.getByRole("button", { name: /启动流水线.*训练模式/ });
+    await waitFor(() => expect(runBtn).toBeEnabled());
     fireEvent.click(runBtn);
 
-    await waitFor(() => {
-      const step4Cls = step4.className;
-      expect(step4Cls).toContain("ps-state-running");
-      expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({
-        train_model: true, materialize_scores: false, factor_set_id: "fs-READY",
-      }));
-    });
-
-    // 到目前为止 ready/wait/running 都命中，已 ≥ 2/4（rubric 要求）
-    // 另加 blocked：模拟有集合但 n_members=0 的场景，做一次二次断言
-    const s2Cls = step2.className;
-    // 当 ready 时应该有 ps-state-ready
-    const anyHit = ["ps-state-ready", "ps-state-wait", "ps-state-running", "ps-state-blocked"]
-      .map((c) => [step1, step2, step3, step4, step5].some((s) => s.className.includes(c)))
-      .filter(Boolean).length;
-    expect(anyHit).toBeGreaterThanOrEqual(2);
-    expect(s2Cls).toMatch(/ps-state-(ready|blocked|wait)/);
+    await screen.findByText("任务：task-1");
+    expect(screen.getByTestId("pipeline-step-4")).toHaveClass("ps-state-running");
+    expect(screen.queryByTestId("pipeline-step-5")).not.toBeInTheDocument();
+    for (const step of [1, 2, 3]) expect(screen.getByTestId(`pipeline-step-${step}`)).toHaveClass("ps-state-ready");
+    expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({
+      train_model: true, materialize_scores: false, factor_set_id: "fs-READY",
+    }));
   });
 
   // —— TR-8.5：train=false 时 info Banner 渲染 “不会创建新因子模型” 子串；启动按钮 label 含 “不训练模式”
@@ -285,17 +271,27 @@ describe("FactorModelSettings — Pipeline UI (T8)", () => {
     // 通过 initialTrainModel=false 初始 prop 直接进不训练分支，
     // 避免依赖脆弱的 Switch DOM index 查找（antd 在 jsdom 下的 checkbox input 不稳定）。
     render(<FactorModelSettings initialTrainModel={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: /第 4 步：生成评分/ }));
 
-    // Banner 出现
+    // 没有活动模型时先说明评分未就绪，并提供明确的仅计算输入入口。
     const banner = await screen.findByTestId("pipeline-no-train-banner");
     expect(banner).toBeInTheDocument();
     const bannerText = banner.textContent ?? "";
-    expect(bannerText).toContain("不会创建新因子模型");
+    expect(bannerText).toContain("本次不训练新模型");
+    expect(bannerText).toContain("当前没有已激活且可评分的模型");
 
     // 启动按钮 label 含 不训练模式
     const buttons = screen.getAllByRole("button");
     const runBtn = buttons.find((b) => /启动流水线/.test(b.textContent ?? ""));
     expect(runBtn).not.toBeUndefined();
     expect(runBtn!.textContent).toContain("不训练模式");
+    expect(runBtn!).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "仅计算输入" }));
+    await screen.findByTestId("wizard-page-prepare");
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "仅计算已有输入" }));
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({
+      train_model: false, materialize_scores: false,
+    })));
   });
 });

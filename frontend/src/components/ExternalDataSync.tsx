@@ -48,8 +48,105 @@ import {
 } from "../api/client";
 
 type SyncSource = "watchlist" | "positions" | "all";
+type SyncWatchlist = { id: number; name: string; list_type: string };
 
 const FULL_HISTORY_START_DATE = "1990-01-01";
+const MAX_HISTORY_SPAN_DAYS = 36500;
+type HistoryDateRange = [Dayjs | null, Dayjs | null];
+type HistoryPreset = `${number}d` | `${number}y` | "month_to_date" | "year_to_date" | "custom";
+const HISTORY_DATE_PRESETS: { value: HistoryPreset; label: string; days?: number; years?: number }[] = [
+  ...[7, 14, 30, 60, 90, 100, 180].map((days) => ({ value: `${days}d` as HistoryPreset, label: `${days} 日`, days })),
+  ...[1, 2, 3, 5].map((years) => ({ value: `${years}y` as HistoryPreset, label: `${years} 年`, years })),
+  { value: "month_to_date", label: "本月至今" },
+  { value: "year_to_date", label: "今年至今" },
+  { value: "custom", label: "自定义" },
+];
+
+function presetDateRange(preset: HistoryPreset, anchor: Dayjs): HistoryDateRange {
+  const today = dayjs().startOf("day");
+  if (preset === "month_to_date") return [today.startOf("month"), today];
+  if (preset === "year_to_date") return [today.startOf("year"), today];
+  const option = HISTORY_DATE_PRESETS.find((item) => item.value === preset);
+  const end = anchor.startOf("day");
+  if (option?.days) return [end.subtract(option.days - 1, "day"), end];
+  if (option?.years) return [end.subtract(option.years, "year").add(1, "day"), end];
+  return [null, null];
+}
+
+function dateRangeSpan(range: HistoryDateRange): number | null {
+  if (!range[0]?.isValid() || !range[1]?.isValid()) return null;
+  return range[1].startOf("day").diff(range[0].startOf("day"), "day") + 1;
+}
+
+function historyDateIssue(range: HistoryDateRange): string | null {
+  const span = dateRangeSpan(range);
+  if (span === null) return "请选择完整的开始日期和结束日期";
+  if (span < 1) return "结束日期不能早于开始日期";
+  if (range[1]!.isAfter(dayjs(), "day")) return "结束日期不能晚于今天";
+  if (span > MAX_HISTORY_SPAN_DAYS) return `日期跨度不能超过 ${MAX_HISTORY_SPAN_DAYS} 日`;
+  return null;
+}
+
+function matchingDatePreset(range: HistoryDateRange, preferred: HistoryPreset): HistoryPreset {
+  if (historyDateIssue(range)) return "custom";
+  const matches = (preset: HistoryPreset) => {
+    const expected = presetDateRange(preset, range[1]!);
+    return Boolean(expected[0]?.isSame(range[0], "day") && expected[1]?.isSame(range[1], "day"));
+  };
+  if (preferred !== "custom" && matches(preferred)) return preferred;
+  return HISTORY_DATE_PRESETS.find((item) => item.value !== "custom" && matches(item.value))?.value ?? "custom";
+}
+
+type ExternalInputDraft = {
+  source: SyncSource;
+  includeNorthbound: boolean;
+  syncMode: "incremental" | "backfill";
+  datePreset: HistoryPreset;
+  dateRange: HistoryDateRange;
+};
+
+function controlledDraftKey(value: string | undefined): string | null {
+  return value && /^[a-z0-9][a-z0-9:_-]{0,127}$/i.test(value) ? value : null;
+}
+
+function parseDraftDate(value: unknown): Dayjs | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const parsed = dayjs(value);
+  return parsed.isValid() && parsed.format("YYYY-MM-DD") === value ? parsed : undefined;
+}
+
+function readInputDraft(storageKey: string | undefined): ExternalInputDraft | null {
+  const key = controlledDraftKey(storageKey);
+  if (!key || typeof window === "undefined") return null;
+  try {
+    const serialized = window.sessionStorage.getItem(key);
+    if (!serialized) return null;
+    const value: unknown = JSON.parse(serialized);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const draft = value as Record<string, unknown>;
+    if (draft.version !== 1
+      || typeof draft.source !== "string" || !["watchlist", "positions", "all"].includes(draft.source)
+      || typeof draft.includeNorthbound !== "boolean"
+      || typeof draft.syncMode !== "string" || !["incremental", "backfill"].includes(draft.syncMode)
+      || !HISTORY_DATE_PRESETS.some((preset) => preset.value === draft.datePreset)
+      || !Array.isArray(draft.dateRange) || draft.dateRange.length !== 2) return null;
+    const start = parseDraftDate(draft.dateRange[0]);
+    const end = parseDraftDate(draft.dateRange[1]);
+    if (start === undefined || end === undefined) return null;
+    const dateRange: HistoryDateRange = [start, end];
+    const datePreset = draft.datePreset as HistoryPreset;
+    return {
+      source: draft.source as SyncSource,
+      includeNorthbound: draft.includeNorthbound,
+      syncMode: draft.syncMode as ExternalInputDraft["syncMode"],
+      datePreset: start && end && datePreset !== "custom" ? matchingDatePreset(dateRange, datePreset) : datePreset,
+      dateRange,
+    };
+  } catch {
+    return null;
+  }
+}
 
 const DATASET_ORDER: ExternalSyncDataset[] = [
   "fundamental",
@@ -254,16 +351,47 @@ function scoringStageLabel(stage: string): string {
   return labels[stage] || stage;
 }
 
-export default function ExternalDataSync() {
+function scoringTaskUniverseDescription(task: FactorPipelineTask): string | null {
+  const resultScope = task.result?.score_universe;
+  let payload: Record<string, unknown> = {};
+  if (typeof task.payload_json === "string") {
+    try {
+      const parsed: unknown = JSON.parse(task.payload_json);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
+    } catch { /* Legacy tasks may not expose their submission metadata. */ }
+  } else if (task.payload_json && typeof task.payload_json === "object") {
+    payload = task.payload_json;
+  }
+  const universe = resultScope && typeof resultScope === "object"
+    ? resultScope as Record<string, unknown>
+    : { source: payload.universe_source, watchlist_id: payload.watchlist_id, portfolio_id: payload.portfolio_id, symbol_count: Array.isArray(payload.score_symbols) ? payload.score_symbols.length : null };
+  const sourceLabel = universe.source === "watchlist" && typeof universe.watchlist_id === "number"
+    ? `观察池 #${universe.watchlist_id}`
+    : universe.source === "positions" && typeof universe.portfolio_id === "number"
+      ? `组合 #${universe.portfolio_id} 持仓`
+      : universe.source === "all" ? "全量已同步标的" : null;
+  if (!sourceLabel) return null;
+  const count = typeof universe.symbol_count === "number" ? ` · ${formatCount(universe.symbol_count)} 只股票` : " · 股票数待核实";
+  return `本次评分范围：${sourceLabel}${count}；使用全市场数据作为计算参照`;
+}
+
+export type ExternalDataSyncProps = {
+  showScoringRefresh?: boolean;
+  /** A stable workflow-owned key enables tab-scoped form drafts only. */
+  draftStorageKey?: string;
+};
+
+export default function ExternalDataSync({ showScoringRefresh = true, draftStorageKey }: ExternalDataSyncProps) {
   // The data-center can be embedded independently in tests and operational
   // tools. AppContext enriches the watchlist scope when present, but the
   // synchronization surface must remain usable without the global workbench.
   const app = useContext(AppContext);
-  const [source, setSource] = useState<SyncSource>("watchlist");
-  const [includeNorthbound, setIncludeNorthbound] = useState(true);
-  const [syncMode, setSyncMode] = useState<"incremental" | "backfill">("incremental");
-  const [lookbackDays, setLookbackDays] = useState(60);
-  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
+  const [initialInputDraft] = useState(() => readInputDraft(draftStorageKey));
+  const [source, setSource] = useState<SyncSource>(initialInputDraft?.source ?? "watchlist");
+  const [includeNorthbound, setIncludeNorthbound] = useState(initialInputDraft?.includeNorthbound ?? true);
+  const [syncMode, setSyncMode] = useState<"incremental" | "backfill">(initialInputDraft?.syncMode ?? "incremental");
+  const [datePreset, setDatePreset] = useState<HistoryPreset>(initialInputDraft?.datePreset ?? "60d");
+  const [dateRange, setDateRange] = useState<HistoryDateRange>(initialInputDraft?.dateRange ?? [null, null]);
   const [capabilities, setCapabilities] = useState<ExternalDataSyncCapabilities | null>(null);
   const [capabilitiesLoading, setCapabilitiesLoading] = useState(true);
   const [capabilitiesError, setCapabilitiesError] = useState<string | null>(null);
@@ -286,19 +414,104 @@ export default function ExternalDataSync() {
   const [pipelineStarting, setPipelineStarting] = useState(false);
   const [pipelineTask, setPipelineTask] = useState<FactorPipelineTask | null>(null);
   const [pipelinePollError, setPipelinePollError] = useState<string | null>(null);
+  const [standaloneWatchlists, setStandaloneWatchlists] = useState<SyncWatchlist[] | null>(null);
+  const [watchlistsLoading, setWatchlistsLoading] = useState(false);
+  const [watchlistsError, setWatchlistsError] = useState<string | null>(null);
+  const watchlistsRequest = useRef(0);
   const handledTaskIds = useRef(new Set<string>());
+  const historySpan = dateRangeSpan(dateRange);
+  const historyRangeIssue = syncMode === "backfill" ? historyDateIssue(dateRange) : null;
+
+  useEffect(() => {
+    const key = controlledDraftKey(draftStorageKey);
+    if (!key) return;
+    try {
+      window.sessionStorage.setItem(key, JSON.stringify({
+        version: 1,
+        source,
+        includeNorthbound,
+        syncMode,
+        datePreset,
+        dateRange: dateRange.map((date) => date?.format("YYYY-MM-DD") ?? null),
+      }));
+    } catch { /* Input controls remain usable when browser storage is unavailable. */ }
+  }, [draftStorageKey, source, includeNorthbound, syncMode, datePreset, dateRange]);
+
+  const changeSyncMode = (mode: "incremental" | "backfill") => {
+    setSyncMode(mode);
+    setPreviewPlan(null);
+    if (mode === "backfill" && dateRangeSpan(dateRange) === null) {
+      setDatePreset("60d");
+      setDateRange(presetDateRange("60d", dateRange[1] ?? dayjs()));
+    }
+  };
+  const changeDatePreset = (preset: HistoryPreset) => {
+    setDatePreset(preset);
+    setPreviewPlan(null);
+    if (preset !== "custom") setDateRange(presetDateRange(preset, dateRange[1] ?? dayjs()));
+  };
+  const changeDateRange = (value: HistoryDateRange | null) => {
+    const next = value ?? [null, null];
+    setDateRange(next);
+    setDatePreset(matchingDatePreset(next, datePreset));
+    setPreviewPlan(null);
+  };
+
+  const contextWatchlists = app?.workbench?.watchlists;
+  const contextWatchlistsAvailable = Array.isArray(contextWatchlists);
+  const syncWatchlists = useMemo(
+    () => contextWatchlistsAvailable ? contextWatchlists! : standaloneWatchlists ?? [],
+    [contextWatchlistsAvailable, contextWatchlists, standaloneWatchlists],
+  );
+  const refreshStandaloneWatchlists = useCallback(async () => {
+    if (contextWatchlistsAvailable) return;
+    const requestId = ++watchlistsRequest.current;
+    setWatchlistsLoading(true);
+    setWatchlistsError(null);
+    try {
+      const lists = await api.getWatchlists();
+      if (!Array.isArray(lists)) throw new Error("观察池列表返回无效");
+      if (requestId === watchlistsRequest.current) setStandaloneWatchlists(lists);
+    } catch (error: any) {
+      if (requestId === watchlistsRequest.current) {
+        setStandaloneWatchlists(null);
+        setWatchlistsError(error?.message || String(error));
+      }
+    } finally {
+      if (requestId === watchlistsRequest.current) setWatchlistsLoading(false);
+    }
+  }, [contextWatchlistsAvailable]);
+  useEffect(() => {
+    if (contextWatchlistsAvailable) {
+      watchlistsRequest.current += 1;
+      setWatchlistsLoading(false);
+      setWatchlistsError(null);
+      return;
+    }
+    void refreshStandaloneWatchlists();
+    return () => { watchlistsRequest.current += 1; };
+  }, [contextWatchlistsAvailable, refreshStandaloneWatchlists]);
 
   const primaryWatchlistId = useMemo(() => {
-    const lists = app?.workbench?.watchlists ?? [];
+    const lists = syncWatchlists;
     if (app?.activeWatchlistId && lists.some((item) => item.id === app.activeWatchlistId)) {
       return app.activeWatchlistId;
     }
     return lists.find((item) => item.list_type === "watch")?.id ?? lists[0]?.id ?? null;
-  }, [app?.activeWatchlistId, app?.workbench?.watchlists]);
+  }, [app?.activeWatchlistId, syncWatchlists]);
   const primaryWatchlistName = useMemo(() => {
-    const lists = app?.workbench?.watchlists ?? [];
+    const lists = syncWatchlists;
     return lists.find((item) => item.id === primaryWatchlistId)?.name ?? null;
-  }, [app?.workbench?.watchlists, primaryWatchlistId]);
+  }, [syncWatchlists, primaryWatchlistId]);
+  const scoringScopeIssue = source === "watchlist" && !primaryWatchlistId
+    ? !contextWatchlistsAvailable && watchlistsError
+      ? `观察池列表读取失败，无法刷新评分：${watchlistsError}；请重试读取`
+      : !contextWatchlistsAvailable && (watchlistsLoading || standaloneWatchlists === null)
+        ? "观察池列表正在加载，暂不能刷新评分"
+        : "当前观察池尚未加载或不存在，无法刷新评分；请先选择有效观察池"
+    : source === "positions" && !app?.portfolioId
+      ? "当前组合尚未加载或未选择，无法刷新持仓评分；请先选择组合"
+      : null;
 
   const configs = {
       fundamental: { title: t("extSyncFundamental"), desc: t("extSyncFundamentalDesc"), icon: <FundOutlined /> },
@@ -435,7 +648,6 @@ export default function ExternalDataSync() {
       mode: "incremental" | "backfill";
       start_date: string;
       end_date: string;
-      lookback_days: number;
     }> = {},
   ) => {
     // Inventory is advisory for starting a sync. During the initial request it
@@ -460,7 +672,16 @@ export default function ExternalDataSync() {
         ?? (dateRange[0] ? dateRange[0].format("YYYY-MM-DD") : undefined);
       const effectiveEndDate = overrides.end_date
         ?? (dateRange[1] ? dateRange[1].format("YYYY-MM-DD") : undefined);
+      const requestedRange: HistoryDateRange = [
+        effectiveStartDate ? dayjs(effectiveStartDate) : null,
+        effectiveEndDate ? dayjs(effectiveEndDate) : null,
+      ];
+      if (effectiveMode === "backfill") {
+        const issue = historyDateIssue(requestedRange);
+        if (issue) { message.warning(issue); return; }
+      }
       const syncPayload = {
+        ...overrides,
         dataset,
         source: effectiveSource,
         watchlist_id: effectiveSource === "watchlist" ? primaryWatchlistId : undefined,
@@ -469,10 +690,9 @@ export default function ExternalDataSync() {
         mode: effectiveMode,
         start_date: effectiveMode === "backfill" ? effectiveStartDate : undefined,
         end_date: effectiveMode === "backfill" ? effectiveEndDate : undefined,
-        lookback_days: effectiveMode === "backfill" ? (overrides.lookback_days ?? lookbackDays) : 1,
+        lookback_days: effectiveMode === "backfill" ? dateRangeSpan(requestedRange)! : 1,
         limit: 20,
         ...(effectiveMode === "backfill" && dataset === "fundamental" ? { max_workers: 4 } : {}),
-      ...overrides,
       };
       const plan = await api.previewExternalDataSyncPlan(syncPayload);
       setPreviewPlan(plan);
@@ -530,7 +750,9 @@ export default function ExternalDataSync() {
   };
 
   const refreshFactorScores = async () => { /* P2-4: UX 语义别名 — 显示文案统一使用「评分特征/评分流水线」而不是「因子」 */
-    if (pipelineStarting) return;
+    if (!showScoringRefresh || pipelineStarting) return;
+    if (historyRangeIssue) { message.warning(historyRangeIssue); return; }
+    if (scoringScopeIssue) { message.warning(scoringScopeIssue); return; }
     setPipelineStarting(true);
     try {
       const start = syncMode === "backfill" && dateRange[0]
@@ -545,6 +767,9 @@ export default function ExternalDataSync() {
         full_refresh: syncMode === "backfill",
         train_model: false,
         materialize_scores: true,
+        universe_source: source,
+        ...(source === "watchlist" ? { watchlist_id: primaryWatchlistId! } : {}),
+        ...(source === "positions" ? { portfolio_id: app!.portfolioId! } : {}),
       });
       setPipelineTask(task);
       setPipelinePollError(null);
@@ -558,7 +783,7 @@ export default function ExternalDataSync() {
   };
 
   useEffect(() => {
-    if (!pipelineTask || ["done", "completed", "failed", "cancelled"].includes(pipelineTask.status)) return;
+    if (!showScoringRefresh || !pipelineTask || ["done", "completed", "failed", "cancelled"].includes(pipelineTask.status)) return;
     let disposed = false;
     const poll = async () => {
       try {
@@ -571,10 +796,11 @@ export default function ExternalDataSync() {
     void poll();
     const timer = window.setInterval(poll, 1500);
     return () => { disposed = true; window.clearInterval(timer); };
-  }, [pipelineTask?.id, pipelineTask?.status]);
+  }, [showScoringRefresh, pipelineTask?.id, pipelineTask?.status]);
 
   const repairDetectedGaps = async (dataset: "fundamental" | "financial" | "capital_flow") => {
     if (!overview) return;
+    if (historyRangeIssue) { message.warning(historyRangeIssue); return; }
     setRepairingDataset(dataset);
     setFinishedTask(null);
     // 缺口修复不应受“最近快照”显示模式影响。未选择明确日期时，
@@ -586,9 +812,9 @@ export default function ExternalDataSync() {
     const knownEnds = coverageFields
       .map((field) => field.latest_date)
       .filter((value): value is string => Boolean(value));
-    const end = dateRange[1]
+    const end = (syncMode === "backfill" ? dateRange[1] : null)
       || (knownEnds.length ? dayjs(knownEnds.sort()[knownEnds.length - 1]) : dayjs());
-    const start = dateRange[0]
+    const start = (syncMode === "backfill" ? dateRange[0] : null)
       || (knownStarts.length ? dayjs(knownStarts.sort()[0]) : end.subtract(59, "day"));
     try {
       const report = await api.getExternalDataGaps(
@@ -658,6 +884,7 @@ export default function ExternalDataSync() {
   const northboundCapability = capabilities?.capital_flow?.northbound;
   const northboundReady = Boolean(northboundCapability?.available === true && !capabilitiesLoading && !capabilitiesError);
   const pipelineOutcome = pipelineTask ? scoringOutcome(pipelineTask) : null;
+  const pipelineUniverseDescription = pipelineTask ? scoringTaskUniverseDescription(pipelineTask) : null;
   const tailImportWarning = Boolean(tailImportResult && (tailImportResult.written_sessions === 0 || tailImportResult.rejected_sessions > 0 || tailImportResult.invalid_rows || tailImportResult.warnings?.length || tailImportResult.warehouse_mirror?.status === "warning" || tailImportResult.quality_snapshot?.status === "warning"));
   const rows = useMemo(() => {
     const byDataset = new Map((overview?.datasets || []).map((item) => [item.dataset, item]));
@@ -805,6 +1032,8 @@ export default function ExternalDataSync() {
         const repairable = row.dataset === "fundamental" || row.dataset === "financial" || row.dataset === "capital_flow";
         const resumableTask = Boolean(row.latest_task && taskCanResume(row.latest_task) && row.latest_task.batch_recovery);
         const historyUnsupported = syncMode === "backfill" && (!historyCapabilitiesReady || !capabilities?.[row.dataset]?.modes.includes("backfill"));
+        const historyLimit = capabilities?.[row.dataset]?.history_limit_days;
+        const spanExceedsLimit = syncMode === "backfill" && historySpan !== null && historyLimit != null && historyLimit > 0 && historySpan > historyLimit;
         const scopeUnsupported = row.dataset === "tail_proxy" && source === "all";
         let disabledReason: string | null = null;
         if (scopeUnsupported) disabledReason = "尾盘分钟同步仅支持观察池或持仓范围，请缩小标的范围";
@@ -812,6 +1041,8 @@ export default function ExternalDataSync() {
         else if (historyUnsupported) disabledReason = row.dataset === "etf"
           ? "ETF 历史接口目前只稳定提供净值，溢折价、规模、份额等指标没有统一可靠的历史序列；当前同步按最近快照执行"
           : "当前数据源仅支持最近快照，请将同步模式切换为“最近快照”";
+        else if (historyRangeIssue) disabledReason = historyRangeIssue;
+        else if (spanExceedsLimit) disabledReason = `所选范围为 ${historySpan} 日，超过该数据源 ${historyLimit} 日的历史上限，请缩短日期范围`;
         else if (taskForDataset(row.dataset)) disabledReason = "该数据集正在同步，请等待当前任务完成";
         return (
           <Space direction="vertical" size={6}>
@@ -821,12 +1052,12 @@ export default function ExternalDataSync() {
                   type="primary"
                   icon={<SyncOutlined spin={startingDataset === row.dataset || Boolean(taskForDataset(row.dataset))} />}
                   loading={startingDataset === row.dataset}
-                  disabled={controlsDisabled || Boolean(taskForDataset(row.dataset)) || historyUnsupported || scopeUnsupported}
+                  disabled={controlsDisabled || Boolean(disabledReason)}
                   onClick={() => void runSync(row.dataset)}
                 >
                   {taskForDataset(row.dataset) ? t("extSyncing") : configs[row.dataset].title}
                 </Button>
-                {historyUnsupported || scopeUnsupported ? (
+                {disabledReason ? (
                   <Tooltip title={disabledReason}>
                     <QuestionCircleOutlined
                       aria-label="查看不可同步原因"
@@ -840,7 +1071,7 @@ export default function ExternalDataSync() {
               <Button
                 size="small"
                 loading={repairingDataset === row.dataset}
-                disabled={controlsDisabled || !overview || Boolean(taskForDataset(row.dataset)) || ((!dateRange[0] || !dateRange[1]) && (coverageLoading || Boolean(coverageError) || !coverage))}
+                disabled={controlsDisabled || !overview || Boolean(taskForDataset(row.dataset)) || historyUnsupported || Boolean(historyRangeIssue) || spanExceedsLimit || ((syncMode !== "backfill" || !dateRange[0] || !dateRange[1]) && (coverageLoading || Boolean(coverageError) || !coverage))}
                 onClick={() => void repairDetectedGaps(row.dataset as "fundamental" | "financial" | "capital_flow")}
               >
                 检查并修复缺口
@@ -856,7 +1087,6 @@ export default function ExternalDataSync() {
                     mode: "backfill",
                     start_date: FULL_HISTORY_START_DATE,
                     end_date: dayjs().format("YYYY-MM-DD"),
-                    lookback_days: 1,
                   })}
                 >
                   {t("extFullValuationHistory")}
@@ -956,7 +1186,7 @@ export default function ExternalDataSync() {
       })}
 
       <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
-        <Space>
+        <Space wrap>
           <Typography.Text strong>{t("extScopeLabel")}:</Typography.Text>
           <Select
             value={source}
@@ -977,11 +1207,11 @@ export default function ExternalDataSync() {
           {t("extIncludeNorthbound")}
         </Checkbox>
         {!northboundReady && <Typography.Text type="warning">{capabilitiesLoading ? "北向资金能力正在确认，仅同步个股资金流" : northboundCapability?.available === false ? `北向资金不可用：${northboundCapability.reason}` : "北向资金能力未知，仅同步个股资金流；请重试读取同步能力"}</Typography.Text>}
-        <Space>
+        <Space wrap>
           <Typography.Text strong>{t("extSyncModeLabel")}:</Typography.Text>
           <Select
             value={syncMode}
-            onChange={setSyncMode}
+            onChange={changeSyncMode}
             disabled={controlsDisabled}
             style={{ width: 130 }}
             options={[
@@ -992,45 +1222,62 @@ export default function ExternalDataSync() {
           {syncMode === "backfill" ? (
             <>
               <Select
-                value={lookbackDays}
-                onChange={setLookbackDays}
+                aria-label="日期跨度预设"
+                value={datePreset}
+                onChange={changeDatePreset}
                 disabled={controlsDisabled}
-                style={{ width: 110 }}
-                options={[30, 60, 100].map((value) => ({ value, label: `${value} 日` }))}
+                style={{ width: 140 }}
+                options={HISTORY_DATE_PRESETS}
               />
               <DatePicker.RangePicker
                 value={dateRange}
                 disabled={controlsDisabled}
-                onChange={(value) => setDateRange(value || [null, null])}
+                onChange={changeDateRange}
+                disabledDate={(value) => value.isAfter(dayjs(), "day")}
                 allowClear
                 placeholder={["开始日期", "结束日期"]}
               />
             </>
           ) : null}
         </Space>
-        <Tooltip title="仅同步外部数据不会自动刷新评分特征；此操作会计算输入，在真实模型已激活且数据齐全时生成模型评分，并保留任务证据。默认重算最近约 11 天；未激活模型或输入不足时会明确说明未生成或仅部分生成评分。">
+        {showScoringRefresh && <Tooltip title={`当前评分仅支持 A 股股票。${scoringScopeIssue ?? `仅同步外部数据不会自动刷新评分特征；此操作会计算输入，在真实模型已激活且数据齐全时生成模型评分，并保留任务证据。${syncMode === "backfill" ? "按右侧所选日期范围重算。" : "默认重算最近约 11 天。"}为保持评分可比性，仍使用全市场数据作为计算参照，仅为所选范围生成评分。未激活模型或输入不足时会明确说明未生成或仅部分生成评分。`}`}>
           <Button
             aria-label="刷新评分特征"
             type="primary"
             ghost
             icon={<SyncOutlined />}
             loading={pipelineStarting}
-            disabled={controlsDisabled || taskRunning || Boolean(pipelineTask && ["queued", "running"].includes(pipelineTask.status))}
+            disabled={controlsDisabled || Boolean(historyRangeIssue) || Boolean(scoringScopeIssue) || taskRunning || Boolean(pipelineTask && ["queued", "running"].includes(pipelineTask.status))}
             onClick={() => void refreshFactorScores()}
           >
             刷新评分特征
           </Button>
-        </Tooltip>
+        </Tooltip>}
       </div>
+
+      {showScoringRefresh && <Typography.Text type={scoringScopeIssue ? "warning" : "secondary"} style={{ display: "block", marginBottom: 12 }}>
+        {scoringScopeIssue ?? "当前评分仅支持 A 股股票。为保持评分可比性，仍使用全市场数据作为计算参照，仅为所选范围生成评分。"}
+      </Typography.Text>}
+      {source === "watchlist" && !contextWatchlistsAvailable && watchlistsError && <Button
+        size="small"
+        loading={watchlistsLoading}
+        onClick={() => void refreshStandaloneWatchlists()}
+        style={{ marginBottom: 12 }}
+      >重试读取观察池</Button>}
+
+      {syncMode === "backfill" && <Typography.Text type={historyRangeIssue ? "warning" : "secondary"} style={{ display: "block", marginBottom: 12 }}>
+        {historyRangeIssue ?? `${dateRange[0]!.format("YYYY-MM-DD")} → ${dateRange[1]!.format("YYYY-MM-DD")} · ${historySpan} 个自然日（含首尾）。选择日/年跨度会保留结束日期；本月至今、今年至今截至今天。`}
+      </Typography.Text>}
 
       {coverageError && <Alert type="error" showIcon message="因子覆盖读取失败" description={coverageError} action={<Button size="small" loading={coverageLoading} onClick={() => void refreshCoverage()}>重试覆盖读取</Button>} style={{ marginBottom: 14 }} />}
       {capabilitiesError && <Alert type="warning" showIcon message="同步能力读取失败" description={capabilitiesError} action={<Button size="small" loading={capabilitiesLoading} onClick={() => void refreshCapabilities()}>重试同步能力</Button>} style={{ marginBottom: 14 }} />}
-      {pipelineTask && pipelineOutcome && <Alert
+      {showScoringRefresh && pipelineTask && pipelineOutcome && <Alert
         type={pipelineOutcome.type}
         showIcon
         style={{ marginBottom: 14 }}
         message={`评分特征：${pipelineOutcome.label}${pipelineTask.stage ? ` · ${scoringStageLabel(pipelineTask.stage)}` : ""}${typeof pipelineTask.percent === "number" ? ` · ${Math.round(pipelineTask.percent)}%` : ""}`}
         description={<Space direction="vertical" size={4}>
+          {pipelineUniverseDescription && <span>{pipelineUniverseDescription}</span>}
           {pipelineOutcome.detail && <span>{pipelineOutcome.detail}</span>}
           {pipelineTask.message && <span>{pipelineTask.message}</span>}
           {pipelinePollError && <Typography.Text type="danger">任务状态读取失败：{pipelinePollError}；正在重试</Typography.Text>}
@@ -1082,9 +1329,9 @@ export default function ExternalDataSync() {
                     {configs[item.dataset].title}：{datasetCoverageReason(item)}
                   </Tag>
                 ))}
-                <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-model" }))}>
+                {showScoringRefresh && <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-model" }))}>
                   {t("extCoverageActionModel")}
-                </Button>
+                </Button>}
                 <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "api-management" }))}>
                   {t("extCoverageActionApi")}
                 </Button>

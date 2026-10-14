@@ -286,6 +286,7 @@
 
 /* 进度条（覆盖率 / 资源占用 / 比例） */
 .mining-meter {
+  display: block;
   position: relative;
   height: 8px;
   border-radius: var(--m-r-pill);
@@ -298,6 +299,7 @@
 }
 
 .mining-meter-fill {
+  display: block;
   height: 100%;
   border-radius: var(--m-r-pill);
   background: var(--m-brand);
@@ -318,6 +320,33 @@
 
 .mining-meter-fill--success {
   background: var(--m-success);
+}
+
+.mining-set-field {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.mining-runs-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 0;
+  color: var(--m-text-2);
+  flex-wrap: wrap;
+}
+
+.mining-set-field select,
+.mining-set-field input {
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-r);
+  background: var(--m-surface);
+  color: var(--m-text);
 }
 
 /* 横幅（提示 / 引导 / 告警 / 阻断） */

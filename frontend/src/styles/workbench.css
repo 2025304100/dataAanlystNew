@@ -3001,35 +3001,11 @@ body.chart-expanded {
   color: var(--pt-muted-foreground);
   line-height: 1.65;
 }
+/* 待办卡片操作按钮：仅保留卡片内布局（贴底、整宽、图标动效），
+   颜色/字号/高度全部交给 antd Button 主题，避免与其他 antd 按钮两套规格 */
 .pt-theme-scope .gov-item-action {
   margin-top: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
   width: 100%;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid var(--pt-border);
-  background: var(--pt-surface-3);
-  color: var(--pt-foreground);
-  transition: all 0.15s ease;
-}
-.pt-theme-scope .gov-item-action:hover {
-  background: var(--pt-surface-4);
-  border-color: rgba(148, 163, 184, 0.55);
-}
-.pt-theme-scope .gov-item-action[data-tone="danger"] {
-  background: var(--pt-primary);
-  border-color: transparent;
-  color: var(--pt-primary-foreground);
-}
-.pt-theme-scope .gov-item-action[data-tone="danger"]:hover {
-  background: var(--pt-cyan-400, #22d3ee);
 }
 .pt-theme-scope .gov-item-action svg {
   transition: transform 0.15s ease;

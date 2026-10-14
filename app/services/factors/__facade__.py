@@ -93,6 +93,12 @@ class ScoreRuntimeOverviewDTO:
     health_status: str               # healthy | degraded | unavailable
     active_factor_coverage_count: int
     active_factor_avg_coverage: float
+    # Management pages need the actual activation state. Existing fields
+    # above retain decision semantics: shadow continues using manual scores.
+    runtime_mode: Literal["manual", "ridge", "shadow"] | None = None
+    runtime_active_model_id: str | None = None
+    score_weight_mode: Literal["manual", "ridge", "shadow"] | None = None
+    updated_by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -604,6 +610,10 @@ def get_score_runtime_overview() -> ScoreRuntimeOverviewDTO:
             health_status=str(getattr(health, "status", "unavailable")),
             active_factor_coverage_count=len(getattr(health, "factors", [])),
             active_factor_avg_coverage=round(float(avg_cov or 0.0), 6),
+            runtime_mode=_coerce_mode(runtime.weight_mode),
+            runtime_active_model_id=runtime.active_model_run_id,
+            score_weight_mode=mode,
+            updated_by=runtime.updated_by,
         )
     finally:
         if owned:
@@ -632,6 +642,9 @@ def create_scoring_task(
     full_refresh: bool = False,
     train_model: bool = False,
     materialize_scores: bool = True,
+    universe_source: str | None = None,
+    watchlist_id: int | None = None,
+    portfolio_id: int | None = None,
     scope: str = "recent",
     actor: str = "external:data_sync",
     source_hint: str = "external_data_sync",
@@ -684,6 +697,9 @@ def create_scoring_task(
         data_cutoff_date=data_cutoff_date,
         mirror_only=resolved_mirror_only,
         materialize_scores=bool(materialize_scores),
+        universe_source=universe_source,
+        watchlist_id=watchlist_id,
+        portfolio_id=portfolio_id,
         batch_size=max(1, int(batch_size or 50000)),
         window_days=(FactorPipelineCreate.model_fields["window_days"].default if window_days is None else int(window_days)),
         validation_days=(FactorPipelineCreate.model_fields["validation_days"].default if validation_days is None else int(validation_days)),
@@ -1207,6 +1223,22 @@ def list_factorsets(
                 db.close()
             except Exception:
                 pass
+
+
+def get_scoring_factor_set_readiness(factor_set_id: str) -> dict[str, Any]:
+    """Read-only frozen-member/version eligibility used before submitting training.
+
+    This reports the same gate enforced by the task creator. It does not claim
+    that market coverage or the later statistical model validation will pass.
+    """
+    from app.services.factor_set_service import factor_set_readiness
+
+    db, owned = _open_session()
+    try:
+        return factor_set_readiness(db, factor_set_id, require_frozen=True)
+    finally:
+        if owned:
+            db.close()
 
 
 def get_model_detail(model_id: str) -> ScoreModelDetailDTO | None:

@@ -6,7 +6,6 @@ import {
   ExclamationCircleOutlined,
   ArrowRightOutlined,
 } from "@ant-design/icons";
-import { t } from "../../i18n";
 import "./ChainStepsBar.css";
 
 export interface ChainState {
@@ -35,14 +34,14 @@ interface StepMeta {
 }
 
 const STEP_META: StepMeta[] = [
-  { idx: 1, shortName: "因子库", longName: "因子库就绪", blockReason: "请先初始化因子库（仓库健康状态未通过，无法加载因子/集合）。", goAction: null },
+  { idx: 1, shortName: "因子库", longName: "检查因子库", blockReason: "请先初始化因子库（仓库健康状态未通过，无法加载因子/集合）。", goAction: { label: "检查因子库", testId: "chain-btn-check-warehouse" } },
   { idx: 2, shortName: "集合", longName: "新建因子集合", blockReason: "暂无因子集合：需要至少创建 1 个集合才能继续。", goAction: { label: "新建集合", testId: "chain-btn-create-factorset" } },
   { idx: 3, shortName: "成员", longName: "添加集合成员（含 feature）", blockReason: "集合为空或不含 feature 角色：请在某个集合中添加至少 1 个 feature 因子。", goAction: { label: "去添加成员", testId: "chain-btn-add-members" } },
   { idx: 4, shortName: "冻结", longName: "冻结集合", blockReason: "没有已冻结集合：先完成预检并冻结一个合格的因子集合才能训练。", goAction: { label: "去冻结", testId: "chain-btn-freeze" } },
-  { idx: 5, shortName: "训练", longName: "训练模型", blockReason: "没有可用冻结集合或尚未训练：请在一个已冻结集合上点「训练模型」。", goAction: { label: "去训练", testId: "chain-btn-train" } },
-  { idx: 6, shortName: "验证", longName: "模型验证", blockReason: "当前没有状态为「已验证」的模型：训练完成后等待验证阶段通过。", goAction: null },
-  { idx: 7, shortName: "激活", longName: "激活生产模型", blockReason: "决策模式非 formal 或活动模型 ID 为空：请先激活一个已验证模型为正式启用。", goAction: { label: "去激活", testId: "chain-btn-activate-model" } },
-  { idx: 8, shortName: "评分", longName: "评分/流水线", blockReason: "流水线配置尚未就绪（仓库/集合/模型至少一方未通过健康检查）。", goAction: { label: "前往流水线设置", testId: "chain-btn-goto-pipeline" } },
+  { idx: 5, shortName: "训练", longName: "训练模型", blockReason: "集合已冻结，下一步训练新模型。选择训练和验证窗口，完成后查看验证结果。", goAction: { label: "去训练", testId: "chain-btn-train" } },
+  { idx: 6, shortName: "验证", longName: "查看模型验证", blockReason: "当前没有通过正式运行资格检查的已验证模型：请查看验证详情；历史模型仍需通过训练来源和因子版本检查。", goAction: { label: "查看验证", testId: "chain-btn-review-model" } },
+  { idx: 7, shortName: "激活", longName: "激活生产模型", blockReason: "当前尚未激活正式使用的模型。请先查看通过验证的模型，由你本人确认后激活。", goAction: { label: "去激活", testId: "chain-btn-activate-model" } },
+  { idx: 8, shortName: "评分就绪", longName: "前往生成评分", blockReason: "模型已激活，还需在流水线检查评分条件。条件就绪后运行评分任务，完成后再查看结果。", goAction: { label: "前往流水线设置", testId: "chain-btn-goto-pipeline" } },
 ];
 
 /** 纯函数：根据 8 项链路状态推断当前步骤 + 阻断集合 + 下一步按钮 enabled。 */
@@ -76,13 +75,13 @@ export interface ChainStepsBarProps {
 
 const ChainStepsBar: React.FC<ChainStepsBarProps> = ({ state, onGoStep, className }) => {
   const { current, blocked, nextEnabled } = inferChainStep(state);
-  const nextStepName = STEP_META.find((m) => m.idx === current)?.longName ?? "";
+  const currentMeta = STEP_META.find((m) => m.idx === current)!;
+  const nextStepName = currentMeta.longName;
+  const allReady = current === 8 && state.pipelineReady;
+  const completedCount = allReady ? 8 : current - 1;
 
   const handleNextPrimary = () => {
-    if (current < 8) {
-      const meta = STEP_META.find((m) => m.idx === current);
-      if (meta?.goAction) onGoStep?.(current);
-    } else onGoStep?.(8);
+    onGoStep?.(current);
   };
 
   return (
@@ -90,8 +89,35 @@ const ChainStepsBar: React.FC<ChainStepsBarProps> = ({ state, onGoStep, classNam
       className={`chain-steps-bar ${className ?? ""}`}
       data-testid="chain-steps-bar"
     >
+      <div className="chain-focus">
+        <div className="chain-focus-copy" role="status" aria-live="polite">
+          <div className="chain-focus-eyebrow">
+            <span>完整研发流程</span>
+            <span>{completedCount} / 8 步已就绪</span>
+          </div>
+          <strong className="chain-focus-title">
+            {allReady ? "评分条件已就绪" : `当前待处理：${currentMeta.longName}`}
+          </strong>
+          <p className="chain-focus-description">
+            {allReady
+              ? "研发与激活条件已通过。前往流水线生成评分，任务完成后再查看评分结果。"
+              : currentMeta.blockReason}
+          </p>
+        </div>
+        <Button
+          type="primary"
+          size="large"
+          disabled={!nextEnabled}
+          onClick={handleNextPrimary}
+          icon={<ArrowRightOutlined />}
+          className="chain-primary-action"
+          data-testid={current === 8 ? "chain-btn-start-scoring" : "chain-btn-next"}
+        >
+          {current === 8 ? "前往生成评分" : `下一步：${nextStepName}`}
+        </Button>
+      </div>
       <div className="chain-steps-wrapper">
-        {STEP_META.map((meta, i) => {
+        {STEP_META.map((meta) => {
           const isBlocked = blocked.has(meta.idx);
           const readyByState = (() => {
             switch (meta.idx) {
@@ -108,49 +134,34 @@ const ChainStepsBar: React.FC<ChainStepsBarProps> = ({ state, onGoStep, classNam
           })();
           const isCurrent = meta.idx === current;
           const isReady = readyByState && !isBlocked;
+          const isWaiting = meta.idx > current;
           const stateClass = isReady ? "chain-ready"
             : isBlocked ? "chain-blocked" : "chain-todo";
-          const stepBaseClass = `chain-step chain-step-${meta.idx} ${stateClass} ${isCurrent ? "chain-current" : ""}`;
-          const iconNode = isReady ? <CheckOutlined className="text-white" />
-            : isBlocked ? <ExclamationCircleOutlined className="text-red-600" />
-            : <span className="font-semibold text-slate-400">{meta.idx}</span>;
-          const dotBgClass = isReady ? "bg-green-500 border-green-600 text-white"
-            : isBlocked ? "bg-slate-200 border-red-400 text-red-600"
-            : "bg-slate-100 border-slate-300 text-slate-500";
-          const labelStrongCls = isReady ? "text-green-700"
-            : isBlocked ? "text-slate-500" : "text-slate-600";
-          const labelMutedCls = isReady ? "text-green-600"
-            : isBlocked ? "text-slate-400" : "text-slate-500";
+          const stepBaseClass = `chain-step chain-step-${meta.idx} ${stateClass} ${isCurrent ? "chain-current" : ""} ${isWaiting ? "chain-waiting" : ""}`;
+          const iconNode = isReady ? <CheckOutlined />
+            : isCurrent ? <ExclamationCircleOutlined />
+            : <span>{meta.idx}</span>;
           const stepContent = (
             <div
-              className={`${stepBaseClass} flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors`}
+              className={stepBaseClass}
               data-testid={`chain-step-${meta.idx}`}
               data-step-state={isReady ? "ready" : isBlocked ? "blocked" : "todo"}
+              data-visual-state={isReady ? "ready" : isWaiting ? "waiting" : "current"}
+              aria-current={isCurrent ? "step" : undefined}
             >
-              <div className={`chain-dot flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs shadow-sm ${dotBgClass}`}>
+              <div className="chain-dot" aria-hidden>
                 {iconNode}
               </div>
               <div className="chain-step-label">
-                <span className={`text-[12px] font-semibold ${labelStrongCls}`}>步骤 {meta.idx}</span>
-                <span className={`text-[11px] ${labelMutedCls}`}>{meta.shortName}</span>
+                <span className="chain-step-name">{meta.idx}. {meta.shortName}</span>
+                <span className="chain-step-status">
+                  {isReady ? "已就绪" : isWaiting ? "等待前序步骤" : "待处理"}
+                </span>
               </div>
-              {isBlocked && meta.goAction && (
-                <Button
-                  size="small"
-                  type="primary"
-                  ghost
-                  className="ml-1 !h-6 !px-2 !text-[11px]"
-                  data-testid={meta.goAction.testId}
-                  onClick={(e) => { e.stopPropagation(); onGoStep?.(meta.idx); }}
-                >
-                  {meta.goAction.label}
-                </Button>
-              )}
             </div>
           );
-          const connectorCls = `chain-connector mx-0.5 h-px w-5 self-center ${isReady ? "bg-green-300" : "bg-slate-200"}`;
           const wrapped = isBlocked ? (
-            <Tooltip key={meta.idx} title={meta.blockReason} placement="top">
+            <Tooltip key={meta.idx} title={isWaiting ? `先完成步骤 ${current}「${currentMeta.shortName}」，再继续「${meta.shortName}」。` : meta.blockReason} placement="top">
               {stepContent}
             </Tooltip>
           ) : (
@@ -159,12 +170,27 @@ const ChainStepsBar: React.FC<ChainStepsBarProps> = ({ state, onGoStep, classNam
           return (
             <React.Fragment key={`w-${meta.idx}`}>
               {wrapped}
-              {i < STEP_META.length - 1 && <div className={connectorCls} aria-hidden />}
             </React.Fragment>
           );
         })}
       </div>
-      <div className="chain-next-action shrink-0 pl-3">
+      <div className="chain-secondary-actions">
+        <details className="chain-step-shortcuts">
+          <summary>其它步骤入口</summary>
+          <div className="chain-shortcuts-grid">
+            {STEP_META.filter((meta) => blocked.has(meta.idx) && meta.goAction).map((meta) => (
+              <Button
+                key={meta.idx}
+                size="small"
+                data-testid={meta.goAction!.testId}
+                onClick={() => onGoStep?.(meta.idx)}
+              >
+                {meta.idx}. {meta.goAction!.label}
+              </Button>
+            ))}
+            {!blocked.size && <span className="chain-shortcuts-empty">各研发步骤已就绪，可直接前往生成评分。</span>}
+          </div>
+        </details>
         <Button
           size="small"
           onClick={() => onGoStep?.(1)}
@@ -172,17 +198,6 @@ const ChainStepsBar: React.FC<ChainStepsBarProps> = ({ state, onGoStep, classNam
           className="chain-restart-step1"
         >
           从步骤1重新开始
-        </Button>
-        <Button
-          type="primary"
-          size="large"
-          disabled={!nextEnabled}
-          onClick={handleNextPrimary}
-          icon={current === 8 ? <ArrowRightOutlined /> : null}
-          className="!font-semibold"
-          data-testid={current === 8 ? "chain-btn-start-scoring" : "chain-btn-next"}
-        >
-          {current === 8 ? "开始评分消费→" : `下一步：${nextStepName}`}
         </Button>
       </div>
     </div>

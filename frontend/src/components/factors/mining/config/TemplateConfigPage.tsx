@@ -75,6 +75,7 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // 工具条状态（纯前端）
   const [query, setQuery] = useState("");
@@ -103,11 +104,12 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
 
   const seed = async () => {
     setBusy(true);
+    setActionError(null);
     try {
       await factorTemplatesApi.seed();
       await load();
-    } catch {
-      // seed 失败保持现状
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t("factorTplError"));
     } finally {
       setBusy(false);
     }
@@ -115,11 +117,12 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
 
   const copy = async (templateId: string) => {
     setBusy(true);
+    setActionError(null);
     try {
       await factorTemplatesApi.copy(templateId);
       await load();
-    } catch {
-      // 复制失败保持现状
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t("factorTplError"));
     } finally {
       setBusy(false);
     }
@@ -127,11 +130,12 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
 
   const toggle = async (templateId: string, enabled: number) => {
     setBusy(true);
+    setActionError(null);
     try {
       await factorTemplatesApi.setEnabled(templateId, enabled ? 0 : 1);
       await load();
-    } catch {
-      // 启停失败保持现状
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t("factorTplError"));
     } finally {
       setBusy(false);
     }
@@ -190,7 +194,15 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
           <span className="mining-page-title">{t("factorTplPageTitle")}</span>
           <span className="mining-page-sub">{t("factorTplDesc")}</span>
         </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Button disabled={busy || loading} onClick={() => void load()}>{t("refresh")}</Button>
+          <Button type="primary" data-tpl-seed disabled={busy || loading} onClick={() => void seed()}>
+            {t("factorTplSeed")}
+          </Button>
+        </div>
       </div>
+
+      {actionError && <p role="alert" className="mining-inline-error">{actionError}</p>}
 
       {loading && <p data-tpl-loading>{t("factorTplLoading")}</p>}
       {!loading && failed && <p data-tpl-error>{t("factorTplError")}</p>}
@@ -271,15 +283,6 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
                 .replace("{total}", String(items.length))}
             </span>
           )}
-          <button
-            type="button"
-            className="mining-pool-btn primary"
-            data-tpl-seed
-            disabled={busy}
-            onClick={() => void seed()}
-          >
-            {t("factorTplSeed")}
-          </button>
         </div>
       )}
 

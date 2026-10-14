@@ -248,6 +248,7 @@ def build_time_split(
     min_validation_days: int = 50,
     min_test_days: int = 3,
     min_total_days: int = 20,
+    tail_loss_points: int | None = None,
 ) -> TimeSplit:
     """Build train / validation / test split with structured insufficient_dates diagnostics."""
     import math as _math_local
@@ -256,7 +257,7 @@ def build_time_split(
     n = len(sorted_dates)
 
     # After forward_returns.shift(-target_horizon), last `horizon` dates yield NaN targets.
-    tail_loss = int(target_horizon)
+    tail_loss = int(target_horizon) if tail_loss_points is None else max(0, int(tail_loss_points))
     usable_n = max(0, n - tail_loss)
 
     # Minimum sizes after applying ratios + purge + embargo.
@@ -862,9 +863,11 @@ class EvaluationConfig:
     purge_days: int = 5
     embargo_days: int = 5
     event_dates: list[date] | None = None
+    evaluation_segment: Literal["validation", "test"] = "validation"
+    time_split_override: TimeSplit | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "evaluator_version": EVALUATOR_VERSION,
             "factor_kind": self.factor_kind,
             "target_code": self.target_code,
@@ -877,6 +880,14 @@ class EvaluationConfig:
             "embargo_days": self.embargo_days,
             "event_dates": [d.isoformat() for d in self.event_dates] if self.event_dates else None,
         }
+        if self.evaluation_segment != "validation":
+            result["evaluation_segment"] = self.evaluation_segment
+        if self.time_split_override is not None:
+            result["time_split_override"] = {
+                key: (value.isoformat() if isinstance(value, date) else value)
+                for key, value in vars(self.time_split_override).items()
+            }
+        return result
 
 
 @dataclass
@@ -1003,7 +1014,7 @@ def run_evaluation(
 
     # 1. 创建评估运行（幂等）
     all_dates = sorted(set(factor_values.index.tolist() + forward_returns.index.tolist()))
-    time_split = build_time_split(
+    time_split = config.time_split_override or build_time_split(
         all_dates=all_dates,
         target_horizon=config.target_horizon,
         train_ratio=config.train_ratio,
@@ -1027,10 +1038,14 @@ def run_evaluation(
         ctd_evidence=ctd_evidence,
     )
 
-    # 2. 对齐样本（仅验证期）
-    val_mask = (factor_values.index >= time_split.validation_start) & (
-        factor_values.index <= time_split.validation_end
-    )
+    # Mining final evaluation explicitly measures the immutable held-out test window.
+    if config.evaluation_segment == "test":
+        evaluation_start, evaluation_end = time_split.test_start, time_split.test_end
+        if evaluation_start is None or evaluation_end is None:
+            raise ValueError("test_segment_missing: 缺少测试段边界，不能做最终验证。")
+    else:
+        evaluation_start, evaluation_end = time_split.validation_start, time_split.validation_end
+    val_mask = (factor_values.index >= evaluation_start) & (factor_values.index <= evaluation_end)
     val_features = factor_values.loc[val_mask]
     val_targets = forward_returns.loc[forward_returns.index.isin(val_features.index)]
 
@@ -1076,6 +1091,9 @@ def run_evaluation(
     # 5. 构建 metrics
     metrics = {
         "evaluator_version": EVALUATOR_VERSION,
+        "evaluation_segment": config.evaluation_segment,
+        "evaluation_start": evaluation_start.isoformat(),
+        "evaluation_end": evaluation_end.isoformat(),
         "ic": {
             "rank_ic_mean": ic_metrics.rank_ic_mean,
             "rank_ic_median": ic_metrics.rank_ic_median,
