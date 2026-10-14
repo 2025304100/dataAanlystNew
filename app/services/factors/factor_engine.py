@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 
-from app.services.factors.definitions import FACTOR_DEFINITIONS
+from app.services.factors.definitions import FACTOR_BY_CODE, FACTOR_DEFINITIONS, _PARAMS, _SOURCE_MAPPINGS
 from app.services.factors.store import FactorWarehouse
 
 
@@ -357,6 +358,9 @@ def calculate_stock_factors(
     calc_batch_id: str | None = None,
     adjust: str = "qfq",
     valuation_max_age_days: int = 7,
+    db=None,
+    factor_set_ids: tuple[str, ...] = (),
+    trade_dates: tuple[date, ...] | None = None,
 ) -> FactorCalculationResult:
     """Calculate and persist stock factors from point-in-time local data."""
     if start_date and end_date and start_date > end_date:
@@ -378,16 +382,132 @@ def calculate_stock_factors(
             panel = panel[panel["trade_date"] >= start_date]
         if end_date is not None:
             panel = panel[panel["trade_date"] <= end_date]
-    long_frame = _standardize(_long_factor_frame(panel))
-    cutoff = _utcnow_naive()
+        if trade_dates is not None:
+            panel = panel[panel["trade_date"].isin(trade_dates)]
     versions = {
         definition.code: definition.version
         for definition in FACTOR_DEFINITIONS
     }
+    long_frame = _standardize(_long_factor_frame(panel))
+    long_frame["factor_version"] = long_frame["factor_code"].map(versions)
+    requested_frames = []
+    resolved_keys = set()
+    seen = {(code, version) for code, version in versions.items()}
+    if factor_set_ids:
+        if db is None:
+            raise ValueError("frozen_factor_calculation_requires_db")
+        from app.models.factor_evaluation import FactorSet
+        from app.models.factor import Factor
+        from app.models.factor_model import FactorVersion
+        from app.services.factors.factor_compiler import FactorCompiler
+        from app.services.factors.factor_executor import FactorExecutor
+
+        for set_id in dict.fromkeys(factor_set_ids):
+            factor_set = db.get(FactorSet, set_id)
+            if factor_set is None or factor_set.status != "frozen":
+                raise ValueError(f"factor_set_not_frozen:{set_id}")
+            for member in factor_set.members:
+                if member.role != "feature":
+                    continue
+                version = db.get(FactorVersion, member.factor_version_id)
+                factor = db.get(Factor, member.factor_id)
+                if (version is None or version.factor_id != member.factor_id
+                        or version.version != member.factor_version or factor is None
+                        or factor.code != member.factor_code):
+                    raise ValueError(f"factor_version_binding_mismatch:{member.factor_code}")
+                code = member.factor_code
+                definition = FACTOR_BY_CODE.get(code)
+                params = json.loads(version.params_json or "{}")
+                source = json.loads(version.source_mapping_json or "{}")
+                postprocess = json.loads(version.postprocess_json or "null")
+                native = bool(
+                    definition
+                    and "".join(version.formula_expr.split()) == "".join(definition.formula.split())
+                    and params == _PARAMS[code]
+                    and source == _SOURCE_MAPPINGS[code]
+                    and version.direction == definition.direction
+                    and postprocess is None
+                    and (code not in ("ep_ttm", "negative_pb")
+                         or valuation_max_age_days == params.get("valuation_max_age_days"))
+                )
+                # A version number never authorizes reuse of another formula.
+                # Validate even v1 metadata before reusing a built-in batch.
+                key = (code, int(version.version))
+                if key in resolved_keys:
+                    continue
+                if native:
+                    frame = long_frame.loc[long_frame.factor_code == code].copy()
+                else:
+                    if postprocess and (
+                        postprocess.get("neutralize")
+                        or (postprocess.get("rank") and postprocess.get("zscore"))
+                        or (postprocess.get("rank") or {}).get("method", "percentile") != "percentile"
+                    ):
+                        raise ValueError(f"unsupported_frozen_postprocess:{code}:v{version.version}")
+                    compiled = FactorCompiler().compile(
+                        formula=version.formula_expr, params=params,
+                        direction=version.direction, postprocess=postprocess or {
+                            "winsorize": {"method": "mad"},
+                            "zscore": {"ddof": 0}, "missing_policy": member.missing_policy,
+                        },
+                    )
+                    if not compiled.success or compiled.execution_plan is None:
+                        reasons = ";".join(error.error_code for error in compiled.errors)
+                        raise ValueError(f"unsupported_frozen_factor:{code}:v{version.version}:{reasons}")
+                    dependencies = compiled.execution_plan.data_dependencies
+                    mapped_fields = source.get("fields", []) + ([source["field"]] if source.get("field") else [])
+                    mapped_tables = source.get("tables", []) + ([source["table"]] if source.get("table") else [])
+                    if (not set(mapped_fields).issubset(dependencies.get("fields", []))
+                            or not set(mapped_tables).issubset(dependencies.get("source_tables", []))):
+                        raise ValueError(f"unsupported_frozen_source_mapping:{code}:v{version.version}")
+                    if panel.empty:
+                        raise ValueError(f"frozen_factor_no_source_data:{code}")
+                    outcome = FactorExecutor(warehouse).execute_panel(
+                        compiled.execution_plan,
+                        start_date=start_date or panel.trade_date.min(),
+                        end_date=end_date or panel.trade_date.max(),
+                    )
+                    if outcome.read_errors or outcome.factors_long.empty:
+                        raise ValueError(f"frozen_factor_execution_failed:{code}:{outcome.read_errors}")
+                    frame = outcome.factors_long.copy()
+                    frame["factor_code"] = code
+                    frame["eligible"] = (
+                        np.isfinite(pd.to_numeric(frame.normalized_value, errors="coerce"))
+                        & np.isfinite(pd.to_numeric(frame.raw_value, errors="coerce"))
+                    )
+                frame["factor_version"] = version.version
+                if member.missing_policy == "impute_zero":
+                    imputed = frame["normalized_value"].isna() | frame["raw_value"].isna()
+                    frame["is_imputed"] = imputed
+                    frame["imputation_method"] = np.where(imputed, "frozen_policy_zero", None)
+                    for column in ("raw_value", "winsorized_value", "normalized_value"):
+                        frame[column] = frame[column].fillna(0.0)
+                    frame["eligible"] = True
+                elif member.missing_policy not in ("exclude", "ignore"):
+                    raise ValueError(f"unsupported_frozen_missing_policy:{code}:{member.missing_policy}")
+                if key in seen:
+                    # A custom definition of a built-in v1 replaces its native
+                    # rows; never retain two meanings under the same identity.
+                    long_frame = long_frame.loc[~((long_frame.factor_code == code)
+                                                   & (long_frame.factor_version == version.version))]
+                    requested_frames = [f for f in requested_frames
+                                        if f.empty or not (f.factor_code.iloc[0] == code
+                                                and f.factor_version.iloc[0] == version.version)]
+                seen.add(key)
+                resolved_keys.add(key)
+                if trade_dates is not None:
+                    frame = frame[frame.trade_date.isin(trade_dates)]
+                requested_frames.append(frame)
+    if requested_frames:
+        long_frame = pd.concat([long_frame, *requested_frames], ignore_index=True)
+    cutoff = _utcnow_naive()
     output = long_frame.copy()
-    output["factor_version"] = output["factor_code"].map(versions)
-    output["is_imputed"] = False
-    output["imputation_method"] = None
+    if "is_imputed" not in output:
+        output["is_imputed"] = False
+    else:
+        output["is_imputed"] = output["is_imputed"].fillna(False).astype(bool)
+    if "imputation_method" not in output:
+        output["imputation_method"] = None
     output["data_cutoff_at"] = cutoff
     output["calc_batch_id"] = batch_id
     output["created_at"] = cutoff

@@ -510,6 +510,26 @@ export interface ExternalSyncResult {
   records: number;
   errors: string[];
   plan?: ExternalDataSyncPlan;
+  northbound?: {
+    status: "done" | "warning";
+    records: number;
+    error?: string;
+    start_date?: string;
+    end_date?: string;
+  };
+  warehouse_mirror?: { status: "done" | "warning" | "skipped"; records: number; error?: string };
+}
+
+export interface TailProxyImportResult {
+  source: string;
+  written_sessions: number;
+  rejected_sessions: number;
+  invalid_rows?: number;
+  rejected: Array<{ symbol: string; trade_date: string; reason: string }>;
+  formula_evaluation: string;
+  warehouse_mirror?: { status: "done" | "warning" | "skipped" | "not_needed"; records: number; batch_id?: string; error?: string };
+  quality_snapshot?: { status: "done" | "warning" | "skipped" | "not_needed"; captured_at?: string; fields?: number; trigger?: string; reason?: string; error?: string };
+  warnings?: string[];
 }
 
 export interface ExternalDataSyncPlan {
@@ -528,6 +548,7 @@ export type ExternalDataSyncCapabilities = Record<ExternalSyncDataset, {
   modes: Array<"incremental" | "backfill">;
   history_limit_days: number | null;
   reason: string;
+  northbound?: { available: boolean; reason: string; api_key: string };
 }>;
 
 export interface ExternalSyncTask {
@@ -554,6 +575,7 @@ export interface ExternalSyncTask {
   started_at: string | null;
   finished_at: string | null;
   updated_at: string | null;
+  cancel_requested?: boolean;
 }
 
 export interface ExternalDatasetOverview {
@@ -561,6 +583,7 @@ export interface ExternalDatasetOverview {
   records: number;
   symbols: number;
   latest_date: string | null;
+  /** Latest insertion timestamp; this is not a historical-record correction timestamp. */
   last_updated_at: string | null;
   latest_task: ExternalSyncTask | null;
 }
@@ -892,12 +915,12 @@ export const api = {
         : (payloadOrFactorSetId?.factor_set_id as string);
     const mode: "offline_minimal" | "warehouse" =
       typeof payloadOrFactorSetId === "string"
-        ? "offline_minimal"
-        : ((payloadOrFactorSetId?.mode as any) ?? "offline_minimal");
+        ? "warehouse"
+        : (payloadOrFactorSetId?.mode ?? "warehouse");
     const actor =
       (typeof payloadOrFactorSetId === "object" && payloadOrFactorSetId?.actor) ||
       "factor_center:train";
-    return api.scoringTrainModel(factorSetId, mode, actor) as Promise<FactorModelRun>;
+    return api.scoringTrainModel(factorSetId, mode, actor);
   },
   // Factor-domain internal - DO NOT USE outside factor center (model fallback)
   // P1.1 Settings thin-facade passthrough to scoring/runtime/fallback
@@ -1012,9 +1035,9 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       jsonBody: { reason, actor },
     }),
-  // P1.2 训练：薄封启动评分模型训练（Facade 内强制先过 P2.3 覆盖率+IC 门禁）
-  scoringTrainModel: (factorSetId: string, mode: "offline_minimal" | "warehouse" = "offline_minimal", actor: string = "local_user") =>
-    requestJson<any>(`${API}/scoring/factorsets/${encodeURIComponent(factorSetId)}/train`, {
+  // 真实仓库训练返回异步任务；显式演示模式由后端明确拒绝。
+  scoringTrainModel: (factorSetId: string, mode: "offline_minimal" | "warehouse" = "warehouse", actor: string = "local_user") =>
+    requestJson<FactorPipelineTask>(`${API}/scoring/factorsets/${encodeURIComponent(factorSetId)}/train`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       jsonBody: { mode, actor },
@@ -1085,7 +1108,7 @@ export const api = {
   scoringListModels: (scope: "any" | "validated" | "shadow" | "production" = "any", limit = 50) => {
     const params = new URLSearchParams({ scope, limit: String(limit) });
     const _res = requestJson<ScoringModelBrief[]>(`${API}/scoring/models?${params.toString()}`);
-    _checkSchemaVersionArray("scoringListModels", _res);
+    void _res.then((items) => _checkSchemaVersionArray("scoringListModels", items, 4), () => {});
     return _res;
   },
   scoringGetOverview: () =>
@@ -1114,6 +1137,8 @@ export const api = {
       validation_days: number;
       batch_size: number;
       mirror_only: boolean | null;
+      hyperparameters: Record<string, unknown>;
+      factor_scope: Record<string, unknown>;
     }> = {}
   ) =>
     requestJson<FactorPipelineTask>(`${API}/scoring/tasks`, {
@@ -2441,7 +2466,7 @@ export const api = {
     body: JSON.stringify(payload),
   }),
   importTailProxyMinutes: (payload: { csv_text: string; filename?: string }) =>
-    requestJson<{ source: string; written_sessions: number; rejected_sessions: number; rejected: Array<{ symbol: string; trade_date: string; reason: string }>; formula_evaluation: string }>(`${API}/external-data/tail-proxy/import`, {
+    requestJson<TailProxyImportResult>(`${API}/external-data/tail-proxy/import`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -2449,6 +2474,8 @@ export const api = {
   startExternalDataSync: (payload: {
     dataset: ExternalSyncDataset;
     source: "watchlist" | "positions" | "all";
+    watchlist_id?: number | null;
+    portfolio_id?: number | null;
     include_northbound?: boolean;
     mode?: "incremental" | "backfill";
     start_date?: string;
@@ -2467,6 +2494,8 @@ export const api = {
   previewExternalDataSyncPlan: (payload: {
     dataset: ExternalSyncDataset;
     source: "watchlist" | "positions" | "all";
+    watchlist_id?: number | null;
+    portfolio_id?: number | null;
     include_northbound?: boolean;
     mode?: "incremental" | "backfill";
     start_date?: string;
@@ -2914,25 +2943,20 @@ export const api = {
     return requestJson<any>(`${API}/portfolios/${portfolioId}/today-preview?${q.toString()}`);
   },
 
+  savePortfolioStrategyConfiguration: (portfolioId: number, payload: PortfolioStrategyConfigurationRequest) =>
+    requestJson<PortfolioStrategyConfigurationResponse>(`${API}/portfolios/${portfolioId}/strategy-configuration`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      jsonBody: payload,
+      timeoutMs: 60000,
+    }),
+
   // G1-WP0-2g：FactorUsage 绑定与预检 API（供 WP1-1 / 策略规则页共用）
   getCurrentFactorUsage: (portfolioId: number) =>
-    requestJson<{
-      current: any | null;
-      history: any[];
-      latest_snapshot_id: string | null;
-    }>(`${API}/portfolios/${portfolioId}/factor-usage`),
+    requestJson<PortfolioFactorUsageState>(`${API}/portfolios/${portfolioId}/factor-usage`),
 
   getFactorUsageOptions: (portfolioId: number) =>
-    requestJson<{
-      global_active_model_run_id: string | null;
-      global_weight_mode: string;
-      runtime_version: number;
-      factor_models: Array<{ factor_model_run_id: string; factor_set_id: string | null; trained_at?: string | null; is_global_active?: boolean }>;
-      factor_sets: Array<{ factor_set_id: string; name: string; status: string; member_count: number; frozen_at?: string | null }>;
-      portfolio_rules: Array<{ rule_id: number; rule_name: string; rule_version: number; has_stage_limits_complete?: boolean }>;
-      defaults: Record<string, any>;
-      blocking_reasons: string[];
-    }>(`${API}/portfolios/${portfolioId}/factor-usage-options`),
+    requestJson<PortfolioFactorUsageOptions>(`${API}/portfolios/${portfolioId}/factor-usage-options`),
 
   saveAndApplyFactorUsage: (portfolioId: number, payload: {
     factor_model_run_id: string;
@@ -3036,10 +3060,10 @@ export const api = {
   // P1.2 native write: actor is taken from payload.actor; FactorModelPage passes
   // 'factor_center:clone' explicitly; default fallback preserves old behavior.
   cloneFactorSet: (factorSetId: string, payload?: { actor?: string }) =>
-    requestJson<FactorSet>(`${API}/factor-sets/${encodeURIComponent(factorSetId)}/clone`, {
+    requestJson<FactorSet>(`${API}/scoring/factorsets/${encodeURIComponent(factorSetId)}/clone`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      jsonBody: { actor: payload?.actor ?? "factor_center:clone" },
+      jsonBody: { actor: payload?.actor ?? "factor_center:clone", new_factorset_id: `fs-${globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}` },
     }),
 
   // T1 read: getFactorSetDetail(id, withMembers=true) — 原生 detail + members
@@ -3291,6 +3315,10 @@ export interface FactorModelWeight {
  *   internals (factors/*, FactorModelSettings).
  */
 export interface FactorModelRun {
+  production_eligible?: boolean;
+  training_mode?: string | null;
+  readiness_code?: string;
+  readiness_message?: string;
   id: string;
   model_type: string;
   asset_type: string;
@@ -3456,6 +3484,10 @@ export interface TrainFactorModelRequest {
 // ═══════════════════════════════════════════════════════════════════════
 
 export interface ScoringModelBrief {
+  production_eligible?: boolean;
+  training_mode?: string | null;
+  readiness_code?: string;
+  readiness_message?: string;
   id: string;
   name: string;
   status: string;
@@ -3467,7 +3499,50 @@ export interface ScoringModelBrief {
   factorset_member_count: number | null;
   created_at: string | null;
   backtest_support?: boolean;  // P2-3-C: DTO bump schema_version=3. True when model run drives backtests.
-  schema_version?: number;     // P2-3 drift check: ScoreModelBriefDTO now ships schema_version=3
+  schema_version?: number;     // Production eligibility was added in schema version 4.
+}
+
+export interface PortfolioFactorUsageState {
+  current: { factor_model_run_id: string; factor_set_id: string | null; rule_id?: number | null; run_mode?: string; pit_mode?: string } | null;
+  history: unknown[];
+  latest_snapshot_id: string | null;
+}
+
+export interface PortfolioFactorUsageOptions {
+  global_active_model_run_id: string | null;
+  global_weight_mode: string;
+  runtime_version: number;
+  factor_models: Array<{
+    factor_model_run_id: string; factor_set_id: string | null;
+    model_name?: string | null; display_name?: string | null; trained_at?: string | null;
+    sample_out_rank_ic?: number | null; sample_count?: number; data_cutoff_at?: string | null;
+    is_global_active?: boolean; passes_production_gate?: boolean;
+    production_eligible?: boolean; training_mode?: string | null;
+    readiness_code?: string; readiness_message?: string;
+  }>;
+  factor_sets: Array<{ factor_set_id: string; name: string; status: string; member_count: number; frozen_at?: string | null }>;
+  portfolio_rules: Array<{ rule_id: number; rule_name: string; rule_version: number; has_stage_limits_complete?: boolean }>;
+  defaults: Record<string, unknown>;
+  blocking_reasons: string[];
+}
+
+export interface PortfolioStrategyConfigurationRequest {
+  rule: Record<string, unknown> & { is_active: boolean };
+  signal_rule: Record<string, unknown>;
+  binding?: {
+    factor_model_run_id: string; factor_set_id: string;
+    run_mode: "production_sim"; pit_mode: "strict_pit_safe";
+  };
+  auto_trade_enabled?: boolean;
+}
+
+export interface PortfolioStrategyConfigurationResponse {
+  rule_id: number;
+  signal_rule_id: number | null;
+  applied: boolean;
+  binding_result: { factor_usage: PortfolioFactorUsageState["current"]; strategy_snapshot_id: string; snapshot_hash: string } | null;
+  auto_trade_enabled: boolean;
+  requires_confirmation: boolean;
 }
 
 export interface ScoringOverview {

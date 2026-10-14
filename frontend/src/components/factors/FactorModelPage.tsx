@@ -23,6 +23,7 @@ import {
   Modal,
   Popover,
   Progress,
+  Radio,
   Row,
   Col,
   Select,
@@ -187,6 +188,7 @@ function computeTrainGate(fs: FactorSet | null | undefined): { disabled: boolean
   if (!fs) return { disabled: true, tooltip: "未选择集合" };
   // Task 2 训练门禁(2)：集合状态 ≠ frozen → 禁用
   if (fs.status !== "frozen") return { disabled: true, tooltip: "需先冻结集合" };
+  if (String(fs.asset_type ?? "stock").toLowerCase() !== "stock") return { disabled: true, tooltip: "当前真实训练流水线仅支持股票集合" };
   return { disabled: false, tooltip: "" };
 }
 
@@ -353,22 +355,19 @@ export default function FactorModelPage() {
   // WP0-8：冻结 FactorSet Modal
   const [freezeModalOpen, setFreezeModalOpen] = useState(false);
   const [freezeTarget, setFreezeTarget] = useState<FactorSet | null>(null);
-  const [freezeReason, setFreezeReason] = useState("E2E 冻结：离线训练前");
+  const [freezeReason, setFreezeReason] = useState("本人确认冻结因子集合，用于真实训练");
   const [freezing, setFreezing] = useState(false);
 
-  // WP0-8：离线最小训练 Modal（mode=offline_minimal，不需要 FactorWarehouse 环境）
+  // 真实训练任务 Modal；成功提交后由任务中心跟踪异步流水线。
   const [trainModalOpen, setTrainModalOpen] = useState(false);
   const [trainTarget, setTrainTarget] = useState<FactorSet | null>(null);
-  const [trainAssetType, setTrainAssetType] = useState<"STOCK" | "ETF" | "US_STOCK" | "HK_STOCK">("STOCK");
-  const [trainMode, setTrainMode] = useState<"offline_minimal" | "warehouse">("offline_minimal");
   const [trainNote, setTrainNote] = useState("");
   const [training, setTraining] = useState(false);
+  const [activationScoreNotice, setActivationScoreNotice] = useState<{ type: "info" | "warning"; text: string } | null>(null);
   /** 训练门禁错误 Banner：后端返回 detail_zh 原文（不翻译）。 */
   const [trainGateError, setTrainGateError] = useState<string | null>(null);
   /** 滚动锚点：新建模型后 scrollIntoView 该行 */
   const modelTableRef = useRef<HTMLDivElement | null>(null);
-  /** 最近训练成功的新模型 ID → 用于自动滚动 */
-  const [newModelId, setNewModelId] = useState<string | null>(null);
 
   // ═══════════════════════════════════════════════════════
   // Task 2：FactorSet UI 9 元素 + 3 门禁
@@ -392,6 +391,8 @@ export default function FactorModelPage() {
   // Factor-domain internal - DO NOT USE outside factor center
   /** 因子库列表（mock/listFactorLibrary）— 简化：直接用 listFactorDefinitions 查询 */
   const [factorLibLoading, setFactorLibLoading] = useState(false);
+  const [factorLibError, setFactorLibError] = useState<string | null>(null);
+  const factorLibGeneration = useRef(0);
   const [factorLibItems, setFactorLibItems] = useState<Array<{
     factor_code: string;
     factor_name: string | null;
@@ -424,7 +425,8 @@ export default function FactorModelPage() {
       // The model-list compatibility adapter cannot reliably infer runtime
       // state from model statuses. Read the authoritative scoring overview
       // so activation refreshes show ridge/shadow immediately.
-      setRuntime(scoringOverview.runtime);
+      setRuntime((current) => current && current.version > scoringOverview.runtime?.version
+        ? current : scoringOverview.runtime);
       setModels(modelList.items);
       setFactorSets(fsList);
     } catch (err) {
@@ -711,9 +713,14 @@ export default function FactorModelPage() {
 
   // 打开激活 Modal
   const openActivateModal = (model: FactorModelRun, mode: "shadow" | "ridge") => {
+    if (model.production_eligible !== true) {
+      message.error(model.readiness_message || "模型正式运行资格未知或未通过，无法激活。");
+      return;
+    }
     setActivateTarget(model);
     setActivateMode(mode);
     setActivateNote("");
+    setActivationScoreNotice(null);
     setModelAlias(model.display_alias || "");
     setActivateModalOpen(true);
   };
@@ -730,12 +737,41 @@ export default function FactorModelPage() {
         activateNote || undefined,
         "factor_center:activate"
       );
-      if (modelAlias.trim() && modelAlias.trim() !== (activateTarget.display_alias || "")) {
-        await api.scoringRenameModel(activateTarget.id, modelAlias.trim(), "factor_center:rename_model");
-      }
       setRuntime(newRuntime);
       message.success(t("factorModelActivated"));
       setActivateModalOpen(false);
+      // Activation is already durable; scoring submission has its own outcome.
+      try {
+        const factorSetId = String(activateTarget.hyperparameters?.factor_set_id ?? "").trim();
+        if (!factorSetId) throw new Error("该模型未记录冻结因子集合，无法生成绑定评分。");
+        const task = await api.scoringCreateTask({
+          train_model: false,
+          materialize_scores: true,
+          factor_set_id: factorSetId,
+          actor: "factor_center:activate_scores",
+          source_hint: "factor_center:activate_scores",
+          hyperparameters: {
+            factor_set_id: factorSetId,
+            expected_model_run_id: activateTarget.id,
+            expected_weight_mode: newRuntime.weight_mode || activateMode,
+          },
+          factor_scope: { factor_set_id: factorSetId, asset_type: "stock" },
+        });
+        const text = `模型已激活，评分任务已提交：${task.id}，${task.status === "queued" ? "已排队，等待生成" : "正在生成评分"}。请在任务中心查看进度。`;
+        setActivationScoreNotice({ type: "info", text });
+        message.success(text);
+      } catch (err) {
+        const text = "模型已激活，评分生成未启动：" + String(err);
+        setActivationScoreNotice({ type: "warning", text });
+        message.warning(text);
+      }
+      if (modelAlias.trim() && modelAlias.trim() !== (activateTarget.display_alias || "")) {
+        try {
+          await api.scoringRenameModel(activateTarget.id, modelAlias.trim(), "factor_center:rename_model");
+        } catch (err) {
+          message.warning("模型已激活，别名更新失败：" + String(err));
+        }
+      }
       await loadData();
     } catch (err) {
       message.error(t("factorModelActionFailed") + ": " + String(err));
@@ -754,6 +790,7 @@ export default function FactorModelPage() {
     try {
       // Factor-domain internal - DO NOT USE outside factor center
       const newRuntime = await api.scoringFallbackToManual(fallbackReason.trim(), "factor_center:fallback");
+      setActivationScoreNotice(null);
       setRuntime(newRuntime);
       message.success(t("factorModelFallbackDone"));
       setFallbackModalOpen(false);
@@ -776,7 +813,7 @@ export default function FactorModelPage() {
     setFreezing(true);
     try {
       // Factor-domain internal - DO NOT USE outside factor center
-      const updated = await api.scoringFreezeFactorSet(freezeTarget.id, freezeReason.trim() || "E2E 冻结：离线训练前", "factor_center:freeze");
+      const updated = await api.scoringFreezeFactorSet(freezeTarget.id, freezeReason.trim() || "本人确认冻结因子集合", "factor_center:freeze");
       setFactorSets((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       message.success(`FactorSet 已冻结：${updated.id}`);
       setFreezeModalOpen(false);
@@ -790,10 +827,10 @@ export default function FactorModelPage() {
     }
   };
 
-  // Task 2 ⑦：训练模型（train_mode 下拉 + 备注；submit 隐式传 factor_set_id；7 要素错误 detail_zh 原文展示）
+  // 提交真实训练任务；后端门禁错误 detail_zh 原文展示。
   const handleTrain = async () => {
     if (!trainTarget) return;
-    if (!trainTarget.id) {
+    if (!trainTarget.id || computeTrainGate(trainTarget).disabled) {
       message.warning("请先选择要训练的 FactorSet");
       return;
     }
@@ -801,26 +838,11 @@ export default function FactorModelPage() {
     setTrainGateError(null);
     try {
       // Factor-domain internal - DO NOT USE outside factor center
-      const created = await api.scoringTrainModel(trainTarget.id, trainMode, "factor_center:train");
-      message.success(
-        trainMode === "offline_minimal"
-          ? `离线最小模型训练成功：${created.id.slice(0, 12)}…（status=${created.status}）`
-          : `仓库训练已提交：${created.id.slice(0, 12)}…`,
-      );
+      const task = await api.scoringCreateTask({ factor_set_id: trainTarget.id, train_model: true, materialize_scores: false, window_days: 250, validation_days: 50, actor: "factor_center:train", source_hint: "factor_center:train", hyperparameters: { factor_set_id: trainTarget.id, note: trainNote.trim() }, factor_scope: { factor_set_id: trainTarget.id, asset_type: "stock" } });
+      message.success(`真实训练任务已提交：${task.id}，完成后需本人激活新模型，再生成评分。请在任务中心查看进度。`);
       setTrainModalOpen(false);
       setTrainNote("");
-      setSelectedModel(created);
-      // Task 2 ⑦：模型训练结果 → Model 表格自动 scrollIntoView 新行
-      setNewModelId(created.id);
       await loadData();
-      // scrollIntoView 在下一个微任务里执行（保证 DOM 已渲染）
-      window.queueMicrotask(() => {
-        if (modelTableRef.current) {
-          const row = modelTableRef.current.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(created.id)}"]`);
-          row?.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-        window.setTimeout(() => setNewModelId(null), 3200);
-      });
     } catch (err: any) {
       // Task 2 训练门禁(2)：识别 400 code → Error Banner 展示 detail_zh 原文
       const detail = err?.detail as any;
@@ -927,10 +949,12 @@ export default function FactorModelPage() {
   };
 
   const closeMemberDrawer = () => {
+    factorLibGeneration.current += 1;
     setMemberDrawerOpen(false);
     setMemberDrawerTarget(null);
     setDrawerMembers([]);
     setFactorLibItems([]);
+    setFactorLibError(null);
     setFactorSearchKeyword("");
     setPendingFactorCode(null);
     setPendingVersion(null);
@@ -939,7 +963,11 @@ export default function FactorModelPage() {
   /** 懒加载「全部因子」Tab：通过 scoringListFactorDefinitions 搜索。 */
   const loadFactorLibrary = useCallback(
     async (keyword: string) => {
+      const generation = ++factorLibGeneration.current;
       setFactorLibLoading(true);
+      setFactorLibError(null);
+      setPendingFactorCode(null);
+      setPendingVersion(null);
       try {
         // Factor-domain internal - DO NOT USE outside factor center
     // 优先 scoring 薄封；参数 search 与 page_size 兼容 listFactorDefinitions
@@ -956,21 +984,30 @@ export default function FactorModelPage() {
           : Array.isArray((raw as any).data?.items)
           ? (raw as any).data.items
           : [];
-        const mapped = arr.map((it: any) => {
+        const definitions = await Promise.all(arr.map(async (item: any) => {
+          if (item.versions?.length || item.trainable_versions?.length) return item;
+          const code = String(item.factor_code ?? item.code ?? "");
+          if (!code) return item;
+          try { return { ...item, ...await api.scoringGetFactorDefinition(code), factor_code: code }; }
+          catch { return { ...item, versions: [] }; }
+        }));
+        if (generation !== factorLibGeneration.current) return;
+        const mapped = definitions.map((it: any) => {
           const versionsRaw = it.versions || it.trainable_versions || [];
           const versions: Array<{ version: number; label: string; trainable: boolean; status: string }> = [];
           const push = (v: number | { version: number; label?: string; status?: string; trainable?: boolean }) => {
             if (v == null) return;
             if (typeof v === "number") {
-              versions.push({ version: v, label: `v${v}`, trainable: true, status: "trainable" });
+              const trainable = Array.isArray(it.trainable_versions) && it.trainable_versions.includes(v);
+              versions.push({ version: v, label: `v${v}`, trainable, status: trainable ? "trainable" : "unknown" });
             } else if (typeof v === "object" && v != null) {
               const vn = Number(v.version);
               if (!Number.isFinite(vn)) return;
-              const status = String(v.status || "trainable").toLowerCase();
+              const status = String((v as any).validation_status ?? v.status ?? "unknown").toLowerCase();
               const trainable =
                 typeof (v as any).trainable === "boolean"
                   ? (v as any).trainable
-                  : status === "trainable" || status === "active" || status === "approved";
+                  : ["valid", "testing", "shadow", "trainable", "active", "approved"].includes(status);
               versions.push({
                 version: vn,
                 label: v.label || `v${vn}`,
@@ -980,16 +1017,6 @@ export default function FactorModelPage() {
             }
           };
           versionsRaw.forEach(push as any);
-          // 兜底：若没有 versions，但有 latest_version / version 数字
-          if (versions.length === 0) {
-            const lv = it.latest_version ?? it.version;
-            if (lv != null && Number.isFinite(Number(lv))) {
-              const vn = Number(lv);
-              versions.push({ version: vn, label: `v${vn}`, trainable: true, status: "trainable" });
-            } else {
-              versions.push({ version: 1, label: "v1 (默认)", trainable: true, status: "trainable" });
-            }
-          }
           return {
             factor_code: String(it.factor_code ?? it.code ?? ""),
             factor_name: (it.factor_name ?? it.name ?? null) as string | null,
@@ -998,29 +1025,11 @@ export default function FactorModelPage() {
         }).filter((x) => x.factor_code);
         setFactorLibItems(mapped);
       } catch (_e) {
-        // 回退：构造至少 2 条可训练 seed 因子（便于 E2E / 后端未就绪时 Drawer 不空白）
-        setFactorLibItems([
-          {
-            factor_code: "SEED_MOM_20D",
-            factor_name: "20 日动量因子",
-            versions: [{ version: 3, label: "v3 (2024 修订)", trainable: true, status: "trainable" }],
-          },
-          {
-            factor_code: "SEED_VAL_PE_TTM",
-            factor_name: "PE TTM 估值因子（行业中性）",
-            versions: [{ version: 2, label: "v2 (缺省 drop)", trainable: true, status: "trainable" }],
-          },
-          {
-            factor_code: "SEED_QLTY_ROE",
-            factor_name: "ROE 质量因子（季度填充）",
-            versions: [
-              { version: 5, label: "v5 (2025Q1)", trainable: true, status: "trainable" },
-              { version: 4, label: "v4 (已废弃)", trainable: false, status: "deprecated" },
-            ],
-          },
-        ]);
+        if (generation !== factorLibGeneration.current) return;
+        setFactorLibItems([]);
+        setFactorLibError("因子库读取失败，请重试；当前不能添加成员。");
       } finally {
-        setFactorLibLoading(false);
+        if (generation === factorLibGeneration.current) setFactorLibLoading(false);
       }
     },
     []
@@ -1028,6 +1037,7 @@ export default function FactorModelPage() {
 
   /** Drawer Tab 1：选行 + 选版本 → 提交 addMember。 */
   const handleAddMemberFromLibrary = async () => {
+    if (factorLibError || factorLibLoading || !factorLibItems.find((item) => item.factor_code === pendingFactorCode)?.versions.some((version) => version.version === pendingVersion && version.trainable)) return;
     if (!memberDrawerTarget || !pendingFactorCode || pendingVersion == null) {
       message.warning("请先在左侧选择一个因子，并选择可训练版本");
       return;
@@ -1354,6 +1364,8 @@ export default function FactorModelPage() {
               type="primary"
               ghost
               onClick={() => openActivateModal(record, "shadow")}
+              disabled={record.production_eligible !== true}
+              title={record.production_eligible === true ? undefined : record.readiness_message || "正式运行资格未通过"}
             >
               {t("factorModelShadow")}
             </Button>
@@ -1361,6 +1373,8 @@ export default function FactorModelPage() {
               size="small"
               type="primary"
               onClick={() => openActivateModal(record, "ridge")}
+              disabled={record.production_eligible !== true}
+              title={record.production_eligible === true ? undefined : record.readiness_message || "正式运行资格未通过"}
             >
               {t("factorModelRidge")}
             </Button>
@@ -2284,7 +2298,8 @@ export default function FactorModelPage() {
       width: 220,
       render: (_: unknown, record: FactorSet) => {
         const canFreeze = record.status === "draft";
-        const canTrain = record.status === "frozen" || record.status === "draft";
+        const trainGate = computeTrainGate(record);
+        const canTrain = !trainGate.disabled;
         return (
           <Space size="small">
             <Button
@@ -2307,11 +2322,10 @@ export default function FactorModelPage() {
               disabled={!canTrain}
               onClick={() => {
                 setTrainTarget(record);
-                setTrainAssetType(record.asset_type as any || "STOCK");
-                setTrainMode(record.status === "frozen" ? "offline_minimal" : "offline_minimal");
+                setTrainNote("");
                 setTrainModalOpen(true);
               }}
-              title={canTrain ? undefined : "请先冻结 FactorSet 后再训练（保证版本可溯源）"}
+              title={canTrain ? undefined : trainGate.tooltip}
             >
               训练模型
             </Button>
@@ -2422,6 +2436,8 @@ export default function FactorModelPage() {
           description={t("factorModelCenterGuideDescription")}
           style={{ marginBottom: 16 }}
         />
+
+        {activationScoreNotice && <Alert type={activationScoreNotice.type} showIcon message={activationScoreNotice.text} style={{ marginBottom: 16 }} />}
 
         {/* Task 3：ChainStepsBar 链式步骤导航（8 Steps + 阻断直达 + 下一步主按钮） */}
         <div style={{ marginBottom: 16 }}>
@@ -2802,8 +2818,6 @@ export default function FactorModelPage() {
                           disabled={trainGate.disabled}
                           onClick={() => {
                             setTrainTarget(fs);
-                            setTrainMode("offline_minimal");
-                            setTrainAssetType((fs as any).asset_type as any || "STOCK");
                             setTrainNote("");
                             setTrainGateError(null);
                             setTrainModalOpen(true);
@@ -2946,6 +2960,7 @@ export default function FactorModelPage() {
         >
           {models.length > 0 ? (
             <div ref={modelTableRef} data-testid="model-table-wrapper">
+              <Paragraph type="secondary">训练完成的新模型等待本人激活；激活后会提交固定该模型版本的评分任务。</Paragraph>
               <Table
                 size="small"
                 columns={modelColumns}
@@ -2958,7 +2973,6 @@ export default function FactorModelPage() {
                   const rejected = r.status === "rejected";
                   let cls = base;
                   if (rejected) cls = `${cls} row-rejected-redgate`;
-                  if (newModelId && r.id === newModelId) cls = `${cls} row-new-model-highlight`;
                   return cls;
                 }}
                 rowSelection={{
@@ -3460,22 +3474,10 @@ export default function FactorModelPage() {
             </Descriptions>
 
             <div style={{ marginBottom: 12 }}>
-              <label style={{ ...fieldLabelStyle, display: "block", marginBottom: 4 }}>
-                训练模式 train_mode <Text type="danger">*</Text>
-              </label>
-              <Select
-                value={trainMode}
-                onChange={(v) => setTrainMode(v)}
-                style={{ width: "100%" }}
-                options={[
-                  { value: "offline_minimal", label: "offline_minimal（离线最小 / E2E 推荐，不依赖仓库）" },
-                  { value: "warehouse", label: "warehouse（真实 PIT 训练，依赖 ENABLE_FACTOR_MODEL_WAREHOUSE_TRAIN=1）" },
-                ]}
-                data-testid="train-mode-select"
-              />
+              <Alert type="info" showIcon message="真实股票训练流水线" description="从真实仓库计算因子暴露并训练模型，默认训练窗口250天、验证50天；训练仅生成新模型，验证完成后需本人激活，再生成评分。当前仅支持股票集合。" />
             </div>
             <div style={{ marginBottom: 8 }}>
-              <label style={{ ...fieldLabelStyle, display: "block", marginBottom: 4 }}>备注（可选，写入审计）</label>
+              <label style={{ ...fieldLabelStyle, display: "block", marginBottom: 4 }}>备注（可选，记录到训练参数）</label>
               <Input.TextArea
                 value={trainNote}
                 onChange={(e) => setTrainNote(e.target.value)}
@@ -3573,6 +3575,7 @@ export default function FactorModelPage() {
                 className: "drawer-tab-panel-all",
                 children: (
                   <div>
+                    {factorLibError && <Alert type="error" showIcon message={factorLibError} style={{ marginBottom: 10 }} />}
                     <Space.Compact style={{ width: "100%", marginBottom: 10 }}>
                       <Input
                         allowClear
@@ -3643,10 +3646,9 @@ export default function FactorModelPage() {
                                   data-testid={`lib-row-${it.factor_code}`}
                                 >
                                   <td style={{ ...tdStyle, textAlign: "center" }}>
-                                    <input
-                                      type="radio"
-                                      readOnly
+                                    <Radio
                                       checked={selected}
+                                      disabled
                                       aria-label={`select-${it.factor_code}`}
                                     />
                                   </td>
@@ -3709,7 +3711,7 @@ export default function FactorModelPage() {
                     <Space style={{ display: "flex", justifyContent: "flex-end" }}>
                       <Button
                         type="primary"
-                        disabled={!pendingFactorCode || pendingVersion == null}
+                        disabled={Boolean(factorLibError) || factorLibLoading || !pendingFactorCode || pendingVersion == null || !factorLibItems.find((item) => item.factor_code === pendingFactorCode)?.versions.some((version) => version.version === pendingVersion && version.trainable)}
                         loading={addingMember}
                         onClick={handleAddMemberFromLibrary}
                         data-testid="btn-add-member"

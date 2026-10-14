@@ -189,7 +189,11 @@ def test_ridge_excludes_targets_after_cutoff(db_session, tmp_path):
     assert result.sample_count == 33
     model = db_session.get(FactorModelRun, "cutoff-test")
     assert model is not None
-    assert model.data_cutoff_at.date() == cutoff
+    # The market-window cutoff remains in metadata; input availability must
+    # also include the actual factor/label materialization timestamp.
+    assert model.data_cutoff_at.date() == date(2026, 1, 1)
+    import json
+    assert json.loads(model.hyperparameters_json)["data_cutoff_date"] == str(cutoff)
 
 
 def test_ridge_rejects_insufficient_sample_without_publishing(

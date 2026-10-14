@@ -8,6 +8,7 @@ strategy endpoints from applying slightly different eligibility rules.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,6 +19,7 @@ from app.models.factor_evaluation import FactorSetMember
 from app.models.factor_model import FactorModelRun
 from app.models.factor_governance import FactorModelMember
 from app.models.factor_runtime import FactorRuntimeState
+from app.models.factor_weight_snapshot import FactorWeightSnapshot
 from app.services.factor_set_service import factor_set_readiness
 
 
@@ -79,6 +81,16 @@ def model_factor_set_id(model: FactorModelRun) -> str | None:
         if value:
             return value
     return None
+
+
+def model_training_mode(model: FactorModelRun) -> str:
+    metadata = _json_object(model.hyperparameters_json)
+    explicit = metadata.get("train_mode") or metadata.get("mode")
+    if explicit:
+        return str(explicit)
+    if metadata.get("factor_calc_batch_id") and metadata.get("target_calc_batch_id"):
+        return "warehouse"
+    return "unknown"
 
 
 def _result(
@@ -144,6 +156,14 @@ def assess_factor_model_readiness(
             factor_set_id=factor_set_id,
             status=model.status,
         )
+    training_mode = model_training_mode(model)
+    if training_mode != "warehouse":
+        return _result(
+            False, "MODEL_TRAINING_SOURCE_UNVERIFIED",
+            "演示或来源不明的训练产物不能进入正式执行，请使用真实仓库数据重新训练。",
+            model_run_id=model_run_id, factor_set_id=factor_set_id,
+            training_mode=training_mode,
+        )
     referenced_factor_set_ids = sorted(set(factor_set_metadata.values()))
     if len(referenced_factor_set_ids) > 1:
         return _result(
@@ -193,13 +213,12 @@ def assess_factor_model_readiness(
             )
         ).scalars()
     }
+    weight_rows = list(db.execute(
+        select(FactorModelMember).where(FactorModelMember.model_run_id == model_run_id)
+    ).scalars())
     actual_weights = {
         (weight.factor_code, int(weight.factor_version))
-        for weight in db.execute(
-            select(FactorModelMember).where(
-                FactorModelMember.model_run_id == model_run_id,
-            )
-        ).scalars()
+        for weight in weight_rows
     }
     if expected_members != actual_weights:
         return _result(
@@ -211,11 +230,92 @@ def assess_factor_model_readiness(
             expected_members=sorted(expected_members),
             actual_weights=sorted(actual_weights),
         )
+    feature_versions = _json_object(model.feature_versions_json)
+    try:
+        recorded_versions = {
+            code: int(value.get("factor_version", value.get("version"))) if isinstance(value, dict) else int(value)
+            for code, value in feature_versions.items() if not code.startswith("__") and code not in {"factor_set_id", "train_mode", "mode"}
+        }
+    except (TypeError, ValueError):
+        recorded_versions = {}
+    if recorded_versions != dict(expected_members):
+        return _result(
+            False, "MODEL_FEATURE_VERSION_METADATA_MISMATCH",
+            "模型训练特征版本与冻结因子版本不一致，请重新训练。",
+            model_run_id=model_run_id, factor_set_id=factor_set_id,
+        )
+
+    hp = _json_object(model.hyperparameters_json)
+    if (not hp.get("factor_calc_batch_id") or not hp.get("target_calc_batch_id")
+            or not model.data_cutoff_at or int(model.sample_count or 0) <= 0
+            or int(model.symbol_count or 0) <= 0 or int(model.trade_date_count or 0) <= 0):
+        return _result(
+            False, "MODEL_TRAINING_EVIDENCE_MISSING",
+            "模型缺少真实样本数量、数据批次或截止时间，需重新训练。",
+            model_run_id=model_run_id, factor_set_id=factor_set_id,
+        )
+    try:
+        valid_weights = bool(weight_rows) and all(
+            math.isfinite(float(w.coefficient)) and math.isfinite(float(w.normalized_weight))
+            for w in weight_rows
+        ) and math.isfinite(float(hp.get("final_intercept")))
+    except (TypeError, ValueError, OverflowError):
+        valid_weights = False
+    if not valid_weights:
+        return _result(
+            False, "MODEL_WEIGHTS_INVALID", "模型权重或截距无效，需重新训练。",
+            model_run_id=model_run_id, factor_set_id=factor_set_id,
+        )
+    artifact = db.get(FactorWeightSnapshot, model_run_id)
+    if artifact is None:
+        return _result(
+            False, "MODEL_WEIGHT_SNAPSHOT_MISSING",
+            "历史模型的不可变训练权重快照缺失，不能从现有评分补造，请重新训练。",
+            model_run_id=model_run_id, factor_set_id=factor_set_id,
+        )
+    members = list(db.execute(
+        select(FactorSetMember).where(FactorSetMember.factor_set_id == factor_set_id)
+        .order_by(FactorSetMember.display_order, FactorSetMember.factor_code)
+    ).scalars())
+    from app.models.factor_evaluation import FactorSet
+    frozen_set = db.get(FactorSet, factor_set_id)
+    try:
+        raw = json.loads(artifact.weights_raw_json)
+        normalized = json.loads(artifact.weights_norm_json)
+        feature_rows = [m for m in members if m.role == "feature"]
+        norm_by_code = (
+            {str(row["factor_code"]): float(row.get("weight_norm", row.get("normalized_weight")))
+             for row in normalized} if normalized and isinstance(normalized[0], dict)
+            else {m.factor_code: float(value) for m, value in zip(feature_rows, normalized, strict=True)}
+        )
+        aggregate_matches = (
+            artifact.factor_set_id == factor_set_id
+            and artifact.train_mode == "warehouse"
+            and artifact.factor_set_content_hash == getattr(frozen_set, "content_hash", None)
+            and json.loads(artifact.factor_ids_json) == [m.factor_id for m in members]
+            and json.loads(artifact.factor_version_ids_json) == [m.factor_version_id for m in members]
+            and json.loads(artifact.roles_json) == [m.role for m in members]
+            and json.loads(artifact.constraints_json) == [m.weight_constraint for m in members]
+            and json.loads(artifact.missing_strategies_json) == [m.missing_policy for m in members]
+            and set(raw) == {w.factor_code for w in weight_rows}
+            and set(norm_by_code) == {w.factor_code for w in weight_rows}
+            and all(math.isclose(float(raw[w.factor_code]), float(w.coefficient), rel_tol=1e-10, abs_tol=1e-12)
+                    and math.isclose(norm_by_code[w.factor_code], float(w.normalized_weight), rel_tol=1e-10, abs_tol=1e-12)
+                    for w in weight_rows)
+        )
+    except (TypeError, ValueError, KeyError, IndexError, json.JSONDecodeError):
+        aggregate_matches = False
+    if not aggregate_matches:
+        return _result(
+            False, "MODEL_WEIGHT_SNAPSHOT_MISMATCH",
+            "不可变训练快照与冻结因子版本或实际权重不一致，需重新训练。",
+            model_run_id=model_run_id, factor_set_id=factor_set_id,
+        )
 
     if require_runtime_active:
         runtime = db.get(FactorRuntimeState, 1)
         active_model_run_id = runtime.active_model_run_id if runtime else None
-        if active_model_run_id != model_run_id:
+        if active_model_run_id != model_run_id or runtime.weight_mode != "ridge":
             return _result(
                 False,
                 "MODEL_NOT_GLOBAL_ACTIVE",
@@ -223,6 +323,7 @@ def assess_factor_model_readiness(
                 model_run_id=model_run_id,
                 factor_set_id=factor_set_id,
                 active_model_run_id=active_model_run_id,
+                weight_mode=runtime.weight_mode if runtime else "manual",
             )
 
     return _result(
@@ -232,6 +333,7 @@ def assess_factor_model_readiness(
         model_run_id=model_run_id,
         factor_set_id=factor_set_id,
         factor_set_readiness=set_readiness,
+        factor_member_versions={code: version for code, version in sorted(expected_members)},
     )
 
 
@@ -239,4 +341,5 @@ __all__ = [
     "FactorModelReadiness",
     "assess_factor_model_readiness",
     "model_factor_set_id",
+    "model_training_mode",
 ]

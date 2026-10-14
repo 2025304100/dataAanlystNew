@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "antd";
 import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Clock,
   Info,
   ListChecks,
   RefreshCw,
@@ -12,6 +12,8 @@ import {
   SlidersHorizontal,
   XCircle,
 } from "lucide-react";
+import { Button } from "antd";
+import dayjs from "dayjs";
 import { api } from "../../api/client";
 import { useApp } from "../../context/AppContext";
 import { t, template } from "../../i18n";
@@ -28,11 +30,14 @@ import ModelBindingReview from "./ModelBindingReview";
  * 对账 → 每日对账子页；调整状态 → 运行状态子页；跨页 → 设置对应分区。
  */
 
-const SEVERITY_STYLE = {
-  blocker: { color: "#f87171", Icon: XCircle },
-  warning: { color: "#fbbf24", Icon: AlertTriangle },
-  info: { color: "#60a5fa", Icon: Info },
-} as const;
+type Severity = "blocker" | "warning" | "info";
+type HeroTone = "danger" | "warning" | "ok" | "neutral";
+
+const SEVERITY_META: Record<Severity, { color: string; Icon: typeof XCircle; cssTone: string; chipLabel: string }> = {
+  blocker: { color: "#f87171", Icon: XCircle, cssTone: "danger", chipLabel: "阻断" },
+  warning: { color: "#fbbf24", Icon: AlertTriangle, cssTone: "warning", chipLabel: "提醒" },
+  info: { color: "#60a5fa", Icon: Info, cssTone: "info", chipLabel: "信息" },
+};
 
 const STATUS_TONE: Record<string, { color: string }> = {
   READY: { color: "#34d399" },
@@ -111,10 +116,34 @@ const GovernanceOverviewPanel: React.FC<Props> = ({ portfolioId, onNavigate, onG
     }));
   }, [data]);
 
-  const tone = (currentState && STATUS_TONE[currentState]?.color) || "#94a3b8";
   const blockers = data?.summary.blockers ?? 0;
+  const warnings = data?.summary.warnings ?? 0;
+  const infoCount = data?.summary.info ?? 0;
   const ready = data?.summary.ready === true && !blockers;
   const waitingForSignal = data?.summary.waiting_for_signal === true && !blockers;
+
+  const heroTone: HeroTone = blockers > 0
+    ? "danger"
+    : warnings > 0
+      ? "warning"
+      : ready || waitingForSignal
+        ? "ok"
+        : "neutral";
+  const HeroIcon = ready ? CheckCircle2 : ShieldCheck;
+  const heroStateColor = (currentState && STATUS_TONE[currentState]?.color) || "#94a3b8";
+
+  const generatedLabel = useMemo(() => {
+    const g = data?.generated_at;
+    if (!g) return null;
+    const d = dayjs(g);
+    return d.isValid() ? d.format("YYYY-MM-DD HH:mm") : null;
+  }, [data]);
+
+  const heroHint = waitingForSignal
+    ? t("repairDrawer.header.waitingForSignal")
+    : ready
+      ? t("governance.overview.healthyHint")
+      : template("governance.overview.pendingHint", { n: blockers });
 
   // 行动项在治理页内的动作：只做导航，不做写操作。
   const handleItemAction = useCallback(
@@ -140,48 +169,125 @@ const GovernanceOverviewPanel: React.FC<Props> = ({ portfolioId, onNavigate, onG
     [onNavigate, setActiveTab],
   );
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* 当前状态 + 高频动作 */}
-      <div className="pt-panel" style={{ padding: 18, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          {ready ? <CheckCircle2 size={30} color={tone} /> : <ShieldCheck size={30} color={tone} />}
-          <div>
-            <div style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("governance.overview.currentState")}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: tone }}>
-              {currentState ? govStatusLabel(currentState) : t("loading")}
-            </div>
-            <div style={{ fontSize: 12, color: blockers ? "#fca5a5" : "#86efac", marginTop: 2 }}>
-              {waitingForSignal ? t("repairDrawer.header.waitingForSignal") : ready ? t("governance.overview.healthyHint") : template("governance.overview.pendingHint", { n: blockers })}
+  const actionLabel = (item: ActionItem): string => {
+    const action = resolveItemAction(item);
+    if (action.kind === "guided") return t("governance.overview.goReconcile");
+    if (action.kind === "open-modal" && action.modal === "model-binding-review") return t("repairDrawer.binding.open");
+    if (action.kind === "toggle" || action.kind === "open-modal") return t("governance.overview.goOverview");
+    return t("repairDrawer.goProcess");
+  };
+
+  /* 首屏加载：骨架屏，避免旧版整片空白 + 跳动 */
+  if (loading && !data && !error) {
+    return (
+      <div className="gov-overview" aria-busy="true">
+        <div className="gov-skeleton-card" style={{ gap: 14 }}>
+          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            <div className="gov-sk-line" style={{ width: 52, height: 52, borderRadius: 14 }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="gov-sk-line" style={{ width: 120, height: 12 }} />
+              <div className="gov-sk-line" style={{ width: 260, height: 18 }} />
+              <div className="gov-sk-line" style={{ width: 200, height: 11 }} />
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Button icon={<ListChecks size={15} />} onClick={() => onNavigate("governance:reconciliation")}>
+        <div className="gov-item-grid">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="gov-skeleton-card" style={{ minHeight: 132 }}>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div className="gov-sk-line" style={{ width: 30, height: 30, borderRadius: 9 }} />
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div className="gov-sk-line" style={{ width: "70%", height: 13 }} />
+                  <div className="gov-sk-line" style={{ width: "100%", height: 11 }} />
+                  <div className="gov-sk-line" style={{ width: "55%", height: 11 }} />
+                </div>
+              </div>
+              <div className="gov-sk-line" style={{ height: 32, borderRadius: 8, marginTop: "auto" }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="gov-overview">
+      {/* 当前状态横幅 + 高频动作 */}
+      <div className="gov-hero" data-tone={heroTone} role="status">
+        <div className="gov-hero-main">
+          <span className="gov-hero-icon">
+            <HeroIcon size={28} color={heroStateColor} />
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <div className="gov-hero-eyebrow">{t("governance.overview.currentState")}</div>
+            <div className="gov-hero-title" style={heroTone === "neutral" ? { color: heroStateColor } : undefined}>
+              {currentState ? govStatusLabel(currentState) : t("loading")}
+            </div>
+            <div className="gov-hero-sub">{heroHint}</div>
+            <div className="gov-chips">
+              <span className={`gov-chip${blockers === 0 ? " is-zero" : ""}`} data-tone="danger">
+                {SEVERITY_META.blocker.chipLabel} <b>{blockers}</b>
+              </span>
+              <span className={`gov-chip${warnings === 0 ? " is-zero" : ""}`} data-tone="warning">
+                {SEVERITY_META.warning.chipLabel} <b>{warnings}</b>
+              </span>
+              <span className={`gov-chip${infoCount === 0 ? " is-zero" : ""}`} data-tone="info">
+                {SEVERITY_META.info.chipLabel} <b>{infoCount}</b>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="gov-hero-actions">
+          <Button
+            size="small"
+            icon={<ListChecks size={14} />}
+            onClick={() => onNavigate("governance:reconciliation")}
+          >
             {t("governance.overview.quickReconcile")}
           </Button>
-          <Button type="primary" ghost icon={<SlidersHorizontal size={15} />} onClick={() => onNavigate("governance:state")}>
+          <Button
+            type="primary"
+            size="small"
+            icon={<SlidersHorizontal size={14} />}
+            onClick={() => onNavigate("governance:state")}
+          >
             {t("governance.overview.quickState")}
           </Button>
-          <Button icon={<ScrollText size={15} />} onClick={() => onNavigate("governance:audit")}>
+          <Button
+            size="small"
+            icon={<ScrollText size={14} />}
+            onClick={() => onNavigate("governance:audit")}
+          >
             {t("governance.overview.quickAudit")}
           </Button>
-          <Button icon={<RefreshCw size={14} />} loading={loading} onClick={load}>
+          <Button
+            type="text"
+            size="small"
+            icon={<RefreshCw size={14} className={loading ? "gov-icon-spin" : undefined} />}
+            onClick={load}
+            loading={loading}
+          >
             {t("repairDrawer.refresh")}
           </Button>
         </div>
       </div>
 
       {error && (
-        <div className="pt-panel" style={{ padding: 14, borderColor: "rgba(248,113,113,0.4)" }}>
-          <span style={{ color: "#fca5a5" }}>{error}</span>
+        <div className="gov-error" role="alert">
+          <span>{error}</span>
+          <Button size="small" icon={<RefreshCw size={13} />} onClick={load}>
+            {t("repairDrawer.refresh")}
+          </Button>
         </div>
       )}
 
-      {!error && !loading && ready && (data?.items.length ?? 0) === 0 && (
-        <div className="pt-panel" style={{ padding: 32, textAlign: "center" }}>
-          <CheckCircle2 size={30} color="#34d399" />
-          <div style={{ color: "#34d399", fontWeight: 600, marginTop: 8 }}>{t("repairDrawer.empty")}</div>
+      {!error && ready && (data?.items.length ?? 0) === 0 && (
+        <div className="gov-empty">
+          <span className="gov-empty-icon">
+            <CheckCircle2 size={30} />
+          </span>
+          <div className="gov-empty-title">{t("repairDrawer.empty")}</div>
+          <div className="gov-empty-sub">{t("governance.overview.healthyHint")}</div>
         </div>
       )}
 
@@ -189,41 +295,42 @@ const GovernanceOverviewPanel: React.FC<Props> = ({ portfolioId, onNavigate, onG
         ({ sev, list }) =>
           list.length > 0 && (
             <div key={sev}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: SEVERITY_STYLE[sev].color, marginBottom: 8 }}>
-                {t(`repairDrawer.${sev === "blocker" ? "blockersTitle" : sev === "warning" ? "warningsTitle" : "infoTitle"}`)}
-                （{list.length}）
+              <div className="gov-group-head" data-tone={SEVERITY_META[sev].cssTone}>
+                <span className="gov-head-dot" />
+                <span className="gov-group-title">
+                  {t(`repairDrawer.${sev === "blocker" ? "blockersTitle" : sev === "warning" ? "warningsTitle" : "infoTitle"}`)}
+                </span>
+                <span className="gov-group-count">{list.length}</span>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))", gap: 10 }}>
+              <div className="gov-item-grid">
                 {list.map((item) => {
-                  const { Icon, color } = SEVERITY_STYLE[item.severity];
+                  const meta = SEVERITY_META[item.severity];
+                  const { Icon } = meta;
                   const action = resolveItemAction(item);
                   const actionable = action.kind !== "none";
                   return (
-                    <div
-                      key={item.id}
-                      className="pt-panel"
-                      style={{ padding: 14, borderLeft: `3px solid ${color}`, display: "flex", flexDirection: "column", gap: 8 }}
-                    >
-                      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                        <Icon size={16} color={color} style={{ marginTop: 2, flexShrink: 0 }} />
+                    <div key={item.id} className="gov-item" data-tone={meta.cssTone}>
+                      <div className="gov-item-head">
+                        <span className="gov-item-icon">
+                          <Icon size={16} />
+                        </span>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 14, color: "#f1f5f9" }}>{safeTitle(item)}</div>
-                          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3, lineHeight: 1.6 }}>{safeImpact(item)}</div>
+                          <div className="gov-item-title">{safeTitle(item)}</div>
+                          <div className="gov-item-desc">{safeImpact(item)}</div>
                         </div>
                       </div>
                       {actionable && (
-                        <div style={{ marginTop: "auto" }}>
-                          <Button size="small" type={item.severity === "blocker" ? "primary" : "default"} onClick={() => handleItemAction(item)}>
-                            {action.kind === "guided"
-                              ? t("governance.overview.goReconcile")
-                              : action.kind === "open-modal" && action.modal === "model-binding-review"
-                              ? t("repairDrawer.binding.open")
-                              : action.kind === "toggle" || action.kind === "open-modal"
-                              ? t("governance.overview.goOverview")
-                              : t("repairDrawer.goProcess")}
-                            <ArrowRight size={13} style={{ marginLeft: 4 }} />
-                          </Button>
-                        </div>
+                        <Button
+                          block
+                          size="small"
+                          type={item.severity === "blocker" ? "primary" : "default"}
+                          className="gov-item-action"
+                          data-tone={item.severity === "blocker" ? "danger" : "default"}
+                          onClick={() => handleItemAction(item)}
+                        >
+                          {actionLabel(item)}
+                          <ArrowRight size={13} />
+                        </Button>
                       )}
                       {bindingItemId === item.id && action.kind === "open-modal" && action.modal === "model-binding-review" && (
                         <ModelBindingReview key={portfolioId} portfolioId={portfolioId} onNavigate={onNavigate}
@@ -235,6 +342,13 @@ const GovernanceOverviewPanel: React.FC<Props> = ({ portfolioId, onNavigate, onG
               </div>
             </div>
           ),
+      )}
+
+      {generatedLabel && (
+        <div className="gov-foot">
+          <Clock size={12} />
+          <span>更新于 {generatedLabel}</span>
+        </div>
       )}
     </div>
   );

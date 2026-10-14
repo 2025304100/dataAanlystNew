@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Button } from "antd";
+import { Button, Checkbox, Input } from "antd";
 import { api } from "../../api/client";
 import { useApp } from "../../context/AppContext";
 import { t, template } from "../../i18n";
@@ -98,13 +98,19 @@ export default function ModelBindingReview({ portfolioId, onResolved, onNavigate
           </div>
           {review.can_confirm ? (
             <>
-              <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, marginTop: 12 }}>
-                <input type="checkbox" checked={ack} disabled={busy} onChange={(event) => setAck(event.target.checked)} />
-                {t("repairDrawer.binding.ack")}
-              </label>
-              <textarea value={note} disabled={busy} onChange={(event) => setNote(event.target.value)}
+              <div style={{ marginTop: 12 }}>
+                <Checkbox checked={ack} disabled={busy} onChange={(event) => setAck(event.target.checked)}>
+                  {t("repairDrawer.binding.ack")}
+                </Checkbox>
+              </div>
+              <Input.TextArea
+                value={note}
+                disabled={busy}
+                onChange={(event) => setNote(event.target.value)}
                 placeholder={t("repairDrawer.guide.notePlaceholder")}
-                style={{ width: "100%", minHeight: 56, marginTop: 8, padding: 8, background: "#0b1120", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 6 }} />
+                rows={2}
+                style={{ width: "100%", marginTop: 8 }}
+              />
               <Button size="small" type="primary" loading={busy} disabled={!ack || busy || note.trim().length < 10} onClick={() => void confirm()}>
                 {t("repairDrawer.binding.confirm")}
               </Button>

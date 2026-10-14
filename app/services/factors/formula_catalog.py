@@ -7,6 +7,8 @@ from threading import Lock
 from time import monotonic
 from typing import Any, Mapping
 
+from app.services.factors.field_sources import physical_field_column
+
 from app.services.factors.factor_compiler import (
     COMPILER_VERSION,
     DSL_VERSION,
@@ -260,14 +262,27 @@ def _coverage_summary(
     trailing_days = 0
     for _, universe, covered in daily_counts:
         rate = covered / universe if universe else 0.0
-        if rate < minimum_coverage:
+        if covered <= 0 or universe <= 0 or rate < minimum_coverage:
             break
         trailing_days += 1
+    expected_rows = sum(universe for _, universe, _ in daily_counts)
+    covered_rows = sum(covered for _, _, covered in daily_counts)
+    max_gap = gap = 0
+    for _, universe, covered in daily_counts:
+        if universe > 0 and (covered <= 0 or covered / universe < minimum_coverage):
+            gap += 1
+            max_gap = max(max_gap, gap)
+        else:
+            gap = 0
     return {
         "trailing_coverage_days": trailing_days,
         "daily_coverage_p50": percentile(0.50),
         "daily_coverage_p90": percentile(0.90),
         "latest_daily_coverage": round(rates[0], 6) if rates else None,
+        "expected_rows": expected_rows,
+        "covered_rows": covered_rows,
+        "missing_ratio": (1.0 - covered_rows / expected_rows if expected_rows else None),
+        "max_consecutive_gap_days": max_gap,
     }
 
 
@@ -278,16 +293,30 @@ def _query_cross_section_coverage(
     field: str,
     minimum_coverage: float,
 ) -> dict[str, Any]:
-    """Compare a field with the daily-bar stock universe over recent trade days."""
+    """Compare actual values with the matching active CN asset-day universe."""
+    asset_type = "etf" if table == "raw_etf_indicators" else "stock"
+    if table == "raw_financial_reports":
+        source_join = f"""LEFT JOIN LATERAL (
+            SELECT reports.symbol, reports.{field}
+            FROM raw_financial_reports AS reports
+            WHERE reports.symbol = bars.symbol
+              AND reports.announcement_date <= calendar.trade_date
+            ORDER BY reports.announcement_date DESC, reports.report_period DESC
+            LIMIT 1
+        ) AS source ON TRUE"""
+    else:
+        source_join = f"""LEFT JOIN {table} AS source
+            ON source.symbol = bars.symbol
+            AND source.trade_date = calendar.trade_date"""
     try:
         rows = conn.execute(
             f"""
             WITH stock_bars AS (
-                SELECT bars.symbol, bars.trade_date
+                SELECT DISTINCT bars.symbol, bars.trade_date
                 FROM raw_daily_bars AS bars
                 JOIN raw_asset_universe AS universe
                   ON universe.symbol = bars.symbol
-                WHERE LOWER(universe.asset_type) = 'stock'
+                WHERE LOWER(universe.asset_type) = '{asset_type}'
                   AND LOWER(universe.region) = 'cn'
                   AND universe.is_active = TRUE
             ),
@@ -296,18 +325,34 @@ def _query_cross_section_coverage(
                 FROM stock_bars
                 ORDER BY trade_date DESC
                 LIMIT 260
+            ),
+            observations AS (
+                SELECT bars.symbol, calendar.trade_date,
+                    BOOL_OR(source.{field} IS NOT NULL) AS covered
+                FROM calendar
+                JOIN stock_bars AS bars ON bars.trade_date = calendar.trade_date
+                {source_join}
+                GROUP BY bars.symbol, calendar.trade_date
+            ),
+            gap_islands AS (
+                SELECT *, SUM(CASE WHEN covered THEN 1 ELSE 0 END) OVER (
+                    PARTITION BY symbol ORDER BY trade_date
+                ) AS island
+                FROM observations
+            ),
+            gaps AS (
+                SELECT symbol, island, COUNT(*) AS gap_days
+                FROM gap_islands WHERE NOT covered
+                GROUP BY symbol, island
             )
             SELECT
-                calendar.trade_date,
-                COUNT(DISTINCT bars.symbol) AS universe_symbols,
-                COUNT(DISTINCT CASE WHEN source.{field} IS NOT NULL THEN source.symbol END) AS covered_symbols
-            FROM calendar
-            JOIN stock_bars AS bars ON bars.trade_date = calendar.trade_date
-            LEFT JOIN {table} AS source
-                ON source.symbol = bars.symbol
-                AND source.trade_date = calendar.trade_date
-            GROUP BY calendar.trade_date
-            ORDER BY calendar.trade_date DESC
+                trade_date,
+                COUNT(*) AS universe_symbols,
+                COUNT(*) FILTER (WHERE covered) AS covered_symbols,
+                (SELECT COALESCE(MAX(gap_days), 0) FROM gaps) AS longest_symbol_gap
+            FROM observations
+            GROUP BY trade_date
+            ORDER BY trade_date DESC
             """
         ).fetchall()
     except Exception:
@@ -316,19 +361,25 @@ def _query_cross_section_coverage(
             "daily_coverage_p50": None,
             "daily_coverage_p90": None,
             "latest_daily_coverage": None,
+            "expected_rows": None,
+            "covered_rows": None,
+            "missing_ratio": None,
+            "max_consecutive_gap_days": None,
         }
     daily_counts = [(row[0], int(row[1] or 0), int(row[2] or 0)) for row in rows]
-    return _coverage_summary(daily_counts, minimum_coverage=minimum_coverage)
+    summary = _coverage_summary(daily_counts, minimum_coverage=minimum_coverage)
+    if rows:
+        summary["max_consecutive_gap_days"] = max(
+            summary["max_consecutive_gap_days"], int(rows[0][3] or 0)
+        )
+    return summary
 
 
 def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
     """Read lightweight field-level coverage evidence from DuckDB.
 
-    The daily-bars table is intentionally inspected through table existence and
-    row count only; counting every nullable column on a multi-billion-row
-    warehouse would make opening the formula editor an expensive operation.
-    External tables are much smaller, so their non-null field counts are read
-    in one aggregate query per table.
+    Nullable fields are counted in one aggregate scan per table. Physical
+    column existence alone is never evidence that an input has values.
     """
     table_fields: dict[str, list[str]] = {}
     for field_name, spec in FIELD_CATALOG.items():
@@ -379,13 +430,12 @@ def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
                     if field == "prev_close":
                         # This field is derived from close and has no physical column.
                         continue
-                    if is_daily_table:
-                        continue
-                    if field not in columns:
+                    column = physical_field_column(table, field)
+                    if column not in columns:
                         continue
                     alias = f"nonnull_{index}"
                     count_aliases[field] = alias
-                    select_parts.append(f"COUNT({field}) AS {alias}")
+                    select_parts.append(f"COUNT({column}) AS {alias}")
                 try:
                     row = conn.execute(
                         f"SELECT {', '.join(select_parts)} FROM {table}"
@@ -421,15 +471,11 @@ def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
                             "derived": True,
                         }
                     else:
-                        nonnull_rows = (
-                            row_values["table_rows"]
-                            if is_daily_table and field in columns
-                            else row_values.get(f"nonnull:{field}", 0)
-                        )
+                        nonnull_rows = row_values.get(f"nonnull:{field}", 0)
                         stats[field] = {
                             **row_values,
                             "nonnull_rows": nonnull_rows,
-                            "column_exists": field in columns,
+                            "column_exists": physical_field_column(table, field) in columns,
                             "derived": False,
                         }
                     policy = _FIELD_DATA_POLICIES.get(field, {})
@@ -437,7 +483,9 @@ def _query_field_stats(warehouse: Any) -> dict[str, dict[str, Any]]:
                     # （例如资金流 60 日）时才计算。只要数据表具备标的、交易日
                     # 和实际字段列，就按最近交易日的股票横截面统计覆盖率。
                     # prev_close 没有物理列，沿用 close 的覆盖口径。
-                    coverage_field = "close" if field == "prev_close" else field
+                    coverage_field = (
+                        "close" if field == "prev_close" else physical_field_column(table, field)
+                    )
                     can_measure_daily_coverage = (
                         "symbol" in columns
                         and date_col in columns
@@ -522,6 +570,10 @@ def _field_capability(field_name: str, stats: Mapping[str, Any]) -> dict[str, An
         "daily_coverage_p50": stats.get("daily_coverage_p50"),
         "daily_coverage_p90": stats.get("daily_coverage_p90"),
         "latest_daily_coverage": stats.get("latest_daily_coverage"),
+        "expected_rows": stats.get("expected_rows"),
+        "covered_rows": stats.get("covered_rows"),
+        "missing_ratio": stats.get("missing_ratio"),
+        "max_consecutive_gap_days": stats.get("max_consecutive_gap_days"),
         "first_date": stats.get("first_date"),
         "latest_date": stats.get("latest_date"),
         "derived": bool(stats.get("derived", False)),

@@ -5,7 +5,7 @@ import json
 import logging
 from dataclasses import asdict
 import threading
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from statistics import median
 from uuid import uuid4
@@ -38,10 +38,14 @@ from app.services.factors.data_sync import mirror_factor_inputs
 from app.services.factors.factor_engine import calculate_stock_factors
 from app.services.factor_set_service import factor_set_readiness
 from app.services.factors.ridge_model import train_rolling_ridge
-from app.services.factors.runtime import get_factor_runtime_snapshot
-from app.services.factors.scoring_bridge import materialize_factor_scores
+from app.services.factors.runtime import _snapshot
+from app.services.factors.scoring_bridge import materialize_factor_scores, materialize_factor_score_window
 from app.services.factors.store import FactorWarehouse, SHARED_TARGET_BATCH_ID
 from app.models.score import Score
+from app.models.factor_model import FactorModelRun
+from app.models.factor_runtime import FactorRuntimeState
+from app.models.factor_evaluation import FactorSet
+from app.models.universe import UniverseDailyBar, UniverseSymbol
 from app.models.decision_engine import DecisionEvidence
 from app.models.journal_entry import JournalEntry
 from app.models.trade_setup import TradeSetup
@@ -50,6 +54,156 @@ from app.services.factors.target_engine import calculate_targets
 
 logger = logging.getLogger(__name__)
 TASK_TYPE = 'factor_pipeline'
+_TASK_DISPATCH_LOCK = threading.Lock()
+
+
+def _expected_runtime_identity(payload: FactorPipelineCreate):
+    hp = payload.hyperparameters_json or {}
+    if not ({'expected_model_run_id', 'expected_weight_mode'} & hp.keys()):
+        return None
+    model_id = hp.get('expected_model_run_id')
+    mode = hp.get('expected_weight_mode')
+    if not isinstance(model_id, str) or not model_id.strip() or mode not in {'ridge', 'shadow'}:
+        raise factor_structured_error(
+            'MODEL_RUNTIME_EXPECTATION_INVALID', title_zh='评分任务缺少模型身份',
+            detail_zh='请同时指定 expected_model_run_id 和 expected_weight_mode（ridge 或 shadow），然后重新提交评分。',
+            impact='未创建或发布任何模型评分。', fix_link='/settings/factor-center', retryable=False,
+        )
+    return model_id.strip(), mode
+
+
+def _validate_requested_runtime(db, payload: FactorPipelineCreate):
+    # A locking/current read bypasses both the ORM identity cache and MySQL's
+    # repeatable-read snapshot. During score publication this row lock is held
+    # until commit, so activation cannot race the publication transaction.
+    state = db.execute(
+        select(FactorRuntimeState).where(FactorRuntimeState.id == 1)
+        .with_for_update().execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    runtime = _snapshot(state)
+    expected = _expected_runtime_identity(payload)
+    if expected is not None and expected != (runtime.active_model_run_id, runtime.weight_mode):
+        raise factor_structured_error(
+            'MODEL_RUNTIME_CHANGED', title_zh='活动模型已变更，本次评分已中止',
+            detail_zh='评分任务指定的模型或运行模式与当前活动模型不一致。请查看当前模型，再重新生成评分。',
+            impact='本次任务未发布评分；已有合法历史评分保留。',
+            fix_link='/settings/factor-center', retryable=True,
+            extras={'expected_model_run_id': expected[0], 'expected_weight_mode': expected[1],
+                    'actual_model_run_id': runtime.active_model_run_id, 'actual_weight_mode': runtime.weight_mode},
+        )
+    return runtime
+
+
+def _pin_scoring_runtime(payload: FactorPipelineCreate, runtime) -> None:
+    # Scheduled/legacy scoring callers may omit an expectation. Bind their
+    # request to the model observed at dispatch instead of following later
+    # activations. Training never inherits the old active model as its output.
+    if (payload.materialize_scores and not payload.train_model
+            and _expected_runtime_identity(payload) is None
+            and runtime.active_model_run_id and runtime.weight_mode in {'ridge', 'shadow'}):
+        payload.hyperparameters_json = {
+            **(payload.hyperparameters_json or {}),
+            'expected_model_run_id': runtime.active_model_run_id,
+            'expected_weight_mode': runtime.weight_mode,
+        }
+
+
+def _pipeline_request_intent(payload: FactorPipelineCreate) -> dict:
+    # Actor/source describe who requested the task, not what it calculates.
+    # Every calculation/training/publication parameter remains in the intent.
+    intent = payload.model_dump(mode='json', exclude={'actor', 'source_hint'})
+    for key in ('hyperparameters_json', 'factor_scope_json'):
+        intent[key] = intent.get(key) or {}
+    return intent
+
+
+def _complete_calculation_dates(db, warehouse, *, start_date: date, end_date: date,
+                                threshold: float = 0.90, as_of: datetime | None = None) -> dict:
+    """Compare the frozen mirror with both its history and the live local source.
+
+    Never assume MAX(trade_date) is a complete cross section. A source update
+    during mirroring is detectable because the mirror must also cover the
+    source's current symbol count. This check is read-only and fails closed.
+    """
+    with warehouse.connection(read_only=True) as conn:
+        rows = conn.execute("""
+            SELECT trade_date, COUNT(DISTINCT symbol)
+            FROM raw_daily_bars WHERE adjust = 'qfq'
+              AND trade_date >= ? AND trade_date <= ?
+            GROUP BY trade_date ORDER BY trade_date
+        """, [start_date - timedelta(days=45), end_date]).fetchall()
+    source_rows = db.execute(
+        select(UniverseDailyBar.trade_date,
+               func.count(UniverseDailyBar.universe_symbol_id.distinct()))
+        .join(UniverseSymbol, UniverseSymbol.id == UniverseDailyBar.universe_symbol_id)
+        .where(UniverseDailyBar.trade_date >= start_date - timedelta(days=45),
+               UniverseDailyBar.trade_date <= end_date,
+               UniverseSymbol.asset_type == 'stock', UniverseSymbol.region == 'cn')
+        .group_by(UniverseDailyBar.trade_date)
+    ).all()
+    source_counts = dict(source_rows)
+    universe_count = int(db.scalar(select(func.count(UniverseSymbol.id)).where(
+        UniverseSymbol.asset_type == 'stock', UniverseSymbol.region == 'cn',
+    )) or 0)
+    counts = dict(rows)
+    accepted, skipped = [], []
+    exchange_now = (as_of or datetime.now(timezone.utc)).astimezone(timezone(timedelta(hours=8)))
+    for day, observed in rows:
+        if day < start_date:
+            continue
+        prior = [count for prior_day, count in rows if prior_day < day][-20:]
+        # A bootstrap still needs an independently observed universe/source
+        # count; the largest mirror cross section prevents a tiny last day
+        # from redefining its own baseline.
+        baseline = int(median(prior)) if prior else max(counts.values(), default=0)
+        expected = max(baseline, int(source_counts.get(day, 0)))
+        if len(prior) < 3 and day >= exchange_now.date() - timedelta(days=45):
+            expected = max(expected, universe_count)
+        ratio = observed / expected if expected else 0.0
+        closed = day < exchange_now.date() or (
+            day == exchange_now.date() and (exchange_now.hour, exchange_now.minute) >= (15, 15)
+        )
+        if expected and ratio >= threshold and closed:
+            accepted.append(day)
+        else:
+            skipped.append({'trade_date': day, 'observed_symbols': observed,
+                            'expected_symbols': expected, 'coverage': ratio,
+                            'reason': ('INCOMPLETE_DAILY_BAR_CROSS_SECTION' if closed
+                                       else 'DAILY_BAR_NOT_CLOSED')})
+    return {'accepted_dates': accepted, 'skipped_dates': skipped,
+            'selected_end_date': accepted[-1] if accepted else None,
+            'minimum_bar_coverage': threshold}
+
+
+def _qualified_factor_dates(warehouse, *, batch_id: str,
+                            expected_versions: dict[str, int],
+                            minimum_coverage: float = 0.70) -> dict:
+    with warehouse.connection(read_only=True) as conn:
+        totals = dict(conn.execute("""
+            SELECT trade_date, COUNT(DISTINCT symbol) FROM raw_daily_bars
+            WHERE adjust = 'qfq' GROUP BY trade_date
+        """).fetchall())
+        rows = conn.execute("""
+            SELECT trade_date, factor_code, factor_version,
+                   COUNT(DISTINCT CASE WHEN eligible AND normalized_value IS NOT NULL
+                                       AND isfinite(normalized_value) THEN symbol END)
+            FROM factor_values WHERE calc_batch_id = ?
+            GROUP BY trade_date, factor_code, factor_version ORDER BY trade_date
+        """, [batch_id]).fetchall()
+    per_day = {}
+    for day, code, version, count in rows:
+        if expected_versions.get(code) == version:
+            per_day.setdefault(day, {})[code] = count / max(totals.get(day, 0), 1)
+    accepted, skipped = [], []
+    for day in sorted({row[0] for row in rows}):
+        coverage = {code: per_day.get(day, {}).get(code, 0.0) for code in expected_versions}
+        if coverage and min(coverage.values()) >= minimum_coverage:
+            accepted.append(day)
+        else:
+            skipped.append({'trade_date': day, 'coverage_by_factor': coverage,
+                            'reason': 'INSUFFICIENT_FACTOR_COVERAGE'})
+    return {'accepted_dates': accepted, 'skipped_dates': skipped,
+            'minimum_factor_coverage': minimum_coverage}
 
 # 样本不足时按运行模式回退；训练、全量刷新不能再沿用 3 分钟。
 DEFAULT_ETA_SECONDS = {
@@ -531,6 +685,13 @@ def _require_ready_training_factor_set(payload: FactorPipelineCreate) -> None:
 
 
 def create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
+    # Serialize the existing single-worker contract within this process; two
+    # simultaneous activations must not both pass the single-flight check.
+    with _TASK_DISPATCH_LOCK:
+        return _create_factor_pipeline_task(payload)
+
+
+def _create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
     factor_config = get_current_factor_system_config()
     if not factor_config.feature_enabled:
         raise ValueError(
@@ -538,6 +699,30 @@ def create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
         )
     # Task 9 (1) 取消 fallback + (2) 精确 5 错误码 — 抛 FactorSevenError（7 要素）
     _require_ready_training_factor_set(payload)
+
+    SessionLocal = get_session_local()
+    runtime_db = SessionLocal()
+    try:
+        runtime = _validate_requested_runtime(runtime_db, payload)
+        _pin_scoring_runtime(payload, runtime)
+    finally:
+        runtime_db.close()
+    existing = list_async_tasks(task_type=TASK_TYPE, limit=1)
+    if existing and existing[0].status in {'queued', 'running'}:
+        try:
+            old_payload = FactorPipelineCreate.model_validate_json(existing[0].payload_json or '{}')
+            same_intent = _pipeline_request_intent(old_payload) == _pipeline_request_intent(payload)
+        except (TypeError, ValueError):
+            same_intent = False
+        if same_intent:
+            return existing[0].model_dump()
+        raise factor_structured_error(
+            'FACTOR_PIPELINE_BUSY', title_zh='已有其他因子任务正在运行',
+            detail_zh='正在运行的任务与本次模型、集合或计算请求不同。本次请求未提交，请等现有任务完成后重试。',
+            impact='模型激活状态保留；本次评分或训练任务未创建。',
+            fix_link='/settings/factor-center', retryable=True,
+            extras={'running_task_id': existing[0].id},
+        )
 
     # ── Task 9 (3) ③ factor_audit_logs.attributes_json.factor_set_id 写入 ──
     # 仅在 train=true 且 factor_set_id 有值时写启动审计
@@ -583,9 +768,6 @@ def create_factor_pipeline_task(payload: FactorPipelineCreate) -> dict:
         finally:
             audit_db.close()
 
-    existing = list_async_tasks(task_type=TASK_TYPE, limit=1)
-    if existing and existing[0].status in {'queued', 'running'}:
-        return existing[0].model_dump()
     # force_new：本入口是用户显式“启动流水线”动作，并发重复提交已由上面的
     # 单飞（queued/running 回读）拦住；如果不传 force_new，AC-10 幂等回读会
     # 把“上一轮已 done”的历史任务直接返回，前端看到一条旧任务而 worker 根本不
@@ -603,8 +785,18 @@ def _classify_pipeline_error(exc: Exception, stage: str):
     """
     msg = str(exc) or type(exc).__name__
     lower = msg.lower()
+    if isinstance(exc, FactorSevenError):
+        return exc.error_code, exc.detail_zh
     # 参数/配置校验类（不可重试）
     if isinstance(exc, (ValueError,)):
+        if 'no_complete_trade_date' in lower:
+            return ('DAILY_BAR_INCOMPLETE', '行情尚未收盘或镜像未覆盖完整交易日，请等待本地行情同步完成后重试')
+        if 'factor_coverage' in lower:
+            return ('FACTOR_COVERAGE_INSUFFICIENT', '冻结集合的有效因子覆盖不足，请补齐该版本所需数据后重试；本次未发布评分')
+        if 'no_factor_scores_published' in lower:
+            return ('FACTOR_SCORE_INPUT_MISSING', '本窗口没有可发布的模型评分，请检查冻结版本的输入覆盖和业务标的映射')
+        if 'frozen_factor' in lower or 'factor_value_version_mismatch' in lower:
+            return ('FACTOR_VERSION_INPUT_INVALID', '冻结因子版本的公式、输入或计算结果不匹配，请修复版本定义后重新计算')
         if 'disabled' in lower or 'enable' in lower:
             return (
                 'FACTOR_PIPELINE_DISABLED',
@@ -666,6 +858,10 @@ def _run_factor_pipeline(task_id: str) -> None:
         payload = FactorPipelineCreate.model_validate(
             json.loads(task.payload_json or '{}')
         )
+        starting_runtime = _validate_requested_runtime(db, payload)
+        _pin_scoring_runtime(payload, starting_runtime)
+        if payload.train_model and (payload.factor_scope_json or {}).get('asset_type', 'stock') != 'stock':
+            raise ValueError('unsupported_training_asset_type:stock_only')
         if payload.validation_days >= payload.window_days:
             raise ValueError('validation_days must be less than window_days')
         factor_config = get_factor_system_config(db)
@@ -750,6 +946,28 @@ def _run_factor_pipeline(task_id: str) -> None:
         if should_cancel():
             return
 
+        current_stage = 'factors'
+        # End any repeatable-read snapshot opened while mirroring factor
+        # inputs; completeness must observe source rows committed meanwhile.
+        db.rollback()
+        completeness = _complete_calculation_dates(
+            db, warehouse, start_date=calculation_start_date,
+            end_date=effective_end_date,
+        )
+        results['data_completeness'] = completeness
+        if not completeness['accepted_dates']:
+            raise ValueError('no_complete_trade_date_after_mirror')
+        effective_end_date = completeness['selected_end_date']
+        results['effective_range']['end_date'] = effective_end_date
+        runtime_before_calculation = _validate_requested_runtime(db, payload)
+        _pin_scoring_runtime(payload, runtime_before_calculation)
+        calculation_set_ids = [payload.factor_set_id] if payload.factor_set_id else []
+        if not payload.train_model and runtime_before_calculation.active_model_run_id:
+            active_model = db.get(FactorModelRun, runtime_before_calculation.active_model_run_id)
+            active_set = json.loads(active_model.hyperparameters_json or '{}').get('factor_set_id') if active_model else None
+            if active_set:
+                calculation_set_ids.append(active_set)
+
         _set_task(
             db,
             task_id,
@@ -778,6 +996,9 @@ def _run_factor_pipeline(task_id: str) -> None:
                 start_date=calculation_start_date,
                 end_date=effective_end_date,
                 calc_batch_id=factor_calc_batch_id,
+                db=db,
+                factor_set_ids=tuple(dict.fromkeys(calculation_set_ids)),
+                trade_dates=tuple(completeness['accepted_dates']),
             )
             # 审计行数只是记账，不许把计算阶段带崩：字段缺失时留 0
             factor_batch_audit.rows_written = getattr(factors, 'rows_written', 0)
@@ -831,6 +1052,18 @@ def _run_factor_pipeline(task_id: str) -> None:
 
         model_result = None
         if payload.train_model:
+            current_stage = 'train'
+            training_dates = None
+            if payload.factor_set_id:
+                training_set = db.get(FactorSet, payload.factor_set_id)
+                expected = {m.factor_code: m.factor_version for m in training_set.members if m.role == 'feature'}
+                training_coverage = _qualified_factor_dates(
+                    warehouse, batch_id=factors.calc_batch_id, expected_versions=expected,
+                )
+                results['training_coverage'] = training_coverage
+                if not training_coverage['accepted_dates']:
+                    raise ValueError('insufficient_frozen_factor_coverage_for_training')
+                training_dates = tuple(training_coverage['accepted_dates'])
             _set_task(
                 db,
                 task_id,
@@ -852,15 +1085,20 @@ def _run_factor_pipeline(task_id: str) -> None:
                 ),
                 window_days=payload.window_days,
                 validation_days=payload.validation_days,
+                allowed_trade_dates=training_dates,
+                hyperparameters={**(payload.hyperparameters_json or {}),
+                                 'actor': payload.actor, 'source_hint': payload.source_hint},
             )
             db.commit()
             results['model'] = asdict(model_result)
         if should_cancel():
             return
 
-        runtime = get_factor_runtime_snapshot(db)
+        runtime = _validate_requested_runtime(db, payload)
+        _pin_scoring_runtime(payload, runtime)
         if (
             payload.materialize_scores
+            and not payload.train_model
             and runtime.weight_mode in {'shadow', 'ridge'}
             and runtime.active_model_run_id
         ):
@@ -872,21 +1110,40 @@ def _run_factor_pipeline(task_id: str) -> None:
                 message='Materializing active factor score batch',
             )
             current_stage = 'score'
-            latest_date = _latest_factor_date(
-                warehouse, factors.calc_batch_id
+            # _set_task commits progress and releases earlier locks. Re-read
+            # the expectation now, retaining this current-read row lock until
+            # the scores and their lineage have committed together.
+            runtime = _validate_requested_runtime(db, payload)
+            scoring_model = db.get(FactorModelRun, runtime.active_model_run_id)
+            from app.services.factor_model_contract import assess_factor_model_readiness
+            readiness = assess_factor_model_readiness(db, model_run_id=runtime.active_model_run_id,
+                                                      require_runtime_active=True)
+            if not readiness.ready:
+                raise ValueError(f'{readiness.code}:{readiness.message}')
+            expected = {member.factor_code: int(member.factor_version) for member in scoring_model.weights}
+            scoring_coverage = _qualified_factor_dates(
+                warehouse, batch_id=factors.calc_batch_id,
+                expected_versions={code: int(version) for code, version in expected.items()},
             )
-            if latest_date is not None:
-                bridge = materialize_factor_scores(
-                    db,
-                    warehouse,
-                    trade_date=latest_date,
-                    factor_calc_batch_id=factors.calc_batch_id,
-                    model_run_id=runtime.active_model_run_id,
-                    mode=runtime.weight_mode,
-                    pipeline_run_id=task_id,
-                )
-                db.commit()
-                results['scoring_bridge'] = asdict(bridge)
+            results['scoring_coverage'] = scoring_coverage
+            results['scoring_bridge'] = materialize_factor_score_window(
+                db, warehouse, trade_dates=scoring_coverage['accepted_dates'],
+                factor_calc_batch_id=factors.calc_batch_id,
+                model_run_id=runtime.active_model_run_id, mode=runtime.weight_mode,
+                pipeline_run_id=task_id,
+                publication_guard=lambda: _validate_requested_runtime(db, payload),
+            )
+            _validate_requested_runtime(db, payload)
+            db.commit()
+        elif payload.materialize_scores:
+            results['scoring_bridge'] = {
+                'status': 'SKIPPED',
+                'reason': ('TRAINED_MODEL_REQUIRES_EXPLICIT_ACTIVATION' if payload.train_model
+                           else 'NO_ACTIVE_FACTOR_MODEL'),
+                'mode': runtime.weight_mode, 'materialized_count': 0,
+                'model_run_id': model_result.model_run_id if model_result else None,
+                'next_action': 'Review and explicitly activate a validated real-data model before requesting scores',
+            }
         # Retain a bounded calculation history so repeated score refreshes do
         # not grow the analytical warehouse without limit. Audit metadata and
         # SQLite Score rows remain intact for decision/evidence traceability.
@@ -912,6 +1169,19 @@ def _run_factor_pipeline(task_id: str) -> None:
             }
         results['runtime'] = runtime.to_dict()
         results['trained_model_auto_activated'] = False
+        scores_skipped = results.get('scoring_bridge', {}).get('status') == 'SKIPPED'
+        scores_partial = results.get('scoring_bridge', {}).get('status') == 'PARTIAL'
+        training_rejected = model_result is not None and model_result.status != 'validated'
+        completion_status = ('TRAINING_REJECTED' if training_rejected else
+                             'AWAITING_MODEL_ACTIVATION' if scores_skipped or model_result is not None else
+                             'PARTIAL_SCORE_PUBLICATION' if scores_partial else 'COMPLETED')
+        results['completion_status'] = completion_status
+        completion_message = {
+            'TRAINING_REJECTED': 'Factor calculation completed; training candidate rejected by data/model gates',
+            'AWAITING_MODEL_ACTIVATION': 'Factor calculation completed; scores skipped until explicit model activation',
+            'PARTIAL_SCORE_PUBLICATION': 'Factor scores partially published; missing inputs or symbol mappings are listed in results',
+            'COMPLETED': 'Factor pipeline completed',
+        }[completion_status]
 
         _set_task(
             db,
@@ -919,7 +1189,7 @@ def _run_factor_pipeline(task_id: str) -> None:
             status='done',
             stage='done',
             percent=100,
-            message='Factor pipeline completed',
+            message=completion_message,
             result_json=json.dumps(
                 results, ensure_ascii=False, default=str
             ),
@@ -994,6 +1264,7 @@ def _run_factor_pipeline(task_id: str) -> None:
                     ensure_ascii=False,
                     default=str,
                 ),
+                result_json=json.dumps(locals().get('results', {}), ensure_ascii=False, default=str),
                 finished_at=_now(),
             )
         except Exception:

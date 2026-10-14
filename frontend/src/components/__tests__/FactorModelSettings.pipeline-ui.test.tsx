@@ -261,6 +261,9 @@ describe("FactorModelSettings — Pipeline UI (T8)", () => {
     await waitFor(() => {
       const step4Cls = step4.className;
       expect(step4Cls).toContain("ps-state-running");
+      expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({
+        train_model: true, materialize_scores: false, factor_set_id: "fs-READY",
+      }));
     });
 
     // 到目前为止 ready/wait/running 都命中，已 ≥ 2/4（rubric 要求）

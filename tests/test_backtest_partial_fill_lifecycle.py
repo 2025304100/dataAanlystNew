@@ -48,7 +48,7 @@ def test_partial_buy_retry_accumulates_the_original_plan_on_one_trade(db_session
 
     days = [date(2025, 1, 6), date(2025, 1, 7), date(2025, 1, 8)]
     volumes = [100_000.0, 1_200.0, 10_000.0]
-    scores = [0.9, 0.5, 0.5]
+    scores = [90, 50, 50]
     for trade_date, volume, quality_score in zip(days, volumes, scores):
         db_session.add(DailyBar(
             symbol_id=symbol.id,
@@ -65,12 +65,14 @@ def test_partial_buy_retry_accumulates_the_original_plan_on_one_trade(db_session
             trade_date=trade_date,
             quality_score=quality_score,
             quality_grade="A",
-            timing_score=0.8,
+            timing_score=80,
             stage="growth",
-            action="open" if quality_score >= 0.7 else "hold",
-            priority_score=0.8,
-            weight_mode="manual",
+            action="open" if quality_score >= 70 else "hold",
+            priority_score=80,
+            weight_mode="ridge",
             factor_model_run_id="model-partial-lifecycle",
+            model_alpha_score=quality_score,
+            factor_data_cutoff_at=datetime(trade_date.year, trade_date.month, trade_date.day, 7),
             calc_batch_id=f"batch-{trade_date.isoformat()}",
             published_at=datetime(2025, 1, 1),
         ))

@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, timezone
+import math
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException
@@ -65,16 +66,17 @@ def _load_portfolio_or_404(db: Session, portfolio_id: int) -> Portfolio:
     return p
 
 
-def _get_runtime_state(db: Session) -> FactorRuntimeState:
-    """获取单例 runtime；不存在就初始化。"""
+def _get_runtime_state(db: Session, *, create: bool = False) -> FactorRuntimeState:
+    """Read without bootstrap writes; creation belongs to the apply transaction."""
     state = db.get(FactorRuntimeState, 1)
     if state is None:
         state = FactorRuntimeState(
             id=1, weight_mode="manual", active_model_run_id=None,
-            updated_by="bootstrap", version=1,
+            updated_by="bootstrap", version=1 if create else 0,
         )
-        db.add(state)
-        db.flush()
+        if create:
+            db.add(state)
+            db.flush()
     return state
 
 
@@ -112,8 +114,10 @@ def _build_member_snapshot(db: Session, portfolio_id: int, as_of_utc: datetime) 
     def _to_row(m: PortfolioMember) -> dict[str, Any]:
         fields = {k: getattr(m, k, None) for k in (
             "id", "symbol_id", "execution_mode", "priority",
-            "entry_rule_version_id", "exit_rule_version_id",
+            "entry_rule_version_id", "exit_rule_version_id", "status",
         )}
+        fields["source_type"] = "member"
+        fields["entry_authorized"] = getattr(m, "status", None) == "active"
         ef = getattr(m, "effective_from", None) or getattr(m, "created_at", as_of_utc)
         et = getattr(m, "effective_to", None)
         fields["effective_from"] = ef.isoformat() if isinstance(ef, datetime) else str(ef)
@@ -147,6 +151,52 @@ def _build_member_snapshot(db: Session, portfolio_id: int, as_of_utc: datetime) 
         effective_rows.append(_to_row(member))
 
     return effective_rows
+
+
+def _build_execution_universe_snapshot(db: Session, portfolio: Portfolio, as_of_utc: datetime):
+    """Freeze authorized candidates and exit-only holdings alongside explicit members."""
+    from app.models.portfolio_candidate import PortfolioCandidate
+    from app.models.symbol import Symbol
+    from app.services.portfolio_asset_scope import allows_asset_type
+
+    members = _build_member_snapshot(db, portfolio.id, as_of_utc)
+    by_symbol = {int(m["symbol_id"]): m for m in members}
+    source_mode = str(portfolio.auto_trade_source_mode or "portfolio")
+    as_of_day = utc_naive_to_shanghai(as_of_utc).date()
+    candidates = []
+    for candidate, symbol in db.execute(select(PortfolioCandidate, Symbol).join(
+        Symbol, Symbol.id == PortfolioCandidate.symbol_id,
+    ).where(PortfolioCandidate.portfolio_id == portfolio.id).order_by(PortfolioCandidate.id)):
+        if candidate.effective_from and candidate.effective_from > as_of_day:
+            continue
+        if candidate.effective_to and candidate.effective_to < as_of_day:
+            continue
+        row = {
+            "symbol_id": candidate.symbol_id, "source_id": candidate.id,
+            "source_type": "candidate", "execution_mode": "auto",
+            "auto_authorized_flag": candidate.auto_authorized_flag,
+            "removed_manually_flag": candidate.removed_manually_flag,
+            "effective_from": candidate.effective_from.isoformat() if candidate.effective_from else None,
+            # Candidate intervals include their end day; engine intervals are half-open.
+            "effective_to": (candidate.effective_to + timedelta(days=1)).isoformat() if candidate.effective_to else None,
+            "entry_authorized": bool(candidate.auto_authorized_flag) and not bool(candidate.removed_manually_flag),
+        }
+        candidates.append(row)
+        if (source_mode == "portfolio" and row["entry_authorized"]
+                and allows_asset_type(portfolio.asset_scope, symbol.asset_type)):
+            # A candidate cannot override a member's manual/confirm/paused authorization.
+            by_symbol.setdefault(candidate.symbol_id, row)
+    for position in db.scalars(select(Position).where(
+        Position.portfolio_id == portfolio.id, Position.quantity > 0,
+    ).order_by(Position.id)):
+        # Orphan holdings remain available for exits in every source mode; never for entry.
+        by_symbol.setdefault(position.symbol_id, {
+            "symbol_id": position.symbol_id, "source_id": position.id,
+            "source_type": "position", "execution_mode": "auto", "entry_authorized": False,
+            "effective_from": position.opened_at.isoformat() if position.opened_at else None,
+            "effective_to": None,
+        })
+    return [by_symbol[sid] for sid in sorted(by_symbol)], candidates, source_mode
 
 
 def _usage_content_hash(portfolio_id: int, payload: FactorUsageBindRequest) -> str:
@@ -188,7 +238,7 @@ def _validate_production_mode_and_active(
     warnings: list[PreflightWarning] = []
     active = runtime.active_model_run_id
     if payload.run_mode in {"production_pit", "production_sim"}:
-        if not active or payload.factor_model_run_id != active:
+        if not active or payload.factor_model_run_id != active or runtime.weight_mode != "ridge":
             warnings.append(PreflightWarning(
                 severity="blocking",
                 code="MODEL_NOT_GLOBAL_ACTIVE",
@@ -325,6 +375,10 @@ def get_factor_usage_options(db: Session, portfolio_id: int) -> FactorUsageOptio
                 factor_set_id=selected_factor_set_id,
                 trained_at=getattr(r, "trained_at", None) or getattr(r, "created_at", None),
                 passes_production_gate=True,
+                production_eligible=True,
+                readiness_code=readiness.code,
+                readiness_message=readiness.message,
+                training_mode="warehouse",
                 is_global_active=True,
                 sample_out_rank_ic=metrics.get("validation_ic"),
                 sample_out_icir=metrics.get("validation_icir"),
@@ -386,11 +440,11 @@ def get_factor_usage_options(db: Session, portfolio_id: int) -> FactorUsageOptio
         "pit_mode": "best_effort",
         "universe_type": "portfolio_members",
     }
-    # 默认 rule = 最新 active rule
-    for r in rules:
-        if r.is_active if hasattr(r, "is_active") else True:
-            defaults["rule_id"] = r.rule_id
-            defaults["rule_version"] = r.rule_version
+    # Read activity from ORM rows; option DTOs intentionally carry no activity flag.
+    for r in sorted(rule_rows, key=lambda row: row.id, reverse=True):
+        if r.is_active:
+            defaults["rule_id"] = r.id
+            defaults["rule_version"] = 1
             break
 
     return FactorUsageOptionsResponse(
@@ -445,9 +499,11 @@ def get_current_usage(db: Session, portfolio_id: int) -> CurrentFactorUsageRespo
     )
 
 
-def _resolve_clock_for_now() -> ResolvedClock:
+def _resolve_clock_for_now(run_mode: str = "research") -> ResolvedClock:
     """Save/Preflight 时使用"今日 T 决策 + T+1 执行"的默认时钟（Q1.3）。"""
     today = date.today()
+    if run_mode in {"production_pit", "production_sim"}:
+        return resolve(today, mode="t_day_close", decision_time=time(20, 30), cutoff_time=time(20))
     return resolve(today, mode="t_day_close")
 
 
@@ -468,12 +524,13 @@ def _assemble_preflight_or_save_payload(
     portfolio = _load_portfolio_or_404(db, portfolio_id)
     runtime = _get_runtime_state(db)
     now = _utcnow_naive()
-    clock = clock or _resolve_clock_for_now()
+    clock = clock or _resolve_clock_for_now(payload.run_mode)
 
     warnings: list[PreflightWarning] = []
     warnings.extend(_validate_production_mode_and_active(runtime, payload))
     warnings.extend(_validate_model_binding_readiness(db, runtime, payload))
 
+    rule = None
     # Rule 存在性校验
     if payload.rule_id is not None:
         rule = db.get(PortfolioRule, payload.rule_id)
@@ -492,9 +549,58 @@ def _assemble_preflight_or_save_payload(
         "rule_version": payload.rule_version,
         "run_mode": payload.run_mode,
         "pit_mode": payload.pit_mode,
+        "score_sla_coverage_pct": payload.score_sla_coverage_pct,
+        "score_sla_max_age_days": payload.score_sla_max_age_days,
         "runtime_version": runtime.version,
         "gate_policy_version": GATE_POLICY_VERSION,
     }
+    if payload.run_mode in {"production_pit", "production_sim"}:
+        versions["decision_clock_policy"] = {
+            "timezone": "Asia/Shanghai", "decision_time": "20:30", "cutoff_time": "20:00",
+            "execution_time": "09:30", "execution_offset_days": 1,
+        }
+    if rule is not None and rule.portfolio_id == portfolio_id:
+        from app.services.portfolio_backtest import _build_rule_config
+        from app.services.signal_rules import get_active_signal_rule
+        from app.models.factor_evaluation import FactorSetMember
+        versions["rule_config"] = _build_rule_config(db, portfolio_id, rule)
+        versions["rule_constraints"] = {
+            "total_investable_pct": float(portfolio.investable_ratio or 0.95),
+            "min_cash_reserve_pct": float(portfolio.cash_reserve_ratio or 0),
+            "max_loss_per_trade_pct": float(rule.max_loss_per_trade_pct or 0),
+            "asset_limits": {"stock": float(rule.max_stock_position_pct or 0), "etf": float(rule.max_etf_position_pct or 0)},
+            "sector_limit_pct": float(rule.max_sector_position_pct or 0),
+            "single_limit_pct": float(rule.max_single_position_pct or 0),
+            "stage_limits": json.loads(rule.stage_limits_json or "{}"),
+            "open_slot_max": int(rule.max_open_positions or 0), "rule_ok": True,
+        }
+        versions["signal_rule"] = get_active_signal_rule(db, portfolio_id).model_dump(mode="json")
+        versions["signal_policy"] = {
+            "score_source": "model_alpha", "score_scale": 100,
+            "buy_threshold": 70, "sell_threshold": 35,
+        }
+        stage = json.loads(rule.stage_limits_json or "{}")
+        try:
+            stop_loss_pct = float(stage.get("price_stop_loss_pct") or 0)
+            drawdown_pct = float(stage.get("drawdown_circuit_pct") or 0)
+        except (TypeError, ValueError):
+            stop_loss_pct = drawdown_pct = -1.0
+        if not math.isfinite(stop_loss_pct) or not math.isfinite(drawdown_pct):
+            stop_loss_pct = drawdown_pct = -1.0
+        versions["risk_policy"] = {
+            "stop_loss_basis": "average_cost", "stop_loss_pct": stop_loss_pct,
+            "drawdown_circuit_pct": drawdown_pct,
+            "drawdown_action": "block_new_buys",
+        }
+        if any(not 0 <= versions["risk_policy"][key] < 1 for key in ("stop_loss_pct", "drawdown_circuit_pct")):
+            warnings.append(PreflightWarning(severity="blocking", code="RISK_POLICY_INVALID", message="价格止损和回撤阈值必须为0到1之间的比例。"))
+        versions["factor_member_versions"] = {
+            m.factor_code: int(m.factor_version)
+            for m in db.execute(select(FactorSetMember).where(
+                FactorSetMember.factor_set_id == payload.factor_set_id,
+                FactorSetMember.role == "feature",
+            )).scalars()
+        }
 
     usage = PortfolioFactorUsage(
         id=content_hash("pfu", usage_hash, now.isoformat(), actor),
@@ -519,14 +625,15 @@ def _assemble_preflight_or_save_payload(
     )
 
     # Q1 / C-01a：组合内快照流水号自增 1。SELECT MAX + INSERT 在事务上下文中由 save_and_apply_usage 保证原子性。
-    from sqlalchemy import select, func as sa_func
+    from sqlalchemy import func as sa_func
     cur_max = db.scalar(
         select(sa_func.coalesce(sa_func.max(StrategyExecutionSnapshot.snapshot_no), 0))
         .where(StrategyExecutionSnapshot.portfolio_id == portfolio_id)
     ) or 0
     next_snapshot_no = int(cur_max) + 1
 
-    members = _build_member_snapshot(db, portfolio_id, now)
+    members, candidates, source_mode = _build_execution_universe_snapshot(db, portfolio, now)
+    versions["auto_trade_source_mode"] = source_mode
     bench = getattr(portfolio, "benchmark_code", "000300") or "000300"
     cost_cfg = {
         "buy_slippage_bps": 5,        # Q2.3
@@ -553,9 +660,11 @@ def _assemble_preflight_or_save_payload(
         decision_clock_payload,
         cost_cfg,
         member_snap,
+        candidates,
         key_members,
         bench,
         payload.run_mode,
+        versions,
     )
     idem_key = _snapshot_idempotency_key(portfolio_id, usage_hash, now)
 
@@ -572,7 +681,7 @@ def _assemble_preflight_or_save_payload(
         cost_config_json=canonical_json(cost_cfg),
         member_snapshot_json=canonical_json(member_snap),
         key_members_json=canonical_json(key_members) if key_members else None,
-        candidate_pool_json=(canonical_json(payload.candidate_pool_ids) if getattr(payload, "candidate_pool_ids", None) else None),
+        candidate_pool_json=canonical_json(candidates),
         universe_type="portfolio_members",
         benchmark_code=bench,
         snapshot_type="save_and_apply",
@@ -602,32 +711,33 @@ def preflight_usage(
     snapshot, usage, warnings, clock_payload = _assemble_preflight_or_save_payload(
         db, portfolio_id, payload, actor,
     )
-    # 额外做一次 Score 覆盖率估算（best-effort；TODO: WP5 接入真实 SQL）
-    from app.models.score import Score  # 局部 import
-    member_count = len(snapshot.member_snapshot_json or "[]")
     try:
         import json as _json
         member_rows = _json.loads(snapshot.member_snapshot_json or "[]")
     except Exception:
         member_rows = []
     symbol_ids = sorted({r["symbol_id"] for r in member_rows if r.get("symbol_id")})
-    score_count_actual = 0
-    if symbol_ids:
-        # 粗略估算：最新一条 Score 就算覆盖（精确每证券取最新见 Q22 查询模式）
-        rows = db.execute(
-            select(Score.id).where(and_(
-                Score.factor_model_run_id == payload.factor_model_run_id,
-                Score.symbol_id.in_(symbol_ids),
-            ))
-        ).scalars().all()
-        score_count_actual = len({r for r in rows if r is not None})
-    expected = len(symbol_ids) or 0
+    from app.services.score_query_service import estimate_score_coverage
+    expected, score_count_actual, max_age = estimate_score_coverage(
+        db, factor_model_run_id=payload.factor_model_run_id, factor_set_id=payload.factor_set_id,
+        symbol_ids=symbol_ids, decision_date=date.fromisoformat(clock_payload["data_cutoff_at_cst"][:10]),
+        data_cutoff_at=datetime.fromisoformat(clock_payload["data_cutoff_at_utc"]),
+        require_published_at=payload.run_mode.startswith("production") or payload.pit_mode == "strict_pit_safe",
+        factor_member_versions=json.loads(snapshot.versions_json or "{}").get("factor_member_versions"),
+    )
     coverage = round(100.0 * score_count_actual / expected, 2) if expected else None
+    if expected and (coverage < payload.score_sla_coverage_pct or max_age is None or max_age > payload.score_sla_max_age_days):
+        warnings.append(PreflightWarning(
+            severity="warning", code="SCORE_SLA_NOT_READY",
+            message="绑定配置可应用，当前评分尚未达到覆盖率或时效要求；执行时将暂停新增买入。",
+        ))
+    gate_result = _loads_or_none(snapshot.gate_result_json) or {}
+    gate_result["warnings"] = [w.model_dump(mode="json") for w in warnings]
     return StrategyPreflightResponse(
         ok=not any(w.severity == "blocking" for w in warnings),
         preflight_snapshot_hash=snapshot.snapshot_hash,
         gate_policy_version=snapshot.gate_policy_version,
-        gate_result_json=_loads_or_none(snapshot.gate_result_json),
+        gate_result_json=gate_result,
         warnings=warnings,
         snapshot_preview={
             "id": snapshot.id,
@@ -649,8 +759,8 @@ def preflight_usage(
         },
         decision_clock=clock_payload,
         score_coverage_pct=coverage,
-        score_max_age_days=None,  # TODO: G1-WP5 精确估算
-        member_count=member_count,
+        score_max_age_days=max_age,
+        member_count=len(member_rows),
         universe_count=len(symbol_ids),
         idempotency_key=snapshot.idempotency_key or "",
     )
@@ -668,6 +778,7 @@ def _loads_or_none(x: Any) -> dict[str, Any] | None:
 
 def save_and_apply_usage(
     db: Session, portfolio_id: int, payload: FactorUsageBindRequest, actor: str = "local_user",
+    *, commit: bool = True,
 ) -> SaveAndApplyResponse:
     """Q1 / Q8：单事务保存 PortfolioFactorUsage + StrategyExecutionSnapshot。
 
@@ -700,7 +811,7 @@ def save_and_apply_usage(
         runtime = db.execute(
             select(FactorRuntimeState).where(FactorRuntimeState.id == 1)
             .with_for_update().execution_options(populate_existing=True)
-        ).scalar_one_or_none() or _get_runtime_state(db)
+        ).scalar_one_or_none() or _get_runtime_state(db, create=True)
         pre_version = runtime.version
         idem = _snapshot_idempotency_key(portfolio_id, _usage_content_hash(portfolio_id, payload), now)
         existing = db.execute(
@@ -782,10 +893,15 @@ def save_and_apply_usage(
             created_at=now,
         ))
 
-        db.commit()
-        db.refresh(new_usage)
-        db.refresh(snapshot)
+        if commit:
+            db.commit()
+            db.refresh(new_usage)
+            db.refresh(snapshot)
+        else:
+            db.flush()
     except IntegrityError as e:
+        if not commit:
+            raise
         db.rollback()
         # 命中 uq_ses_idempotency：幂等返回已保存结果（Q28）
         if "uq_ses_idempotency" in (str(e.orig).lower() if e.orig else str(e).lower()):

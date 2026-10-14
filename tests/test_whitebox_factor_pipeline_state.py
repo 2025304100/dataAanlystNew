@@ -128,7 +128,8 @@ def test_single_flight_rejects_duplicate_running_task(db_session, tmp_path):
     """当存在 running/queued 任务时，create_factor_pipeline_task 返回既有任务而非新建。"""
     _setup_config(db_session, tmp_path / "single_flight.duckdb")
     existing = _create_task(
-        db_session, task_id="single-flight-running", status="running", stage="mirror"
+        db_session, task_id="single-flight-running", status="running", stage="mirror",
+        payload=_data_prep_payload(),
     )
     before = _count_pipeline_tasks(db_session)
 

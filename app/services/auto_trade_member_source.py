@@ -29,7 +29,7 @@ from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import Portfolio, Position
@@ -99,13 +99,28 @@ def _build_snapshot_decision_state_context(
 
     from app.models.decision_engine import StrategyExecutionSnapshot
     from app.models.sim_account import CashLedger
-    from app.services.decision_engine import DecisionStateContext
+    from app.services.decision_engine import DecisionStateContext, _stub_snapshot_loader, _resolve_snapshot_clock
+    from app.models.portfolio_equity_snapshot import PortfolioEquitySnapshot
     from app.services.sim_accounts import cash_balance, ensure_sim_account_seed
 
     portfolio = db.get(Portfolio, portfolio_id)
     snapshot = db.get(StrategyExecutionSnapshot, strategy_snapshot_id)
     if portfolio is None or snapshot is None:
         return None
+    loaded_snapshot = _stub_snapshot_loader(db, strategy_snapshot_id)
+    drawdown_enabled = bool((loaded_snapshot.versions.get("risk_policy") or {}).get("drawdown_circuit_pct"))
+    cutoff = _resolve_snapshot_clock(loaded_snapshot, trade_date).data_cutoff_at
+    def visible_bar(bar: DailyBar | None) -> bool:
+        available = getattr(bar, "created_at", None)
+        if not isinstance(available, datetime):
+            return False
+        available = available.astimezone(timezone.utc).replace(tzinfo=None) if available.tzinfo else available
+        return available <= cutoff
+    historical_peak = db.scalar(select(func.max(PortfolioEquitySnapshot.total_equity)).where(
+        PortfolioEquitySnapshot.portfolio_id == portfolio_id,
+        PortfolioEquitySnapshot.snapshot_date <= trade_date,
+        PortfolioEquitySnapshot.created_at <= cutoff,
+    ))
 
     member_symbol_ids = _snapshot_member_symbol_ids(snapshot)
     positions = list(db.execute(
@@ -140,6 +155,8 @@ def _build_snapshot_decision_state_context(
             available_cash=available_cash,
             total_capital=float(portfolio.total_capital or 0.0),
             cost_config=snapshot_cost,
+            equity_value=available_cash if drawdown_enabled else None,
+            equity_high_watermark=max(float(historical_peak or 0.0), available_cash) if drawdown_enabled else None,
         )
 
     symbols = {
@@ -196,6 +213,7 @@ def _build_snapshot_decision_state_context(
             "market_value": market_value,
             "asset_type": asset_type,
             "sector": sector,
+            "average_cost": float(position.avg_cost or 0.0),
         }
         if quantity > 0:
             current_asset_pct[asset_type] = current_asset_pct.get(asset_type, 0.0) + pct
@@ -232,6 +250,10 @@ def _build_snapshot_decision_state_context(
             "_auto_signal_open": float(signal_bar.open),
         }
 
+    equity = available_cash + sum(float(values.get("market_value", 0.0)) for values in current_by_symbol.values())
+    if any(float(position.quantity or 0.0) > 0 and not visible_bar(signal_bars.get(int(position.symbol_id))) for position in positions):
+        equity = None
+    peak = max(float(historical_peak or 0.0), float(equity or 0.0), float(portfolio.total_capital or 0.0))
     return DecisionStateContext(
         current_by_symbol=current_by_symbol,
         current_asset_pct=current_asset_pct,
@@ -240,6 +262,8 @@ def _build_snapshot_decision_state_context(
         total_capital=total_capital,
         price_data_by_symbol=price_data_by_symbol,
         cost_config=snapshot_cost,
+        equity_value=equity if drawdown_enabled else None,
+        equity_high_watermark=peak if drawdown_enabled else None,
     )
 
 

@@ -1,3 +1,4 @@
+import { Checkbox } from "antd";
 import { t } from "../../../../../i18n";
 import type { PoolMember } from "./poolApi";
 
@@ -81,8 +82,7 @@ export default function PoolMemberTable({
         <thead>
           <tr>
             <th style={{ width: 40 }}>
-              <input
-                type="checkbox"
+              <Checkbox
                 aria-label="select all"
                 disabled={locked}
                 onChange={onToggleAll}
@@ -116,8 +116,7 @@ export default function PoolMemberTable({
             return (
               <tr key={`${m.symbol}-${idx}`}>
                 <td>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     disabled={locked}
                     checked={selected.includes(id)}
                     onChange={() => onToggle(id)}

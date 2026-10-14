@@ -1,3 +1,5 @@
+import { Button, Upload } from "antd";
+import { DownloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { t } from "../../../../../i18n";
 import type { ImportPreviewResult } from "./poolApi";
 
@@ -41,27 +43,28 @@ export default function PoolImportPanel({
   return (
     <div className="mining-pool-import" data-pool-import-panel>
       <div className="mining-pool-import-actions">
-        <button
-          type="button"
-          className="mining-pool-btn"
+        <Button
+          icon={<DownloadOutlined />}
           disabled={locked || busy}
           title={locked ? t("miningPoolLockedHint") : undefined}
           onClick={onTemplate}
         >
           {t("miningPoolImportTemplate")}
-        </button>
-        <label className="mining-pool-file">
-          <span>{t("miningPoolImportUpload")}</span>
-          <input
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            disabled={locked || busy}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onFile(f);
-            }}
-          />
-        </label>
+        </Button>
+        <Upload
+          accept=".csv,.xlsx,.xls"
+          showUploadList={false}
+          disabled={locked || busy}
+          beforeUpload={(file) => {
+            onFile(file as File);
+            // 返回 false 阻止 antd 自动发起上传，文件只交父级做预览
+            return false;
+          }}
+        >
+          <Button icon={<UploadOutlined />} disabled={locked || busy}>
+            {t("miningPoolImportUpload")}
+          </Button>
+        </Upload>
       </div>
 
       {busy && (

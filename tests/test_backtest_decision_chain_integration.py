@@ -48,14 +48,16 @@ def test_backtest_persists_unified_decision_chain_and_links_trades(db_session):
         db_session.add(Score(
             symbol_id=symbol.id,
             trade_date=trade_date,
-            quality_score=0.9 if i == 0 else 0.2,
+            quality_score=90 if i == 0 else 20,
             quality_grade="A",
-            timing_score=0.8,
+            timing_score=80,
             stage="growth",
             action="open" if i == 0 else "exit",
-            priority_score=0.8,
-            weight_mode="manual",
+            priority_score=80,
+            weight_mode="ridge",
             factor_model_run_id="model-integration",
+            model_alpha_score=90 if i == 0 else 20,
+            factor_data_cutoff_at=datetime(trade_date.year, trade_date.month, trade_date.day, 7),
             calc_batch_id=f"batch-{i}",
             published_at=datetime(2025, 1, 1, 0, 0),
         ))
@@ -150,9 +152,10 @@ def test_decision_engine_returns_stable_order_plans_for_each_evidence(db_session
     ))
     db_session.add(Score(
         symbol_id=symbol.id, trade_date=trade_date,
-        quality_score=0.9, quality_grade="A", timing_score=0.8,
-        stage="growth", action="open", priority_score=0.8,
-        weight_mode="manual", factor_model_run_id="model-plan",
+        quality_score=90, quality_grade="A", timing_score=80,
+        stage="growth", action="open", priority_score=80,
+        weight_mode="ridge", factor_model_run_id="model-plan",
+        model_alpha_score=90, factor_data_cutoff_at=datetime(2025, 1, 6, 7),
         calc_batch_id="batch-plan", published_at=datetime(2025, 1, 1),
     ))
     snapshot = StrategyExecutionSnapshot(

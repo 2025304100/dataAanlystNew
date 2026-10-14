@@ -1,5 +1,20 @@
 import "@testing-library/jest-dom";
 
+// antd DatePicker（rc-picker/dayjs）依赖这些 dayjs 插件
+import dayjs from "dayjs";
+import customParseFormat from "dayjs/plugin/customParseFormat";
+import advancedFormat from "dayjs/plugin/advancedFormat";
+import weekday from "dayjs/plugin/weekday";
+import localeData from "dayjs/plugin/localeData";
+import weekOfYear from "dayjs/plugin/weekOfYear";
+import weekYear from "dayjs/plugin/weekYear";
+dayjs.extend(customParseFormat);
+dayjs.extend(advancedFormat);
+dayjs.extend(weekday);
+dayjs.extend(localeData);
+dayjs.extend(weekOfYear);
+dayjs.extend(weekYear);
+
 // antd 与部分浏览器 API 在 jsdom 中缺失，统一 mock
 if (!window.matchMedia) {
   Object.defineProperty(window, "matchMedia", {

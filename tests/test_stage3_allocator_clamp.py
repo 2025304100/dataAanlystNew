@@ -80,7 +80,7 @@ def test_explicit_zero_stage_limit_blocks_new_buy_and_is_auditable(db_session):
             coverage_pct=100.0,
             items=[{
                 "symbol_id": symbol.id,
-                "quality_score": 0.90,
+                "quality_score": 90.0,
                 "stage": "start",
             }],
         ),
@@ -174,7 +174,7 @@ def test_injected_cash_reserve_blocks_buy_before_lot_rounding(db_session):
             coverage_pct=100.0,
             items=[{
                 "symbol_id": symbol.id,
-                "quality_score": 0.90,
+                "quality_score": 90.0,
                 "stage": "growth",
             }],
         ),
@@ -278,7 +278,7 @@ def test_open_position_limit_blocks_a_new_buy_and_is_auditable(db_session):
             coverage_pct=100.0,
             items=[
                 {"symbol_id": held.id, "quality_score": 0.50, "stage": "growth"},
-                {"symbol_id": candidate.id, "quality_score": 0.90, "stage": "growth"},
+                {"symbol_id": candidate.id, "quality_score": 90.0, "stage": "growth"},
             ],
         ),
         signal=lambda _db, _snapshot, _scored: SignalResult(items=[
@@ -390,7 +390,7 @@ def test_verified_stop_loss_distance_clamps_buy_to_trade_risk_budget(db_session)
             coverage_pct=100.0,
             items=[{
                 "symbol_id": symbol.id,
-                "quality_score": 0.90,
+                "quality_score": 90.0,
                 "stage": "growth",
             }],
         ),
@@ -493,7 +493,7 @@ def test_available_cash_cap_includes_buy_slippage_and_fees(db_session):
             coverage_pct=100.0,
             items=[{
                 "symbol_id": symbol.id,
-                "quality_score": 0.90,
+                "quality_score": 90.0,
                 "stage": "growth",
             }],
         ),
@@ -604,7 +604,7 @@ def test_volume_participation_cap_limits_plan_quantity_before_matching(db_sessio
             coverage_pct=100.0,
             items=[{
                 "symbol_id": symbol.id,
-                "quality_score": 0.90,
+                "quality_score": 90.0,
                 "stage": "growth",
             }],
         ),

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { Checkbox } from "antd";
 import { t } from "../../../../i18n";
 import { factorMiningApi } from "../../../../api/factorMining";
 import GradeEvidenceDrawer from "./GradeEvidenceDrawer";
@@ -372,8 +373,7 @@ export default function FactorMiningResult({
             {visible.map((r) => (
               <tr key={r.candidate_id}>
                 <td>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     data-result-checkbox={r.candidate_id}
                     checked={selected.includes(r.candidate_id)}
                     onChange={() => toggle(r.candidate_id)}

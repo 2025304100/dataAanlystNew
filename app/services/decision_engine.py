@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from dataclasses import dataclass, field as dc_field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from typing import Any, Callable, Literal, Protocol
 
 from sqlalchemy import func, select
@@ -94,6 +95,7 @@ def _run_type_from_db(db_value: str | None) -> RunType:
 
 DEFAULT_SLIPPAGE_BUY_BPS = 5.0
 DEFAULT_SLIPPAGE_SELL_BPS = 5.0
+DECISION_SCORE_POLICY_VERSION = "factor-score-v2"
 _FORMAL_PIT_RUN_MODES = frozenset({
     "production",
     "strict_pit",
@@ -129,6 +131,26 @@ class LoadedSnapshot:
     market_volume_by_symbol: dict[int, float] = dc_field(default_factory=dict)
 
 
+def _resolve_snapshot_clock(snap: LoadedSnapshot, trade_date: date) -> ResolvedClock:
+    """New releases freeze their nightly schedule; old snapshots keep theirs."""
+    policy = snap.versions.get("decision_clock_policy")
+    if policy is None:
+        return resolve(trade_date, mode="t_day_close")
+    if not isinstance(policy, dict) or policy.get("timezone") != "Asia/Shanghai":
+        raise ValueError("snapshot decision_clock_policy requires Asia/Shanghai")
+    try:
+        clock = resolve(trade_date, mode="t_day_close",
+            decision_time=time.fromisoformat(policy["decision_time"]),
+            cutoff_time=time.fromisoformat(policy["cutoff_time"]),
+            execution_time=time.fromisoformat(policy["execution_time"]),
+            execution_offset_days=int(policy["execution_offset_days"]))
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("snapshot decision_clock_policy is invalid") from error
+    if not clock.data_cutoff_at <= clock.decision_at < clock.execution_at:
+        raise ValueError("snapshot clock requires cutoff <= decision < execution")
+    return clock
+
+
 @dataclass(frozen=True)
 class DecisionStateContext:
     """Historical portfolio state supplied by replay/backtest callers."""
@@ -141,6 +163,8 @@ class DecisionStateContext:
     pending_orders: dict[str, dict[str, Any]] = dc_field(default_factory=dict)
     price_data_by_symbol: dict[int, dict[str, Any]] = dc_field(default_factory=dict)
     cost_config: dict[str, Any] = dc_field(default_factory=dict)
+    equity_value: float | None = None
+    equity_high_watermark: float | None = None
 
     @property
     def state_hash(self) -> str:
@@ -154,6 +178,8 @@ class DecisionStateContext:
             self.current_asset_pct,
             self.current_sector_pct,
             self.pending_orders,
+            self.equity_value,
+            self.equity_high_watermark,
         )
 
 
@@ -458,10 +484,10 @@ class PositionAllocator(Protocol):
 
 # ──────────────────────────────────────────────────────────── 编排主类
 class DecisionEngine:
-    """G1-WP0-3a：11 步流水线入口。
+    """Shared snapshot, PIT scoring, signal, allocation and evidence pipeline.
 
-    每个步骤默认是 stub（把输入原样透传并打标记），保证骨架能跑通；
-    真实实现随 WP0-3b/WP0-4a/WP0-5a 逐步替换，失败不影响骨架契约。
+    Defaults consume the bound model's real Score rows. Injectable stages are
+    retained for isolated contract tests and diagnostic callers.
     """
 
     def __init__(
@@ -554,6 +580,16 @@ class DecisionEngine:
                 int(symbol_id): dict(values)
                 for symbol_id, values in state_context.current_by_symbol.items()
             }
+            if run_type in {"auto_simulation", "backtest"}:
+                frozen_symbols = {int(member["symbol_id"]) for member in snap.members if member.get("symbol_id") is not None}
+                for symbol_id, values in current_by_symbol.items():
+                    if float(values.get("qty", 0.0) or 0.0) > 0 and symbol_id not in frozen_symbols:
+                        # Holdings opened after application still need their
+                        # risk exit. Runtime state adds no entry authority and
+                        # never changes the durable snapshot or member mode.
+                        snap.members.append({"symbol_id": symbol_id, "execution_mode": "auto",
+                            "entry_authorized": False, "source_type": "position_state"})
+                        frozen_symbols.add(symbol_id)
             # Evidence is built from the immutable snapshot member list, while
             # replay callers own the historical quantities.  Overlay only
             # state fields here so target deltas and HOLD/SELL semantics use
@@ -567,6 +603,7 @@ class DecisionEngine:
                 member["current_quantity"] = float(state_values.get("qty", 0.0) or 0.0)
                 member["current_position_pct"] = float(state_values.get("pct", 0.0) or 0.0)
                 member["market_value"] = float(state_values.get("market_value", 0.0) or 0.0)
+                member["average_cost"] = state_values.get("average_cost")
                 if state_values.get("asset_type") is not None:
                     member["asset_type"] = state_values["asset_type"]
                 if state_values.get("sector") is not None:
@@ -635,7 +672,26 @@ class DecisionEngine:
                     if float((values or {}).get("qty", 0.0) or 0.0) > 0
                 },
             )
-        clock = resolve(trade_date, mode="t_day_close")
+        clock = _resolve_snapshot_clock(snap, trade_date)
+        risk_policy = snap.versions.get("risk_policy") or {}
+        drawdown_reasons: list[dict[str, Any]] = []
+        if isinstance(risk_policy, dict) and risk_policy.get("drawdown_circuit_pct"):
+            try:
+                threshold = float(risk_policy["drawdown_circuit_pct"])
+                equity = float(state_context.equity_value) if state_context and state_context.equity_value is not None else None
+                peak = float(state_context.equity_high_watermark) if state_context and state_context.equity_high_watermark is not None else None
+                valid_equity = bool(equity is not None and peak is not None and math.isfinite(equity) and math.isfinite(peak) and peak > 0 and 0 < threshold < 1)
+            except (TypeError, ValueError):
+                valid_equity = False
+            if not valid_equity:
+                drawdown_reasons.append({"severity": "blocking", "code": "DRAWDOWN_EQUITY_UNAVAILABLE",
+                    "message": "组合回撤所需的截止时点净值与历史峰值缺失，暂不新增买入"})
+            else:
+                drawdown = max(0.0, 1.0 - equity / peak)
+                if drawdown + 1e-12 >= threshold:
+                    drawdown_reasons.append({"severity": "blocking", "code": "DRAWDOWN_CIRCUIT_TRIGGERED",
+                        "message": f"组合从历史净值峰值回撤 {drawdown:.2%}，达到 {threshold:.2%}，暂停新增买入",
+                        "detail": {"equity": equity, "equity_high_watermark": peak, "drawdown": drawdown, "threshold": threshold}})
 
         run_mode_precheck = snap.versions.get("run_mode", "research")
 
@@ -818,10 +874,20 @@ class DecisionEngine:
                     "message": f"Score 最旧距今 {scored.max_age_days} 天 > SLA {sla['max_age_days']} 天",
                 })
 
+        if any(item.get("score_input_issues") for item in scored.items):
+            is_result_production_eligible = False
+        if blocking_status != "READY":
+            is_result_production_eligible = False
+
         # Q6/Fail-Closed：正式模式 + 关键成员缺 Score → 整体阻断
         # （key_member 识别留待 allocator 细化；这里骨架只对全阻断统一放行 NO_ACTION）
         # Step 7-8: Signal + Allocation
         signal_res = self.generate_signal(db, snap, scored)
+        if any("SIGNAL_POLICY_INVALID" in item.get("reasons", []) for item in signal_res.items):
+            blocking_status = "DATA_INCOMPLETE_PAUSED"
+            is_result_production_eligible = False
+            blocking_reasons.append({"severity": "blocking", "code": "SIGNAL_POLICY_INVALID",
+                "message": "执行快照信号策略必须使用 0～100 分与真实绑定模型输出"})
         alloc = self.allocate_position(db, snap, signal_res, clock.data_cutoff_at)
 
         # Step 9: Evidence
@@ -855,6 +921,24 @@ class DecisionEngine:
             blocking_status = _classify_blocking(blocking_reasons)
             is_result_production_eligible = False
             gate_result = {**gate_result, "governance_exit_only": True, "governance_blockers": governance_reasons}
+        if drawdown_reasons:
+            detail = "；".join(reason["message"] for reason in drawdown_reasons)
+            for ev in evidence:
+                if ev.action != "BUY":
+                    continue
+                delta = float(ev.target_qty_delta or ev.target_quantity or 0.0)
+                ev.target_quantity = max(0.0, float(ev.target_quantity or 0.0) - delta)
+                ev.target_qty_delta = 0.0
+                ev.action = "REJECTED"
+                ev.action_subtype = "REJECTED_DRAWDOWN_CIRCUIT"
+                ev.rejection_reason = drawdown_reasons[0]["code"]
+                ev.rejection_detail = detail
+                ev.blocking_reason = detail
+                ev.executed_price = None
+                ev.reason_codes.extend(reason["code"] for reason in drawdown_reasons)
+            blocking_reasons.extend(drawdown_reasons)
+            is_result_production_eligible = False
+            gate_result = {**gate_result, "drawdown_entry_blockers": drawdown_reasons}
         # T-A9.3：回填 consumed_override_ids（已 apply 的 ManualPriceOverride.id 集合，用于 persist 时 mark consumed）
         consumed_override_ids: set[int] = set(ta9_context.get("applied_override_ids") or [])
         for ev in evidence:
@@ -866,6 +950,7 @@ class DecisionEngine:
             "decision_run", portfolio_id, strategy_snapshot_id,
             clock.decision_at.isoformat(), trade_date.isoformat(), run_type,
             state_context.state_hash if state_context is not None else None,
+            DECISION_SCORE_POLICY_VERSION,
         )
         if governance_reasons:
             # A governance change is a different decision input: its BUY
@@ -875,6 +960,9 @@ class DecisionEngine:
                 "governance_guarded_decision", decision_run_id,
                 sorted({(str(reason["code"]), str(reason["message"])) for reason in governance_reasons}),
             )
+        if drawdown_reasons:
+            decision_run_id = content_hash("drawdown_guarded_decision", decision_run_id,
+                sorted({(reason["code"], reason["message"]) for reason in drawdown_reasons}))
         evidence_idempotency_prefix = decision_run_id[:16]
         order_plans = _build_order_plans(
             decision_run_id=decision_run_id,
@@ -1039,6 +1127,7 @@ class DecisionEngine:
             idempotency_key=decision_run_id,
             versions_json=canonical_json({
                 **snap.versions,
+                "decision_score_policy_version": DECISION_SCORE_POLICY_VERSION,
                 "gate_policy_version": snap.gate_policy_version,
                 "gate_result": gate_result,
             }),
@@ -1365,9 +1454,33 @@ def _stub_gate(
     db: Session, snap: LoadedSnapshot, clock: ResolvedClock,
 ) -> tuple[bool, list[dict[str, Any]], dict[str, Any]]:
     reasons: list[dict[str, Any]] = []
-    if not snap.factor_model_run_id:
+    explicit_manual_research = (
+        snap.versions.get("run_mode", "research") not in _FORMAL_PIT_RUN_MODES
+        and snap.versions.get("score_weight_mode") == "manual"
+    )
+    if not snap.factor_model_run_id and not explicit_manual_research:
         reasons.append({"severity": "blocking", "code": "MODEL_INACTIVE",
                         "message": "快照未绑定 factor_model_run_id（Q21方案A必须绑定全局active）"})
+    if snap.versions.get("run_mode") in _FORMAL_PIT_RUN_MODES:
+        if not snap.factor_set_id:
+            reasons.append({"severity": "blocking", "code": "FACTOR_SET_REQUIRED",
+                "message": "正式执行快照缺少冻结因子集"})
+        elif snap.factor_model_run_id and db is not None:
+            from app.services.factors.__facade__ import assess_score_model_readiness
+            readiness = assess_score_model_readiness(db, snap.factor_model_run_id, snap.factor_set_id,
+                require_runtime_active=False)
+            if not readiness["ready"]:
+                reasons.append({"severity": "blocking", "code": readiness["code"], "message": readiness["message"]})
+            else:
+                artifact_versions = _normalise_factor_versions(readiness.get("details", {}).get("factor_member_versions"))
+                snapshot_versions = _normalise_factor_versions(snap.versions.get("factor_member_versions"))
+                if artifact_versions and snapshot_versions and artifact_versions != snapshot_versions:
+                    reasons.append({"severity": "blocking", "code": "SNAPSHOT_FACTOR_VERSION_MISMATCH",
+                                    "message": "执行快照的因子版本与绑定模型训练产物不一致"})
+                elif artifact_versions and not snapshot_versions:
+                    # Resolve old snapshots from their immutable training artifact,
+                    # without rewriting historical database rows.
+                    snap.versions["factor_member_versions"] = artifact_versions
     result = {
         "passed": not reasons,
         "checks": [{"code": r["code"], "passed": r["severity"] != "blocking"} for r in reasons],
@@ -1469,10 +1582,57 @@ def _stub_health_check(
 
 # WP0-4 Q7 信号方向 → 动作映射的默认阈值（可被 snap.versions 的信号策略覆盖）
 _DEFAULT_SIGNAL_THRESHOLDS: dict[str, float] = {
-    # quality_score > buy 阈值 → BUY；quality_score < sell_threshold → SELL
-    "buy": 0.70,
-    "sell": 0.35,
+    "buy": 70.0,
+    "sell": 35.0,
 }
+
+
+def _score_input_issues(
+    score: Any, *, model_id: str | None, factor_set_id: str | None,
+    cutoff: datetime, require_factor_input: bool = False,
+    factor_member_versions: dict[str, int] | None = None,
+) -> list[str]:
+    """Validate the complete score lineage without hiding rejected rows."""
+    issues: list[str] = []
+    def field(name: str) -> Any:
+        return score.get(name) if isinstance(score, dict) else getattr(score, name, None)
+    def utc_naive(value: datetime) -> datetime:
+        return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+    cutoff = utc_naive(cutoff)
+    pub = field("published_at")
+    inp = field("factor_data_cutoff_at")
+    if pub is None:
+        issues.append("SCORE_PUBLICATION_MISSING")
+    elif utc_naive(pub) > cutoff:
+        issues.append("SCORE_PUBLICATION_AFTER_CUTOFF")
+    if inp is None and require_factor_input:
+        issues.append("SCORE_FACTOR_INPUT_CUTOFF_MISSING")
+    elif inp is not None and utc_naive(inp) > cutoff:
+        issues.append("SCORE_FACTOR_INPUT_AFTER_CUTOFF")
+    if model_id and field("factor_model_run_id") != model_id:
+        issues.append("SCORE_MODEL_MISMATCH")
+    if factor_set_id and field("factor_set_id") != factor_set_id:
+        issues.append("SCORE_FACTOR_SET_MISMATCH")
+    if factor_member_versions and _normalise_factor_versions(field("factor_member_versions_json")) != _normalise_factor_versions(factor_member_versions):
+        issues.append("SCORE_FACTOR_VERSION_MISMATCH")
+    if model_id:
+        alpha = field("model_alpha_score")
+        if alpha is None or not math.isfinite(float(alpha)):
+            issues.append("SCORE_MODEL_ALPHA_MISSING")
+        elif not 0 <= float(alpha) <= 100:
+            issues.append("SCORE_MODEL_ALPHA_OUT_OF_RANGE")
+    return issues
+
+
+def _normalise_factor_versions(raw: Any) -> dict[str, int]:
+    try:
+        values = json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(values, dict):
+            return {}
+        return {str(code): int(value.get("version", value.get("factor_version"))) if isinstance(value, dict) else int(value)
+            for code, value in values.items() if not str(code).startswith("__")}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
 
 
 def _query_scores_for_universe(
@@ -1482,6 +1642,9 @@ def _query_scores_for_universe(
     trade_date: date,
     cutoff_utc: datetime,
     symbol_ids: list[int],
+    factor_set_id: str | None = None,
+    require_factor_input: bool = False,
+    factor_member_versions: dict[str, int] | None = None,
 ) -> dict[int, dict[str, Any]]:
     """WP0-4 Step 6：按 FR-P0-6 规范查询 Score。
 
@@ -1512,6 +1675,9 @@ def _query_scores_for_universe(
     )
     if factor_model_run_id:
         base_q = base_q.where(Score.factor_model_run_id == factor_model_run_id)
+    else:
+        # Explicit manual mode must never consume a global model's row.
+        base_q = base_q.where(Score.factor_model_run_id.is_(None), Score.weight_mode == "manual")
     rows = list(db.execute(base_q).scalars())
     # symbol_id → [row1, row2, ...]
     # 注意：FR-P0-6 要求 published_at > cutoff 的 Score "不被作为决策依据"，
@@ -1525,19 +1691,22 @@ def _query_scores_for_universe(
         bucket.setdefault(int(r.symbol_id), []).append(r)
     out: dict[int, dict[str, Any]] = {}
     for sid, rs in bucket.items():
-        def _sort_key(r: Any, _cutoff: datetime = cutoff_utc) -> tuple[int, int]:
-            pub = getattr(r, "published_at", None)
-            # tier 0 = PIT_SAFE（pub 非空 ≤ cutoff），tier 1 = pub>cutoff 未来泄漏，tier 2 = pub NULL
-            if pub is None:
-                tier = 2
-            elif pub <= _cutoff:
-                tier = 0
-            else:
-                tier = 1
-            # tier 升序 + id 降序（用负数）
-            return (tier, -(int(getattr(r, "id", 0)) or 0))
+        def _sort_key(r: Any, _cutoff: datetime = cutoff_utc) -> tuple[int, int, float, int]:
+            issues = _score_input_issues(r, model_id=factor_model_run_id,
+                factor_set_id=factor_set_id, cutoff=_cutoff,
+                require_factor_input=require_factor_input, factor_member_versions=factor_member_versions)
+            tier = 0 if not issues else 1
+            inp = getattr(r, "factor_data_cutoff_at", None)
+            input_order = inp.replace(tzinfo=timezone.utc).timestamp() if inp is not None and inp.tzinfo is None else inp.timestamp() if inp else 0.0
+            # A recently inserted historical backfill must not displace an
+            # already visible newer trade date. Match the strict query order.
+            return (tier, -r.trade_date.toordinal(), -input_order, -(int(getattr(r, "id", 0)) or 0))
         rs_sorted = sorted(rs, key=_sort_key)
         r = rs_sorted[0]
+        try:
+            contributions = json.loads(r.factor_scores_json or "{}")
+        except (TypeError, ValueError):
+            contributions = {}
         out[sid] = {
             "symbol_id": int(r.symbol_id),
             "score_id": int(r.id),
@@ -1550,6 +1719,15 @@ def _query_scores_for_universe(
             "published_at": r.published_at,  # datetime or None
             "factor_data_cutoff_at": r.factor_data_cutoff_at,
             "factor_model_run_id": r.factor_model_run_id,
+            "factor_set_id": r.factor_set_id,
+            "model_alpha_score": r.model_alpha_score,
+            "factor_quality_score": r.factor_quality_score,
+            "factor_timing_score": r.factor_timing_score,
+            "factor_member_versions_json": r.factor_member_versions_json,
+            "factor_contributions": contributions,
+            "score_input_issues": _score_input_issues(r, model_id=factor_model_run_id,
+                factor_set_id=factor_set_id, cutoff=cutoff_utc,
+                require_factor_input=require_factor_input, factor_member_versions=factor_member_versions),
             "trade_date": r.trade_date,
             "data_credibility": (float(r.data_credibility) if r.data_credibility is not None else None),
             "pit_flag": r.pit_flag,
@@ -1577,6 +1755,9 @@ def _real_scorer(
         trade_date=decision_date,
         cutoff_utc=cutoff_utc,
         symbol_ids=symbol_ids,
+        factor_set_id=snap.factor_set_id,
+        require_factor_input=bool(snap.factor_model_run_id),
+        factor_member_versions=snap.versions.get("factor_member_versions"),
     )
 
     items: list[dict[str, Any]] = []
@@ -1598,7 +1779,13 @@ def _real_scorer(
             # 约定：score 落后 ≥ 2 交易日算 stale（和 test_g1_score_staleness 一致）
             if age >= 2:
                 stale_ids.append(sid)
-    actual = len(items)
+    valid_items = [s for s in items if not s.get("score_input_issues")]
+    actual = len(valid_items)
+    ranked = sorted(valid_items, key=lambda s: float(
+        s.get("model_alpha_score") if snap.factor_model_run_id else s.get("quality_score") or 0
+    ), reverse=True)
+    for rank, item in enumerate(ranked, start=1):
+        item["score_rank"] = rank
     expected = len(symbol_ids)
     coverage = round((float(actual) / float(expected)) * 100.0, 9) if expected else 100.0
     return ScoredUniverse(
@@ -1615,11 +1802,12 @@ def _real_scorer(
 def _real_signal_generator(
     db: Session, snap: LoadedSnapshot, scored: ScoredUniverse,
 ) -> SignalResult:
-    """WP0-4 Step 7：Quality Score → BUY/HOLD/SELL 映射。
+    """Map the bound model's 0..100 alpha score into BUY/HOLD/SELL.
 
     规则（snap.versions["signal_policy"] 可覆盖阈值）：
-      - quality_score ≥ buy_threshold  → BUY
-      - quality_score ≤ sell_threshold → SELL（strategy exit 口径）
+      - model alpha ≥ buy_threshold  → BUY
+      - model alpha ≤ sell_threshold → SELL
+      - explicit unbound research uses manual quality on the same scale
       - 否则 → HOLD
     若 Score 缺失（scored.items 没有对应 symbol）：不生成信号（由 build_evidence 走 STALE_SCORE HOLD 分支）。
     """
@@ -1630,31 +1818,44 @@ def _real_signal_generator(
     else:
         buy_th_raw = None
         sell_th_raw = None
-    buy_th = float(buy_th_raw) if buy_th_raw is not None else _DEFAULT_SIGNAL_THRESHOLDS["buy"]
-    sell_th = float(sell_th_raw) if sell_th_raw is not None else _DEFAULT_SIGNAL_THRESHOLDS["sell"]
+    try:
+        buy_th = float(buy_th_raw) if buy_th_raw is not None else _DEFAULT_SIGNAL_THRESHOLDS["buy"]
+        sell_th = float(sell_th_raw) if sell_th_raw is not None else _DEFAULT_SIGNAL_THRESHOLDS["sell"]
+    except (TypeError, ValueError):
+        buy_th = sell_th = float("nan")
+    source = thresholds.get("score_source") if isinstance(thresholds, dict) else None
+    source = source or ("model_alpha" if snap.factor_model_run_id else "manual_quality")
+    invalid_policy = not (1 < buy_th <= 100 and 0 <= sell_th < buy_th)
+    invalid_policy = invalid_policy or source not in {"model_alpha", "manual_quality"}
+    invalid_policy = invalid_policy or bool(snap.factor_model_run_id and source != "model_alpha")
+    invalid_policy = invalid_policy or (isinstance(thresholds, dict) and thresholds.get("score_scale", 100) != 100)
 
     out: list[dict[str, Any]] = []
     for s in scored.items:
         sid = s.get("symbol_id")
         if sid is None:
             continue
-        qs = s.get("quality_score")
+        qs = s.get("model_alpha_score") if source == "model_alpha" else s.get("quality_score")
         reasons: list[str] = []
         direction: str = "HOLD"
-        if qs is None:
-            reasons.append("SCORE_QUALITY_NULL")
+        if invalid_policy:
+            reasons.append("SIGNAL_POLICY_INVALID")
+        elif s.get("score_input_issues"):
+            reasons.extend(s["score_input_issues"])
+        elif qs is None or not math.isfinite(float(qs)) or not 0 <= float(qs) <= 100:
+            reasons.append("SCORE_MODEL_ALPHA_MISSING" if source == "model_alpha" else "SCORE_QUALITY_NULL")
         elif qs >= buy_th:
             direction = "BUY"
-            reasons.append(f"QUALITY_GE_{buy_th:g}")
+            reasons.append(f"{'MODEL_ALPHA' if source == 'model_alpha' else 'QUALITY'}_GE_{buy_th:g}")
             if s.get("recommended_action"):
                 reasons.append(f"SCORE_ACTION_{s['recommended_action']}")
         elif qs <= sell_th:
             direction = "SELL"
-            reasons.append(f"QUALITY_LE_{sell_th:g}")
+            reasons.append(f"{'MODEL_ALPHA' if source == 'model_alpha' else 'QUALITY'}_LE_{sell_th:g}")
             if s.get("recommended_action"):
                 reasons.append(f"SCORE_ACTION_{s['recommended_action']}")
         else:
-            reasons.append(f"QUALITY_IN_RANGE_{sell_th:g}_{buy_th:g}")
+            reasons.append(f"{'MODEL_ALPHA' if source == 'model_alpha' else 'QUALITY'}_IN_RANGE_{sell_th:g}_{buy_th:g}")
             if s.get("recommended_action"):
                 reasons.append(f"SCORE_ACTION_{s['recommended_action']}")
         out.append({
@@ -1664,7 +1865,9 @@ def _real_signal_generator(
             "reasons": reasons,
             "score_item": s,
             "quality_score": qs,
+            "score_source": source,
         })
+        s["score_value"] = qs
     return SignalResult(items=out)
 
 
@@ -1732,6 +1935,9 @@ def _get_rule_constraints(snap: LoadedSnapshot, db: Session) -> dict[str, Any]:
     规则缺失时使用 Portfolio 字段推断的默认值（WP0-4：不再全 0 阻断，避免信号
     被 PRE_0_RULE 强转 HOLD）。兼容老版本 portfolio_rules 表字段。
     """
+    frozen = snap.versions.get("rule_constraints")
+    if isinstance(frozen, dict):
+        return json.loads(json.dumps(frozen))
     if snap.rule_id is None:
         return _portfolio_default_constraints(snap)
     from app.models.portfolio import PortfolioRule
@@ -1962,6 +2168,11 @@ def _annotate_member_effective_pit(
             continue
         effective_from = _as_date(member.get("effective_from"))
         effective_to = _as_date(member.get("effective_to"))
+        if member.get("entry_authorized") is False:
+            member["_membership_exit_only"] = True
+            member["_membership_data_issue_detail"] = "快照仅授权处理已有持仓，不授权新增买入"
+            member.pop("_membership_data_issue", None)
+            continue
         outside = (
             (effective_from is not None and trade_date < effective_from)
             or (effective_to is not None and trade_date >= effective_to)
@@ -2086,6 +2297,7 @@ def sequential_clamp_allocate(
             "price": float(price) if price is not None else None,
             "stop_loss_price": signal_stop_loss or (snap.risk_stop_loss_by_symbol or {}).get(sid),
             "has_position": has_position,
+            "score_rank": (sig.get("score_item") or {}).get("score_rank"),
         })
 
     # 规则不全时：全部意图清 0，标记 NO_RULE_BLOCKED
@@ -2155,9 +2367,12 @@ def sequential_clamp_allocate(
     running_asset = {k: float(v) for k, v in cur_asset.items()}
     running_sector = {k: float(v) for k, v in cur_sector.items()}
 
-    # 为保证"公平"，按 intent_pct - current_pct 降序处理（大仓位先吃额度），等额度则 symbol_id 升序
+    # Larger requested deltas retain the historical priority. Equal-sized
+    # entries use the actual model rank before the deterministic symbol tie.
     order = sorted(range(len(plans)), key=lambda i: (
-        -(plans[i]["intent_pct"] - plans[i]["current_pct"]), plans[i]["symbol_id"],
+        -(plans[i]["intent_pct"] - plans[i]["current_pct"]),
+        plans[i]["score_rank"] if plans[i]["score_rank"] is not None else float("inf"),
+        plans[i]["symbol_id"],
     ))
 
     # ───────── Step 2: 资产类型（stock / etf / index）
@@ -2507,7 +2722,12 @@ def sequential_clamp_allocate(
         before_qty: float | None
         target_amount: float | None = None
         price = p["price"]
-        if net_value_for_quantity > 0 and price is not None and price > 0:
+        if abs(before - p["current_pct"]) < 1e-8:
+            # A HOLD (including a clamped BUY) keeps the actual holding. Mark
+            # changes and lot rounding must not manufacture an exit order.
+            after_qty = p["current_qty"]
+            after_pct = p["current_pct"]
+        elif net_value_for_quantity > 0 and price is not None and price > 0:
             target_amount = net_value_for_quantity * before
             raw_shares = target_amount / price
             # 向下取整到 min_lot_size 的倍数
@@ -2813,13 +3033,14 @@ def _default_build_evidence(
     alloc_by_sym: dict[int, dict[str, Any]] = {
         a.get("symbol_id"): a for a in alloc.items if isinstance(a, dict) and a.get("symbol_id")
     }
+    signal_by_sym = {s.get("symbol_id"): s for s in signal.items if isinstance(s, dict) and s.get("symbol_id")}
 
     # 遍历 universe 成员逐个生成
     for member in universe.universe:
         sym_id = member.get("symbol_id")
         if sym_id is None:
             continue
-        reasons: list[str] = []
+        reasons: list[str] = list((signal_by_sym.get(sym_id) or {}).get("reasons") or [])
         action: ActionType
         action_subtype: str | None = None
         rejection_reason: str | None = None
@@ -2890,7 +3111,35 @@ def _default_build_evidence(
         sl_override = False
         stop_loss_verified_price_source_val: str | None = None
         stop_loss_triggered_val: bool = False
-        if data_check_result is not None and sym_price_data is not None:
+        risk_policy = snap.versions.get("risk_policy") or {}
+        derived_stop = None
+        if isinstance(risk_policy, dict) and risk_policy.get("stop_loss_basis") == "average_cost" and risk_policy.get("stop_loss_pct") and current_qty > 0:
+            try:
+                cost = float(member.get("average_cost") or 0.0)
+                stop_pct = float(risk_policy["stop_loss_pct"])
+                derived_stop = cost * (1.0 - stop_pct) if cost > 0 and 0 < stop_pct < 1 else None
+            except (TypeError, ValueError):
+                derived_stop = None
+            if derived_stop is None:
+                reasons.append("STOP_LOSS_AVERAGE_COST_UNAVAILABLE")
+            else:
+                verified_close = (sym_price_data or {}).get("close_price")
+                can_verify = bool(data_check_result and data_check_result.get("available") and verified_close is not None and float(verified_close) > 0)
+                if can_verify and float(verified_close) <= derived_stop:
+                    # This is a known T-close exit intent, filled at NEXT_OPEN.
+                    # Never use the future execution bar to decide the exit,
+                    # and never claim a fill before the matching adapter runs.
+                    sl_result = {"should_intervene": True, "action": "SELL", "action_subtype": "SELL_STOP_LOSS",
+                        "executed_price": None, "intended_price": float(verified_close),
+                        "stop_loss_triggered": True, "stop_loss_verified_price_source": "DECISION_CLOSE",
+                        "reason": f"持仓均价 {cost:g} 的 {stop_pct:.2%} 止损线 {derived_stop:g} 已被决策收盘价 {float(verified_close):g} 触发"}
+                    sl_override = True
+                elif not can_verify:
+                    sl_result = {"should_intervene": True, "action": "REJECTED", "action_subtype": "UNABLE_TO_VERIFY_STOP_LOSS",
+                        "executed_price": None, "stop_loss_triggered": False, "stop_loss_verified_price_source": None,
+                        "reason": "持仓均价止损缺少截止时点可见的价格，不能猜测止损成交"}
+                    sl_override = True
+        if not sl_override and derived_stop is None and data_check_result is not None and sym_price_data is not None:
             sl_price = sym_price_data.get("stop_loss_price")
             if sl_price is not None:
                 sl_result = check_stop_loss_verifiability(
@@ -2925,7 +3174,7 @@ def _default_build_evidence(
                 reasons.append(sl_result["action_subtype"] or "STOP_LOSS_SELL")
             # 通用：止损介入相关覆盖
             executed_price_override = sl_result["executed_price"]
-            intended_price_override = sl_result["executed_price"]
+            intended_price_override = sl_result.get("intended_price", sl_result["executed_price"])
             stop_loss_verified_price_source_val = sl_result["stop_loss_verified_price_source"]
             stop_loss_triggered_val = bool(sl_result["stop_loss_triggered"])
             if status == "SELL":
@@ -3044,7 +3293,7 @@ def _default_build_evidence(
 
         # An expired member with a historical holding is exit-only: preserve
         # a SELL/risk path, but never allow a new BUY to reopen it.
-        if member.get("_membership_exit_only") and action == "BUY":
+        if (member.get("_membership_exit_only") or member.get("entry_authorized") is False) and action == "BUY":
             action = "HOLD"
             action_subtype = "MEMBER_EXIT_ONLY"
             rejection_reason = "MEMBER_NOT_EFFECTIVE_ON_TRADE_DATE"
@@ -3061,14 +3310,18 @@ def _default_build_evidence(
                 if member.get("current_position_pct") is not None else None
             )
 
-        # PIT 标记（Q4）：published_at NULL → NOT_PIT_SAFE
+        # Publication and factor inputs must both be visible at the clock.
         published_at: datetime | None = (score_item or {}).get("published_at")
         pit_safe: PitSafeFlag = "UNKNOWN"
-        if published_at is None:
-            if score_item is not None:
-                pit_safe = "NOT_PIT_SAFE"
-        else:
-            pit_safe = "PIT_SAFE" if published_at <= clock.data_cutoff_at else "NOT_PIT_SAFE"
+        if score_item is not None:
+            issues = _score_input_issues(score_item,
+                model_id=snap.factor_model_run_id or None, factor_set_id=snap.factor_set_id,
+                cutoff=clock.data_cutoff_at, require_factor_input=bool(snap.factor_model_run_id),
+                factor_member_versions=snap.versions.get("factor_member_versions"))
+            pit_safe = "NOT_PIT_SAFE" if issues else "PIT_SAFE"
+            for issue in issues:
+                if issue not in reasons:
+                    reasons.append(issue)
 
         # ── 撮合价处理：data_blocked_override 或 sl_override 时已经设置过
         final_executed_price: float | None = executed_price_override

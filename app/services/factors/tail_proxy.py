@@ -35,7 +35,7 @@ class TailProxyMetrics:
 
 def normalize_minute_frame(frame: pd.DataFrame) -> pd.DataFrame:
     aliases = {
-        "timestamp": ("时间", "日期时间", "datetime"),
+        "timestamp": ("timestamp", "时间", "日期时间", "datetime"),
         "close": ("收盘", "close"),
         "high": ("最高", "high"),
         "low": ("最低", "low"),
@@ -49,19 +49,55 @@ def normalize_minute_frame(frame: pd.DataFrame) -> pd.DataFrame:
     )
     if normalized.empty:
         return pd.DataFrame(columns=list(aliases))
-    normalized["timestamp"] = pd.to_datetime(
-        normalized["timestamp"], errors="coerce"
-    )
+    normalized["timestamp"] = normalize_minute_timestamps(normalized["timestamp"])
     for column in ("close", "high", "low", "amount"):
         normalized[column] = normalize_numbers(normalized[column])
+    # A minute-bar proxy must never treat overnight/lunch/after-hours rows
+    # or impossible prices as evidence of a complete trading session.
+    valid = (
+        normalized[["timestamp", "close", "high", "low", "amount"]].notna().all(axis=1)
+        & (normalized["close"] > 0)
+        & (normalized["low"] > 0)
+        & (normalized["high"] >= normalized["close"])
+        & (normalized["low"] <= normalized["close"])
+        & (normalized["amount"] >= 0)
+        & minute_session_mask(normalized["timestamp"])
+    )
     return (
-        normalized.dropna(
-            subset=["timestamp", "close", "high", "low", "amount"]
-        )
+        normalized.loc[valid]
         .sort_values("timestamp")
         .drop_duplicates("timestamp", keep="last")
         .reset_index(drop=True)
     )
+
+
+def minute_session_mask(timestamps: pd.Series) -> pd.Series:
+    """Valid CN minute timestamps, excluding weekends and session gaps.
+
+    Exchange holidays require the caller's trading-day evidence; this pure
+    helper validates clock times and minute precision without network access.
+    """
+    if timestamps.dt.tz is not None:
+        timestamps = timestamps.dt.tz_convert("Asia/Shanghai")
+    minutes = timestamps.dt.hour * 60 + timestamps.dt.minute
+    return (
+        (((minutes >= 570) & (minutes <= 690)) | ((minutes >= 780) & (minutes <= 900)))
+        & (timestamps.dt.second == 0)
+        & (timestamps.dt.microsecond == 0)
+        & (timestamps.dt.dayofweek < 5)
+    )
+
+
+def normalize_minute_timestamps(values: pd.Series) -> pd.Series:
+    """Normalize explicit timezones to the CN local session clock."""
+    timestamps = pd.to_datetime(values, errors="coerce", format="mixed")
+    try:
+        source_timezone = timestamps.dt.tz
+    except AttributeError as exc:
+        raise ValueError("Minute timestamps must use a consistent timezone") from exc
+    if source_timezone is not None:
+        timestamps = timestamps.dt.tz_convert("Asia/Shanghai").dt.tz_localize(None)
+    return timestamps
 
 
 def calculate_tail_proxy(
@@ -132,4 +168,6 @@ __all__ = [
     "TailProxyMetrics",
     "calculate_tail_proxy",
     "normalize_minute_frame",
+    "minute_session_mask",
+    "normalize_minute_timestamps",
 ]

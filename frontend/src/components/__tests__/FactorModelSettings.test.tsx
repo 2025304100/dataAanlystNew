@@ -73,6 +73,7 @@ const { mockApi, showToast } = vi.hoisted(() => ({
           symbol_count: 300,
           trade_date_count: 250,
           status: "validated",
+          production_eligible: true,
           rejection_reason: null,
           artifact_path: null,
           created_at: "2026-07-14T18:00:00",
@@ -154,8 +155,18 @@ import FactorModelSettings from "../FactorModelSettings";
 describe("FactorModelSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApi.scoringCreateTask.mockResolvedValue({ id: "settings-score-task", status: "queued", stage: "queued", percent: 0 } as any);
   });
-  it("loads runtime and supports shadow activation and pipeline start", async () => {
+  it("validated 演示模型或未知资格模型仍不能激活正式运行", async () => {
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValueOnce({ items: [{ id: "demo-model", status: "validated", production_eligible: false, training_mode: "offline_minimal", readiness_message: "演示模型不可用于正式运行", metrics: {}, sample_count: 250, weights: [] }] });
+    render(<FactorModelSettings initialTrainModel={false} />);
+    await screen.findByText("demo-model");
+    const productionButton = screen.getByRole("button", { name: /正式启用|生产运行|生产激活|Ridge/ });
+    expect(productionButton).toBeDisabled();
+    fireEvent.click(productionButton);
+    expect(mockApi.scoringActivateModel).not.toHaveBeenCalled();
+  });
+  it("loads runtime and starts scoring for the exact activated shadow model", async () => {
     mockApi.scoringGetOverviewAsFactor.mockResolvedValue({
       config: {
         feature_enabled: true,
@@ -206,12 +217,13 @@ describe("FactorModelSettings", () => {
           target_code: "target_5d_return",
           data_cutoff_at: "2026-07-14T18:00:00",
           feature_versions: {},
-          hyperparameters: {},
+          hyperparameters: { factor_set_id: "fs-20d" },
           metrics: { validation_ic: 0.08 },
           sample_count: 10000,
           symbol_count: 300,
           trade_date_count: 250,
           status: "validated",
+          production_eligible: true,
           rejection_reason: null,
           artifact_path: null,
           created_at: "2026-07-14T18:00:00",
@@ -231,6 +243,7 @@ describe("FactorModelSettings", () => {
     });
     expect(screen.getByText("90.0%")).toBeInTheDocument();
 
+    mockApi.scoringActivateModel.mockResolvedValue({ weight_mode: "shadow", active_model_run_id: "ridge-20260714", version: 2 } as any);
     fireEvent.click(screen.getByRole("button", { name: /影子运行/ }));
     await waitFor(() => {
       expect(mockApi.scoringActivateModel).toHaveBeenCalledWith(
@@ -240,18 +253,37 @@ describe("FactorModelSettings", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /启动流水线/ }));
     await waitFor(() => {
       expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(
         expect.objectContaining({
-          full_refresh: false,
-          train_model: true,
+          train_model: false,
           materialize_scores: true,
-          window_days: 250,
-          validation_days: 50,
+          factor_set_id: "fs-20d",
+          hyperparameters: expect.objectContaining({ expected_model_run_id: "ridge-20260714", expected_weight_mode: "shadow", factor_set_id: "fs-20d" }),
+          factor_scope: expect.objectContaining({ asset_type: "stock", factor_set_id: "fs-20d" }),
         }),
       );
+      expect(screen.getByText("任务：settings-score-task")).toBeInTheDocument();
+      expect(showToast).toHaveBeenCalledWith("success", expect.stringMatching(/模型已激活.*settings-score-task.*生成/));
     });
+  });
+
+  it("retains production activation and identifies a failed scoring submission separately", async () => {
+    const overview = await mockApi.getFactorOverview();
+    mockApi.scoringGetOverviewAsFactor.mockResolvedValue(overview);
+    const modelList = await mockApi.getFactorModels();
+    modelList.items[0].hyperparameters = { factor_set_id: "fs-20d" };
+    mockApi.scoringGetFactorModelListAsFactor.mockResolvedValue(modelList as any);
+    mockApi.scoringActivateModel.mockResolvedValue({ weight_mode: "ridge", active_model_run_id: "ridge-20260714", version: 2 } as any);
+    mockApi.scoringCreateTask.mockRejectedValueOnce(new Error("PIPELINE_BUSY"));
+    render(<FactorModelSettings />);
+    fireEvent.click(await screen.findByRole("button", { name: /正式启用|生产运行|生产激活|Ridge/ }));
+    await screen.findByText(/模型已激活，评分生成未启动.*PIPELINE_BUSY/);
+    await waitFor(() => expect(screen.getAllByText("ridge-20260714").length).toBeGreaterThanOrEqual(2));
+    expect(mockApi.scoringGetOverviewAsFactor).toHaveBeenCalledTimes(2);
+    expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({
+      hyperparameters: expect.objectContaining({ expected_model_run_id: "ridge-20260714", expected_weight_mode: "ridge" }),
+    }));
   });
 
   it("blocks pipeline while disabled and can enable the feature", async () => {

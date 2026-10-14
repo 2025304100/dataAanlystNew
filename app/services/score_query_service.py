@@ -43,6 +43,10 @@ class ScoreRow:
     published_at: datetime | None
     pit_safe_flag: str  # PIT_SAFE / NOT_PIT_SAFE
     factor_contributions: dict[str, Any] = dc_field(default_factory=dict)
+    model_alpha_score: float | None = None
+    factor_model_run_id: str | None = None
+    factor_set_id: str | None = None
+    factor_member_versions_json: str | None = None
 
 
 def fetch_latest_pit_scores(
@@ -54,6 +58,7 @@ def fetch_latest_pit_scores(
     data_cutoff_at: datetime,
     factor_set_id: str | None = None,
     require_published_at: bool = False,
+    factor_member_versions: dict[str, int] | None = None,
 ) -> list[ScoreRow]:
     """Q22 精确查询入口。
 
@@ -83,6 +88,11 @@ def fetch_latest_pit_scores(
         where.extend([
             Score.published_at.is_not(None),
             Score.published_at <= data_cutoff_at,
+            Score.factor_data_cutoff_at.is_not(None),
+            Score.factor_data_cutoff_at <= data_cutoff_at,
+            Score.model_alpha_score.is_not(None),
+            Score.model_alpha_score >= 0,
+            Score.model_alpha_score <= 100,
         ])
     # 排序优先级：trade_date DESC, factor_data_cutoff_at DESC, id DESC
     subq = (
@@ -100,16 +110,26 @@ def fetch_latest_pit_scores(
         .where(and_(*where))
         .subquery()
     )
-    stmt = select(subq).where(subq.c.rn == 1)
+    stmt = select(subq).order_by(subq.c.symbol_id, subq.c.rn)
+    if not factor_member_versions:
+        stmt = stmt.where(subq.c.rn == 1)
     rows = db.execute(stmt).all()
 
     results: list[ScoreRow] = []
+    seen_symbols: set[int] = set()
     import json as _json
     for r in rows:
+        if int(r.symbol_id) in seen_symbols:
+            continue
+        if factor_member_versions:
+            from app.services.decision_engine import _normalise_factor_versions
+            if _normalise_factor_versions(r.factor_member_versions_json) != _normalise_factor_versions(factor_member_versions):
+                continue
         raw_published_at = getattr(r, "published_at", None)
         pit_flag = "NOT_PIT_SAFE"
         if raw_published_at is not None:
-            pit_flag = "PIT_SAFE" if raw_published_at <= data_cutoff_at else "NOT_PIT_SAFE"
+            inp = getattr(r, "factor_data_cutoff_at", None)
+            pit_flag = "PIT_SAFE" if raw_published_at <= data_cutoff_at and inp is not None and inp <= data_cutoff_at else "NOT_PIT_SAFE"
         # Q4.2：严格 PIT 模式下，published_at 为 NULL 或晚于 cutoff 均剔除
         if require_published_at:
             if raw_published_at is None:
@@ -144,7 +164,12 @@ def fetch_latest_pit_scores(
             published_at=raw_published_at,
             pit_safe_flag=pit_flag,
             factor_contributions=contribs,
+            model_alpha_score=getattr(r, "model_alpha_score", None),
+            factor_model_run_id=getattr(r, "factor_model_run_id", None),
+            factor_set_id=getattr(r, "factor_set_id", None),
+            factor_member_versions_json=getattr(r, "factor_member_versions_json", None),
         ))
+        seen_symbols.add(int(r.symbol_id))
     # ── 计算 rank（1 = 最高 score_value）
     results.sort(key=lambda x: x.score_value, reverse=True)
     for idx, row in enumerate(results, start=1):
@@ -161,6 +186,7 @@ def estimate_score_coverage(
     data_cutoff_at: datetime,
     factor_set_id: str | None = None,
     require_published_at: bool = False,
+    factor_member_versions: dict[str, int] | None = None,
 ) -> tuple[int, int, int | None]:
     """Q5：覆盖率计算（expected=len(symbol_ids), actual=存在 Score 的数量, max_age_days）。
 
@@ -171,6 +197,12 @@ def estimate_score_coverage(
     expected = len(symbol_ids)
     if expected == 0 or not factor_model_run_id:
         return expected, 0, None
+    if factor_member_versions:
+        rows = fetch_latest_pit_scores(db, factor_model_run_id=factor_model_run_id,
+            symbol_ids=symbol_ids, decision_date=decision_date, data_cutoff_at=data_cutoff_at,
+            factor_set_id=factor_set_id, require_published_at=require_published_at,
+            factor_member_versions=factor_member_versions)
+        return expected, len(rows), max(((decision_date - row.trade_date).days for row in rows), default=None)
     where = [
         Score.factor_model_run_id == factor_model_run_id,
         Score.symbol_id.in_(symbol_ids),
@@ -184,6 +216,11 @@ def estimate_score_coverage(
         where.extend([
             Score.published_at.is_not(None),
             Score.published_at <= data_cutoff_at,
+            Score.factor_data_cutoff_at.is_not(None),
+            Score.factor_data_cutoff_at <= data_cutoff_at,
+            Score.model_alpha_score.is_not(None),
+            Score.model_alpha_score >= 0,
+            Score.model_alpha_score <= 100,
         ])
     # 取每个 symbol 最新一条的 trade_date (最大日期) 与 cutoff 相比估算 age
     subq = (
@@ -214,7 +251,7 @@ def make_decision_scorer(
     """返回可直接注入 DecisionEngine 的 Scorer 闭包。"""
     from app.services.decision_engine import (
         DataHealthChecker, GateChecker, LoadedSnapshot, ResolvedClock,
-        ScoredUniverse, UniverseAndEligibility, date, datetime,
+        ScoredUniverse, UniverseAndEligibility, _score_input_issues, date, datetime,
     )
 
     def _scorer(
@@ -232,6 +269,7 @@ def make_decision_scorer(
             decision_date=decision_date, data_cutoff_at=cutoff_utc,
             factor_set_id=snap.factor_set_id,
             require_published_at=require_published_at,
+            factor_member_versions=snap.versions.get("factor_member_versions"),
         )
         coverage = (actual / expected * 100.0) if expected > 0 else 100.0
         rows = fetch_latest_pit_scores(
@@ -239,6 +277,7 @@ def make_decision_scorer(
             decision_date=decision_date, data_cutoff_at=cutoff_utc,
             factor_set_id=snap.factor_set_id,
             require_published_at=require_published_at,
+            factor_member_versions=snap.versions.get("factor_member_versions"),
         )
         actual_ids = {row.symbol_id for row in rows}
         missing = [s for s in sym_ids if s not in actual_ids]
@@ -249,6 +288,13 @@ def make_decision_scorer(
                     "symbol_id": row.symbol_id,
                     "score_id": row.score_id,
                     "score_value": row.score_value,
+                    "model_alpha_score": row.model_alpha_score,
+                    "factor_model_run_id": row.factor_model_run_id,
+                    "factor_set_id": row.factor_set_id,
+                    "factor_member_versions_json": row.factor_member_versions_json,
+                    "score_input_issues": _score_input_issues(row, model_id=snap.factor_model_run_id,
+                        factor_set_id=snap.factor_set_id, cutoff=cutoff_utc, require_factor_input=True,
+                        factor_member_versions=snap.versions.get("factor_member_versions")),
                     "score_rank": row.score_rank,
                     "trade_date": row.trade_date,
                     "factor_data_cutoff_at": row.factor_data_cutoff_at,

@@ -46,18 +46,18 @@ interface PortfolioItem {
 
 /** 9 状态色板（与 PortfolioGovernanceTab 一致，未识别值降级为灰色） */
 const STATUS_STYLES: Partial<Record<PortfolioStatus | string, { bg: string; fg: string; border: string; dot: string }>> = {
-  PENDING_INITIAL_REVIEW: { bg: "#fef3c7", fg: "#7c2d12", border: "#f59e0b", dot: "#f59e0b" },
-  READY:                    { bg: "#ecfdf5", fg: "#065f46", border: "#10b981", dot: "#10b981" },
-  RUNNING_AUTO_SIMULATION:  { bg: "#eff6ff", fg: "#1e3a8a", border: "#3b82f6", dot: "#3b82f6" },
-  RUNNING_BACKTEST:         { bg: "#eef2ff", fg: "#3730a3", border: "#6366f1", dot: "#6366f1" },
-  DATA_INCOMPLETE_PAUSED:   { bg: "#fef9c3", fg: "#713f12", border: "#eab308", dot: "#eab308" },
-  RECONCILIATION_BLOCKED:   { bg: "#fee2e2", fg: "#7f1d1d", border: "#ef4444", dot: "#ef4444" },
-  MODEL_INACTIVE:           { bg: "#f3f4f6", fg: "#1f2937", border: "#6b7280", dot: "#6b7280" },
-  SCORE_STALE:              { bg: "#fff7ed", fg: "#7c2d12", border: "#f97316", dot: "#f97316" },
-  INTERRUPTED:              { bg: "#fae8ff", fg: "#701a75", border: "#d946ef", dot: "#d946ef" },
-  ADMIN_PAUSED:             { bg: "#fef2f2", fg: "#7f1d1d", border: "#dc2626", dot: "#dc2626" },
+  PENDING_INITIAL_REVIEW: { bg: "rgba(245,158,11,0.15)", fg: "#fcd34d", border: "rgba(245,158,11,0.45)", dot: "#f59e0b" },
+  READY:                    { bg: "rgba(16,185,129,0.15)", fg: "#86efac", border: "rgba(16,185,129,0.45)", dot: "#10b981" },
+  RUNNING_AUTO_SIMULATION:  { bg: "rgba(59,130,246,0.16)", fg: "#93c5fd", border: "rgba(59,130,246,0.45)", dot: "#3b82f6" },
+  RUNNING_BACKTEST:         { bg: "rgba(99,102,241,0.18)", fg: "#a5b4fc", border: "rgba(99,102,241,0.45)", dot: "#6366f1" },
+  DATA_INCOMPLETE_PAUSED:   { bg: "rgba(234,179,8,0.16)", fg: "#fde047", border: "rgba(234,179,8,0.45)", dot: "#eab308" },
+  RECONCILIATION_BLOCKED:   { bg: "rgba(239,68,68,0.16)", fg: "#fca5a5", border: "rgba(239,68,68,0.5)", dot: "#ef4444" },
+  MODEL_INACTIVE:           { bg: "rgba(107,114,128,0.22)", fg: "#cbd5e1", border: "rgba(107,114,128,0.5)", dot: "#6b7280" },
+  SCORE_STALE:              { bg: "rgba(249,115,22,0.16)", fg: "#fdba74", border: "rgba(249,115,22,0.45)", dot: "#f97316" },
+  INTERRUPTED:              { bg: "rgba(217,78,239,0.17)", fg: "#f0abfc", border: "rgba(217,78,239,0.45)", dot: "#d946ef" },
+  ADMIN_PAUSED:             { bg: "rgba(220,38,38,0.18)", fg: "#fca5a5", border: "rgba(220,38,38,0.55)", dot: "#dc2626" },
 };
-const STATUS_FALLBACK = { bg: "#f3f4f6", fg: "#374151", border: "#9ca3af", dot: "#9ca3af" };
+const STATUS_FALLBACK = { bg: "rgba(107,114,128,0.22)", fg: "#cbd5e1", border: "rgba(148,163,184,0.45)", dot: "#94a3b8" };
 
 /** 将真实 Portfolio 派生为下拉项；绩效/标的数留给异步真实值覆盖。 */
 function deriveItem(p: Portfolio): PortfolioItem {

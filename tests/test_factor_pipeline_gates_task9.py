@@ -17,7 +17,7 @@ import sys
 import tempfile
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -473,6 +473,12 @@ class TestTR9_4_Stage4FailureIsolation:
             n_labels: int = 0
         monkeypatch.setattr(pt_file, "calculate_stock_factors", lambda *a, **kw: FakeFactors(), raising=False)
         monkeypatch.setattr(pt_file, "calculate_targets", lambda *a, **kw: FakeTargets(), raising=False)
+        # This case isolates stage4 persistence failure. Data integrity gates
+        # have dedicated real-warehouse coverage in pipeline_integrity tests.
+        monkeypatch.setattr(pt_file, "_complete_calculation_dates", lambda *a, **kw: {
+            "accepted_dates": [date(2026, 7, 1)], "selected_end_date": date(2026, 7, 1), "skipped_dates": []})
+        monkeypatch.setattr(pt_file, "_qualified_factor_dates", lambda *a, **kw: {
+            "accepted_dates": [date(2026, 7, 1)], "skipped_dates": []})
 
         # (e) batch_context：空上下文管理器，但要交出真实接口形状的 handle
         from contextlib import nullcontext

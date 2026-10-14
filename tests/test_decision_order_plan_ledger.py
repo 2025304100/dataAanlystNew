@@ -28,7 +28,7 @@ def _seed_persistable_decision(db):
     db.add_all([
         DailyBar(symbol_id=symbol.id, trade_date=trade_date, open=10, high=10.2, low=9.8, close=10, volume=1_000_000, amount=10_000_000),
         DailyBar(symbol_id=symbol.id, trade_date=date(2025, 1, 7), open=10.1, high=10.3, low=10, close=10.2, volume=1_000_000, amount=10_100_000),
-        Score(symbol_id=symbol.id, trade_date=trade_date, quality_score=.9, quality_grade="A", timing_score=.8, stage="growth", action="open", priority_score=.8, weight_mode="manual", factor_model_run_id="ledger-model", calc_batch_id="ledger-batch", published_at=datetime(2025, 1, 1)),
+        Score(symbol_id=symbol.id, trade_date=trade_date, quality_score=90, quality_grade="A", timing_score=80, stage="growth", action="open", priority_score=80, weight_mode="ridge", factor_model_run_id="ledger-model", model_alpha_score=90, factor_data_cutoff_at=datetime(2025, 1, 6, 7), calc_batch_id="ledger-batch", published_at=datetime(2025, 1, 1)),
     ])
     snapshot = StrategyExecutionSnapshot(
         id="order-plan-ledger-snapshot", snapshot_no=1, portfolio_id=portfolio.id,

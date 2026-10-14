@@ -26,10 +26,12 @@ const { mockApi, app } = vi.hoisted(() => ({
 
 vi.mock("../../../api/client", () => ({ api: mockApi }));
 vi.mock("../../../context/AppContext", () => ({ useApp: () => app }));
-vi.mock("antd", () => ({
+vi.mock("antd", async () => ({
+  ...await vi.importActual<typeof import("antd")>("antd"),
+  ConfigProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
-  Button: ({ children, onClick, disabled }: { children?: ReactNode; onClick?: () => void; disabled?: boolean }) => (
-    <button type="button" onClick={onClick} disabled={disabled}>{children}</button>
+  Button: ({ children, onClick, disabled, loading: _l, danger: _d, icon: _i, size: _s, block: _b, type: _t, ...rest }: any) => (
+    <button type="button" onClick={onClick} disabled={disabled} {...rest}>{children}</button>
   ),
   Modal: ({ open, children }: { open?: boolean; children?: ReactNode }) => open ? <div>{children}</div> : null,
 }));

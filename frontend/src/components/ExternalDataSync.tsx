@@ -39,9 +39,12 @@ import {
   type ExternalDataSyncCapabilities,
   type ExternalDataSyncPlan,
   type ExternalDataCoverage,
+  type ExternalDatasetCoverage,
   type ExternalSyncPlanDetails,
   type ExternalSyncDataset,
   type ExternalSyncTask,
+  type FactorPipelineTask,
+  type TailProxyImportResult,
 } from "../api/client";
 
 type SyncSource = "watchlist" | "positions" | "all";
@@ -59,6 +62,7 @@ const DATASET_ORDER: ExternalSyncDataset[] = [
 ];
 
 const TASK_DATASET_PREFIX = "external_sync_";
+const isRunningTask = (task: { status: string }) => ["queued", "running"].includes(task.status);
 
 function datasetFromTask(task: ExternalSyncTask): ExternalSyncDataset | null {
   if (task.result?.dataset) return task.result.dataset;
@@ -96,6 +100,9 @@ function keepLatestTaskPerDataset(tasks: ExternalSyncTask[]): ExternalSyncTask[]
   for (const task of tasks) {
     const key = taskDatasetKey(task);
     const previous = latest.get(key);
+    // A stale dashboard response must not resurrect a task already observed
+    // as terminal. Explicit retries are inserted after removing the old entry.
+    if (previous?.id === task.id && !isRunningTask(previous) && isRunningTask(task)) continue;
     const taskTime = Date.parse(task.updated_at || task.created_at || "") || 0;
     const previousTime = previous ? Date.parse(previous.updated_at || previous.created_at || "") || 0 : -1;
     if (!previous || taskTime >= previousTime || (["queued", "running"].includes(task.status) && !["queued", "running"].includes(previous.status))) {
@@ -115,13 +122,31 @@ function syncResultParams(result: ExternalSyncTask["result"]): Record<string, st
   };
 }
 
+function taskHasWarnings(task: ExternalSyncTask): boolean {
+  return task.failed_count > 0 || Boolean(task.result?.errors?.length) || task.result?.warehouse_mirror?.status === "warning" || task.result?.northbound?.status === "warning";
+}
+
+function taskCanResume(task: ExternalSyncTask): boolean {
+  return ["failed", "cancelled"].includes(task.status) || (task.status === "done" && (task.failed_count > 0 || task.result?.warehouse_mirror?.status === "warning"));
+}
+
+function taskAllAttemptsFailed(task: ExternalSyncTask): boolean {
+  return task.status === "done" && task.failed_count > 0 && task.ok_count === 0 && !(task.result?.success);
+}
+
+function taskProgressText(task: ExternalSyncTask): string {
+  return task.total > 0 ? `${task.processed ?? 0}/${task.total}` : `已处理 ${task.processed ?? 0} · 总数未知`;
+}
+
 function statusTag(task: ExternalSyncTask | null) {
   if (!task) return <Tag>{t("extStatusNever")}</Tag>;
+  if (task.cancel_requested && isRunningTask(task)) return <Tag color="warning">正在取消</Tag>;
+  if (taskAllAttemptsFailed(task)) return <Tag color="error">{t("extStatusFailed")}</Tag>;
   const interrupted = task.status === "failed" && task.stage === "interrupted";
   const config = {
     queued: { color: "default", key: "extStatusQueued" },
     running: { color: "processing", key: "extStatusRunning" },
-    done: { color: task.failed_count > 0 ? "warning" : "success", key: task.failed_count > 0 ? "extStatusPartial" : "extStatusDone" },
+    done: { color: taskHasWarnings(task) ? "warning" : "success", key: taskHasWarnings(task) ? "extStatusPartial" : "extStatusDone" },
     failed: { color: interrupted ? "warning" : "error", key: interrupted ? "extStatusInterrupted" : "extStatusFailed" },
     cancelled: { color: "default", key: "extStatusCancelled" },
     interrupted: { color: "warning", key: "extStatusInterrupted" },
@@ -177,10 +202,56 @@ function coverageReasonLabel(reason: string | null | undefined, field?: string):
   return t("extCoverageReasonUnknown");
 }
 
-function syncScopeDescription(source: SyncSource, watchlistName?: string | null): string {
+function datasetCoverageReason(diagnostic: ExternalDatasetCoverage): string {
+  const affected = diagnostic.fields.filter((field) => ["blocked", "unknown"].includes(field.availability));
+  if (affected.length) return affected.map((field) => {
+    const reason = field.reason || (field.availability === "unknown" ? "数据状态尚未确认。" : field.nonnull_rows > 0 ? "当前受评价规则限制。" : "暂无有效记录。");
+    return `${field.field}：${reason}`;
+  }).join("；");
+  return coverageReasonLabel(diagnostic.reason);
+}
+
+function syncScopeDescription(source: SyncSource, watchlistName?: string | null, portfolioId?: number | null): string {
   if (source === "watchlist") return `同步范围：${watchlistName || "主观察池"}中的有效观察项（已排除归档和失效项）`;
-  if (source === "positions") return "持仓范围：当前组合持仓中的有效标的";
+  if (source === "positions") return portfolioId ? `持仓范围：当前组合（${portfolioId}）中数量大于 0 的标的` : "持仓范围：所有组合中数量大于 0 的标的";
   return "全市场范围：已同步且处于启用状态的标的";
+}
+
+function scoringOutcome(task: FactorPipelineTask): { label: string; type: "success" | "warning" | "error" | "info"; detail?: string } {
+  if (task.status === "cancelled") return { label: "已取消", type: "info" };
+  if (task.status === "failed") return { label: "失败", type: "error" };
+  if (!["done", "completed"].includes(task.status)) return { label: "处理中", type: "info" };
+  const bridge = task.result?.scoring_bridge as { status?: string; materialized_count?: number; reason?: string } | undefined;
+  const completion = task.result?.completion_status;
+  if (completion === "TRAINING_REJECTED") return { label: "模型未通过验证", type: "warning", detail: "候选模型未通过数据或模型门槛，未生成可用模型评分。" };
+  if (completion === "AWAITING_MODEL_ACTIVATION" || bridge?.status === "SKIPPED") {
+    return { label: "输入计算完成，等待模型激活", type: "warning", detail: "未生成模型评分。请到因子模型查看真实训练结果，激活有效模型后再刷新评分特征。" };
+  }
+  if (completion === "PARTIAL_SCORE_PUBLICATION" || bridge?.status === "PARTIAL") {
+    if (typeof bridge?.materialized_count !== "number") {
+      return { label: "评分生成受限，数量待核实", type: "warning", detail: "任务未返回评分写入数量，请检查任务结果中的输入和标的映射。" };
+    }
+    if (typeof bridge?.materialized_count === "number" && bridge.materialized_count <= 0) {
+      return { label: "输入不足，未生成评分", type: "warning", detail: "本次未写入模型评分，请检查缺少的输入和标的映射。" };
+    }
+    return { label: "评分部分生成", type: "warning", detail: `已生成 ${bridge?.materialized_count ?? 0} 条评分；部分标的缺少输入或映射，请检查任务结果。` };
+  }
+  if (typeof bridge?.materialized_count === "number") {
+    return bridge.materialized_count > 0
+      ? { label: `已生成评分（${formatCount(bridge.materialized_count)} 条）`, type: "success" }
+      : { label: "计算完成，未生成评分", type: "warning", detail: "本次任务没有写入模型评分，请检查模型和数据覆盖。" };
+  }
+  return { label: "计算完成，评分结果待核实", type: "warning", detail: "任务未返回评分写入证据，请到任务与批次查看详情。" };
+}
+
+function scoringStageLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    queued: "等待执行", initializing: "准备输入", mirror: "写入因子仓库",
+    factors: "计算因子输入", targets: "生成收益目标", train: "训练模型",
+    score: "生成模型评分", materialize: "生成模型评分", done: "任务结束",
+    failed: "任务失败", cancelled: "任务取消",
+  };
+  return labels[stage] || stage;
 }
 
 export default function ExternalDataSync() {
@@ -194,7 +265,11 @@ export default function ExternalDataSync() {
   const [lookbackDays, setLookbackDays] = useState(60);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
   const [capabilities, setCapabilities] = useState<ExternalDataSyncCapabilities | null>(null);
+  const [capabilitiesLoading, setCapabilitiesLoading] = useState(true);
+  const [capabilitiesError, setCapabilitiesError] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<ExternalDataCoverage | null>(null);
+  const [coverageLoading, setCoverageLoading] = useState(true);
+  const [coverageError, setCoverageError] = useState<string | null>(null);
   const [previewPlan, setPreviewPlan] = useState<ExternalDataSyncPlan | null>(null);
   const [overview, setOverview] = useState<ExternalDataOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -207,9 +282,11 @@ export default function ExternalDataSync() {
   const [partitionDetails, setPartitionDetails] = useState<ExternalSyncPlanDetails | null>(null);
   const [repairingDataset, setRepairingDataset] = useState<"fundamental" | "financial" | "capital_flow" | null>(null);
   const [tailImporting, setTailImporting] = useState(false);
+  const [tailImportResult, setTailImportResult] = useState<TailProxyImportResult | null>(null);
   const [pipelineStarting, setPipelineStarting] = useState(false);
-  const [pipelineTask, setPipelineTask] = useState<{ id: string; status: string; stage?: string; percent?: number; message?: string } | null>(null);
-  const handledTaskId = useRef<string | null>(null);
+  const [pipelineTask, setPipelineTask] = useState<FactorPipelineTask | null>(null);
+  const [pipelinePollError, setPipelinePollError] = useState<string | null>(null);
+  const handledTaskIds = useRef(new Set<string>());
 
   const primaryWatchlistId = useMemo(() => {
     const lists = app?.workbench?.watchlists ?? [];
@@ -233,13 +310,37 @@ export default function ExternalDataSync() {
       etf: { title: t("extSyncEtf"), desc: t("extSyncEtfDesc"), icon: <DatabaseOutlined /> },
   };
 
+  const refreshCoverage = useCallback(async () => {
+    setCoverageLoading(true);
+    try {
+      setCoverage(await api.getExternalDataCoverage());
+      setCoverageError(null);
+    } catch (error: any) {
+      setCoverageError(error?.message || String(error));
+    } finally {
+      setCoverageLoading(false);
+    }
+  }, []);
+
+  const refreshCapabilities = useCallback(async () => {
+    setCapabilitiesLoading(true);
+    try {
+      setCapabilities(await api.getExternalDataSyncCapabilities());
+      setCapabilitiesError(null);
+    } catch (error: any) {
+      setCapabilitiesError(error?.message || String(error));
+    } finally {
+      setCapabilitiesLoading(false);
+    }
+  }, []);
+
   const refreshOverview = useCallback(async (silent = false) => {
     if (!silent) setOverviewLoading(true);
     try {
       const next = await api.getExternalDataOverview();
       setOverview(next);
       setOverviewError(null);
-      void api.getExternalDataCoverage().then(setCoverage).catch(() => setCoverage(null));
+      void refreshCoverage();
       const running = next.datasets
         .map((item) => item.latest_task)
         .filter((task): task is ExternalSyncTask => Boolean(task && (task.status === "queued" || task.status === "running")));
@@ -254,16 +355,20 @@ export default function ExternalDataSync() {
     } finally {
       if (!silent) setOverviewLoading(false);
     }
-  }, []);
+  }, [refreshCoverage]);
 
   const finishTask = useCallback(async (task: ExternalSyncTask) => {
-    if (handledTaskId.current === task.id) return;
-    handledTaskId.current = task.id;
+    if (isRunningTask(task) || handledTaskIds.current.has(task.id)) return;
+    handledTaskIds.current.add(task.id);
     setFinishedTask(task);
-    if (task.status === "done" && task.failed_count === 0) {
+    if (taskAllAttemptsFailed(task)) {
+      message.error("同步失败：全部尝试失败");
+    } else if (task.status === "done" && !taskHasWarnings(task)) {
       message.success(t("extTaskCompleted"));
     } else if (task.status === "done") {
       message.warning(t("extTaskCompletedWithErrors"));
+    } else if (task.status === "cancelled") {
+      message.info("同步已取消，已完成的数据保留，可从断点继续");
     } else {
       message.error(task.message || t("extStatusFailed"));
     }
@@ -275,8 +380,8 @@ export default function ExternalDataSync() {
   }, [refreshOverview]);
 
   useEffect(() => {
-    void api.getExternalDataSyncCapabilities().then(setCapabilities).catch(() => setCapabilities(null));
-  }, []);
+    void refreshCapabilities();
+  }, [refreshCapabilities]);
 
   useEffect(() => {
     if (!activeTask) {
@@ -294,9 +399,20 @@ export default function ExternalDataSync() {
     let disposed = false;
     const poll = async () => {
       try {
-        const nextTasks = await Promise.all(runningTasks.map((task) => api.getExternalDataSyncTask(task.id)));
+        const results = await Promise.allSettled(runningTasks.map((task) => api.getExternalDataSyncTask(task.id)));
         if (disposed) return;
-        setActiveTasks((current) => keepLatestTaskPerDataset(current.map((task) => nextTasks.find((next) => next.id === task.id) || task)));
+        const nextTasks = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+        const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+        if (failures.length) message.error(template("extSyncFailed", { message: failures[0].reason?.message || String(failures[0].reason) }));
+        setActiveTasks((current) => keepLatestTaskPerDataset(current.map((task) => {
+          const next = nextTasks.find((item) => item.id === task.id);
+          if (!next || (!isRunningTask(task) && isRunningTask(next))) return task;
+          return { ...next, cancel_requested: isRunningTask(next) && Boolean(next.cancel_requested || task.cancel_requested) };
+        })));
+        setActiveTask((current) => {
+          const next = nextTasks.find((task) => task.id === current?.id);
+          return current && next && (isRunningTask(current) || !isRunningTask(next)) ? next : current;
+        });
         nextTasks.forEach((next) => {
           if (!["queued", "running"].includes(next.status)) void finishTask(next);
         });
@@ -327,20 +443,29 @@ export default function ExternalDataSync() {
     // Keep the hard stop for a known dashboard failure so an unavailable
     // inventory cannot accidentally trigger a task.
     if (dashboardUnavailable) return;
+    const effectiveSource = overrides.source ?? source;
+    const effectiveMode = overrides.mode ?? syncMode;
+    if (dataset === "tail_proxy" && effectiveSource === "all") {
+      message.warning("尾盘分钟同步仅支持观察池或持仓范围，请缩小标的范围");
+      return;
+    }
+    if (effectiveMode === "backfill" && (!capabilities || capabilitiesLoading || capabilitiesError || !capabilities[dataset]?.modes.includes("backfill"))) {
+      message.warning("历史同步能力尚未确认或数据源不支持，请重试读取同步能力");
+      return;
+    }
     setStartingDataset(dataset);
     setFinishedTask(null);
-    handledTaskId.current = null;
     try {
-      const effectiveMode = overrides.mode ?? syncMode;
       const effectiveStartDate = overrides.start_date
         ?? (dateRange[0] ? dateRange[0].format("YYYY-MM-DD") : undefined);
       const effectiveEndDate = overrides.end_date
         ?? (dateRange[1] ? dateRange[1].format("YYYY-MM-DD") : undefined);
       const syncPayload = {
         dataset,
-        source,
-        watchlist_id: source === "watchlist" ? primaryWatchlistId : undefined,
-        include_northbound: includeNorthbound,
+        source: effectiveSource,
+        watchlist_id: effectiveSource === "watchlist" ? primaryWatchlistId : undefined,
+        portfolio_id: effectiveSource === "positions" ? app?.portfolioId ?? undefined : undefined,
+        include_northbound: includeNorthbound && northboundReady,
         mode: effectiveMode,
         start_date: effectiveMode === "backfill" ? effectiveStartDate : undefined,
         end_date: effectiveMode === "backfill" ? effectiveEndDate : undefined,
@@ -352,6 +477,7 @@ export default function ExternalDataSync() {
       const plan = await api.previewExternalDataSyncPlan(syncPayload);
       setPreviewPlan(plan);
       const task = await api.startExternalDataSync(syncPayload);
+      handledTaskIds.current.delete(task.id);
       setActiveTask(task);
       setActiveTasks((current) => keepLatestTaskPerDataset([...current, task]));
       if (["queued", "running"].includes(task.status)) {
@@ -370,9 +496,11 @@ export default function ExternalDataSync() {
     setTaskActionLoading("cancel");
     try {
       const cancelled = await api.cancelExternalDataSyncTask(task.id);
-      setActiveTasks((current) => keepLatestTaskPerDataset(current.map((item) => item.id === cancelled.id ? cancelled : item)));
-      setActiveTask(cancelled);
-      await finishTask(cancelled);
+      const next = isRunningTask(cancelled) ? { ...cancelled, cancel_requested: true } : cancelled;
+      setActiveTasks((current) => keepLatestTaskPerDataset(current.map((item) => item.id === next.id ? next : item)));
+      setActiveTask(next);
+      if (isRunningTask(next)) message.info("已请求取消，等待当前步骤结束");
+      else await finishTask(next);
     } catch (error: any) {
       message.error(template("extSyncFailed", { message: error?.message || String(error) }));
     } finally {
@@ -384,10 +512,10 @@ export default function ExternalDataSync() {
     setTaskActionLoading("retry");
     try {
       const resumedTask = await api.retryExternalDataSyncTask(task.id);
-      handledTaskId.current = null;
+      handledTaskIds.current.delete(resumedTask.id);
       setFinishedTask(null);
       setActiveTask(resumedTask);
-      setActiveTasks((current) => keepLatestTaskPerDataset([...current, resumedTask]));
+      setActiveTasks((current) => keepLatestTaskPerDataset([...current.filter((item) => item.id !== resumedTask.id), resumedTask]));
       await refreshOverview(true);
     } catch (error: any) {
       message.error(template("extSyncFailed", { message: error?.message || String(error) }));
@@ -419,6 +547,7 @@ export default function ExternalDataSync() {
         materialize_scores: true,
       });
       setPipelineTask(task);
+      setPipelinePollError(null);
       const taskId = typeof task === "object" && task ? (task as any).id ?? "-" : "-";
       message.success(`评分流水线任务已提交，任务号：${String(taskId)}`);
     } catch (error: any) {
@@ -434,9 +563,9 @@ export default function ExternalDataSync() {
     const poll = async () => {
       try {
         const next = await api.scoringGetTask(pipelineTask.id);
-        if (!disposed) setPipelineTask(next);
-      } catch {
-        // The task remains visible; a later refresh can recover its state.
+        if (!disposed) { setPipelineTask(next); setPipelinePollError(null); }
+      } catch (error: any) {
+        if (!disposed) setPipelinePollError(error?.message || String(error));
       }
     };
     void poll();
@@ -448,7 +577,6 @@ export default function ExternalDataSync() {
     if (!overview) return;
     setRepairingDataset(dataset);
     setFinishedTask(null);
-    handledTaskId.current = null;
     // 缺口修复不应受“最近快照”显示模式影响。未选择明确日期时，
     // 使用该数据集当前已知的真实覆盖范围，避免默认退回最近 60 天。
     const coverageFields = coverage?.datasets.find((item) => item.dataset === dataset)?.fields ?? [];
@@ -479,6 +607,8 @@ export default function ExternalDataSync() {
         gaps: report.gaps,
       });
       setActiveTask(task);
+      handledTaskIds.current.delete(task.id);
+      setActiveTasks((current) => keepLatestTaskPerDataset([...current, task]));
       message.success(`已创建 ${report.gaps.length}${report.truncated ? "+" : ""} 个缺口的修复任务`);
       await refreshOverview(true);
     } catch (error: any) {
@@ -489,16 +619,25 @@ export default function ExternalDataSync() {
   };
 
   const importTailMinutes = async (file: File) => {
-    if (!overview) return;
+    if (!overview) {
+      message.warning("同步看板尚未加载完成，请稍后再导入 CSV");
+      return;
+    }
     setTailImporting(true);
+    setTailImportResult(null);
     try {
       const result = await api.importTailProxyMinutes({
         csv_text: await file.text(), filename: file.name,
       });
-      message.success(`尾盘分钟导入完成：${result.written_sessions} 个有效交易日`);
+      setTailImportResult(result);
+      if (result.warehouse_mirror?.status === "warning") message.warning(`原始分钟输入已保存：${result.written_sessions} 个交易日；因子仓库镜像失败，请重新导入重试`);
+      else if (result.quality_snapshot?.status === "warning") message.warning("原始输入与因子仓库已写入，质量诊断刷新失败，请重试刷新诊断");
+      else if (result.written_sessions > 0) message.success(`尾盘分钟导入完成：${result.written_sessions} 个有效交易日`);
+      else message.warning("尾盘分钟未写入有效交易日，请检查 CSV 的交易时间和会话完整性");
       if (result.rejected_sessions > 0) {
         message.warning(`${result.rejected_sessions} 个交易日未满足完整尾盘会话校验`);
       }
+      if (result.invalid_rows) message.warning(`CSV 中 ${result.invalid_rows} 行格式、数值或交易时间无效，未写入`);
       await refreshOverview(true);
     } catch (error: any) {
       message.error(template("extSyncFailed", { message: error?.message || String(error) }));
@@ -515,6 +654,11 @@ export default function ExternalDataSync() {
   const taskForDataset = (dataset: ExternalSyncDataset) => activeTasks.find(
     (task) => datasetFromTask(task) === dataset && ["queued", "running"].includes(task.status),
   );
+  const historyCapabilitiesReady = Boolean(capabilities && !capabilitiesLoading && !capabilitiesError);
+  const northboundCapability = capabilities?.capital_flow?.northbound;
+  const northboundReady = Boolean(northboundCapability?.available === true && !capabilitiesLoading && !capabilitiesError);
+  const pipelineOutcome = pipelineTask ? scoringOutcome(pipelineTask) : null;
+  const tailImportWarning = Boolean(tailImportResult && (tailImportResult.written_sessions === 0 || tailImportResult.rejected_sessions > 0 || tailImportResult.invalid_rows || tailImportResult.warnings?.length || tailImportResult.warehouse_mirror?.status === "warning" || tailImportResult.quality_snapshot?.status === "warning"));
   const rows = useMemo(() => {
     const byDataset = new Map((overview?.datasets || []).map((item) => [item.dataset, item]));
     return DATASET_ORDER.map(
@@ -577,18 +721,18 @@ export default function ExternalDataSync() {
         <div>
           <Typography.Text>{formatDate(row.latest_date)}</Typography.Text>
           <div style={{ color: "var(--text-muted, #667085)", fontSize: 12, marginTop: 3 }}>
-            {formatDate(row.last_updated_at, true)}
+            <Tooltip title={t("extDashboardStoredAtHint")}><span>{formatDate(row.last_updated_at, true)}</span></Tooltip>
           </div>
         </div>
       ),
     },
     {
-      title: "因子评价覆盖（非同步结果）",
+      title: <Tooltip title="估值按真实快照日期统计采集缺口，评分可在 7 天内沿用已有估值快照；财报按公告日期生效。仓库字段覆盖不表示已生成模型评分。"><span>仓库字段覆盖（非同步结果）<QuestionCircleOutlined style={{ marginLeft: 4 }} /></span></Tooltip>,
       width: 230,
       render: (_, row) => {
         const diagnostic = coverageByDataset.get(row.dataset);
-        if (!diagnostic) return <Typography.Text type="secondary">读取中</Typography.Text>;
-        const field = diagnostic.fields[0];
+        if (!diagnostic) return <Typography.Text type={coverageError ? "danger" : "secondary"}>{coverageError ? "覆盖读取失败" : coverageLoading ? "读取中" : "暂无覆盖诊断"}</Typography.Text>;
+        const field = diagnostic.fields.find((item) => item.nonnull_rows > 0) || diagnostic.fields[0];
         const color = {
           available: "success",
           limited: "warning",
@@ -603,7 +747,7 @@ export default function ExternalDataSync() {
             <div>
               <Tag color={color}>{readinessLabel(diagnostic.readiness)}</Tag>
               <Typography.Text type={diagnostic.readiness === "blocked" ? "danger" : "secondary"} style={{ display: "block", fontSize: 12, marginTop: 3 }}>
-                {coverageReasonLabel(diagnostic.reason)}
+                {datasetCoverageReason(diagnostic)}
               </Typography.Text>
             </div>
           );
@@ -619,7 +763,7 @@ export default function ExternalDataSync() {
             </div>
             {diagnostic.reason && (
               <Typography.Text type={diagnostic.readiness === "blocked" ? "danger" : "secondary"} style={{ display: "block", fontSize: 12, marginTop: 3 }}>
-                {coverageReasonLabel(diagnostic.reason, field.field)}
+                {datasetCoverageReason(diagnostic)}
               </Typography.Text>
             )}
           </div>
@@ -637,12 +781,12 @@ export default function ExternalDataSync() {
             {task && (
               <>
                 <Typography.Text style={{ fontSize: 12 }}>
-                  {task.processed ?? 0}/{task.total ?? 0} · {t("extDashboardSuccess")} {task.ok_count ?? 0} · {t("extDashboardFailed")} {task.failed_count ?? 0}
+                  {taskProgressText(task)} · {t("extDashboardSuccess")} {task.ok_count ?? 0} · {t("extDashboardFailed")} {task.failed_count ?? 0}
                 </Typography.Text>
                 <div style={{ color: "var(--text-muted, #667085)", fontSize: 12, marginTop: 3 }}>
                   {formatDate(task.finished_at || task.updated_at, true)}
                 </div>
-                {task.status === "failed" && task.message && (
+                {(task.status === "failed" || taskAllAttemptsFailed(task)) && task.message && (
                   <Typography.Text type="danger" ellipsis={{ tooltip: task.message }} style={{ display: "block", fontSize: 12, marginTop: 3 }}>
                     {task.message}
                   </Typography.Text>
@@ -659,17 +803,16 @@ export default function ExternalDataSync() {
       fixed: "right",
       render: (_, row) => {
         const repairable = row.dataset === "fundamental" || row.dataset === "financial" || row.dataset === "capital_flow";
-        const resumableTask = row.latest_task?.status === "failed" && Boolean(row.latest_task.batch_recovery);
-        const historyUnsupported = syncMode === "backfill" && Boolean(
-          capabilities && !capabilities[row.dataset]?.modes.includes("backfill"),
-        );
-        const disabledReason = historyUnsupported
-          ? row.dataset === "etf"
-            ? "ETF 历史接口目前只稳定提供净值，溢折价、规模、份额等指标没有统一可靠的历史序列；当前同步按最近快照执行"
-            : "当前数据源仅支持最近快照，请将同步模式切换为“最近快照”"
-          : taskForDataset(row.dataset)
-            ? "该数据集正在同步，请等待当前任务完成"
-            : null;
+        const resumableTask = Boolean(row.latest_task && taskCanResume(row.latest_task) && row.latest_task.batch_recovery);
+        const historyUnsupported = syncMode === "backfill" && (!historyCapabilitiesReady || !capabilities?.[row.dataset]?.modes.includes("backfill"));
+        const scopeUnsupported = row.dataset === "tail_proxy" && source === "all";
+        let disabledReason: string | null = null;
+        if (scopeUnsupported) disabledReason = "尾盘分钟同步仅支持观察池或持仓范围，请缩小标的范围";
+        else if (historyUnsupported && !historyCapabilitiesReady) disabledReason = "历史同步能力尚未确认，请等待加载或重试读取同步能力";
+        else if (historyUnsupported) disabledReason = row.dataset === "etf"
+          ? "ETF 历史接口目前只稳定提供净值，溢折价、规模、份额等指标没有统一可靠的历史序列；当前同步按最近快照执行"
+          : "当前数据源仅支持最近快照，请将同步模式切换为“最近快照”";
+        else if (taskForDataset(row.dataset)) disabledReason = "该数据集正在同步，请等待当前任务完成";
         return (
           <Space direction="vertical" size={6}>
             <Tooltip title={disabledReason || undefined}>
@@ -678,12 +821,12 @@ export default function ExternalDataSync() {
                   type="primary"
                   icon={<SyncOutlined spin={startingDataset === row.dataset || Boolean(taskForDataset(row.dataset))} />}
                   loading={startingDataset === row.dataset}
-                  disabled={controlsDisabled || Boolean(taskForDataset(row.dataset)) || historyUnsupported}
+                  disabled={controlsDisabled || Boolean(taskForDataset(row.dataset)) || historyUnsupported || scopeUnsupported}
                   onClick={() => void runSync(row.dataset)}
                 >
                   {taskForDataset(row.dataset) ? t("extSyncing") : configs[row.dataset].title}
                 </Button>
-                {historyUnsupported ? (
+                {historyUnsupported || scopeUnsupported ? (
                   <Tooltip title={disabledReason}>
                     <QuestionCircleOutlined
                       aria-label="查看不可同步原因"
@@ -697,7 +840,7 @@ export default function ExternalDataSync() {
               <Button
                 size="small"
                 loading={repairingDataset === row.dataset}
-                disabled={controlsDisabled}
+                disabled={controlsDisabled || !overview || Boolean(taskForDataset(row.dataset)) || ((!dateRange[0] || !dateRange[1]) && (coverageLoading || Boolean(coverageError) || !coverage))}
                 onClick={() => void repairDetectedGaps(row.dataset as "fundamental" | "financial" | "capital_flow")}
               >
                 检查并修复缺口
@@ -707,7 +850,7 @@ export default function ExternalDataSync() {
               <Tooltip title={t("extFullValuationHistoryHint")}>
                 <Button
                   size="small"
-                  disabled={controlsDisabled}
+                  disabled={controlsDisabled || !historyCapabilitiesReady || Boolean(taskForDataset("fundamental"))}
                   onClick={() => void runSync("fundamental", {
                     source: "all",
                     mode: "backfill",
@@ -793,18 +936,18 @@ export default function ExternalDataSync() {
                 <Typography.Text strong>{dataset ? configs[dataset].title : task.task_type}</Typography.Text>
                 {statusTag(task)}
                 <Typography.Text type="secondary">{taskRange(task)}</Typography.Text>
-                {running ? <Button size="small" danger loading={taskActionLoading === "cancel"} onClick={() => void cancelActiveTask(task)}>取消同步</Button> : null}
-                {!running && ["failed", "cancelled"].includes(task.status) ? <Button size="small" type="primary" loading={taskActionLoading === "retry"} onClick={() => void resumeTaskFromCursor(task)}>从断点继续</Button> : null}
+                {running ? <Button size="small" danger loading={taskActionLoading === "cancel"} disabled={task.cancel_requested} onClick={() => void cancelActiveTask(task)}>{task.cancel_requested ? "正在取消" : "取消同步"}</Button> : null}
+                {!running && taskCanResume(task) ? <Button size="small" type="primary" loading={taskActionLoading === "retry"} onClick={() => void resumeTaskFromCursor(task)}>从断点继续</Button> : null}
               </Space>
-              <Typography.Text type="secondary">{task.processed ?? 0}/{task.total ?? 0}</Typography.Text>
+              <Typography.Text type="secondary">{taskProgressText(task)}</Typography.Text>
             </div>
             <Progress
               percent={task.stage === "mirror" && running ? undefined : Math.round(task.percent)}
-              status={task.status === "failed" ? "exception" : task.status === "done" ? "success" : "active"}
+              status={task.status === "failed" || taskAllAttemptsFailed(task) ? "exception" : task.status === "done" ? "success" : "active"}
               format={task.stage === "mirror" && running ? () => "镜像处理中" : undefined}
             />
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap", color: "#475467", fontSize: 12, marginTop: 6 }}>
-              <span>{stageLabel(task.stage)}</span><span>同步数量：{task.processed ?? 0}/{task.total ?? 0}</span>
+              <span>{stageLabel(task.stage)}</span><span>同步数量：{taskProgressText(task)}</span>
               <span>{t("extDashboardSuccess")}：{task.ok_count ?? 0}</span><span>{t("extDashboardFailed")}：{task.failed_count ?? 0}</span>
               {task.current_item && <span>{t("extDashboardCurrent")}：{task.current_item}</span>}
             </div>
@@ -827,12 +970,13 @@ export default function ExternalDataSync() {
             ]}
           />
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {syncScopeDescription(source, primaryWatchlistName)}
+            {syncScopeDescription(source, primaryWatchlistName, app?.portfolioId)}
           </Typography.Text>
         </Space>
-        <Checkbox checked={includeNorthbound} disabled={controlsDisabled} onChange={(event) => setIncludeNorthbound(event.target.checked)}>
+        <Checkbox checked={includeNorthbound && northboundReady} disabled={controlsDisabled || !northboundReady} onChange={(event) => setIncludeNorthbound(event.target.checked)}>
           {t("extIncludeNorthbound")}
         </Checkbox>
+        {!northboundReady && <Typography.Text type="warning">{capabilitiesLoading ? "北向资金能力正在确认，仅同步个股资金流" : northboundCapability?.available === false ? `北向资金不可用：${northboundCapability.reason}` : "北向资金能力未知，仅同步个股资金流；请重试读取同步能力"}</Typography.Text>}
         <Space>
           <Typography.Text strong>{t("extSyncModeLabel")}:</Typography.Text>
           <Select
@@ -864,7 +1008,7 @@ export default function ExternalDataSync() {
             </>
           ) : null}
         </Space>
-        <Tooltip title="仅同步外部数据不会自动刷新评分特征；此操作会生成新的评分批次并保留历史追溯，默认只重算最近约 11 天。评分输入仍在准备中，稍后刷新任务中心查看进度。">
+        <Tooltip title="仅同步外部数据不会自动刷新评分特征；此操作会计算输入，在真实模型已激活且数据齐全时生成模型评分，并保留任务证据。默认重算最近约 11 天；未激活模型或输入不足时会明确说明未生成或仅部分生成评分。">
           <Button
             aria-label="刷新评分特征"
             type="primary"
@@ -877,14 +1021,22 @@ export default function ExternalDataSync() {
             刷新评分特征
           </Button>
         </Tooltip>
-        {pipelineTask && (
-          <Typography.Text type={pipelineTask.status === "failed" ? "danger" : "secondary"}>
-            评分特征：{pipelineTask.status === "done" || pipelineTask.status === "completed" ? "已完成" : pipelineTask.status === "failed" ? "失败" : "处理中"}
-            {pipelineTask.stage ? ` · ${pipelineTask.stage}` : ""}
-            {typeof pipelineTask.percent === "number" ? ` · ${Math.round(pipelineTask.percent)}%` : ""}
-          </Typography.Text>
-        )}
       </div>
+
+      {coverageError && <Alert type="error" showIcon message="因子覆盖读取失败" description={coverageError} action={<Button size="small" loading={coverageLoading} onClick={() => void refreshCoverage()}>重试覆盖读取</Button>} style={{ marginBottom: 14 }} />}
+      {capabilitiesError && <Alert type="warning" showIcon message="同步能力读取失败" description={capabilitiesError} action={<Button size="small" loading={capabilitiesLoading} onClick={() => void refreshCapabilities()}>重试同步能力</Button>} style={{ marginBottom: 14 }} />}
+      {pipelineTask && pipelineOutcome && <Alert
+        type={pipelineOutcome.type}
+        showIcon
+        style={{ marginBottom: 14 }}
+        message={`评分特征：${pipelineOutcome.label}${pipelineTask.stage ? ` · ${scoringStageLabel(pipelineTask.stage)}` : ""}${typeof pipelineTask.percent === "number" ? ` · ${Math.round(pipelineTask.percent)}%` : ""}`}
+        description={<Space direction="vertical" size={4}>
+          {pipelineOutcome.detail && <span>{pipelineOutcome.detail}</span>}
+          {pipelineTask.message && <span>{pipelineTask.message}</span>}
+          {pipelinePollError && <Typography.Text type="danger">任务状态读取失败：{pipelinePollError}；正在重试</Typography.Text>}
+          {(pipelineTask.result?.completion_status === "AWAITING_MODEL_ACTIVATION" || (pipelineTask.result?.scoring_bridge as { status?: string } | undefined)?.status === "SKIPPED") && <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-model" }))}>去因子模型</Button>}
+        </Space>}
+      />}
 
       {dashboardUnavailable ? (
         <Alert
@@ -927,7 +1079,7 @@ export default function ExternalDataSync() {
               <Space wrap>
                 {coverageActions.map((item) => (
                   <Tag key={item.dataset} color={item.readiness === "blocked" ? "error" : "warning"}>
-                    {configs[item.dataset].title}：{coverageReasonLabel(item.reason)}
+                    {configs[item.dataset].title}：{datasetCoverageReason(item)}
                   </Tag>
                 ))}
                 <Button size="small" onClick={() => window.dispatchEvent(new CustomEvent("settings:navigate", { detail: "factor-model" }))}>
@@ -952,13 +1104,26 @@ export default function ExternalDataSync() {
           <Upload
             accept=".csv,text/csv"
             showUploadList={false}
-            disabled={tailImporting || controlsDisabled}
+            disabled={tailImporting || controlsDisabled || !overview}
             beforeUpload={(file) => { void importTailMinutes(file); return false; }}
           >
-            <Button size="small" loading={tailImporting}>导入 CSV</Button>
+            <Button size="small" loading={tailImporting} disabled={tailImporting || controlsDisabled || !overview}>导入 CSV</Button>
           </Upload>
         </Space>}
       />
+
+      {tailImportResult && <Alert
+        type={tailImportWarning ? "warning" : "success"}
+        showIcon
+        style={{ marginBottom: 14 }}
+        message={tailImportResult.warehouse_mirror?.status === "warning" ? "原始分钟输入已保存，因子仓库镜像失败" : tailImportResult.quality_snapshot?.status === "warning" ? "原始输入与因子仓库已写入，质量诊断刷新失败" : `尾盘分钟输入：${tailImportResult.written_sessions} 个有效交易日，拒绝 ${tailImportResult.rejected_sessions} 个交易日`}
+        description={<Space direction="vertical" size={4}>
+          {Boolean(tailImportResult.invalid_rows) && <span>无效行：{tailImportResult.invalid_rows}；未写入</span>}
+          {tailImportResult.warehouse_mirror && <span>因子仓库镜像：{tailImportResult.warehouse_mirror.status === "done" ? `已写入 ${formatCount(tailImportResult.warehouse_mirror.records)} 条记录` : tailImportResult.warehouse_mirror.status === "warning" ? `失败：${tailImportResult.warehouse_mirror.error || "请重新导入重试"}` : "未执行"}</span>}
+          {tailImportResult.quality_snapshot && <span>质量快照：{tailImportResult.quality_snapshot.status === "done" ? "已刷新" : tailImportResult.quality_snapshot.status === "warning" ? `失败：${tailImportResult.quality_snapshot.error || "请刷新诊断重试"}` : "未刷新"}</span>}
+          {tailImportResult.warnings?.map((warning, index) => <span key={`${index}-${warning}`}>{warning}</span>)}
+        </Space>}
+      />}
 
       {previewPlan ? (
         <Alert
@@ -985,11 +1150,18 @@ export default function ExternalDataSync() {
       {resultTask?.result && (
         <Alert
           style={{ marginTop: 16 }}
-          type={resultTask.result.failed === 0 ? "success" : "warning"}
+          type={taskHasWarnings(resultTask) ? "warning" : "success"}
           showIcon
           message={`${configs[resultTask.result.dataset].title}: ${template("extSyncResult", syncResultParams(resultTask.result))}`}
           description={
-            resultTask.result.errors.length > 0 ? (
+            <Space direction="vertical" style={{ width: "100%" }}>
+              {resultTask.result.warehouse_mirror && <Typography.Text type={resultTask.result.warehouse_mirror.status === "warning" ? "warning" : "secondary"}>
+                因子仓库镜像：{resultTask.result.warehouse_mirror.status === "warning" ? `失败：${resultTask.result.warehouse_mirror.error || "请从断点重试"}` : resultTask.result.warehouse_mirror.status === "skipped" ? "未执行" : `已写入 ${formatCount(resultTask.result.warehouse_mirror.records)} 条记录`}
+              </Typography.Text>}
+              {resultTask.result.northbound && <Typography.Text type={resultTask.result.northbound.status === "warning" ? "warning" : "secondary"}>
+                北向资金：{resultTask.result.northbound.status === "warning" ? `同步未完成：${resultTask.result.northbound.error || "数据源未返回有效记录"}` : `已写入 ${formatCount(resultTask.result.northbound.records)} 条记录`}
+              </Typography.Text>}
+              {resultTask.result.errors.length > 0 ? (
               <Collapse
                 size="small"
                 ghost
@@ -1003,7 +1175,8 @@ export default function ExternalDataSync() {
                   ),
                 }]}
               />
-            ) : null
+            ) : null}
+            </Space>
           }
         />
       )}

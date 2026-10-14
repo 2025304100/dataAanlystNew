@@ -36,6 +36,7 @@ from app.services.factors.factor_compiler import (
     POW_RESULT_LIMIT,
 )
 from app.services.factors.store import FactorWarehouse
+from app.services.factors.field_sources import physical_field_column
 
 
 # ══════════════════════════════════════════════════════════
@@ -716,7 +717,8 @@ class FactorExecutor:
                     "LAG(close) OVER (PARTITION BY symbol ORDER BY trade_date) AS prev_close"
                 )
             else:
-                expressions.append(field_name)
+                column = physical_field_column(table_name, field_name)
+                expressions.append(column if column == field_name else f"{column} AS {field_name}")
         return expressions
 
     @staticmethod

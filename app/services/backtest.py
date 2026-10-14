@@ -295,14 +295,15 @@ def _run_backtest_decision_driven(
     from app.models.decision_engine import DecisionEvidence, DecisionRun
     from app.services.decision_engine import (
         DecisionStateContext,
+        DECISION_SCORE_POLICY_VERSION,
         default_engine,
         requires_strict_market_data_pit,
     )
 
     run.match_mode = str(match_mode).upper()
-    strict_market_data_pit = requires_strict_market_data_pit(
-        default_engine.load_snapshot(db, strategy_snapshot_id)
-    )
+    schedule_snapshot = default_engine.load_snapshot(db, strategy_snapshot_id)
+    strict_market_data_pit = requires_strict_market_data_pit(schedule_snapshot)
+    drawdown_enabled = bool((schedule_snapshot.versions.get("risk_policy") or {}).get("drawdown_circuit_pct"))
 
     def _bar_available_at(bar: DailyBar | None) -> datetime | None:
         value = getattr(bar, "created_at", None)
@@ -375,14 +376,24 @@ def _run_backtest_decision_driven(
     for row in existing_decision_runs:
         if str(row.status) != "SUCCEEDED":
             continue
+        try:
+            old_versions = json.loads(row.versions_json or "{}")
+        except (TypeError, json.JSONDecodeError):
+            old_versions = {}
+        if old_versions.get("decision_score_policy_version") != DECISION_SCORE_POLICY_VERSION:
+            # Historical quality/0.7 decisions remain visible for audit, but
+            # cannot be replayed under the corrected alpha/100-point policy.
+            continue
         # Prefer a backtest DecisionRun when legacy dry_run rows happen to
         # share the same snapshot/date (their identities normally differ).
         previous = persisted_success_by_date.get(row.trade_date)
         if previous is None or str(row.run_type) == "backtest":
             persisted_success_by_date[row.trade_date] = row
     created_decision_run_ids: set[str] = set()
+    equity_high_watermark = float(initial_capital)
 
     def _state_context(current_date: date) -> DecisionStateContext:
+        nonlocal equity_high_watermark
         def _bar_price(bar: DailyBar | None, field: str) -> float | None:
             if bar is None:
                 return None
@@ -409,6 +420,7 @@ def _run_backtest_decision_driven(
                 "market_value": market_value,
                 "asset_type": asset,
                 "sector": sector,
+                "average_cost": float(trade.entry_price),
             }
             asset_pct[asset] = asset_pct.get(asset, 0.0) + pct
             sector_pct[sector] = sector_pct.get(sector, 0.0) + pct
@@ -446,6 +458,14 @@ def _run_backtest_decision_driven(
                 "available_at": getattr(bar, "created_at", None),
                 "_backtest_signal_open": float(bar.open),
             }
+        equity = cash + sum(float(values.get("market_value", 0.0)) for values in current.values())
+        if strict_market_data_pit:
+            from app.services.decision_engine import _resolve_snapshot_clock
+            cutoff = _resolve_snapshot_clock(schedule_snapshot, current_date).data_cutoff_at
+            if any(_bar_available_at(bar_by_key.get((sid, current_date))) is None or _bar_available_at(bar_by_key.get((sid, current_date))) > cutoff for sid in open_trades):
+                equity = None
+        if equity is not None:
+            equity_high_watermark = max(equity_high_watermark, equity)
         return DecisionStateContext(
             current_by_symbol=current,
             current_asset_pct=asset_pct,
@@ -455,6 +475,8 @@ def _run_backtest_decision_driven(
             pending_orders={},
             price_data_by_symbol=prices,
             cost_config=dict(cost_config),
+            equity_value=equity if drawdown_enabled else None,
+            equity_high_watermark=equity_high_watermark if drawdown_enabled else None,
         )
 
     def _mark_rejected(plan: Any, reason: str, detail: str | None = None) -> None:
@@ -2761,7 +2783,7 @@ def run_backtest(
     reproducibility_reason: str | None = None,
     # WP0-5a / Q29.1：扩展字段（migration 已加列）
     strategy_snapshot_id: str | None = None,
-    factor_set_id: int | None = None,
+    factor_set_id: str | None = None,
     pit_mode: str | None = None,
     rebalance_frequency: str | None = None,
     volume_limit_pct: float | None = None,
@@ -2772,23 +2794,54 @@ def run_backtest(
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
         raise ValueError("Portfolio not found")
-    runtime = get_factor_runtime_snapshot(db)
-    effective_score_mode = score_weight_mode or runtime.score_weight_mode
+    locked_snapshot = None
+    if strategy_snapshot_id:
+        from app.models.decision_engine import StrategyExecutionSnapshot
+        locked_snapshot = db.get(StrategyExecutionSnapshot, strategy_snapshot_id)
+        if locked_snapshot is None or locked_snapshot.portfolio_id != portfolio_id:
+            raise ValueError('strategy_snapshot_id must identify this portfolio applied snapshot')
+        if locked_snapshot.snapshot_type not in {'save_and_apply', 'task_locked'}:
+            raise ValueError('backtest cannot execute a preflight snapshot')
+        versions = json.loads(locked_snapshot.versions_json or '{}')
+        effective_score_mode = str(versions.get('score_weight_mode') or ('ridge' if locked_snapshot.factor_model_run_id else 'manual'))
+        if score_weight_mode and score_weight_mode != effective_score_mode:
+            raise ValueError('score_weight_mode differs from locked snapshot')
+        if factor_model_run_id and factor_model_run_id != locked_snapshot.factor_model_run_id:
+            raise ValueError('factor_model_run_id differs from locked snapshot')
+        if factor_set_id and factor_set_id != locked_snapshot.factor_set_id:
+            raise ValueError('factor_set_id differs from locked snapshot')
+        effective_model_id = locked_snapshot.factor_model_run_id
+        factor_set_id = locked_snapshot.factor_set_id
+        portfolio_rule_version_id = locked_snapshot.rule_id
+        if isinstance(versions.get('rule_config'), dict):
+            rule_config = versions['rule_config']
+        if pit_mode == 'production_pit' and (not effective_model_id or not factor_set_id):
+            raise ValueError('production_pit snapshot requires model and frozen factor set')
+        if pit_mode == 'production_pit':
+            if versions.get('run_mode') not in {'production', 'production_pit', 'production_sim', 'strict_pit'} or versions.get('pit_mode') not in {'strict_pit_safe', 'strict_pit'}:
+                raise ValueError('production_pit backtest cannot promote a research/best_effort snapshot')
+            from app.services.factors.__facade__ import assess_score_model_readiness
+            readiness = assess_score_model_readiness(db, effective_model_id, factor_set_id, require_runtime_active=False)
+            if not readiness['ready']:
+                raise ValueError(f"production_pit model is not ready: {readiness['code']}: {readiness['message']}")
+    else:
+        if pit_mode == 'production_pit':
+            raise ValueError('production_pit backtest requires an applied snapshot')
+        runtime = get_factor_runtime_snapshot(db)
+        effective_score_mode = score_weight_mode or runtime.score_weight_mode
+        effective_model_id = (factor_model_run_id or runtime.active_model_run_id) if effective_score_mode == 'ridge' else None
     if effective_score_mode not in {'manual', 'ridge'}:
         raise ValueError('score_weight_mode must be manual or ridge')
-    effective_model_id = (
-        factor_model_run_id or runtime.active_model_run_id
-        if effective_score_mode == 'ridge'
-        else None
-    )
     factor_data_cutoff_at = None
     if effective_score_mode == 'ridge':
         if not effective_model_id:
             raise ValueError('factor_model_run_id is required for Ridge backtest')
         factor_model = db.get(FactorModelRun, effective_model_id)
-        if factor_model is None or factor_model.status != 'validated':
+        # Historical research fixtures may have no retained model artifact.
+        # A formal run must never claim that such a binding is validated.
+        if (factor_model is None or factor_model.status != 'validated') and (locked_snapshot is None or pit_mode == 'production_pit'):
             raise ValueError('Ridge backtest requires a validated factor model')
-        factor_data_cutoff_at = factor_model.data_cutoff_at
+        factor_data_cutoff_at = factor_model.data_cutoff_at if factor_model else None
     rule_config = _prepare_rule_config(db, rule_config)
 
     cost_config = cost_config or DEFAULT_COST_CONFIG

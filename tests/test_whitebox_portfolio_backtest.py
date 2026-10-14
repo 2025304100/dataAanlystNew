@@ -114,8 +114,11 @@ def _make_score(
         stage=stage,
         action=action,
         priority_score=75.0,
-        weight_mode="manual",
+        weight_mode="ridge" if factor_model_run_id else "manual",
         factor_model_run_id=factor_model_run_id,
+        model_alpha_score=(20.0 if action in {"exit", "reduce"} else quality_score) if factor_model_run_id else None,
+        factor_data_cutoff_at=datetime(trade_date.year, trade_date.month, trade_date.day, 7) if factor_model_run_id else None,
+        published_at=datetime(trade_date.year, trade_date.month, trade_date.day, 6),
     )
     db_session.add(score)
     db_session.commit()

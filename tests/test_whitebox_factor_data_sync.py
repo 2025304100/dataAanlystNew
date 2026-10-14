@@ -221,7 +221,9 @@ def test_date_range_watermark_does_not_skip_full_sync(db_session, tmp_path):
     )
 
     assert ranged.rows_written == 1
-    assert full.rows_written == 2
+    # The ranged observation is already identical in the warehouse. A full
+    # scope must find the other row without republishing the unchanged one.
+    assert full.rows_written == 1
     with warehouse.connection(read_only=True) as conn:
         assert conn.execute(
             "SELECT COUNT(*) FROM raw_valuation_snapshots"

@@ -528,7 +528,7 @@ class FreezeScoringFactorSetRequest(BaseModel):
 
 
 class TrainScoringModelRequest(BaseModel):
-    mode: str = Field(default="offline_minimal", pattern="^(offline_minimal|warehouse)$")
+    mode: str = Field(default="warehouse", pattern="^(offline_minimal|warehouse)$")
     actor: str = Field(default="local_user", max_length=64)
 
 

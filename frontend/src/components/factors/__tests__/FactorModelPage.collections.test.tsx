@@ -31,6 +31,7 @@ const { mockApi, mockMessage, mockModalConfirm } = vi.hoisted(() => ({
     scoringFreezeFactorSet: vi.fn(),
     deprecateFactorSet: vi.fn(),
     scoringTrainModel: vi.fn(),
+    scoringCreateTask: vi.fn(),
     scoringActivateModel: vi.fn(),
     scoringFallbackToManual: vi.fn(),
     getFactorSetDetail: vi.fn(),
@@ -188,8 +189,8 @@ function seedSuccess(extra: { runtime?: any; models?: any[]; factorSets?: any[] 
   mockApi.getFactorSetDetail.mockImplementation(async (id: string, _w?: boolean) =>
     factorSets.find((s: any) => s.id === id) || { id, members: [] }
   );
-  // 库因子 fallback（Drawer 内搜索）
-  mockApi.scoringListFactorDefinitions.mockRejectedValue(new Error("intentional-fallback"));
+  // 默认库不可用，页面必须显示错误且不能构造可提交的伪因子。
+  mockApi.scoringListFactorDefinitions.mockRejectedValue(new Error("library unavailable"));
   return { runtime, models, factorSets };
 }
 
@@ -468,6 +469,49 @@ describe("TR-2.3 成员明细表格 6 列 × 3 行 × feature=3", () => {
 //               Error Banner 显示 detail_zh 原文（不丢失）
 // ═══════════════════════════════════════════════════════════════════════
 describe("TR-2.4 训练门禁 错误 Banner 显示 detail_zh 原文", () => {
+  it("因子库不可用时明确报错且不提供伪造因子成员", async () => {
+    seedSuccess({ factorSets: [makeFactorSet({ id: "library-error", status: "draft", members: [makeMember({ id: 1 })] })] });
+    mockApi.scoringListFactorDefinitions.mockRejectedValueOnce(new Error("library unavailable"));
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByTestId("btn-edit-members-library-error"));
+    expect(await screen.findByText(/因子库读取失败/)).toBeInTheDocument();
+    expect(screen.queryByText("SEED_MOM_20D")).not.toBeInTheDocument();
+    expect(screen.getByTestId("btn-add-member")).toBeDisabled();
+  });
+  it("版本资格未知时不能添加；精简列表会读取真实详情后才允许可训练版本", async () => {
+    seedSuccess({ factorSets: [makeFactorSet({ id: "version-proof", status: "draft", members: [] })] });
+    mockApi.scoringListFactorDefinitions.mockResolvedValueOnce({ items: [{ factor_code: "UNKNOWN", versions: [{ version: 7 }] }, { factor_code: "REAL_VALID", latest_version: 3 }] });
+    mockApi.scoringGetFactorDefinition.mockResolvedValueOnce({ versions: [{ version: 3, validation_status: "valid", trainable: true }] });
+    mockApi.addFactorSetMember.mockResolvedValueOnce({});
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByTestId("btn-edit-members-version-proof"));
+    fireEvent.click(await screen.findByTestId("lib-row-UNKNOWN"));
+    expect(screen.getByTestId("btn-add-member")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("lib-row-REAL_VALID"));
+    expect(screen.getByTestId("btn-add-member")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("btn-add-member"));
+    await waitFor(() => expect(mockApi.addFactorSetMember).toHaveBeenCalledWith("version-proof", expect.objectContaining({ factor_code: "REAL_VALID", factor_version: 3 })));
+    expect(mockApi.scoringGetFactorDefinition).toHaveBeenCalledWith("REAL_VALID");
+  });
+  it("尚不支持的资产集合不会静默提交成股票训练", async () => {
+    seedSuccess({ factorSets: [makeFactorSet({ id: "etf-set", status: "frozen", asset_type: "etf", members: [makeMember()] })] });
+    render(<FactorModelPage />);
+    const trainButton = await screen.findByTestId("btn-train-etf-set");
+    expect(trainButton).toBeDisabled();
+    fireEvent.click(trainButton);
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
+  });
+  it("普通训练提交真实流水线任务，不生成离线演示模型", async () => {
+    seedSuccess({ factorSets: [makeFactorSet({ id: "real-training-set", status: "frozen", members: [makeMember({ id: 1, factor_code: "A", role: "feature" })] })] });
+    mockApi.scoringCreateTask.mockResolvedValueOnce({ id: "real-task", status: "queued" });
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByTestId("btn-train-real-training-set"));
+    fireEvent.change(await screen.findByPlaceholderText(/Q3 月更/), { target: { value: "本人真实训练备注" } });
+    fireEvent.click(await screen.findByRole("button", { name: /提交训练/ }));
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({ factor_set_id: "real-training-set", train_model: true, materialize_scores: false, hyperparameters: expect.objectContaining({ note: "本人真实训练备注" }), factor_scope: expect.objectContaining({ asset_type: "stock" }) })));
+    expect(mockApi.scoringTrainModel).not.toHaveBeenCalled();
+    expect(screen.queryByText(/offline_minimal/)).not.toBeInTheDocument();
+  });
   it("后端返回 TRAIN_GATE_IC_OUT_OF_RANGE → Banner description === detail_zh 原文", async () => {
     const EXPECTED_ZH =
       "训练门禁未通过（P2-G IC 范围）：本次因子集合训练的加权 IC=0.0021，低于最小阈值 0.01。请移除 IC<0.005 的弱因子或更换目标标签 lookback 窗口，或联系治理管理员豁免（需签署审计签名）。";
@@ -479,7 +523,7 @@ describe("TR-2.4 训练门禁 错误 Banner 显示 detail_zh 原文", () => {
       members: [makeMember({ id: 1, factor_code: "A", role: "feature" })],
     });
     seedSuccess({ factorSets: [fsOk] });
-    mockApi.scoringTrainModel.mockRejectedValueOnce({
+    mockApi.scoringCreateTask.mockRejectedValueOnce({
       name: "ApiError",
       message: "HTTP 400 Bad Request",
       status_code: 400,

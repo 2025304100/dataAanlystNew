@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
-from sqlalchemy import and_, desc, distinct, func, select
+from sqlalchemy import and_, desc, distinct, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -67,6 +69,52 @@ _MARKET_PRIORITY_TASK_TYPES = (
     "universe_range_repair",
 )
 _MARKET_PRIORITY_WAIT_SECONDS = 5.0
+_CREATION_LOCKS = {dataset: threading.Lock() for dataset in EXTERNAL_DATASETS}
+
+
+@contextmanager
+def _external_sync_creation_guard(db: Session, dataset: ExternalDataset):
+    """Serialize ownership check+commit across threads and database clients."""
+    process_lock = _CREATION_LOCKS[dataset]
+    if not process_lock.acquire(blocking=False):
+        raise RuntimeError("已有同类型外部数据同步任务在创建或运行，请稍后再试")
+    lock_connection = None
+    mysql_locked = False
+    bind = db.get_bind()
+    database_name = str(getattr(getattr(bind, "url", None), "database", "default"))
+    namespace = hashlib.sha256(database_name.encode("utf-8")).hexdigest()[:12]
+    lock_name = f"external-sync-create:{namespace}:{dataset}"
+    try:
+        dialect = bind.dialect.name
+        if dialect == "mysql":
+            # Named locks belong to a connection, not a transaction. Keep a
+            # dedicated connection until the task transaction has committed.
+            lock_connection = bind.connect()
+            acquired = lock_connection.execute(text("SELECT GET_LOCK(:name, 0)"), {"name": lock_name}).scalar()
+            if acquired != 1:
+                raise RuntimeError("已有同类型外部数据同步任务在创建，请稍后再试")
+            mysql_locked = True
+        elif dialect == "sqlite":
+            if db.in_transaction():
+                raise RuntimeError("外部同步创建必须使用独立事务")
+            db.execute(text("BEGIN IMMEDIATE"))
+        else:
+            raise RuntimeError(f"External sync creation locking unsupported for {dialect}")
+        yield
+    finally:
+        try:
+            if lock_connection is not None:
+                try:
+                    if mysql_locked:
+                        lock_connection.execute(text("SELECT RELEASE_LOCK(:name)"), {"name": lock_name})
+                except Exception:
+                    # Never put a connection retaining GET_LOCK into the pool.
+                    lock_connection.invalidate()
+                    logger.warning("external sync creation lock release failed", exc_info=True)
+                finally:
+                    lock_connection.close()
+        finally:
+            process_lock.release()
 
 ExternalSyncMode = Literal["incremental", "backfill"]
 
@@ -90,6 +138,7 @@ def resolve_external_symbols(
     source: Literal["watchlist", "positions", "all"],
     asset_type: str | None,
     watchlist_id: int | None = None,
+    portfolio_id: int | None = None,
 ) -> list[Symbol]:
     """Resolve the symbol scope shared by legacy and asynchronous endpoints."""
     if source == "all":
@@ -150,10 +199,12 @@ def resolve_external_symbols(
         from app.models.portfolio import Position
 
         stmt = (
-            select(Symbol)
+            select(Symbol).distinct()
             .join(Position, Position.symbol_id == Symbol.id)
-            .where(Symbol.is_active == 1)
+            .where(Symbol.is_active == 1, Position.quantity > 0)
         )
+        if portfolio_id is not None:
+            stmt = stmt.where(Position.portfolio_id == portfolio_id)
     else:
         return []
     if asset_type:
@@ -162,7 +213,7 @@ def resolve_external_symbols(
 
 
 def _update_task(db: Session, task_id: str, **updates) -> AsyncTaskRecord | None:
-    task = db.get(AsyncTaskRecord, task_id)
+    task = db.get(AsyncTaskRecord, task_id, populate_existing=True, with_for_update=True)
     if task is None:
         return None
     if task.status in ("done", "failed", "cancelled"):
@@ -187,8 +238,14 @@ def _update_task(db: Session, task_id: str, **updates) -> AsyncTaskRecord | None
 
 
 def _is_cancelled(db: Session, task_id: str) -> bool:
-    task = db.get(AsyncTaskRecord, task_id)
-    return task is None or task.status == "cancelled" or int(getattr(task, "cancel_requested", 0) or 0) == 1
+    # A worker's ORM identity map / repeatable-read transaction must not hide
+    # a cancellation committed by another request during a provider call.
+    reader = SessionLocal()
+    try:
+        task = reader.get(AsyncTaskRecord, task_id)
+        return task is None or task.status == "cancelled" or int(getattr(task, "cancel_requested", 0) or 0) == 1
+    finally:
+        reader.close()
 
 
 def _mark_cancelled(db: Session, task_id: str, message: str = "Sync cancelled by user") -> None:
@@ -212,7 +269,11 @@ def _active_market_priority_task(db: Session) -> AsyncTaskRecord | None:
         .where(
             AsyncTaskRecord.task_type.in_(_MARKET_PRIORITY_TASK_TYPES),
             AsyncTaskRecord.status.in_(("queued", "running")),
+            # A stale task cannot acquire provider capacity forever. Startup
+            # patrol remains responsible for recording its recovery outcome.
+            or_(AsyncTaskRecord.status != "running", AsyncTaskRecord.updated_at.is_(None), AsyncTaskRecord.updated_at >= _now() - timedelta(minutes=10)),
         )
+        .execution_options(populate_existing=True)
         .order_by(desc(AsyncTaskRecord.created_at))
     ).scalars().first()
 
@@ -262,6 +323,13 @@ def build_external_sync_plan(
     if dataset not in EXTERNAL_DATASETS:
         raise ValueError(f"Unsupported external dataset: {dataset}")
     capability = _DATASET_CAPABILITIES[dataset]
+    source = str(payload.get("source", "watchlist"))
+    if source not in {"watchlist", "positions", "all", "candidates"}:
+        raise ValueError("Unsupported external sync scope")
+    if source == "candidates" and dataset != "tail_proxy":
+        raise ValueError("Candidate scope is only supported for tail proxy")
+    if dataset == "tail_proxy" and source == "all":
+        raise ValueError("尾盘分钟采集仅支持候选、观察池或持仓范围，不支持全市场")
     mode = str(payload.get("mode", "incremental"))
     if mode not in capability["modes"]:
         raise ValueError(f"{dataset} does not support {mode}: {capability['reason']}")
@@ -276,6 +344,8 @@ def build_external_sync_plan(
     if requested_start > requested_end:
         raise ValueError("start_date must be on or before end_date")
     if mode == "incremental":
+        if dataset in {"fundamental", "capital_flow"} and requested_end != reference_date:
+            raise ValueError("估值和资金流增量仅支持当前日期；历史日期请使用历史回填模式")
         requested_start = requested_end
     span_days = (requested_end - requested_start).days + 1
     history_limit_days = capability["history_limit_days"]
@@ -299,7 +369,7 @@ def build_external_sync_plan(
 
 
 def get_external_sync_capabilities() -> dict[str, dict[str, Any]]:
-    return {
+    result = {
         dataset: {
             "modes": sorted(values["modes"]),
             "history_limit_days": values["history_limit_days"],
@@ -307,6 +377,9 @@ def get_external_sync_capabilities() -> dict[str, dict[str, Any]]:
         }
         for dataset, values in _DATASET_CAPABILITIES.items()
     }
+    from app.services.capital_flow_data import northbound_capability
+    result["capital_flow"]["northbound"] = northbound_capability()
+    return result
 
 
 _SYMBOL_PARTITION_DATASETS = {"fundamental", "financial", "capital_flow", "etf"}
@@ -331,7 +404,7 @@ def _create_persisted_sync_plan(
         if dataset in _SYMBOL_PARTITION_DATASETS:
             asset_type = "etf" if dataset == "etf" else "stock"
             symbols = resolve_external_symbols(
-                db, payload.get("source", "watchlist"), asset_type, payload.get("watchlist_id")
+                db, payload.get("source", "watchlist"), asset_type, payload.get("watchlist_id"), payload.get("portfolio_id")
             )
             partition_specs = [
                 {
@@ -343,6 +416,8 @@ def _create_persisted_sync_plan(
                 }
                 for symbol in symbols
             ]
+            if dataset == "capital_flow" and payload.get("include_northbound", True):
+                partition_specs.append({"partition_key": f"northbound:{start_date}:{end_date}", "symbol_id": None, "symbol": None, "start_date": start_date, "end_date": end_date})
         else:
             partition_specs = [
                 {
@@ -401,7 +476,10 @@ def _refresh_sync_plan(db: Session, plan_id: str, *, terminal: bool = False) -> 
     plan_record.skipped_partitions = sum(status == "skipped" for status in statuses)
     plan_record.failed_partitions = sum(status == "failed" for status in statuses)
     if terminal:
-        plan_record.status = "partial" if plan_record.failed_partitions else "done"
+        if "cancelled" in statuses:
+            plan_record.status = "cancelled"
+        else:
+            plan_record.status = "partial" if plan_record.failed_partitions else "done"
         plan_record.finished_at = _now()
     elif plan_record.status == "queued":
         plan_record.status = "running"
@@ -419,6 +497,9 @@ def _set_partition_status(
     error_message: str | None = None,
 ) -> None:
     if partition is None:
+        return
+    db.refresh(partition)
+    if partition.status == "cancelled" and status not in {"cancelled", "done"}:
         return
     if status == "running":
         partition.attempts += 1
@@ -661,6 +742,26 @@ def get_external_data_coverage(db: Session) -> dict[str, Any]:
     return {"datasets": datasets, "generated_at": _now()}
 
 
+def _merge_written_dates(result: dict, dates) -> None:
+    actual = [_as_date(value) for value in dates if value is not None]
+    if not actual:
+        return
+    previous = [_as_date(result.get("written_start_date")), _as_date(result.get("written_end_date"))]
+    actual.extend(value for value in previous if value is not None)
+    result["written_start_date"] = min(actual).isoformat()
+    result["written_end_date"] = max(actual).isoformat()
+
+
+def _local_written_dates(db: Session, dataset: ExternalDataset, symbol_id: int, start: date | None = None, end: date | None = None):
+    model, column = {"fundamental": (StockValuation, StockValuation.trade_date), "financial": (StockFinancialReport, StockFinancialReport.announcement_date), "capital_flow": (CapitalFlow, CapitalFlow.trade_date), "etf": (EtfIndicator, EtfIndicator.trade_date)}[dataset]
+    stmt = select(func.min(column), func.max(column)).where(model.symbol_id == symbol_id)
+    if start is not None:
+        stmt = stmt.where(column >= start)
+    if end is not None:
+        stmt = stmt.where(column <= end)
+    return db.execute(stmt).one()
+
+
 def _run_symbol_sync(
     db: Session,
     task_id: str,
@@ -697,7 +798,7 @@ def _run_symbol_sync(
         }
         _refresh_sync_plan(db, sync_plan_id)
     else:
-        symbols = resolve_external_symbols(db, source, asset_type, payload.get("watchlist_id"))
+        symbols = resolve_external_symbols(db, source, asset_type, payload.get("watchlist_id"), payload.get("portfolio_id"))
         resume_after_symbol_id = payload.get("resume_after_symbol_id")
         if resume_after_symbol_id is not None:
             try:
@@ -725,17 +826,40 @@ def _run_symbol_sync(
         started_at=_now(),
     )
 
-    if dataset == "capital_flow" and payload.get("include_northbound", True):
+    northbound_partition = None
+    if sync_plan_id and dataset == "capital_flow":
+        northbound_partition = db.execute(select(DataSyncPartition).where(DataSyncPartition.plan_id == sync_plan_id, DataSyncPartition.partition_key.like("northbound:%"), DataSyncPartition.status.in_(("queued", "failed", "cancelled")))).scalars().first()
+    if dataset == "capital_flow" and payload.get("include_northbound", True) and (not sync_plan_id or northbound_partition is not None):
         from app.services.capital_flow_data import sync_northbound_flow
 
         _update_task(db, task_id, stage="northbound", percent=4, message="Syncing northbound flow")
+        if _is_cancelled(db, task_id):
+            return None
+        result["total"] += 1
+        _set_partition_status(db, northbound_partition, "running")
         try:
-            sync_northbound_flow(
-                db, days=min(max((range_end - range_start).days + 1, 1), 100)
+            northbound_start = range_start if plan.get("mode") == "backfill" else None
+            northbound_days = min(max((range_end - range_start).days + 1, 1), 100)
+            count = sync_northbound_flow(
+                db, days=northbound_days, start_date=northbound_start, end_date=range_end
             )
+            result["records"] += count
+            result["success" if count else "skipped"] += 1
+            result["northbound"] = {"status": "done", "records": count, "start_date": range_start.isoformat(), "end_date": range_end.isoformat()}
+            _set_partition_status(db, northbound_partition, "done" if count else "skipped", rows_written=count)
+            if count:
+                stmt = select(NorthboundFlow.trade_date).where(NorthboundFlow.trade_date <= range_end)
+                if northbound_start is not None:
+                    stmt = stmt.where(NorthboundFlow.trade_date >= northbound_start)
+                dates = db.execute(stmt.order_by(desc(NorthboundFlow.trade_date)).limit(northbound_days)).scalars().all()
+                _merge_written_dates(result, dates)
+                result["northbound"].update(start_date=min(dates).isoformat(), end_date=max(dates).isoformat())
             db.commit()
         except Exception as exc:
             db.rollback()
+            result["failed"] += 1
+            result["northbound"] = {"status": "warning", "records": 0, "error": str(exc)}
+            _set_partition_status(db, northbound_partition, "failed", error_message=str(exc))
             result["errors"].append(f"northbound: {exc}")
             logger.warning("northbound sync failed in external task: %s", exc)
 
@@ -775,7 +899,7 @@ def _run_symbol_sync(
             # The complete-market endpoint is occasionally disconnected by
             # the provider. Do not turn one failed HTTP request into N failed
             # symbols; fall back to the per-symbol historical endpoint.
-            if dataset == "capital_flow" and source == "all" and not sync_plan_id:
+            if dataset == "capital_flow" and source == "all":
                 # 全市场逐标的兜底等于 5,000+ 次个股请求（8/23-8/24 实测 6.5 小时只跑到
                 # 2,738 只），日更不能退化成那种规模；定向补数走缺口修复或小范围任务。
                 logger.warning(
@@ -793,60 +917,63 @@ def _run_symbol_sync(
                 f"批量接口不可用，已切换个股接口: {type(exc).__name__}: {exc}"
             )
 
-            def _fallback_worker(symbol_id: int) -> tuple[int, bool, str | None]:
+            def _fallback_worker(symbol_id: int):
                 worker_db = SessionLocal()
                 try:
+                    if _is_cancelled(worker_db, task_id):
+                        return symbol_id, "cancelled", 0, None, ()
                     worker_symbol = worker_db.get(Symbol, symbol_id)
                     if worker_symbol is None:
-                        return symbol_id, False, "symbol not found"
+                        return symbol_id, "failed", 0, "symbol not found", ()
                     item = _single_symbol_sync(worker_db, worker_symbol)
+                    dates = getattr(item, "sync_written_dates", ()) or (getattr(item, "trade_date", None),)
+                    count = int(getattr(item, "sync_rows_written", 1)) if item is not None else 0
                     worker_db.commit()
-                    return symbol_id, item is not None, None
+                    return symbol_id, "done" if item is not None else "skipped", count, None, dates
                 except Exception as worker_exc:
                     worker_db.rollback()
-                    return symbol_id, False, str(worker_exc)
+                    return symbol_id, "failed", 0, str(worker_exc), ()
                 finally:
                     worker_db.close()
 
             fallback_workers = min(max(int(payload.get("max_workers", 4)), 1), 8)
             with ThreadPoolExecutor(max_workers=fallback_workers, thread_name_prefix="valuation-fallback") as executor:
-                futures = {executor.submit(_fallback_worker, symbol.id): symbol for symbol in symbols}
-                for index, future in enumerate(as_completed(futures), start=1):
-                    symbol = futures[future]
-                    symbol_id, ok, worker_error = future.result()
-                    if ok:
-                        result["success"] += 1
-                        result["records"] += 1
-                    elif worker_error:
-                        result["failed"] += 1
-                        if len(result["errors"]) < 20:
+                processed = 0
+                for batch_start in range(0, len(symbols), fallback_workers):
+                    if _is_cancelled(db, task_id):
+                        return None
+                    batch = symbols[batch_start:batch_start + fallback_workers]
+                    futures = {executor.submit(_fallback_worker, symbol.id): symbol for symbol in batch}
+                    for future in as_completed(futures):
+                        symbol = futures[future]
+                        symbol_id, status, count, worker_error, dates = future.result()
+                        if status == "cancelled":
+                            continue
+                        processed += 1
+                        result[{"done": "success", "failed": "failed", "skipped": "skipped"}[status]] += 1
+                        result["records"] += count
+                        if worker_error and len(result["errors"]) < 20:
                             result["errors"].append(f"{symbol.symbol}: {worker_error}")
-                    else:
-                        result["skipped"] += 1
-                    partition = partitions_by_symbol.get(symbol_id)
-                    if partition is not None:
-                        partition.status = "done" if ok else "failed" if worker_error else "skipped"
-                        partition.attempts = max(partition.attempts, 1)
-                        partition.rows_written = 1 if ok else 0
-                        partition.finished_at = _now()
-                        partition.updated_at = _now()
-                    if index % 20 == 0 or index == len(symbols):
-                        db.commit()
+                        _merge_written_dates(result, dates)
+                        partition = partitions_by_symbol.get(symbol_id)
+                        _set_partition_status(db, partition, status, rows_written=count, error_message=worker_error)
                         _update_task(
                             db, task_id, status="running", stage="sync",
-                            percent=min(99, 5 + 94 * index / max(len(symbols), 1)),
-                            total=len(symbols), processed=index,
+                            percent=min(99, 5 + 94 * processed / max(len(symbols), 1)),
+                            total=result["total"], processed=result["success"] + result["skipped"] + result["failed"],
                             ok_count=result["success"], failed_count=result["failed"],
                             current_item=symbol.symbol,
-                            message=_progress_message(dataset, index, len(symbols)),
+                            message=_progress_message(dataset, processed, len(symbols)),
                         )
-            result["total"] = len(symbols)
+                    if _is_cancelled(db, task_id):
+                        return None
             if sync_plan_id:
                 _refresh_sync_plan(db, sync_plan_id, terminal=True)
             return result
-        result["success"] = len(synced_ids)
-        result["skipped"] = max(len(symbols) - len(synced_ids), 0) if not result["failed"] else 0
-        result["records"] = len(synced_ids)
+        result["success"] += len(synced_ids)
+        result["skipped"] += max(len(symbols) - len(synced_ids), 0)
+        result["records"] += len(synced_ids)
+        _merge_written_dates(result, getattr(synced_ids, "trade_dates", ()))
         for symbol_id, partition in partitions_by_symbol.items():
             partition.status = "done" if symbol_id in synced_ids else "skipped"
             partition.attempts = max(partition.attempts, 1)
@@ -862,9 +989,9 @@ def _run_symbol_sync(
             status="running",
             stage="sync",
             percent=99,
-            processed=len(symbols),
+            processed=result["success"] + result["skipped"] + result["failed"],
             ok_count=result["success"],
-            failed_count=0,
+            failed_count=result["failed"],
             current_item=None,
             message=_progress_message(dataset, len(symbols), len(symbols)),
         )
@@ -880,12 +1007,12 @@ def _run_symbol_sync(
 
         max_workers = min(max(int(payload.get("max_workers", 4)), 1), 8)
 
-        def _backfill_worker(symbol_id: int, start: date, end: date) -> tuple[int, int, str | None]:
+        def _backfill_worker(symbol_id: int, start: date, end: date):
             worker_db = SessionLocal()
             try:
                 worker_symbol = worker_db.get(Symbol, symbol_id)
                 if worker_symbol is None:
-                    return symbol_id, 0, "symbol not found"
+                    return symbol_id, 0, "symbol not found", ()
                 count = sync_symbol_valuation_range(
                     worker_db,
                     worker_symbol,
@@ -893,11 +1020,12 @@ def _run_symbol_sync(
                     end_date=end,
                     quiet_output=False,
                 )
+                dates = _local_written_dates(worker_db, dataset, symbol_id, start, end) if count else ()
                 worker_db.commit()
-                return symbol_id, count, None
+                return symbol_id, count, None, dates
             except Exception as exc:
                 worker_db.rollback()
-                return symbol_id, 0, str(exc)
+                return symbol_id, 0, str(exc), ()
             finally:
                 worker_db.close()
 
@@ -924,9 +1052,9 @@ def _run_symbol_sync(
                     symbol = futures[future]
                     partition = partitions_by_symbol.get(symbol.id)
                     try:
-                        _, count, error = future.result()
+                        _, count, error, dates = future.result()
                     except Exception as exc:  # defensive: worker normally returns errors
-                        count, error = 0, str(exc)
+                        count, error, dates = 0, str(exc), ()
                     processed += 1
                     if error:
                         result["failed"] += 1
@@ -936,6 +1064,7 @@ def _run_symbol_sync(
                     elif count > 0:
                         result["success"] += 1
                         result["records"] += count
+                        _merge_written_dates(result, dates)
                         _set_partition_status(db, partition, "done", rows_written=count)
                     else:
                         result["skipped"] += 1
@@ -998,7 +1127,7 @@ def _run_symbol_sync(
                         announcement_end=partition_end,
                     )
                 else:
-                    count = sync_symbol_financial_reports(db, symbol)
+                    count = sync_symbol_financial_reports(db, symbol, announcement_end=range_end)
             elif dataset == "capital_flow":
                 from app.services.capital_flow_data import sync_symbol_capital_flow
 
@@ -1020,6 +1149,13 @@ def _run_symbol_sync(
             if count > 0:
                 result["success"] += 1
                 result["records"] += count
+                if dataset in {"financial", "fundamental", "capital_flow"} and plan.get("mode") == "backfill":
+                    dates = _local_written_dates(db, dataset, symbol.id, partition_start, partition_end)
+                elif dataset == "financial":
+                    dates = _local_written_dates(db, dataset, symbol.id, end=range_end)
+                else:
+                    dates = getattr(item, "sync_written_dates", ()) or (getattr(item, "trade_date", None),)
+                _merge_written_dates(result, dates)
                 _set_partition_status(db, partition, "done", rows_written=count)
             else:
                 result["skipped"] += 1
@@ -1131,9 +1267,12 @@ def _run_bulk_sync(
         else:
             from app.services.tail_proxy_data import sync_tail_proxy_snapshots
 
+            scope = {key: value for key, value in {"watchlist_id": payload.get("watchlist_id"), "portfolio_id": payload.get("portfolio_id")}.items() if value is not None}
+            if sync_plan_id:
+                scope["should_cancel"] = lambda: _is_cancelled(db, task_id)
             summary = sync_tail_proxy_snapshots(
                 db, source=str(payload.get("source") or "candidates"),
-                limit=int(payload.get("limit", 20)),
+                limit=int(payload.get("limit", 20)), **scope,
             )
             result = {
                 "dataset": dataset, "total": summary.total,
@@ -1141,6 +1280,12 @@ def _run_bulk_sync(
                 "failed": summary.failed, "records": summary.written,
                 "errors": list(summary.errors),
             }
+        if result["records"]:
+            if dataset == "lhb":
+                dates = db.execute(select(func.min(LhbInstitutionTrade.trade_date), func.max(LhbInstitutionTrade.trade_date)).where(LhbInstitutionTrade.trade_date >= start_date, LhbInstitutionTrade.trade_date <= end_date)).one()
+            else:
+                dates = (getattr(summary, "trade_date", None),)
+            _merge_written_dates(result, dates)
     except Exception as exc:
         # Provider outages and schema drift should remain inspectable in the
         # task result instead of collapsing into a vague top-level failure.
@@ -1275,7 +1420,13 @@ def _mirror_external_factor_inputs(
 def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dict[str, Any]) -> None:
     db = SessionLocal()
     try:
-        if dataset in ("fundamental", "financial", "capital_flow", "etf"):
+        task = db.get(AsyncTaskRecord, task_id)
+        if task is None or task.status in {"done", "failed", "cancelled"} or task.is_terminal_locked:
+            return
+        if payload.get("_mirror_only"):
+            result = {"dataset": dataset, "total": 0, "success": 0, "skipped": 0, "failed": 0, "records": 0, "errors": [], "mirror_retry": True}
+            result.update(payload.get("_mirror_written_range") or {})
+        elif dataset in ("fundamental", "financial", "capital_flow", "etf"):
             result = _run_symbol_sync(db, task_id, dataset, payload)
         else:
             result = _run_bulk_sync(db, task_id, dataset, payload)
@@ -1287,7 +1438,13 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         if _is_cancelled(db, task_id):
             _mark_cancelled(db, task_id)
             return
-        mirror = _mirror_external_factor_inputs(db, task_id, dataset, plan)
+        mirror_plan = dict(plan)
+        if result.get("written_start_date") and result.get("written_end_date"):
+            mirror_plan["requested_start_date"] = result["written_start_date"]
+            mirror_plan["requested_end_date"] = result["written_end_date"]
+        mirror = _mirror_external_factor_inputs(db, task_id, dataset, mirror_plan)
+        mirror["start_date"] = mirror_plan.get("requested_start_date")
+        mirror["end_date"] = mirror_plan.get("requested_end_date")
         result["warehouse_mirror"] = mirror
         if mirror.get("status") == "warning":
             result["errors"].append(f"warehouse_mirror: {mirror['error']}")
@@ -1302,16 +1459,24 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
             )
         except Exception as exc:
             logger.warning("quality snapshot failed after external task %s: %s", task_id, exc)
+            result["quality_snapshot"] = {"status": "warning", "error": str(exc)}
             result["errors"].append(f"quality_snapshot: {exc}")
         processed = result["success"] + result["skipped"] + result["failed"]
         if _is_cancelled(db, task_id):
             _mark_cancelled(db, task_id)
             return
+        retryable_failure = result["failed"] > 0 or mirror.get("status") == "warning"
+        if payload.get("_mirror_only") and payload.get("sync_plan_id"):
+            plan_record = db.get(DataSyncPlan, payload["sync_plan_id"])
+            if plan_record is not None:
+                plan_record.status = "failed" if retryable_failure else "done"
+                plan_record.finished_at = _now()
+                db.commit()
         _update_task(
             db,
             task_id,
-            status="done",
-            stage="done",
+            status="failed" if retryable_failure else "done",
+            stage="failed" if retryable_failure else "done",
             percent=100,
             total=result["total"],
             processed=processed,
@@ -1382,135 +1547,77 @@ def _run_external_sync_task(task_id: str, dataset: ExternalDataset, payload: dic
         db.close()
 
 
+def _await_market_preflight(db: Session, dataset: ExternalDataset) -> None:
+    """Bounded read-only wait before acquiring creation ownership."""
+    for _ in range(24):
+        market_task = _active_market_priority_task(db)
+        if market_task is None:
+            return
+        time.sleep(_MARKET_PRIORITY_WAIT_SECONDS)
+        db.rollback()  # refresh a repeatable-read snapshot; no writes in preflight
+    market_task = _active_market_priority_task(db)
+    if market_task is not None:
+        raise RuntimeError(
+            f"【行情同步优先级】行情任务 {market_task.task_type} 仍在运行"
+            f"（{market_task.processed}/{market_task.total}，{market_task.percent:.1f}%）；"
+            "请等待行情完成后重试。"
+        )
+
+
 def start_external_data_sync(dataset: ExternalDataset, payload: dict[str, Any]) -> AsyncTaskRead:
     if dataset not in EXTERNAL_DATASETS:
         raise ValueError(f"Unsupported external dataset: {dataset}")
+    payload = dict(payload)
     plan = build_external_sync_plan(dataset, payload)
     parent_plan_id = payload.pop("_parent_plan_id", None)
     partition_specs = payload.pop("_partition_specs", None)
     task_payload = {"dataset": dataset, **payload, "plan": plan}
     db = SessionLocal()
     try:
-        # Different datasets may run concurrently.  Keep only the same dataset
-        # serialized so two requests cannot write the same external table at once.
-        existing = db.execute(
-            select(AsyncTaskRecord)
-            .where(
-                AsyncTaskRecord.task_type == _TASK_TYPES[dataset],
-                AsyncTaskRecord.status.in_(("queued", "running")),
-            )
-            .order_by(desc(AsyncTaskRecord.created_at))
-        ).scalars().first()
-        if existing is not None:
-            raise RuntimeError("已有同类型外部数据同步任务在运行，请稍后再试")
-        market_task = _active_market_priority_task(db)
-        if market_task is not None:
-            # ===================================================================
-            # 原逻辑：一遇到 running/queued 的行情任务就立刻 RuntimeError 取消
-            # 新逻辑：先等待最多 120 秒（24 轮 × 5 秒），复用 _wait_for_market_priority
-            # 的轮询模式，让短暂正在跑的行情任务有机会收尾；只有超时仍在跑，才
-            # 抛出【中文友好提示】（包含进度/速度/剩余时间估算/怎么办3选）
-            # ===================================================================
-            _MARKET_TYPE_CN: dict[str, str] = {
-                "market_data_sync": "基础行情初始化同步",
-                "history_initialization": "历史数据初始化回灌",
-                "universe_sync": "全量股票池同步",
-                "universe_incremental_sync": "每日行情增量同步",
-                "universe_backfill": "股票池历史回填",
-                "universe_smart_sync": "智能增量同步",
-                "universe_range_repair": "区间缺口修复",
-            }
-            preflight_task_id = uuid4().hex
-            _update_task_preflight = False  # 还没真正创建任务，等待过程不写 DB
-            waited_rounds = 0
-            max_rounds = 24  # 24 × 5s = 120s
-            zombie_minutes = 10  # running 任务 updated_at 超过 10 分钟没动 → 视为僵尸，不等了
-            while waited_rounds < max_rounds:
-                if market_task is None:
-                    break  # 行情任务结束了，可以开跑了
-                # 僵尸检测：running 状态但 10 分钟没更新过 → 判定为后端崩溃残留，放行
-                if market_task.status == "running" and market_task.updated_at is not None:
-                    stall_seconds = (_now() - market_task.updated_at).total_seconds()
-                    if stall_seconds > zombie_minutes * 60:
-                        logger.warning(
-                            "Market-priority task %s looks zombie (stalled %.0fs). "
-                            "Allowing external sync %s to proceed.",
-                            market_task.id, stall_seconds, dataset,
-                        )
-                        break
-                time.sleep(_MARKET_PRIORITY_WAIT_SECONDS)
-                waited_rounds += 1
-                # 每轮重新读（市场任务可能正好刚结束了）
-                market_task = _active_market_priority_task(db)
-            if market_task is not None:
-                # 超时仍在跑 → 抛中文友好提示，包含进度、速度、用户该怎么办
-                mt_cn = _MARKET_TYPE_CN.get(market_task.task_type, market_task.task_type)
-                pct = f"{market_task.percent:.1f}%" if market_task.percent is not None else "未知"
-                total = getattr(market_task, "total", None)
-                processed = getattr(market_task, "processed", None)
-                remain_secs: str | None = None
-                try:
-                    if processed and total and market_task.updated_at and market_task.created_at:
-                        elapsed = max((market_task.updated_at - market_task.created_at).total_seconds(), 1.0)
-                        speed = processed / elapsed if elapsed > 0 else 0
-                        if speed > 0 and total > processed:
-                            remain_secs_val = (total - processed) / speed
-                            mm, ss = divmod(int(remain_secs_val), 60)
-                            hh, mm = divmod(mm, 60)
-                            if hh > 0:
-                                remain_secs = f"约 {hh}小时{mm}分"
-                            elif mm > 0:
-                                remain_secs = f"约 {mm}分{ss}秒"
-                            else:
-                                remain_secs = f"约 {ss}秒"
-                except Exception:
-                    remain_secs = None
-                progress_line = ""
-                if total and processed is not None:
-                    progress_line = f"，进度 {processed}/{total}（{pct}）"
-                speed_line = ""
-                if remain_secs:
-                    speed_line = f"，预计剩余 {remain_secs}"
-                raise RuntimeError(
-                    "【行情同步优先级】当前正在运行「" + mt_cn + "」任务"
-                    + progress_line + speed_line + "。\n"
-                    + "ETF 指标（尤其是溢价折价/规模/份额）必须依赖当天最新收盘价计算，"
-                    + "基础行情未同步完就跑 ETF 会写出过期脏数据，所以必须延后执行。\n"
-                    + "\n怎么办（3 选 1）：\n"
-                    + "① 等一会儿再点「同步 ETF 指标」，系统每次点都会自动再等 2 分钟\n"
-                    + "② 赶时间 → 去左侧「任务中心」→ 找到正在跑的「" + mt_cn + "」→ 点「取消」，再立刻跑 ETF（⚠️ 代价：今天行情只同步了 " + pct + "，算出的 ETF 指标可能是旧数据，会出现「etf_premium_discount 暂无有效记录」这类提示）\n"
-                    + "③ 不着急就放着不动，等行情任务跑完后随时可以启动 ETF 同步（无任何数据风险）"
+        # Wait before obtaining database ownership: provider priority must not
+        # hold SQLite's writer reservation or a MySQL named lock for 120s.
+        _await_market_preflight(db, dataset)
+        db.rollback()  # preflight is read-only; create starts its own transaction
+        with _external_sync_creation_guard(db, dataset):
+            existing = db.execute(
+                select(AsyncTaskRecord)
+                .where(
+                    AsyncTaskRecord.task_type == _TASK_TYPES[dataset],
+                    AsyncTaskRecord.status.in_(("queued", "running")),
                 )
-
-        task_id = uuid4().hex
-        task = AsyncTaskRecord(
-            id=task_id,
-            task_type=_TASK_TYPES[dataset],
-            status="queued",
-            stage="queued",
-            percent=0,
-            message="External-data sync task created",
-            payload_json=json.dumps(task_payload, ensure_ascii=False, default=str),
-            batch_recovery_json=json.dumps({"plan": plan, "processed": 0}, ensure_ascii=False),
-        )
-        db.add(task)
-        db.flush()
-        persisted_plan = _create_persisted_sync_plan(
-            db,
-            task_id=task_id,
-            dataset=dataset,
-            payload=task_payload,
-            frozen_plan=plan,
-            parent_plan_id=parent_plan_id,
-            partition_specs=partition_specs,
-        )
-        task_payload["sync_plan_id"] = persisted_plan.id
-        task.payload_json = json.dumps(task_payload, ensure_ascii=False, default=str)
-        task.batch_recovery_json = json.dumps(
-            {"plan": plan, "sync_plan_id": persisted_plan.id, "processed": 0},
-            ensure_ascii=False,
-        )
-        db.commit()
+                .order_by(desc(AsyncTaskRecord.created_at))
+            ).scalars().first()
+            if existing is not None:
+                raise RuntimeError("已有同类型外部数据同步任务在运行，请稍后再试")
+            task_id = uuid4().hex
+            task = AsyncTaskRecord(
+                id=task_id,
+                task_type=_TASK_TYPES[dataset],
+                status="queued",
+                stage="queued",
+                percent=0,
+                message="External-data sync task created",
+                payload_json=json.dumps(task_payload, ensure_ascii=False, default=str),
+                batch_recovery_json=json.dumps({"plan": plan, "processed": 0}, ensure_ascii=False),
+            )
+            db.add(task)
+            db.flush()
+            persisted_plan = _create_persisted_sync_plan(
+                db,
+                task_id=task_id,
+                dataset=dataset,
+                payload=task_payload,
+                frozen_plan=plan,
+                parent_plan_id=parent_plan_id,
+                partition_specs=partition_specs,
+            )
+            task_payload["sync_plan_id"] = persisted_plan.id
+            task.payload_json = json.dumps(task_payload, ensure_ascii=False, default=str)
+            task.batch_recovery_json = json.dumps(
+                {"plan": plan, "sync_plan_id": persisted_plan.id, "processed": 0},
+                ensure_ascii=False,
+            )
+            db.commit()
     finally:
         db.close()
 
@@ -1520,7 +1627,20 @@ def start_external_data_sync(dataset: ExternalDataset, payload: dict[str, Any]) 
         name=f"external-sync-{dataset}-{task_id[:8]}",
         daemon=True,
     )
-    worker.start()
+    try:
+        worker.start()
+    except Exception as exc:
+        failure_db = SessionLocal()
+        try:
+            _update_task(failure_db, task_id, status="failed", stage="failed", percent=100, failed_count=1, message=f"Worker could not start: {exc}", errors_json=json.dumps([{"stage": "dispatch", "error": str(exc)}], ensure_ascii=False), finished_at=_now())
+            persisted = failure_db.get(DataSyncPlan, task_payload["sync_plan_id"])
+            if persisted is not None:
+                persisted.status = "failed"
+                persisted.finished_at = _now()
+                failure_db.commit()
+        finally:
+            failure_db.close()
+        raise RuntimeError("外部同步工作线程启动失败；任务已保留，可重试") from exc
     created = get_async_task(task_id)
     if created is None:
         raise RuntimeError("External-data sync task was not created")
@@ -1605,6 +1725,8 @@ def cancel_external_data_sync(task_id: str) -> AsyncTaskRead:
     if task is None:
         raise ValueError("External-data sync task not found")
     cancelled = cancel_async_task(task_id)
+    if cancelled.status in {"done", "failed"}:
+        return cancelled
     db = SessionLocal()
     try:
         plan_record = db.execute(
@@ -1639,7 +1761,14 @@ def retry_external_data_sync(task_id: str) -> AsyncTaskRead:
         task = db.get(AsyncTaskRecord, task_id)
         if task is None or task.task_type not in _DATASET_BY_TASK_TYPE:
             raise ValueError("External-data sync task not found")
-        if task.status not in ("failed", "cancelled"):
+        prior_result = {}
+        try:
+            prior_result = json.loads(task.result_json or "{}")
+        except json.JSONDecodeError:
+            pass
+        # Older workers marked partial/provider/mirror failures as done.
+        legacy_failure = task.status == "done" and (int(task.failed_count or 0) > 0 or prior_result.get("warehouse_mirror", {}).get("status") == "warning")
+        if task.status not in ("failed", "cancelled") and not legacy_failure:
             raise ValueError("Only failed or cancelled external-data tasks can be retried")
         try:
             payload = json.loads(task.payload_json or "{}")
@@ -1681,6 +1810,13 @@ def retry_external_data_sync(task_id: str) -> AsyncTaskRead:
             payload["_parent_plan_id"] = original_plan.id if original_plan else None
             payload["_partition_specs"] = retry_specs
             payload.pop("resume_after_symbol_id", None)
+        elif original_plan is not None and prior_result.get("warehouse_mirror", {}).get("status") == "warning":
+            # Provider rows are already durable. Retry only their local mirror,
+            # preserving the original publication / collection evidence.
+            payload["_parent_plan_id"] = original_plan.id
+            payload["_partition_specs"] = []
+            payload["_mirror_only"] = True
+            payload["_mirror_written_range"] = {key: prior_result[key] for key in ("written_start_date", "written_end_date") if key in prior_result}
         elif isinstance(recovery, dict) and recovery.get("last_symbol_id") is not None:
             # Compatibility fallback for tasks created before partition persistence.
             payload["resume_after_symbol_id"] = recovery["last_symbol_id"]
@@ -1690,6 +1826,15 @@ def retry_external_data_sync(task_id: str) -> AsyncTaskRead:
             payload["end_date"] = frozen_plan.get("requested_end_date")
             payload["lookback_days"] = frozen_plan.get("requested_span_days")
         dataset = _DATASET_BY_TASK_TYPE[task.task_type]
+        if dataset in {"fundamental", "capital_flow"} and payload.get("mode", "incremental") == "incremental":
+            frozen_end = _as_date(payload.get("end_date"))
+            if frozen_end is not None and frozen_end != date.today():
+                # Yesterday's failed snapshot cannot be reconstructed from
+                # today's quote/ranking. Retry its date using real history.
+                payload["mode"] = "backfill"
+                payload["start_date"] = frozen_end.isoformat()
+                payload["end_date"] = frozen_end.isoformat()
+                payload["lookback_days"] = 1
         payload.pop("dataset", None)
         payload.pop("sync_plan_id", None)
         return start_external_data_sync(dataset, payload)

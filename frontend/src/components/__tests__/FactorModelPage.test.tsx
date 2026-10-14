@@ -40,6 +40,7 @@ const { mockApi, mockMessage } = vi.hoisted(() => ({
     scoringListFactorDefinitions: vi.fn(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
     scoringListFactorSetsAsFactor: vi.fn<any>(async () => ({ items: [], total: 0, page: 1, page_size: 20 })),
     scoringRenameModel: vi.fn(async () => ({})),
+    scoringCreateTask: vi.fn<any>(async () => ({ id: "score-task-001", status: "queued" })),
     scoringTrainModel: vi.fn(async () => ({})),
     getEvaluationTaskHeartbeat: vi.fn(async () => ({})),
     activateFactorModel: vi.fn(),
@@ -118,6 +119,7 @@ function makeModel(overrides: Partial<any> = {}): any {
     symbol_count: 300,
     trade_date_count: 1200,
     status: "validated",
+    production_eligible: true,
     rejection_reason: null,
     artifact_path: null,
     created_at: "2026-08-01T12:00:00",
@@ -183,6 +185,7 @@ function mockLoadSuccess(overrides: { runtime?: any; models?: any[]; factorSets?
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockApi.scoringCreateTask.mockResolvedValue({ id: "score-task-001", status: "queued" });
 });
 
 afterEach(() => {
@@ -335,7 +338,7 @@ describe("FactorModelPage", () => {
   });
   it("opens activate modal and submits successfully", async () => {
     mockLoadSuccess();
-    const newRuntime = makeRuntime({ weight_mode: "ridge", active_model_run_id: "model-001-abc" });
+    const newRuntime = makeRuntime({ weight_mode: "ridge", active_model_run_id: "model-001-abc", version: 2 });
     mockApi.scoringActivateModel.mockResolvedValue(newRuntime);
 
     render(<FactorModelPage />);
@@ -370,7 +373,26 @@ describe("FactorModelPage", () => {
         "factor_center:activate",
       );
       expect(mockMessage.success).toHaveBeenCalledWith("factorModelActivated");
+      expect(mockApi.scoringCreateTask).toHaveBeenCalledWith(expect.objectContaining({
+        train_model: false, materialize_scores: true, factor_set_id: "fs-test-001",
+        hyperparameters: expect.objectContaining({ expected_model_run_id: "model-001-abc", expected_weight_mode: "ridge", factor_set_id: "fs-test-001" }),
+        factor_scope: expect.objectContaining({ asset_type: "stock", factor_set_id: "fs-test-001" }),
+      }));
+      expect(screen.getByText(/评分任务已提交：score-task-001/)).toBeInTheDocument();
     });
+  });
+  it("keeps the activated runtime when scoring submission fails", async () => {
+    mockLoadSuccess(); // A late overview refresh still contains the old manual mode.
+    mockApi.scoringActivateModel.mockResolvedValue(makeRuntime({ weight_mode: "ridge", active_model_run_id: "model-001-abc", version: 2 }));
+    mockApi.scoringCreateTask.mockRejectedValueOnce(new Error("PIPELINE_BUSY"));
+    render(<FactorModelPage />);
+    fireEvent.click(await screen.findByText("factorModelRidge"));
+    fireEvent.click((await screen.findByText("factorTransitionOk")).closest("button")!);
+    await waitFor(() => {
+      expect(screen.getByText(/模型已激活，评分生成未启动.*PIPELINE_BUSY/)).toBeInTheDocument();
+      expect(screen.getByText("model-001-abc...")).toBeInTheDocument();
+    });
+    expect(mockMessage.error).not.toHaveBeenCalledWith(expect.stringContaining("factorModelActionFailed"));
   });
   it("shows error when activate fails", async () => {
     mockLoadSuccess();
@@ -400,6 +422,7 @@ describe("FactorModelPage", () => {
         expect.stringContaining("factorModelActionFailed"),
       );
     });
+    expect(mockApi.scoringCreateTask).not.toHaveBeenCalled();
   });
 
   it("opens fallback modal and warns when reason is empty", async () => {

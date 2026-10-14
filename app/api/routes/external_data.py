@@ -73,8 +73,9 @@ class ExternalSyncTaskCreate(BaseModel):
     """Create an observable external-data synchronization task."""
 
     dataset: ExternalDataset
-    source: Literal["watchlist", "positions", "all"] = "watchlist"
-    watchlist_id: int | None = None
+    source: Literal["watchlist", "positions", "all", "candidates"] = "watchlist"
+    watchlist_id: int | None = Field(default=None, ge=1)
+    portfolio_id: int | None = Field(default=None, ge=1)
     include_northbound: bool = True
     mode: ExternalSyncMode = "incremental"
     start_date: date | None = None
@@ -430,14 +431,15 @@ def sync_tail_proxy(
     ),
     limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
+    watchlist_id: int | None = None,
+    portfolio_id: int | None = None,
 ):
     """同步候选范围的分钟量价代理，不代表 Level-2 大单主买。"""
     from app.services.tail_proxy_data import sync_tail_proxy_snapshots
 
     try:
-        summary = sync_tail_proxy_snapshots(
-            db, source=source, limit=limit
-        )
+        scope = {key: value for key, value in {"watchlist_id": watchlist_id, "portfolio_id": portfolio_id}.items() if value is not None}
+        summary = sync_tail_proxy_snapshots(db, source=source, limit=limit, **scope)
         db.commit()
     except ValueError as exc:
         db.rollback()
@@ -473,15 +475,25 @@ def sync_capital_flow(
     from datetime import date
 
     # 北向资金（市场层面，无论 source 都同步）
+    result = SyncResult()
     if include_northbound:
+        result.total += 1
         try:
-            sync_northbound_flow(db, days=30)
+            count = sync_northbound_flow(db, days=30, end_date=date.today())
+            result.records += count
+            if count:
+                result.success += 1
+            else:
+                result.skipped += 1
             db.commit()
         except Exception as exc:
+            db.rollback()
+            result.failed += 1
+            result.errors.append(f"northbound: {exc}")
             logger.warning("northbound sync failed: %s", exc)
 
     symbols = _resolve_symbols(db, source, asset_type="stock")
-    result = SyncResult(total=len(symbols))
+    result.total += len(symbols)
     today = date.today()
     for i, sym in enumerate(symbols):
         try:

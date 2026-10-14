@@ -38,7 +38,7 @@ def test_market_valuation_snapshot_fetches_full_market_only_once(db_session, mon
     monkeypatch.setattr("app.services.fundamental_data.call_akshare_with_retry", fake_call)
 
     synced = sync_market_valuation_snapshot(
-        db_session, symbols, trade_date=date(2026, 8, 15)
+        db_session, symbols, trade_date=date.today()
     )
     db_session.commit()
 

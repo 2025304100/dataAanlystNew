@@ -20,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from datetime import date, datetime, timezone
 from typing import Iterable
 
 import numpy as np
@@ -439,6 +439,8 @@ def _load_samples(
     target_calc_batch_id: str,
     data_cutoff_date: date,
     feature_codes: tuple[str, ...],
+    feature_versions: dict[str, int] | None = None,
+    allowed_trade_dates: tuple[date, ...] | None = None,
 ) -> pd.DataFrame:
     """加载训练样本（WP7-03: 支持动态特征列表）。
 
@@ -453,7 +455,8 @@ def _load_samples(
                 trade_date,
                 factor_code,
                 factor_version,
-                normalized_value
+                normalized_value,
+                data_cutoff_at
             FROM factor_values
             WHERE calc_batch_id = ?
               AND eligible
@@ -466,13 +469,21 @@ def _load_samples(
                 data_cutoff_date,
             ],
         ).fetchdf()
+        if feature_versions and not factors.empty:
+            expected = factors["factor_code"].map(feature_versions)
+            matching = factors["factor_version"] == expected
+            absent = set(factors.factor_code) - set(factors.loc[matching, "factor_code"])
+            if absent:
+                raise ValueError("factor_value_version_mismatch:" + ",".join(sorted(absent)))
+            factors = factors.loc[matching].copy()
         targets = conn.execute(
             """
             SELECT
                 symbol,
                 signal_date,
                 exit_date,
-                target_value
+                target_value,
+                created_at AS target_created_at
             FROM factor_targets
             WHERE calc_batch_id = ?
               AND target_code = ?
@@ -489,9 +500,12 @@ def _load_samples(
     factors["trade_date"] = pd.to_datetime(
         factors["trade_date"], errors="coerce"
     ).dt.date
+    if allowed_trade_dates is not None:
+        factors = factors[factors.trade_date.isin(allowed_trade_dates)]
     targets["signal_date"] = pd.to_datetime(
         targets["signal_date"], errors="coerce"
     ).dt.date
+    targets["exit_date"] = pd.to_datetime(targets["exit_date"], errors="coerce").dt.date
     pivot = factors.pivot_table(
         index=["symbol", "trade_date"],
         columns="factor_code",
@@ -508,9 +522,15 @@ def _load_samples(
     for feature in feature_codes:
         if feature not in merged.columns:
             merged[feature] = np.nan
-    return merged[
+    result = merged[
         ["symbol", "trade_date", *feature_codes, "target", "exit_date"]
     ].dropna(subset=[*feature_codes, "target"])
+    available = [pd.to_datetime(factors.data_cutoff_at, errors="coerce").max(),
+                 pd.to_datetime(targets.target_created_at, errors="coerce").max()]
+    available = [stamp.to_pydatetime().replace(tzinfo=None) for stamp in available if pd.notna(stamp)]
+    if available:
+        result.attrs["input_available_at"] = max(available)
+    return result
 
 
 def _run_id(payload: dict) -> str:
@@ -518,6 +538,38 @@ def _run_id(payload: dict) -> str:
         json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
     ).hexdigest()[:24]
     return f"ridge-{digest}"
+
+
+def _training_batch_evidence(warehouse, samples, *, factor_calc_batch_id,
+                             feature_versions, window_days):
+    """Compute gate observations from the exact immutable training inputs."""
+    days = sorted(samples.trade_date.unique())[-window_days:] if not samples.empty else []
+    with warehouse.connection(read_only=True) as conn:
+        totals = dict(conn.execute("""SELECT trade_date, COUNT(DISTINCT symbol)
+            FROM raw_daily_bars WHERE adjust='qfq' GROUP BY trade_date""").fetchall())
+        rows = conn.execute("""SELECT trade_date, factor_code, factor_version,
+            COUNT(DISTINCT CASE WHEN eligible AND normalized_value IS NOT NULL
+            AND isfinite(normalized_value) THEN symbol END)
+            FROM factor_values WHERE calc_batch_id=?
+            GROUP BY trade_date, factor_code, factor_version""", [factor_calc_batch_id]).fetchall()
+    observed = {(day, code, version): count for day, code, version, count in rows}
+    fallback_totals = samples.groupby('trade_date').symbol.nunique().to_dict() if not samples.empty else {}
+    result = {}
+    for code, version in feature_versions.items():
+        coverage = [observed.get((day, code, version), 0) / max(totals.get(day, fallback_totals.get(day, 0)), 1)
+                    for day in days]
+        daily_ics = []
+        for day, group in samples.loc[samples.trade_date.isin(days)].groupby('trade_date'):
+            ic = _safe_correlation(group[code], group['target'])
+            if ic is not None and np.isfinite(ic):
+                daily_ics.append(ic)
+        result[code] = {
+            'factor_version': version,
+            'coverage': float(np.mean(coverage)) if coverage else 0.0,
+            'ic_mean': float(np.mean(daily_ics)) if daily_ics else None,
+            'n_rows': len(samples), 'factor_calc_batch_id': factor_calc_batch_id,
+        }
+    return result
 
 
 def _result_from_model(db: Session, model: FactorModelRun) -> RidgeTrainingResult:
@@ -565,6 +617,8 @@ def train_rolling_ridge(
     alphas: tuple[float, ...] = (0.1, 1.0, 10.0, 100.0),
     gate: ModelGate | None = None,
     model_run_id: str | None = None,
+    allowed_trade_dates: tuple[date, ...] | None = None,
+    hyperparameters: dict | None = None,
 ) -> RidgeTrainingResult:
     """Train an immutable candidate model; never activate it automatically.
 
@@ -606,6 +660,8 @@ def train_rolling_ridge(
         }
 
     identity = {
+        "mode": "warehouse",
+        "train_mode": "warehouse",
         "factor_calc_batch_id": factor_calc_batch_id,
         "target_calc_batch_id": target_calc_batch_id,
         "factor_set_id": factor_set_id,
@@ -624,6 +680,16 @@ def train_rolling_ridge(
     #   失败仍然**创建** FactorModelRun（前端列表可见），但 status=rejected
     #   这样既保证门禁有效，又不会让"点击训练"的结果看不到。
     gate_cfg = _load_gate_config_from_db(db_supplied=db)
+    batch_samples = _load_samples(
+        warehouse, factor_calc_batch_id=factor_calc_batch_id,
+        target_calc_batch_id=target_calc_batch_id, data_cutoff_date=cutoff,
+        feature_codes=feature_codes, feature_versions=feature_versions,
+        allowed_trade_dates=allowed_trade_dates,
+    )
+    batch_evidence = _training_batch_evidence(
+        warehouse, batch_samples, factor_calc_batch_id=factor_calc_batch_id,
+        feature_versions=feature_versions, window_days=window_days,
+    )
     pre_gate_reasons: list[str] = []
     try:
         pre_gate_results = run_training_eligibility_gates(
@@ -632,11 +698,11 @@ def train_rolling_ridge(
             ic_min=float(gate_cfg.get("ic_min", 0.01)),
             ic_max=float(gate_cfg.get("ic_max", 0.10)),
             lookback_days=int(gate_cfg.get("lookback_days", 30)),
+            batch_evidence=batch_evidence, db_supplied=db,
         )
     except Exception as _pge:
-        # 门禁执行出错：降级为 warning reason（不直接 fail，仍继续训练）
-        # 避免 gate 升级/异常导致完全无法训练（fail-open 更安全）
-        pre_gate_reasons.append(f"[P2-G Pre] gate_exec_warn: {type(_pge).__name__}:{_pge}")
+        # No release may be based on an unavailable gate implementation.
+        pre_gate_reasons.append(f"[P2-G Pre] gate_execution_failed: {type(_pge).__name__}:{_pge}")
         pre_gate_results = []
     for g in pre_gate_results:
         if not getattr(g, "passed", False):
@@ -644,9 +710,8 @@ def train_rolling_ridge(
             rs = getattr(g, "reasons", None) or []
             pre_gate_reasons.append(f"[P2-G Pre] {name}: {'; '.join(rs) if rs else 'not_passed'}")
 
-    # 如果前置门禁有硬性失败（pre_gate_reasons 非空且不是单独的 warning），跳过训练直接写 rejected
-    # 判定逻辑：只要有任一 passed=False 的 gate（即 pre_gate_results 中存在失败），就跳过拟合
-    has_hard_pre_fail = any(
+    # A failed check or gate exception records a rejected candidate without fit.
+    has_hard_pre_fail = bool(pre_gate_reasons) or any(
         not getattr(g, "passed", False) for g in pre_gate_results
     )
     if has_hard_pre_fail:
@@ -686,13 +751,7 @@ def train_rolling_ridge(
         train = samples
         validation = samples
     else:
-        samples = _load_samples(
-            warehouse,
-            factor_calc_batch_id=factor_calc_batch_id,
-            target_calc_batch_id=target_calc_batch_id,
-            data_cutoff_date=cutoff,
-            feature_codes=feature_codes,
-        )
+        samples = batch_samples
         all_dates = sorted(samples["trade_date"].unique()) if not samples.empty else []
         window_dates = all_dates[-window_days:]
         samples = samples[samples["trade_date"].isin(window_dates)].copy()
@@ -700,6 +759,13 @@ def train_rolling_ridge(
         training_dates = window_dates[:-validation_days]
         train = samples[samples["trade_date"].isin(training_dates)]
         validation = samples[samples["trade_date"].isin(validation_dates)]
+        # Training labels must be fully observed before the first validation
+        # signal. Purge T+5 labels crossing that boundary, including equality.
+        purged_train_count = 0
+        if validation_dates and not train.empty:
+            purged_train_count = int((train["exit_date"] >= validation_dates[0]).sum())
+            train = train.loc[train["exit_date"] < validation_dates[0]].copy()
+            training_dates = sorted(train.trade_date.unique())
         sample_count = len(samples)
         symbol_count = int(samples["symbol"].nunique()) if not samples.empty else 0
         trade_date_count = len(window_dates)
@@ -721,6 +787,7 @@ def train_rolling_ridge(
             "sample_count": sample_count,
             "validation_sample_count": len(validation),
             "validation_date_count": len(validation_dates),
+            "purged_training_sample_count": purged_train_count,
             # WP7-04 增强门禁指标
             "validation_icir": None,
             "weight_drift": None,
@@ -934,13 +1001,17 @@ def train_rolling_ridge(
         validation_end_date=validation_dates[-1]
         if validation_dates
         else None,
-        data_cutoff_at=datetime.combine(cutoff, time.max),
+        # The market date bounds label selection; it is not a fabricated UTC
+        # midnight publication time. Use the actual frozen input availability.
+        data_cutoff_at=samples.attrs.get("input_available_at") or datetime.now(timezone.utc).replace(tzinfo=None),
         feature_versions_json=json.dumps(feature_versions, sort_keys=True),
         hyperparameters_json=json.dumps(
             {
+                **(hyperparameters or {}),
                 **identity,
                 "selected_alpha": selected_alpha,
                 "final_intercept": final_intercept,
+                "training_gate_evidence": batch_evidence,
             },
             sort_keys=True,
             default=str,
@@ -953,14 +1024,14 @@ def train_rolling_ridge(
         status=status,
         rejection_reason=";".join(rejection_reasons) or None,
     )
-    db.add(model)
     # ════════════════════════════════════════════════════════════════
-    # P2-G：训练治理物化（savepoint 隔离：失败不影响模型训练主链路）
+    # A validated model and all of its immutable artifacts are one write.
     #   - factor_set_snapshots: 捕获当时 FactorSet 成员配置
     #   - factor_model_members: 模型→因子 关联物化（UI/回测直连）
     # ════════════════════════════════════════════════════════════════
     try:
-        with db.begin_nested():  # SAVEPOINT：失败只回滚治理写入
+        with db.begin_nested():
+            db.add(model)
             # 1. 构造 member_snapshot_json：factor_code → {version, role, weight_in_set, missing_policy, direction}
             snap_map: dict[str, dict] = {}
             for _m in _fs_member_rows:
@@ -1056,15 +1127,40 @@ def train_rolling_ridge(
                     coverage=_cov,
                     side=_side,
                 ))
+            if status == "validated":
+                from app.models.factor_weight_snapshot import FactorWeightSnapshot
+                sorted_members = sorted(
+                    _fs_member_rows,
+                    key=lambda m: (m.display_order, m.factor_code),
+                )
+                db.add(FactorWeightSnapshot(
+                    model_id=run_id,
+                    factor_set_id=factor_set_id or "legacy-builtins",
+                    factor_set_content_hash=getattr(_fs, "content_hash", None) if factor_set_id else None,
+                    factor_ids_json=json.dumps([m.factor_id for m in sorted_members]),
+                    factor_version_ids_json=json.dumps([m.factor_version_id for m in sorted_members]),
+                    roles_json=json.dumps([m.role for m in sorted_members]),
+                    constraints_json=json.dumps([m.weight_constraint for m in sorted_members]),
+                    missing_strategies_json=json.dumps([m.missing_policy for m in sorted_members]),
+                    train_start_date=model.train_start_date, train_end_date=model.train_end_date,
+                    valid_start_date=model.validation_start_date, valid_end_date=model.validation_end_date,
+                    data_cutoff_date=cutoff,
+                    weights_raw_json=json.dumps(coefficients, sort_keys=True, allow_nan=False),
+                    weights_norm_json=json.dumps([
+                        {"factor_code": code, "coef_raw": coefficients[code],
+                         "weight_norm": normalized_weights[code],
+                         "factor_version": feature_versions[code],
+                         "factor_id": next((m.factor_id for m in sorted_members if m.factor_code == code), None),
+                         "factor_version_id": next((m.factor_version_id for m in sorted_members if m.factor_code == code), None),
+                         "role": "feature"}
+                        for code in feature_codes
+                    ], sort_keys=True, allow_nan=False),
+                    train_mode="warehouse",
+                ))
+            db.flush()
             # end savepoint：nested txn 自动提交到外层 session
     except Exception as _p2g_err:
-        # best-effort：治理写入失败不影响模型训练成功（主记录会提交）
-        import logging as _log2
-        _log2.getLogger(__name__).warning(
-            "[P2-G][train] 写入治理快照(FactorSetSnapshot+FactorModelMember)失败"
-            "（best-effort 跳过，不回滚训练结果）: %s",
-            _p2g_err,
-        )
+        raise ValueError(f"model_artifact_persistence_failed:{run_id}") from _p2g_err
 
     db.flush()
     result = RidgeTrainingResult(

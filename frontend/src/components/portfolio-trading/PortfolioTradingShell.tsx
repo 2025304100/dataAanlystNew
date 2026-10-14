@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Briefcase, ChevronDown, Zap, Trophy, Plus, AlertTriangle, Lock, Activity, Database, ShieldCheck, CheckCircle2 } from "lucide-react";
-import { Tooltip } from "antd";
+import { ConfigProvider, Tooltip, theme as antdTheme } from "antd";
 import { useApp } from "../../context/AppContext";
 import { api } from "../../api/client";
 import { t, template } from "../../i18n";
@@ -53,6 +53,40 @@ function accountTypeLabel(accountType: string | undefined): string {
     : t("portfolioTrading.tag.simulated");
 }
 
+/**
+ * 组合工作台专属 antd 暗色主题。
+ * 全局 ConfigProvider 是浅色算法（顶栏/设置等浅底页面使用），而工作台是深色青色主题，
+ * 在 .pt-theme-scope 内嵌套一层 darkAlgorithm，使 antd 的 Modal/Drawer/Select/
+ * DatePicker/Button 等弹层与基础控件与工作台同色（locale 继承外层，无需重复传）。
+ */
+const PT_DARK_THEME = {
+  algorithm: antdTheme.darkAlgorithm,
+  token: {
+    colorPrimary: "#06b6d4",
+    colorInfo: "#3b82f6",
+    colorSuccess: "#10b981",
+    colorWarning: "#f59e0b",
+    colorError: "#ef4444",
+    colorBgBase: "#0b1120",
+    colorBgContainer: "#111827",
+    colorBgElevated: "#1e293b",
+    colorBorder: "#374151",
+    colorBorderSecondary: "#243044",
+    colorText: "#f8fafc",
+    colorTextSecondary: "#94a3b8",
+    colorTextTertiary: "#64748b",
+    // 工作台内有 z-index 1200 的自定义抽屉/遮罩，antd 弹层需在其之上
+    zIndexPopupBase: 1300,
+    borderRadius: 8,
+    fontFamily: 'var(--pt-font-sans, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif)',
+  },
+  components: {
+    Button: { fontWeight: 500, primaryShadow: "none", defaultShadow: "none" },
+    Modal: { contentBg: "#1e293b", headerBg: "#1e293b" },
+    Table: { headerBg: "#0f172a", headerColor: "#94a3b8", rowHoverBg: "rgba(148,163,184,0.08)" },
+  },
+} as const;
+
 const HEADER_CHECKS: Array<{ key: keyof ActionItemChecks; labelKey: string }> = [
   { key: "enabled", labelKey: "repairDrawer.light.enabled" },
   { key: "account_ready", labelKey: "repairDrawer.light.account" },
@@ -67,18 +101,18 @@ const HEADER_CHECKS: Array<{ key: keyof ActionItemChecks; labelKey: string }> = 
 const PORTFOLIO_STATUS_STYLES: Partial<Record<PortfolioStatus | string, {
   bg: string; fg: string; border: string; dot: string;
 }>> = {
-  PENDING_INITIAL_REVIEW: { bg: "#fef3c7", fg: "#7c2d12", border: "#f59e0b", dot: "#f59e0b" },
-  READY:                    { bg: "#ecfdf5", fg: "#065f46", border: "#10b981", dot: "#10b981" },
-  RUNNING_AUTO_SIMULATION:  { bg: "#eff6ff", fg: "#1e3a8a", border: "#3b82f6", dot: "#3b82f6" },
-  RUNNING_BACKTEST:         { bg: "#eef2ff", fg: "#3730a3", border: "#6366f1", dot: "#6366f1" },
-  DATA_INCOMPLETE_PAUSED:   { bg: "#fef9c3", fg: "#713f12", border: "#eab308", dot: "#eab308" },
-  RECONCILIATION_BLOCKED:   { bg: "#fee2e2", fg: "#7f1d1d", border: "#ef4444", dot: "#ef4444" },
-  MODEL_INACTIVE:           { bg: "#f3f4f6", fg: "#1f2937", border: "#6b7280", dot: "#6b7280" },
-  SCORE_STALE:              { bg: "#fff7ed", fg: "#7c2d12", border: "#f97316", dot: "#f97316" },
-  INTERRUPTED:              { bg: "#fae8ff", fg: "#701a75", border: "#d946ef", dot: "#d946ef" },
-  ADMIN_PAUSED:             { bg: "#fef2f2", fg: "#7f1d1d", border: "#dc2626", dot: "#dc2626" },
+  PENDING_INITIAL_REVIEW: { bg: "rgba(245,158,11,0.15)", fg: "#fcd34d", border: "rgba(245,158,11,0.45)", dot: "#f59e0b" },
+  READY:                    { bg: "rgba(16,185,129,0.15)", fg: "#86efac", border: "rgba(16,185,129,0.45)", dot: "#10b981" },
+  RUNNING_AUTO_SIMULATION:  { bg: "rgba(59,130,246,0.16)", fg: "#93c5fd", border: "rgba(59,130,246,0.45)", dot: "#3b82f6" },
+  RUNNING_BACKTEST:         { bg: "rgba(99,102,241,0.18)", fg: "#a5b4fc", border: "rgba(99,102,241,0.45)", dot: "#6366f1" },
+  DATA_INCOMPLETE_PAUSED:   { bg: "rgba(234,179,8,0.16)", fg: "#fde047", border: "rgba(234,179,8,0.45)", dot: "#eab308" },
+  RECONCILIATION_BLOCKED:   { bg: "rgba(239,68,68,0.16)", fg: "#fca5a5", border: "rgba(239,68,68,0.5)", dot: "#ef4444" },
+  MODEL_INACTIVE:           { bg: "rgba(107,114,128,0.22)", fg: "#cbd5e1", border: "rgba(107,114,128,0.5)", dot: "#6b7280" },
+  SCORE_STALE:              { bg: "rgba(249,115,22,0.16)", fg: "#fdba74", border: "rgba(249,115,22,0.45)", dot: "#f97316" },
+  INTERRUPTED:              { bg: "rgba(217,78,239,0.17)", fg: "#f0abfc", border: "rgba(217,78,239,0.45)", dot: "#d946ef" },
+  ADMIN_PAUSED:             { bg: "rgba(220,38,38,0.18)", fg: "#fca5a5", border: "rgba(220,38,38,0.55)", dot: "#dc2626" },
 };
-const PORTFOLIO_STATUS_FALLBACK = { bg: "#f3f4f6", fg: "#374151", border: "#9ca3af", dot: "#9ca3af", title: "状态未知", hint: "未从治理 API 读取到组合状态。" };
+const PORTFOLIO_STATUS_FALLBACK = { bg: "rgba(107,114,128,0.22)", fg: "#cbd5e1", border: "rgba(148,163,184,0.45)", dot: "#94a3b8", title: "状态未知", hint: "未从治理 API 读取到组合状态。" };
 
 function portfolioStatusMeta(status: PortfolioStatus | string | null | undefined) {
   const style = status ? PORTFOLIO_STATUS_STYLES[status] : undefined;
@@ -409,6 +443,7 @@ const PortfolioTradingShell: React.FC = () => {
 
   return (
     <div className="pt-theme-scope pt-portfolio-workbench">
+      <ConfigProvider theme={PT_DARK_THEME}>
       {/* scoped 动画（脉冲圆点 / 闪电呼吸），自包含不污染全局 */}
       <style>{`
         @keyframes pt-dot-pulse {
@@ -520,6 +555,7 @@ const PortfolioTradingShell: React.FC = () => {
         onToggleEnabled={handleToggleEnabled}
         onOpenAddCandidate={() => setAddCandidateModalOpen(true)}
       />
+      </ConfigProvider>
     </div>
   );
 };
@@ -950,7 +986,7 @@ const SubTabContent: React.FC<SubTabContentProps> = ({ active, portfolioId, onNa
       content = <PortfolioMembersTable key={`${portfolioId}-${membersRevision}`} portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} focusSymbolId={focusSymbolId} />;
       break;
     case "strategy":
-      content = <PortfolioStrategyRules portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} />;
+      content = <PortfolioStrategyRules portfolioId={portfolioId} onNavigate={onNavigate} portfolioStatus={portfolioStatus} perm={perm} onConfigurationChanged={onGovernanceChanged} />;
       break;
     case "backtest":
       content = (

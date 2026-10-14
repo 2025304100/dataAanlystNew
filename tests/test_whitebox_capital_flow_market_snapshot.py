@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import pytest
@@ -89,11 +89,11 @@ def test_market_capital_flow_snapshot_fetches_full_market_only_once(db_session, 
 
     def fake_call(_func, *args, **kwargs):
         calls.append(kwargs)
-        return _fake_provider(frame, date(2026, 10, 9))(_func, *args, **kwargs)
+        return _fake_provider(frame, date.today())(_func, *args, **kwargs)
 
     monkeypatch.setattr(capital_flow_data, "call_akshare_with_retry", fake_call)
 
-    synced = sync_market_capital_flow_snapshot(db_session, symbols, date(2026, 10, 9))
+    synced = sync_market_capital_flow_snapshot(db_session, symbols, date.today())
     db_session.commit()
 
     rank_calls = [item for item in calls if item.get("api_key") == "stock_individual_fund_flow_rank"]
@@ -106,7 +106,7 @@ def test_market_capital_flow_snapshot_fetches_full_market_only_once(db_session, 
     assert rows[0].main_net_inflow_pct == pytest.approx(3.5)
     assert rows[0].super_large_net_inflow == pytest.approx(600.0)
     assert rows[0].small_net_inflow == pytest.approx(-900.0)
-    assert all(row.trade_date == date(2026, 10, 9) for row in rows)
+    assert all(row.trade_date == date.today() for row in rows)
     # 000002 不在 provider 返回的排行里：不补零、不造行
     assert db_session.query(CapitalFlow).filter(
         CapitalFlow.symbol_id == symbols[2].id
@@ -116,20 +116,20 @@ def test_market_capital_flow_snapshot_fetches_full_market_only_once(db_session, 
 def test_market_capital_flow_snapshot_stamps_the_providers_session_not_the_calendar_day(
     db_session, monkeypatch
 ):
-    """国庆/周末跑日更：排行接口给的是上一交易日，日期必须跟着 provider 走。"""
+    """日更接口若给的是上一交易日，写入日期必须跟着 provider 走。"""
     symbols = _cn_symbols(db_session, ["600000"])
     frame = _rank_frame([{"code": "600000", "main": 700.0}])
     monkeypatch.setattr(
         capital_flow_data,
         "call_akshare_with_retry",
-        _fake_provider(frame, date(2026, 9, 30)),
+        _fake_provider(frame, (date.today() - timedelta(days=1))),
     )
 
-    sync_market_capital_flow_snapshot(db_session, symbols, date(2026, 10, 1))
+    sync_market_capital_flow_snapshot(db_session, symbols, date.today())
     db_session.commit()
 
     row = db_session.query(CapitalFlow).one()
-    assert row.trade_date == date(2026, 9, 30)
+    assert row.trade_date == (date.today() - timedelta(days=1))
 
 
 def test_market_capital_flow_snapshot_writes_nothing_without_a_session_date(
@@ -145,7 +145,7 @@ def test_market_capital_flow_snapshot_writes_nothing_without_a_session_date(
     )
 
     with pytest.raises(RuntimeError, match="no corroborating session date"):
-        sync_market_capital_flow_snapshot(db_session, symbols, date(2026, 10, 9))
+        sync_market_capital_flow_snapshot(db_session, symbols, date.today())
 
     assert db_session.query(CapitalFlow).count() == 0
 
@@ -159,10 +159,10 @@ def test_market_capital_flow_snapshot_skips_rows_without_main_inflow(db_session,
     monkeypatch.setattr(
         capital_flow_data,
         "call_akshare_with_retry",
-        _fake_provider(frame, date(2026, 10, 9)),
+        _fake_provider(frame, date.today()),
     )
 
-    synced = sync_market_capital_flow_snapshot(db_session, symbols, date(2026, 10, 9))
+    synced = sync_market_capital_flow_snapshot(db_session, symbols, date.today())
     db_session.commit()
 
     assert synced == {symbols[1].id}
@@ -175,11 +175,11 @@ def test_market_capital_flow_snapshot_raises_on_unusable_frame(db_session, monke
     monkeypatch.setattr(
         capital_flow_data,
         "call_akshare_with_retry",
-        _fake_provider(pd.DataFrame(), date(2026, 10, 9)),
+        _fake_provider(pd.DataFrame(), date.today()),
     )
 
     with pytest.raises(RuntimeError, match="no usable rows"):
-        sync_market_capital_flow_snapshot(db_session, symbols, date(2026, 10, 9))
+        sync_market_capital_flow_snapshot(db_session, symbols, date.today())
 
 
 def test_market_capital_flow_snapshot_ignores_etf_and_non_cn_symbols(db_session, monkeypatch):
@@ -195,10 +195,10 @@ def test_market_capital_flow_snapshot_ignores_etf_and_non_cn_symbols(db_session,
     monkeypatch.setattr(
         capital_flow_data,
         "call_akshare_with_retry",
-        _fake_provider(_rank_frame([{"code": "600000", "main": 1.0}]), date(2026, 10, 9)),
+        _fake_provider(_rank_frame([{"code": "600000", "main": 1.0}]), date.today()),
     )
 
-    synced = sync_market_capital_flow_snapshot(db_session, symbols, date(2026, 10, 9))
+    synced = sync_market_capital_flow_snapshot(db_session, symbols, date.today())
 
     assert synced == {symbols[0].id}
     assert db_session.query(CapitalFlow).count() == 1
@@ -281,7 +281,7 @@ def test_capital_flow_incremental_task_uses_one_market_snapshot(db_session, monk
         calls["per_symbol"] += 1
         return object()
 
-    def fake_northbound(_db, days=30):
+    def fake_northbound(_db, days=30, **_kwargs):
         calls["northbound"] += 1
         return 0
 
@@ -306,7 +306,7 @@ def test_capital_flow_incremental_task_uses_one_market_snapshot(db_session, monk
     assert calls["northbound"] == 1
     assert result["success"] == 2
     assert result["records"] == 2
-    assert result["total"] == 2
+    assert result["total"] == 3  # two symbols plus one observable northbound partition
 
 
 def test_capital_flow_incremental_falls_back_to_per_symbol_when_snapshot_fails(

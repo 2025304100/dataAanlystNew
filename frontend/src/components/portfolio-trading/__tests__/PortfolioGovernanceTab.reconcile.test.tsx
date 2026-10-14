@@ -25,11 +25,22 @@ vi.mock("../../../context/AppContext", () => ({
   useApp: () => ({ showToast: mockToast }),
 }));
 vi.mock("antd", () => ({
+  ConfigProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
-  Button: ({ children, onClick }: { children?: ReactNode; onClick?: () => void }) => (
-    <button type="button" onClick={onClick}>{children}</button>
+  Button: ({ children, onClick, loading: _l, danger: _d, icon: _i, size: _s, block: _b, type: _t, ...rest }: any) => (
+    <button type="button" onClick={onClick} {...rest}>{children}</button>
   ),
   Modal: ({ open, children }: { open?: boolean; children?: ReactNode }) => (open ? <div>{children}</div> : null),
+  Checkbox: ({ checked, onChange, children }: { checked?: boolean; onChange?: (v: boolean) => void; children?: ReactNode }) => (
+    <label><input type="checkbox" checked={!!checked} onChange={(e) => onChange?.(e.target.checked)} />{children}</label>
+  ),
+  Input: Object.assign(
+    (props: Record<string, unknown>) => <input {...(props as object)} />,
+    { TextArea: (props: Record<string, unknown>) => <textarea {...(props as object)} /> },
+  ),
+  Select: () => <select />,
+  DatePicker: () => <input readOnly />,
+  Tag: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
 }));
 
 import { setLocale } from "../../../i18n";

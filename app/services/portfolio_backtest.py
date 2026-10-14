@@ -937,7 +937,7 @@ def run_portfolio_backtest(
     effective_model_id: str | None = (
         factor_model_run_id.strip() if isinstance(factor_model_run_id, str) else None
     ) or None
-    bound_factor_set_id: int | None = None
+    bound_factor_set_id: str | None = None
 
     # 页面只表达“使用当前已应用策略”，不能要求前端维护 snapshot ID。
     # 因此在任务启动前锁定最新 save_and_apply 快照；production_pit 没有
@@ -961,7 +961,7 @@ def run_portfolio_backtest(
 
     # C-02 / C-12 修复：提前读取 PortfolioRule.stage_limits_json 中的绑定
     # (必须在 _resolve_symbol_ids 之前完成，避免回测窗口成员校验 raise 时跳过解析)
-    rule_for_bind = get_active_rule(db, portfolio_id)
+    rule_for_bind = get_active_rule(db, portfolio_id) if not strategy_snapshot_id else None
     if rule_for_bind is not None:
         sl = getattr(rule_for_bind, "stage_limits_json", None)
         if isinstance(sl, str):
@@ -978,10 +978,7 @@ def run_portfolio_backtest(
                     effective_score_mode = "ridge"
             maybe_set = sl.get("factor_set_id")
             if bound_factor_set_id is None and isinstance(maybe_set, (int, str)) and str(maybe_set).strip():
-                try:
-                    bound_factor_set_id = int(maybe_set)
-                except (TypeError, ValueError):
-                    bound_factor_set_id = None
+                bound_factor_set_id = str(maybe_set).strip()
 
     # 尝试使用显式 strategy_snapshot_id
     locked_snap: _SES | None = None
@@ -992,20 +989,30 @@ def run_portfolio_backtest(
                 f"strategy_snapshot_id={strategy_snapshot_id} 不存在；"
                 "请先调用 /portfolios/{id}/factor-usage 的 save_and_apply 后再回测。"
             )
+        if locked_snap.portfolio_id != portfolio_id:
+            raise ValueError("strategy_snapshot_id 不属于本组合")
+        if locked_snap.snapshot_type not in {"save_and_apply", "task_locked"}:
+            raise ValueError("回测必须绑定已应用的执行快照")
         # save_and_apply 快照是不可变的；本次运行持久化该 ID 即已完成
         # 任务级锁定。旧实现尝试构造另一套 ORM 字段，遇到模型演进时会
         # 静默回退，反而掩盖错误并削弱可复现性。
         if locked_snap:
-            vr = locked_snap.versions_json if isinstance(locked_snap.versions_json, dict) else {}
-            if not effective_score_mode and vr.get("score_weight_mode"):
-                effective_score_mode = str(vr["score_weight_mode"])
-            if not effective_model_id and locked_snap.factor_model_run_id:
-                effective_model_id = locked_snap.factor_model_run_id
-            if bound_factor_set_id is None and locked_snap.factor_set_id:
-                bound_factor_set_id = locked_snap.factor_set_id
+            vr = json.loads(locked_snap.versions_json or "{}") if isinstance(locked_snap.versions_json, str) else (locked_snap.versions_json or {})
+            if factor_model_run_id and factor_model_run_id != locked_snap.factor_model_run_id:
+                raise ValueError("factor_model_run_id 与锁定策略快照不一致")
+            snapshot_score_mode = str(vr.get("score_weight_mode") or ("ridge" if locked_snap.factor_model_run_id else "manual"))
+            if score_weight_mode and score_weight_mode != snapshot_score_mode:
+                raise ValueError("score_weight_mode 与锁定策略快照不一致")
+            effective_score_mode = snapshot_score_mode
+            effective_model_id = locked_snap.factor_model_run_id
+            bound_factor_set_id = locked_snap.factor_set_id
+            if pit_mode == "production_pit" and (not effective_model_id or not bound_factor_set_id):
+                raise ValueError("production_pit 回测快照缺少真实模型或冻结因子集")
+            if pit_mode == "production_pit" and (vr.get("run_mode") not in {"production", "production_pit", "production_sim", "strict_pit"} or vr.get("pit_mode") not in {"strict_pit_safe", "strict_pit"}):
+                raise ValueError("production_pit 回测不能将研究或 best_effort 快照升级为正式结果")
 
     # 若未解析到 mode/id：读取 PortfolioFactorUsage 最新绑定
-    if not effective_score_mode or not effective_model_id:
+    if locked_snap is None and (not effective_score_mode or not effective_model_id):
         usage = db.execute(
             select(_PFU)
             .where(_PFU.portfolio_id == portfolio_id)
@@ -1021,7 +1028,7 @@ def run_portfolio_backtest(
                 bound_factor_set_id = usage.factor_set_id
 
     # 全局兜底
-    if not effective_model_id:
+    if locked_snap is None and not effective_model_id:
         runtime = db.execute(select(_FRS).order_by(_FRS.version.desc()).limit(1)).scalars().first()
         if runtime is not None and runtime.active_model_run_id:
             effective_model_id = runtime.active_model_run_id
@@ -1096,11 +1103,13 @@ def run_portfolio_backtest(
     _step_stage(None, "creating")
 
     # 构造 rule_config（从 PortfolioRule + SignalRule 读取，避免"策略规则没打通"）
-    rule = get_active_rule(db, portfolio_id)
+    rule = db.get(PortfolioRule, locked_snap.rule_id) if locked_snap and locked_snap.rule_id else (None if locked_snap else get_active_rule(db, portfolio_id))
+    if locked_snap and rule is not None and rule.portfolio_id != portfolio_id:
+        raise ValueError("锁定策略快照的规则不属于本组合")
     # C-12 RED → GREEN：研究模式兜底，从 rule.stage_limits_json 读取历史绑定
     #   (PortfolioRule 中若显式写入 factor_model_run_id，回测应使用它
     #    以保持历史规则兼容性；正式链路通过 strategy_snapshot_id 锁定)
-    if not effective_model_id and rule is not None:
+    if locked_snap is None and not effective_model_id and rule is not None:
         sl = getattr(rule, "stage_limits_json", None)
         if isinstance(sl, str):
             import json as _j
@@ -1114,13 +1123,21 @@ def run_portfolio_backtest(
                 effective_model_id = maybe.strip()
                 if not effective_score_mode or effective_score_mode == "manual":
                     effective_score_mode = "ridge"
-    rule_config = _build_rule_config(db, portfolio_id, rule)
+    if locked_snap is not None:
+        frozen_rule_config = vr.get("rule_config")
+        rule_config = dict(frozen_rule_config) if isinstance(frozen_rule_config, dict) else _build_rule_config(None, None, rule)
+    else:
+        rule_config = _build_rule_config(db, portfolio_id, rule)
 
     # P2-FIX：把 PortfolioRule 的 stock_pool / factors，与 SignalRule 的准入分，
     # 应用到回测标的池（与 auto_trade_task 同源），确保"策略规则与回测打通"。
     # C-08 PIT：传 end_date 作为 Score 查询截止，避免回测窗口结束日期之后的数据污染回测历史，
     #   与"按日决策时 data_cutoff_at 按日切 Score"的 WP0-7 完整方案语义一致（fail-soft 兼容）。
-    symbol_ids = _filter_symbol_ids_by_rule(db, portfolio_id, rule, symbol_ids, as_of_date=end_date)
+    # Snapshot-backed runs evaluate scores on each decision day. Filtering the
+    # whole interval with the final day's score introduces look-ahead and may
+    # silently consult a newer rule/model than the one being replayed.
+    if locked_snap is None:
+        symbol_ids = _filter_symbol_ids_by_rule(db, portfolio_id, rule, symbol_ids, as_of_date=end_date)
     if not symbol_ids:
         raise ValueError("策略规则过滤后无可回测标的（stock_pool/质量/择时阈值过严或PIT截止后无有效Score），请调整策略规则后再回测。")
 

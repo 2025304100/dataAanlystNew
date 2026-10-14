@@ -31,6 +31,7 @@ from app.models.stock_valuation import StockValuation
 from app.models.symbol import Symbol
 from app.services.akshare_utils import call_akshare_with_retry, quiet_akshare_output
 from app.services.factors.fundamental import normalize_stock_value_frame
+from app.services.factors.contracts import normalize_symbol
 from app.services.market_data import _proxy_bypass
 from app.services.regions import region_from_market
 
@@ -55,7 +56,7 @@ def _safe_float(val: Any) -> float | None:
 
 def _market_code_for_akshare(symbol: Symbol) -> str:
     """从 Symbol 构造 akshare 部分接口需要的 6 位代码（无前缀）。"""
-    return symbol.symbol.split(".")[-1] if "." in symbol.symbol else symbol.symbol
+    return normalize_symbol(symbol.symbol)
 
 
 def _market_prefix_for_fund_flow(symbol: Symbol) -> str:
@@ -111,6 +112,8 @@ def sync_market_valuation_snapshot(
     traffic independent of the number of symbols.
     """
     target_date = trade_date or date.today()
+    if target_date != date.today():
+        raise ValueError("实时估值快照仅允许同步今天；历史日期请使用估值历史同步。")
     eligible = [
         symbol for symbol in symbols
         if symbol.asset_type == "stock" and region_from_market(symbol.market) == "cn"
@@ -139,7 +142,7 @@ def sync_market_valuation_snapshot(
         return None
 
     by_code = {
-        str(code).split(".")[-1].zfill(6): row
+        normalize_symbol(code).zfill(6): row
         for _, row in frame.iterrows()
         for code in [row.get("代码")]
         if code is not None
@@ -154,7 +157,10 @@ def sync_market_valuation_snapshot(
             )
         ).scalars().all()
     }
-    synced: set[int] = set()
+    class SnapshotSymbols(set):
+        trade_dates = {target_date}
+
+    synced: set[int] = SnapshotSymbols()
     for symbol in eligible:
         row = by_code.get(_market_code_for_akshare(symbol).zfill(6))
         if row is None:
@@ -408,7 +414,10 @@ def sync_symbol_valuation(db: Session, symbol: Symbol, trade_date: date | None =
     target_date = trade_date or date.today()
 
     # 1. 拉取数据
-    spot_data = _fetch_spot_valuation(db, symbol)
+    if target_date > date.today():
+        return None
+    # An undated live quote must never be relabelled as a past observation.
+    spot_data = _fetch_spot_valuation(db, symbol) if target_date == date.today() else {}
     fallback_data = {}
     if (
         spot_data.get("pe_ttm") is None
@@ -479,11 +488,15 @@ def sync_symbol_valuation(db: Session, symbol: Symbol, trade_date: date | None =
     return existing
 
 
-def get_latest_valuation(db: Session, symbol_id: int) -> StockValuation | None:
+def get_latest_valuation(
+    db: Session, symbol_id: int, *, as_of: date | None = None
+) -> StockValuation | None:
     """读取 DB 中最新的估值记录。"""
+    stmt = select(StockValuation).where(StockValuation.symbol_id == symbol_id)
+    if as_of is not None:
+        stmt = stmt.where(StockValuation.trade_date <= as_of)
     return db.execute(
-        select(StockValuation)
-        .where(StockValuation.symbol_id == symbol_id)
+        stmt
         .order_by(desc(StockValuation.trade_date))
         .limit(1)
     ).scalars().first()
@@ -500,11 +513,11 @@ def get_or_sync_valuation(db: Session, symbol: Symbol, trade_date: date) -> Stoc
     if region != "cn":
         return None
 
-    latest = get_latest_valuation(db, symbol.id)
+    latest = get_latest_valuation(db, symbol.id, as_of=trade_date)
     if latest is not None:
         days_stale = (trade_date - latest.trade_date).days if hasattr(latest.trade_date, "year") else 0
         # 兜底：若 DB 命中但关键分值为 None（上次同步失败），也触发重新同步
-        if days_stale <= _VALUATION_FRESHNESS_DAYS and latest.pe_score is not None:
+        if 0 <= days_stale <= _VALUATION_FRESHNESS_DAYS and latest.pe_score is not None:
             return latest
 
     # 按需拉取

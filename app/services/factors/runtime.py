@@ -101,6 +101,10 @@ def activate_factor_model(
         raise ValueError(
             f'only validated models can be activated, got {model.status}'
         )
+    from app.services.factor_model_contract import assess_factor_model_readiness
+    readiness = assess_factor_model_readiness(db, model_run_id=model_run_id)
+    if not readiness.ready:
+        raise ValueError(f'{readiness.code}: {readiness.message}')
     # Do not allow a model with an empty or corrupt coefficient snapshot into
     # runtime.  Such models previously passed the status check and only failed
     # later when the scoring bridge attempted to materialize scores.
@@ -120,9 +124,14 @@ def activate_factor_model(
         select(FactorRuntimeState)
         .where(FactorRuntimeState.id == 1)
         .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if state is None:
         state = ensure_factor_runtime_state(db)
+    model = db.get(FactorModelRun, model_run_id, with_for_update=True, populate_existing=True)
+    readiness = assess_factor_model_readiness(db, model_run_id=model_run_id)
+    if not readiness.ready:
+        raise ValueError(f'{readiness.code}: {readiness.message}')
     previous_mode = state.weight_mode
     previous_model = state.active_model_run_id
     state.weight_mode = mode

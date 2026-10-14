@@ -35,6 +35,12 @@ logger = logging.getLogger(__name__)
 class FundFlowProviderError(RuntimeError):
     """资金流请求本身失败（网络/接口变更），与"provider 没返回这个标的数据"不同。"""
 
+
+class _SyncedSymbolIds(set):
+    def __init__(self, values=(), *, trade_dates=()):
+        super().__init__(values)
+        self.trade_dates = set(trade_dates)
+
 # 资金流数据新鲜度阈值（天）
 _FLOW_FRESHNESS_DAYS = 3
 # 评分时近 N 日均值窗口
@@ -56,7 +62,9 @@ def _safe_float(val: Any) -> float | None:
 
 
 def _market_code_for_akshare(symbol: Symbol) -> str:
-    return symbol.symbol.split(".")[-1] if "." in symbol.symbol else symbol.symbol
+    import re
+    match = re.search(r"(?<!\d)(\d{6})(?!\d)", str(symbol.symbol))
+    return match.group(1) if match else str(symbol.symbol).strip()
 
 
 def _market_prefix(symbol: Symbol) -> str:
@@ -295,6 +303,8 @@ def sync_market_capital_flow_snapshot(
     (suspended, delisted) stay unwritten instead of being filled.
     """
     requested_date = trade_date or date.today()
+    if requested_date != date.today():
+        raise ValueError("资金流排行仅提供当前快照；历史日期请使用历史回填接口")
     eligible = [
         symbol for symbol in symbols
         if symbol.asset_type == "stock" and region_from_market(symbol.market) == "cn"
@@ -319,7 +329,7 @@ def sync_market_capital_flow_snapshot(
         if _upsert_capital_flow(db, symbol, flow_data) is not None:
             synced.add(symbol.id)
     db.flush()
-    return synced
+    return _SyncedSymbolIds(synced, trade_dates={actual_date} if synced else ())
 
 
 def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | None = None) -> CapitalFlow | None:
@@ -365,12 +375,17 @@ def sync_symbol_capital_flow(db: Session, symbol: Symbol, trade_date: date | Non
         pending = rows
 
     written: CapitalFlow | None = None
+    saved_dates: list[date] = []
     for row in pending:
         saved = _upsert_capital_flow(db, symbol, row)
         if saved is not None:
             written = saved
+            saved_dates.append(saved.trade_date)
     if written is None:
         logger.info("No usable main net inflow rows for %s, skip", symbol.symbol)
+    else:
+        written.sync_rows_written = len(saved_dates)
+        written.sync_written_dates = saved_dates
     return written
 
 
@@ -418,12 +433,26 @@ def get_main_net_inflow_score(db: Session, symbol: Symbol, trade_date: date) -> 
 # 北向资金（市场层面）
 # ----------------------------------------------------------------------------
 
-def sync_northbound_flow(db: Session, days: int = 30) -> int:
+def northbound_capability() -> dict[str, Any]:
+    available = callable(getattr(ak, "stock_hsgt_north_net_flow_in", None))
+    return {
+        "available": available,
+        "api_key": "stock_hsgt_north_net_flow_in",
+        "reason": "" if available else "当前数据源版本不提供北向每日净流入接口；请接入可用数据源后同步。",
+    }
+
+
+def sync_northbound_flow(db: Session, days: int = 30, *, start_date: date | None = None, end_date: date | None = None) -> int:
     """同步近 N 日北向资金净流入。
 
     Returns:
         写入的记录数
     """
+    capability = northbound_capability()
+    if not capability["available"]:
+        raise FundFlowProviderError(capability["reason"])
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise ValueError("northbound start_date must be on or before end_date")
     try:
         with _proxy_bypass(), quiet_akshare_output():
             df = call_akshare_with_retry(ak.stock_hsgt_north_net_flow_in, symbol="北上", api_key="stock_hsgt_north_net_flow_in", db=db)
@@ -431,7 +460,12 @@ def sync_northbound_flow(db: Session, days: int = 30) -> int:
             return 0
         # 列名：日期、当日净流入（元）、当日余额（元）
         df["日期"] = pd.to_datetime(df["日期"]).dt.date
-        recent = df.sort_values("日期", ascending=False).head(days)
+        recent = df
+        if start_date is not None:
+            recent = recent[recent["日期"] >= start_date]
+        if end_date is not None:
+            recent = recent[recent["日期"] <= end_date]
+        recent = recent.sort_values("日期", ascending=False).head(days)
         count = 0
         for _, row in recent.iterrows():
             trade_date = row["日期"]
@@ -452,7 +486,7 @@ def sync_northbound_flow(db: Session, days: int = 30) -> int:
         return count
     except Exception as exc:
         logger.warning("sync_northbound_flow failed: %s", exc)
-        return 0
+        raise FundFlowProviderError(f"northbound: {type(exc).__name__}: {exc}") from exc
 
 
 def get_latest_northbound_flow(db: Session) -> NorthboundFlow | None:

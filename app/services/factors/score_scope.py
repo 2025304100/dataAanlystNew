@@ -24,7 +24,10 @@ def get_active_score_scope(db: Session) -> ActiveScoreScope:
     runtime = get_factor_runtime_snapshot(db)
     if runtime.score_weight_mode == 'ridge':
         model = db.get(FactorModelRun, runtime.active_model_run_id)
-        if model is None or model.status != 'validated':
+        from app.services.factor_model_contract import assess_factor_model_readiness
+        if model is None or not assess_factor_model_readiness(
+            db, model_run_id=model.id, require_runtime_active=True,
+        ).ready:
             # Do not silently fall back to manual Scores.  A retired/corrupt
             # runtime pointer must be visible as an empty dynamic scope so a
             # caller cannot accidentally trade on a different interpretation.

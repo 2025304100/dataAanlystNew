@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Modal, Space, Spin, Table, Tabs, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { DatabaseOutlined } from "@ant-design/icons";
@@ -30,23 +30,32 @@ function CoverageDiagnostics() {
   const [error, setError] = useState<string | null>(null);
   const [qualityHistory, setQualityHistory] = useState<{ field: string; snapshots: DataQualitySnapshot[] } | null>(null);
 
-  const load = async () => {
-    const [next, quality] = await Promise.all([
+  const mounted = useRef(true);
+  const load = useCallback(async () => {
+    const [next, quality] = await Promise.allSettled([
       api.getExternalDataCoverage(), api.getExternalDataQualitySnapshots(),
     ]);
-    setCoverage(next);
-    setSnapshots(Object.fromEntries(quality.fields.map((item) => [item.field, item])));
-  };
+    if (!mounted.current) return;
+    if (next.status === "fulfilled") setCoverage(next.value);
+    if (quality.status === "fulfilled") setSnapshots(Object.fromEntries(quality.value.fields.map((item) => [item.field, item])));
+    const failures = [next, quality].flatMap((result) => result.status === "rejected" ? [result.reason instanceof Error ? result.reason.message : String(result.reason)] : []);
+    setError(failures.length ? failures.join("；") : null);
+  }, []);
 
   useEffect(() => {
-    let disposed = false;
+    mounted.current = true;
     void load().catch((reason: unknown) => {
-      if (!disposed) setError(reason instanceof Error ? reason.message : String(reason));
+      if (mounted.current) setError(reason instanceof Error ? reason.message : String(reason));
     }).finally(() => {
-      if (!disposed) setLoading(false);
+      if (mounted.current) setLoading(false);
     });
-    return () => { disposed = true; };
-  }, []);
+    return () => { mounted.current = false; };
+  }, [load]);
+
+  const retryRead = async () => {
+    setLoading(true);
+    try { await load(); } finally { if (mounted.current) setLoading(false); }
+  };
 
   const refreshQuality = async () => {
     setLoading(true);
@@ -102,9 +111,9 @@ function CoverageDiagnostics() {
     { title: "原因", dataIndex: "reason", ellipsis: true },
   ];
   if (loading && !coverage) return <Spin />;
-  if (error && !coverage) return <Alert type="error" showIcon message="覆盖诊断读取失败" description={error} />;
+  if (error && !coverage) return <Alert type="error" showIcon message="覆盖诊断读取失败" description={error} action={<Button loading={loading} onClick={() => void retryRead()}>重试读取</Button>} />;
   return <div>
-    {error && <Alert type="warning" showIcon message="质量快照刷新失败" description={error} style={{ marginBottom: 10 }} />}
+    {error && <Alert type="warning" showIcon message="覆盖或质量快照读取失败" description={error} action={<Button size="small" loading={loading} onClick={() => void retryRead()}>重试读取</Button>} style={{ marginBottom: 10 }} />}
     <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }} align="start">
       <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
         覆盖诊断基于实际写入因子仓库的字段；质量快照保存历史趋势和最近一次同步失败原因。

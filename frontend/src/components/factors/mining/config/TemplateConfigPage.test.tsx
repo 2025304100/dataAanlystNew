@@ -138,9 +138,14 @@ describe("TemplateConfigPage（C2 / B4）", () => {
 
   it("按类型筛选", async () => {
     await renderReady();
-    fireEvent.change(document.querySelector("[data-tpl-cat]") as HTMLElement, {
-      target: { value: "volatility" },
+    // antd Select：分类是工具条第一个下拉，mousedown 打开弹层后点击「波动」选项
+    fireEvent.mouseDown(document.querySelector(".ant-select-selector") as HTMLElement);
+    await waitFor(() => {
+      expect(document.querySelectorAll(".ant-select-item-option").length).toBeGreaterThan(0);
     });
+    const option = Array.from(document.querySelectorAll(".ant-select-item-option"))
+      .find((o) => o.textContent === "波动") as HTMLElement;
+    fireEvent.click(option);
     await waitFor(() => {
       expect(document.querySelectorAll("[data-tpl-table] tbody tr").length).toBe(1);
     });

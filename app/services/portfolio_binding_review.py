@@ -132,6 +132,12 @@ def build_binding_review(db: Session, portfolio: Portfolio, *, current_read: boo
                         "MODEL_NOT_VALIDATED": "绑定模型尚未通过验证",
                         "MODEL_NOT_GLOBAL_ACTIVE": "绑定模型已不是当前活动模型，请重新保存应用",
                         "FACTOR_SET_NOT_READY": "绑定的因子集尚未就绪",
+                        "MODEL_TRAINING_SOURCE_UNVERIFIED": "绑定模型为演示或来源不明的训练产物，请使用真实数据重新训练",
+                        "MODEL_TRAINING_EVIDENCE_MISSING": "绑定模型缺少真实训练证据，请重新训练",
+                        "MODEL_WEIGHT_SNAPSHOT_MISSING": "历史模型的训练权重快照缺失，请重新训练",
+                        "MODEL_WEIGHT_SNAPSHOT_MISMATCH": "训练权重快照与因子版本不一致，请重新训练",
+                        "MODEL_WEIGHTS_INVALID": "绑定模型的权重或截距无效，请重新训练",
+                        "MODEL_FEATURE_VERSION_METADATA_MISMATCH": "模型训练特征版本与冻结因子版本不一致，请重新训练",
                     }
                     blockers.append(messages.get(readiness["code"], "模型与冻结因子集不一致，请重新保存应用"))
             if snapshot.rule_id is not None:

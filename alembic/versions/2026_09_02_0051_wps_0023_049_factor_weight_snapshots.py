@@ -28,20 +28,18 @@ depends_on: Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # ── 先删除旧 per-factor 结构（rev 006 建；字段与 Task11 新表不兼容） ──
-    # SQLite / MySQL 通用：先删索引再删表（if_exists 兼容已有干净环境）
-    try:
-        op.drop_index("ix_factor_weight_snapshots_factor_code", table_name="factor_weight_snapshots")
-    except Exception:
-        pass
-    try:
-        op.drop_index("ix_factor_weight_snapshots_model_run_id", table_name="factor_weight_snapshots")
-    except Exception:
-        pass
-    try:
-        op.drop_table("factor_weight_snapshots")
-    except Exception:
-        pass
+    inspector = sa.inspect(op.get_bind())
+    if inspector.has_table("factor_weight_snapshots"):
+        columns = {c["name"] for c in inspector.get_columns("factor_weight_snapshots")}
+        if "model_id" in columns:
+            return  # Already aligned to the aggregate schema; keep its artifacts.
+        if inspector.has_table("factor_weight_snapshots_legacy"):
+            raise RuntimeError("legacy weight archive already exists; refusing to overwrite it")
+        # Preserve authentic coefficients before changing the table shape.
+        op.rename_table("factor_weight_snapshots", "factor_weight_snapshots_legacy")
+    if inspector.has_table("factor_weight_snapshots_aggregate_archive"):
+        op.rename_table("factor_weight_snapshots_aggregate_archive", "factor_weight_snapshots")
+        return
 
     # ── 新建 per-model 聚合快照表（Task 11 spec 要求 ≥13 字段） ──
     op.create_table(
@@ -72,8 +70,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # ── 删除新聚合表 ──
-    op.drop_table("factor_weight_snapshots")
+    inspector = sa.inspect(op.get_bind())
+    if inspector.has_table("factor_weight_snapshots_aggregate_archive"):
+        raise RuntimeError("aggregate weight archive already exists; refusing to overwrite it")
+    op.rename_table("factor_weight_snapshots", "factor_weight_snapshots_aggregate_archive")
+    if inspector.has_table("factor_weight_snapshots_legacy"):
+        op.rename_table("factor_weight_snapshots_legacy", "factor_weight_snapshots")
+        return
 
     # ── 恢复旧 per-factor 结构（与 rev 006 完全一致，保证 chain 可逆） ──
     op.create_table(

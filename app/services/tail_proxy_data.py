@@ -5,6 +5,7 @@ import logging
 import re
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
+from typing import Callable
 
 import akshare as ak
 import pandas as pd
@@ -50,7 +51,7 @@ def _symbol_code(value: str) -> str:
 
 
 def resolve_tail_proxy_symbols(
-    db: Session, *, source: str, limit: int
+    db: Session, *, source: str, limit: int, watchlist_id: int | None = None, portfolio_id: int | None = None
 ) -> list[str]:
     if limit < 1 or limit > 50:
         raise ValueError("limit must be between 1 and 50")
@@ -74,8 +75,8 @@ def resolve_tail_proxy_symbols(
         ).scalars().all()
         return list(dict.fromkeys(_symbol_code(item) for item in rows))
     if source == "watchlist":
-        symbols = db.execute(
-            select(Symbol)
+        stmt = (
+            select(Symbol).distinct()
             .join(
                 WatchlistItem,
                 WatchlistItem.symbol_id == Symbol.id,
@@ -83,21 +84,29 @@ def resolve_tail_proxy_symbols(
             .where(
                 Symbol.asset_type == "stock",
                 Symbol.is_active == 1,
+                WatchlistItem.status.in_(("watching", "ready")),
             )
             .order_by(Symbol.id)
             .limit(limit)
-        ).scalars().all()
+        )
+        if watchlist_id is not None:
+            stmt = stmt.where(WatchlistItem.watchlist_id == watchlist_id)
+        symbols = db.execute(stmt).scalars().all()
     elif source == "positions":
-        symbols = db.execute(
-            select(Symbol)
+        stmt = (
+            select(Symbol).distinct()
             .join(Position, Position.symbol_id == Symbol.id)
             .where(
                 Symbol.asset_type == "stock",
                 Symbol.is_active == 1,
+                Position.quantity > 0,
             )
             .order_by(Symbol.id)
             .limit(limit)
-        ).scalars().all()
+        )
+        if portfolio_id is not None:
+            stmt = stmt.where(Position.portfolio_id == portfolio_id)
+        symbols = db.execute(stmt).scalars().all()
     else:
         raise ValueError(f"unsupported tail proxy source: {source}")
     return list(
@@ -160,15 +169,21 @@ def sync_tail_proxy_snapshots(
     source: str = "candidates",
     limit: int = 20,
     trade_date: date | None = None,
+    watchlist_id: int | None = None,
+    portfolio_id: int | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> TailProxySyncResult:
     target_date = resolve_tail_proxy_trade_date(db, trade_date)
-    symbols = resolve_tail_proxy_symbols(db, source=source, limit=limit)
+    scope = {key: value for key, value in {"watchlist_id": watchlist_id, "portfolio_id": portfolio_id}.items() if value is not None}
+    symbols = resolve_tail_proxy_symbols(db, source=source, limit=limit, **scope)
     written = 0
     skipped = 0
     failed = 0
     consecutive_failures = 0
     errors: list[str] = []
     for index, symbol in enumerate(symbols):
+        if should_cancel is not None and should_cancel():
+            break
         try:
             frame = _fetch_minute_frame(
                 db, symbol=symbol, trade_date=target_date

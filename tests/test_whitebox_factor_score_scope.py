@@ -16,6 +16,7 @@ from app.services.factors.runtime import (
 )
 from app.services.factors.score_scope import apply_active_score_scope
 from app.services.trade_plans import get_latest_score
+from tests.factor_model_fixtures import add_training_proof
 
 
 import pytest
@@ -51,6 +52,7 @@ def test_all_decision_queries_follow_runtime_mode_and_model(db_session):
         model_type='ridge',
         asset_type='stock',
         target_code='target_5d_return',
+        sample_count=1000, symbol_count=100, trade_date_count=250,
     )
     other = FactorModelRun(
         id='other-scope-model',
@@ -77,6 +79,7 @@ def test_all_decision_queries_follow_runtime_mode_and_model(db_session):
         ),
     ])
     db_session.flush()
+    add_training_proof(db_session, model)
     manual = _score(
         symbol.id, mode='manual', priority=40, model=None
     )

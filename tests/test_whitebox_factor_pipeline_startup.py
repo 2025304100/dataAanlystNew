@@ -21,12 +21,13 @@ import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
+from types import SimpleNamespace
 
 import pytest
 
 from app.db.session import get_session_local
 from app.models.async_task import AsyncTaskRecord
-from app.models.factor_runtime import FactorSystemConfig
+from app.models.factor_runtime import FactorSystemConfig, FactorRuntimeState
 from app.schemas.async_task import FactorPipelineCreate
 from app.services.factors.bar_mirror import BarMirrorResult
 from app.services.factors.data_sync import FactorInputMirrorResult
@@ -38,8 +39,6 @@ from app.services.factors.pipeline_task import (
     _touch_task_heartbeat,
 )
 from app.services.factors.ridge_model import RidgeTrainingResult
-from app.services.factors.runtime import FactorRuntimeSnapshot
-from app.services.factors.scoring_bridge import ScoringBridgeResult
 from app.services.factors.store import FactorWarehouse
 from app.services.factors.target_engine import TargetCalculationResult
 
@@ -399,7 +398,7 @@ def test_cancelled_pipeline_leaves_warehouse_writable(db_session, tmp_path):
 # ============================================================================
 
 
-def test_pipeline_success_path_produces_traceable_results(db_session, tmp_path):
+def test_pipeline_training_path_waits_for_explicit_activation(db_session, tmp_path):
     """小规模 universe 跑通 计算→训练→快照，产生可追溯的：
     因子日期 / 覆盖率 / 模型版本 / 评分快照。
 
@@ -423,6 +422,11 @@ def test_pipeline_success_path_produces_traceable_results(db_session, tmp_path):
     target_batch = "target-batch-001"
     model_run_id = "ridge-run-001"
     factor_date = date(2026, 7, 15)
+    from app.models.factor_model import FactorModelRun
+    db_session.add(FactorModelRun(id=model_run_id, status="validated", feature_versions_json='{"ep_ttm": 1}'))
+    db_session.add(FactorRuntimeState(id=1, weight_mode="shadow", active_model_run_id=model_run_id,
+                                     updated_by="test", version=1))
+    db_session.commit()
 
     bars_result = BarMirrorResult(
         batch_id="bar-mirror-001",
@@ -458,24 +462,6 @@ def test_pipeline_success_path_produces_traceable_results(db_session, tmp_path):
         coefficients={"ep_ttm": 0.3},
         normalized_weights={"ep_ttm": 1.0},
     )
-    runtime_snapshot = FactorRuntimeSnapshot(
-        weight_mode="shadow",
-        active_model_run_id=model_run_id,
-        updated_by="test",
-        fallback_reason=None,
-        version=1,
-        updated_at=_now_naive(),
-    )
-    scoring_result = ScoringBridgeResult(
-        mode="shadow",
-        trade_date=factor_date,
-        model_run_id=model_run_id,
-        calc_batch_id=factor_batch,
-        manual_score_count=0,
-        materialized_count=4,
-        skipped_symbol_count=0,
-    )
-
     with patch(
         "app.services.factors.pipeline_task.mirror_daily_bars",
         return_value=bars_result,
@@ -492,16 +478,21 @@ def test_pipeline_success_path_produces_traceable_results(db_session, tmp_path):
         "app.services.factors.pipeline_task.train_rolling_ridge",
         return_value=model_result,
     ), patch(
-        "app.services.factors.pipeline_task.get_factor_runtime_snapshot",
-        return_value=runtime_snapshot,
+        "app.services.factors.pipeline_task._complete_calculation_dates",
+        return_value={"accepted_dates": [factor_date], "selected_end_date": factor_date, "skipped_dates": []},
     ), patch(
-        "app.services.factors.pipeline_task._latest_factor_date",
-        return_value=factor_date,
+        "app.services.factors.pipeline_task._qualified_factor_dates",
+        return_value={"accepted_dates": [factor_date], "skipped_dates": []},
     ), patch(
-        "app.services.factors.pipeline_task.materialize_factor_scores",
-        return_value=scoring_result,
-    ):
+        "app.services.factor_model_contract.assess_factor_model_readiness",
+        return_value=SimpleNamespace(ready=True),
+    ), patch(
+        "app.services.factors.pipeline_task.materialize_factor_score_window",
+        return_value={"status": "PUBLISHED", "materialized_count": 4,
+                      "daily_batches": [{"trade_date": factor_date, "model_run_id": model_run_id}]},
+    ) as score_window:
         _run_factor_pipeline(task.id)
+        score_window.assert_not_called()
 
     db_session.expire_all()
     refreshed = db_session.get(AsyncTaskRecord, task.id)
@@ -521,10 +512,13 @@ def test_pipeline_success_path_produces_traceable_results(db_session, tmp_path):
     # 可追溯：模型版本
     assert results["model"]["model_run_id"] == model_run_id
     assert results["model"]["status"] == "validated"
-    # 可追溯：评分快照（因子日期 + 模型版本 + 物化数量）
-    assert results["scoring_bridge"]["trade_date"] == factor_date.isoformat()
+    # 训练后必须由用户激活候选，不能给此前活动的模型发布评分。
+    assert results["scoring_bridge"]["status"] == "SKIPPED"
+    assert results["scoring_bridge"]["reason"] == "TRAINED_MODEL_REQUIRES_EXPLICIT_ACTIVATION"
     assert results["scoring_bridge"]["model_run_id"] == model_run_id
-    assert results["scoring_bridge"]["materialized_count"] == 4
+    assert results["scoring_bridge"]["materialized_count"] == 0
+    assert results["completion_status"] == "AWAITING_MODEL_ACTIVATION"
+    assert results["trained_model_auto_activated"] is False
     # 可追溯：生效日期范围
     assert "effective_range" in results
     assert results["effective_range"]["end_date"] is not None
@@ -576,6 +570,9 @@ def test_pipeline_success_path_daily_mode_without_training(db_session, tmp_path)
     ), patch(
         "app.services.factors.pipeline_task.calculate_targets",
         return_value=targets_result,
+    ), patch(
+        "app.services.factors.pipeline_task._complete_calculation_dates",
+        return_value={"accepted_dates": [date(2026, 7, 15)], "selected_end_date": date(2026, 7, 15), "skipped_dates": []},
     ):
         _run_factor_pipeline(task.id)
 

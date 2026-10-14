@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Divider, Input, InputNumber, Modal, Select, Space, Switch, Tag } from "antd";
+import { Alert, Button, DatePicker, Divider, Input, InputNumber, Modal, Select, Space, Switch, Tag } from "antd";
 import { LinkOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
 
 import { api } from "../api/client";
 import { useApp } from "../context/AppContext";
@@ -211,7 +212,13 @@ export default function ThemeManagementModal({ open, onClose }: ThemeManagementM
         <Space wrap>
           <Input value={catalystTitle} onChange={(event) => setCatalystTitle(event.target.value)} placeholder="或手工填写催化标题" style={{ width: 280 }} />
           <InputNumber value={catalystScore} onChange={(value) => setCatalystScore(Number(value ?? 70))} min={60} max={100} addonAfter="催化评分" />
-          <Input type="date" value={expiresOn} onChange={(event) => setExpiresOn(event.target.value)} style={{ width: 150 }} />
+          <DatePicker
+            value={expiresOn ? dayjs(expiresOn) : null}
+            onChange={(d) => setExpiresOn(d ? d.format("YYYY-MM-DD") : "")}
+            format="YYYY-MM-DD"
+            placeholder="到期日期"
+            style={{ width: 150 }}
+          />
           <Button type="primary" icon={<ThunderboltOutlined />} loading={saving} onClick={addCatalyst}>添加催化</Button>
         </Space>
       </Space>

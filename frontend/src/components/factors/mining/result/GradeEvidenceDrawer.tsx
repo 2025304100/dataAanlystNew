@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Button, Input, Select } from "antd";
 import { t } from "../../../../i18n";
 import MiningChart, {
   MINING_CHART_COLORS,
@@ -200,29 +201,29 @@ export default function GradeEvidenceDrawer({
 
       {adjusting && (
         <div className="mining-evidence-adjust">
-          <select
+          <Select
             data-evidence-adjust-grade
             value={targetGrade}
-            onChange={(e) => setTargetGrade(e.target.value as Grade)}
-          >
-            {GRADES.map((g) => (
-              <option key={g} value={g}>{g}</option>
-            ))}
-          </select>
-          <textarea
+            style={{ width: 110 }}
+            onChange={(v) => setTargetGrade(v as Grade)}
+            options={GRADES.map((g) => ({ value: g, label: g }))}
+          />
+          <Input.TextArea
             data-evidence-adjust-reason
             value={reason}
+            rows={2}
             placeholder={t("miningEvidAdjustReasonHint")}
             onChange={(e) => setReason(e.target.value)}
           />
-          <button
-            type="button"
+          <Button
+            type="primary"
+            size="small"
             data-evidence-adjust-submit
             disabled={!canSubmit}
             onClick={() => onAdjustGrade?.(targetGrade, reason.trim())}
           >
             {t("miningEvidAdjustSubmit")}
-          </button>
+          </Button>
         </div>
       )}
 

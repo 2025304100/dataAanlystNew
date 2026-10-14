@@ -48,9 +48,13 @@ class ScoreModelBriefDTO:
     factorset_member_count: int | None
     created_at: str | None
     backtest_support: bool = False  # P2-3-C: True when the model run carries enough data/metrics to drive backtests directly.
+    production_eligible: bool = False
+    readiness_code: str = "MODEL_TRAINING_SOURCE_UNVERIFIED"
+    readiness_message: str = ""
+    training_mode: str = "unknown"
     # P2-3 DTO schema version: first introduced=2; bump 2->3 when added backtest_support field.
     # New contract fields MUST bump this int and sync frontend ScoringModelBrief schema_version drift thresholds.
-    schema_version: int = 3
+    schema_version: int = 4
 
 
 @dataclass(frozen=True)
@@ -390,7 +394,9 @@ def list_score_models(
     """
     from sqlalchemy import select, desc
     from app.models.factor_model import FactorModelRun
-    from app.services.factor_model_contract import model_factor_set_id
+    from app.services.factor_model_contract import (
+        assess_factor_model_readiness, model_factor_set_id, model_training_mode,
+    )
     from app.models.factor_evaluation import FactorSet
 
     status: str | None = None
@@ -428,6 +434,9 @@ def list_score_models(
             label, n = _lookup_label_and_count(fsid)
             _vic = metrics.get("validation_ic")
             _dco = run.data_cutoff_at
+            readiness = assess_factor_model_readiness(db, model_run_id=run.id)
+            if scope in {"production", "shadow"} and not readiness.ready:
+                continue
             items.append(ScoreModelBriefDTO(
                 id=run.id,
                 name=_model_display_name(run, fsid),
@@ -439,7 +448,11 @@ def list_score_models(
                 factorset_label=label,
                 factorset_member_count=n,
                 created_at=(run.created_at.isoformat() if run.created_at else None),
-                backtest_support=bool(_vic is not None and _vic != 0 and _dco and (run.sample_count or 0) >= 100),
+                backtest_support=readiness.ready,
+                production_eligible=readiness.ready,
+                readiness_code=readiness.code,
+                readiness_message=readiness.message,
+                training_mode=model_training_mode(run),
             ))
         return items
     finally:
@@ -451,6 +464,20 @@ def list_score_models(
 
 
 # ── 2. Active scoring scope ──────────────────────────────────────────
+
+def apply_portfolio_score_binding(db: Any, portfolio_id: int, payload: Any, *, actor: str = "local_user", commit: bool = True) -> Any:
+    """Join an owning portfolio transaction without releasing factor-domain internals."""
+    from app.services.factor_usage_service import save_and_apply_usage
+    return save_and_apply_usage(db, portfolio_id, payload, actor, commit=commit)
+
+
+def assess_score_model_readiness(db: Any, model_run_id: str, factor_set_id: str | None = None, *, require_runtime_active: bool = False) -> dict[str, Any]:
+    from app.services.factor_model_contract import assess_factor_model_readiness
+    return assess_factor_model_readiness(
+        db, model_run_id=model_run_id, expected_factor_set_id=factor_set_id,
+        require_runtime_active=require_runtime_active,
+    ).to_dict()
+
 
 def get_active_score_scope(*, db: Any | None = None) -> ScoreScopeDTO:
     """Replacement for factors.score_scope.get_active_score_scope().
@@ -632,7 +659,9 @@ def create_scoring_task(
     from app.services.factors.pipeline_task import create_factor_pipeline_task
     from app.schemas.async_task import FactorPipelineCreate
 
-    resolved_mirror_only = (not bool(materialize_scores)) if mirror_only is None else bool(mirror_only)
+    resolved_mirror_only = not (bool(train_model) or bool(materialize_scores)) if mirror_only is None else bool(mirror_only)
+    if resolved_mirror_only and train_model:
+        raise ValueError("训练任务不能使用仅镜像模式，请关闭 mirror_only。")
     # Task 9 (3) 统一写入：确保 hyperparameters 和 factor_scope 两处 dict 中
     # 的 factor_set_id 与顶层字段严格一致（若前门只传了顶层，这里强制补齐后两处）
     hp = dict(hyperparameters) if isinstance(hyperparameters, dict) else {}
@@ -656,8 +685,8 @@ def create_scoring_task(
         mirror_only=resolved_mirror_only,
         materialize_scores=bool(materialize_scores),
         batch_size=max(1, int(batch_size or 50000)),
-        window_days=(None if window_days is None else int(window_days)),
-        validation_days=(None if validation_days is None else int(validation_days)),
+        window_days=(FactorPipelineCreate.model_fields["window_days"].default if window_days is None else int(window_days)),
+        validation_days=(FactorPipelineCreate.model_fields["validation_days"].default if validation_days is None else int(validation_days)),
         factor_set_id=(str(factor_set_id).strip() if factor_set_id and str(factor_set_id).strip() else None),
         actor=actor,
         source_hint=source_hint,
@@ -2571,6 +2600,8 @@ def run_training_eligibility_gates(
     ic_min: float = 0.01,
     ic_max: float = 0.10,
     lookback_days: int = 30,
+    batch_evidence: dict[str, dict[str, Any]] | None = None,
+    db_supplied: Any = None,
 ) -> list[GovernanceGateResultDTO]:
     """聚合执行所有已注册的准入门禁（默认 2 道）。
 
@@ -2587,7 +2618,7 @@ def run_training_eligibility_gates(
     elif factorset_id:
         from sqlalchemy import select
         from app.models.factor_evaluation import FactorSetMember
-        db, owned = _open_session()
+        db, owned = _open_session(db_supplied)
         try:
             rows = db.execute(
                 select(FactorSetMember).where(
@@ -2606,7 +2637,7 @@ def run_training_eligibility_gates(
         from sqlalchemy import select
         from app.models.factor_weight_snapshot import FactorWeightSnapshot
         from app.models.factor_governance import FactorModelMember
-        db, owned = _open_session()
+        db, owned = _open_session(db_supplied)
         try:
             # 优先用治理物化表 FactorModelMember；回退到 FactorWeightSnapshot
             rows = db.execute(
@@ -2637,6 +2668,33 @@ def run_training_eligibility_gates(
                 except Exception:
                     pass
 
+    if batch_evidence is not None:
+        import math
+        coverage_failures, ic_failures = [], []
+        coverages, ics = [], []
+        if not codes:
+            coverage_failures.append("no_feature_factors")
+            ic_failures.append("no_feature_factors")
+        for code in codes:
+            row = batch_evidence.get(code, {})
+            cov = _as_float(row.get("coverage"))
+            ic = _as_float(row.get("ic_mean"))
+            if cov is None or not math.isfinite(cov) or not 0 <= cov <= 1 or cov < coverage_threshold or int(row.get("n_rows") or 0) <= 0:
+                coverage_failures.append(f"{code}:coverage={cov}")
+            else:
+                coverages.append(cov)
+            if ic is None or not math.isfinite(ic) or not ic_min <= abs(ic) <= ic_max:
+                ic_failures.append(f"{code}:ic={ic}")
+            else:
+                ics.append(abs(ic))
+        return [
+            GovernanceGateResultDTO("coverage", not coverage_failures,
+                                    min(coverages) if coverages else None, coverage_threshold, 1.0,
+                                    coverage_failures, {"source": "current_version_batch", "factors": batch_evidence}),
+            GovernanceGateResultDTO("ic", not ic_failures,
+                                    min(ics) if ics else None, ic_min, ic_max,
+                                    ic_failures, {"source": "current_version_batch", "factors": batch_evidence}),
+        ]
     return [
         gate_factor_coverage(
             codes, threshold=coverage_threshold, lookback_days=lookback_days,
@@ -2807,7 +2865,7 @@ def init_scoring_warehouse(
     返回初始化后的 ScoreRuntimeOverviewDTO（调用方据此判断是否真正变更）。
     """
     from app.services.factors.config import get_current_factor_system_config
-    from app.services.factors.warehouse import FactorWarehouse  # type: ignore[attr-defined]
+    from app.services.factors.store import FactorWarehouse
     if not force:
         overview = get_score_runtime_overview()
         if getattr(overview, "warehouse_available", False):
@@ -3112,100 +3170,18 @@ def clone_scoring_factor_set(
     return d
 
 
-def train_scoring_model(
-    factorset_id: str,
-    *,
-    mode: str = "offline_minimal",
-    actor: str = "local_user",
-    **kwargs: Any,
-) -> dict[str, Any]:
-    """P1.2 薄封训练评分模型。
-
-    - 先跑 run_training_eligibility_gates（3 道：coverage≥0.70 / IC∈[0.01,0.10] / lookback≥30 天）
-    - 再调用 FastAPI TestClient 复用原生 POST /factor-models/train 逻辑（保持一致性）
-    - 失败：抛 ValueError（7 要素 structured error 字典），调用方转 400
-    """
-    # Task 4 item (2): 统一 run_training_eligibility_gates
-    gates = run_training_eligibility_gates(
-        factorset_id=factorset_id,
-        coverage_threshold=0.70,
-        ic_min=0.01,
-        ic_max=0.10,
-        lookback_days=30,
+def train_scoring_model(factorset_id: str, *, mode: str = "warehouse", actor: str = "local_user", **kwargs: Any) -> dict[str, Any]:
+    """Submit the same real training pipeline used by the native model page."""
+    if mode != "warehouse":
+        raise ValueError("DEMO_TRAINING_DISABLED: 请使用真实仓库训练。")
+    return create_scoring_task(
+        train_model=True, materialize_scores=False, mirror_only=False,
+        factor_set_id=factorset_id, window_days=int(kwargs.get("window_days") or 250),
+        validation_days=int(kwargs.get("validation_days") or 50), actor=actor,
+        source_hint="factor_model_page",
+        hyperparameters={"factor_set_id": factorset_id, "note": kwargs.get("note"), "mode": "warehouse", "train_mode": "warehouse"},
+        factor_scope={"factor_set_id": factorset_id},
     )
-    blocked = [g for g in gates if getattr(g, "passed", True) is False]
-    if blocked:
-        from app.schemas.errors import FactorSevenError
-        failed = blocked[0]
-        gate_name = str(getattr(failed, "gate_name", "unknown"))
-        score = getattr(failed, "score", None)
-        tmin = getattr(failed, "threshold_min", None)
-        tmax = getattr(failed, "threshold_max", None)
-        extras = {
-            "gate_name": gate_name,
-            "score": score,
-            "threshold_min": tmin,
-            "threshold_max": tmax,
-            "gates_failed": [
-                {
-                    "gate_name": getattr(g, "gate_name", "?"),
-                    "score": getattr(g, "score", None),
-                    "threshold_min": getattr(g, "threshold_min", None),
-                    "threshold_max": getattr(g, "threshold_max", None),
-                }
-                for g in blocked
-            ],
-        }
-        gn = gate_name.lower()
-        if "coverage" in gn:
-            code = "TRAIN_GATE_COVERAGE_LOW"
-        elif "lookback" in gn or "days" in gn:
-            code = "TRAIN_GATE_LOOKBACK_SHORT"
-        else:
-            code = "TRAIN_GATE_IC_OUT_OF_RANGE"
-        err = FactorSevenError(
-            code,
-            detail_zh=(
-                f"训练门禁 gate={gate_name} 失败：score={score!r} "
-                f"阈值区间=[{tmin}, {tmax}]"
-            ),
-            extras=extras,
-        )
-        # 抛 ValueError 并附上 7 要素内容（HTTP 层用 factor_structured_error 风格）
-        seven = err.to_dict()
-        raise ValueError(str(seven)) from err
-
-    # 通过门禁 → 调用原生 POST /factor-models/train 路由（走 TestClient）
-    from fastapi.testclient import TestClient
-    safe_actor = (actor or "local_user") if str(actor or "").lower() != "anonymous" else "local_user"
-    try:
-        from app.main import app as _app
-    except Exception:
-        raise RuntimeError("无法导入 app.main.app，训练薄封当前环境不支持")
-
-    body = {
-        "factor_set_id": str(factorset_id),
-        "mode": str(mode or "offline_minimal"),
-        "actor": safe_actor,
-        "note": str(kwargs.get("note") or ""),
-        "window_days": int(kwargs.get("window_days") or 250),
-        "validation_days": int(kwargs.get("validation_days") or 50),
-        "train_end_offset_days": int(kwargs.get("train_end_offset_days") or 5),
-    }
-    with TestClient(_app) as client:
-        resp = client.post(
-            "/factor-models/train",
-            json=body,
-            headers={"X-Actor": safe_actor},
-        )
-    if resp.status_code >= 400:
-        payload = resp.json() if resp.content else {}
-        detail = payload.get("detail") if isinstance(payload, dict) else str(payload)
-        raise ValueError(str(detail) or f"train_failed status={resp.status_code}")
-    data = resp.json()
-    if not isinstance(data, dict):
-        data = {"raw": data}
-    return data
 
 
 def list_scoring_factor_definitions(
@@ -3273,7 +3249,9 @@ def get_scoring_factor_definition(factor_code: str) -> dict[str, Any]:
                 "description": getattr(v, "description", None),
                 "created_at": getattr(v, "created_at", None),
                 "created_by": getattr(v, "created_by", None),
-                "status": getattr(v, "status", None),
+                "status": getattr(v, "validation_status", None),
+                "validation_status": getattr(v, "validation_status", None),
+                "trainable": getattr(v, "validation_status", None) in {"valid", "testing", "shadow", "active"},
             }
             for v in versions_rows
         ]

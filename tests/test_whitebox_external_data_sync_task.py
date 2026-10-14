@@ -192,6 +192,7 @@ def test_cancel_and_retry_resume_from_frozen_external_plan(db_session, monkeypat
             "mode": "backfill",
             "start_date": "2026-06-01",
             "end_date": "2026-06-30",
+            "include_northbound": False,
         },
     )
     cancelled = service.cancel_external_data_sync(original.id)

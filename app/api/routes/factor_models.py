@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -33,6 +34,7 @@ from app.services.factors.runtime import (
     get_factor_runtime_snapshot,
     retire_factor_model,
 )
+from app.services.factors.__facade__ import assess_score_model_readiness
 
 
 router = APIRouter()
@@ -132,7 +134,7 @@ class FactorModelTrainRequest(BaseModel):
     - train_end_offset_days：offline_minimal 模式下用于推导训练/验证起止日期（避免默认 2024 年的静态数据）
     """
     factor_set_id: str = Field(min_length=1, max_length=64)
-    mode: str = Field(default="offline_minimal", pattern="^(offline_minimal|warehouse)$")
+    mode: str = Field(default="warehouse", pattern="^(offline_minimal|warehouse)$")
     # WP0-8 C-08：前端 UI 习惯大写（STOCK/ETF/US_STOCK/HK_STOCK），后端模式 regex 用 stock/etf
     # 因此统一大小写兼容（保存时一律小写到 DB）
     asset_type: str = Field(default="stock")
@@ -165,8 +167,9 @@ def _json(value: str | None) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _model_view(model: FactorModelRun, *, include_audit: list | None = None) -> dict:
+def _model_view(model: FactorModelRun, *, db: Session | None = None, include_audit: list | None = None) -> dict:
     hyperparameters = _json(model.hyperparameters_json)
+    from app.services.factor_model_contract import assess_factor_model_readiness, model_training_mode
     result = {
         'id': model.id,
         'model_type': model.model_type,
@@ -179,6 +182,7 @@ def _model_view(model: FactorModelRun, *, include_audit: list | None = None) -> 
         'data_cutoff_at': model.data_cutoff_at,
         'feature_versions': _json(model.feature_versions_json),
         'hyperparameters': hyperparameters,
+        'training_mode': model_training_mode(model),
         'display_alias': hyperparameters.get('display_alias'),
         'metrics': _json(model.metrics_json),
         'sample_count': model.sample_count,
@@ -205,6 +209,10 @@ def _model_view(model: FactorModelRun, *, include_audit: list | None = None) -> 
     }
     if include_audit is not None:
         result['audit'] = include_audit
+    if db is not None:
+        readiness = assess_factor_model_readiness(db, model_run_id=model.id)
+        result.update(production_eligible=readiness.ready, readiness_code=readiness.code,
+                      readiness_message=readiness.message)
     return result
 
 
@@ -234,317 +242,37 @@ def train_factor_model(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """WP0-7：FactorSet → FactorModelRun 训练入口（HTTP 级 API）。
-
-    Task 4: 训练前统一调用 run_training_eligibility_gates（覆盖率≥0.70 / IC∈[0.01, 0.10] / lookback≥30 天），
-    任一 gate 不通过 → raise FactorSevenError 400 结构化。所有写步骤写 factor_audit_logs（含 before/after JSON）。
-    """
+    """Submit real warehouse training; no synchronous synthetic model creation."""
     actor = _actor_from_context(request, payload.actor)
-
-    # Task 4 item (2): 先调用 assert_factor_set_ready（训练要求 frozen + 通过 3 个硬门禁）
+    if payload.validation_days >= payload.window_days:
+        raise HTTPException(status_code=422, detail="validation_days must be less than window_days")
     try:
         assert_factor_set_ready(db, payload.factor_set_id, require_frozen=True)
     except FactorSetStatusError as exc:
         raise _factor_status_to_http(exc) from exc
-
-    # 任务要求：统一调用 run_training_eligibility_gates(factorset_id, mode, actor)
-    from app.services.factors.__facade__ import run_training_eligibility_gates
-    gates = run_training_eligibility_gates(
-        factorset_id=payload.factor_set_id,
-        coverage_threshold=0.70,
-        ic_min=0.01,
-        ic_max=0.10,
-        lookback_days=30,
-    )
-    failed = [g for g in gates if getattr(g, "passed", True) is False]
-    if failed:
-        # 把 failed 解析到 7 要素 code：按优先级 COVERAGE_LOW / IC_OUT_OF_RANGE / LOOKBACK_SHORT
-        gate_name = str(getattr(failed[0], "gate_name", "unknown"))
-        score = getattr(failed[0], "score", None)
-        tmin = getattr(failed[0], "threshold_min", None)
-        tmax = getattr(failed[0], "threshold_max", None)
-        extras = {
-            "gate_name": gate_name,
-            "score": score,
-            "threshold_min": tmin,
-            "threshold_max": tmax,
-            "gates_failed": [
-                {
-                    "gate_name": getattr(g, "gate_name", "?"),
-                    "score": getattr(g, "score", None),
-                    "threshold_min": getattr(g, "threshold_min", None),
-                    "threshold_max": getattr(g, "threshold_max", None),
-                }
-                for g in failed
-            ],
-        }
-        gn = gate_name.lower()
-        if "coverage" in gn:
-            code = "TRAIN_GATE_COVERAGE_LOW"
-        elif "lookback" in gn or "days" in gn:
-            code = "TRAIN_GATE_LOOKBACK_SHORT"
-        else:
-            code = "TRAIN_GATE_IC_OUT_OF_RANGE"
-        raise _factor_seven_to_http(factor_structured_error(
-            code,
-            detail_zh=(
-                f"训练门禁 gate={gate_name} 失败：score={score!r} "
-                f"阈值区间=[{tmin}, {tmax}]"
-            ),
-            extras=extras,
-        ))
-
-    members = db.execute(
-        select(FactorSetMember)
-        .where(FactorSetMember.factor_set_id == payload.factor_set_id)
-        .order_by(FactorSetMember.display_order.asc(), FactorSetMember.factor_code.asc())
-    ).scalars().all()
-    feature_members = [member for member in members if (member.role or "feature") == "feature"]
-
-    # before: 集合当前状态（训练前模型不存在 → 非空 placeholder）
-    before_snapshot = {
-        "factor_set_id": payload.factor_set_id,
-        "mode": payload.mode,
-        "actor": actor,
-        "window_days": payload.window_days,
-        "validation_days": payload.validation_days,
-        "stage": "before_train",
-    }
-
-    if payload.mode == "warehouse":
-        # TODO: 真实训练分支 —— 调用 service.train_rolling_ridge + warehouse
-        import os as _os
-        if _os.getenv("ENABLE_FACTOR_MODEL_WAREHOUSE_TRAIN", "0").strip() not in {"1", "true", "True"}:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "error_code": "CAPABILITY_BLOCKED",
-                    "user_message": "warehouse 模式训练尚未就绪（离线数据仓库未启用）",
-                    "next_actions": [
-                        {"label": "改用离线最小模式", "action_type": "retry",
-                         "reason": "设置 mode=offline_minimal 即可走最小闭环训练"},
-                        {"label": "启用 warehouse 模式", "action_type": "configure",
-                         "reason": "由运维设置环境变量 ENABLE_FACTOR_MODEL_WAREHOUSE_TRAIN=1，"
-                                   "并确认 factor_calc_batch_id / target_calc_batch_id 就绪"},
-                    ],
-                },
-            )
-        # 占位：真实分支未来接入 train_rolling_ridge(db, warehouse, factor_set_id=...)
-        raise HTTPException(status_code=501, detail="warehouse 训练实现接入中")
-
-    # ── offline_minimal：基于 FactorSet 成员构造最小可激活模型（E2E 专用） ──
-    today = datetime.now(timezone.utc).date()
-    train_end = today - timedelta(days=payload.train_end_offset_days)
-    train_start = train_end - timedelta(days=payload.window_days)
-    validation_end = train_end
-    validation_start = train_end - timedelta(days=payload.validation_days)
-    data_cutoff_at = datetime.combine(train_end, datetime.min.time(), tzinfo=timezone.utc).replace(tzinfo=None)
-
-    feature_versions: dict[str, dict] = {}
-    for m in feature_members:
-        feature_versions[m.factor_code] = {
-            "factor_id": m.factor_id,
-            "factor_version_id": m.factor_version_id,
-            "factor_version": m.factor_version,
-            "role": m.role,
-            "missing_policy": getattr(m, "missing_policy", None) or "exclude",
-            "weight_constraint": getattr(m, "weight_constraint", None),
-        }
-    feature_versions["__factor_set_id__"] = payload.factor_set_id
-    content_payload = json.dumps(feature_versions, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    version_hash = hashlib.sha1(content_payload).hexdigest()[:12]
-    feature_versions["__content_hash__"] = version_hash
-
-    model_run_id = f"rid-{payload.factor_set_id}-{train_end.isoformat()}-{version_hash}"
-    model_run_id = model_run_id.replace("_", "-")[:64]
-
-    n_feat = len(feature_members)
-    coef = 1.0 / max(1, n_feat)
-
-    hyperparams = {
-        "alpha": 1.0,
-        "window_days": payload.window_days,
-        "validation_days": payload.validation_days,
-        "factor_set_id": payload.factor_set_id,
-        "mode": "offline_minimal",
-        "actor": actor,
-        "note": payload.note,
-    }
-    metrics = {
-        "train_ic": 0.04,
-        "train_rank_ic": 0.05,
-        "validation_ic": 0.03,
-        "validation_rank_ic": 0.04,
-        "train_sharpe": 0.72,
-        "validation_sharpe": 0.61,
-        "mode": "offline_minimal",
-        "factor_set_id": payload.factor_set_id,
-        "sample_count": payload.window_days * max(1, n_feat),
-        "symbol_count": 0,
-        "trade_date_count": payload.window_days,
-        "rejection_reasons": [],
-    }
-
-    run = FactorModelRun(
-        id=model_run_id,
-        model_type="ridge",
-        asset_type=payload.asset_type,
-        target_code=payload.target_code,
-        train_start_date=train_start,
-        train_end_date=train_end,
-        validation_start_date=validation_start,
-        validation_end_date=validation_end,
-        data_cutoff_at=data_cutoff_at,
-        feature_versions_json=json.dumps(feature_versions, ensure_ascii=True),
-        hyperparameters_json=json.dumps(hyperparams, ensure_ascii=True),
-        # TD3：NaN/±Inf → null + allow_nan=False fail-fast 双保险（口径统一）
-        metrics_json=json.dumps(clean_json_tree(metrics), ensure_ascii=True, allow_nan=False),
-        sample_count=int(metrics["sample_count"]),
-        symbol_count=int(metrics["symbol_count"]),
-        trade_date_count=int(metrics["trade_date_count"]),
-        status="validated",
-        rejection_reason=None,
-        artifact_path=None,
-        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        activated_at=None,
-    )
-    db.add(run)
-
-    # ── PT-DEF-23：权重行在此统一计算，下方训练快照与成员表都从这一份派生 ──
-    # 之前 per-factor 的 FactorModelMember 从未写入，导致
-    # runtime.activate_factor_model 会因此 fail-closed 拦下激活（“validated model has no
-    # factor coefficients”），且模型响应的 weights 恒为空。
-    _sorted_members = sorted(
-        feature_members,
-        key=lambda it: (it.display_order or 0, it.factor_code),
-    )
-    _weights_raw: dict[str, float] = {}
-    _weights_norm: list[dict] = []
-    for _idx, _m in enumerate(_sorted_members):
-        _raw = round(coef + (0.05 if _idx == 0 else 0.0), 6)
-        _weights_raw[str(_m.factor_code)] = _raw
-        _weights_norm.append({
-            "factor_code": str(_m.factor_code),
-            "factor_id": int(_m.factor_id),
-            "factor_version_id": int(_m.factor_version_id),
-            "factor_version": int(_m.factor_version),
-            "coef_raw": _raw,
-            "weight_norm": _raw,
-            "training_ic": round(0.04 + 0.001 * _idx, 4),
-            "validation_ic": round(0.03 + 0.0008 * _idx, 4),
-            "role": str(_m.role or "feature"),
+    if payload.mode != "warehouse":
+        raise HTTPException(status_code=400, detail={
+            "error_code": "DEMO_TRAINING_DISABLED",
+            "user_message": "演示训练已停用，请使用真实仓库训练。",
         })
-
-    # ── Task 11 (FR-12): 写入 per-model 聚合不可变训练快照 ──
-    # 幂等：同一 model_id 二次训练不抛异常；COUNT 不变（见 TR-11.3）。
-    _snap_exists = db.execute(
-        select(FactorWeightSnapshot).where(
-            FactorWeightSnapshot.model_id == model_run_id
+    from app.services.factors.__facade__ import create_scoring_task
+    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=payload.train_end_offset_days)).isoformat()
+    try:
+        task = create_scoring_task(
+            train_model=True, materialize_scores=False, mirror_only=False,
+            factor_set_id=payload.factor_set_id, window_days=payload.window_days,
+            validation_days=payload.validation_days, data_cutoff_date=cutoff,
+            actor=actor, source_hint="factor_model_page",
+            hyperparameters={"factor_set_id": payload.factor_set_id, "asset_type": payload.asset_type,
+                             "target_code": payload.target_code, "note": payload.note,
+                             "mode": "warehouse", "train_mode": "warehouse"},
+            factor_scope={"factor_set_id": payload.factor_set_id},
         )
-    ).scalar_one_or_none()
-    if _snap_exists is None:
-        # 6 JSON + weights 数组（权重行已在上方统一算好）
-        _factor_ids: list[int] = [int(m.factor_id) for m in _sorted_members]
-        _factor_version_ids: list[int] = [
-            int(m.factor_version_id) for m in _sorted_members
-        ]
-        _roles: list[str] = [str(m.role or "feature") for m in _sorted_members]
-        _constraints: list[str | None] = [
-            getattr(m, "weight_constraint", None) for m in _sorted_members
-        ]
-        _missing: list[str] = [
-            str(getattr(m, "missing_policy", "exclude") or "exclude")
-            for m in _sorted_members
-        ]
-        db.add(FactorWeightSnapshot(
-            model_id=str(model_run_id),
-            factor_set_id=str(payload.factor_set_id),
-            factor_set_content_hash=(version_hash or None),
-            factor_ids_json=json.dumps(_factor_ids, ensure_ascii=False),
-            factor_version_ids_json=json.dumps(
-                _factor_version_ids, ensure_ascii=False
-            ),
-            roles_json=json.dumps(_roles, ensure_ascii=False),
-            constraints_json=json.dumps(_constraints, ensure_ascii=False),
-            missing_strategies_json=json.dumps(_missing, ensure_ascii=False),
-            train_start_date=train_start,
-            train_end_date=train_end,
-            valid_start_date=validation_start,
-            valid_end_date=validation_end,
-            data_cutoff_date=train_end,
-            weights_raw_json=json.dumps(_weights_raw, ensure_ascii=False),
-            weights_norm_json=json.dumps(_weights_norm, ensure_ascii=False),
-            train_mode=str(payload.mode or "offline_minimal"),
-            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        ))
-
-    # ── PT-DEF-23：per-factor 成员表 ──
-    # activate 会 fail-closed 校验模型自带系数，模型详情的 weights 也按这张表渲染。
-    # normalized_weight 按列口径归一（Σ|w|=1），而不是直接用 coef_raw。
-    # 幂等：同 (model_run_id, factor_code) 已存在则跳过，不撞 unique 约束。
-    _existing_member_codes = set(db.execute(
-        select(FactorModelMember.factor_code).where(
-            FactorModelMember.model_run_id == model_run_id
-        )
-    ).scalars().all())
-    _abs_sum = sum(abs(v) for v in _weights_raw.values()) or 1.0
-    for _row in _weights_norm:
-        _code = str(_row["factor_code"])
-        if _code in _existing_member_codes:
-            continue
-        _coef_raw = float(_row["coef_raw"])
-        db.add(FactorModelMember(
-            model_run_id=str(model_run_id),
-            factor_code=_code,
-            factor_version=int(_row["factor_version"]),
-            coefficient=_coef_raw,
-            normalized_weight=round(abs(_coef_raw) / _abs_sum, 6),
-            train_ic=float(_row["training_ic"]),
-            validation_ic=float(_row["validation_ic"]),
-            coverage=None,
-            side="long" if _coef_raw > 0 else ("short" if _coef_raw < 0 else "neutral"),
-        ))
-        _existing_member_codes.add(_code)
-
-    # 历史审计（FactorModelAuditLog）保留
-    db.add(FactorModelAuditLog(
-        action="train_created",
-        model_run_id=model_run_id,
-        previous_mode="",
-        new_mode="validated",
-        previous_model_run_id="",
-        new_model_run_id=model_run_id,
-        actor=actor,
-        note=(payload.note or "") + f" | factor_set_id={payload.factor_set_id} | mode=offline_minimal",
-        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
-    ))
-
-    # Task 4: FactorAuditLog（写操作 AC-18 要求）
-    after_snapshot = {
-        "model_run_id": model_run_id,
-        "status": "validated",
-        "factor_set_id": payload.factor_set_id,
-        "metrics": {
-            "train_ic": metrics.get("train_ic"),
-            "validation_ic": metrics.get("validation_ic"),
-            "sample_count": metrics.get("sample_count"),
-            "trade_date_count": metrics.get("trade_date_count"),
-        },
-        "actor": actor,
-    }
-    write_factor_audit(
-        db,
-        action="train",
-        actor=actor,
-        before=before_snapshot,
-        after=after_snapshot,
-        factor_set_id=payload.factor_set_id,
-        model_run_id=model_run_id,
-        attributes={"train_mode": payload.mode, "note": payload.note},
-    )
-    db.commit()
-    db.refresh(run)
-    return _model_view(run)
+    except FactorSevenError as exc:
+        raise _factor_seven_to_http(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(status_code=202, content=jsonable_encoder(task))
 
 
 # ── 结构化错误转换：FactorSetStatusError / FactorSevenError → HTTP 400 + 7 要素 body ──
@@ -751,11 +479,18 @@ def build_migration_report(db: Session) -> dict:
         })
 
     total = len(already_linked) + len(match_candidates) + len(unlinked_unknown)
+    readiness_results = [assess_score_model_readiness(db, model.id) for model in models]
     return {
         "total": total,
         "already_linked": already_linked,
         "match_candidates": match_candidates,
         "unlinked_unknown": unlinked_unknown,
+        "release_readiness": [
+            {**readiness,
+             "recovery_action": "KEEP" if readiness["ready"] else "RETRAIN",
+             "historical_weights_reconstructed": False}
+            for readiness in readiness_results
+        ],
     }
 
 
@@ -873,7 +608,7 @@ def get_latest_factor_model(db: Session = Depends(get_db)):
     ).scalars().first()
     if model is None:
         raise HTTPException(status_code=404, detail='Factor model not found')
-    return _model_view(model)
+    return _model_view(model, db=db)
 
 
 @router.get('/factor-models')
@@ -891,7 +626,7 @@ def list_factor_models(
     runtime = get_factor_runtime_snapshot(db)
     return {
         'runtime': runtime.to_dict(),
-        'items': [_model_view(item) for item in rows],
+        'items': [_model_view(item, db=db) for item in rows],
     }
 
 
@@ -913,7 +648,7 @@ def get_factor_model(
         .order_by(desc(FactorModelAuditLog.created_at))
         .limit(50)
     ).scalars().all()
-    return _model_view(model, include_audit=[_audit_view(item) for item in audit])
+    return _model_view(model, db=db, include_audit=[_audit_view(item) for item in audit])
 
 
 @router.post('/factor-models/{model_run_id}/activate')

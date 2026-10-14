@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { message } from "antd";
 
@@ -93,7 +93,7 @@ const { mockApi, makeTask, mockOverview } = vi.hoisted(() => {
         end_date: "2026-08-02",
         total_missing: 0,
         truncated: false,
-        gaps: [],
+        gaps: [] as Array<{ symbol_id: number; symbol: string; trade_date: string }>,
       })),
       repairExternalDataGaps: vi.fn(async () => makeTask("fundamental", "running")),
       getExternalDataSyncCapabilities: vi.fn(async () => ({
@@ -102,7 +102,7 @@ const { mockApi, makeTask, mockOverview } = vi.hoisted(() => {
         lhb: { modes: ["incremental", "backfill"], history_limit_days: 31, reason: "history" },
         hot_rank: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
         tail_proxy: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
-        capital_flow: { modes: ["incremental", "backfill"], history_limit_days: 100, reason: "history" },
+        capital_flow: { modes: ["incremental", "backfill"], history_limit_days: 100, reason: "history", northbound: { available: true, reason: "available", api_key: "northbound" } },
         etf: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
       })),
       previewExternalDataSyncPlan: vi.fn(async (payload: any) => ({
@@ -119,7 +119,7 @@ const { mockApi, makeTask, mockOverview } = vi.hoisted(() => {
       cancelExternalDataSyncTask: vi.fn(async () => makeTask("fundamental")),
       retryExternalDataSyncTask: vi.fn(async () => makeTask("fundamental", "running")),
       startExternalDataSync: vi.fn(async (payload: { dataset: typeof datasets[number] }) => makeTask(payload.dataset)),
-      getExternalDataSyncTask: vi.fn(async () => makeTask("fundamental", "running")),
+      getExternalDataSyncTask: vi.fn(async (_taskId: string) => makeTask("fundamental", "running")),
       getExternalDataSyncTaskPartitions: vi.fn(async () => ({
         task_id: "task-fundamental",
         plan: null,
@@ -157,6 +157,7 @@ vi.mock("antd", async () => {
       success: vi.fn(),
       error: vi.fn(),
       warning: vi.fn(),
+      info: vi.fn(),
     },
   };
 });
@@ -164,9 +165,25 @@ vi.mock("antd", async () => {
 vi.mock("../../api/client", () => ({ api: mockApi }));
 
 import ExternalDataSync from "../ExternalDataSync";
+import { AppContext } from "../../context/AppContext";
+
+async function chooseSelect(index: number, text: string) {
+  fireEvent.mouseDown(document.querySelectorAll(".ant-select-selector")[index]);
+  const option = await waitFor(() => {
+    const found = Array.from(document.querySelectorAll(".ant-select-item-option"))
+      .find((item) => item.textContent?.includes(text));
+    expect(found).toBeDefined();
+    return found!;
+  });
+  fireEvent.click(option);
+}
 
 describe("ExternalDataSync dashboard", () => {
   beforeEach(() => {
+    vi.mocked(message.error).mockClear();
+    vi.mocked(message.success).mockClear();
+    vi.mocked(message.warning).mockClear();
+    vi.mocked(message.info).mockClear();
     mockApi.getExternalDataOverview.mockReset();
     mockApi.getExternalDataOverview.mockResolvedValue(mockOverview);
     mockApi.getExternalDataSyncCapabilities.mockReset();
@@ -176,7 +193,7 @@ describe("ExternalDataSync dashboard", () => {
       lhb: { modes: ["incremental", "backfill"], history_limit_days: 31, reason: "history" },
       hot_rank: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
       tail_proxy: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
-      capital_flow: { modes: ["incremental", "backfill"], history_limit_days: 100, reason: "history" },
+      capital_flow: { modes: ["incremental", "backfill"], history_limit_days: 100, reason: "history", northbound: { available: true, reason: "available", api_key: "northbound" } },
       etf: { modes: ["incremental"], history_limit_days: 0, reason: "snapshot" },
     });
     mockApi.getExternalDataCoverage.mockReset();
@@ -242,6 +259,16 @@ describe("ExternalDataSync dashboard", () => {
     mockApi.retryExternalDataSyncTask.mockReset();
     mockApi.retryExternalDataSyncTask.mockResolvedValue(makeTask("fundamental", "running"));
     mockApi.scoringCreateTask.mockClear();
+    mockApi.scoringCreateTask.mockResolvedValue({ id: "score-audit", status: "done", stage: "done", percent: 100 });
+    mockApi.scoringGetTask.mockReset();
+    mockApi.scoringGetTask.mockResolvedValue({ id: "score-audit", status: "done", stage: "done", percent: 100 });
+    mockApi.getExternalDataGaps.mockReset();
+    mockApi.getExternalDataGaps.mockImplementation(async (dataset: any) => ({
+      dataset, start_date: "2026-07-01", end_date: "2026-08-02", total_missing: 0,
+      truncated: false, gaps: [],
+    }));
+    mockApi.importTailProxyMinutes.mockReset();
+    mockApi.importTailProxyMinutes.mockResolvedValue({ written_sessions: 1, rejected_sessions: 0 });
     mockApi.getFactorPipelineTask.mockClear();
   });
 
@@ -260,6 +287,9 @@ describe("ExternalDataSync dashboard", () => {
     expect(screen.getAllByText("extSyncCapitalFlow").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("extSyncEtf").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole("button", { name: "检查并修复缺口" })).toHaveLength(3);
+    const coverageHeading = screen.getAllByText("仓库字段覆盖（非同步结果）")[0];
+    await userEvent.setup().hover(coverageHeading);
+    expect(await screen.findByText("估值按真实快照日期统计采集缺口，评分可在 7 天内沿用已有估值快照；财报按公告日期生效。仓库字段覆盖不表示已生成模型评分。")).toBeInTheDocument();
   });
 
   it("renders coverage readiness as a user-facing label instead of an internal enum", async () => {
@@ -375,5 +405,327 @@ describe("ExternalDataSync dashboard", () => {
       materialize_scores: true,
       full_refresh: false,
     })));
+  });
+
+  it.each(["fundamental", "financial", "lhb", "hot_rank", "tail_proxy", "capital_flow", "etf"] as const)(
+    "submits the %s dataset through preview and the real external task API",
+    async (dataset) => {
+      const names = { fundamental: "extSyncFundamental", financial: "extSyncFinancial", lhb: "extSyncLhb", hot_rank: "extSyncHotRank", tail_proxy: "extSyncTailProxy", capital_flow: "extSyncCapitalFlow", etf: "extSyncEtf" };
+      render(<ExternalDataSync />);
+      await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+      fireEvent.click(screen.getByRole("button", { name: new RegExp(names[dataset]) }));
+      await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalled());
+      expect(mockApi.previewExternalDataSyncPlan).toHaveBeenCalledWith(expect.objectContaining({ dataset, mode: "incremental", lookback_days: 1 }));
+      expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(mockApi.previewExternalDataSyncPlan.mock.calls[0][0]);
+    },
+  );
+
+  it("preserves the actual selected watchlist identity in task payloads", async () => {
+    render(<AppContext.Provider value={{ activeWatchlistId: 22, workbench: { watchlists: [{ id: 11, name: "core", list_type: "watch" }, { id: 22, name: "my-list", list_type: "watch" }] } } as any}><ExternalDataSync /></AppContext.Provider>);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    expect(screen.getByText(/my-list中的有效观察项/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /extSyncFundamental/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({ source: "watchlist", watchlist_id: 22 })));
+  });
+
+  it("uses all-market 1990-to-today history for the dedicated valuation history action", async () => {
+    render(<ExternalDataSync />);
+    const button = await screen.findByRole("button", { name: "extFullValuationHistory" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({ dataset: "fundamental", source: "all", mode: "backfill", start_date: "1990-01-01", end_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), max_workers: 4 })));
+  });
+
+  it("disables unsupported snapshot-only datasets in historical mode", async () => {
+    render(<ExternalDataSync />);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    await chooseSelect(1, "真实历史范围");
+    expect(screen.getByRole("button", { name: /extSyncHotRank/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /extSyncTailProxy/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /extSyncEtf/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /extSyncFinancial/ })).toBeEnabled();
+  });
+
+  it("uses known historical coverage for gap scanning rather than the recent-mode 60-day default", async () => {
+    render(<ExternalDataSync />);
+    await screen.findByText("extReadinessBlocked");
+    fireEvent.click(screen.getAllByRole("button", { name: "检查并修复缺口" })[0]);
+    await waitFor(() => expect(mockApi.getExternalDataGaps).toHaveBeenCalledWith("fundamental", "2026-07-01", "2026-08-02"));
+    expect(mockApi.repairExternalDataGaps).not.toHaveBeenCalled();
+  });
+
+  it("dispatches both settings navigation targets from coverage remediation", async () => {
+    const listener = vi.fn();
+    window.addEventListener("settings:navigate", listener);
+    try {
+      render(<ExternalDataSync />);
+      fireEvent.click(await screen.findByRole("button", { name: "extCoverageActionModel" }));
+      fireEvent.click(screen.getByRole("button", { name: "extCoverageActionApi" }));
+      expect(listener.mock.calls.map(([event]) => (event as CustomEvent).detail)).toEqual(["factor-model", "api-management"]);
+    } finally {
+      window.removeEventListener("settings:navigate", listener);
+    }
+  });
+
+  it("imports explicit CSV content and reports rejected trading sessions", async () => {
+    mockApi.importTailProxyMinutes.mockResolvedValue({ written_sessions: 1, rejected_sessions: 2 });
+    render(<ExternalDataSync />);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    const file = new File(["symbol,timestamp,open,high,low,close,volume,amount\n600000,2026-08-02 14:59,1,1,1,1,1,1"], "tail.csv", { type: "text/csv" });
+    Object.defineProperty(file, "text", { value: async () => "csv-audit-content" });
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    await waitFor(() => expect(mockApi.importTailProxyMinutes).toHaveBeenCalledWith({ csv_text: "csv-audit-content", filename: "tail.csv" }));
+    expect(message.warning).toHaveBeenCalledWith("2 个交易日未满足完整尾盘会话校验");
+  });
+
+  it("reports preview errors and prevents starting a task on preview failure", async () => {
+    mockApi.previewExternalDataSyncPlan.mockRejectedValue(new Error("provider unavailable"));
+    render(<ExternalDataSync />);
+    fireEvent.click(await screen.findByRole("button", { name: /extSyncFinancial/ }));
+    await waitFor(() => expect(message.error).toHaveBeenCalledWith(expect.stringContaining("provider unavailable")));
+    expect(mockApi.startExternalDataSync).not.toHaveBeenCalled();
+  });
+
+  it("shows coverage fetch errors and recovers them through an explicit read retry", async () => {
+    mockApi.getExternalDataCoverage.mockRejectedValue(new Error("warehouse busy"));
+    render(<ExternalDataSync />);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText(/warehouse busy/)).toBeInTheDocument();
+    expect(screen.queryAllByText("读取中")).toHaveLength(0);
+    mockApi.getExternalDataCoverage.mockResolvedValue({ generated_at: "2026-08-02T08:00:00", datasets: [] });
+    fireEvent.click(screen.getByRole("button", { name: "重试覆盖读取" }));
+    await waitFor(() => expect(screen.queryByText(/warehouse busy/)).not.toBeInTheDocument());
+  });
+
+  it("keeps legal snapshot synchronization available while blocking unloaded CSV and unverified history", async () => {
+    mockApi.getExternalDataOverview.mockImplementation(() => new Promise(() => {}));
+    mockApi.getExternalDataSyncCapabilities.mockImplementation(() => new Promise(() => {}));
+    render(<ExternalDataSync />);
+    expect(screen.getByRole("button", { name: /extSyncFundamental/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "导入 CSV" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /extSyncFundamental/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalled());
+    await chooseSelect(1, "真实历史范围");
+    expect(screen.getByRole("button", { name: /extSyncEtf/ })).toBeDisabled();
+  });
+
+  it("blocks the backend's unsupported all-market tail synchronization scope", async () => {
+    render(<ExternalDataSync />);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    await chooseSelect(0, "extSourceAllMarket");
+    const button = screen.getByRole("button", { name: /extSyncTailProxy/ });
+    expect(button).toBeDisabled();
+  });
+
+  it("tracks gap repair tasks immediately before overview catches up", async () => {
+    mockApi.getExternalDataGaps.mockResolvedValue({ dataset: "fundamental", start_date: "2026-07-01", end_date: "2026-08-02", total_missing: 1, truncated: false, gaps: [{ symbol_id: 1, symbol: "600000", trade_date: "2026-07-10" }] });
+    mockApi.getExternalDataOverview.mockResolvedValue(mockOverview);
+    render(<ExternalDataSync />);
+    await screen.findByText("extReadinessBlocked");
+    fireEvent.click(screen.getAllByRole("button", { name: "检查并修复缺口" })[0]);
+    await waitFor(() => expect(mockApi.repairExternalDataGaps).toHaveBeenCalled());
+    await waitFor(() => expect(mockApi.getExternalDataOverview).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("button", { name: "取消同步" })).toBeInTheDocument();
+    expect(mockApi.getExternalDataSyncTask).toHaveBeenCalledWith("task-fundamental");
+    expect(screen.getByRole("button", { name: "刷新评分特征" })).toBeDisabled();
+  });
+
+  it("updates completed tasks independently when another task's polling fails", async () => {
+    mockApi.getExternalDataOverview.mockResolvedValue({ ...mockOverview, running_tasks: 2, datasets: mockOverview.datasets.map((row) => ["fundamental", "financial"].includes(row.dataset) ? { ...row, latest_task: makeTask(row.dataset, "running") } : row) } as any);
+    mockApi.getExternalDataSyncTask.mockImplementation(async (id: string) => {
+      if (id === "task-fundamental") throw new Error("one task failed to fetch");
+      return makeTask("financial", "done");
+    });
+    render(<ExternalDataSync />);
+    await waitFor(() => expect(message.error).toHaveBeenCalledWith(expect.stringContaining("one task failed to fetch")));
+    expect(screen.getAllByRole("button", { name: "取消同步" })).toHaveLength(1);
+    expect(message.success).toHaveBeenCalledWith("extTaskCompleted");
+  });
+
+  it("labels a cancelled scoring task as cancelled and stops its poll", async () => {
+    mockApi.scoringCreateTask.mockResolvedValue({ id: "score-cancelled", status: "cancelled", stage: "cancelled", percent: 20 });
+    render(<ExternalDataSync />);
+    fireEvent.click(await screen.findByRole("button", { name: "刷新评分特征" }));
+    expect(await screen.findByText(/评分特征：已取消/)).toBeInTheDocument();
+    expect(mockApi.scoringGetTask).not.toHaveBeenCalled();
+  });
+
+  it("passes an explicit historical date range to external sync and scoring refresh", async () => {
+    const user = userEvent.setup();
+    render(<ExternalDataSync />);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    await chooseSelect(1, "真实历史范围");
+    await user.type(screen.getByPlaceholderText("开始日期"), "2026-07-01");
+    await user.keyboard("{Enter}");
+    await user.type(screen.getByPlaceholderText("结束日期"), "2026-08-02");
+    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("button", { name: /extSyncCapitalFlow/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({ dataset: "capital_flow", mode: "backfill", start_date: "2026-07-01", end_date: "2026-08-02" })));
+    await user.click(screen.getByRole("button", { name: "刷新评分特征" }));
+    await waitFor(() => expect(mockApi.scoringCreateTask).toHaveBeenCalledWith({ start_date: "2026-07-01", end_date: "2026-08-02", full_refresh: true, train_model: false, materialize_scores: true }));
+  });
+
+  it("reports partial synchronization as warning with expandable result errors", async () => {
+    const task = makeTask("fundamental");
+    mockApi.startExternalDataSync.mockResolvedValue({ ...task, failed_count: 1, result: { ...task.result!, failed: 1, errors: ["600000 provider error"] } } as any);
+    render(<ExternalDataSync />);
+    fireEvent.click(await screen.findByRole("button", { name: /extSyncFundamental/ }));
+    await waitFor(() => expect(message.warning).toHaveBeenCalledWith("extTaskCompletedWithErrors"));
+    fireEvent.click(screen.getByText("extErrorsTitle (1)"));
+    expect(await screen.findByText("600000 provider error")).toBeVisible();
+  });
+
+  it("exposes an actionable scoring failure message", async () => {
+    mockApi.scoringCreateTask.mockResolvedValue({ id: "score-failed", status: "failed", stage: "materialize", percent: 70, message: "真实模型权重缺失，请重新训练并激活" });
+    render(<ExternalDataSync />);
+    fireEvent.click(await screen.findByRole("button", { name: "刷新评分特征" }));
+    expect(await screen.findByText(/评分特征：失败 · 生成模型评分/)).toBeInTheDocument();
+    expect(screen.queryByText(/真实模型权重缺失/)).toBeInTheDocument();
+  });
+
+  it("blocks historical actions when capability loading fails and provides an explicit retry", async () => {
+    mockApi.getExternalDataSyncCapabilities.mockRejectedValue(new Error("capabilities unavailable"));
+    render(<ExternalDataSync />);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    await chooseSelect(1, "真实历史范围");
+    expect(screen.getByRole("button", { name: /extSyncEtf/ })).toBeDisabled();
+    expect(screen.getByText("capabilities unavailable")).toBeInTheDocument();
+    mockApi.getExternalDataSyncCapabilities.mockResolvedValue({ financial: { modes: ["incremental", "backfill"], history_limit_days: null, reason: "history" }, capital_flow: { modes: ["incremental"], history_limit_days: 100, reason: "history" } } as any);
+    fireEvent.click(screen.getByRole("button", { name: "重试同步能力" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /extSyncFinancial/ })).toBeEnabled());
+    expect(screen.queryByText("capabilities unavailable")).not.toBeInTheDocument();
+  });
+
+  it("keeps cooperative cancellation pending until the worker reports a cancelled terminal state", async () => {
+    mockApi.startExternalDataSync.mockResolvedValue(makeTask("fundamental", "running"));
+    mockApi.cancelExternalDataSyncTask.mockResolvedValue({ ...makeTask("fundamental", "running"), cancel_requested: true } as any);
+    render(<ExternalDataSync />);
+    fireEvent.click(await screen.findByRole("button", { name: /extSyncFundamental/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "取消同步" }));
+    await waitFor(() => expect(mockApi.cancelExternalDataSyncTask).toHaveBeenCalledWith("task-fundamental"));
+    await act(async () => { await Promise.resolve(); });
+    expect(message.error).not.toHaveBeenCalled();
+    expect(message.info).toHaveBeenCalledWith("已请求取消，等待当前步骤结束");
+    expect(screen.getByRole("button", { name: "正在取消" })).toBeDisabled();
+    mockApi.getExternalDataSyncTask.mockResolvedValue({ ...makeTask("fundamental", "running"), status: "cancelled", stage: "cancelled", message: "Task cancelled by user" } as any);
+    await waitFor(() => expect(message.info).toHaveBeenCalledWith("同步已取消，已完成的数据保留，可从断点继续"), { timeout: 2500 });
+    expect(screen.queryByRole("button", { name: "正在取消" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["AWAITING_MODEL_ACTIVATION", "SKIPPED", 0, "输入计算完成，等待模型激活"],
+    ["PARTIAL_SCORE_PUBLICATION", "PARTIAL", 12, "评分部分生成"],
+    ["PARTIAL_SCORE_PUBLICATION", "PARTIAL", 0, "输入不足，未生成评分"],
+    ["COMPLETED", "DONE", 25, "已生成评分（25 条）"],
+    ["COMPLETED", "DONE", 0, "计算完成，未生成评分"],
+  ] as const)("uses score publication evidence for the %s outcome", async (completion, status, count, label) => {
+    mockApi.scoringCreateTask.mockResolvedValue({ id: "score-outcome", status: "done", stage: "done", percent: 100, result: { completion_status: completion, scoring_bridge: { status, materialized_count: count } } });
+    render(<ExternalDataSync />);
+    fireEvent.click(await screen.findByRole("button", { name: "刷新评分特征" }));
+    expect(await screen.findByText(`评分特征：${label} · 任务结束 · 100%`)).toBeInTheDocument();
+    expect(screen.queryByText("评分特征：已完成")).not.toBeInTheDocument();
+  });
+
+  it("sends the active portfolio identity for position scope", async () => {
+    render(<AppContext.Provider value={{ portfolioId: 44, workbench: { watchlists: [] } } as any}><ExternalDataSync /></AppContext.Provider>);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    await chooseSelect(0, "extSourcePositions");
+    expect(screen.getByText(/当前组合（44）/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /extSyncCapitalFlow/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({ dataset: "capital_flow", source: "positions", portfolio_id: 44 })));
+  });
+
+  it("explains unavailable northbound input without silently treating it as zero", async () => {
+    mockApi.getExternalDataSyncCapabilities.mockResolvedValue({ capital_flow: { modes: ["incremental", "backfill"], history_limit_days: 100, reason: "history", northbound: { available: false, reason: "配置的北向接口不可用", api_key: "northbound" } } } as any);
+    render(<ExternalDataSync />);
+    expect(await screen.findByText(/北向资金不可用：配置的北向接口不可用/)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "extIncludeNorthbound" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "extIncludeNorthbound" })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /extSyncCapitalFlow/ }));
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({ include_northbound: false })));
+  });
+
+  it("starts capital flow without northbound while its capability is still unknown", async () => {
+    mockApi.getExternalDataSyncCapabilities.mockImplementation(() => new Promise(() => {}));
+    render(<ExternalDataSync />);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: "extIncludeNorthbound" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "extIncludeNorthbound" })).not.toBeChecked();
+    expect(screen.getByText("北向资金能力正在确认，仅同步个股资金流")).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: /extSyncCapitalFlow/ });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    await waitFor(() => expect(mockApi.startExternalDataSync).toHaveBeenCalledWith(expect.objectContaining({ dataset: "capital_flow", include_northbound: false })));
+  });
+
+  it.each([
+    ["warehouse", { status: "warning", records: 0, error: "仓库被占用" }, { status: "skipped", reason: "warehouse_mirror_failed" }, "原始分钟输入已保存，因子仓库镜像失败"],
+    ["quality", { status: "done", records: 240, batch_id: "csv-batch" }, { status: "warning", error: "质量快照暂不可用" }, "原始输入与因子仓库已写入，质量诊断刷新失败"],
+  ] as const)("keeps persisted CSV input distinct from a failed %s stage", async (_, mirror, quality, heading) => {
+    mockApi.importTailProxyMinutes.mockResolvedValue({ written_sessions: 1, rejected_sessions: 0, invalid_rows: 0, warehouse_mirror: mirror, quality_snapshot: quality, warnings: ["原始分钟记录已保存，请按失败阶段重试"] });
+    render(<ExternalDataSync />);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    const file = new File(["csv-content"], "tail.csv", { type: "text/csv" });
+    Object.defineProperty(file, "text", { value: async () => "csv-audit-content" });
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    expect(await screen.findByText(heading)).toBeInTheDocument();
+    expect(screen.getByText("原始分钟记录已保存，请按失败阶段重试")).toBeInTheDocument();
+    expect(message.success).not.toHaveBeenCalled();
+    expect(message.warning).toHaveBeenCalled();
+  });
+
+  it("does not report a successful CSV import when no valid session was saved", async () => {
+    mockApi.importTailProxyMinutes.mockResolvedValue({ written_sessions: 0, rejected_sessions: 1, invalid_rows: 2, warehouse_mirror: { status: "not_needed", records: 0 }, quality_snapshot: { status: "not_needed" } });
+    render(<ExternalDataSync />);
+    await waitFor(() => expect(screen.getByText("280")).toBeInTheDocument());
+    const file = new File(["bad-csv"], "tail.csv", { type: "text/csv" });
+    Object.defineProperty(file, "text", { value: async () => "bad-csv" });
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    expect(await screen.findByText("尾盘分钟输入：0 个有效交易日，拒绝 1 个交易日")).toBeInTheDocument();
+    expect(message.success).not.toHaveBeenCalled();
+    expect(message.warning).toHaveBeenCalledWith("尾盘分钟未写入有效交易日，请检查 CSV 的交易时间和会话完整性");
+    expect(screen.getByText("无效行：2；未写入")).toBeInTheDocument();
+  });
+
+  it("keeps valid ETF premium inventory while identifying only missing or policy-blocked fields", async () => {
+    const emptyField = { availability: "blocked", evaluation_enabled: false, first_date: null, latest_date: null, table_rows: 236, nonnull_rows: 0, distinct_symbols: 0, distinct_dates: 0, continuity_days: 0, daily_coverage_p50: 0, daily_coverage_p90: 0, latest_daily_coverage: 0, reason: "源表为空或字段没有非空记录。" };
+    mockApi.getExternalDataCoverage.mockResolvedValue({ generated_at: "2026-10-14T10:00:00", datasets: [
+      { dataset: "etf", readiness: "blocked", reason: "field_data_unavailable", fields: [
+        { ...emptyField, field: "etf_premium_discount", availability: "snapshot", nonnull_rows: 228, first_date: "2026-10-01", latest_date: "2026-10-13", continuity_days: 8, distinct_symbols: 228, distinct_dates: 8, latest_daily_coverage: 0.966, reason: "ETF 当日指标快照，仅用于 ETF 快照评价。" },
+        { ...emptyField, field: "etf_tracking_error" },
+        { ...emptyField, field: "etf_fund_size" },
+      ] },
+      { dataset: "tail_proxy", readiness: "blocked", reason: "field_data_unavailable", fields: [
+        { ...emptyField, field: "proxy_score", table_rows: 40, nonnull_rows: 30, reason: "尾盘分钟代理当前维持 blocked，未接入可评价的分钟历史。" },
+      ] },
+    ] } as any);
+    render(<ExternalDataSync />);
+    const etfRow = await screen.findByRole("row", { name: /extSyncEtfDesc/ });
+    await waitFor(() => expect(etfRow).toHaveTextContent("非空 96.6%"));
+    expect(etfRow).toHaveTextContent("etf_tracking_error：源表为空或字段没有非空记录。");
+    expect(etfRow).toHaveTextContent("etf_fund_size：源表为空或字段没有非空记录。");
+    expect(etfRow).not.toHaveTextContent("extCoverageReasonFieldDataUnavailableDetail");
+    const notices = screen.getAllByRole("alert");
+    const coverageNotice = notices.find((item) => item.textContent?.includes("extCoverageActionTitle"))!;
+    expect(coverageNotice).toHaveTextContent("etf_tracking_error：源表为空或字段没有非空记录。");
+    expect(coverageNotice).toHaveTextContent("etf_fund_size：源表为空或字段没有非空记录。");
+    expect(within(coverageNotice).queryByText(/extCoverageReasonUnknown/)).not.toBeInTheDocument();
+    const tailRow = screen.getByRole("row", { name: /extSyncTailProxyDesc/ });
+    expect(tailRow).toHaveTextContent("非空 75.0%");
+    expect(tailRow).toHaveTextContent("proxy_score：尾盘分钟代理当前维持 blocked，未接入可评价的分钟历史。");
+    expect(coverageNotice).toHaveTextContent("proxy_score：尾盘分钟代理当前维持 blocked，未接入可评价的分钟历史。");
+  });
+
+  it("shows a legacy completed task with every attempt failed as failed without inventing its unknown total", async () => {
+    const legacy = { ...makeTask("lhb"), total: 0, processed: 1, ok_count: 0, failed_count: 1, message: "机构接口不可用", result: { dataset: "lhb", total: 0, success: 0, skipped: 0, failed: 1, records: 0, errors: ["机构接口不可用"] } };
+    mockApi.getExternalDataOverview.mockResolvedValue({ ...mockOverview, datasets: mockOverview.datasets.map((item) => item.dataset === "lhb" ? { ...item, latest_task: legacy } : item) } as any);
+    render(<ExternalDataSync />);
+    const row = await screen.findByRole("row", { name: /extSyncLhbDesc/ });
+    expect(await within(row).findByText("extStatusFailed")).toBeInTheDocument();
+    expect(row).toHaveTextContent("已处理 1 · 总数未知");
+    expect(row).not.toHaveTextContent("1/0");
+    expect(within(row).queryByText("extStatusPartial")).not.toBeInTheDocument();
+    expect(row).toHaveTextContent("机构接口不可用");
   });
 });

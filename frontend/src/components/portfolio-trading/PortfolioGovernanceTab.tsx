@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowRightLeft, CheckCircle2, Compass, HelpCircle, History, ListChecks, Lock, PlayCircle, RefreshCw, ShieldCheck, X } from "lucide-react";
-import { Button, Modal, Tooltip } from "antd";
+import { Button, Checkbox, DatePicker, Input, Modal, Select, Tag, Tooltip } from "antd";
 import dayjs from "dayjs";
 import { useApp } from "../../context/AppContext";
 import { api } from "../../api/client";
@@ -84,17 +84,18 @@ const G5_ATTR_CATEGORIES: G5AttributionCategory[] = [
 ];
 
 /** 9 状态色板 (文字色 + 背景 + 边框) */
+/* 深色工作台下的状态色板：半透明底 + 同色系亮前景（与暗色 ConfigProvider 对齐） */
 const STATUS_STYLES: Record<PortfolioStatus, { bg: string; border: string; fg: string; dot: string }> = {
-  PENDING_INITIAL_REVIEW: { bg: "#fef3c7", border: "#f59e0b", fg: "#7c2d12", dot: "#f59e0b" },
-  READY:                    { bg: "#ecfdf5", border: "#10b981", fg: "#065f46", dot: "#10b981" },
-  RUNNING_AUTO_SIMULATION:  { bg: "#eff6ff", border: "#3b82f6", fg: "#1e3a8a", dot: "#3b82f6" },
-  RUNNING_BACKTEST:         { bg: "#eef2ff", border: "#6366f1", fg: "#3730a3", dot: "#6366f1" },
-  DATA_INCOMPLETE_PAUSED:   { bg: "#fef9c3", border: "#eab308", fg: "#713f12", dot: "#eab308" },
-  RECONCILIATION_BLOCKED:   { bg: "#fee2e2", border: "#ef4444", fg: "#7f1d1d", dot: "#ef4444" },
-  MODEL_INACTIVE:           { bg: "#f3f4f6", border: "#6b7280", fg: "#1f2937", dot: "#6b7280" },
-  SCORE_STALE:              { bg: "#fff7ed", border: "#f97316", fg: "#7c2d12", dot: "#f97316" },
-  INTERRUPTED:              { bg: "#fae8ff", border: "#d946ef", fg: "#701a75", dot: "#d946ef" },
-  ADMIN_PAUSED:             { bg: "#fef2f2", border: "#dc2626", fg: "#7f1d1d", dot: "#dc2626" },
+  PENDING_INITIAL_REVIEW: { bg: "rgba(245,158,11,0.15)", border: "rgba(245,158,11,0.45)", fg: "#fcd34d", dot: "#f59e0b" },
+  READY:                    { bg: "rgba(16,185,129,0.15)", border: "rgba(16,185,129,0.45)", fg: "#86efac", dot: "#10b981" },
+  RUNNING_AUTO_SIMULATION:  { bg: "rgba(59,130,246,0.16)", border: "rgba(59,130,246,0.45)", fg: "#93c5fd", dot: "#3b82f6" },
+  RUNNING_BACKTEST:         { bg: "rgba(99,102,241,0.18)", border: "rgba(99,102,241,0.45)", fg: "#a5b4fc", dot: "#6366f1" },
+  DATA_INCOMPLETE_PAUSED:   { bg: "rgba(234,179,8,0.16)", border: "rgba(234,179,8,0.45)", fg: "#fde047", dot: "#eab308" },
+  RECONCILIATION_BLOCKED:   { bg: "rgba(239,68,68,0.16)", border: "rgba(239,68,68,0.5)", fg: "#fca5a5", dot: "#ef4444" },
+  MODEL_INACTIVE:           { bg: "rgba(107,114,128,0.22)", border: "rgba(107,114,128,0.5)", fg: "#cbd5e1", dot: "#6b7280" },
+  SCORE_STALE:              { bg: "rgba(249,115,22,0.16)", border: "rgba(249,115,22,0.45)", fg: "#fdba74", dot: "#f97316" },
+  INTERRUPTED:              { bg: "rgba(217,78,239,0.17)", border: "rgba(217,78,239,0.45)", fg: "#f0abfc", dot: "#d946ef" },
+  ADMIN_PAUSED:             { bg: "rgba(220,38,38,0.18)", border: "rgba(220,38,38,0.55)", fg: "#fca5a5", dot: "#dc2626" },
 };
 
 /** 9×4 允许矩阵静态 (与后端 allowance 矩阵 + 文档 FR-P0-10 严格对齐) */
@@ -380,9 +381,9 @@ const StatePanel: React.FC<{
           style={{
             padding: "12px 16px",
             borderRadius: 10,
-            background: "linear-gradient(90deg, #fee2e2, #fff1f2)",
-            border: "1px solid #ef4444",
-            color: "#7f1d1d",
+            background: "linear-gradient(90deg, rgba(220,38,38,0.22), rgba(239,68,68,0.08))",
+            border: "1px solid rgba(248,113,113,0.5)",
+            color: "#fca5a5",
             fontWeight: 600,
             display: "flex",
             alignItems: "flex-start",
@@ -468,9 +469,9 @@ const StatePanel: React.FC<{
               }
               placement="top"
             >
-              <button type="button" className="pt-btn-ghost" onClick={fetchStatus} disabled={loading} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <RefreshCw size={14} /> {loading ? "…" : t("common.refresh")}
-              </button>
+              <Button icon={<RefreshCw size={14} />} onClick={fetchStatus} loading={loading}>
+                {t("common.refresh")}
+              </Button>
             </Tooltip>
             <Tooltip
               title={
@@ -484,28 +485,14 @@ const StatePanel: React.FC<{
               }
               placement="top"
             >
-              <button
-                type="button"
-                className="pt-btn-primary"
+              <Button
+                type="primary"
+                icon={<ArrowRightLeft size={15} />}
                 onClick={handleOpenTransition}
                 disabled={allowedTargets.length === 0 || !current}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  // ↓↓↓ 内联硬 override：就算 pt-btn-primary 被暗色主题覆盖，也强制显示主按钮层级（蓝底白字+阴影）
-                  background: allowedTargets.length === 0 || !current ? undefined : "linear-gradient(180deg,#3b82f6,#2563eb)",
-                  color: "#fff",
-                  border: "1px solid #1d4ed8",
-                  padding: "7px 14px",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  borderRadius: 8,
-                  boxShadow: allowedTargets.length === 0 || !current ? undefined : "0 2px 6px rgba(37,99,235,0.35)",
-                }}
               >
-                <ArrowRightLeft size={15} /> {t("governance.transition.applyBtn")}
-              </button>
+                {t("governance.transition.applyBtn")}
+              </Button>
             </Tooltip>
           </div>
         </div>
@@ -568,9 +555,9 @@ const StatePanel: React.FC<{
                   <div>• <b>向右看 4 列</b>：=「当前状态下，这 4 种业务动作是否允许」</div>
                   <div style={{ marginTop: 4, paddingTop: 4, borderTop: "1px dashed #334155" }}>
                     <b>图例：</b><br />
-                    <span style={{ color: "#059669", fontWeight: 600 }}>✓ 允许</span> —— 该列业务动作正常放行<br />
-                    <span style={{ color: "#b91c1c" }}>✗ {t("governance.matrix.allowFalse")}</span> —— 交易门禁直接阻断（自动接管 / 手动下单都会被拒）<br />
-                    <span style={{ padding: "1px 6px", borderRadius: 999, border: "1px solid #f59e0b", background: "#fffbeb", color: "#78350f", fontSize: 11 }}>{t("governance.matrix.needsAck")}</span> —— {t("governance.matrix.manualAckHint")}
+                    <span style={{ color: "#34d399", fontWeight: 600 }}>✓ 允许</span> —— 该列业务动作正常放行<br />
+                    <span style={{ color: "#f87171" }}>✗ {t("governance.matrix.allowFalse")}</span> —— 交易门禁直接阻断（自动接管 / 手动下单都会被拒）<br />
+                    <span style={{ padding: "1px 6px", borderRadius: 999, border: "1px solid #f59e0b", background: "rgba(245,158,11,0.16)", color: "#fcd34d", fontSize: 11 }}>{t("governance.matrix.needsAck")}</span> —— {t("governance.matrix.manualAckHint")}
                   </div>
                 </div>
               }
@@ -579,9 +566,9 @@ const StatePanel: React.FC<{
             </Tooltip>
           </h4>
           <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "var(--pt-muted-foreground)" }}>
-            <span style={{ color: "#059669" }}>✓ 允许</span>
-            <span style={{ color: "#b91c1c" }}>✗ 禁止</span>
-            <span style={{ padding: "1px 6px", borderRadius: 999, border: "1px solid #f59e0b", background: "#fffbeb", color: "#78350f" }}>{t("governance.matrix.needsAck")}</span>
+            <span style={{ color: "#34d399" }}>✓ 允许</span>
+            <span style={{ color: "#f87171" }}>✗ 禁止</span>
+            <span style={{ padding: "1px 6px", borderRadius: 999, border: "1px solid #f59e0b", background: "rgba(245,158,11,0.16)", color: "#fcd34d" }}>{t("governance.matrix.needsAck")}</span>
             <Button size="small" type="text" onClick={() => setShowFullMatrix((v) => !v)}>
               {showFullMatrix ? t("governance.matrix.collapse") : t("governance.matrix.expand")}
             </Button>
@@ -614,7 +601,7 @@ const StatePanel: React.FC<{
                       title={
                         <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 260 }}>
                           是否允许发起<b>新的买入</b>（自动接管 Dry Run / 真实执行 / 手动下单都会走这个门禁）。<br />
-                          <span style={{ color: "#b91c1c" }}>✗ 禁止时：任何买入会被 HG1 直接拒绝</span>，即使你点了也不会下到模拟账户里。
+                          <span style={{ color: "#f87171" }}>✗ 禁止时：任何买入会被 HG1 直接拒绝</span>，即使你点了也不会下到模拟账户里。
                         </div>
                       }
                     >
@@ -629,7 +616,7 @@ const StatePanel: React.FC<{
                       title={
                         <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 280 }}>
                           是否允许<b>风险退出类动作</b>（止损、止盈、强制减仓、已持有的仓位卖出）。<br />
-                          <span style={{ color: "#059669" }}>即使「新买单」被禁止，大部分暂停状态仍允许风险退出</span>——防止暂停后持仓无法止损。
+                          <span style={{ color: "#34d399" }}>即使「新买单」被禁止，大部分暂停状态仍允许风险退出</span>——防止暂停后持仓无法止损。
                         </div>
                       }
                     >
@@ -747,7 +734,7 @@ const thStyle = (align: "left" | "center" = "center"): React.CSSProperties => ({
 
 const tdStyle = (align: "left" | "center" = "center"): React.CSSProperties => ({
   padding: "8px 12px",
-  borderBottom: "1px solid var(--pt-border-subtle)",
+  borderBottom: "1px solid var(--pt-border)",
   textAlign: align,
   verticalAlign: "middle",
 });
@@ -762,9 +749,9 @@ const allowBadge = (allow: boolean | null, flavor: "allow" | "ack" = "allow") =>
         style={{
           padding: "3px 10px",
           borderRadius: 999,
-          border: "1px solid #f59e0b",
-          background: "linear-gradient(180deg,#fffbeb,#fef3c7)",
-          color: "#78350f",
+          border: "1px solid rgba(245,158,11,0.5)",
+          background: "rgba(245,158,11,0.14)",
+          color: "#fcd34d",
           fontSize: 11.5,
           fontWeight: 700,
           display: "inline-flex",
@@ -777,9 +764,9 @@ const allowBadge = (allow: boolean | null, flavor: "allow" | "ack" = "allow") =>
     );
   }
   return allow ? (
-    <span style={{ color: "#059669", fontSize: 12, fontWeight: 600 }}>✓ {t("governance.matrix.allowTrue")}</span>
+    <span style={{ color: "#34d399", fontSize: 12, fontWeight: 600 }}>✓ {t("governance.matrix.allowTrue")}</span>
   ) : (
-    <span style={{ color: "#b91c1c", fontSize: 12, fontWeight: 500, opacity: 0.9 }}>✗ {t("governance.matrix.allowFalse")}</span>
+    <span style={{ color: "#f87171", fontSize: 12, fontWeight: 500, opacity: 0.9 }}>✗ {t("governance.matrix.allowFalse")}</span>
   );
 };
 
@@ -803,132 +790,84 @@ const TransitionDialog: React.FC<{
   onConfirm: () => void;
   submitting: boolean;
 }> = (p) => {
-  if (!p.open) return null;
   return (
-    <>
-      <div
-        aria-hidden
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 1000,
-          background: "rgba(0,0,0,0.55)",
-          backdropFilter: "blur(3px)",
-          WebkitBackdropFilter: "blur(3px)",
-        }}
-        onClick={p.onCancel}
-      />
-      <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 1001,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 16,
-          pointerEvents: "none",
-        }}
-      >
-        <div
-          className="pt-cpm-panel"
-          style={{
-            pointerEvents: "auto",
-            width: 520,
-            maxWidth: "100%",
-            maxHeight: "calc(100vh - 64px)",
-            overflow: "auto",
-            padding: 20,
-            borderRadius: 14,
-            background: "var(--pt-surface-1)",
-            color: "var(--pt-foreground)",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <h3 style={{ margin: 0, fontSize: 16 }}>{t("governance.transitionTitle")}</h3>
-            <button type="button" className="pt-btn-icon" onClick={p.onCancel} aria-label="close">
-              <X size={16} />
-            </button>
-          </div>
+    <Modal
+      open={p.open}
+      title={t("governance.transitionTitle")}
+      onCancel={p.onCancel}
+      width={520}
+      destroyOnClose
+      maskClosable={!p.submitting}
+      footer={
+        <>
+          <Button onClick={p.onCancel} disabled={p.submitting}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            type="primary"
+            onClick={p.onConfirm}
+            loading={p.submitting}
+            disabled={!p.targetState || p.noteTooShort}
+          >
+            {t("governance.transition.applyBtn")}
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: "var(--pt-muted-foreground)", minWidth: 88 }}>
+            {t("governance.transition.current")}
+          </span>
+          {p.currentState && <StatusBadge status={p.currentState} size="sm" showDesc={false} />}
+        </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 13, color: "var(--pt-muted-foreground)", minWidth: 88 }}>
-                {t("governance.transition.current")}
-              </span>
-              {p.currentState && <StatusBadge status={p.currentState} size="sm" showDesc={false} />}
-            </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <label style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>
+            {t("governance.transition.target")}{" "}
+            {p.targetState && p.currentState && p.targetState === p.currentState && (
+              <span style={{ color: "#fbbf24", marginLeft: 6, fontSize: 12 }}>{t("governance.transition.noop")}</span>
+            )}
+          </label>
+          <Select
+            style={{ width: "100%" }}
+            placeholder="—"
+            value={p.targetState ?? undefined}
+            disabled={p.allowedTargets.length === 0}
+            onChange={(v) => p.onTargetChange((v as PortfolioStatus) || null)}
+            options={p.allowedTargets.map((ts) => ({
+              value: ts,
+              label: t(`portfolioStatus.${ts}` as const),
+            }))}
+          />
+        </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>
-                {t("governance.transition.target")}{" "}
-                {p.targetState && p.currentState && p.targetState === p.currentState && (
-                  <span style={{ color: "#d97706", marginLeft: 6, fontSize: 12 }}>{t("governance.transition.noop")}</span>
-                )}
-              </label>
-              <select
-                className="pt-select"
-                value={p.targetState ?? ""}
-                disabled={p.allowedTargets.length === 0}
-                onChange={(e) => p.onTargetChange((e.target.value as PortfolioStatus) || null)}
-                style={{ padding: "8px 10px" }}
-              >
-                <option value="">—</option>
-                {p.allowedTargets.map((ts) => (
-                  <option key={ts} value={ts}>
-                    {ts} — {t(`portfolioStatus.${ts}` as const)}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <label style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>
+            {t("governance.transition.triggerReason")}
+          </label>
+          <Input
+            value={p.reason}
+            onChange={(e) => p.onReasonChange(e.target.value)}
+            placeholder="e.g. 一键刹车 / 解除对账阻断 / 心跳恢复"
+          />
+        </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>
-                {t("governance.transition.triggerReason")}
-              </label>
-              <input
-                className="pt-input"
-                value={p.reason}
-                onChange={(e) => p.onReasonChange(e.target.value)}
-                placeholder="e.g. 一键刹车 / 解除对账阻断 / 心跳恢复"
-                style={{ padding: "8px 10px" }}
-              />
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>
-                {t("governance.transition.reviewNote")}
-                {p.noteRequired && <span style={{ color: "#dc2626", marginLeft: 6 }}>*</span>}
-                {p.noteTooShort && <span style={{ color: "#dc2626", marginLeft: 6, fontSize: 12 }}>{t("governance.transition.noteMin10")}</span>}
-              </label>
-              <textarea
-                className="pt-input"
-                rows={4}
-                value={p.reviewNote}
-                onChange={(e) => p.onReviewNoteChange(e.target.value)}
-                placeholder="至少 10 字符；说明变更原因、受影响范围、责任人。"
-                style={{ padding: "8px 10px", resize: "vertical" }}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
-            <button type="button" className="pt-btn-ghost" onClick={p.onCancel} disabled={p.submitting}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="pt-btn-primary"
-              onClick={p.onConfirm}
-              disabled={p.submitting || !p.targetState || p.noteTooShort}
-            >
-              {p.submitting ? "…" : t("governance.transition.applyBtn")}
-            </button>
-          </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <label style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>
+            {t("governance.transition.reviewNote")}
+            {p.noteRequired && <span style={{ color: "#f87171", marginLeft: 6 }}>*</span>}
+            {p.noteTooShort && <span style={{ color: "#f87171", marginLeft: 6, fontSize: 12 }}>{t("governance.transition.noteMin10")}</span>}
+          </label>
+          <Input.TextArea
+            rows={4}
+            value={p.reviewNote}
+            onChange={(e) => p.onReviewNoteChange(e.target.value)}
+            placeholder="至少 10 字符；说明变更原因、受影响范围、责任人。"
+          />
         </div>
       </div>
-    </>
+    </Modal>
   );
 };
 
@@ -942,10 +881,10 @@ const RECON_VERDICT_STYLE: Record<
   ReconVerdict,
   { bg: string; border: string; fg: string; icon: typeof CheckCircle2; hasNext: boolean }
 > = {
-  passed:      { bg: "#ecfdf5", border: "#10b981", fg: "#065f46", icon: CheckCircle2, hasNext: false },
-  no_decision: { bg: "#eff6ff", border: "#3b82f6", fg: "#1e3a8a", icon: Compass,      hasNext: true },
-  unavailable: { bg: "#f3f4f6", border: "#9ca3af", fg: "#1f2937", icon: HelpCircle,   hasNext: true },
-  broken:      { bg: "#fef2f2", border: "#dc2626", fg: "#7f1d1d", icon: AlertTriangle, hasNext: true },
+  passed:      { bg: "rgba(16,185,129,0.13)", border: "rgba(16,185,129,0.45)", fg: "#86efac", icon: CheckCircle2, hasNext: false },
+  no_decision: { bg: "rgba(59,130,246,0.14)", border: "rgba(59,130,246,0.45)", fg: "#93c5fd", icon: Compass,      hasNext: true },
+  unavailable: { bg: "rgba(107,114,128,0.18)", border: "rgba(148,163,184,0.4)", fg: "#cbd5e1", icon: HelpCircle,   hasNext: true },
+  broken:      { bg: "rgba(220,38,38,0.15)", border: "rgba(248,113,113,0.5)", fg: "#fca5a5", icon: AlertTriangle, hasNext: true },
 };
 
 const ReconciliationPanel: React.FC<{
@@ -1123,9 +1062,9 @@ const ReconciliationPanel: React.FC<{
               <b>{resp?.last_reconciled_trade_date ?? "—"}</b>
             </span>
           </div>
-          <button type="button" className="pt-btn-primary" onClick={runReconcile} disabled={loading}>
-            <RefreshCw size={14} /> {loading ? "…" : t("governance.reconcile.btn")}
-          </button>
+          <Button type="primary" icon={<RefreshCw size={14} />} onClick={runReconcile} loading={loading}>
+            {t("governance.reconcile.btn")}
+          </Button>
         </div>
 
         {/* 10 列差异表 */}
@@ -1189,9 +1128,9 @@ const ReconciliationPanel: React.FC<{
                         borderRadius: 999,
                         fontSize: 10,
                         fontWeight: 700,
-                        color: "#1e3a8a",
+                        color: "#93c5fd",
                         background: "rgba(59,130,246,0.18)",
-                        border: "1px solid rgba(59,130,246,0.45)",
+                        border: "1px solid rgba(96,165,250,0.45)",
                       }}
                     >
                       元检查
@@ -1246,7 +1185,7 @@ const ReconciliationPanel: React.FC<{
                       {isMetaRow ? (
                         metaNA("元检查维度不涉及数量变化")
                       ) : qtyApplicable ? (
-                        <span style={{ fontWeight: 600, color: deltaQty > 0 ? "#15803d" : deltaQty < 0 ? "#b91c1c" : "inherit" }}>
+                        <span style={{ fontWeight: 600, color: deltaQty > 0 ? "#34d399" : deltaQty < 0 ? "#f87171" : "inherit" }}>
                           {deltaQty > 0 ? "+" : ""}
                           {fmtNum(deltaQty, 0)}
                         </span>
@@ -1270,7 +1209,7 @@ const ReconciliationPanel: React.FC<{
                       {isMetaRow ? (
                         metaNA("元检查维度不做数值比较（见右侧说明列判断严重程度）")
                       ) : Number.isFinite(diff) ? (
-                        <span style={{ color: diff > 0 ? "#15803d" : diff < 0 ? "#b91c1c" : undefined, fontWeight: 600 }}>
+                        <span style={{ color: diff > 0 ? "#34d399" : diff < 0 ? "#f87171" : undefined, fontWeight: 600 }}>
                           {diff > 0 ? "+" : ""}{fmtNum(diff)}
                         </span>
                       ) : (
@@ -1299,28 +1238,15 @@ const ReconciliationPanel: React.FC<{
             平铺并列 —— 否则用户一进来就被推到一排勾选框前，不知道要不要动。 */}
         {verdict !== "passed" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button
-              type="button"
+            <Button
+              size="small"
+              icon={<Lock size={13} />}
               onClick={() => setShowManual((v) => !v)}
               aria-expanded={showManual}
               data-testid="recon-manual-toggle"
-              style={{
-                alignSelf: "flex-start",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "5px 12px",
-                borderRadius: 8,
-                border: "1px solid var(--pt-border)",
-                background: "transparent",
-                color: "inherit",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
             >
-              <Lock size={13} />
               {showManual ? t("governance.reconcile.hideManual") : t("governance.reconcile.showManual")}
-            </button>
+            </Button>
 
             {!showManual && (
               <div style={{ fontSize: 12, color: "var(--pt-muted-foreground)", lineHeight: 1.7 }}>
@@ -1331,13 +1257,13 @@ const ReconciliationPanel: React.FC<{
             {showManual && (
               <div
                 style={{
-                  padding: 14,
+                  padding: 16,
                   borderRadius: 10,
                   border: "1px solid var(--pt-border)",
-                  background: "var(--pt-surface-0)",
+                  background: "var(--pt-surface-1)",
                   display: "flex",
                   flexDirection: "column",
-                  gap: 10,
+                  gap: 12,
                 }}
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1347,59 +1273,52 @@ const ReconciliationPanel: React.FC<{
                   </div>
                 </div>
 
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                  <input type="checkbox" checked={ackChecked} onChange={(e) => setAckChecked(e.target.checked)} />
+                <Checkbox checked={ackChecked} onChange={(e) => setAckChecked(e.target.checked)}>
                   {t("governance.reconcile.ackRequired")}
-                </label>
+                </Checkbox>
 
-                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "#7f1d1d" }}>
-                  <input
-                    type="checkbox"
-                    checked={forceSkipChecked}
-                    onChange={(e) => {
-                      setForceSkipChecked(e.target.checked);
-                      if (e.target.checked && rerunFirst) setRerunFirst(true);
-                    }}
-                    style={{ marginTop: 3 }}
-                  />
+                <Checkbox
+                  checked={forceSkipChecked}
+                  onChange={(e) => {
+                    setForceSkipChecked(e.target.checked);
+                    if (e.target.checked && rerunFirst) setRerunFirst(true);
+                  }}
+                >
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontWeight: 600 }}>{t("governance.reconcile.forceSkip")}</span>
-                    <span style={{ fontSize: 12, background: "#fef2f2", padding: "4px 8px", borderRadius: 6 }}>
+                    <span style={{ fontWeight: 600, color: "#fca5a5" }}>{t("governance.reconcile.forceSkip")}</span>
+                    <span style={{ fontSize: 12, background: "rgba(239,68,68,0.10)", border: "1px solid rgba(248,113,113,0.3)", color: "#fca5a5", padding: "4px 8px", borderRadius: 6 }}>
                       {t("governance.reconcile.forceSkipWarn")}
                     </span>
                   </div>
-                </label>
+                </Checkbox>
 
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                  <input type="checkbox" checked={rerunFirst} onChange={(e) => setRerunFirst(e.target.checked)} />
+                <Checkbox checked={rerunFirst} onChange={(e) => setRerunFirst(e.target.checked)}>
                   {t("governance.reconcile.rerunFirst")}
-                </label>
+                </Checkbox>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   <label style={{ fontSize: 13, color: "var(--pt-muted-foreground)" }}>
-                    {t("governance.transition.reviewNote")} <span style={{ color: "#dc2626" }}>*</span>
-                    {noteShort && <span style={{ color: "#dc2626", marginLeft: 6, fontSize: 12 }}>{t("governance.reconcile.reviewNoteMin10")}</span>}
+                    {t("governance.transition.reviewNote")} <span style={{ color: "#f87171" }}>*</span>
+                    {noteShort && <span style={{ color: "#f87171", marginLeft: 6, fontSize: 12 }}>{t("governance.reconcile.reviewNoteMin10")}</span>}
                   </label>
-                  <textarea
-                    className="pt-input"
+                  <Input.TextArea
                     rows={3}
                     value={reviewNote}
                     onChange={(e) => setReviewNote(e.target.value)}
                     placeholder={t("governance.reconcile.notePlaceholder")}
-                    style={{ padding: "8px 10px", resize: "vertical" }}
                   />
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                  <button
-                    type="button"
-                    className="pt-btn-primary"
+                  <Button
+                    type="primary"
+                    danger={forceSkipChecked}
                     onClick={doConfirm}
-                    disabled={confirming || !canConfirm}
-                    style={forceSkipChecked ? { background: "#dc2626", borderColor: "#991b1b" } : undefined}
+                    loading={confirming}
+                    disabled={!canConfirm}
                   >
-                    {confirming ? "…" : t("governance.reconcile.confirmBtn")}
-                  </button>
+                    {t("governance.reconcile.confirmBtn")}
+                  </Button>
                 </div>
               </div>
             )}
@@ -1531,11 +1450,11 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
 
   const sevStyle = (s: AuditEventSeverity | undefined): React.CSSProperties => {
     switch (s) {
-      case "L3": return { background: "#fee2e2", color: "#7f1d1d", borderColor: "#ef4444" };
-      case "L2": return { background: "#ffedd5", color: "#7c2d12", borderColor: "#f97316" };
-      case "L1": return { background: "#fef3c7", color: "#78350f", borderColor: "#f59e0b" };
-      case "WARNING": return { background: "#fefce8", color: "#713f12", borderColor: "#eab308" };
-      case "INFO": default: return { background: "#eff6ff", color: "#1e3a8a", borderColor: "#3b82f6" };
+      case "L3": return { background: "rgba(239,68,68,0.16)", color: "#fca5a5", borderColor: "rgba(248,113,113,0.5)" };
+      case "L2": return { background: "rgba(249,115,22,0.16)", color: "#fdba74", borderColor: "rgba(249,115,22,0.45)" };
+      case "L1": return { background: "rgba(245,158,11,0.16)", color: "#fcd34d", borderColor: "rgba(245,158,11,0.45)" };
+      case "WARNING": return { background: "rgba(234,179,8,0.16)", color: "#fde047", borderColor: "rgba(234,179,8,0.45)" };
+      case "INFO": default: return { background: "rgba(59,130,246,0.16)", color: "#93c5fd", borderColor: "rgba(96,165,250,0.45)" };
     }
   };
 
@@ -1543,56 +1462,70 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="pt-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))", gap: 10, alignItems: "flex-end" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("governance.audit.filter.eventType")}</label>
-            <select
-              className="pt-select"
-              value={eventType}
-              onChange={(e) => setEventType(e.target.value)}
-              style={{ padding: "6px 10px" }}
-            >
-              {AUDIT_EVENT_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+            <Select
+              style={{ width: "100%" }}
+              value={eventType || undefined}
+              onChange={(v) => setEventType((v as string) ?? "")}
+              placeholder="— 全部 —"
+              allowClear
+              options={AUDIT_EVENT_TYPE_OPTIONS.filter((opt) => opt.value).map((opt) => ({ value: opt.value, label: opt.label }))}
+            />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("governance.audit.filter.severity")}</label>
-            <select className="pt-select" value={severity} onChange={(e) => setSeverity((e.target.value || "") as any)} style={{ padding: "6px 10px" }}>
-              <option value="">— 全部 —</option>
-              <option value="INFO">INFO（信息）</option>
-              <option value="WARNING">WARNING（警告）</option>
-              <option value="L1">L1（提醒）</option>
-              <option value="L2">L2（警告）</option>
-              <option value="L3">L3（严重）</option>
-            </select>
+            <Select
+              style={{ width: "100%" }}
+              value={severity || undefined}
+              onChange={(v) => setSeverity(((v as string) || "") as AuditEventSeverity)}
+              placeholder="— 全部 —"
+              allowClear
+              options={[
+                { value: "INFO", label: "INFO（信息）" },
+                { value: "WARNING", label: "WARNING（警告）" },
+                { value: "L1", label: "L1（提醒）" },
+                { value: "L2", label: "L2（警告）" },
+                { value: "L3", label: "L3（严重）" },
+              ]}
+            />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("governance.audit.filter.startDate")}</label>
-            <input type="date" className="pt-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ padding: "6px 10px" }} />
+            <DatePicker
+              style={{ width: "100%" }}
+              format="YYYY-MM-DD"
+              allowClear
+              value={startDate ? dayjs(startDate) : null}
+              onChange={(d) => setStartDate(d ? d.format("YYYY-MM-DD") : "")}
+            />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("governance.audit.filter.endDate")}</label>
-            <input type="date" className="pt-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ padding: "6px 10px" }} />
+            <DatePicker
+              style={{ width: "100%" }}
+              format="YYYY-MM-DD"
+              allowClear
+              value={endDate ? dayjs(endDate) : null}
+              onChange={(d) => setEndDate(d ? d.format("YYYY-MM-DD") : "")}
+            />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("governance.audit.filter.query")}</label>
-            <input className="pt-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="关键词 / 关联追踪号" style={{ padding: "6px 10px" }} />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="关键词 / 关联追踪号" allowClear />
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="pt-btn-primary" onClick={() => runQuery(1)} disabled={loading}>
+            <Button type="primary" onClick={() => runQuery(1)} loading={loading}>
               {t("governance.audit.filter.apply")}
-            </button>
-            <button
-              type="button"
-              className="pt-btn-ghost"
+            </Button>
+            <Button
               onClick={() => {
                 setEventType(""); setSeverity(""); setStartDate(""); setEndDate(""); setQuery("");
                 setTimeout(() => runQuery(1), 0);
               }}
             >
               {t("governance.audit.filter.reset")}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -1752,15 +1685,15 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
                         {ev.correlation_id ? <code style={{ fontSize: 11 }}>{ev.correlation_id}</code> : <span style={{ color: "var(--pt-muted-foreground)" }}>—</span>}
                       </td>
                       <td style={tdStyle()}>
-                        <button
-                          type="button"
-                          className="pt-btn-icon"
+                        <Button
+                          type="text"
+                          size="small"
                           disabled={!attrsObj || Object.keys(attrsObj).length === 0}
                           onClick={() => setExpandedId(isOpen ? null : rowKey)}
                           title={t("governance.audit.col.expand")}
                         >
                           {isOpen ? <X size={14} /> : "···"}
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                     {isOpen && attrsObj && (
@@ -1770,8 +1703,8 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
                             style={{
                               margin: 0,
                               padding: 10,
-                              background: "var(--pt-surface-0)",
-                              border: "1px solid var(--pt-border-subtle)",
+                              background: "var(--pt-surface-3)",
+                              border: "1px solid var(--pt-border)",
                               borderRadius: 8,
                               fontSize: 11,
                               whiteSpace: "pre-wrap",
@@ -1797,22 +1730,20 @@ const AuditPanel: React.FC<{ portfolioId: number; showToast: (t: "success" | "er
             total: {resp?.total ?? 0} · page {page}/{resp?.page_count ?? 1}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              className="pt-btn-ghost"
+            <Button
+              size="small"
               disabled={page <= 1 || loading}
               onClick={() => runQuery(page - 1)}
             >
               ← Prev
-            </button>
-            <button
-              type="button"
-              className="pt-btn-ghost"
+            </Button>
+            <Button
+              size="small"
               disabled={page >= (resp?.page_count ?? 1) || loading}
               onClick={() => runQuery(page + 1)}
             >
               Next →
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -1954,70 +1885,58 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
             <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "var(--pt-muted-foreground)", maxWidth: 900 }}>{t("g5.intro")}</p>
           </div>
           {summary != null && (
-            eligible ? (
-              <span
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  background: "#ecfdf5",
-                  color: "#065f46",
-                  border: "1px solid #10b981",
-                  fontWeight: 700,
-                  fontSize: 12,
-                }}
-              >
-                {t("g5.eligible")}
-              </span>
-            ) : (
-              <span
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  background: "#fef2f2",
-                  color: "#7f1d1d",
-                  border: "1px solid #ef4444",
-                  fontWeight: 700,
-                  fontSize: 12,
-                }}
-              >
-                {t("g5.notEligible")}
-              </span>
-            )
+            <Tag color={eligible ? "success" : "error"} style={{ fontWeight: 700, margin: 0 }}>
+              {eligible ? t("g5.eligible") : t("g5.notEligible")}
+            </Tag>
           )}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))", gap: 12, alignItems: "flex-end" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("g5.startDate")}</label>
-            <input type="date" className="pt-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ padding: "6px 10px" }} disabled={locked} />
+            <DatePicker
+              style={{ width: "100%" }}
+              format="YYYY-MM-DD"
+              allowClear={false}
+              disabled={locked}
+              value={startDate ? dayjs(startDate) : null}
+              onChange={(d) => d && setStartDate(d.format("YYYY-MM-DD"))}
+            />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("g5.endDate")}</label>
-            <input type="date" className="pt-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ padding: "6px 10px" }} disabled={locked} />
+            <DatePicker
+              style={{ width: "100%" }}
+              format="YYYY-MM-DD"
+              allowClear={false}
+              disabled={locked}
+              value={endDate ? dayjs(endDate) : null}
+              onChange={(d) => d && setEndDate(d.format("YYYY-MM-DD"))}
+            />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("g5.oldEngine")}</label>
-            <input className="pt-input" value={oldEngine} onChange={(e) => setOldEngine(e.target.value)} placeholder="e.g. v1.4.2" style={{ padding: "6px 10px" }} disabled={locked} />
+            <Input value={oldEngine} onChange={(e) => setOldEngine(e.target.value)} placeholder="e.g. v1.4.2" disabled={locked} />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <label style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>{t("g5.newEngine")}</label>
-            <input className="pt-input" value={newEngine} onChange={(e) => setNewEngine(e.target.value)} placeholder="e.g. v2.0.0" style={{ padding: "6px 10px" }} disabled={locked} />
+            <Input value={newEngine} onChange={(e) => setNewEngine(e.target.value)} placeholder="e.g. v2.0.0" disabled={locked} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="pt-btn-primary"
+            <Button
+              type="primary"
+              icon={<PlayCircle size={14} />}
               onClick={doLaunch}
-              disabled={launching || locked}
-              style={locked ? { opacity: 0.6, cursor: "not-allowed" } : undefined}
+              loading={launching}
+              disabled={locked}
             >
-              <PlayCircle size={14} /> {launching ? "…" : t("g5.launch")}
-            </button>
-            <button type="button" className="pt-btn-ghost" onClick={doFetchResult} disabled={loadingSummary || !replayId}>
-              <RefreshCw size={14} /> {loadingSummary ? "…" : t("g5.queryResult")}
-            </button>
+              {t("g5.launch")}
+            </Button>
+            <Button icon={<RefreshCw size={14} />} onClick={doFetchResult} loading={loadingSummary} disabled={!replayId}>
+              {t("g5.queryResult")}
+            </Button>
             {!daysOk && (
-              <span style={{ fontSize: 12, color: "#dc2626", fontWeight: 600 }}>
+              <span style={{ fontSize: 12, color: "#f87171", fontWeight: 600 }}>
                 {template(t("g5.tradeDaysCheck") as string, { minDays: String(MIN_TRADE_DAYS) })}
                 {" "}
                 (当前估算: {weekDays})
@@ -2041,7 +1960,7 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
               padding: "10px 12px",
               borderRadius: 10,
               border: "1px solid var(--pt-border)",
-              background: locked ? "#f9fafb" : "var(--pt-surface-0)",
+              background: locked ? "var(--pt-surface-3)" : "var(--pt-surface-2)",
               opacity: locked ? 0.7 : 1,
               display: "flex",
               alignItems: "center",
@@ -2135,17 +2054,17 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
                       {G5_BUSINESS_ACTIONS.map((newAct) => {
                         const count = (matrix as any)?.[oldAct]?.[newAct] ?? 0;
                         const isDiagonal = oldAct === newAct;
-                        const warnBg = !isDiagonal && count > 0 ? "rgba(254,226,226,0.55)" : undefined;
+                        const warnBg = !isDiagonal && count > 0 ? "rgba(239,68,68,0.18)" : undefined;
                         return (
                           <td
                             key={`${oldAct}-${newAct}`}
                             style={{
                               padding: "6px 10px",
-                              borderBottom: "1px solid var(--pt-border-subtle)",
+                              borderBottom: "1px solid var(--pt-border)",
                               textAlign: "center",
                               background: warnBg,
                               fontWeight: isDiagonal ? 600 : 500,
-                              color: isDiagonal ? "#065f46" : count > 0 ? "#7f1d1d" : undefined,
+                              color: isDiagonal ? "#34d399" : count > 0 ? "#fca5a5" : undefined,
                             }}
                           >
                             {count}
@@ -2159,7 +2078,7 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
             </div>
             <div style={{ marginTop: 8, display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: "var(--pt-muted-foreground)" }}>
               <span>✓ {t("g5.matrix.diagonal")} = 对角线 (match)</span>
-              <span style={{ color: "#991b1b" }}>⚠ {t("g5.matrix.off")} = 非对角 (mismatch)</span>
+              <span style={{ color: "#f87171" }}>⚠ {t("g5.matrix.off")} = 非对角 (mismatch)</span>
             </div>
           </div>
 
@@ -2204,9 +2123,9 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
                     return items.slice(0, 100).map((it, i) => {
                       const p0 = it.cat === "UNKNOWN_ENGINE_DIFF" || it.cat === "DUPLICATE_REPLAY_SIDE_EFFECT" || it.cat === "CORRUPTED_SNAPSHOT_OR_EVIDENCE";
                       return (
-                        <tr key={i} style={{ background: p0 ? "rgba(254,226,226,0.4)" : undefined }}>
+                        <tr key={i} style={{ background: p0 ? "rgba(239,68,68,0.12)" : undefined }}>
                           <td style={tdStyle("left")}>
-                            <span style={{ fontWeight: 600, color: p0 ? "#7f1d1d" : undefined }}>
+                            <span style={{ fontWeight: 600, color: p0 ? "#fca5a5" : undefined }}>
                               {t(`g5.attr.${it.cat}` as any)}
                             </span>
                           </td>
@@ -2232,7 +2151,7 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
                             {it.note ? (
                               <span style={{ whiteSpace: "pre-wrap" }}>{it.note}</span>
                             ) : p0 ? (
-                              <span style={{ color: "#dc2626", fontWeight: 600 }}>⚠ {t("g5.attr.changeNote")}</span>
+                              <span style={{ color: "#f87171", fontWeight: 600 }}>⚠ {t("g5.attr.changeNote")}</span>
                             ) : (
                               "—"
                             )}
@@ -2266,10 +2185,10 @@ const G5Panel: React.FC<{ portfolioId: number; showToast: (t: "success" | "error
 };
 
 const sevAttrStyle = (sev: string): React.CSSProperties => {
-  if (sev === "P0") return { background: "#fee2e2", color: "#7f1d1d", borderColor: "#ef4444" };
-  if (sev === "P1") return { background: "#ffedd5", color: "#7c2d12", borderColor: "#f97316" };
-  if (sev === "P2") return { background: "#fef3c7", color: "#78350f", borderColor: "#f59e0b" };
-  return { background: "#eff6ff", color: "#1e3a8a", borderColor: "#3b82f6" };
+  if (sev === "P0") return { background: "rgba(239,68,68,0.16)", color: "#fca5a5", borderColor: "rgba(248,113,113,0.5)" };
+  if (sev === "P1") return { background: "rgba(249,115,22,0.16)", color: "#fdba74", borderColor: "rgba(249,115,22,0.45)" };
+  if (sev === "P2") return { background: "rgba(245,158,11,0.16)", color: "#fcd34d", borderColor: "rgba(245,158,11,0.45)" };
+  return { background: "rgba(59,130,246,0.16)", color: "#93c5fd", borderColor: "rgba(96,165,250,0.45)" };
 };
 
 const StatCard: React.FC<{ label: string; value: string; positive?: boolean; invertGood?: boolean }> = ({ label, value, positive = true, invertGood = false }) => {
@@ -2279,15 +2198,15 @@ const StatCard: React.FC<{ label: string; value: string; positive?: boolean; inv
       style={{
         padding: 12,
         borderRadius: 10,
-        border: `1px solid ${ok ? "#10b981" : "#ef4444"}`,
-        background: ok ? "#ecfdf5" : "#fef2f2",
+        border: `1px solid ${ok ? "rgba(52,211,153,0.4)" : "rgba(248,113,113,0.45)"}`,
+        background: ok ? "rgba(16,185,129,0.10)" : "rgba(239,68,68,0.10)",
         display: "flex",
         flexDirection: "column",
         gap: 4,
       }}
     >
-      <div style={{ fontSize: 12, color: ok ? "#065f46" : "#7f1d1d", fontWeight: 500 }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: ok ? "#065f46" : "#7f1d1d" }}>{value}</div>
+      <div style={{ fontSize: 12, color: ok ? "#86efac" : "#fca5a5", fontWeight: 500 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: ok ? "#86efac" : "#fca5a5" }}>{value}</div>
     </div>
   );
 };
@@ -2341,8 +2260,8 @@ const G7OperationsPanel: React.FC<{
   }
 
   const flagEntries = Object.entries(status.pending_orders_by_status || {});
-  const flagTone = (ok: boolean) => ok ? "#065f46" : "#7f1d1d";
-  const flagBg = (ok: boolean) => ok ? "#ecfdf5" : "#fef2f2";
+  const flagTone = (ok: boolean) => ok ? "#86efac" : "#fca5a5";
+  const flagBg = (ok: boolean) => (ok ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)");
 
   return (
     <div data-testid="g7-operational-status" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -2352,9 +2271,9 @@ const G7OperationsPanel: React.FC<{
             <h3 style={{ margin: 0, fontSize: 16 }}>{t("governance.g7.title")}</h3>
             <div style={{ marginTop: 4, color: "var(--pt-muted-foreground)", fontSize: 12 }}>{t("governance.g7.subtitle")}</div>
           </div>
-          <button type="button" className="pt-btn-ghost" onClick={() => void load()} disabled={loading}>
-            <RefreshCw size={14} /> {loading ? t("loading") : t("common.refresh")}
-          </button>
+          <Button icon={<RefreshCw size={14} />} onClick={() => void load()} loading={loading}>
+            {t("common.refresh")}
+          </Button>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {(() => {
               const g6Ready = Boolean(status?.ready_for_expansion);
@@ -2365,9 +2284,11 @@ const G7OperationsPanel: React.FC<{
                 : "";
               return (
                 <Tooltip title={isDisabled ? tooltip : undefined} placement="bottom">
-                  <button
-                    type="button"
-                    className="pt-btn-primary"
+                  <Button
+                    type="primary"
+                    icon={<PlayCircle size={14} />}
+                    loading={actionLoading === "start"}
+                    disabled={isDisabled}
                     onClick={() => {
                       if (isDisabled && !actionLoading) {
                         showToast(
@@ -2380,20 +2301,20 @@ const G7OperationsPanel: React.FC<{
                       }
                       void runG6Action("start");
                     }}
-                    style={
-                      isDisabled
-                        ? { opacity: 0.5, cursor: "not-allowed", filter: "grayscale(0.3)" }
-                        : undefined
-                    }
                   >
-                    <PlayCircle size={14} /> {actionLoading === "start" ? t("loading") : t("governance.g7.startG6")}
-                  </button>
+                    {t("governance.g7.startG6")}
+                  </Button>
                 </Tooltip>
               );
             })()}
-            <button type="button" className="pt-btn-ghost" onClick={() => void runG6Action("rollback")} disabled={Boolean(actionLoading)} style={Boolean(actionLoading) ? { opacity: 0.5, cursor: "not-allowed" } : undefined}>
-              <ShieldCheck size={14} /> {actionLoading === "rollback" ? t("loading") : t("governance.g7.rollbackG6")}
-            </button>
+            <Button
+              danger
+              icon={<ShieldCheck size={14} />}
+              onClick={() => void runG6Action("rollback")}
+              loading={actionLoading === "rollback"}
+            >
+              {t("governance.g7.rollbackG6")}
+            </Button>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginTop: 16 }}>
@@ -2418,7 +2339,7 @@ const G7OperationsPanel: React.FC<{
           <StatCard label={t("governance.g7.g5Report")} value={status.g5_report_id == null ? t("governance.g7.notArchived") : `#${status.g5_report_id}`} positive={status.g5_report_id != null} />
         </div>
         {flagEntries.length > 0 && <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {flagEntries.map(([key, value]) => <span key={key} style={{ padding: "4px 8px", borderRadius: 6, background: "#fff7ed", color: "#9a3412", fontSize: 12 }}>{flagLabel(key)}：{value}</span>)}
+          {flagEntries.map(([key, value]) => <span key={key} style={{ padding: "4px 10px", borderRadius: 999, background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.4)", color: "#fdba74", fontSize: 12 }}>{flagLabel(key)}：{value}</span>)}
         </div>}
       </div>
 
@@ -2434,7 +2355,7 @@ const G7BlockerList: React.FC<{ title: string; items: string[] }> = ({ title, it
   <div className="pt-panel" style={{ padding: 16 }}>
     <h4 style={{ margin: "0 0 10px", fontSize: 14 }}>{title}</h4>
     {items.length === 0 ? <div style={{ color: "var(--pt-muted-foreground)", fontSize: 12 }}>{t("governance.g7.none")}</div> : (
-      <ul style={{ margin: 0, paddingLeft: 18, color: "#7f1d1d", fontSize: 12 }}>{items.map((item, i) => <li key={`${item}-${i}`}>{item}</li>)}</ul>
+      <ul style={{ margin: 0, paddingLeft: 18, color: "#fca5a5", fontSize: 12 }}>{items.map((item, i) => <li key={`${item}-${i}`}>{item}</li>)}</ul>
     )}
   </div>
 );

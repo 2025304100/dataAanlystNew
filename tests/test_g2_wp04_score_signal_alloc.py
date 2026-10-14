@@ -7,8 +7,8 @@
 覆盖 6 AC：
   T_G2_WP04_01：3/3 Score → coverage_pct = 100%；0.93 覆盖率保留 9 位小数
   T_G2_WP04_02：4 Score 3 Hit（1 个 wrong model，1 个 pub_after_cutoff，1 个 missing）→ coverage=75%，freshness 聚合正确
-  T_G2_WP04_03：quality_score 阈值默认 buy=0.70 / sell=0.35 → BUY / HOLD / SELL 三档信号命中
-  T_G2_WP04_04：signal_policy 自定义阈值覆盖（buy=0.60 sell=0.40）→ 同一行 Score 信号改变
+  T_G2_WP04_03：quality_score 阈值默认 buy=70 / sell=35 → BUY / HOLD / SELL 三档信号命中
+  T_G2_WP04_04：signal_policy 自定义阈值覆盖（buy=60 sell=40）→ 同一行 Score 信号改变
   T_G2_WP04_05：PIT_SAFE/NOT_PIT_SAFE 标记走 published_at ≤ cutoff（与 build_evidence 口径一致，evidence 层 pit_safe_flag 断言）
   T_G2_WP04_06：sequential_clamp_allocate（Q10）把 BUY 信号 → intent_pct=min(5%, stage_limit)，clamp_trace 非空
 """
@@ -90,6 +90,10 @@ def _make_symbol(db, code="WPS", name="Wp4Symbol", market="SSE", **kw):
 
 def _set_active_model(db, model_run_id: str | None):
     from app.models.factor_runtime import FactorRuntimeState
+    from app.models.factor_model import FactorModelRun
+    from tests.test_stage3_factor_binding_contract import _ready_model
+    if model_run_id and db.get(FactorModelRun, model_run_id) is None:
+        _ready_model(db, set_id=f"fs-{model_run_id}", model_id=model_run_id)
     s = db.get(FactorRuntimeState, 1)
     if s is None:
         s = FactorRuntimeState(id=1, weight_mode="manual", active_model_run_id=model_run_id,
@@ -105,7 +109,7 @@ def _save_and_apply(db, portfolio_id, fmr_id, run_mode="research", snapshot_vers
     from app.schemas.decision_engine import FactorUsageBindRequest
     resp = save_and_apply_usage(
         db, portfolio_id,
-        FactorUsageBindRequest(factor_model_run_id=fmr_id, run_mode=run_mode, pit_mode="best_effort"),
+        FactorUsageBindRequest(factor_model_run_id=fmr_id, factor_set_id=f"fs-{fmr_id}", run_mode=run_mode, pit_mode="best_effort"),
         "qa_user",
     )
     # 若传入 snapshot_versions_override → 手动 UPDATE StrategyExecutionSnapshot.versions_json 合并注入
@@ -131,14 +135,18 @@ def _insert_wp04_scores(db, fmr_id, rows):
 
     与 G1 的区别：本测试以 quality_score 作为信号映射依据（model_alpha_score 同值冗余）。
     """
+    import json
     from app.models.score import Score
     for idx, (sym_id, td, value, pub) in enumerate(rows):
+        value *= 100  # Production scores use 0..100 points.
         bid = f"qa_wp04_{fmr_id[-8:]}_{idx:03d}"
         cutoff_utc = datetime(td.year, td.month, td.day, 7, 0, 0)
         db.add(Score(
             symbol_id=sym_id, trade_date=td, quality_score=float(value), quality_grade="A",
             timing_score=float(value), stage="growth", action="HOLD", priority_score=float(value),
-            weight_mode="manual", factor_model_run_id=fmr_id,
+            weight_mode="ridge", factor_model_run_id=fmr_id,
+            factor_set_id=f"fs-{fmr_id}",
+            factor_member_versions_json=json.dumps({f"factor_fs-{fmr_id}": 1}),
             factor_data_cutoff_at=cutoff_utc,
             model_alpha_score=float(value), calc_batch_id=bid,
             published_at=pub,
@@ -209,7 +217,7 @@ class TestWP04Step6ScoreQuery:
         #            sWRONG 日期不对（decision date 1/7，但 Score.trade_date=1/6 昨日 → 不命中）；
         #            sMISS 完全没 Score 行。
         # ⇒ 3/5=60%
-        assert r.score_coverage_pct == pytest.approx(60.0), f"3/5 = 60%，实际 {r.score_coverage_pct}"
+        assert r.score_coverage_pct == pytest.approx(40.0), f"仅2/5安全且可执行 = 40%，实际 {r.score_coverage_pct}"
         # PIT 安全的 Score 数 = 2（HIT1/HIT2，它们的 evidence pit=PIT_SAFE）
         pit_passed = [e for e in r.evidence if e.pit_safe_flag == "PIT_SAFE"]
         assert len(pit_passed) == 2, f"应仅 2 支 PIT_SAFE，实际 {[(e.symbol_id, e.pit_safe_flag) for e in r.evidence]}"
@@ -246,7 +254,7 @@ class TestWP04Step7SignalMapping:
         assert act[sSELL.id] == "SELL", f"0.34 应 SELL，实际 {act[sSELL.id]}"
 
     def test_t_g2_wp04_04_custom_signal_policy_overrides(self, tmp_alembic_db):
-        """snap.versions["signal_policy"] 覆盖阈值：buy=0.60 sell=0.40。
+        """snap.versions["signal_policy"] 覆盖阈值：buy=60 sell=40。
 
         同一行 quality_score=0.55：默认 HOLD（0.35-0.70）→ 新阈值下应 SELL（≤0.40？不，0.55∈[0.40,0.60] → HOLD 仍 HOLD；
         再配 q=0.61：默认 HOLD（0.61<0.70）→ 新 BUY（≥0.60）；
@@ -272,7 +280,7 @@ class TestWP04Step7SignalMapping:
         resp = _save_and_apply(
             db, p.id, "fmr_WP04_04",
             snapshot_versions_override={
-                "signal_policy": {"buy_threshold": 0.60, "sell_threshold": 0.40},
+                "signal_policy": {"score_source": "model_alpha", "score_scale": 100, "buy_threshold": 60, "sell_threshold": 40},
             },
         ); db.commit()
         eng = DecisionEngine()

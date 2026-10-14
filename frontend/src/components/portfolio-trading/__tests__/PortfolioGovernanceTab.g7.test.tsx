@@ -33,11 +33,20 @@ vi.mock("../../../i18n", () => ({
   template: (key: string) => key,
 }));
 vi.mock("antd", () => ({
+  ConfigProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   Tooltip: ({ children }: { children: ReactNode }) => <>{children}</>,
-  Button: ({ children, onClick }: { children?: ReactNode; onClick?: () => void }) => (
-    <button type="button" onClick={onClick}>{children}</button>
+  Button: ({ children, onClick, loading: _l, danger: _d, icon: _i, size: _s, block: _b, type: _t, ...rest }: any) => (
+    <button type="button" onClick={onClick} {...rest}>{children}</button>
   ),
   Modal: ({ open, children }: { open?: boolean; children?: ReactNode }) => (open ? <div>{children}</div> : null),
+  Checkbox: ({ children }: { children?: ReactNode }) => <label><input type="checkbox" />{children}</label>,
+  Input: Object.assign(
+    () => <input />,
+    { TextArea: () => <textarea /> },
+  ),
+  Select: () => <select />,
+  DatePicker: () => <input readOnly />,
+  Tag: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
 }));
 
 import PortfolioGovernanceTab from "../PortfolioGovernanceTab";

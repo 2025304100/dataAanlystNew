@@ -581,24 +581,23 @@ def capture_field_quality_snapshots(
                 "daily_coverage_p50", "daily_coverage_p90", "latest_daily_coverage",
                 "continuity_days", "derived", "derived_from", "status_reason",
                 "preview_enabled", "evaluation_enabled", "data_mode",
+                "expected_rows", "covered_rows", "max_consecutive_gap_days",
             )
         }
         # Formula-catalog coverage is already measured against the theoretical
         # stock-day denominator.  Persist the stable quality conclusion beside
         # the legacy field metrics so reports and execution gates can consume
         # it without changing the snapshot table shape.
-        coverage_value = field.get("daily_coverage_p50")
-        if coverage_value is None:
-            coverage_value = field.get("latest_daily_coverage")
+        missing_value = field.get("missing_ratio")
         try:
-            coverage_ratio = float(coverage_value) if coverage_value is not None else None
+            missing_ratio = float(missing_value) if missing_value is not None else None
         except (TypeError, ValueError):
-            coverage_ratio = None
+            missing_ratio = None
         assessment = assess_data_integrity(
             dataset=dataset,
             field=field_name,
-            expected_rows=(1 if coverage_ratio is not None else None),
-            missing_ratio=(1.0 - coverage_ratio if coverage_ratio is not None else None),
+            expected_rows=field.get("expected_rows"),
+            missing_ratio=missing_ratio,
             max_consecutive_gap_days=int(field.get("max_consecutive_gap_days", 0) or 0),
             critical_issues=(
                 ["FIELD_BLOCKED"]

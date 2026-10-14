@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 
 /**
  * T27 前端入口测试（设计 §9.1 / 裁决 D1）
@@ -74,6 +74,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   window.localStorage.clear();
 });
 
@@ -122,5 +123,12 @@ describe("Settings 因子挖掘入口", () => {
     // 全部导航项仍在 settings-sidebar 内，未新增 App 级容器
     const sidebars = document.querySelectorAll("nav.settings-sidebar");
     expect(sidebars.length).toBe(1);
+  });
+
+  it.each(["factor-model", "api-management"])("数据中心 coverage remediation 导航 %s 可切换设置分区", (target) => {
+    render(<Settings />);
+    navigateTo(target);
+    expect(window.localStorage.getItem("settings_active_section")).toBe(target === "api-management" ? "api-mgmt" : target);
+    expect(document.querySelector(`[data-settings-content="settings-${target === "api-management" ? "api-mgmt" : target}"]`)).toBeTruthy();
   });
 });

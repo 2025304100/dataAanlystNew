@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ReactECharts from "echarts-for-react";
-import { Modal, Button, Input, Select, Tag, Space, Tooltip } from "antd";
+import { Modal, Button, Input, InputNumber, Select, Tag, Space, Tooltip } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
@@ -1426,17 +1426,16 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                       <p className="panel-kicker">{t("similarSignalStats")}</p>
                       <label className="sample-limit-control" title={t("sampleLimitTip")}>
                         <span>{t("sampleLimit")}</span>
-                        <input
+                        <InputNumber
                           className="sample-limit-input"
-                          type="number"
-                          /* VIZ-0929-16：后端 query 约束是 ge=5/le=240，此前只写 min={1}，
-                             填 1 或 9999 都会让详情请求吃到 422（表现为"改了没反应"） */
+                          /* VIZ-0929-16：后端 query 约束是 ge=5/le=240，越界值在 debounce  effect 里再夹一次 */
                           min={5}
                           max={240}
                           step={5}
-                          value={sampleLimitInput}
-                          onChange={(e) => setSampleLimitInput(e.target.value)}
+                          value={sampleLimitInput === "" ? null : Number(sampleLimitInput)}
+                          onChange={(v) => setSampleLimitInput(v == null ? "" : String(v))}
                           placeholder={t("sampleLimitTip")}
+                          style={{ width: 92 }}
                         />
                       </label>
                     </div>
@@ -1894,39 +1893,41 @@ export default function DetailModal({ open, onClose }: DetailModalProps) {
                           <div className="future-custom-grid">
                             <label>
                               <span>{t("customHorizon")}</span>
-                              <input
-                                type="number"
+                              <InputNumber
+                                min={1}
                                 value={ctx.futurePlanCustom.horizonDays}
-                                onChange={(e) =>
+                                onChange={(v) =>
                                   ctx.setFuturePlanCustom({
                                     ...ctx.futurePlanCustom,
-                                    horizonDays: Number(e.target.value),
+                                    horizonDays: Number(v ?? 0),
                                   })
                                 }
                               />
                             </label>
                             <label>
                               <span>{t("customPullback")}</span>
-                              <input
-                                type="number"
+                              <InputNumber
+                                min={0}
+                                max={100}
                                 value={ctx.futurePlanCustom.pullbackPct}
-                                onChange={(e) =>
+                                onChange={(v) =>
                                   ctx.setFuturePlanCustom({
                                     ...ctx.futurePlanCustom,
-                                    pullbackPct: Number(e.target.value),
+                                    pullbackPct: Number(v ?? 0),
                                   })
                                 }
                               />
                             </label>
                             <label>
                               <span>{t("customPosition")}</span>
-                              <input
-                                type="number"
+                              <InputNumber
+                                min={0}
+                                max={100}
                                 value={ctx.futurePlanCustom.positionPct}
-                                onChange={(e) =>
+                                onChange={(v) =>
                                   ctx.setFuturePlanCustom({
                                     ...ctx.futurePlanCustom,
-                                    positionPct: Number(e.target.value),
+                                    positionPct: Number(v ?? 0),
                                   })
                                 }
                               />

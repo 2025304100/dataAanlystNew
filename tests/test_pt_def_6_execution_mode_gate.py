@@ -40,7 +40,7 @@ def _seed_three_mode_portfolio(db):
     for sym in (s_auto, s_manual, s_confirm):
         rows.append(DailyBar(symbol_id=sym.id, trade_date=trade_date, open=10, high=10.2, low=9.8, close=10, volume=1_000_000, amount=10_000_000))
         rows.append(DailyBar(symbol_id=sym.id, trade_date=date(2025, 1, 7), open=10.1, high=10.3, low=10, close=10.2, volume=1_000_000, amount=10_100_000))
-        rows.append(Score(symbol_id=sym.id, trade_date=trade_date, quality_score=.9, quality_grade="A", timing_score=.8, stage="growth", action="open", priority_score=.8, weight_mode="manual", factor_model_run_id="pt-def-6-model", calc_batch_id="pt-def-6-batch", published_at=datetime(2025, 1, 1)))
+        rows.append(Score(symbol_id=sym.id, trade_date=trade_date, quality_score=90, quality_grade="A", timing_score=80, stage="growth", action="open", priority_score=80, weight_mode="ridge", factor_model_run_id="pt-def-6-model", model_alpha_score=90, factor_data_cutoff_at=datetime(2025, 1, 6, 7), calc_batch_id="pt-def-6-batch", published_at=datetime(2025, 1, 1)))
     db.add_all(rows)
     snapshot = StrategyExecutionSnapshot(
         id="pt-def-6-snapshot", snapshot_no=1, portfolio_id=portfolio.id,
@@ -57,6 +57,10 @@ def _seed_three_mode_portfolio(db):
     )
     db.add(snapshot)
     bind_applied_snapshot(db, snapshot)
+    for row in rows:
+        if isinstance(row, Score):
+            row.factor_set_id = snapshot.factor_set_id
+            row.factor_member_versions_json = json.dumps({f"factor_{snapshot.factor_set_id}": 1})
     portfolio.last_decision_trade_date = trade_date
     db.commit()
     return portfolio, snapshot, trade_date, s_auto, s_manual, s_confirm

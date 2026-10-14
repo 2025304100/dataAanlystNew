@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 
 /**
  * T37 等级证据抽屉测试（向导 §8.4.1 / §8.4.2 / §8.4.3，任务卡 pitfalls / not_do）。
@@ -188,14 +188,18 @@ describe("人工调整等级（§8.4.2）", () => {
     ).toBe(false);
   });
 
-  it("提交后带上目标等级与原因", () => {
+  it("提交后带上目标等级与原因", async () => {
     const onAdjust = vi.fn();
     render(<GradeEvidenceDrawer evidence={DAILY} onAdjustGrade={onAdjust} />);
     fireEvent.click(document.querySelector("[data-evidence-adjust]") as HTMLElement);
-    fireEvent.change(
-      document.querySelector("[data-evidence-adjust-grade]") as HTMLSelectElement,
-      { target: { value: "A" } },
-    );
+    // antd Select：mousedown 打开弹层，等选项渲染后点选 A
+    fireEvent.mouseDown(document.querySelector(".ant-select-selector") as HTMLElement);
+    await waitFor(() => {
+      expect(document.querySelectorAll(".ant-select-item-option").length).toBeGreaterThan(0);
+    });
+    const gradeA = Array.from(document.querySelectorAll(".ant-select-item-option"))
+      .find((o) => o.textContent === "A") as HTMLElement;
+    fireEvent.click(gradeA);
     fireEvent.change(
       document.querySelector("[data-evidence-adjust-reason]") as HTMLTextAreaElement,
       { target: { value: "业务上该因子有明确经济含义，人工上调" } },

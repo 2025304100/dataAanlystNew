@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { X, Shield, FlaskConical } from "lucide-react";
+import { Button, Input, InputNumber, Select, Slider } from "antd";
 import { useApp } from "../../context/AppContext";
 import { t, template } from "../../i18n";
 
@@ -256,36 +257,13 @@ const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
                 {t("portfolioTrading.create.subtitle")}
               </p>
             </div>
-            <button
-              type="button"
+            <Button
+              type="text"
+              shape="circle"
               onClick={onClose}
               aria-label={t("portfolioTrading.create.close")}
-              style={{
-                width: 32,
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "50%",
-                background: "var(--pt-surface-3)",
-                color: "var(--pt-muted-foreground)",
-                border: "none",
-                cursor: "pointer",
-                flexShrink: 0,
-                marginTop: 2,
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--pt-surface-4)";
-                e.currentTarget.style.color = "var(--pt-foreground)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--pt-surface-3)";
-                e.currentTarget.style.color = "var(--pt-muted-foreground)";
-              }}
-            >
-              <X size={16} />
-            </button>
+              icon={<X size={16} />}
+            />
           </div>
 
           {/* ===== Form Body ===== */}
@@ -310,24 +288,14 @@ const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
                   <FieldLabel required>
                     {t("portfolioTrading.create.field.name")}
                   </FieldLabel>
-                  <input
-                    type="text"
-                    className={`pt-input${nameError ? " pt-cpm-shake" : ""}`}
+                  <Input
+                    status={nameError ? "error" : undefined}
                     value={name}
                     maxLength={20}
                     placeholder={t("portfolioTrading.create.field.namePlaceholder")}
                     onChange={(e) => {
                       setName(e.target.value);
                       if (nameError) setNameError(false);
-                    }}
-                    style={{
-                      width: "100%",
-                      ...(nameError
-                        ? {
-                            borderColor: "var(--pt-state-error)",
-                            boxShadow: "0 0 0 3px rgba(239, 68, 68, 0.12)",
-                          }
-                        : {}),
                     }}
                   />
                   <FieldHint>{t("portfolioTrading.create.field.nameHint")}</FieldHint>
@@ -373,28 +341,15 @@ const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
                 {/* 初始资金 */}
                 <div>
                   <FieldLabel>{t("portfolioTrading.create.field.initialCapital")}</FieldLabel>
-                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: 12,
-                        fontSize: 13,
-                        color: "var(--pt-muted-foreground)",
-                        pointerEvents: "none",
-                      }}
-                    >
-                      ¥
-                    </span>
-                    <input
-                      type="text"
-                      className="pt-input pt-mono"
-                      value={capitalDisplay}
-                      onChange={(e) => handleCapitalChange(e.target.value)}
-                      onFocus={handleCapitalFocus}
-                      onBlur={handleCapitalBlur}
-                      style={{ width: "100%", paddingLeft: 28, textAlign: "left" }}
-                    />
-                  </div>
+                  <Input
+                    prefix="¥"
+                    className="pt-mono"
+                    value={capitalDisplay}
+                    onChange={(e) => handleCapitalChange(e.target.value)}
+                    onFocus={handleCapitalFocus}
+                    onBlur={handleCapitalBlur}
+                    inputMode="decimal"
+                  />
                   {/* 快捷金额 */}
                   <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                     {quickAmounts.map((qa) => (
@@ -414,27 +369,23 @@ const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div>
                     <FieldLabel>{t("portfolioTrading.create.field.buyFee")}</FieldLabel>
-                    <InputWithSuffix suffix="%">
-                      <input
-                        type="text"
-                        className="pt-input pt-mono"
-                        value={buyFee}
-                        onChange={(e) => setBuyFee(e.target.value)}
-                        style={{ width: "100%", paddingRight: 28 }}
-                      />
-                    </InputWithSuffix>
+                    <Input
+                      addonAfter="%"
+                      className="pt-mono"
+                      value={buyFee}
+                      onChange={(e) => setBuyFee(e.target.value)}
+                      inputMode="decimal"
+                    />
                   </div>
                   <div>
                     <FieldLabel>{t("portfolioTrading.create.field.sellFee")}</FieldLabel>
-                    <InputWithSuffix suffix="%">
-                      <input
-                        type="text"
-                        className="pt-input pt-mono"
-                        value={sellFee}
-                        onChange={(e) => setSellFee(e.target.value)}
-                        style={{ width: "100%", paddingRight: 28 }}
-                      />
-                    </InputWithSuffix>
+                    <Input
+                      addonAfter="%"
+                      className="pt-mono"
+                      value={sellFee}
+                      onChange={(e) => setSellFee(e.target.value)}
+                      inputMode="decimal"
+                    />
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--pt-slate-500)", marginTop: -8 }}>
@@ -471,19 +422,19 @@ const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
                 {/* 基准指数 */}
                 <div>
                   <FieldLabel>{t("portfolioTrading.create.field.benchmark")}</FieldLabel>
-                  <select
-                    className="pt-select"
+                  <Select
                     value={benchmark}
-                    onChange={(e) => setBenchmark(e.target.value)}
                     style={{ width: "100%" }}
-                  >
-                    <option value="hs300">{t("portfolioTrading.create.benchmark.hs300")}</option>
-                    <option value="zz500">{t("portfolioTrading.create.benchmark.zz500")}</option>
-                    <option value="cyb">{t("portfolioTrading.create.benchmark.cyb")}</option>
-                    <option value="sz50">{t("portfolioTrading.create.benchmark.sz50")}</option>
-                    <option value="kc50">{t("portfolioTrading.create.benchmark.kc50")}</option>
-                    <option value="custom">{t("portfolioTrading.create.benchmark.custom")}</option>
-                  </select>
+                    onChange={(v) => setBenchmark(v as string)}
+                    options={[
+                      { value: "hs300", label: t("portfolioTrading.create.benchmark.hs300") },
+                      { value: "zz500", label: t("portfolioTrading.create.benchmark.zz500") },
+                      { value: "cyb", label: t("portfolioTrading.create.benchmark.cyb") },
+                      { value: "sz50", label: t("portfolioTrading.create.benchmark.sz50") },
+                      { value: "kc50", label: t("portfolioTrading.create.benchmark.kc50") },
+                      { value: "custom", label: t("portfolioTrading.create.benchmark.custom") },
+                    ]}
+                  />
                 </div>
               </section>
             </div>
@@ -505,22 +456,12 @@ const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
               {template("portfolioTrading.create.existingCount", { count: existingCount })}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <button
-                type="button"
-                className="pt-btn pt-btn-ghost"
-                onClick={onClose}
-                disabled={submitting}
-              >
+              <Button onClick={onClose} disabled={submitting}>
                 {t("portfolioTrading.create.cancel")}
-              </button>
-              <button
-                type="button"
-                className="pt-btn pt-btn-primary"
-                onClick={handleSubmit}
-                disabled={submitting}
-              >
+              </Button>
+              <Button type="primary" onClick={handleSubmit} loading={submitting}>
                 {t("portfolioTrading.create.submit")}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -584,27 +525,6 @@ const FieldLabel: React.FC<{ children: React.ReactNode; required?: boolean }> = 
 const FieldHint: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div style={{ fontSize: 11, color: "var(--pt-slate-500)", marginTop: 4 }}>
     {children}
-  </div>
-);
-
-/** 带后缀的输入框容器（% 等） */
-const InputWithSuffix: React.FC<{ suffix: string; children: React.ReactElement }> = ({
-  suffix,
-  children,
-}) => (
-  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-    {children}
-    <span
-      style={{
-        position: "absolute",
-        right: 12,
-        fontSize: 13,
-        color: "var(--pt-muted-foreground)",
-        pointerEvents: "none",
-      }}
-    >
-      {suffix}
-    </span>
   </div>
 );
 
@@ -735,102 +655,31 @@ const QuickAmountButton: React.FC<{ label: string; onClick: () => void }> = ({
   );
 };
 
-/** 滑块 + 数字输入（pt-input + 自定义 track + 透明 range 覆盖层） */
+/** 滑块 + 数字输入（antd Slider + InputNumber 双向同步） */
 const SliderInput: React.FC<{
   min: number;
   max: number;
   value: number;
   onChange: (v: number) => void;
 }> = ({ min, max, value, onChange }) => {
-  const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
   return (
-    <div>
-      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-        <input
-          type="number"
-          className="pt-input pt-mono pt-cpm-num"
-          min={min}
-          max={max}
-          value={value}
-          onChange={(e) => onChange(clamp(Number(e.target.value) || 0))}
-          style={{ width: "100%", paddingRight: 28, textAlign: "right" }}
-        />
-        <span
-          style={{
-            position: "absolute",
-            right: 12,
-            fontSize: 13,
-            color: "var(--pt-muted-foreground)",
-            pointerEvents: "none",
-          }}
-        >
-          %
-        </span>
-      </div>
-      <div
-        style={{
-          position: "relative",
-          height: 14,
-          marginTop: 8,
-          display: "flex",
-          alignItems: "center",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            height: 4,
-            background: "var(--pt-surface-3)",
-            borderRadius: 2,
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            height: 4,
-            width: `${pct}%`,
-            background: "var(--pt-primary)",
-            borderRadius: 2,
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            left: `${pct}%`,
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 14,
-            height: 14,
-            background: "var(--pt-primary)",
-            border: "2px solid var(--pt-surface-2)",
-            borderRadius: "50%",
-            boxShadow: "0 0 0 2px rgba(6, 182, 212, 0.2)",
-            pointerEvents: "none",
-          }}
-        />
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={1}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            opacity: 0,
-            cursor: "pointer",
-            margin: 0,
-            padding: 0,
-          }}
-        />
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <InputNumber
+        min={min}
+        max={max}
+        addonAfter="%"
+        value={value}
+        onChange={(v) => onChange(clamp(Number(v ?? min)))}
+        style={{ width: "100%" }}
+      />
+      <Slider
+        min={min}
+        max={max}
+        value={value}
+        tooltip={{ formatter: (v) => (v == null ? "" : `${v}%`) }}
+        onChange={(v) => onChange(v as number)}
+      />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownAZ, ArrowUpAZ, History, Play, RotateCcw, X, Calendar, CheckCircle2, Search, FileText, Loader2, AlertTriangle } from "lucide-react";
-import { DatePicker, App as AntApp, Input, Modal, Progress, Space, Tag } from "antd";
+import { DatePicker, App as AntApp, Input, Modal, Progress, Select, Space, Tag } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import localeData from "dayjs/plugin/localeData";
 import weekday from "dayjs/plugin/weekday";
@@ -2369,26 +2369,28 @@ const PortfolioBacktestPanel: React.FC<PortfolioBacktestPanelProps> = ({
         {!gateState && resultTab === "positions" && (
           <div className="pt-card" style={{ overflowX: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "10px 12px", borderBottom: "1px solid var(--pt-border)" }}>
-              <select
-                className="pt-input"
+              <Select
                 data-testid="backtest-position-status-filter"
                 aria-label="持仓状态筛选"
-                value={positionStatus}
-                onChange={(event) => { setPositionStatus(event.target.value as "" | "OPEN" | "CLOSED"); setPositionPage(1); }}
-                style={{ width: 116, height: 30 }}
-              >
-                <option value="">全部状态</option>
-                <option value="OPEN">持仓中</option>
-                <option value="CLOSED">已平仓</option>
-              </select>
-              <input
-                className="pt-input pt-mono"
+                value={positionStatus || undefined}
+                style={{ width: 116 }}
+                allowClear
+                placeholder="全部状态"
+                onChange={(value) => { setPositionStatus(((value as string) || "") as "" | "OPEN" | "CLOSED"); setPositionPage(1); }}
+                options={[
+                  { value: "OPEN", label: "持仓中" },
+                  { value: "CLOSED", label: "已平仓" },
+                ]}
+              />
+              <DatePicker
+                className="pt-backtest-date-picker"
                 data-testid="backtest-position-as-of-date"
                 aria-label="持仓估值日期"
-                type="date"
-                value={positionAsOfDate}
-                onChange={(event) => { setPositionAsOfDate(event.target.value); setPositionPage(1); }}
-                style={{ width: 154, height: 30 }}
+                format="YYYY-MM-DD"
+                allowClear
+                value={positionAsOfDate ? dayjs(positionAsOfDate) : null}
+                style={{ width: 154 }}
+                onChange={(d) => { setPositionAsOfDate(d ? d.format("YYYY-MM-DD") : ""); setPositionPage(1); }}
               />
               {positionAsOf && <span style={{ fontSize: 12, color: "var(--pt-muted-foreground)" }}>估值截至 {positionAsOf}</span>}
             </div>

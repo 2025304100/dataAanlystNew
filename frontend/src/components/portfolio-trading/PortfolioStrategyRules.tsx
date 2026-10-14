@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Plus, AlertTriangle, Save, RotateCcw, FileText, Info, ShieldAlert, Snowflake } from "lucide-react";
+import { Button, Input, InputNumber, Select } from "antd";
 import { api } from "../../api/client";
-import type { ScoringModelBrief, ScoringFactorSetBrief } from "../../api/client";
+import type { ScoringModelBrief, ScoringFactorSetBrief, PortfolioFactorUsageState } from "../../api/client";
 import { actionLabel, t } from "../../i18n";
 import { govStatusCodeForTooltip, govStatusLabel } from "../../utils/govStatusLabel";
 import { useApp } from "../../context/AppContext";
 import type { PortfolioStatePermissions, PortfolioStatusResponse, SignalRule } from "../../types";
+import { openSettingsSection } from "../../utils/navigate";
 
 /**
  * PortfolioStrategyRules — 策略规则子 Tab（Task 6）
@@ -29,6 +31,7 @@ interface PortfolioStrategyRulesProps {
   // FR-P1-8a HG1
   portfolioStatus?: PortfolioStatusResponse | null;
   perm?: PortfolioStatePermissions;
+  onConfigurationChanged?: (portfolioId: number) => void | Promise<void>;
 }
 
 interface FactorItem {
@@ -94,7 +97,7 @@ const FACTOR_MODEL_PRESETS: Record<string, FactorItem[]> = {
 const STOCK_POOLS = ["沪深300", "中证500", "全A", "自定义"];
 const REBALANCE_PERIODS = ["周调", "双周调", "月调", "季调"];
 const WEIGHTINGS = ["等权", "市值加权", "风险平价", "自定义"];
-const TIMING_SIGNALS = ["MA趋势", "MACD", "RSI", "布林带", "无"];
+const MODEL_TIMING_SIGNAL = "模型综合分";
 const STOP_LOSSES = ["5%", "8%", "10%", "15%", "关闭"];
 const DRAWDOWN_CIRCUITS = ["10%", "15%", "20%", "关闭"];
 
@@ -103,8 +106,10 @@ const sectionSubStyle: React.CSSProperties = { fontSize: 12, color: "var(--pt-mu
 const fieldLabelStyle: React.CSSProperties = { fontSize: 12, color: "var(--pt-muted-foreground)" };
 const selectFullWidthStyle: React.CSSProperties = { width: "100%" };
 
-const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfolioId, onNavigate, portfolioStatus, perm }) => {
-  const { showToast, portfolios, portfolioId: activeId, loadPortfolios } = useApp();
+const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfolioId, onNavigate, portfolioStatus, perm, onConfigurationChanged }) => {
+  const { showToast, portfolios, portfolioId: activeId, loadPortfolios, setActiveTab } = useApp();
+  const activePortfolioRef = useRef(portfolioId);
+  activePortfolioRef.current = portfolioId;
 
   // FR-P1-8a HG1：与 PortfolioOverview 一致 —— 硬禁状态禁止从 OFF → ON
   const currentState = portfolioStatus?.current_state ?? "UNKNOWN";
@@ -134,13 +139,16 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
   const [factorModelRunId, setFactorModelRunId] = useState<string>("");
   // WP0-8 C-05/C-07：绑定的 FactorSet 只读映射展示 + 用于保存时双写契约
   const [boundFactorSetId, setBoundFactorSetId] = useState<string>("");
+  const [currentUsage, setCurrentUsage] = useState<PortfolioFactorUsageState | null>(null);
+  const [bindingError, setBindingError] = useState<string | null>(null);
   const [stockPool, setStockPool] = useState(STOCK_POOLS[1]);
   const [rebalancePeriod, setRebalancePeriod] = useState(REBALANCE_PERIODS[0]);
   const [weighting, setWeighting] = useState(WEIGHTINGS[2]);
   const [factors, setFactors] = useState<FactorItem[]>(DEFAULT_FACTORS.map((f) => ({ ...f })));
-  const [timingSignal, setTimingSignal] = useState(TIMING_SIGNALS[1]);
+  const timingSignal = MODEL_TIMING_SIGNAL;
   const [maxSinglePosition, setMaxSinglePosition] = useState<number | null>(null);
   const [stopLoss, setStopLoss] = useState<string | null>(null);
+  const [riskBudgetPct, setRiskBudgetPct] = useState(0.05);
   const [drawdownCircuit, setDrawdownCircuit] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -152,16 +160,36 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
     if (!portfolioId) return;
     let cancelled = false;
     setLoading(true);
+    setSaving(false);
+    setBindingError(null);
+    setCurrentUsage(null);
     (async () => {
       try {
         // 并行：刷新组合列表（最佳 effort）+ 读取组合详情(active_rule) + 信号规则
         // loadPortfolios 是异步 setState，不能用返回值；最新值以 detailRes.portfolio 为准（更可靠）
-        const [, detailRes, signalRes] = await Promise.allSettled([
+        const [, detailRes, signalRes, optionsRes, usageRes] = await Promise.allSettled([
           loadPortfolios().catch(() => {}),
           api.getPortfolioDetail(portfolioId),
           api.getSignalRule(portfolioId),
+          api.getFactorUsageOptions(portfolioId),
+          api.getCurrentFactorUsage(portfolioId),
         ]);
         if (cancelled) return;
+        const configReadError = detailRes.status === "rejected" || signalRes.status === "rejected" ? "配置读取失败，请重新进入本页重试；当前不能覆盖正式策略。" : null;
+        setCurrentUsage(usageRes.status === "fulfilled" ? usageRes.value : null);
+        if (optionsRes.status === "fulfilled") {
+          const options = optionsRes.value;
+          setBindingError([...options.blocking_reasons, configReadError, usageRes.status === "rejected" ? "当前执行绑定读取失败，请重新进入本页重试。" : null].filter(Boolean).join("；") || null);
+          setFactorSets(options.factor_sets.map((set) => ({ id: set.factor_set_id, label: set.name, status: set.status, member_count: set.member_count, frozen_at: set.frozen_at ?? null, created_at: null, is_active_for_model_run_ids: [], description: null })));
+          setFactorModelRuns(options.factor_models.filter((model) => model.production_eligible === true).map((model) => {
+            const set = options.factor_sets.find((item) => item.factor_set_id === model.factor_set_id);
+            return { id: model.factor_model_run_id, name: model.model_name || model.display_name || model.factor_model_run_id, status: "validated", validation_ic: model.sample_out_rank_ic ?? null, sample_count: model.sample_count ?? 0, data_cutoff_at: model.data_cutoff_at ?? null, factorset_id: model.factor_set_id, factorset_label: set?.name ?? null, factorset_member_count: set?.member_count ?? null, created_at: model.trained_at ?? null };
+          }));
+        } else {
+          setFactorModelRuns([]);
+          setFactorSets([]);
+          setBindingError("正式模型选项读取失败，请重新进入本页重试。当前配置不能应用。");
+        }
 
         // autoEnabled：优先从详情读（真实后端值）
         let detailAuto = realAutoEnabled;
@@ -183,15 +211,17 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
           } else {
             setMaxSinglePosition(15);
           }
-          if (r.max_loss_per_trade_pct != null) {
-            const pct = Number((r.max_loss_per_trade_pct * 100).toFixed(3));
-            setStopLoss(pct > 0 ? `${pct}%` : "关闭");
-          } else {
-            setStopLoss(STOP_LOSSES[1]);
-          }
+          const savedRiskBudget = Number(r.max_loss_per_trade_pct);
+          setRiskBudgetPct(r.max_loss_per_trade_pct != null && Number.isFinite(savedRiskBudget) ? savedRiskBudget : 0.05);
           const stageObj: any = r.stage_limits_json && typeof r.stage_limits_json === "object"
             ? r.stage_limits_json
             : null;
+          if (stageObj?.price_stop_loss_pct != null) {
+            const pct = Number((Number(stageObj.price_stop_loss_pct) * 100).toFixed(3));
+            setStopLoss(pct > 0 ? `${pct}%` : "关闭");
+          } else {
+            setStopLoss(STOP_LOSSES[0]);
+          }
           if (stageObj?.drawdown_circuit_pct != null) {
             const raw = Number(stageObj.drawdown_circuit_pct);
             // 兼容两种单位：|raw| <= 1 视为 ratio(0.1 = 10%)，否则视为百分比原值(10 = 10%)
@@ -229,33 +259,23 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
           setFactorModel(fm);
           // WP0-8 C-05/C-07 回显：factor_model_run_id + factor_set_id 双溯源
           //   优先级：rule 顶层独立字段(C-07 双写) > stage_limits_json
-          const runId = String(
-            r.factor_model_run_id ?? stageObj?.factor_model_run_id ?? "",
-          );
-          const fsId = String(
-            r.factor_set_id ?? stageObj?.factor_set_id ?? "",
-          );
+          const savedRunId = String(r.factor_model_run_id ?? stageObj?.factor_model_run_id ?? "");
+          const runId = optionsRes.status === "fulfilled" && optionsRes.value.factor_models.some((m) => m.factor_model_run_id === savedRunId && m.production_eligible === true) ? savedRunId : "";
+          const fsId = optionsRes.status === "fulfilled" ? optionsRes.value.factor_models.find((m) => m.factor_model_run_id === runId)?.factor_set_id ?? "" : "";
           setFactorModelRunId(runId);
           setBoundFactorSetId(fsId);
-          // timing_signal：stageObj → rule_name split → 默认
-          const ts = (stageObj?.timing_signal && TIMING_SIGNALS.includes(String(stageObj.timing_signal)))
-            ? String(stageObj.timing_signal)
-            : (typeof r.rule_name === "string"
-              ? (() => {
-                  const parts = String(r.rule_name).split("-");
-                  return parts.length >= 2 && TIMING_SIGNALS.includes(parts[1]) ? parts[1] : TIMING_SIGNALS[1];
-                })()
-              : TIMING_SIGNALS[1]);
-          setTimingSignal(ts);
         } else {
           setMaxSinglePosition(15);
-          setStopLoss(STOP_LOSSES[1]);
+          setStopLoss(STOP_LOSSES[0]);
+          setRiskBudgetPct(0.05);
           setDrawdownCircuit(DRAWDOWN_CIRCUITS[0]);
           setFactorModel(FACTOR_MODELS[0]);
-          setTimingSignal(TIMING_SIGNALS[1]);
           setFactors(FACTOR_MODEL_PRESETS[FACTOR_MODELS[0]].map((f) => ({ ...f })));
           setFactorModelRunId("");
           setBoundFactorSetId("");
+          setStockPool(STOCK_POOLS[1]);
+          setRebalancePeriod(REBALANCE_PERIODS[0]);
+          setWeighting(WEIGHTINGS[2]);
         }
         if (signalRes.status === "fulfilled" && signalRes.value) {
           setExistingSignalRule(signalRes.value);
@@ -263,8 +283,10 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
           setExistingSignalRule(null);
         }
       } catch (e) {
+        if (cancelled) return;
+        setBindingError("配置读取失败，请重新进入本页重试；当前不能覆盖正式策略。");
         setMaxSinglePosition(15);
-        setStopLoss(STOP_LOSSES[1]);
+        setStopLoss(STOP_LOSSES[0]);
         setDrawdownCircuit(DRAWDOWN_CIRCUITS[0]);
       } finally {
         if (!cancelled) setLoading(false);
@@ -272,23 +294,6 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portfolioId]);
-
-  // P2 因子模型打通：通过「因子域公共 Facade」加载已验证模型，
-  // 策略域不再直接知道 /factor-models 的原生路由与内部结构。
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await api.scoringListModels("validated", 50);
-        if (!cancelled) {
-          setFactorModelRuns(list ?? []);
-        }
-      } catch (_e) {
-        // best-effort，不阻塞策略规则页
-      }
-    })();
-    return () => { cancelled = true; };
   }, [portfolioId]);
 
   // WP0-8 C-05：同步加载 FactorSet，在策略规则页做「模型 → FactorSet」只读映射展示
@@ -468,51 +473,23 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
   };
   const cnRunStatus = (s: string | null | undefined): string =>
     !s ? "" : (RUN_STATUS_CN[String(s).trim()] ?? String(s).trim());
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .scoringListFactorSets("any", 100)
-      .then((list) => { if (!cancelled) setFactorSets(Array.isArray(list) ? list : []); })
-      .catch(() => { /* best-effort */ });
-    return () => { cancelled = true; };
-  }, [portfolioId]);
-
   // WP0-8 C-05：切换已训练模型 → 自动只读绑定该模型对应的 FactorSet（facade 返回 factorset_id）
   //         用户无需再手动选择 FactorSet，保证溯源链闭环。
   useEffect(() => {
     if (!factorModelRunId) {
-      setBoundFactorSetId((v) => v); // 不主动清空（保留回显值）
+      setBoundFactorSetId("");
       return;
     }
     const selected = factorModelRuns.find((r) => r.id === factorModelRunId);
     const fs = selected?.factorset_id;
-    if (typeof fs === "string" && fs) {
-      setBoundFactorSetId(fs);
-    }
+    setBoundFactorSetId(typeof fs === "string" ? fs : "");
   }, [factorModelRunId, factorModelRuns]);
-
-  // 加载已有信号规则（best-effort，失败不阻塞 UI）—— 上面已并行加载，保留作兜底
-  useEffect(() => {
-    if (!portfolioId) return;
-    let cancelled = false;
-    api
-      .getSignalRule(portfolioId)
-      .then((rule) => {
-        if (!cancelled) setExistingSignalRule((prev) => prev ?? rule);
-      })
-      .catch(() => {
-        // ignore
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [portfolioId]);
 
   const totalWeight = factors.reduce((sum, f) => sum + f.weight, 0);
 
   // 显示用：null 时 fallback 默认值
   const displaySinglePosition = maxSinglePosition ?? 15;
-  const displayStopLoss = stopLoss ?? STOP_LOSSES[1];
+  const displayStopLoss = stopLoss ?? STOP_LOSSES[0];
   const displayDrawdown = drawdownCircuit ?? DRAWDOWN_CIRCUITS[0];
   const displayAutoEnabled = autoEnabled ?? realAutoEnabled;
 
@@ -530,7 +507,7 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
   // 前端 UI 字段 → 后端字段映射：
   //   factor_model + timing_signal → rule_name（组合命名）
   //   max_single_position(%) → max_single_position_pct(0.15)  P1-FIX: /100 单位转换
-  //   stop_loss "8%" → max_loss_per_trade_pct(0.08)  P1-FIX: /100 单位转换
+  //   价格止损写入 price_stop_loss_pct；单笔风险预算保留已保存规则的值。
   //   其余风控字段使用合理默认值
   //   isApply=true 时 is_active=true（激活规则），草稿模式 is_active=false
   // WP0-8 C-07 双写契约：factor_set_id / factor_model_run_id 必须同时写入 (a) 顶层独立字段 (b) stage_limits_json，
@@ -555,6 +532,7 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
         || (typeof selectedRun?.factorset_id === "string" ? selectedRun.factorset_id : "");
       const resolvedModelRunId = factorModelRunId || "";
       const stageLimits: Record<string, unknown> = {
+        price_stop_loss_pct: stopLossPct,
         drawdown_circuit_pct: drawdownPct,
         rebalance_period: rebalancePeriod,
         stock_pool: stockPool,
@@ -571,13 +549,13 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
         // WP0-8 C-07 双写 stage_limits_json 内同步：factor_set_id（与 PortfolioRule.factor_set_id 字段一致）
         factor_set_id: resolvedFactorSetId || null,
       };
-      const payload: Record<string, unknown> = {
+      const payload: Record<string, unknown> & { is_active: boolean } = {
         rule_name: `${factorModel}-${timingSignal}`,
         max_single_position_pct: (Number(displaySinglePosition) || 0) / 100,
         max_sector_position_pct: 40 / 100,
         max_stock_position_pct: 80 / 100,
         max_etf_position_pct: 60 / 100,
-        max_loss_per_trade_pct: stopLossPct,
+        max_loss_per_trade_pct: riskBudgetPct,
         max_open_positions: 10,
         stage_limits_json: stageLimits,
         is_active: isApply,
@@ -592,6 +570,7 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
       timingSignal,
       displaySinglePosition,
       displayStopLoss,
+      riskBudgetPct,
       displayDrawdown,
       rebalancePeriod,
       stockPool,
@@ -637,8 +616,7 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
 
   // FR-P1-8a HG1：保存前二次确认（当 autoEnabled=true 且 currentState 非 READY）
   const confirmAutoBeforeSave = useCallback((): boolean => {
-    const willEnableAuto = autoEnabled !== null ? autoEnabled : realAutoEnabled;
-    if (!willEnableAuto) return true; // 保存为关闭则不用确认
+    if (!autoEnabled || realAutoEnabled) return true;
     if (hardBlockAutoOn) {
       showToast("error", "HG1 门禁：" + (hardBlockHint || "当前组合状态禁止开启自动交易"));
       return false;
@@ -655,47 +633,46 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
 
   const handleSaveDraft = useCallback(async () => {
     if (!portfolioId) return;
-    if (!confirmAutoBeforeSave()) return;
+    if (loading || saving) return;
     setSaving(true);
     try {
-      await api.upsertPortfolioRule(portfolioId, buildRulesPayload(false));
-      // P1-FIX: 同步持久化自动接管开关
-      if (autoEnabled !== null && autoEnabled !== realAutoEnabled) {
-        await api.updatePortfolio(portfolioId, { auto_trade_enabled: autoEnabled ? 1 : 0 });
-        await loadPortfolios();
-      }
+      await api.savePortfolioStrategyConfiguration(portfolioId, { rule: buildRulesPayload(false), signal_rule: buildSignalPayload() });
+      if (activePortfolioRef.current !== portfolioId) return;
       showToast("success", t("portfolioTrading.strategy.draftSaved"));
     } catch (error: any) {
+      if (activePortfolioRef.current !== portfolioId) return;
       showToast("error", error?.message || t("portfolioTrading.strategy.saveFailed"));
     } finally {
-      setSaving(false);
+      if (activePortfolioRef.current === portfolioId) setSaving(false);
     }
-  }, [portfolioId, buildRulesPayload, showToast, autoEnabled, realAutoEnabled, loadPortfolios, confirmAutoBeforeSave]);
+  }, [portfolioId, loading, saving, buildRulesPayload, buildSignalPayload, showToast]);
 
   const handleSaveApply = useCallback(async () => {
     if (!portfolioId) return;
+    if (loading || saving || bindingError) return;
+    const model = factorModelRuns.find((item) => item.id === factorModelRunId);
+    if (!model?.factorset_id || model.factorset_id !== boundFactorSetId) {
+      showToast("error", "正式应用需要选择可执行的真实训练模型。");
+      return;
+    }
     if (!confirmAutoBeforeSave()) return;
     setSaving(true);
-    // P1-FIX: 同步持久化自动接管开关
-    const saveAutoPromise = (autoEnabled !== null && autoEnabled !== realAutoEnabled)
-      ? api.updatePortfolio(portfolioId, { auto_trade_enabled: autoEnabled ? 1 : 0 }).then(async (r) => { await loadPortfolios(); return r; })
-      : Promise.resolve(null);
-    // rules 与 signal-rule 并行保存，各自容错：单一失败不阻塞另一接口
-    const [rulesRes, signalRes] = await Promise.allSettled([
-      Promise.all([api.upsertPortfolioRule(portfolioId, buildRulesPayload(true)), saveAutoPromise]),
-      api.saveSignalRule(portfolioId, buildSignalPayload()),
-    ]);
-    setSaving(false);
-    if (rulesRes.status === "fulfilled") {
-      showToast("success", t("portfolioTrading.strategy.saveSuccess"));
-    } else {
-      const reason = (rulesRes as PromiseRejectedResult).reason;
-      showToast("error", reason?.message || t("portfolioTrading.strategy.saveFailed"));
-    }
-    if (signalRes.status === "rejected") {
-      console.warn("signal-rule save failed", (signalRes as PromiseRejectedResult).reason);
-    }
-  }, [portfolioId, buildRulesPayload, buildSignalPayload, showToast, autoEnabled, realAutoEnabled, loadPortfolios, confirmAutoBeforeSave]);
+    try {
+      const result = await api.savePortfolioStrategyConfiguration(portfolioId, {
+        rule: buildRulesPayload(true), signal_rule: buildSignalPayload(),
+        binding: { factor_model_run_id: model.id, factor_set_id: model.factorset_id, run_mode: "production_sim", pit_mode: "strict_pit_safe" },
+        ...(autoEnabled !== null && autoEnabled !== realAutoEnabled ? { auto_trade_enabled: autoEnabled } : {}),
+      });
+      if (activePortfolioRef.current !== portfolioId) return;
+      if (result.binding_result) setCurrentUsage({ current: result.binding_result.factor_usage, history: [], latest_snapshot_id: result.binding_result.strategy_snapshot_id });
+      setAutoEnabled(result.auto_trade_enabled);
+      showToast("success", result.requires_confirmation ? "策略已应用，请在待办中由本人确认新模型绑定。" : t("portfolioTrading.strategy.saveSuccess"));
+      await Promise.allSettled([loadPortfolios(), onConfigurationChanged?.(portfolioId)]);
+    } catch (error: any) {
+      if (activePortfolioRef.current !== portfolioId) return;
+      showToast("error", error?.message || t("portfolioTrading.strategy.saveFailed"));
+    } finally { if (activePortfolioRef.current === portfolioId) setSaving(false); }
+  }, [portfolioId, loading, saving, bindingError, factorModelRuns, factorModelRunId, boundFactorSetId, buildRulesPayload, buildSignalPayload, showToast, autoEnabled, realAutoEnabled, loadPortfolios, confirmAutoBeforeSave, onConfigurationChanged]);
 
   // 切换因子模型时：自动应用预设到因子芯片权重（下方 UI 同步变化）
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -714,9 +691,8 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
     setRebalancePeriod(REBALANCE_PERIODS[0]);
     setWeighting(WEIGHTINGS[2]);
     setFactors(FACTOR_MODEL_PRESETS[defaultModel].map((f) => ({ ...f })));
-    setTimingSignal(TIMING_SIGNALS[1]);
     setMaxSinglePosition(15);
-    setStopLoss(STOP_LOSSES[1]);
+    setStopLoss(STOP_LOSSES[0]);
     setDrawdownCircuit(DRAWDOWN_CIRCUITS[0]);
     // WP0-8：重置时同步清空溯源绑定
     setFactorModelRunId("");
@@ -730,6 +706,16 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
 
   return (
     <section style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="pt-card" data-testid="current-strategy-binding" style={{ padding: 16, fontSize: 12 }}>
+        <strong>当前执行绑定</strong>
+        {loading ? <div>读取中…</div> : <>
+          <div>执行模型：{currentUsage?.current?.factor_model_run_id || "尚未应用"}</div>
+          <div>因子集：{currentUsage?.current?.factor_set_id || "—"}</div>
+          <div>执行快照：{currentUsage?.latest_snapshot_id || "尚未生成"}</div>
+          <div style={{ marginTop: 6 }}>下方是待保存配置；正式应用真实模型后，请在待办中由本人确认新绑定。</div>
+        </>}
+      </div>
+      {bindingError && <div role="alert" style={{ color: "var(--pt-state-warning)" }}>{bindingError}</div>}
       {/* ========== SubTask 6.1: 自动接管系统配置卡片 ========== */}
       <div className="pt-card" style={{ padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -828,11 +814,10 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
               >
                 快捷预设
               </span>
-              <select
-                className="pt-select"
+              <Select
                 style={{ width: 160 }}
                 value={factorModel}
-                onChange={(e) => setFactorModel(e.target.value)}
+                onChange={(v) => setFactorModel(v as string)}
                 aria-label={t("portfolioTrading.strategy.modelLabel")}
                 title="预设名称：切换后自动重置下方「激活因子」芯片为该预设的默认权重（纯UI快捷模板，不做训练溯源）。
 4 个内置模板：
@@ -840,48 +825,32 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
 · 价值成长平衡 — 价值45 + 成长25，双主线稳健
 · 低波质量       — 质量40 + 低波35，防御低回撤
 · 动量轮动       — 动量50 + 规模20，进攻追涨弹性高"
-              >
-                {FACTOR_MODELS.map((m) => (
-                  <option key={m} value={m}>{m}（预设模板）</option>
-                ))}
-              </select>
+                options={FACTOR_MODELS.map((m) => ({ value: m, label: `${m}（预设模板）` }))}
+              />
               <span
-                title="【下拉 vs 下方「已验证因子模型」的区别】
-
-▸ 本下拉（快捷预设）= 手动配权重的草稿模板
-  切换它只会重置下方因子芯片的权重，属于「我自己拍脑袋配比」的 UI 路径；
-  回测/实盘时如果你在下方「已验证因子模型」里选了训练产出，会优先用训练出来的真实权重覆盖本预设。
-
-▸ 下方下拉（已验证因子模型）= 机器学习训练产出的快照
-  一次 FactorModelRun = 一组真实算出来的权重/超参 + 绑定的冻结因子集 + 验证集指标；
-  满足 C-05/C-06 溯源契约，回测/实盘直接复用它的 Score.model_alpha_score。
-
-▸ 两者关系：
-  不绑训练模型 → 用本快捷预设走 UI 因子权重路径；
-  绑定训练模型 → 训练权重覆盖本预设；本预设仅作为界面默认展示基准。"
+                title="快捷预设用于编辑草稿和研究参数。正式执行需选择真实训练模型、应用执行快照，再由本人确认绑定；当前生效模型以页面顶部的执行绑定为准。"
                 style={{ cursor: "help", color: "var(--pt-muted-foreground)" }}
               >
                 <Info size={14} />
               </span>
-              <button
-                type="button"
-                className="pt-btn pt-btn-outline pt-btn-sm"
+              <Button
+                size="small"
+                icon={<Plus size={14} />}
                 onClick={() => {
                   // C-08：引导去真实的训练入口（设置 / 因子模型 Tab：冻结因子集 → 跑训练）
                   showToast(
                     "info",
-                    "已引导：请到「设置」→ 左侧「因子模型」页面，先冻结因子集，再执行「训练模型」；训练完成（状态=已验证）后，回到本页在下方下拉选择该模型绑定即可。",
+                    "请选择冻结集合并运行真实训练流水线；训练完成且生产激活后，回到本页应用并确认绑定。",
                   );
-                  onNavigate?.("factor-model");
+                  openSettingsSection("factor-model");
+                  setActiveTab("settings");
                 }}
-                title="去「设置 → 因子模型」训练真实的因子模型（冻结FactorSet → 训练FactorModelRun → 训练完成后回到本页在下方「已验证因子模型」下拉绑定）。
-如果外层 shell 未注册 onNavigate，会只弹出文字说明，不自动跳转。"
+                title="去设置中的真实训练流水线"
                 aria-label={t("portfolioTrading.strategy.newModel")}
                 style={{ whiteSpace: "nowrap" }}
               >
-                <Plus size={14} />
-                <span style={{ marginLeft: 4 }}>训练新模型</span>
-              </button>
+                训练新模型
+              </Button>
             </div>
           </div>
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -898,7 +867,7 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
               }}
             >
               <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--pt-primary)" }}>
-                🧭 两条使用路径（二选一或组合）
+                草稿参数与正式执行模型
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div
@@ -910,15 +879,15 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
                   }}
                 >
                   <div style={{ fontWeight: 600, color: "var(--pt-state-info)", marginBottom: 2 }}>
-                    路径 A：手动配权重（默认 / 快速试）
+                    手工参数：草稿与研究配置
                   </div>
                   <div style={{ color: "var(--pt-muted-foreground)", marginBottom: 4 }}>
-                    下方「已验证因子模型」选<strong>「不绑定」</strong>
+                    未选择正式模型时，仅可保存草稿。
                   </div>
                   <div style={{ color: "var(--pt-foreground)" }}>
                     ① 顶部下拉切换<strong>快捷预设模板</strong> → 自动重置下方「激活因子」芯片权重<br/>
                     ② 手动微调各因子的开关和权重 → 保存<br/>
-                    ③ 回测/实盘直接用这套 UI 权重打分
+                    ③ 草稿不会改变当前执行绑定与自动接管。
                   </div>
                 </div>
                 <div
@@ -930,15 +899,15 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
                   }}
                 >
                   <div style={{ fontWeight: 600, color: "var(--pt-state-success)", marginBottom: 2 }}>
-                    路径 B：绑定训练产出（生产推荐/可溯源）
+                    正式执行：真实训练模型
                   </div>
                   <div style={{ color: "var(--pt-muted-foreground)", marginBottom: 4 }}>
-                    在下方<strong>「已验证因子模型（训练产出）」</strong>下拉选择一次训练快照
+                    下方仅显示通过正式运行资格检查的当前模型。
                   </div>
                   <div style={{ color: "var(--pt-foreground)" }}>
                     ① 点击右上角<strong>「训练新模型」</strong> → 去「设置/因子模型」冻结因子集+训练<br/>
-                    ② 训练完成（状态=已验证）后回到本页，下拉选中该模型<br/>
-                    ③ 回测/实盘直接用训练算出的<strong>真实权重 + 绑定因子集</strong>（满足溯源契约）
+                    ② 训练完成并生产激活后，选择模型并保存应用<br/>
+                    ③ 在待办中由本人确认新绑定，再按执行快照运行。
                   </div>
                 </div>
               </div>
@@ -948,33 +917,28 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
               <label style={fieldLabelStyle}>
                 {t("portfolioTrading.strategy.validatedFactorModelLabel") || "已验证因子模型（训练产出）"}
                 <span style={{ marginLeft: 6, color: "var(--pt-muted-foreground)" }}>
-                  {t("portfolioTrading.strategy.validatedFactorModelHint") ||
-                    "不选则默认只用 UI 因子权重；选中后会覆盖为该模型已训练出的真实权重"}
+                  正式应用需选择真实训练模型；应用后由本人确认绑定。
                 </span>
               </label>
-              <select
-                className="pt-select"
+              <Select
                 style={selectFullWidthStyle}
-                value={factorModelRunId}
-                onChange={(e) => setFactorModelRunId(e.target.value)}
+                value={factorModelRunId || undefined}
+                placeholder="— 未选择模型，仅可保存草稿 —"
+                allowClear
+                onChange={(v) => setFactorModelRunId((v as string) ?? "")}
                 aria-label={t("portfolioTrading.strategy.validatedFactorModelLabel") || "Validated Factor Model Run"}
-              >
-                <option value="">
-                  {t("portfolioTrading.strategy.validatedFactorModelNone") || "— 不绑定，使用 UI 因子权重 —"}
-                </option>
-                {factorModelRuns.map((run) => {
+                options={factorModelRuns.map((run) => {
                   const memberCount = Number(run.factorset_member_count || 0);
                   const summary = memberCount > 0 ? `${memberCount} 因子` : "";
                   const statusCN = cnRunStatus(run.status);
                   const statusBadge = run.status === "validated" || !statusCN ? "" : `[${statusCN}]`;
                   const label = modelDisplayName(run);
-                  return (
-                    <option key={run.id} value={run.id}>
-                      {`${label}${summary ? ` · ${summary}` : ""} ${statusBadge}`.trim()}
-                    </option>
-                  );
+                  return {
+                    value: run.id,
+                    label: `${label}${summary ? ` · ${summary}` : ""} ${statusBadge}`.trim(),
+                  };
                 })}
-              </select>
+              />
               {factorModelRunId && factorModelRuns.find((r) => r.id === factorModelRunId) ? (
                 <div
                   style={{
@@ -1109,38 +1073,32 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
             {/* 选股池 */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <label style={fieldLabelStyle}>{t("portfolioTrading.strategy.stockPool")}</label>
-              <select
-                className="pt-select"
+              <Select
                 style={selectFullWidthStyle}
                 value={stockPool}
-                onChange={(e) => setStockPool(e.target.value)}
-              >
-                {STOCK_POOLS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+                onChange={(v) => setStockPool(v as string)}
+                options={STOCK_POOLS.map((s) => ({ value: s, label: s }))}
+              />
             </div>
             {/* 调仓周期 */}
  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <label style={fieldLabelStyle}>{t("portfolioTrading.strategy.rebalancePeriod")}</label>
-              <select
-                className="pt-select"
+              <Select
                 style={selectFullWidthStyle}
                 value={rebalancePeriod}
-                onChange={(e) => setRebalancePeriod(e.target.value)}
-              >
-                {REBALANCE_PERIODS.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
+                onChange={(v) => setRebalancePeriod(v as string)}
+                options={REBALANCE_PERIODS.map((r) => ({ value: r, label: r }))}
+              />
             </div>
             {/* 权重分配 */}
  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <label style={fieldLabelStyle}>{t("portfolioTrading.strategy.weighting")}</label>
-              <select
-                className="pt-select"
+              <Select
                 style={selectFullWidthStyle}
                 value={weighting}
-                onChange={(e) => setWeighting(e.target.value)}
-              >
-                {WEIGHTINGS.map((w) => <option key={w} value={w}>{w}</option>)}
-              </select>
+                onChange={(v) => setWeighting(v as string)}
+                options={WEIGHTINGS.map((w) => ({ value: w, label: w }))}
+              />
             </div>
             {/* 激活因子 chips */}
             <div
@@ -1203,60 +1161,57 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
             <p style={sectionSubStyle}>{t("portfolioTrading.strategy.conditionSub")}</p>
           </div>
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* 择时信号 */}
+            {/* 当前仅模型综合分驱动买入，择时指标尚未接入执行。 */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <label style={fieldLabelStyle}>{t("portfolioTrading.strategy.timingSignal")}</label>
-              <select
-                className="pt-select"
+              <label style={fieldLabelStyle}>买入依据</label>
+              <Input
+                aria-label="买入依据"
                 style={selectFullWidthStyle}
                 value={timingSignal}
-                onChange={(e) => setTimingSignal(e.target.value)}
-              >
-                {TIMING_SIGNALS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+                readOnly
+              />
+              <span style={fieldLabelStyle}>模型综合评分达到策略阈值时买入；MACD等择时指标暂不参与。</span>
             </div>
             {/* 单股持仓上限 */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <label style={fieldLabelStyle}>{t("portfolioTrading.strategy.maxSinglePosition")}</label>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input
-                  type="number"
-                  className="pt-input"
+                <InputNumber
                   style={{ flex: 1 }}
                   value={displaySinglePosition}
                   min={0}
                   max={100}
-                  onChange={(e) => setMaxSinglePosition(Number(e.target.value))}
+                  addonAfter="%"
+                  onChange={(v) => setMaxSinglePosition(Number(v ?? 0))}
                   disabled={loading}
                 />
-                <span style={fieldLabelStyle}>%</span>
               </div>
             </div>
             {/* 个股止损 */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <label style={fieldLabelStyle}>{t("portfolioTrading.strategy.stopLoss")}</label>
-              <select
-                className="pt-select"
+              <label style={fieldLabelStyle}>持仓价格止损</label>
+              <Select
+                aria-label="持仓价格止损"
                 style={selectFullWidthStyle}
                 value={displayStopLoss}
-                onChange={(e) => setStopLoss(e.target.value)}
+                onChange={(v) => setStopLoss(v as string)}
                 disabled={loading}
-              >
-                {STOP_LOSSES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+                options={STOP_LOSSES.map((s) => ({ value: s, label: s }))}
+              />
+              <span style={fieldLabelStyle}>价格相对持仓平均成本下跌达到设定比例时退出；单笔风险预算保持原规则值。</span>
             </div>
             {/* 组合回撤熔断 */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <label style={fieldLabelStyle}>{t("portfolioTrading.strategy.drawdownCircuit")}</label>
-              <select
-                className="pt-select"
+              <label style={fieldLabelStyle}>组合回撤暂停新买</label>
+              <Select
+                aria-label="组合回撤暂停新买"
                 style={selectFullWidthStyle}
                 value={displayDrawdown}
-                onChange={(e) => setDrawdownCircuit(e.target.value)}
+                onChange={(v) => setDrawdownCircuit(v as string)}
                 disabled={loading}
-              >
-                {DRAWDOWN_CIRCUITS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+                options={DRAWDOWN_CIRCUITS.map((d) => ({ value: d, label: d }))}
+              />
+              <span style={fieldLabelStyle}>回撤达到设定比例时暂停新买，保留卖出和风险退出。</span>
             </div>
             {/* 警告 banner */}
             <div
@@ -1294,36 +1249,32 @@ const PortfolioStrategyRules: React.FC<PortfolioStrategyRulesProps> = ({ portfol
           }}
         >
           <Info size={14} style={{ flexShrink: 0 }} />
-          {t("portfolioTrading.strategy.saveTip")}
+          保存草稿仅暂存配置；正式应用生成执行快照，随后需本人确认新绑定。
         </span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            type="button"
-            className="pt-btn pt-btn-ghost"
+          <Button
+            icon={<RotateCcw size={14} />}
             onClick={handleResetDefault}
             disabled={saving}
           >
-            <RotateCcw size={14} />
             {t("portfolioTrading.strategy.resetDefault")}
-          </button>
-          <button
-            type="button"
-            className="pt-btn pt-btn-outline"
+          </Button>
+          <Button
+            icon={<FileText size={14} />}
             onClick={handleSaveDraft}
-            disabled={saving}
+            disabled={saving || loading}
           >
-            <FileText size={14} />
             {t("portfolioTrading.strategy.saveDraft")}
-          </button>
-          <button
-            type="button"
-            className="pt-btn pt-btn-primary"
+          </Button>
+          <Button
+            type="primary"
+            icon={<Save size={14} />}
             onClick={handleSaveApply}
-            disabled={saving}
+            loading={saving}
+            disabled={loading || Boolean(bindingError) || !factorModelRunId || !boundFactorSetId}
           >
-            <Save size={14} />
             {t("portfolioTrading.strategy.saveApply")}
-          </button>
+          </Button>
         </div>
       </div>
     </section>

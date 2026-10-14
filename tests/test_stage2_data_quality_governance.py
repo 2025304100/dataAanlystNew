@@ -187,6 +187,8 @@ def test_quality_snapshot_exposes_level_and_assessment_id(db_session, monkeypatc
         "fields": [{
             "key": "close", "availability": "available", "data_mode": "continuous",
             "daily_coverage_p50": 0.999, "table_rows": 999, "nonnull_rows": 999,
+            "expected_rows": 1000, "covered_rows": 999, "missing_ratio": 0.001,
+            "max_consecutive_gap_days": 0,
         }]
     })
 

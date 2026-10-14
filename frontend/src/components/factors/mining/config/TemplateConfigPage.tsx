@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button, Input, Select } from "antd";
 import { t } from "../../../../i18n";
 import { factorTemplatesApi } from "../../../../api/factorTemplates";
 import type { FactorTemplate } from "../../../../api/factorTemplates";
@@ -222,51 +223,47 @@ export default function TemplateConfigPage({ active = true }: TemplateConfigPage
 
       {!loading && !failed && items.length > 0 && (
         <div className="mining-toolbar mining-tpl-toolbar">
-          <input
-            type="search"
+          <Input
+            allowClear
             className="mining-tpl-search"
             data-tpl-search
             value={query}
             placeholder={t("factorTplSearch")}
             aria-label={t("factorTplSearch")}
             onChange={(e) => setQuery(e.target.value)}
+            style={{ width: 220 }}
           />
-          <select
+          <Select
             className="mining-tpl-select"
             data-tpl-cat
-            value={catFilter}
+            value={catFilter || undefined}
             aria-label={t("factorTplColCategory")}
-            onChange={(e) => setCatFilter(e.target.value)}
-          >
-            <option value="">{t("factorTplFilterAll")}</option>
-            {presentCategories.map((c) => (
-              <option key={c} value={c}>
-                {categoryLabel(c, t)}
-              </option>
-            ))}
-          </select>
-          <select
+            placeholder={t("factorTplFilterAll")}
+            allowClear
+            style={{ minWidth: 130 }}
+            onChange={(v) => setCatFilter((v as string) ?? "")}
+            options={presentCategories.map((c) => ({ value: c, label: categoryLabel(c, t) }))}
+          />
+          <Select
             className="mining-tpl-select"
             data-tpl-sort
             value={sortKey}
             aria-label={t("factorTplSortBy")}
-            onChange={(e) => setSortKey(e.target.value as SortKey)}
-          >
-            {(Object.keys(SORT_LABEL_KEY) as SortKey[]).map((k) => (
-              <option key={k} value={k}>
-                {t(SORT_LABEL_KEY[k])}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
+            style={{ minWidth: 140 }}
+            onChange={(v) => setSortKey(v as SortKey)}
+            options={(Object.keys(SORT_LABEL_KEY) as SortKey[]).map((k) => ({
+              value: k,
+              label: t(SORT_LABEL_KEY[k]),
+            }))}
+          />
+          <Button
             className="mining-pool-btn"
             data-tpl-sort-dir
             aria-label={t("factorTplSortToggle")}
             onClick={() => setSortAsc((v) => !v)}
           >
             {sortAsc ? t("factorTplSortAsc") : t("factorTplSortDesc")}
-          </button>
+          </Button>
           {filtering && (
             <span className="mining-tpl-match" data-tpl-match>
               {t("factorTplMatch")

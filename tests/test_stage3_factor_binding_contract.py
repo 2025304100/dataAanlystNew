@@ -109,6 +109,8 @@ def _ready_model(db_session, *, set_id: str, model_id: str) -> FactorModelRun:
     ))
     db_session.add(model)
     db_session.flush()
+    from tests.factor_model_fixtures import add_training_proof
+    add_training_proof(db_session, model, set_id)
     return model
 
 

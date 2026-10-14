@@ -85,6 +85,14 @@ def _json_list(value: str | None) -> list[str]:
     return [str(item) for item in parsed] if isinstance(parsed, list) else [str(parsed)]
 
 
+def _json_records(value: str | None) -> list[dict]:
+    try:
+        parsed = json.loads(value or "[]")
+    except (TypeError, ValueError):
+        return []
+    return parsed if isinstance(parsed, list) and all(isinstance(row, dict) for row in parsed) else []
+
+
 def _candidate_read(candidate: PortfolioCandidate, symbol: Symbol) -> PortfolioCandidateRead:
     return PortfolioCandidateRead(
         id=candidate.id,
@@ -696,95 +704,154 @@ def _normalize_stage_limits_for_c04(
     return base
 
 
-@router.post("/portfolios/{portfolio_id}/rules")
-def upsert_portfolio_rule(portfolio_id: int, payload: PortfolioRuleUpsert, db: Session = Depends(get_db)):
-    portfolio = db.get(Portfolio, portfolio_id)
-    if portfolio is None:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-
+def _persist_portfolio_rule(db: Session, portfolio_id: int, payload: PortfolioRuleUpsert) -> PortfolioRule:
     if payload.is_active:
-        active_rules = db.execute(select(PortfolioRule).where(PortfolioRule.portfolio_id == portfolio_id)).scalars().all()
-        for rule in active_rules:
-            rule.is_active = 0
-
-    # C-04：写入前归一化 stage_limits_json 结构（stock/etf 分阶段 + limits 双资产映射）
-    normalized_stage_limits = _normalize_stage_limits_for_c04(
-        payload.stage_limits_json,
-        max_single_position_pct=payload.max_single_position_pct,
+        for old in db.execute(select(PortfolioRule).where(PortfolioRule.portfolio_id == portfolio_id)).scalars():
+            old.is_active = 0
+    stages = _normalize_stage_limits_for_c04(
+        payload.stage_limits_json, max_single_position_pct=payload.max_single_position_pct,
         max_open_positions=payload.max_open_positions,
     )
-    # C-07：Schema 一级新增 factor_set_id / factor_model_run_id 溯源字段，与 stage_limits_json 双写
-    if payload.factor_set_id and "factor_set_id" not in normalized_stage_limits:
-        normalized_stage_limits["factor_set_id"] = payload.factor_set_id
-    if payload.factor_model_run_id and "factor_model_run_id" not in normalized_stage_limits:
-        normalized_stage_limits["factor_model_run_id"] = payload.factor_model_run_id
+    for key in ("factor_set_id", "factor_model_run_id"):
+        if getattr(payload, key):
+            stages[key] = getattr(payload, key)
     rule = PortfolioRule(
-        portfolio_id=portfolio_id,
-        rule_name=payload.rule_name,
+        portfolio_id=portfolio_id, rule_name=payload.rule_name,
         max_single_position_pct=payload.max_single_position_pct,
         max_sector_position_pct=payload.max_sector_position_pct,
         max_stock_position_pct=payload.max_stock_position_pct,
         max_etf_position_pct=payload.max_etf_position_pct,
         max_loss_per_trade_pct=payload.max_loss_per_trade_pct,
         max_open_positions=payload.max_open_positions,
-        stage_limits_json=json.dumps(normalized_stage_limits, ensure_ascii=True),
-        is_active=int(payload.is_active),
+        stage_limits_json=json.dumps(stages, ensure_ascii=False), is_active=int(payload.is_active),
     )
     db.add(rule)
+    db.flush()
+    return rule
 
-    # C-11：原子保存（同一事务）——同步写入/刷新 SignalRule（避免 rule+signal 半保存）
-    #   - 若存在 active SignalRule：保持与 rule.is_active 状态对齐（rule 激活时 signal 同步激活）
-    #   - 若不存在 active SignalRule：创建默认 balanced 模式的 signal_rule
-    from app.models.signal_rule import SignalRule as _SignalRule
-    from app.services.signal_rules import PRESETS as _SR_PRESETS, get_active_signal_rule as _get_active_sr
-    try:
-        active_sr = _get_active_sr(db, portfolio_id)
-    except Exception:  # noqa: BLE001 - 信号规则失败时兜底创建
-        active_sr = None
-    if active_sr is None:
-        default_preset = _SR_PRESETS["balanced"]
-        sr = _SignalRule(
-            portfolio_id=portfolio_id,
-            rule_name=default_preset.rule_name,
-            mode=default_preset.mode,
-            quality_tolerance=default_preset.quality_tolerance,
-            timing_tolerance=default_preset.timing_tolerance,
-            min_sample_count=default_preset.min_sample_count,
-            max_samples=default_preset.max_samples,
-            same_region=1 if default_preset.same_region else 0,
-            same_asset_type=1 if default_preset.same_asset_type else 0,
-            same_stage=1 if default_preset.same_stage else 0,
-            same_action=1 if default_preset.same_action else 0,
-            is_active=1 if payload.is_active else 0,
-        )
-        db.add(sr)
-    else:
-        # 对齐状态：PortfolioRule 激活 → SignalRule 同步激活；反之则禁用
-        existing_signal_rows = db.execute(
-            select(_SignalRule).where(
-                _SignalRule.portfolio_id == portfolio_id, _SignalRule.is_active == 1
-            )
-        ).scalars().all()
-        target_active = 1 if payload.is_active else 0
-        for r in existing_signal_rows:
-            r.is_active = target_active
-        if active_sr is not None:
-            if getattr(active_sr, "id", None) is not None:
-                sr_same = db.get(_SignalRule, int(active_sr.id))
-                if sr_same is not None:
-                    sr_same.is_active = target_active
 
-    # C-11：自动交易开关联动（Portfolio.auto_trade_enabled）——规则激活时建议同步打开自动交易
-    #   写入规则：若 rule.is_active=1 且 portfolio 当前 auto_trade_enabled=0 → 自动置为 1；
-    #   否则不强制修改（保留用户显式关闭的决定）。
-    if portfolio.auto_trade_enabled is None or int(portfolio.auto_trade_enabled or 0) == 0:
-        portfolio.auto_trade_enabled = 1 if payload.is_active else 0
-    elif not payload.is_active:
-        portfolio.auto_trade_enabled = 0
-
+@router.post("/portfolios/{portfolio_id}/rules")
+def upsert_portfolio_rule(portfolio_id: int, payload: PortfolioRuleUpsert, db: Session = Depends(get_db)):
+    portfolio = db.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    rule = _persist_portfolio_rule(db, portfolio_id, payload)
+    if payload.is_active:
+        # Legacy rule-only writes cannot resume a reviewed immutable binding.
+        portfolio.status_model = "MODEL_INACTIVE"
     db.commit()
     db.refresh(rule)
     return {"id": rule.id, "portfolio_id": portfolio_id}
+
+
+from app.schemas.decision_engine import FactorUsageBindRequest, SaveAndApplyResponse, PortfolioFactorUsageRead
+from app.schemas.signal_rule import SignalRuleUpsert
+
+
+class StrategyConfigurationRequest(BaseModel):
+    rule: PortfolioRuleUpsert
+    signal_rule: SignalRuleUpsert
+    binding: FactorUsageBindRequest | None = None
+    auto_trade_enabled: bool | None = None
+
+
+class StrategyConfigurationResponse(BaseModel):
+    rule_id: int
+    signal_rule_id: int | None = None
+    applied: bool
+    binding_result: SaveAndApplyResponse | None = None
+    auto_trade_enabled: bool
+    requires_confirmation: bool
+
+
+@router.post("/portfolios/{portfolio_id}/strategy-configuration", response_model=StrategyConfigurationResponse)
+def save_strategy_configuration(portfolio_id: int, payload: StrategyConfigurationRequest, db: Session = Depends(get_db)):
+    """Persist a draft or atomically apply rule, signal policy and immutable model binding."""
+    from app.services.signal_rules import upsert_active_signal_rule, get_active_signal_rule
+    from app.services.factor_usage_service import _build_execution_universe_snapshot, _utcnow_naive
+    from app.services.factors.__facade__ import apply_portfolio_score_binding, assess_score_model_readiness
+    from app.models.decision_engine import PortfolioFactorUsage, StrategyExecutionSnapshot
+    from app.core.hash_utils import content_hash, canonical_json
+    portfolio = db.execute(select(Portfolio).where(Portfolio.id == portfolio_id)
+                           .with_for_update().execution_options(populate_existing=True)).scalar_one_or_none()
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    if payload.rule.is_active and (payload.binding is None or payload.binding.run_mode not in {"production_sim", "production_pit"}):
+        raise HTTPException(status_code=400, detail={
+            "error": "PRODUCTION_BINDING_REQUIRED",
+            "message": "正式应用需选择已验证并激活的真实训练模型；手动权重可保存为草稿。",
+        })
+    try:
+        if not payload.rule.is_active:
+            stages = dict(payload.rule.stage_limits_json)
+            stages["_draft_signal_rule"] = payload.signal_rule.model_dump(mode="json")
+            stages["_draft_auto_trade_enabled"] = payload.auto_trade_enabled
+            rule = _persist_portfolio_rule(db, portfolio_id, payload.rule.model_copy(update={"stage_limits_json": stages}))
+            response = StrategyConfigurationResponse(
+                rule_id=rule.id, applied=False, auto_trade_enabled=bool(portfolio.auto_trade_enabled),
+                requires_confirmation=False,
+            )
+        else:
+            binding = payload.binding
+            assert binding is not None
+            stages = dict(payload.rule.stage_limits_json)
+            stages.pop("_configuration_hash", None)
+            intent = payload.model_dump(mode="json")
+            intent["rule"]["stage_limits_json"] = stages
+            fingerprint = content_hash(intent)
+            latest = db.scalar(select(StrategyExecutionSnapshot).where(
+                StrategyExecutionSnapshot.portfolio_id == portfolio_id,
+                StrategyExecutionSnapshot.snapshot_type == "save_and_apply",
+            ).order_by(StrategyExecutionSnapshot.effective_from.desc(), StrategyExecutionSnapshot.id.desc()).limit(1))
+            if latest:
+                versions = _json_object(latest.versions_json)
+                previous_hash = versions.get("rule_constraints", {}).get("stage_limits", {}).get("_configuration_hash")
+                usage = db.get(PortfolioFactorUsage, latest.portfolio_factor_usage_id) if latest.portfolio_factor_usage_id else None
+                live_rule = db.get(PortfolioRule, latest.rule_id) if latest.rule_id else None
+                now = _utcnow_naive()
+                signal = get_active_signal_rule(db, portfolio_id, for_update=True)
+                current_members, current_candidates, current_source = _build_execution_universe_snapshot(db, portfolio, now)
+                inputs_unchanged = (
+                    signal.model_dump(include=set(SignalRuleUpsert.model_fields)) == payload.signal_rule.model_dump()
+                    and _json_records(latest.member_snapshot_json) == json.loads(canonical_json(current_members))
+                    and _json_records(latest.candidate_pool_json) == json.loads(canonical_json(current_candidates))
+                    and versions.get("auto_trade_source_mode") == current_source
+                )
+                if (previous_hash == fingerprint and usage and usage.status == "active" and live_rule and live_rule.is_active
+                        and usage.effective_from <= now and (usage.effective_to is None or usage.effective_to > now)
+                        and latest.effective_from <= now
+                        and inputs_unchanged
+                        and (payload.auto_trade_enabled is None or bool(portfolio.auto_trade_enabled) == payload.auto_trade_enabled)
+                        and assess_score_model_readiness(db, binding.factor_model_run_id, binding.factor_set_id, require_runtime_active=True)["ready"]):
+                    return StrategyConfigurationResponse(
+                        rule_id=latest.rule_id, signal_rule_id=signal.id, applied=True,
+                        binding_result=SaveAndApplyResponse(
+                            factor_usage=PortfolioFactorUsageRead.model_validate(usage),
+                            strategy_snapshot_id=latest.id, snapshot_hash=latest.snapshot_hash,
+                            idempotency_key=latest.idempotency_key or "", effective_from=latest.effective_from,
+                        ), auto_trade_enabled=bool(portfolio.auto_trade_enabled),
+                        requires_confirmation=portfolio.status_model == "MODEL_INACTIVE",
+                    )
+            stages["_configuration_hash"] = fingerprint
+            rule = _persist_portfolio_rule(db, portfolio_id, payload.rule.model_copy(update={
+                "factor_model_run_id": binding.factor_model_run_id, "factor_set_id": binding.factor_set_id,
+                "stage_limits_json": stages,
+            }))
+            signal = upsert_active_signal_rule(db, portfolio_id, payload.signal_rule, commit=False)
+            binding_result = apply_portfolio_score_binding(db, portfolio_id, binding.model_copy(update={
+                "rule_id": rule.id, "rule_version": 1,
+            }), commit=False)
+            if payload.auto_trade_enabled is not None:
+                portfolio.auto_trade_enabled = int(payload.auto_trade_enabled)
+            response = StrategyConfigurationResponse(
+                rule_id=rule.id, signal_rule_id=signal.id, applied=True, binding_result=binding_result,
+                auto_trade_enabled=bool(portfolio.auto_trade_enabled), requires_confirmation=True,
+            )
+        db.commit()
+        return response
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.get("/portfolios/{portfolio_id}/allocation", response_model=AllocationSummary)

@@ -75,6 +75,10 @@ class FactorModelOptionBrief(BaseModel):
     gate_policy_version: str | None = None
     # G1-WP15：仅 research UI 可显示 production 门禁阈值外的模型
     passes_production_gate: bool = False
+    production_eligible: bool = False
+    readiness_code: str = "READY"
+    readiness_message: str = ""
+    training_mode: str = "unknown"
     is_global_active: bool = False
     sample_out_rank_ic: float | None = None
     sample_out_icir: float | None = None

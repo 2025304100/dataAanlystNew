@@ -29,6 +29,7 @@ from app.models.etf_indicator import EtfIndicator
 from app.models.symbol import Symbol
 from app.services.akshare_utils import call_akshare_with_retry, quiet_akshare_output
 from app.services.market_data import _proxy_bypass
+from app.services.factors.contracts import normalize_symbol
 from app.services.regions import region_from_market
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,12 @@ def _first_present(*values: Any) -> Any:
 
 
 def _etf_code(symbol: Symbol) -> str:
-    return symbol.symbol.split(".")[-1] if "." in symbol.symbol else symbol.symbol
+    return normalize_symbol(symbol.symbol)
+
+
+def _observation_date(value: Any) -> date | None:
+    parsed = pd.to_datetime(value, errors="coerce")
+    return None if pd.isna(parsed) else parsed.date()
 
 
 def _fetch_etf_spot(db: Session, symbol: Symbol) -> dict[str, Any]:
@@ -83,7 +89,7 @@ def _fetch_etf_spot(db: Session, symbol: Symbol) -> dict[str, Any]:
             return {}
         # 列名通常为：代码、名称、最新价、涨跌幅、成交量、成交额、开盘价、最高价、最低价、
         #           昨收、单位净值、累计净值、折价率
-        row = df[df["代码"] == code]
+        row = df[df["代码"].map(normalize_symbol) == code]
         if row.empty:
             return {}
         row = row.iloc[0]
@@ -93,6 +99,8 @@ def _fetch_etf_spot(db: Session, symbol: Symbol) -> dict[str, Any]:
             None,
         )
         return {
+            "trade_date": _observation_date(row.get("交易日期")) or date.today(),
+            "nav_date": _observation_date(row.get("净值日期")),
             "close": _safe_float(_first_present(row.get("最新价"), row.get("市价"))),
             "nav": _safe_float(_first_present(row.get("单位净值"), row.get("基金净值"))),
             "premium_discount": premium,
@@ -114,12 +122,12 @@ def _fetch_etf_fund_info(db: Session, symbol: Symbol, trade_date: date) -> dict[
         if df is None or df.empty:
             return {}
         # 列名：净值日期、单位净值、累计净值、日增长率
-        df["净值日期"] = pd.to_datetime(df["净值日期"]).dt.date
-        recent = df[df["净值日期"] <= trade_date]
+        df = df.copy()
+        df["净值日期"] = pd.to_datetime(df["净值日期"], errors="coerce").dt.date
+        recent = df[df["净值日期"].notna() & (df["净值日期"] <= trade_date)]
         if recent.empty:
-            recent = df.iloc[[-1]]
-        else:
-            recent = recent.iloc[[-1]]
+            return {}
+        recent = recent.sort_values("净值日期").iloc[[-1]]
         return {
             "trade_date": recent.iloc[0]["净值日期"],
             "nav": _safe_float(recent.iloc[0].get("单位净值")),
@@ -141,12 +149,17 @@ def _fetch_etf_fund_daily(db: Session, symbol: Symbol) -> dict[str, Any]:
             df = call_akshare_with_retry(ak.fund_etf_fund_daily_em, api_key="fund_etf_fund_daily_em", db=db)
         if df is None or df.empty:
             return {}
-        row = df[df["基金代码"] == code]
+        row = df[df["基金代码"].map(normalize_symbol) == code]
         if row.empty:
             return {}
         row = row.iloc[0]
-        # 找第一个匹配 *-单位净值 的列（最新日期的净值）
-        nav_col = next((c for c in df.columns if c.endswith("-单位净值")), None)
+        dated_columns = [
+            (observed, column)
+            for column in df.columns if str(column).endswith("-单位净值")
+            for observed in [_observation_date(str(column).removesuffix("-单位净值"))]
+            if observed is not None and observed <= date.today()
+        ]
+        nav_date, nav_col = max(dated_columns) if dated_columns else (None, None)
         nav = _safe_float(row.get(nav_col)) if nav_col else None
         # 市价、折价率是固定列名
         close = _safe_float(row.get("市价"))
@@ -156,6 +169,8 @@ def _fetch_etf_fund_daily(db: Session, symbol: Symbol) -> dict[str, Any]:
             None,
         )
         return {
+            "trade_date": nav_date,
+            "price_date": _observation_date(row.get("交易日期")) or date.today(),
             "nav": nav,
             "close": close,
             "premium_discount": premium_discount,
@@ -212,35 +227,39 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
 
     target_date = trade_date or date.today()
 
-    # fund_daily 是最稳定的来源（返回 nav/close/premium_discount）
-    fund_daily = _fetch_etf_fund_daily(db, symbol)
+    if target_date > date.today():
+        return None
+    # Current quotes have no historical contract. Never request them for a
+    # historical target or join today's quote to a prior day's published NAV.
+    fund_daily = _fetch_etf_fund_daily(db, symbol) if target_date == date.today() else {}
     fund_info = _fetch_etf_fund_info(db, symbol, target_date)
-    spot_data = _fetch_etf_spot(db, symbol)
-
-    # 优先级：fund_daily > fund_info > spot
-    nav = _first_present(fund_daily.get("nav"), fund_info.get("nav"), spot_data.get("nav"))
-    close = _first_present(fund_daily.get("close"), spot_data.get("close"))
-    premium_discount = _first_present(
-        fund_daily.get("premium_discount"), spot_data.get("premium_discount")
-    )
+    spot_data = _fetch_etf_spot(db, symbol) if target_date == date.today() else {}
+    nav_observations = [
+        (observed, _safe_float(source.get("nav")))
+        for source in (fund_daily, fund_info)
+        for observed in [_observation_date(source.get("trade_date"))]
+        if observed is not None and observed <= target_date and _safe_float(source.get("nav")) is not None
+    ]
+    spot_nav_date = _observation_date(spot_data.get("nav_date"))
+    if spot_nav_date is not None and spot_nav_date <= target_date and spot_data.get("nav") is not None:
+        nav_observations.append((spot_nav_date, _safe_float(spot_data["nav"])))
+    if nav_observations:
+        actual_date, nav = max(nav_observations, key=lambda item: item[0])
+    else:
+        actual_date, nav = target_date, None
+    close = premium_discount = None
+    for source, date_key in ((fund_daily, "price_date"), (spot_data, "trade_date")):
+        if _observation_date(source.get(date_key)) == actual_date:
+            close = _first_present(close, _safe_float(source.get("close")))
+            premium_discount = _first_present(premium_discount, _safe_float(source.get("premium_discount")))
+    if close is None:
+        close = _safe_float(db.execute(select(DailyBar.close).where(
+            DailyBar.symbol_id == symbol.id, DailyBar.trade_date == actual_date
+        )).scalar())
 
     if nav is None and close is None and premium_discount is None:
         logger.info("No ETF indicator data for %s, skip", symbol.symbol)
         return None
-
-    # 若无溢价折价率但有 nav 和 close，自行计算
-    if premium_discount is None and nav and close and nav > 0:
-        premium_discount = (close - nav) / nav * 100
-
-    # 跟踪误差：需 ETF 收盘价序列 + 标的指数序列
-    # 简化：暂不计算跟踪误差（需关联指数代码，预留接口）
-    tracking_error = None
-
-    score = calc_premium_discount_score(premium_discount)
-    # This is a snapshot for the requested sync date.  The historical NAV
-    # provider may return its latest available date, but using that date here
-    # makes backfill/current coverage and retry resumptions consistent.
-    actual_date = target_date
 
     existing = db.execute(
         select(EtfIndicator).where(
@@ -248,9 +267,28 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
             EtfIndicator.trade_date == actual_date,
         )
     ).scalars().first()
+    retained_fields = []
+    if existing is not None:
+        # A provider outage is missing evidence, not an instruction to clear
+        # a known fact. Reuse only this exact day's snapshot, never another day.
+        if nav is None and existing.nav is not None:
+            nav = _safe_float(existing.nav)
+            retained_fields.append("nav")
+        if close is None and existing.close is not None:
+            close = _safe_float(existing.close)
+            retained_fields.append("close")
+    if premium_discount is None:
+        if nav and close and nav > 0:
+            premium_discount = (close - nav) / nav * 100
+        elif existing is not None and nav == existing.nav and close == existing.close:
+            premium_discount = _safe_float(existing.premium_discount)
+            retained_fields.append("premium_discount")
+    score = calc_premium_discount_score(premium_discount)
 
     raw_json = json.dumps(
-        {"spot": spot_data, "fund_info": fund_info, "fund_daily": fund_daily},
+        {"spot": spot_data, "fund_info": fund_info, "fund_daily": fund_daily,
+         "retained_same_day_fields": retained_fields,
+         "retained_source": existing.source if existing is not None and retained_fields else None},
         ensure_ascii=False,
         default=str,
     )
@@ -265,11 +303,8 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
     existing.nav = nav
     existing.close = close
     existing.premium_discount = premium_discount
-    # fund_size/total_shares/shares_change 当前数据源未稳定返回，置 None（预留字段）
-    existing.fund_size = None
-    existing.total_shares = None
-    existing.shares_change = None
-    existing.tracking_error = tracking_error
+    # These collectors do not supply size/shares or benchmark returns. New
+    # rows retain NULL; a partial quote refresh must not erase existing facts.
     existing.premium_discount_score = score
     existing.source = "akshare"
     existing.raw_json = raw_json
@@ -277,10 +312,14 @@ def sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date | None = No
     return existing
 
 
-def get_latest_etf_indicator(db: Session, symbol_id: int) -> EtfIndicator | None:
+def get_latest_etf_indicator(
+    db: Session, symbol_id: int, *, as_of: date | None = None
+) -> EtfIndicator | None:
+    stmt = select(EtfIndicator).where(EtfIndicator.symbol_id == symbol_id)
+    if as_of is not None:
+        stmt = stmt.where(EtfIndicator.trade_date <= as_of)
     return db.execute(
-        select(EtfIndicator)
-        .where(EtfIndicator.symbol_id == symbol_id)
+        stmt
         .order_by(desc(EtfIndicator.trade_date))
         .limit(1)
     ).scalars().first()
@@ -298,10 +337,10 @@ def get_or_sync_etf_indicator(db: Session, symbol: Symbol, trade_date: date) -> 
     if region != "cn":
         return None
 
-    latest = get_latest_etf_indicator(db, symbol.id)
+    latest = get_latest_etf_indicator(db, symbol.id, as_of=trade_date)
     if latest is not None:
         days_stale = (trade_date - latest.trade_date).days if hasattr(latest.trade_date, "year") else 0
-        if days_stale <= _ETF_FRESHNESS_DAYS and latest.premium_discount_score is not None:
+        if 0 <= days_stale <= _ETF_FRESHNESS_DAYS and latest.premium_discount_score is not None:
             return latest
 
     try:

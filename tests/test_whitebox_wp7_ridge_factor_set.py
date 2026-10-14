@@ -641,7 +641,8 @@ def test_scoring_bridge_uses_dynamic_features_from_model_weights(
     from app.services.factors.scoring_bridge import materialize_factor_scores
 
     warehouse = FactorWarehouse(tmp_path / "factor.duckdb")
-    start = _seed_training_data(warehouse, trade_dates=10, symbols=3)
+    # A T+5 label purge needs a training segment before validation starts.
+    start = _seed_training_data(warehouse, trade_dates=30, symbols=3)
     mapping = _seed_factors_and_versions(db_session)
     _create_frozen_factor_set(db_session, factor_mapping=mapping)
 
@@ -661,9 +662,9 @@ def test_scoring_bridge_uses_dynamic_features_from_model_weights(
         factor_calc_batch_id="factor-train",
         target_calc_batch_id="target-train",
         factor_set_id="fs-test-ridge-001",
-        data_cutoff_date=start + timedelta(days=9),
-        window_days=8,
-        validation_days=2,
+        data_cutoff_date=start + timedelta(days=29),
+        window_days=20,
+        validation_days=5,
         gate=gate,
         model_run_id="test-scoring-bridge-001",
     )

@@ -30,11 +30,38 @@ vi.mock("../../../i18n", () => ({
 }));
 
 vi.mock("antd", () => ({
-  DatePicker: {
-    RangePicker: ({ "data-testid": testId, value }: { "data-testid"?: string; value?: unknown }) => (
-      <div data-testid={testId} data-value={JSON.stringify(value ?? null)} />
-    ),
-  },
+  // 单日期 DatePicker：渲染原生 date input，onChange 回传带 format 的 dayjs 形对象
+  DatePicker: Object.assign(
+    function AntDatePickerMock({ "data-testid": testId, value, onChange, ...rest }: any) {
+      return (
+        <input
+          type="date"
+          data-testid={testId}
+          value={value && typeof value.format === "function" ? value.format("YYYY-MM-DD") : ""}
+          onChange={(e) => onChange?.(e.target.value ? { format: () => e.target.value } : null)}
+          {...rest}
+        />
+      );
+    },
+    {
+      RangePicker: ({ "data-testid": testId, value }: { "data-testid"?: string; value?: unknown }) => (
+        <div data-testid={testId} data-value={JSON.stringify(value ?? null)} />
+      ),
+    },
+  ),
+  Select: ({ "data-testid": testId, value, onChange, options, ...rest }: any) => (
+    <select
+      data-testid={testId}
+      value={value ?? ""}
+      onChange={(e) => onChange?.(e.target.value)}
+      {...rest}
+    >
+      <option value="">全部状态</option>
+      {(options ?? []).map((o: { value: string; label: string }) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  ),
   App: {
     useApp: () => ({
       message: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },

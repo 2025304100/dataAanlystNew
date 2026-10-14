@@ -91,80 +91,17 @@ def _make_symbol(db, code="TEST", name="Test", market="SSE"):
 
 def _set_active_model(db, model_run_id: str | None):
     from app.models.factor_runtime import FactorRuntimeState
-    from app.models.factor import Factor
-    from app.models.factor_evaluation import FactorSet, FactorSetMember
-    from app.models.factor_governance import FactorModelMember
-    from app.models.factor_model import FactorModelRun, FactorVersion
-
-    factor_set_id = f"fs-{model_run_id}" if model_run_id else None
+    from app.models.factor_model import FactorModelRun
+    from tests.test_stage3_factor_binding_contract import _ready_model
     if model_run_id and db.get(FactorModelRun, model_run_id) is None:
-        # Production snapshot preflight requires a complete immutable model
-        # lineage, so this fixture builds the smallest readiness-qualified
-        # FactorSet -> FactorModelRun pair used by the G1 scenarios.
-        factor = Factor(
-            code=f"factor_{model_run_id}",
-            name=f"Factor {model_run_id}",
-            category="fundamental",
-            direction="higher_better",
-            status="active",
-            lifecycle_status="active",
-            is_active=1,
-            origin="test",
-        )
-        db.add(factor)
-        db.flush()
-        version = FactorVersion(
-            factor_id=factor.id,
-            version=1,
-            formula_expr="1",
-            validation_status="valid",
-        )
-        factor_set = FactorSet(
-            id=factor_set_id,
-            name=factor_set_id,
-            status="frozen",
-            content_hash="a" * 32,
-            frozen_at=datetime.now(timezone.utc).replace(tzinfo=None),
-            created_by="qa",
-        )
-        db.add_all([version, factor_set])
-        db.flush()
-        db.add(FactorSetMember(
-            factor_set_id=factor_set_id,
-            factor_id=factor.id,
-            factor_version_id=version.id,
-            factor_code=factor.code,
-            factor_version=1,
-            role="feature",
-            display_order=0,
-            missing_policy="exclude",
-        ))
-        model = FactorModelRun(
-            id=model_run_id,
-            model_type="ridge",
-            asset_type="stock",
-            status="validated",
-            feature_versions_json=json.dumps({
-                factor.code: 1,
-                "__factor_set_id__": factor_set_id,
-            }),
-            hyperparameters_json=json.dumps({"factor_set_id": factor_set_id}),
-            metrics_json="{}",
-        )
-        model.weights.append(FactorModelMember(
-            factor_code=factor.code,
-            factor_version=1,
-            coefficient=1.0,
-            normalized_weight=1.0,
-        ))
-        db.add(model)
+        _ready_model(db, set_id=f"fs-{model_run_id}", model_id=model_run_id)
     s = db.get(FactorRuntimeState, 1)
     if s is None:
-        s = FactorRuntimeState(id=1, weight_mode="manual", active_model_run_id=model_run_id,
+        s = FactorRuntimeState(id=1, weight_mode="ridge" if model_run_id else "manual", active_model_run_id=model_run_id,
                                updated_by="qa", version=1)
         db.add(s)
     else:
-        s.weight_mode = "manual"; s.active_model_run_id = model_run_id; s.version += 1
+        s.weight_mode = "ridge" if model_run_id else "manual"; s.active_model_run_id = model_run_id; s.version += 1
     db.flush(); return s
 
 
@@ -199,6 +136,7 @@ def _insert_scores(db, fmr_id, pairs, batch_id_suffix=""):
             timing_score=0.0, stage="growth", action="HOLD", priority_score=0.0,
             weight_mode="manual", factor_model_run_id=fmr_id,
             factor_set_id=f"fs-{fmr_id}",
+            factor_member_versions_json=json.dumps({f"factor_fs-{fmr_id}": 1}),
             factor_data_cutoff_at=cutoff_utc,
             model_alpha_score=value, calc_batch_id=bid,
             published_at=pub, pit_flag=("PIT_SAFE" if pub else "NOT_CHECKED"),

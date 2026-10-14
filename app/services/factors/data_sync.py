@@ -11,11 +11,11 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.capital_flow import CapitalFlow
@@ -43,6 +43,8 @@ MACRO_SOURCE_KEY = "sql.macro_indicator_values"
 CancelCheck = Callable[[], bool]
 # 与 bar_mirror.ProgressCallback 同签名：(phase, processed, total, message)
 ProgressCallback = Callable[[str, int, int, str], None]
+_DEFAULT_REPAIR_WINDOW_DAYS = 60
+_DEFAULT_MACRO_REPAIR_ROWS = 5000
 
 
 @dataclass
@@ -117,10 +119,39 @@ def _symbol_code(value: str) -> str:
 
 
 def _source_hash(raw_json: str | None, fallback: dict[str, Any]) -> str:
-    payload = raw_json or json.dumps(
-        fallback, ensure_ascii=False, sort_keys=True, default=str
-    )
+    # Hash the normalized input values. Provider payload formatting or upload
+    # filenames must not republish an otherwise unchanged observation.
+    payload = json.dumps(fallback, ensure_ascii=False, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _repair_candidates(
+    db: Session, model: Any, date_column: Any | None, previous_watermark: int,
+    *, start_date: date | None, end_date: date | None, full_refresh: bool,
+):
+    """Select new IDs plus a bounded window of possible in-place corrections.
+
+    The source schema has no reliable update timestamp for most inputs. An
+    explicit requested window therefore rereads that window; normal mirrors
+    revisit only the newest 60 source days, alongside all newly inserted IDs.
+    Historical corrections outside it require their actual requested range
+    or an explicit full refresh. Macro periods have mixed string formats, so
+    their default repair window uses the latest 5,000 IDs instead.
+    """
+    if full_refresh or previous_watermark == 0:
+        return model.id > 0
+    if date_column is None:
+        return model.id > (0 if start_date or end_date else max(0, previous_watermark - _DEFAULT_MACRO_REPAIR_ROWS))
+    repair_start = start_date
+    if repair_start is None:
+        latest_query = select(func.max(date_column))
+        if end_date is not None:
+            latest_query = latest_query.where(date_column <= end_date)
+        latest_date = db.scalar(latest_query)
+        if latest_date is None:
+            return model.id > previous_watermark
+        repair_start = latest_date - timedelta(days=_DEFAULT_REPAIR_WINDOW_DAYS)
+    return or_(model.id > previous_watermark, date_column >= repair_start)
 
 
 def _period_date(value: Any) -> date | None:
@@ -159,7 +190,12 @@ def _mirror_valuations(
     if _cancelled(should_cancel):
         return
     source_key = _watermark_key(VALUATION_SOURCE_KEY, start_date, end_date)
-    cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    previous_watermark = warehouse.get_watermark(source_key)
+    repair_filter = _repair_candidates(
+        db, StockValuation, StockValuation.trade_date, previous_watermark,
+        start_date=start_date, end_date=end_date, full_refresh=full_refresh,
+    )
+    cursor = 0
     while True:
         if _cancelled(should_cancel):
             break
@@ -168,6 +204,7 @@ def _mirror_valuations(
             .join(Symbol, Symbol.id == StockValuation.symbol_id)
             .where(
                 StockValuation.id > cursor,
+                repair_filter,
                 *_date_filters(
                     StockValuation.trade_date, start_date, end_date
                 ),
@@ -210,9 +247,10 @@ def _mirror_valuations(
             "raw_valuation_snapshots",
             records,
             source_key=source_key,
-            watermark=cursor,
+            watermark=max(previous_watermark, cursor),
+            skip_unchanged=True,
         )
-    result.valuation_watermark = cursor
+    result.valuation_watermark = max(previous_watermark, cursor)
 
 
 def _mirror_fund_flows(
@@ -229,7 +267,12 @@ def _mirror_fund_flows(
     if _cancelled(should_cancel):
         return
     source_key = _watermark_key(FUND_FLOW_SOURCE_KEY, start_date, end_date)
-    cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    previous_watermark = warehouse.get_watermark(source_key)
+    repair_filter = _repair_candidates(
+        db, CapitalFlow, CapitalFlow.trade_date, previous_watermark,
+        start_date=start_date, end_date=end_date, full_refresh=full_refresh,
+    )
+    cursor = 0
     while True:
         if _cancelled(should_cancel):
             break
@@ -238,6 +281,7 @@ def _mirror_fund_flows(
             .join(Symbol, Symbol.id == CapitalFlow.symbol_id)
             .where(
                 CapitalFlow.id > cursor,
+                repair_filter,
                 *_date_filters(CapitalFlow.trade_date, start_date, end_date),
             )
             .order_by(CapitalFlow.id)
@@ -269,9 +313,10 @@ def _mirror_fund_flows(
             "raw_fund_flows",
             records,
             source_key=source_key,
-            watermark=cursor,
+            watermark=max(previous_watermark, cursor),
+            skip_unchanged=True,
         )
-    result.fund_flow_watermark = cursor
+    result.fund_flow_watermark = max(previous_watermark, cursor)
 
 
 def _mirror_financial_reports(
@@ -279,6 +324,7 @@ def _mirror_financial_reports(
     warehouse: FactorWarehouse,
     result: FactorInputMirrorResult,
     *,
+    start_date: date | None,
     end_date: date | None,
     batch_size: int,
     full_refresh: bool,
@@ -291,11 +337,16 @@ def _mirror_financial_reports(
     source_key = _watermark_key(
         FINANCIAL_REPORT_SOURCE_KEY, None, end_date
     )
-    cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    previous_watermark = warehouse.get_watermark(source_key)
+    repair_filter = _repair_candidates(
+        db, StockFinancialReport, StockFinancialReport.announcement_date, previous_watermark,
+        start_date=start_date, end_date=end_date, full_refresh=full_refresh,
+    )
+    cursor = 0
     while True:
         if _cancelled(should_cancel):
             break
-        filters = [StockFinancialReport.id > cursor]
+        filters = [StockFinancialReport.id > cursor, repair_filter]
         if end_date is not None:
             filters.append(
                 StockFinancialReport.announcement_date <= end_date
@@ -348,9 +399,10 @@ def _mirror_financial_reports(
             "raw_financial_reports",
             records,
             source_key=source_key,
-            watermark=cursor,
+            watermark=max(previous_watermark, cursor),
+            skip_unchanged=True,
         )
-    result.financial_report_watermark = cursor
+    result.financial_report_watermark = max(previous_watermark, cursor)
 
 
 def _mirror_macro(
@@ -367,13 +419,18 @@ def _mirror_macro(
     if _cancelled(should_cancel):
         return
     source_key = _watermark_key(MACRO_SOURCE_KEY, start_date, end_date)
-    cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    previous_watermark = warehouse.get_watermark(source_key)
+    repair_filter = _repair_candidates(
+        db, MacroIndicatorValue, None, previous_watermark,
+        start_date=start_date, end_date=end_date, full_refresh=full_refresh,
+    )
+    cursor = 0
     while True:
         if _cancelled(should_cancel):
             break
         rows = db.execute(
             select(MacroIndicatorValue)
-            .where(MacroIndicatorValue.id > cursor)
+            .where(MacroIndicatorValue.id > cursor, repair_filter)
             .order_by(MacroIndicatorValue.id)
             .limit(batch_size)
         ).scalars().all()
@@ -407,9 +464,10 @@ def _mirror_macro(
             "raw_macro",
             records,
             source_key=source_key,
-            watermark=cursor,
+            watermark=max(previous_watermark, cursor),
+            skip_unchanged=True,
         )
-    result.macro_watermark = cursor
+    result.macro_watermark = max(previous_watermark, cursor)
 
 
 def _mirror_lhb_institution(
@@ -428,7 +486,12 @@ def _mirror_lhb_institution(
     source_key = _watermark_key(
         LHB_INSTITUTION_SOURCE_KEY, start_date, end_date
     )
-    cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    previous_watermark = warehouse.get_watermark(source_key)
+    repair_filter = _repair_candidates(
+        db, LhbInstitutionTrade, LhbInstitutionTrade.trade_date, previous_watermark,
+        start_date=start_date, end_date=end_date, full_refresh=full_refresh,
+    )
+    cursor = 0
     while True:
         if _cancelled(should_cancel):
             break
@@ -436,6 +499,7 @@ def _mirror_lhb_institution(
             select(LhbInstitutionTrade)
             .where(
                 LhbInstitutionTrade.id > cursor,
+                repair_filter,
                 *_date_filters(
                     LhbInstitutionTrade.trade_date,
                     start_date,
@@ -470,9 +534,11 @@ def _mirror_lhb_institution(
             "raw_sentiment",
             records,
             source_key=source_key,
-            watermark=cursor,
+            watermark=max(previous_watermark, cursor),
+            skip_unchanged=True,
+            update_fields=("has_lhb", "lhb_institution_net"),
         )
-    result.lhb_institution_watermark = cursor
+    result.lhb_institution_watermark = max(previous_watermark, cursor)
 
 
 def _mirror_hot_rank(
@@ -491,7 +557,12 @@ def _mirror_hot_rank(
     source_key = _watermark_key(
         HOT_RANK_SOURCE_KEY, start_date, end_date
     )
-    cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    previous_watermark = warehouse.get_watermark(source_key)
+    repair_filter = _repair_candidates(
+        db, StockHotRankSnapshot, StockHotRankSnapshot.trade_date, previous_watermark,
+        start_date=start_date, end_date=end_date, full_refresh=full_refresh,
+    )
+    cursor = 0
     while True:
         if _cancelled(should_cancel):
             break
@@ -499,6 +570,7 @@ def _mirror_hot_rank(
             select(StockHotRankSnapshot)
             .where(
                 StockHotRankSnapshot.id > cursor,
+                repair_filter,
                 *_date_filters(
                     StockHotRankSnapshot.trade_date,
                     start_date,
@@ -533,9 +605,11 @@ def _mirror_hot_rank(
             "raw_sentiment",
             records,
             source_key=source_key,
-            watermark=cursor,
+            watermark=max(previous_watermark, cursor),
+            skip_unchanged=True,
+            update_fields=("hot_rank", "hot_rank_total", "hot_rank_pct"),
         )
-    result.hot_rank_watermark = cursor
+    result.hot_rank_watermark = max(previous_watermark, cursor)
 
 
 def _mirror_tail_proxy(
@@ -554,7 +628,12 @@ def _mirror_tail_proxy(
     source_key = _watermark_key(
         TAIL_PROXY_SOURCE_KEY, start_date, end_date
     )
-    cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    previous_watermark = warehouse.get_watermark(source_key)
+    repair_filter = _repair_candidates(
+        db, TailAccumulationSnapshot, TailAccumulationSnapshot.trade_date, previous_watermark,
+        start_date=start_date, end_date=end_date, full_refresh=full_refresh,
+    )
+    cursor = 0
     while True:
         if _cancelled(should_cancel):
             break
@@ -562,6 +641,7 @@ def _mirror_tail_proxy(
             select(TailAccumulationSnapshot)
             .where(
                 TailAccumulationSnapshot.id > cursor,
+                repair_filter,
                 *_date_filters(
                     TailAccumulationSnapshot.trade_date,
                     start_date,
@@ -600,9 +680,10 @@ def _mirror_tail_proxy(
             "raw_tail_proxy",
             records,
             source_key=source_key,
-            watermark=cursor,
+            watermark=max(previous_watermark, cursor),
+            skip_unchanged=True,
         )
-    result.tail_proxy_watermark = cursor
+    result.tail_proxy_watermark = max(previous_watermark, cursor)
 
 
 def _mirror_etf_indicators(
@@ -613,7 +694,12 @@ def _mirror_etf_indicators(
     if _cancelled(should_cancel):
         return
     source_key = _watermark_key(ETF_INDICATOR_SOURCE_KEY, start_date, end_date)
-    cursor = 0 if full_refresh else warehouse.get_watermark(source_key)
+    previous_watermark = warehouse.get_watermark(source_key)
+    repair_filter = _repair_candidates(
+        db, EtfIndicator, EtfIndicator.trade_date, previous_watermark,
+        start_date=start_date, end_date=end_date, full_refresh=full_refresh,
+    )
+    cursor = 0
     while True:
         if _cancelled(should_cancel):
             break
@@ -622,6 +708,7 @@ def _mirror_etf_indicators(
             .join(Symbol, Symbol.id == EtfIndicator.symbol_id)
             .where(
                 EtfIndicator.id > cursor,
+                repair_filter,
                 *_date_filters(EtfIndicator.trade_date, start_date, end_date),
             )
             .order_by(EtfIndicator.id).limit(batch_size)
@@ -641,9 +728,9 @@ def _mirror_etf_indicators(
         } for item, symbol in rows]
         cursor = int(rows[-1][0].id)
         result.etf_indicator_rows += warehouse.upsert_records(
-            "raw_etf_indicators", records, source_key=source_key, watermark=cursor,
+            "raw_etf_indicators", records, source_key=source_key, watermark=max(previous_watermark, cursor), skip_unchanged=True,
         )
-    result.etf_indicator_watermark = cursor
+    result.etf_indicator_watermark = max(previous_watermark, cursor)
 
 
 def mirror_factor_inputs(
@@ -730,6 +817,7 @@ def mirror_factor_inputs(
             db,
             target,
             result,
+            start_date=start_date,
             end_date=end_date,
             batch_size=batch_size,
             full_refresh=full_refresh,

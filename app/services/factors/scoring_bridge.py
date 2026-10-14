@@ -51,6 +51,10 @@ _COPY_EXCLUDED_COLUMNS = {
     'model_alpha_score',
     'macro_regime',
     'macro_position_multiplier',
+    'published_at',
+    'first_published_at',
+    'revision_at',
+    'pit_flag',
 }
 
 
@@ -71,6 +75,8 @@ class ScoringBridgeResult:
     manual_score_count: int
     materialized_count: int
     skipped_symbol_count: int
+    missing_symbol_mapping_count: int = 0
+    factor_only_score_count: int = 0
 
 
 def _utcnow_naive() -> datetime:
@@ -143,6 +149,7 @@ def _score_batch_id(
     model_run_id: str,
     factor_calc_batch_id: str,
     pipeline_run_id: str | None,
+    manual_revision_identity: str = '',
 ) -> str:
     identity = '|'.join(
         (
@@ -151,6 +158,7 @@ def _score_batch_id(
             model_run_id,
             factor_calc_batch_id,
             pipeline_run_id or '',
+            manual_revision_identity,
         )
     )
     digest = hashlib.sha256(identity.encode('utf-8')).hexdigest()[:20]
@@ -196,6 +204,7 @@ def _load_factor_rows(
     trade_date: date,
     factor_calc_batch_id: str,
     extra_factor_codes: tuple[str, ...] | None = None,
+    expected_versions: dict[str, int] | None = None,
 ) -> tuple[dict[str, dict[str, dict[str, Any]]], datetime | None]:
     """加载因子值行（WP7-03: 支持动态特征代码）。
 
@@ -231,6 +240,8 @@ def _load_factor_rows(
         ).fetchall()
     grouped: dict[str, dict[str, dict[str, Any]]] = {}
     cutoffs: list[datetime] = []
+    observed_features: set[str] = set()
+    matched_features: set[str] = set()
     for (
         symbol,
         factor_code,
@@ -242,6 +253,11 @@ def _load_factor_rows(
         imputation_method,
         cutoff,
     ) in rows:
+        if expected_versions and factor_code in expected_versions:
+            observed_features.add(factor_code)
+            if int(factor_version) != int(expected_versions[factor_code]):
+                continue
+            matched_features.add(factor_code)
         normalized = float(normalized_value)
         if not math.isfinite(normalized):
             continue
@@ -260,6 +276,8 @@ def _load_factor_rows(
         parsed_cutoff = _as_naive_datetime(cutoff)
         if parsed_cutoff is not None:
             cutoffs.append(parsed_cutoff)
+    if observed_features - matched_features:
+        raise ValueError('factor_value_version_mismatch:' + ','.join(sorted(observed_features - matched_features)))
     return grouped, max(cutoffs) if cutoffs else None
 
 
@@ -325,6 +343,15 @@ def _clone_manual_score(
     factor_set_id: str | None = None,
     factor_member_versions_json: str | None = None,
 ) -> Score:
+    now = _utcnow_naive()
+    input_times = [now]
+    for stamp in (manual.published_at, manual.factor_data_cutoff_at,
+                  model_run.created_at, model_run.data_cutoff_at,
+                  factor_data_cutoff_at):
+        parsed = _as_naive_datetime(stamp)
+        if parsed is not None:
+            input_times.append(parsed)
+    publication = max(input_times)
     payload = {
         column.name: getattr(manual, column.name)
         for column in Score.__table__.columns
@@ -344,7 +371,11 @@ def _clone_manual_score(
             # WP7-05: Score 解释追溯字段
             'factor_set_id': factor_set_id,
             'factor_member_versions_json': factor_member_versions_json,
-            'created_at': _utcnow_naive(),
+            'created_at': now,
+            'published_at': publication,
+            'first_published_at': publication,
+            'revision_at': None,
+            'pit_flag': 'NOT_CHECKED',
         }
     )
     config_snapshot = _json_object(manual.scoring_config_snapshot_json)
@@ -396,6 +427,8 @@ def materialize_factor_scores(
     '''Create shadow or Ridge Score rows from one validated model snapshot.
 
     Manual mode deliberately performs no warehouse reads and no Score writes.
+    Real model alpha needs factor inputs and Symbol mappings, and can publish
+    independently of the optional manual-score enhancement base.
     A shadow batch carries the full explanation but preserves every manual
     ranking field. Ridge mode blends the dynamic dimensions into the existing
     final score while retaining the manual scoring configuration and stage.
@@ -453,6 +486,9 @@ def materialize_factor_scores(
 
     # WP7-05: 从模型记录解析 factor_set_id 和成员版本快照，用于 Score 解释追溯
     hyperparams = _json_object(model.hyperparameters_json)
+    intercept = float(hyperparams.get('final_intercept') or 0.0)
+    if not math.isfinite(intercept):
+        raise ValueError('validated model has an invalid intercept')
     factor_set_id = hyperparams.get('factor_set_id')
     # 构造成员版本快照：{factor_code: {"version": int, "coefficient": float, "normalized_weight": float}}
     member_versions_snapshot = {
@@ -480,14 +516,22 @@ def materialize_factor_scores(
         trade_date=trade_date,
         factor_calc_batch_id=factor_calc_batch_id,
         extra_factor_codes=feature_codes,
+        expected_versions={m.factor_code: m.factor_version for m in model_members},
     )
+    # Model alpha is independent of technical/manual scores. A real business
+    # Symbol mapping is still mandatory; never invent an ID for warehouse-only
+    # universe entries.
+    if factor_rows:
+        mapped_symbols = db.execute(select(Symbol).where(
+            Symbol.symbol.in_(sorted(factor_rows)), Symbol.asset_type == model.asset_type,
+        )).scalars().all()
+        symbols_by_code.update({symbol.symbol: symbol for symbol in mapped_symbols})
+    missing_symbol_mapping_count = len(set(factor_rows) - set(symbols_by_code))
     manual_by_symbol_id = {score.symbol_id: score for score in manual_scores}
     complete: dict[str, dict[str, dict[str, Any]]] = {
         symbol: values
         for symbol, values in factor_rows.items()
         if set(feature_codes).issubset(values)
-        and symbol in symbols_by_code
-        and symbols_by_code[symbol].id in manual_by_symbol_id
     }
 
     quality_raw: dict[str, float] = {}
@@ -510,7 +554,7 @@ def materialize_factor_scores(
             for code, value in per_factor.items()
             if _get_factor_category(code) in _TIMING_CATEGORIES
         )
-        alpha_raw[symbol] = sum(per_factor.values())
+        alpha_raw[symbol] = sum(per_factor.values()) + intercept
 
     quality_scores = _percentile_scores(quality_raw)
     timing_scores = _percentile_scores(timing_raw)
@@ -522,6 +566,12 @@ def materialize_factor_scores(
         model_run_id=model.id,
         factor_calc_batch_id=factor_calc_batch_id,
         pipeline_run_id=pipeline_run_id,
+        manual_revision_identity=hashlib.sha256(json.dumps([
+            [score.id, score.calc_batch_id, str(score.published_at), str(score.revision_at),
+             score.quality_score, score.timing_score, score.priority_score,
+             score.scoring_config_snapshot_json]
+            for score in sorted(manual_scores, key=lambda row: row.symbol_id)
+        ], default=str, sort_keys=True).encode('utf-8')).hexdigest(),
     )
 
     existing_rows = db.execute(
@@ -532,10 +582,29 @@ def materialize_factor_scores(
     ).scalars().all()
     existing_by_symbol_id = {row.symbol_id: row for row in existing_rows}
     materialized = 0
+    factor_only_count = 0
     for symbol_code in sorted(complete):
+        if symbol_code not in symbols_by_code:
+            continue
         symbol = symbols_by_code[symbol_code]
-        manual = manual_by_symbol_id[symbol.id]
+        manual = manual_by_symbol_id.get(symbol.id)
+        if manual is None:
+            # Compatibility dimensions are derived from real model outputs;
+            # stage/action carry no claimed technical entry/exit signal.
+            manual = Score(
+                symbol_id=symbol.id, trade_date=trade_date,
+                quality_score=quality_scores[symbol_code],
+                quality_grade=_grade(quality_scores[symbol_code]),
+                timing_score=timing_scores[symbol_code], priority_score=alpha_scores[symbol_code],
+                stage='neutral', action='hold', weight_mode='manual',
+                scoring_asset_type=model.asset_type,
+                scoring_config_snapshot_json=json.dumps({'source': 'MODEL_FACTOR'}),
+                dimension_scores_json='{}', factor_scores_json='{}',
+                pit_safety='NOT_PIT_SAFE',
+            )
+            factor_only_count += 1
         factor_explanation = {
+            'base_source': ('MANUAL_SCORE' if symbol.id in manual_by_symbol_id else 'MODEL_FACTOR'),
             'mode': active_mode,
             'model_run_id': model.id,
             'factor_calc_batch_id': factor_calc_batch_id,
@@ -571,6 +640,7 @@ def materialize_factor_scores(
             'factor_quality_raw': quality_raw[symbol_code],
             'factor_timing_raw': timing_raw[symbol_code],
             'model_alpha_raw': alpha_raw[symbol_code],
+            'model_intercept': intercept,
             'factor_quality_score': quality_scores[symbol_code],
             'factor_timing_score': timing_scores[symbol_code],
             'model_alpha_score': alpha_scores[symbol_code],
@@ -616,9 +686,10 @@ def materialize_factor_scores(
         if existing is None:
             db.add(score)
         else:
-            for column in Score.__table__.columns:
-                if column.name != 'id':
-                    setattr(existing, column.name, getattr(score, column.name))
+            # A retry of identical immutable inputs keeps the first published
+            # fact, including its availability timestamp and evidence IDs.
+            # A revised manual base has a distinct batch identity above.
+            pass
         materialized += 1
 
     db.flush()
@@ -668,7 +739,7 @@ def materialize_factor_scores(
             _stats = {
                 "n_scores": int(materialized),
                 "manual_score_count": int(len(manual_scores)),
-                "skipped_symbol_count": int(max(0, len(manual_scores) - materialized)),
+                "skipped_symbol_count": int(max(0, len(factor_rows) - materialized)),
                 "factor_calc_batch_id": factor_calc_batch_id,
                 "pipeline_run_id": pipeline_run_id,
                 "factor_symbols_in_warehouse": int(total_symbols_factor_rows),
@@ -793,8 +864,52 @@ def materialize_factor_scores(
         calc_batch_id=calc_batch_id,
         manual_score_count=len(manual_scores),
         materialized_count=materialized,
-        skipped_symbol_count=max(0, len(manual_scores) - materialized),
+        skipped_symbol_count=max(0, len(factor_rows) - materialized),
+        missing_symbol_mapping_count=missing_symbol_mapping_count,
+        factor_only_score_count=factor_only_count,
     )
 
 
-__all__ = ['ScoringBridgeResult', 'materialize_factor_scores']
+def materialize_factor_score_window(db, warehouse, *, trade_dates,
+                                   factor_calc_batch_id, model_run_id,
+                                   mode, pipeline_run_id=None, publication_guard=None) -> dict:
+    """Publish every qualified day in a calculation window, in one transaction.
+
+    Historical dates remain newly published facts: the score bridge always
+    stamps actual availability, so a backfill cannot rewrite PIT history.
+    """
+    from dataclasses import asdict
+    bridges = []
+    with db.begin_nested():
+        if publication_guard is not None:
+            publication_guard()
+        for day in sorted(set(trade_dates)):
+            bridges.append(asdict(materialize_factor_scores(
+                db, warehouse, trade_date=day,
+                factor_calc_batch_id=factor_calc_batch_id,
+                model_run_id=model_run_id, mode=mode,
+                pipeline_run_id=pipeline_run_id,
+            )))
+        if not bridges or not any(b['materialized_count'] for b in bridges):
+            raise ValueError('no_factor_scores_published:factor_input_or_symbol_mapping_missing')
+        db.flush()
+        # Check inside the savepoint, after every day's scores and lineage
+        # were written. A stale identity rolls back only this publication,
+        # preserving previously committed immutable score batches.
+        if publication_guard is not None:
+            publication_guard()
+    unpublished_dates = [b['trade_date'] for b in bridges if not b['materialized_count']]
+    missing_symbol_mapping_count = sum(b['missing_symbol_mapping_count'] for b in bridges)
+    skipped_symbol_count = sum(b['skipped_symbol_count'] for b in bridges)
+    return {
+        'status': 'PARTIAL' if unpublished_dates or skipped_symbol_count else 'PUBLISHED',
+        'daily_batches': bridges,
+        'materialized_count': sum(b['materialized_count'] for b in bridges),
+        'unpublished_dates': unpublished_dates,
+        'missing_symbol_mapping_count': missing_symbol_mapping_count,
+        'skipped_symbol_count': skipped_symbol_count,
+        'factor_only_score_count': sum(b['factor_only_score_count'] for b in bridges),
+    }
+
+
+__all__ = ['ScoringBridgeResult', 'materialize_factor_scores', 'materialize_factor_score_window']

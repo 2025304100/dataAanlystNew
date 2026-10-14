@@ -237,7 +237,7 @@ def test_actual_ledger_buy_boundary_blocks_entry_but_fills_sell(binding, monkeyp
     assert db.scalar(select(func.count()).select_from(SimOrder)) == 2
 
 
-@pytest.mark.parametrize("lock", ["unconfirmed", "global_model_switch"])
+@pytest.mark.parametrize("lock", ["unconfirmed", "global_model_switch", "drawdown"])
 def test_real_partial_buy_retry_under_lock_keeps_original_identity_and_replay_does_not_fill_twice(binding, monkeypatch, lock):
     """A locked new decision cannot erase or duplicate a durable partial plan."""
     from app.models.factor_runtime import FactorRuntimeState
@@ -255,7 +255,8 @@ def test_real_partial_buy_retry_under_lock_keeps_original_identity_and_replay_do
         (date(2026, 9, 3), 1000), (date(2026, 9, 4), 1000),
         (date(2026, 9, 7), 10000),
     ):
-        db.add(DailyBar(symbol_id=symbol.id, trade_date=day, open=10, high=10.2, low=9.8, close=10, volume=volume))
+        db.add(DailyBar(symbol_id=symbol.id, trade_date=day, open=10, high=10.2, low=9.8, close=10, volume=volume,
+            created_at=datetime.combine(day, datetime.min.time())))
     db.commit()
     engine = DecisionEngine(evidence_builder=lambda **kwargs: [
         PerSymbolEvidence(symbol_id=symbol.id, action="BUY", target_quantity=1000, target_qty_delta=1000, intended_price=10),
@@ -269,9 +270,14 @@ def test_real_partial_buy_retry_under_lock_keeps_original_identity_and_replay_do
     assert order.status == "partial" and order.quantity == 1000 and order.filled_quantity == 100
     if lock == "unconfirmed":
         portfolio.status_model = "MODEL_INACTIVE"
-    else:
+    elif lock == "global_model_switch":
         _ready_model(db, set_id="fs-retry-next", model_id="model-retry-next")
         db.get(FactorRuntimeState, 1).active_model_run_id = "model-retry-next"
+    else:
+        from app.models.portfolio_equity_snapshot import PortfolioEquitySnapshot
+        snapshot.versions_json = json.dumps({"risk_policy": {"drawdown_circuit_pct": .10, "drawdown_action": "block_new_buys"}})
+        db.add(PortfolioEquitySnapshot(portfolio_id=portfolio.id, snapshot_date=TRADE_DATE,
+            total_equity=200000, created_at=datetime(2026, 9, 2, 6)))
     db.commit()
 
     second = execute_member_source(db, portfolio_id=portfolio.id, strategy_snapshot_id=snapshot.id, trade_date=date(2026, 9, 3), dry_run=False)
@@ -283,7 +289,7 @@ def test_real_partial_buy_retry_under_lock_keeps_original_identity_and_replay_do
     # only the original persisted plan reached the matching/account adapter.
     later = db.execute(select(DecisionEvidence).where(DecisionEvidence.trade_date == date(2026, 9, 3))).scalar_one()
     assert later.action == "REJECTED" and later.id != original[2]
-    assert later.rejection_reason == "PORTFOLIO_EXECUTION_BLOCKED"
+    assert later.rejection_reason == ("DRAWDOWN_CIRCUIT_TRIGGERED" if lock == "drawdown" else "PORTFOLIO_EXECUTION_BLOCKED")
     assert db.scalar(select(func.count()).select_from(SimOrder)) == 1
     assert db.scalar(select(func.count()).select_from(SimTrade)) == 2
     assert db.scalar(select(Position.quantity).where(Position.portfolio_id == portfolio.id, Position.symbol_id == symbol.id)) == 200

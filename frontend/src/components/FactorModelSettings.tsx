@@ -97,8 +97,8 @@ function PipelineStepsBar(props: PipelineStepsBarProps) {
     { idx: 1, label: "同步数据", hint: "同步市场数据与因子快照", status: s1, emoji: "⚡" },
     { idx: 2, label: "因子预处理", hint: "对选定集合计算指标、缺失、标准化", status: s2, emoji: "🧮" },
     { idx: 3, label: "目标生成", hint: "按标签定义生成训练/验证目标", status: s3, emoji: "🎯" },
-    { idx: 4, label: trainEnabled ? "训练评分" : "训练评分（跳过）", hint: "Ridge 回归训练 + 评分快照", status: s4, emoji: "🏋" },
-    { idx: 5, label: "回测消费", hint: "评分写入组合权重与回测面板", status: s5, emoji: "📊" },
+    { idx: 4, label: trainEnabled ? "训练模型" : "训练模型（跳过）", hint: "仅生成新模型，验证后需本人激活", status: s4, emoji: "🏋" },
+    { idx: 5, label: "激活后评分", hint: "激活已验证模型后生成绑定该版本的评分", status: s5, emoji: "📊" },
   ];
   return (
     <div className="pipeline-steps-bar" data-testid="pipeline-steps-bar">
@@ -266,6 +266,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activationScoreError, setActivationScoreError] = useState<string | null>(null);
   const [fullRefresh, setFullRefresh] = useState(false);
   const [trainModel, setTrainModel] = useState<boolean>(initialTrainModel);
   const [materializeScores, setMaterializeScores] = useState(true);
@@ -312,7 +313,8 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
         api.scoringListTasks("factor_pipeline", 5),
         factorSetLoader,
       ]);
-      setOverview(overviewData);
+      setOverview((current) => current?.runtime && current.runtime.version > overviewData.runtime?.version
+        ? { ...overviewData, runtime: current.runtime } : overviewData);
       setModels(modelData.items);
       // Task 8：显式写入 frozenFactorSets 状态（只保留 frozen，作为下拉唯一数据源）
       const usableSets = Array.isArray(frozenFactorSetsData)
@@ -443,6 +445,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
       reasons.push("请先选择用于训练的因子集合。");
       return { ok: false, reasons };
     }
+    if (String(selectedFactorSet.asset_type ?? "stock").toLowerCase() !== "stock") reasons.push("当前真实训练流水线仅支持股票集合。");
     const members = Number(selectedFactorSet.n_members ?? (selectedFactorSet as any).member_count ?? 0);
     if (members < 1) reasons.push("集合为空（n_members < 1）。");
     // feature_count 字段：优先 feature_count（DTO 别名）；否则回退 member_count（当所有成员都是 feature 场景
@@ -483,7 +486,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
       const task = await api.scoringCreateTask({
         full_refresh: fullRefresh,
         train_model: trainModel,
-        materialize_scores: materializeScores,
+        materialize_scores: trainModel ? false : materializeScores,
         window_days: windowDays,
         validation_days: validationDays,
         factor_set_id: trainModel ? trainingFactorSetId : undefined,
@@ -491,7 +494,9 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
         source_hint: "factor_model_settings",
       });
       setActiveTask(task);
-      ctx.showToast("success", t("factorModelStarted"));
+      ctx.showToast("success", trainModel
+        ? `训练任务已提交：${task.id}，完成后需本人激活新模型，再生成评分。`
+        : `${t("factorModelStarted")}：${task.id}`);
     } catch (err: any) {
       setError(err.message || t("factorModelActionFailed"));
     } finally {
@@ -543,13 +548,44 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
   };
 
   const activate = async (model: FactorModelRun, mode: "shadow" | "ridge") => {
+    if (model.production_eligible !== true) {
+      setError(model.readiness_message || "模型正式运行资格未知或未通过，无法激活。");
+      return;
+    }
     setActing(`${mode}:${model.id}`);
     setError(null);
+    setActivationScoreError(null);
     try {
       // Factor-domain internal - DO NOT USE outside factor center
-      await api.scoringActivateModel(model.id, mode, `settings:${mode}`);
-      ctx.showToast("success", t("factorModelActivated"));
+      const newRuntime = await api.scoringActivateModel(model.id, mode, `settings:${mode}`);
+      setOverview((current) => current ? { ...current, runtime: newRuntime } : current);
+      let submittedTask: FactorPipelineTask | null = null;
+      try {
+        const factorSetId = String(model.hyperparameters?.factor_set_id ?? "").trim();
+        if (!factorSetId) throw new Error("该模型未记录冻结因子集合，无法生成绑定评分。");
+        submittedTask = await api.scoringCreateTask({
+          train_model: false,
+          materialize_scores: true,
+          factor_set_id: factorSetId,
+          actor: "settings:activate_scores",
+          source_hint: "settings:activate_scores",
+          hyperparameters: {
+            factor_set_id: factorSetId,
+            expected_model_run_id: model.id,
+            expected_weight_mode: newRuntime.weight_mode || mode,
+          },
+          factor_scope: { factor_set_id: factorSetId, asset_type: "stock" },
+        });
+        setActiveTask(submittedTask);
+        ctx.showToast("success", `模型已激活，评分任务已提交：${submittedTask.id}，${submittedTask.status === "queued" ? "已排队，等待生成" : "正在生成评分"}。`);
+      } catch (err: any) {
+        const notice = "模型已激活，评分生成未启动：" + (err.message || String(err));
+        setActivationScoreError(notice);
+        ctx.showToast("info", notice);
+      }
       await loadAll(false);
+      // The task-list endpoint may lag behind the accepted submission.
+      if (submittedTask) setActiveTask(submittedTask);
     } catch (err: any) {
       setError(err.message || t("factorModelActionFailed"));
     } finally {
@@ -566,6 +602,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
     try {
       // Factor-domain internal - DO NOT USE outside factor center
       await api.scoringFallbackToManual(fallbackReason.trim());
+      setActivationScoreError(null);
       setFallbackOpen(false);
       setFallbackReason("");
       ctx.showToast("success", t("factorModelFallbackDone"));
@@ -747,7 +784,8 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
           <Button
             size="small"
             icon={<EyeOutlined />}
-            disabled={record.status !== "validated"}
+            disabled={record.status !== "validated" || record.production_eligible !== true}
+            title={record.production_eligible === true ? undefined : record.readiness_message || "正式运行资格未通过"}
             loading={acting === `shadow:${record.id}`}
             onClick={() => activate(record, "shadow")}
           >
@@ -757,7 +795,8 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
             size="small"
             type="primary"
             icon={<CheckCircleOutlined />}
-            disabled={record.status !== "validated"}
+            disabled={record.status !== "validated" || record.production_eligible !== true}
+            title={record.production_eligible === true ? undefined : record.readiness_message || "正式运行资格未通过"}
             loading={acting === `ridge:${record.id}`}
             onClick={() => activate(record, "ridge")}
           >
@@ -863,6 +902,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
       </div>
 
       {error && <Alert type="error" showIcon closable message={error} onClose={() => setError(null)} />}
+      {activationScoreError && <Alert type="warning" showIcon closable message={activationScoreError} onClose={() => setActivationScoreError(null)} />}
 
       <Alert
         type="info"
@@ -1070,7 +1110,8 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
             </Tooltip>
             <Switch checked={trainModel} onChange={setTrainModel} />
           </label>
-          <label><span>{t("factorModelMaterialize")}</span><Switch checked={materializeScores} onChange={setMaterializeScores} /></label>
+          <label><span>{t("factorModelMaterialize")}</span><Switch checked={!trainModel && materializeScores} disabled={trainModel} onChange={setMaterializeScores} /></label>
+          {trainModel && <Text type="secondary">训练仅生成新模型；验证完成后需本人激活，再生成评分。</Text>}
           <label><span>{t("factorModelWindow")} ({t("factorModelDays")})</span><InputNumber min={60} max={1000} value={windowDays} onChange={(value) => setWindowDays(Number(value ?? 250))} /></label>
           <label><span>{t("factorModelValidation")} ({t("factorModelDays")})</span><InputNumber min={20} max={250} value={validationDays} onChange={(value) => setValidationDays(Number(value ?? 50))} /></label>
         </div>
@@ -1177,6 +1218,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
                 )}
               </strong>
               <span>{activeTask.message || (activeTask.status === "queued" ? t("factorModelTaskQueued") : "")}</span>
+              <span>任务：{activeTask.id}</span>
               {eta != null && eta.sample_count > 0 && activeTask.status !== "done" && activeTask.status !== "completed" && activeTask.status !== "failed" && activeTask.status !== "cancelled" && (
                 <span className="factor-task-eta-hint">{template("factorModelEtaBasedOnHistory", { count: eta.sample_count })}</span>
               )}
@@ -1209,6 +1251,7 @@ export default function FactorModelSettings(props: FactorModelSettingsProps = {}
           <h3>{t("factorModelModels")}</h3>
           <Tag>{models.length}</Tag>
         </div>
+        <Text type="secondary">训练完成的新模型等待本人激活；激活后会提交固定该模型版本的评分任务。</Text>
         <Table<FactorModelRun>
           rowKey="id"
           size="small"

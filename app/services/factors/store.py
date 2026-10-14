@@ -823,8 +823,15 @@ class FactorWarehouse:
         *,
         source_key: str | None = None,
         watermark: int | None = None,
+        skip_unchanged: bool = False,
+        update_fields: Iterable[str] | None = None,
     ) -> int:
-        """Upsert a supported warehouse table and optionally advance a watermark."""
+        """Upsert data and its checkpoint atomically.
+
+        Local input repair scans use ``skip_unchanged`` so a new mirror batch
+        does not turn old, unchanged observations into newly published data.
+        It returns the number of inserted or materially updated observations.
+        """
         columns = _UPSERT_TABLE_COLUMNS.get(table)
         keys = _UPSERT_TABLE_KEYS.get(table)
         if columns is None or keys is None:
@@ -835,6 +842,12 @@ class FactorWarehouse:
         records = [tuple(row.get(column) for column in columns) for row in rows]
         placeholders = ", ".join("?" for _ in columns)
         update_columns = [column for column in columns if column not in keys]
+        if update_fields is not None:
+            requested = tuple(dict.fromkeys(update_fields))
+            if any(column not in update_columns for column in requested):
+                raise ValueError(f"unsupported update field for {table}")
+            update_columns = list(requested) + [column for column in ("ingested_at", "batch_id", "source_hash")
+                                               if column in columns and column not in requested]
         assignments = ", ".join(
             f"{column} = excluded.{column}" for column in update_columns
         )
@@ -843,13 +856,41 @@ class FactorWarehouse:
             f"VALUES ({placeholders}) "
             f"ON CONFLICT ({', '.join(keys)}) DO UPDATE SET {assignments}"
         )
+        changed_count = len(records)
+        if skip_unchanged:
+            # Publication metadata and legacy hash formatting do not change
+            # the actual factor input. Preserve them until a business value
+            # changes, then write the new content hash and publication time.
+            content_columns = [column for column in update_columns
+                               if column not in {"ingested_at", "batch_id", "source_hash"}]
+            changed_condition = " OR ".join(
+                f"{table}.{column} IS DISTINCT FROM excluded.{column}"
+                for column in content_columns
+            ) or "FALSE"
+            sql = (
+                f"INSERT INTO {table} ({', '.join(columns)}) "
+                f"SELECT {', '.join(columns)} FROM incoming_input_records "
+                f"ON CONFLICT ({', '.join(keys)}) DO UPDATE SET {assignments} "
+                f"WHERE {changed_condition} RETURNING 1"
+            )
 
         self.initialize()
         with self._write_lock, self.connection() as conn:
             conn.execute("BEGIN TRANSACTION")
             try:
                 if records:
-                    conn.executemany(sql, records)
+                    if skip_unchanged:
+                        import pandas as pd
+
+                        frame = pd.DataFrame.from_records(records, columns=list(columns))
+                        # Symbol aliases can converge to one warehouse key;
+                        # SQL rows are ordered by ID, so the final one wins.
+                        frame = frame.drop_duplicates(subset=list(keys), keep="last")
+                        conn.register("incoming_input_records", frame)
+                        changed_count = len(conn.execute(sql).fetchall())
+                        conn.unregister("incoming_input_records")
+                    else:
+                        conn.executemany(sql, records)
                 if source_key is not None and watermark is not None:
                     conn.execute(
                         """
@@ -857,16 +898,21 @@ class FactorWarehouse:
                             source_key, last_row_id, updated_at
                         ) VALUES (?, ?, ?)
                         ON CONFLICT (source_key) DO UPDATE SET
-                            last_row_id = excluded.last_row_id,
+                            last_row_id = GREATEST(warehouse_watermarks.last_row_id, excluded.last_row_id),
                             updated_at = excluded.updated_at
                         """,
                         [source_key, int(watermark), _utcnow_naive()],
                     )
                 conn.execute("COMMIT")
             except Exception:
+                if skip_unchanged:
+                    try:
+                        conn.unregister("incoming_input_records")
+                    except Exception:
+                        pass
                 conn.execute("ROLLBACK")
                 raise
-        return len(records)
+        return changed_count
 
     def upsert_frame(self, table: str, frame: Any) -> int:
         """Bulk upsert a pandas-compatible frame through DuckDB registration."""

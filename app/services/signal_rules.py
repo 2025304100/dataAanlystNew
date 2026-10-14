@@ -90,12 +90,13 @@ def serialize_signal_rule(rule: SignalRule) -> SignalRuleRead:
     )
 
 
-def get_active_signal_rule(db: Session, portfolio_id: int) -> SignalRuleRead:
+def get_active_signal_rule(db: Session, portfolio_id: int, *, for_update: bool = False) -> SignalRuleRead:
+    stmt = select(SignalRule).where(SignalRule.portfolio_id == portfolio_id, SignalRule.is_active == 1).order_by(SignalRule.id.desc())
+    if for_update:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     rule = (
         db.execute(
-            select(SignalRule)
-            .where(SignalRule.portfolio_id == portfolio_id, SignalRule.is_active == 1)
-            .order_by(SignalRule.id.desc())
+            stmt
         )
         .scalars()
         .first()
@@ -103,12 +104,16 @@ def get_active_signal_rule(db: Session, portfolio_id: int) -> SignalRuleRead:
     return serialize_signal_rule(rule) if rule is not None else default_signal_rule(portfolio_id)
 
 
-def upsert_active_signal_rule(db: Session, portfolio_id: int, payload: SignalRuleUpsert) -> SignalRuleRead:
+def upsert_active_signal_rule(db: Session, portfolio_id: int, payload: SignalRuleUpsert, *, commit: bool = True) -> SignalRuleRead:
+    from app.models.portfolio import Portfolio
+    # Share the apply transaction lock with independent signal edits.
+    db.execute(select(Portfolio.id).where(Portfolio.id == portfolio_id).with_for_update()).scalar_one()
     existing = (
         db.execute(
             select(SignalRule)
             .where(SignalRule.portfolio_id == portfolio_id, SignalRule.is_active == 1)
             .order_by(SignalRule.id.desc())
+            .with_for_update().execution_options(populate_existing=True)
         )
         .scalars()
         .first()
@@ -128,8 +133,11 @@ def upsert_active_signal_rule(db: Session, portfolio_id: int, payload: SignalRul
     existing.same_stage = 1 if payload.same_stage else 0
     existing.same_action = 1 if payload.same_action else 0
     existing.is_active = 1
-    db.commit()
-    db.refresh(existing)
+    if commit:
+        db.commit()
+        db.refresh(existing)
+    else:
+        db.flush()
     return serialize_signal_rule(existing)
 
 

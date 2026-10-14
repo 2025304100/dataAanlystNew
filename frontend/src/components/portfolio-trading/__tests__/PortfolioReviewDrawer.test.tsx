@@ -24,6 +24,15 @@ const openDrawer = () =>
     <PortfolioReviewDrawer open onClose={vi.fn()} portfolioId={3} />,
   );
 
+/** antd DatePicker 的 data-testid 落在容器上，需对内部 input 输入并回车提交。 */
+const setPickerDate = (testid: string, value: string) => {
+  const node = screen.getByTestId(testid) as HTMLElement;
+  const input = (node.tagName === "INPUT" ? node : node.querySelector("input")) as HTMLInputElement;
+  fireEvent.change(input, { target: { value } });
+  fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
+  fireEvent.blur(input);
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockApi.getReviews.mockResolvedValue([]);
@@ -56,8 +65,8 @@ describe("PortfolioReviewDrawer", () => {
     openDrawer();
     await screen.findByTestId("review-drawer");
 
-    fireEvent.change(screen.getByTestId("review-start-date"), { target: { value: "2026-05-01" } });
-    fireEvent.change(screen.getByTestId("review-end-date"), { target: { value: "2026-05-31" } });
+    setPickerDate("review-start-date", "2026-05-01");
+    setPickerDate("review-end-date", "2026-05-31");
     fireEvent.change(screen.getByTestId("review-note-input"), { target: { value: "五月复盘" } });
     fireEvent.click(screen.getByTestId("review-submit-button"));
 
@@ -75,8 +84,8 @@ describe("PortfolioReviewDrawer", () => {
   it("反向时间范围在前端拦下，不发请求", async () => {
     openDrawer();
     await screen.findByTestId("review-drawer");
-    fireEvent.change(screen.getByTestId("review-start-date"), { target: { value: "2026-08-31" } });
-    fireEvent.change(screen.getByTestId("review-end-date"), { target: { value: "2026-08-01" } });
+    setPickerDate("review-start-date", "2026-08-31");
+    setPickerDate("review-end-date", "2026-08-01");
     fireEvent.change(screen.getByTestId("review-note-input"), { target: { value: "任意备注" } });
     fireEvent.click(screen.getByTestId("review-submit-button"));
 
