@@ -1,19 +1,23 @@
 import type { ReactNode } from "react";
 import {
   ApiOutlined, AppstoreOutlined, BellOutlined, CalendarOutlined, DatabaseOutlined,
-  ExperimentOutlined, FunctionOutlined, MedicineBoxOutlined, NotificationOutlined,
+  ExperimentOutlined, FunctionOutlined, MedicineBoxOutlined,
   RobotOutlined, SettingOutlined, SyncOutlined, TrophyOutlined, UnorderedListOutlined,
 } from "@ant-design/icons";
 import { t } from "../../i18n";
 
 /**
- * 设置页侧边导航（T39 从 `Settings.tsx` 拆出，**纯重构、行为不变**）。
+ * 设置页侧边导航（T39 从 `Settings.tsx` 拆出）。
  *
- * 等价性契约（`Settings.test.tsx` 依赖，不得改动）：
+ * 等价性契约（`Settings.test.tsx` 依赖）：
  * - 容器：`<nav className="settings-sidebar" aria-label={t("ariaSettingsCategories")}>`
  * - 每项：`button.settings-nav-item`，`active` 类 + `aria-current="page"` 由 `active` 决定，
  *   点击调用 `onSelect(key)`，内部结构为 `span.settings-nav-icon` + `span.settings-nav-copy`；
- * - **顺序**与拆分前完全一致（视觉顺序即 tab 顺序）。
+ * - 顺序即视觉顺序。
+ *
+ * 2026-10 变更：「告警中心」与「消息管理」合并为单项「消息中心」（占原「告警中心」的位置）。
+ * 两者是上下游而非重复实现（告警负责识别越界、通知负责投递），所以合的是入口与阅读动线，
+ * 后端 `/alerts/*` 与 `/notifications/*` 及各自数据模型不变。
  *
  * 注：「数据中心」一项原为硬编码中文（未走 t()），本次拆分**原样保留**——
  * 本卡 not_do「不改任何设置项的行为与默认值」，文案国际化属另一议题。
@@ -21,8 +25,8 @@ import { t } from "../../i18n";
 
 export type SettingsSection =
   | "rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules"
-  | "alerts" | "scoring" | "factor-model" | "factor-center" | "data-center"
-  | "api-mgmt" | "db" | "ai" | "factor-mining" | "notifications" | "factor-basic"
+  | "message-center" | "scoring" | "factor-model" | "factor-center" | "data-center"
+  | "api-mgmt" | "db" | "ai" | "factor-mining" | "factor-basic"
   | "app-settings";
 
 interface NavItem {
@@ -40,7 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: "diagnostic", icon: <MedicineBoxOutlined />, labelKey: "diagTitle" },
   { key: "tasks", icon: <UnorderedListOutlined />, labelKey: "taskCenter" },
   { key: "schedules", icon: <CalendarOutlined />, labelKey: "scheduledTaskManager" },
-  { key: "alerts", icon: <BellOutlined />, labelKey: "alertCenter" },
+  { key: "message-center", icon: <BellOutlined />, labelKey: "messageCenter" },
   { key: "scoring", icon: <TrophyOutlined />, labelKey: "scTabTitle" },
   { key: "factor-model", icon: <ExperimentOutlined />, labelKey: "factorModelTabTitle" },
   { key: "factor-center", icon: <AppstoreOutlined />, labelKey: "factorCenterTabTitle" },
@@ -52,7 +56,6 @@ const NAV_ITEMS: NavItem[] = [
   { key: "api-mgmt", icon: <ApiOutlined />, labelKey: "apiMgmtTabTitle" },
   { key: "db", icon: <DatabaseOutlined />, labelKey: "dbTabTitle" },
   { key: "ai", icon: <RobotOutlined />, labelKey: "aiConfigTabTitle" },
-  { key: "notifications", icon: <NotificationOutlined />, labelKey: "messageManagement" },
 ];
 
 export interface SettingsNavProps {

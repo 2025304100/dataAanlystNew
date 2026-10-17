@@ -12,7 +12,6 @@ import DiscoveryPlanSettings from "./DiscoveryPlanSettings";
 import HistoryInitSection from "./HistoryInitSection";
 import DataDiagnosticPanel from "./DataDiagnosticPanel";
 import TaskCenter from "./TaskCenter";
-import AlertCenter from "./AlertCenter";
 import ScoringConfigSettings from "./ScoringConfigSettings";
 import AkshareApiManager from "./AkshareApiManager";
 import DataCenter from "./DataCenter";
@@ -22,12 +21,9 @@ import MiningShell from "./factors/mining/MiningShell";
 import ScheduledTaskManager from "./ScheduledTaskManager";
 import AiConfigSection from "./AiConfigSection";
 import AISettings from "./ai/AISettings";
-import { ChannelConfig } from "./notifications/ChannelConfig";
-import { PolicyEditor } from "./notifications/PolicyEditor";
-import { TemplateEditor } from "./notifications/TemplateEditor";
-import { DeliveryLog } from "./notifications/DeliveryLog";
 import FactorBasicSettings from "./settings/FactorBasicSettings";
 import AppSettingsSection from "./settings/AppSettingsSection";
+import MessageCenter from "./messageCenter/MessageCenter";
 
 export default function Settings() {
   const ctx = useApp();
@@ -36,11 +32,18 @@ export default function Settings() {
   const preview = ctx.signalRulePreview;
   const activeSymbolId = ctx.activeSymbolId;
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "alerts" | "scoring" | "factor-model" | "factor-center" | "data-center" | "api-mgmt" | "db" | "ai" | "factor-mining" | "notifications" | "factor-basic" | "app-settings">(() => {
+  const [activeSection, setActiveSection] = useState<"rules" | "indicators" | "history" | "diagnostic" | "tasks" | "schedules" | "message-center" | "scoring" | "factor-model" | "factor-center" | "data-center" | "api-mgmt" | "db" | "ai" | "factor-mining" | "factor-basic" | "app-settings">(() => {
     if (typeof window === "undefined") return "rules";
     const stored = window.localStorage.getItem("settings_active_section");
+    // 「告警中心」与「消息管理」已合并为「消息中心」，旧持久化值继续可达。
+    if (stored === "alerts" || stored === "notifications") return "message-center";
     if (stored === "external" || stored === "universe") return "data-center";
-    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "alerts" || stored === "scoring" || stored === "factor-model" || stored === "factor-center" || stored === "data-center" || stored === "api-mgmt" || stored === "db" || stored === "ai" || stored === "factor-mining" || stored === "notifications" || stored === "factor-basic" || stored === "app-settings" ? stored : "rules";
+    return stored === "rules" || stored === "indicators" || stored === "history" || stored === "diagnostic" || stored === "tasks" || stored === "schedules" || stored === "message-center" || stored === "scoring" || stored === "factor-model" || stored === "factor-center" || stored === "data-center" || stored === "api-mgmt" || stored === "db" || stored === "ai" || stored === "factor-mining" || stored === "factor-basic" || stored === "app-settings" ? stored : "rules";
+  });
+  const [messageCenterTab, setMessageCenterTab] = useState<"alerts" | "inbox" | "delivery">(() => {
+    if (typeof window === "undefined") return "alerts";
+    const stored = window.localStorage.getItem("settings_message_center_tab");
+    return stored === "alerts" || stored === "inbox" || stored === "delivery" ? stored : "alerts";
   });
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<"formulas" | "plans">(() => {
     if (typeof window === "undefined") return "formulas";
@@ -81,9 +84,16 @@ export default function Settings() {
       const raw = typeof detail === "string" ? detail : detail?.section;
       const subtab = typeof detail === "object" && detail ? detail.subtab : undefined;
       const section = raw === "api-management" ? "api-mgmt" : raw;
-      if (["factor-model", "factor-center", "factor-mining", "data-center", "api-mgmt", "tasks", "alerts", "notifications"].includes(section)) {
-        setActiveSection(section as typeof activeSection);
-        if (section === "notifications" && subtab === "deliveries") {
+      // 「告警中心」「消息管理」两个入口已合并进「消息中心」：旧调用方
+      // （铃铛「查看全部」传 notifications+deliveries）继续可用，只是落到新壳层。
+      const legacyTab = section === "alerts" ? "alerts" : section === "notifications" ? "delivery" : null;
+      const targetSection = legacyTab ? "message-center" : section;
+      if (["factor-model", "factor-center", "factor-mining", "data-center", "api-mgmt", "tasks", "message-center"].includes(targetSection)) {
+        setActiveSection(targetSection as typeof activeSection);
+        if (legacyTab) {
+          setMessageCenterTab(legacyTab);
+        }
+        if (subtab === "deliveries") {
           setActiveNotificationTab("deliveries");
         }
       }
@@ -97,6 +107,12 @@ export default function Settings() {
       window.localStorage.setItem("settings_indicator_subtab", activeIndicatorTab);
     }
   }, [activeIndicatorTab]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("settings_message_center_tab", messageCenterTab);
+    }
+  }, [messageCenterTab]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -404,10 +420,15 @@ export default function Settings() {
               </section>
             </div>
           )}
-          {activeSection === "alerts" && (
-            <div className="settings-tab-container" data-settings-content="settings-alerts">
+          {activeSection === "message-center" && (
+            <div className="settings-tab-container" data-settings-content="settings-message-center">
               <section className="band">
-                <AlertCenter />
+                <MessageCenter
+                  tab={messageCenterTab}
+                  onTabChange={setMessageCenterTab}
+                  deliverySubTab={activeNotificationTab}
+                  onDeliverySubTabChange={setActiveNotificationTab}
+                />
               </section>
             </div>
           )}
@@ -501,60 +522,6 @@ export default function Settings() {
                   </div>
                   <div className="sub-tab-container" hidden={activeAiTab !== "profiles"}>
                     <AISettings embedded />
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-          {activeSection === "notifications" && (
-            <div className="settings-tab-container" data-settings-content="settings-notifications">
-              <section className="band">
-                <div className="settings-indicator-stack">
-                  <div className="sub-tabs" aria-label={t("messageManagement")}>
-                    <button
-                      type="button"
-                      className={`sub-tab ${activeNotificationTab === "channels" ? "active" : ""}`}
-                      aria-current={activeNotificationTab === "channels" ? "page" : undefined}
-                      onClick={() => setActiveNotificationTab("channels")}
-                    >
-                      {t("channelConfig")}
-                    </button>
-                    <button
-                      type="button"
-                      className={`sub-tab ${activeNotificationTab === "policies" ? "active" : ""}`}
-                      aria-current={activeNotificationTab === "policies" ? "page" : undefined}
-                      onClick={() => setActiveNotificationTab("policies")}
-                    >
-                      {t("policyEditor")}
-                    </button>
-                    <button
-                      type="button"
-                      className={`sub-tab ${activeNotificationTab === "templates" ? "active" : ""}`}
-                      aria-current={activeNotificationTab === "templates" ? "page" : undefined}
-                      onClick={() => setActiveNotificationTab("templates")}
-                    >
-                      {t("templateEditor")}
-                    </button>
-                    <button
-                      type="button"
-                      className={`sub-tab ${activeNotificationTab === "deliveries" ? "active" : ""}`}
-                      aria-current={activeNotificationTab === "deliveries" ? "page" : undefined}
-                      onClick={() => setActiveNotificationTab("deliveries")}
-                    >
-                      {t("deliveryLog")}
-                    </button>
-                  </div>
-                  <div className="sub-tab-container" hidden={activeNotificationTab !== "channels"}>
-                    <ChannelConfig />
-                  </div>
-                  <div className="sub-tab-container" hidden={activeNotificationTab !== "policies"}>
-                    <PolicyEditor />
-                  </div>
-                  <div className="sub-tab-container" hidden={activeNotificationTab !== "templates"}>
-                    <TemplateEditor />
-                  </div>
-                  <div className="sub-tab-container" hidden={activeNotificationTab !== "deliveries"}>
-                    <DeliveryLog />
                   </div>
                 </div>
               </section>
